@@ -18,6 +18,7 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "completion-tab" in captured.out
+    assert "completion-session-command" in captured.out
     assert "completion-navigation-priority" in captured.out
     assert "history-navigation" in captured.out
     assert "idle-escape-clears-draft" in captured.out
@@ -66,6 +67,14 @@ def test_native_tui_playback_runner_runs_named_scenario(capsys) -> None:
     assert exit_code == 0
     assert "PASS completion-tab" in captured.out
     assert "long-transcript-input" not in captured.out
+
+
+def test_native_tui_playback_runner_runs_completion_session_command_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["completion-session-command"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS completion-session-command" in captured.out
 
 
 def test_native_tui_playback_runner_runs_lifecycle_scenario(capsys) -> None:

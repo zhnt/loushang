@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from typing import TextIO
 
 from loushang.coding.types import ModelSelection
+from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.controller import CodingUiController
 from loushang.coding.ui.mode import _native_prompt_handler
 from loushang.coding.ui.native_surfaces import NativeSurfaceManager, NativeSurfaceView
@@ -235,6 +236,23 @@ def _run_completion_tab() -> NativeTuiInputPlaybackResult:
     result.assert_visible_contains("› /model")
     result.assert_no_clear_screen()
     result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
+def _run_completion_session_command() -> NativeTuiInputPlaybackResult:
+    session = _SessionCommandSession()
+    scenario = NativeTuiInputScenario(width=80, height=12)
+    scenario.app.composer.set_completion_provider(asyncio.run(coding_inline_completion_provider(session)))
+
+    result = scenario.render().type_text("/na").tab().run()
+
+    result.assert_composer_text("/name ")
+    result.assert_visible_contains("› /name")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    assert session.commands == []
+    assert session.prompts == []
     INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
     return result
 
@@ -1434,6 +1452,11 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="completion-tab",
             description="Apply tab completion without clearing or repainting the screen.",
             run=_run_completion_tab,
+        ),
+        NativePlaybackScenarioSpec(
+            name="completion-session-command",
+            description="Apply session command completion without executing the selected command.",
+            run=_run_completion_session_command,
         ),
         NativePlaybackScenarioSpec(
             name="completion-navigation-priority",
