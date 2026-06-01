@@ -15,6 +15,7 @@ from loushang.coding.ui.playback_scenarios.command import COMMAND_ROUTING_SCENAR
 from loushang.coding.ui.playback_scenarios.composer import COMPOSER_SCENARIOS
 from loushang.coding.ui.playback_scenarios.lifecycle import LIFECYCLE_SCENARIOS
 from loushang.coding.ui.playback_scenarios.surface import SURFACE_SCENARIOS
+from loushang.coding.ui.playback_scenarios.terminal import TERMINAL_SCENARIOS
 from loushang.coding.ui.playback_suite import NativePlaybackSuite as SuiteFromModule
 
 
@@ -86,6 +87,15 @@ def test_native_tui_playback_lifecycle_scenarios_live_in_lifecycle_module() -> N
         "native-loop-ctrl-c-abort-running",
         "running-follow-up-queued",
         "keyboard-alt-enter-follow-up",
+    ]
+
+
+def test_native_tui_playback_terminal_scenarios_live_in_terminal_module() -> None:
+    assert [scenario.name for scenario in TERMINAL_SCENARIOS] == [
+        "native-loop-split-bracketed-paste",
+        "terminal-control-response-hidden",
+        "native-loop-terminal-session-cleanup",
+        "apple-shift-enter-normalized",
     ]
 
 
