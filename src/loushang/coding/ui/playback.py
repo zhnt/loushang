@@ -420,6 +420,7 @@ class NativeTuiLoopPlayback:
                 handle_followup=handle_followup,
                 handle_surface_intent=handle_surface_intent,
                 terminal_mode_factory=terminal_mode_factory or (lambda _stdin, _stdout: _NoTerminalMode()),
+                terminal_size_provider=lambda: TerminalSize(columns=self.width, rows=self.height),
                 on_abort=on_abort or (lambda: None),
                 should_exit=should_exit or (lambda text: text in {"/quit", "/exit"}),
                 is_local_command=is_local_command,

@@ -631,6 +631,39 @@ def _run_model_select() -> object:
     return result
 
 
+def _run_approval_surface() -> object:
+    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    approvals: list[dict[str, object]] = []
+
+    async def on_approval(payload: dict[str, object]) -> None:
+        approvals.append(payload)
+
+    manager = _surface_manager(playback.app, on_approval=on_approval)
+    manager.open_approval(action="write file", risk="Will modify /repo/app.py", action_id="write:app.py")
+
+    result = playback.run(
+        (0.00, "y"),
+        (0.02, ""),
+        handle_surface_intent=manager.handle_surface_intent,
+    )
+
+    result.assert_exit_code(0)
+    assert approvals == [
+        {
+            "action_id": "write:app.py",
+            "action": "write file",
+            "approved": True,
+            "raw_note": "write:app.py",
+        }
+    ]
+    result.assert_text_contains("Approval")
+    result.assert_text_contains("write file")
+    result.assert_text_contains("Action confirmed: write file")
+    result.assert_no_clear_screen()
+    assert result.app.active_surface is None
+    return result
+
+
 def _run_long_transcript_input() -> NativeTuiInputPlaybackResult:
     result = (
         NativeTuiInputScenario(width=100, height=18)
@@ -1035,11 +1068,17 @@ def _status_provider(app: object) -> CodingTuiStatusProvider:
     )
 
 
-def _surface_manager(app: object, *, session: object | None = None) -> NativeSurfaceManager:
+def _surface_manager(
+    app: object,
+    *,
+    session: object | None = None,
+    on_approval: Callable[[dict[str, object]], object] | None = None,
+) -> NativeSurfaceManager:
     return NativeSurfaceManager(
         app=app,
         session=object() if session is None else session,
         status_provider=_status_provider(app),
+        on_approval=on_approval,
     )
 
 
@@ -1134,6 +1173,11 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="model-select",
             description="Open the native model selector and switch models without clearing the screen.",
             run=_run_model_select,
+        ),
+        NativePlaybackScenarioSpec(
+            name="approval-surface",
+            description="Approve an active native approval surface and verify its callback payload.",
+            run=_run_approval_surface,
         ),
         NativePlaybackScenarioSpec(
             name="long-transcript-input",

@@ -30,6 +30,7 @@ AbortHandler = Callable[[], Awaitable[object] | object]
 ShouldExit = Callable[[str], bool]
 LocalCommandPredicate = Callable[[str], bool]
 TerminalModeFactory = Callable[[TextIO, TextIO], AbstractContextManager[object]]
+TerminalSizeProvider = Callable[[], TerminalSize]
 
 
 async def run_native_coding_tui(
@@ -47,9 +48,11 @@ async def run_native_coding_tui(
     is_local_command: LocalCommandPredicate | None = None,
     keybindings: KeybindingManager | KeybindingConfig | None = None,
     terminal_mode_factory: TerminalModeFactory | None = None,
+    terminal_size_provider: TerminalSizeProvider | None = None,
 ) -> int:
     reader = InputReader()
-    initial_size = _terminal_size()
+    size_provider = terminal_size_provider or _terminal_size
+    initial_size = size_provider()
     router = NativeInputRouter(
         app,
         should_exit=should_exit,
@@ -59,7 +62,7 @@ async def run_native_coding_tui(
     )
     runtime = TuiRuntime(
         render_loop=RenderLoop(app),
-        terminal=ProcessTerminalPort(output=stdout, size_provider=_terminal_size, track_screen=False),
+        terminal=ProcessTerminalPort(output=stdout, size_provider=size_provider, track_screen=False),
     )
     app.surface_host = runtime.overlay_host()
     mode_factory = terminal_mode_factory or (lambda input_stream, output_stream: TerminalSession(stdin=input_stream, stdout=output_stream))
