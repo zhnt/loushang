@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 def test_import_loushang_tui_does_not_import_legacy_rendering_libraries() -> None:
-    sys.modules.pop("loushang.tui", None)
+    _drop_modules_with_prefix("loushang.tui")
     for module_name in ("prompt_toolkit", "rich", "pygments"):
         sys.modules.pop(module_name, None)
 
@@ -31,3 +31,9 @@ def test_pyproject_declares_markdown_it_py_as_direct_dependency() -> None:
     dependencies = pyproject["project"]["dependencies"]
 
     assert any(dependency.lower().startswith("markdown-it-py") for dependency in dependencies)
+
+
+def _drop_modules_with_prefix(prefix: str) -> None:
+    for module_name in tuple(sys.modules):
+        if module_name == prefix or module_name.startswith(f"{prefix}."):
+            sys.modules.pop(module_name, None)
