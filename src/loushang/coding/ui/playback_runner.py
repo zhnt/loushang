@@ -608,6 +608,34 @@ def _run_session_command_error() -> object:
     return result
 
 
+def _run_unknown_slash_prompt() -> object:
+    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    session = _SessionCommandSession()
+    controller = CodingUiController(session=session)
+    manager = _surface_manager(playback.app, session=session)
+
+    result = playback.run(
+        (0.00, "/unknown keep me\r"),
+        (0.03, ""),
+        handle_prompt=_native_prompt_handler(
+            app=playback.app,
+            controller=controller,
+            stderr=StringIO(),
+            verbose=False,
+        ),
+        handle_local=manager.handle_text,
+        is_local_command=manager.is_local_command,
+    )
+
+    result.assert_exit_code(0)
+    result.assert_idle()
+    assert session.commands == []
+    assert session.prompts == ["/unknown keep me"]
+    result.assert_text_contains("› /unknown keep me")
+    result.assert_no_clear_screen()
+    return result
+
+
 def _run_status_surface() -> object:
     playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     manager = _surface_manager(playback.app)
@@ -1379,6 +1407,11 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="session-command-error",
             description="Render session command errors through the native command path without prompting the agent.",
             run=_run_session_command_error,
+        ),
+        NativePlaybackScenarioSpec(
+            name="unknown-slash-prompt",
+            description="Leave unknown slash-prefixed prompts on the agent prompt path.",
+            run=_run_unknown_slash_prompt,
         ),
         NativePlaybackScenarioSpec(
             name="native-loop-ctrl-c-abort-running",

@@ -30,6 +30,7 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "escape-pending-steer-preserves-draft" in captured.out
     assert "session-name-command" in captured.out
     assert "session-command-error" in captured.out
+    assert "unknown-slash-prompt" in captured.out
     assert "running-follow-up-queued" in captured.out
     assert "status-surface" in captured.out
     assert "statusline-command" in captured.out
@@ -87,6 +88,14 @@ def test_native_tui_playback_runner_runs_session_command_error_scenario(capsys) 
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "PASS session-command-error" in captured.out
+
+
+def test_native_tui_playback_runner_runs_unknown_slash_prompt_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["unknown-slash-prompt"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS unknown-slash-prompt" in captured.out
 
 
 def test_native_tui_playback_runner_runs_settings_search_scenario(capsys) -> None:
