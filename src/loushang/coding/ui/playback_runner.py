@@ -763,6 +763,31 @@ def _run_command_palette_select() -> object:
     return result
 
 
+def _run_command_palette_session_command() -> object:
+    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    session = _SessionCommandSession()
+    manager = _surface_manager(playback.app, session=session)
+
+    result = playback.run(
+        (0.00, "/command\r"),
+        (0.01, "nam"),
+        (0.03, "\r"),
+        (0.05, ""),
+        handle_local=manager.handle_text,
+        handle_surface_intent=manager.handle_surface_intent,
+        is_local_command=manager.is_local_command,
+    )
+
+    result.assert_exit_code(0)
+    result.assert_composer_text("/name ")
+    result.assert_text_contains("Command selected: /name")
+    result.assert_no_clear_screen()
+    assert session.commands == []
+    assert session.prompts == []
+    assert result.app.active_surface is None
+    return result
+
+
 def _run_settings_search() -> object:
     playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     manager = _surface_manager(playback.app)
@@ -1484,6 +1509,11 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="command-palette-select",
             description="Search the native command palette and insert the selected command.",
             run=_run_command_palette_select,
+        ),
+        NativePlaybackScenarioSpec(
+            name="command-palette-session-command",
+            description="Select a session command from the native command palette without executing it.",
+            run=_run_command_palette_session_command,
         ),
         NativePlaybackScenarioSpec(
             name="commands-info-surface",
