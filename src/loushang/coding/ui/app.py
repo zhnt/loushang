@@ -8,8 +8,8 @@ from typing import Any, Protocol, TextIO
 from loushang.coding.ui.abort import AbortHandler
 from loushang.coding.ui.command_list import (
     CommandPaletteChooser,
-    format_session_commands,
-    select_session_command,
+    format_coding_commands,
+    select_coding_command,
 )
 from loushang.coding.ui.controller import CodingUiController
 from loushang.coding.ui.debug_command import DebugCommandHandler
@@ -158,8 +158,8 @@ def build_coding_tui_app(
         status=status_provider.render,
         model_select=lambda query: select_available_model(session, query=query, choose=model_palette_chooser),
         models=lambda query: format_available_models(session, query=query),
-        command_select=lambda query: select_session_command(session, query=query, choose=command_palette_chooser),
-        commands=lambda query: format_session_commands(session, query=query),
+        command_select=lambda query: select_coding_command(session, query=query, choose=command_palette_chooser),
+        commands=lambda query: format_coding_commands(session, query=query),
         hotkeys=format_hotkeys,
         settings=status_provider.settings_text,
         settings_list=status_provider.settings_list,

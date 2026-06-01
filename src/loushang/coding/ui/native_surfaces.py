@@ -6,8 +6,8 @@ from typing import Any, Awaitable, Literal, Protocol
 
 from loushang.coding.commands.catalog import CodingCommandCatalog
 from loushang.coding.ui.command_list import (
-    format_session_commands,
-    session_command_palette,
+    coding_command_palette,
+    format_coding_commands,
 )
 from loushang.coding.ui.hotkeys import format_hotkeys
 from loushang.coding.ui.intent import (
@@ -68,6 +68,8 @@ MODEL_SELECTOR_SELECTED_STYLE = {"color": 33, "bold": True}
 
 class NativeCommandCatalog(Protocol):
     def lookup(self, text: str) -> CommandDef | None: ...
+
+    def commands(self) -> tuple[CommandDef, ...]: ...
 
 
 @dataclass(slots=True)
@@ -346,7 +348,14 @@ class NativeSurfaceManager:
         elif command.name == "command" and isinstance(intent, CommandSelectIntent):
             await self._handle_command_intent(intent)
         elif command.name == "commands" and isinstance(intent, CommandsIntent):
-            self._open_info("Commands", await format_session_commands(self.session, query=intent.query))
+            self._open_info(
+                "Commands",
+                await format_coding_commands(
+                    self.session,
+                    query=intent.query,
+                    command_catalog=self._list_command_catalog(),
+                ),
+            )
         elif command.name == "status" and isinstance(intent, StatusIntent):
             self._open_info("Status", self.status_provider.render())
         elif command.name == "terminal" and isinstance(intent, TerminalDiagnosticsIntent):
@@ -372,6 +381,9 @@ class NativeSurfaceManager:
         if command is None or command.kind is not CommandKind.LOCAL_UI:
             return None
         return command
+
+    def _list_command_catalog(self) -> CodingCommandCatalog | None:
+        return self.command_catalog if isinstance(self.command_catalog, CodingCommandCatalog) else None
 
     async def handle_surface_intent(self, intent: InputIntent) -> int | None:
         surface = self._current_surface()
@@ -481,7 +493,11 @@ class NativeSurfaceManager:
             self.app.composer.set_text(command + " ")
             self.app.set_status(f"Command selected: {command}")
             return
-        self._open_palette("Commands", await session_command_palette(self.session, title="Commands"), purpose="command")
+        self._open_palette(
+            "Commands",
+            await coding_command_palette(self.session, title="Commands", command_catalog=self._list_command_catalog()),
+            purpose="command",
+        )
 
     def _open_palette(self, title: str, palette: CommandPalette, *, purpose: Literal["model", "command"]) -> None:
         surface = CommandSurface(_palette_items(palette), max_visible=8)

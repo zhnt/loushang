@@ -109,6 +109,28 @@ def test_session_command_completion_provider_uses_argument_hint_in_label() -> No
     )
 
 
+def test_format_coding_commands_includes_local_and_session_commands() -> None:
+    from loushang.coding.ui.command_list import format_coding_commands
+
+    text = asyncio.run(format_coding_commands(_Session(), query="terminal"))
+
+    assert text == "Commands:\n/terminal - Show terminal diagnostics (local)"
+
+
+def test_coding_command_completion_provider_includes_local_commands() -> None:
+    from loushang.coding.ui.command_list import coding_command_completion_provider
+    from loushang.tui import CompletionItem
+
+    provider = asyncio.run(coding_command_completion_provider(_Session()))
+
+    assert CompletionItem(
+        value="/settings",
+        label="/settings",
+        description="Open settings (local)",
+    ) in provider.items
+    assert len([item for item in provider.items if item.value == "/hotkeys"]) == 1
+
+
 def test_builtin_terminal_command_is_visible_in_command_completion_and_list() -> None:
     from loushang.coding.ui.command_list import (
         format_session_commands,

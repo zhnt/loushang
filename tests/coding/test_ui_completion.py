@@ -56,6 +56,17 @@ def test_complete_coding_input_lists_matching_slash_commands() -> None:
     )
 
 
+def test_complete_coding_input_lists_local_commands_missing_from_session() -> None:
+    from loushang.coding.ui.completion import complete_coding_input
+    from loushang.tui import CompletionItem
+
+    completions = asyncio.run(complete_coding_input(_Session(), "/set"))
+
+    assert completions == (
+        CompletionItem(value="/settings", label="/settings", description="Open settings (local)"),
+    )
+
+
 def test_coding_input_completion_provider_matches_current_input_context() -> None:
     from loushang.coding.ui.completion import coding_input_completion_provider
     from loushang.tui import CompletionItem, CompletionProvider

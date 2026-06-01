@@ -18,6 +18,23 @@ class CodingCommandCatalog:
     def __init__(self, *, session_commands: SessionCommandsProvider | None = None) -> None:
         self._session_commands = session_commands
 
+    def commands(self) -> tuple[CommandDef, ...]:
+        session_commands: list[CommandDef] = []
+        session_names: set[str] = set()
+        if self._session_commands is None:
+            return tuple(_LOCAL_COMMANDS_BY_NAME.values())
+        raw_commands = self._session_commands()
+        if isinstance(raw_commands, Iterable):
+            for raw_command in raw_commands:
+                command = _session_command_def(raw_command)
+                if command is not None and command.name not in session_names:
+                    session_commands.append(command)
+                    session_names.add(command.name)
+        local_commands = tuple(
+            command for name, command in _LOCAL_COMMANDS_BY_NAME.items() if name not in session_names
+        )
+        return (*session_commands, *local_commands)
+
     def effect_for_route(self, route: object, intent: object) -> CommandEffect | None:
         route_value = _route_value(route)
         command = _LOCAL_COMMANDS_BY_ROUTE_VALUE.get(route_value)
@@ -58,17 +75,10 @@ class CodingCommandCatalog:
         if not isinstance(raw_commands, Iterable):
             return None
         for raw_command in raw_commands:
-            command_name = _string_attr(raw_command, "invocation_name") or _string_attr(raw_command, "name")
-            if command_name is None or command_name.removeprefix("/") != normalized:
+            command = _session_command_def(raw_command)
+            if command is None or command.name.removeprefix("/") != normalized:
                 continue
-            return CommandDef(
-                id=f"coding.session.{normalized}",
-                name=normalized,
-                kind=CommandKind.SESSION,
-                description=_string_attr(raw_command, "description"),
-                source=_string_attr(raw_command, "source"),
-                argument_hint=_string_attr(raw_command, "argument_hint"),
-            )
+            return command
         return None
 
 
@@ -96,60 +106,84 @@ def _string_attr(value: Any, name: str) -> str | None:
     return raw if isinstance(raw, str) and raw else None
 
 
+def _session_command_def(raw_command: object) -> CommandDef | None:
+    name = _string_attr(raw_command, "invocation_name") or _string_attr(raw_command, "name")
+    if name is None:
+        return None
+    normalized = name.removeprefix("/")
+    return CommandDef(
+        id=f"coding.session.{normalized}",
+        name=normalized,
+        kind=CommandKind.SESSION,
+        description=_string_attr(raw_command, "description"),
+        source=_string_attr(raw_command, "source"),
+        argument_hint=_string_attr(raw_command, "argument_hint"),
+    )
+
+
 _LOCAL_COMMANDS_BY_ROUTE_VALUE: dict[str, CommandDef] = {
     "status": CommandDef(
         id="coding.ui.status",
         name="status",
         kind=CommandKind.LOCAL_UI,
         description="Show current status",
+        source="local",
     ),
     "model_select": CommandDef(
         id="coding.ui.model",
         name="model",
         kind=CommandKind.LOCAL_UI,
         description="Select model",
+        source="local",
     ),
     "models": CommandDef(
         id="coding.ui.models",
         name="models",
         kind=CommandKind.LOCAL_UI,
         description="Show available models",
+        source="local",
     ),
     "command_select": CommandDef(
         id="coding.ui.command",
         name="command",
         kind=CommandKind.LOCAL_UI,
         description="Select command",
+        source="local",
     ),
     "commands": CommandDef(
         id="coding.ui.commands",
         name="commands",
         kind=CommandKind.LOCAL_UI,
         description="Show commands",
+        source="local",
     ),
     "hotkeys": CommandDef(
         id="coding.ui.hotkeys",
         name="hotkeys",
         kind=CommandKind.LOCAL_UI,
         description="Show keyboard shortcuts",
+        source="local",
     ),
     "settings": CommandDef(
         id="coding.ui.settings",
         name="settings",
         kind=CommandKind.LOCAL_UI,
         description="Open settings",
+        source="local",
     ),
     "statusline": CommandDef(
         id="coding.ui.statusline",
         name="statusline",
         kind=CommandKind.LOCAL_UI,
         description="Configure status line visibility",
+        source="local",
     ),
     "terminal": CommandDef(
         id="coding.ui.terminal",
         name="terminal",
         kind=CommandKind.LOCAL_UI,
         description="Show terminal diagnostics",
+        source="local",
     ),
 }
 _LOCAL_COMMANDS_BY_NAME: dict[str, CommandDef] = {

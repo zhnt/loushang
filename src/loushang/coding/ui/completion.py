@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from loushang.coding.ui.command_list import session_command_completion_provider
+from loushang.coding.ui.command_list import coding_command_completion_provider
 from loushang.coding.ui.model_list import available_model_completion_provider
 from loushang.tui import (
     CombinedCompletionProvider,
@@ -38,7 +38,7 @@ async def coding_inline_completion_provider(session: Any) -> Any:
 
 
 async def _slash_command_completion_provider(session: Any) -> SlashCommandCompletionProvider:
-    command_provider = await session_command_completion_provider(session)
+    command_provider = await coding_command_completion_provider(session)
     provider = await available_model_completion_provider(session)
     commands = [
         SlashCommand(
