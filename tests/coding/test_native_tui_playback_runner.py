@@ -12,6 +12,7 @@ from loushang.coding.ui.playback_runner import (
     run_playback_scenarios,
 )
 from loushang.coding.ui.playback_scenarios.command import COMMAND_ROUTING_SCENARIOS
+from loushang.coding.ui.playback_scenarios.lifecycle import LIFECYCLE_SCENARIOS
 from loushang.coding.ui.playback_scenarios.surface import SURFACE_SCENARIOS
 from loushang.coding.ui.playback_suite import NativePlaybackSuite as SuiteFromModule
 
@@ -56,6 +57,21 @@ def test_native_tui_playback_surface_scenarios_live_in_surface_module() -> None:
         "approval-surface",
         "approval-reject-surface",
         "dialog-surface",
+    ]
+
+
+def test_native_tui_playback_lifecycle_scenarios_live_in_lifecycle_module() -> None:
+    assert [scenario.name for scenario in LIFECYCLE_SCENARIOS] == [
+        "idle-escape-clears-draft",
+        "running-steer-queued",
+        "running-escape-keeps-queued-steer",
+        "idle-escape-pops-pending-steer",
+        "escape-pending-steer",
+        "escape-pending-steer-fifo",
+        "escape-pending-steer-preserves-draft",
+        "native-loop-ctrl-c-abort-running",
+        "running-follow-up-queued",
+        "keyboard-alt-enter-follow-up",
     ]
 
 
