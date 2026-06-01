@@ -4,6 +4,7 @@ import inspect
 from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
+from loushang.coding.commands.catalog import CodingCommandCatalog
 from loushang.coding.ui.intent import (
     CodingUiIntent,
     CommandSelectIntent,
@@ -19,6 +20,7 @@ from loushang.coding.ui.lifecycle import RunLifecycle
 from loushang.coding.ui.pending_queue import pending_queue_view, restore_queued_messages
 from loushang.coding.ui.prompt_dispatch import PromptDispatchOutcome
 from loushang.coding.ui.prompt_routing import PromptRoute, route_prompt_intent
+from loushang.runtime.commands import CommandEffect, CommandEffectKind
 from loushang.tui import InfoPanel, PendingQueueView, SettingsList
 
 
@@ -40,6 +42,10 @@ class PromptDispatchFn(Protocol):
 
 class PromptResultFn(Protocol):
     def __call__(self, outcome: Any, *, prompt_started: float) -> Awaitable[int | None]: ...
+
+
+class CommandCatalog(Protocol):
+    def effect_for_route(self, route: PromptRoute, intent: CodingUiIntent) -> CommandEffect | None: ...
 
 
 class ModelsFn(Protocol):
@@ -85,6 +91,7 @@ class CodingTuiHandlers:
         lifecycle: RunLifecycle,
         parse_prompt: Callable[[str], CodingUiIntent | None] = parse_prompt_intent,
         route_prompt: Callable[[CodingUiIntent, RunLifecycle], PromptRoute] = route_prompt_intent,
+        command_catalog: CommandCatalog | None = None,
         follow_up: FollowUpFn,
         steer: Callable[[str], Awaitable[int | None]],
         debug: Callable[[Any], Awaitable[int | None]],
@@ -115,6 +122,7 @@ class CodingTuiHandlers:
         self._lifecycle = lifecycle
         self._parse_prompt = parse_prompt
         self._route_prompt = route_prompt
+        self._command_catalog = command_catalog or CodingCommandCatalog(session_commands=_session_commands_provider(session))
         self._follow_up = follow_up
         self._steer = steer
         self._debug = debug
@@ -173,6 +181,17 @@ class CodingTuiHandlers:
             return await self._steer(text)
         if route is PromptRoute.DEBUG:
             return await self._debug(intent)
+        effect = self._command_catalog.effect_for_route(route, intent)
+        if effect is not None:
+            self._trace(
+                "prompt.command",
+                route=route.value,
+                command_id=effect.command.id,
+                command_name=effect.command.name,
+                effect=effect.kind.value,
+            )
+            if effect.kind is CommandEffectKind.LOCAL_UI and await self._handle_local_command_effect(effect, intent):
+                return None
         if route is PromptRoute.STATUS:
             await self._show_info("Status", self._status(), label="status:show", local=True)
             return None
@@ -212,6 +231,46 @@ class CodingTuiHandlers:
 
         outcome = await self._dispatch(intent)
         return await self._result(outcome, prompt_started=prompt_started)
+
+    async def _handle_local_command_effect(self, effect: CommandEffect, intent: CodingUiIntent) -> bool:
+        command_name = effect.command.name
+        if command_name == "status":
+            await self._show_info("Status", self._status(), label="status:show", local=True)
+            return True
+        if command_name == "model":
+            query = intent.query if isinstance(intent, ModelSelectIntent) else ""
+            text = await self._model_select(query)
+            await self._emit(lambda: self._render_info("Model", text), label="model:select")
+            return True
+        if command_name == "models":
+            query = intent.query if isinstance(intent, ModelsIntent) else ""
+            text = await self._models(query)
+            await self._show_info("Models", text, label="models:show", local=True)
+            return True
+        if command_name == "command":
+            query = intent.query if isinstance(intent, CommandSelectIntent) else ""
+            text = await self._command_select(query)
+            await self._emit(lambda: self._render_info("Command", text), label="command:select")
+            return True
+        if command_name == "commands":
+            query = intent.query if isinstance(intent, CommandsIntent) else ""
+            text = await self._commands(query)
+            await self._show_info("Commands", text, label="commands:show", local=True)
+            return True
+        if command_name == "hotkeys":
+            await self._show_info("Hotkeys", self._hotkeys(), label="hotkeys:show", local=True)
+            return True
+        if command_name == "settings":
+            if await self._show_settings_list():
+                return True
+            await self._emit(lambda: self._render_info("Settings", self._settings()), label="settings:show")
+            return True
+        if command_name == "statusline":
+            enabled = intent.enabled if isinstance(intent, StatuslineIntent) else None
+            message = self._statusline(enabled)
+            await self._emit(lambda: self._render_status(message), label="statusline:set")
+            return True
+        return False
 
     async def queue_follow_up(self, text: str, *, source: str) -> int | None:
         return await self._follow_up(text, source=source)
@@ -285,6 +344,15 @@ async def _empty_command_select(_query: str) -> str:
 
 def _empty_settings() -> str:
     return "No settings available."
+
+
+def _session_commands_provider(session: Any | None):
+    if session is None:
+        return None
+    getter = getattr(session, "list_commands", None)
+    if not callable(getter):
+        return None
+    return getter
 
 
 async def _resolve(value):

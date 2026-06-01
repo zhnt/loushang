@@ -133,6 +133,67 @@ def test_coding_tui_handlers_renders_status_command() -> None:
     assert statuses == ["model=m cwd=/repo session=sid"]
 
 
+def test_coding_tui_handlers_routes_status_through_command_catalog() -> None:
+    from loushang.coding.ui.handlers import CodingTuiHandlers
+    from loushang.coding.ui.intent import StatusIntent
+    from loushang.coding.ui.prompt_routing import PromptRoute
+    from loushang.runtime.commands import (
+        CommandDef,
+        CommandEffect,
+        CommandEffectKind,
+        CommandKind,
+    )
+
+    emitted: list[str] = []
+    statuses: list[str] = []
+    catalog_calls: list[tuple[PromptRoute, object]] = []
+
+    class Catalog:
+        def effect_for_route(self, route: PromptRoute, intent: object) -> CommandEffect | None:
+            catalog_calls.append((route, intent))
+            return CommandEffect(
+                kind=CommandEffectKind.LOCAL_UI,
+                command=CommandDef(
+                    id="coding.ui.status",
+                    name="status",
+                    kind=CommandKind.LOCAL_UI,
+                    description="Show current status",
+                ),
+            )
+
+    async def emit(write, *, label: str):
+        emitted.append(label)
+        write()
+
+    intent = StatusIntent()
+    handlers = CodingTuiHandlers(
+        lifecycle=_Lifecycle(),
+        parse_prompt=lambda _text: intent,
+        route_prompt=lambda _intent, _lifecycle: PromptRoute.STATUS,
+        command_catalog=Catalog(),
+        follow_up=lambda _text, *, source: _async_none(),
+        steer=lambda _text: _async_none(),
+        debug=lambda _intent: _async_none(),
+        dispatch=lambda _intent: _async_none(),
+        result=lambda _outcome, *, prompt_started: _async_none(),
+        abort=lambda: _async_none(),
+        restore_queue=lambda _text: _async_none(),
+        emit=emit,
+        render_status=lambda text: statuses.append(text),
+        status=lambda: "model=m cwd=/repo session=sid",
+        now=lambda: 10.0,
+        session_running=lambda: False,
+        trace=lambda _name, **_data: None,
+    )
+
+    result = asyncio.run(handlers.handle_prompt("/status"))
+
+    assert result is None
+    assert emitted == ["status:show"]
+    assert statuses == ["model=m cwd=/repo session=sid"]
+    assert catalog_calls == [(PromptRoute.STATUS, intent)]
+
+
 def test_coding_tui_handlers_can_render_status_command_with_info_panel() -> None:
     from loushang.coding.ui.handlers import CodingTuiHandlers
     from loushang.coding.ui.intent import StatusIntent
