@@ -275,6 +275,9 @@ def _record_controller_result(
     if result.error_message:
         app.add_error(result.error_message)
         app.set_status(f"{status_label}: {result.error_message}")
+    elif result.status_message:
+        app.add_status(result.status_message)
+        app.set_status(result.status_message)
     if verbose and stderr is not None and result.traceback_text:
         stderr.write(result.traceback_text)
         stderr.flush()

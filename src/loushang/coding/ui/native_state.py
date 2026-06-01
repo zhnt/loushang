@@ -8,6 +8,8 @@ from loushang.tui.transcript import (
     DisplayRecord,
     ErrorRecord,
     StreamingTextBuffer,
+    ThinkingRecord,
+    ThinkingVisibility,
     ToolExecutionRecord,
     UserPromptRecord,
     WorkedDividerRecord,
@@ -169,6 +171,12 @@ class NativeCodingTuiState:
     def add_error(self, summary: str, diagnostics: str = "") -> None:
         if summary:
             self.records.append(ErrorRecord(summary, diagnostics))
+        self._pending_user_echo = None
+
+    def add_status(self, message: str) -> None:
+        stripped = message.strip()
+        if stripped:
+            self.records.append(ThinkingRecord(stripped, ThinkingVisibility.VISIBLE))
         self._pending_user_echo = None
 
     def consume_pending_user_echo(self, text: str) -> bool:

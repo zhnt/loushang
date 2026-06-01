@@ -784,6 +784,27 @@ def test_native_loop_waits_for_abort_settle_before_running_popped_pending_steer(
     assert "Request cancelled" not in result.text
 
 
+def test_native_loop_dispatches_session_command_without_prompting_agent() -> None:
+    from loushang.coding.ui.controller import CodingUiController
+    from loushang.coding.ui.mode import _native_prompt_handler
+    from loushang.coding.ui.playback import NativeTuiLoopPlayback
+
+    playback = NativeTuiLoopPlayback()
+    session = _NameCommandSession()
+    controller = CodingUiController(session=session)
+
+    result = playback.run(
+        (0.0, "/name Project Alpha\r"),
+        handle_prompt=_native_prompt_handler(app=playback.app, controller=controller, stderr=StringIO(), verbose=False),
+    )
+
+    assert result.exit_code == 0
+    assert session.commands == [("name", "Project Alpha")]
+    assert session.prompt_calls == []
+    assert "Session name set: Project Alpha" in result.text
+    result.assert_no_clear_screen()
+
+
 def test_pop_interrupt_pending_steer_returns_none_when_queue_empty() -> None:
     from loushang.coding.ui.native_app import NativeCodingTuiApp
     from loushang.coding.ui.native_loop import _pop_interrupt_pending_steer
@@ -941,6 +962,44 @@ class _AbortSettlingSession:
     async def wait_for_idle(self) -> None:
         self.wait_for_idle_calls += 1
         await self._idle.wait()
+
+
+class _NameCommandSession:
+    def __init__(self) -> None:
+        self.commands: list[tuple[str, str]] = []
+        self.prompt_calls: list[str] = []
+
+    def list_commands(self) -> list[object]:
+        return [
+            SimpleNamespace(
+                name="name",
+                description="Set session display name",
+                source="builtin",
+                argument_hint="<name>",
+            )
+        ]
+
+    async def execute_command_async(self, invocation_name: str, args: str) -> object:
+        self.commands.append((invocation_name, args))
+        return SimpleNamespace(
+            invocation_name=invocation_name,
+            result={
+                "source": "builtin",
+                "command": invocation_name,
+                "status": "ok",
+                "message": f"Session name set: {args}",
+            },
+        )
+
+    async def prompt(
+        self,
+        text: str,
+        *,
+        streaming_behavior: str | None = None,
+        source: str | None = None,
+    ) -> None:
+        del streaming_behavior, source
+        self.prompt_calls.append(text)
 
 
 def _assert_exit_cleanup_clears_bottom_frame(raw_output: str) -> None:

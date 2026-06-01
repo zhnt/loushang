@@ -165,6 +165,10 @@ class NativeCodingTuiApp:
         self.state.add_error(summary, diagnostics)
         self._request_render("product")
 
+    def add_status(self, message: str) -> None:
+        self.state.add_status(message)
+        self._request_render("product")
+
     def replace_transcript_window(
         self,
         records: Iterable[DisplayRecord] | NativeTranscriptWindow,
