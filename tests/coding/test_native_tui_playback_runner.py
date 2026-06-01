@@ -4,6 +4,7 @@ import json
 import sys
 
 from loushang.coding.ui import playback_runner
+from loushang.coding.ui.playback_fakes import SessionCommandPlaybackSession
 from loushang.coding.ui.playback_runner import (
     NativePlaybackScenarioSpec,
     NativePlaybackSuite,
@@ -15,6 +16,19 @@ from loushang.coding.ui.playback_suite import NativePlaybackSuite as SuiteFromMo
 
 def test_native_tui_playback_runner_reexports_suite_types_from_playback_suite_module() -> None:
     assert NativePlaybackSuite is SuiteFromModule
+
+
+def test_native_tui_playback_fake_session_lists_command_sources() -> None:
+    session = SessionCommandPlaybackSession()
+
+    commands = session.list_commands()
+
+    assert [(command.name, command.source) for command in commands] == [
+        ("name", "builtin"),
+        ("export", "builtin"),
+        ("review", "prompt"),
+        ("debugging", "skill"),
+    ]
 
 
 def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
