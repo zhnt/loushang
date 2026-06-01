@@ -579,6 +579,35 @@ def _run_session_name_command() -> object:
     return result
 
 
+def _run_session_command_error() -> object:
+    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    session = _SessionCommandSession()
+    controller = CodingUiController(session=session)
+    manager = _surface_manager(playback.app, session=session)
+
+    result = playback.run(
+        (0.00, "/export /root/out.jsonl\r"),
+        (0.03, ""),
+        handle_prompt=_native_prompt_handler(
+            app=playback.app,
+            controller=controller,
+            stderr=StringIO(),
+            verbose=False,
+        ),
+        handle_local=manager.handle_text,
+        is_local_command=manager.is_local_command,
+    )
+
+    result.assert_exit_code(0)
+    result.assert_idle()
+    assert session.commands == [("export", "/root/out.jsonl")]
+    assert session.prompts == []
+    result.assert_text_contains("› /export /root/out.jsonl")
+    result.assert_text_contains("Export failed: /root/out.jsonl")
+    result.assert_no_clear_screen()
+    return result
+
+
 def _run_status_surface() -> object:
     playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     manager = _surface_manager(playback.app)
@@ -1210,11 +1239,27 @@ class _SessionCommandSession:
                 description="Set session display name",
                 source="builtin",
                 argument_hint="<name>",
+            ),
+            SimpleNamespace(
+                name="export",
+                description="Export session history",
+                source="builtin",
+                argument_hint="<path>",
             )
         ]
 
     async def execute_command_async(self, invocation_name: str, args: str) -> object:
         self.commands.append((invocation_name, args))
+        if invocation_name == "export":
+            return SimpleNamespace(
+                invocation_name=invocation_name,
+                result={
+                    "source": "builtin",
+                    "command": invocation_name,
+                    "status": "error",
+                    "message": f"Export failed: {args}",
+                },
+            )
         return SimpleNamespace(
             invocation_name=invocation_name,
             result={
@@ -1329,6 +1374,11 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="session-name-command",
             description="Dispatch /name through the native session command path without prompting the agent.",
             run=_run_session_name_command,
+        ),
+        NativePlaybackScenarioSpec(
+            name="session-command-error",
+            description="Render session command errors through the native command path without prompting the agent.",
+            run=_run_session_command_error,
         ),
         NativePlaybackScenarioSpec(
             name="native-loop-ctrl-c-abort-running",
