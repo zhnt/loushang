@@ -6,10 +6,34 @@ from io import StringIO
 from loushang.coding.ui.controller import CodingUiController
 from loushang.coding.ui.mode import _native_prompt_handler
 from loushang.coding.ui.native_surfaces import NativeSurfaceManager
-from loushang.coding.ui.playback import NativeTuiLoopPlayback
+from loushang.coding.ui.playback import (
+    NativeTuiInputPlaybackResult,
+    NativeTuiInputScenario,
+    NativeTuiLoopPlayback,
+)
 from loushang.coding.ui.playback_fakes import SessionCommandPlaybackSession
+from loushang.coding.ui.playback_scenarios.budgets import INTERACTION_FRAME_BUDGET
 from loushang.coding.ui.playback_suite import NativePlaybackScenarioSpec
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
+
+
+def _run_local_command() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .with_local_commands("/status")
+        .render()
+        .type_text("/status")
+        .enter()
+        .run()
+    )
+    result.assert_local_texts("/status")
+    result.assert_prompt_texts()
+    result.assert_composer_text("")
+    result.assert_visible_not_contains("› /status")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
 
 
 def _run_session_name_command() -> object:
@@ -155,6 +179,12 @@ def _status_provider(app: object) -> CodingTuiStatusProvider:
 
 
 COMMAND_ROUTING_SCENARIOS = (
+    NativePlaybackScenarioSpec(
+        name="local-command",
+        description="Route a local command without echoing it as a prompt.",
+        run=_run_local_command,
+        tags=("command", "local"),
+    ),
     NativePlaybackScenarioSpec(
         name="session-name-command",
         description="Dispatch /name through the native session command path without prompting the agent.",

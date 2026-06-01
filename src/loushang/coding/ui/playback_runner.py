@@ -136,25 +136,6 @@ def _json_summary(results: Sequence[NativePlaybackScenarioResult]) -> dict[str, 
     }
 
 
-def _run_local_command() -> NativeTuiInputPlaybackResult:
-    result = (
-        NativeTuiInputScenario(width=80, height=12)
-        .with_local_commands("/status")
-        .render()
-        .type_text("/status")
-        .enter()
-        .run()
-    )
-    result.assert_local_texts("/status")
-    result.assert_prompt_texts()
-    result.assert_composer_text("")
-    result.assert_visible_not_contains("› /status")
-    result.assert_no_clear_screen()
-    result.assert_cursor_matches_diagnostics()
-    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
-    return result
-
-
 def _run_active_surface() -> NativeTuiInputPlaybackResult:
     result = (
         NativeTuiInputScenario(width=80, height=12)
@@ -248,12 +229,6 @@ def _run_mouse_select_active_surface() -> NativeTuiInputPlaybackResult:
 DEFAULT_SUITE = NativePlaybackSuite(
     (
         *COMPOSER_SCENARIOS,
-        NativePlaybackScenarioSpec(
-            name="local-command",
-            description="Route a local command without echoing it as a prompt.",
-            run=_run_local_command,
-            tags=("command", "local"),
-        ),
         NativePlaybackScenarioSpec(
             name="active-surface",
             description="Route enter to an active surface before the composer.",
