@@ -29,10 +29,6 @@ from loushang.coding.ui.playback_suite import (
 from loushang.coding.ui.playback_suite import (
     run_playback_scenarios as _run_playback_scenarios,
 )
-from loushang.tui import (
-    SelectionSurface,
-    SelectItem,
-)
 from loushang.tui.transcript import ToolExecutionRecord
 
 
@@ -136,24 +132,6 @@ def _json_summary(results: Sequence[NativePlaybackScenarioResult]) -> dict[str, 
     }
 
 
-def _run_active_surface() -> NativeTuiInputPlaybackResult:
-    result = (
-        NativeTuiInputScenario(width=80, height=12)
-        .with_active_surface(SelectionSurface([SelectItem("Choose me", value="chosen")]))
-        .with_composer_text("draft")
-        .render()
-        .enter()
-        .run()
-    )
-    result.assert_surface_intents(("select", "chosen"))
-    result.assert_composer_text("draft")
-    result.assert_visible_contains("Choose me")
-    result.assert_no_clear_screen()
-    result.assert_cursor_matches_diagnostics()
-    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
-    return result
-
-
 def _run_long_transcript_input() -> NativeTuiInputPlaybackResult:
     result = (
         NativeTuiInputScenario(width=100, height=18)
@@ -200,40 +178,9 @@ def _run_tool_output_preview() -> NativeTuiInputPlaybackResult:
     return result
 
 
-def _run_mouse_select_active_surface() -> NativeTuiInputPlaybackResult:
-    surface = SelectionSurface(
-        [
-            SelectItem("First option", value="first"),
-            SelectItem("Second option", value="second"),
-            SelectItem("Third option", value="third"),
-        ],
-        max_visible=3,
-    )
-    result = (
-        NativeTuiInputScenario(width=80, height=12)
-        .with_active_surface(surface)
-        .render()
-        .key("\x1b[<0;1;2M")
-        .enter()
-        .run()
-    )
-    result.assert_surface_intents(("select", "second"))
-    result.assert_composer_text("")
-    result.assert_visible_contains("Second option")
-    result.assert_no_clear_screen()
-    result.assert_cursor_matches_diagnostics()
-    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
-    return result
-
-
 DEFAULT_SUITE = NativePlaybackSuite(
     (
         *COMPOSER_SCENARIOS,
-        NativePlaybackScenarioSpec(
-            name="active-surface",
-            description="Route enter to an active surface before the composer.",
-            run=_run_active_surface,
-        ),
         *LIFECYCLE_SCENARIOS,
         *COMMAND_ROUTING_SCENARIOS,
         *SURFACE_SCENARIOS,
@@ -248,11 +195,6 @@ DEFAULT_SUITE = NativePlaybackSuite(
             run=_run_tool_output_preview,
         ),
         *TERMINAL_SCENARIOS,
-        NativePlaybackScenarioSpec(
-            name="mouse-select-active-surface",
-            description="Route raw SGR mouse press events to an active selection surface.",
-            run=_run_mouse_select_active_surface,
-        ),
     )
 )
 

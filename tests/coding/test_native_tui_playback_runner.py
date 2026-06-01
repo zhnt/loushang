@@ -61,6 +61,7 @@ def test_native_tui_playback_composer_scenarios_live_in_composer_module() -> Non
 
 def test_native_tui_playback_surface_scenarios_live_in_surface_module() -> None:
     assert [scenario.name for scenario in SURFACE_SCENARIOS] == [
+        "active-surface",
         "status-surface",
         "statusline-command",
         "command-palette-select",
@@ -73,6 +74,7 @@ def test_native_tui_playback_surface_scenarios_live_in_surface_module() -> None:
         "approval-surface",
         "approval-reject-surface",
         "dialog-surface",
+        "mouse-select-active-surface",
     ]
 
 

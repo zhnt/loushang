@@ -4,14 +4,37 @@ from collections.abc import Callable
 
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.native_surfaces import NativeSurfaceManager, NativeSurfaceView
-from loushang.coding.ui.playback import NativeTuiLoopPlayback
+from loushang.coding.ui.playback import (
+    NativeTuiInputPlaybackResult,
+    NativeTuiInputScenario,
+    NativeTuiLoopPlayback,
+)
 from loushang.coding.ui.playback_fakes import (
     ModelPlaybackSession,
     SessionCommandPlaybackSession,
 )
+from loushang.coding.ui.playback_scenarios.budgets import INTERACTION_FRAME_BUDGET
 from loushang.coding.ui.playback_suite import NativePlaybackScenarioSpec
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
-from loushang.tui import DialogSurface
+from loushang.tui import DialogSurface, SelectionSurface, SelectItem
+
+
+def _run_active_surface() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .with_active_surface(SelectionSurface([SelectItem("Choose me", value="chosen")]))
+        .with_composer_text("draft")
+        .render()
+        .enter()
+        .run()
+    )
+    result.assert_surface_intents(("select", "chosen"))
+    result.assert_composer_text("draft")
+    result.assert_visible_contains("Choose me")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
 
 
 def _run_status_surface() -> object:
@@ -299,6 +322,32 @@ def _run_dialog_surface() -> object:
     return result
 
 
+def _run_mouse_select_active_surface() -> NativeTuiInputPlaybackResult:
+    surface = SelectionSurface(
+        [
+            SelectItem("First option", value="first"),
+            SelectItem("Second option", value="second"),
+            SelectItem("Third option", value="third"),
+        ],
+        max_visible=3,
+    )
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .with_active_surface(surface)
+        .render()
+        .key("\x1b[<0;1;2M")
+        .enter()
+        .run()
+    )
+    result.assert_surface_intents(("select", "second"))
+    result.assert_composer_text("")
+    result.assert_visible_contains("Second option")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
 def _surface_manager(
     app: object,
     *,
@@ -326,6 +375,11 @@ def _status_provider(app: object) -> CodingTuiStatusProvider:
 
 
 SURFACE_SCENARIOS = (
+    NativePlaybackScenarioSpec(
+        name="active-surface",
+        description="Route enter to an active surface before the composer.",
+        run=_run_active_surface,
+    ),
     NativePlaybackScenarioSpec(
         name="status-surface",
         description="Open and close the native status info surface through the local command path.",
@@ -391,6 +445,11 @@ SURFACE_SCENARIOS = (
         name="dialog-surface",
         description="Confirm an active native dialog surface without repainting the screen.",
         run=_run_dialog_surface,
+    ),
+    NativePlaybackScenarioSpec(
+        name="mouse-select-active-surface",
+        description="Route raw SGR mouse press events to an active selection surface.",
+        run=_run_mouse_select_active_surface,
     ),
 )
 
