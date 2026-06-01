@@ -45,3 +45,19 @@ def test_coding_command_catalog_leaves_plain_prompts_and_queue_routes_unowned() 
     assert catalog.effect_for_route(PromptRoute.DISPATCH, PromptIntent("hello")) is None
     assert catalog.effect_for_route(PromptRoute.STEER, PromptIntent("steer")) is None
     assert catalog.effect_for_route(PromptRoute.FOLLOW_UP, FollowUpIntent("later")) is None
+
+
+def test_coding_command_catalog_preserves_local_command_argument_rules() -> None:
+    from loushang.coding.commands.catalog import CodingCommandCatalog
+    from loushang.runtime.commands import CommandKind
+
+    catalog = CodingCommandCatalog(session_commands=lambda: [])
+
+    terminal = catalog.lookup("/terminal")
+    assert terminal is not None
+    assert terminal.kind is CommandKind.LOCAL_UI
+
+    assert catalog.lookup("/model kimi").name == "model"
+    assert catalog.lookup("/commands model").name == "commands"
+    assert catalog.lookup("/status extra") is None
+    assert catalog.lookup("/terminal extra") is None

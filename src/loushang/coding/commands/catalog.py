@@ -76,8 +76,14 @@ def _local_command_for_text(text: str) -> CommandDef | None:
     parsed = split_slash_command(text.strip())
     if parsed is None:
         return None
-    invocation_name, _args = parsed
-    return _LOCAL_COMMANDS_BY_NAME.get(invocation_name.removeprefix("/"))
+    invocation_name, args = parsed
+    name = invocation_name.removeprefix("/")
+    command = _LOCAL_COMMANDS_BY_NAME.get(name)
+    if command is None:
+        return None
+    if args and name not in _LOCAL_COMMANDS_ACCEPT_ARGS:
+        return None
+    return command
 
 
 def _route_value(route: object) -> str:
@@ -139,10 +145,17 @@ _LOCAL_COMMANDS_BY_ROUTE_VALUE: dict[str, CommandDef] = {
         kind=CommandKind.LOCAL_UI,
         description="Configure status line visibility",
     ),
+    "terminal": CommandDef(
+        id="coding.ui.terminal",
+        name="terminal",
+        kind=CommandKind.LOCAL_UI,
+        description="Show terminal diagnostics",
+    ),
 }
 _LOCAL_COMMANDS_BY_NAME: dict[str, CommandDef] = {
     command.name: command for command in _LOCAL_COMMANDS_BY_ROUTE_VALUE.values()
 }
+_LOCAL_COMMANDS_ACCEPT_ARGS = frozenset({"command", "commands", "model", "models", "statusline"})
 
 
 __all__ = ["CodingCommandCatalog", "SessionCommandsProvider"]

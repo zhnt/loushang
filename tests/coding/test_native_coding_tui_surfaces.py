@@ -274,6 +274,44 @@ def test_native_surface_manager_opens_terminal_diagnostics_surface() -> None:
     assert "cell_size: 9x18" in plain_lines
 
 
+def test_native_surface_manager_routes_local_commands_through_command_catalog() -> None:
+    from loushang.runtime.commands import CommandDef, CommandKind
+
+    class Catalog:
+        def __init__(self) -> None:
+            self.lookups: list[str] = []
+
+        def lookup(self, text: str) -> CommandDef | None:
+            self.lookups.append(text)
+            if text == "/status":
+                return CommandDef(
+                    id="coding.ui.status",
+                    name="status",
+                    kind=CommandKind.LOCAL_UI,
+                    description="Show current status",
+                )
+            return None
+
+    app = _app()
+    app.surface_host = SurfaceHost()
+    catalog = Catalog()
+    manager = NativeSurfaceManager(
+        app=app,
+        session=_Session(),
+        status_provider=_status_provider(app),
+        command_catalog=catalog,
+    )
+
+    assert manager.is_local_command("/status") is True
+    assert manager.is_local_command("/status extra") is False
+
+    asyncio.run(manager.handle_text("/status"))
+
+    view = _only_overlay_view(app)
+    assert view.title == "Status"
+    assert catalog.lookups == ["/status", "/status extra", "/status"]
+
+
 def test_native_surface_model_selector_filters_by_typed_search() -> None:
     session = _Session()
     app = _app()
