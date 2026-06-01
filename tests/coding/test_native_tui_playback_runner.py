@@ -16,6 +16,7 @@ from loushang.coding.ui.playback_scenarios.composer import COMPOSER_SCENARIOS
 from loushang.coding.ui.playback_scenarios.lifecycle import LIFECYCLE_SCENARIOS
 from loushang.coding.ui.playback_scenarios.surface import SURFACE_SCENARIOS
 from loushang.coding.ui.playback_scenarios.terminal import TERMINAL_SCENARIOS
+from loushang.coding.ui.playback_scenarios.transcript import TRANSCRIPT_SCENARIOS
 from loushang.coding.ui.playback_suite import NativePlaybackSuite as SuiteFromModule
 
 
@@ -99,6 +100,13 @@ def test_native_tui_playback_terminal_scenarios_live_in_terminal_module() -> Non
         "terminal-control-response-hidden",
         "native-loop-terminal-session-cleanup",
         "apple-shift-enter-normalized",
+    ]
+
+
+def test_native_tui_playback_transcript_scenarios_live_in_transcript_module() -> None:
+    assert [scenario.name for scenario in TRANSCRIPT_SCENARIOS] == [
+        "long-transcript-input",
+        "tool-output-preview",
     ]
 
 
