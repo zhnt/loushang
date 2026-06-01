@@ -621,6 +621,28 @@ def _run_statusline_command() -> object:
     return on_result
 
 
+def _run_command_palette_select() -> object:
+    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    manager = _surface_manager(playback.app)
+
+    result = playback.run(
+        (0.00, "/command\r"),
+        (0.01, "sta"),
+        (0.03, "\r"),
+        (0.05, ""),
+        handle_local=manager.handle_text,
+        handle_surface_intent=manager.handle_surface_intent,
+        is_local_command=manager.is_local_command,
+    )
+
+    result.assert_exit_code(0)
+    result.assert_composer_text("/status ")
+    result.assert_text_contains("Command selected: /status")
+    result.assert_no_clear_screen()
+    assert result.app.active_surface is None
+    return result
+
+
 def _run_settings_search() -> object:
     playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     manager = _surface_manager(playback.app)
@@ -1258,6 +1280,11 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="statusline-command",
             description="Toggle the native status line through the local command path.",
             run=_run_statusline_command,
+        ),
+        NativePlaybackScenarioSpec(
+            name="command-palette-select",
+            description="Search the native command palette and insert the selected command.",
+            run=_run_command_palette_select,
         ),
         NativePlaybackScenarioSpec(
             name="commands-info-surface",

@@ -31,6 +31,7 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "running-follow-up-queued" in captured.out
     assert "status-surface" in captured.out
     assert "statusline-command" in captured.out
+    assert "command-palette-select" in captured.out
     assert "commands-info-surface" in captured.out
     assert "settings-search" in captured.out
     assert "model-select" in captured.out
@@ -93,6 +94,14 @@ def test_native_tui_playback_runner_runs_statusline_command_scenario(capsys) -> 
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "PASS statusline-command" in captured.out
+
+
+def test_native_tui_playback_runner_runs_command_palette_select_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["command-palette-select"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS command-palette-select" in captured.out
 
 
 def test_native_tui_playback_runner_runs_model_select_scenario(capsys) -> None:
