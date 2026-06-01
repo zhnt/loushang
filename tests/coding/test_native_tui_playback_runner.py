@@ -69,6 +69,29 @@ def test_native_tui_playback_runner_runs_named_scenario(capsys) -> None:
     assert "long-transcript-input" not in captured.out
 
 
+def test_native_tui_playback_runner_runs_tagged_command_scenarios(capsys) -> None:
+    exit_code = run_playback_cli(["--tag", "command"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS session-name-command" in captured.out
+    assert "PASS command-palette-session-command" in captured.out
+    assert "PASS commands-info-session-command" in captured.out
+    assert "PASS model-select" not in captured.out
+    assert "PASS long-transcript-input" not in captured.out
+
+
+def test_native_tui_playback_runner_lists_tagged_command_scenarios(capsys) -> None:
+    exit_code = run_playback_cli(["--list", "--tag", "command"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "session-name-command" in captured.out
+    assert "command-palette-session-command" in captured.out
+    assert "model-select" not in captured.out
+    assert "long-transcript-input" not in captured.out
+
+
 def test_native_tui_playback_runner_runs_completion_session_command_scenario(capsys) -> None:
     exit_code = run_playback_cli(["completion-session-command"])
 

@@ -68,6 +68,7 @@ class NativePlaybackScenarioSpec:
     name: str
     description: str
     run: Callable[[], object]
+    tags: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,10 +92,12 @@ class NativePlaybackSuite:
     def names(self) -> tuple[str, ...]:
         return tuple(scenario.name for scenario in self._scenarios)
 
-    def selected(self, names: Sequence[str]) -> tuple[NativePlaybackScenarioSpec, ...]:
-        if not names:
-            return self._scenarios
-        return tuple(self.get(name) for name in names)
+    def selected(self, names: Sequence[str], *, tags: Sequence[str] = ()) -> tuple[NativePlaybackScenarioSpec, ...]:
+        scenarios = self._scenarios if not names else tuple(self.get(name) for name in names)
+        tag_filter = _normalized_tags(tags)
+        if not tag_filter:
+            return scenarios
+        return tuple(scenario for scenario in scenarios if tag_filter.issubset(_normalized_tags(scenario.tags)))
 
     def get(self, name: str) -> NativePlaybackScenarioSpec:
         try:
@@ -106,13 +109,14 @@ class NativePlaybackSuite:
 def run_playback_scenarios(
     names: Sequence[str] = (),
     *,
+    tags: Sequence[str] = (),
     suite: NativePlaybackSuite | None = None,
     artifacts_dir: str | Path | None = None,
     include_frames: bool = False,
 ) -> tuple[NativePlaybackScenarioResult, ...]:
     suite = DEFAULT_SUITE if suite is None else suite
     results: list[NativePlaybackScenarioResult] = []
-    for scenario in suite.selected(tuple(names)):
+    for scenario in suite.selected(tuple(names), tags=tuple(tags)):
         started = time.perf_counter()
         try:
             scenario_result = scenario.run()
@@ -157,13 +161,15 @@ def run_playback_cli(
     parser = _build_parser()
     raw_argv = sys.argv[1:] if argv is None else tuple(argv)
     args = parser.parse_args(raw_argv)
+    tags = tuple(args.tag or ())
     if args.list:
-        _write_scenario_list(suite, stdout)
+        _write_scenario_list(suite, stdout, tags=tags)
         return 0
 
     try:
         results = run_playback_scenarios(
             args.scenarios,
+            tags=tags,
             suite=suite,
             artifacts_dir=args.artifacts,
             include_frames=args.include_frames,
@@ -196,15 +202,20 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("scenarios", nargs="*", help="Scenario names to run. Defaults to all scenarios.")
     parser.add_argument("--list", action="store_true", help="List available scenarios.")
+    parser.add_argument("--tag", action="append", default=None, help="Run or list scenarios matching this tag. Repeatable.")
     parser.add_argument("--artifacts", help="Directory for manual inspection artifacts.")
     parser.add_argument("--include-frames", action="store_true", help="Include visible frames in JSONL artifacts.")
     parser.add_argument("--json", action="store_true", help="Write a machine-readable JSON summary to stdout.")
     return parser
 
 
-def _write_scenario_list(suite: NativePlaybackSuite, stdout: TextIO) -> None:
-    for scenario in suite.scenarios:
+def _write_scenario_list(suite: NativePlaybackSuite, stdout: TextIO, *, tags: Sequence[str] = ()) -> None:
+    for scenario in suite.selected((), tags=tags):
         stdout.write(f"{scenario.name}\t{scenario.description}\n")
+
+
+def _normalized_tags(tags: Sequence[str]) -> frozenset[str]:
+    return frozenset(tag.strip().lower() for tag in tags if tag.strip())
 
 
 def _json_summary(results: Sequence[NativePlaybackScenarioResult]) -> dict[str, object]:
@@ -1457,6 +1468,7 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="completion-session-command",
             description="Apply session command completion without executing the selected command.",
             run=_run_completion_session_command,
+            tags=("completion", "command", "session"),
         ),
         NativePlaybackScenarioSpec(
             name="completion-navigation-priority",
@@ -1477,6 +1489,7 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="local-command",
             description="Route a local command without echoing it as a prompt.",
             run=_run_local_command,
+            tags=("command", "local"),
         ),
         NativePlaybackScenarioSpec(
             name="active-surface",
@@ -1517,21 +1530,25 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="session-name-command",
             description="Dispatch /name through the native session command path without prompting the agent.",
             run=_run_session_name_command,
+            tags=("command", "session"),
         ),
         NativePlaybackScenarioSpec(
             name="session-command-error",
             description="Render session command errors through the native command path without prompting the agent.",
             run=_run_session_command_error,
+            tags=("command", "session"),
         ),
         NativePlaybackScenarioSpec(
             name="unknown-slash-prompt",
             description="Leave unknown slash-prefixed prompts on the agent prompt path.",
             run=_run_unknown_slash_prompt,
+            tags=("command", "prompt"),
         ),
         NativePlaybackScenarioSpec(
             name="non-executable-session-command",
             description="Leave prompt and skill slash commands on the agent prompt path in native TUI.",
             run=_run_non_executable_session_command,
+            tags=("command", "session", "prompt"),
         ),
         NativePlaybackScenarioSpec(
             name="native-loop-ctrl-c-abort-running",
@@ -1547,31 +1564,37 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="status-surface",
             description="Open and close the native status info surface through the local command path.",
             run=_run_status_surface,
+            tags=("command", "surface"),
         ),
         NativePlaybackScenarioSpec(
             name="statusline-command",
             description="Toggle the native status line through the local command path.",
             run=_run_statusline_command,
+            tags=("command", "local"),
         ),
         NativePlaybackScenarioSpec(
             name="command-palette-select",
             description="Search the native command palette and insert the selected command.",
             run=_run_command_palette_select,
+            tags=("command", "surface"),
         ),
         NativePlaybackScenarioSpec(
             name="command-palette-session-command",
             description="Select a session command from the native command palette without executing it.",
             run=_run_command_palette_session_command,
+            tags=("command", "surface", "session"),
         ),
         NativePlaybackScenarioSpec(
             name="commands-info-surface",
             description="Open and close the native commands info surface through the local command path.",
             run=_run_commands_info_surface,
+            tags=("command", "surface"),
         ),
         NativePlaybackScenarioSpec(
             name="commands-info-session-command",
             description="Show session commands in the native commands info surface without executing them.",
             run=_run_commands_info_session_command,
+            tags=("command", "surface", "session"),
         ),
         NativePlaybackScenarioSpec(
             name="settings-search",
