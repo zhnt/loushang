@@ -540,13 +540,52 @@ def _run_running_follow_up_queued() -> NativeTuiInputPlaybackResult:
     return result
 
 
+def _run_status_surface() -> object:
+    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    manager = _surface_manager(playback.app)
+
+    result = playback.run(
+        (0.00, "/status\r"),
+        (0.01, "\r"),
+        (0.03, ""),
+        handle_local=manager.handle_text,
+        handle_surface_intent=manager.handle_surface_intent,
+        is_local_command=manager.is_local_command,
+    )
+
+    result.assert_exit_code(0)
+    result.assert_text_contains("Status")
+    result.assert_text_contains("moonshot/kimi-for-coding")
+    result.assert_no_clear_screen()
+    assert result.app.active_surface is None
+    return result
+
+
+def _run_commands_info_surface() -> object:
+    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    manager = _surface_manager(playback.app)
+
+    result = playback.run(
+        (0.00, "/commands status\r"),
+        (0.01, "\r"),
+        (0.03, ""),
+        handle_local=manager.handle_text,
+        handle_surface_intent=manager.handle_surface_intent,
+        is_local_command=manager.is_local_command,
+    )
+
+    result.assert_exit_code(0)
+    result.assert_text_contains("Commands")
+    result.assert_text_contains("/status - Show current status (local)")
+    result.assert_text_not_contains("/settings - Open settings (local)")
+    result.assert_no_clear_screen()
+    assert result.app.active_surface is None
+    return result
+
+
 def _run_settings_search() -> object:
     playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
-    manager = NativeSurfaceManager(
-        app=playback.app,
-        session=object(),
-        status_provider=_status_provider(playback.app),
-    )
+    manager = _surface_manager(playback.app)
 
     result = playback.run(
         (0.00, "/settings\r"),
@@ -951,6 +990,14 @@ def _status_provider(app: object) -> CodingTuiStatusProvider:
     )
 
 
+def _surface_manager(app: object) -> NativeSurfaceManager:
+    return NativeSurfaceManager(
+        app=app,
+        session=object(),
+        status_provider=_status_provider(app),
+    )
+
+
 DEFAULT_SUITE = NativePlaybackSuite(
     (
         NativePlaybackScenarioSpec(
@@ -1022,6 +1069,16 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="running-follow-up-queued",
             description="Queue a follow-up while a prompt is running.",
             run=_run_running_follow_up_queued,
+        ),
+        NativePlaybackScenarioSpec(
+            name="status-surface",
+            description="Open and close the native status info surface through the local command path.",
+            run=_run_status_surface,
+        ),
+        NativePlaybackScenarioSpec(
+            name="commands-info-surface",
+            description="Open and close the native commands info surface through the local command path.",
+            run=_run_commands_info_surface,
         ),
         NativePlaybackScenarioSpec(
             name="settings-search",

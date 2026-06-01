@@ -29,6 +29,8 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "escape-pending-steer-fifo" in captured.out
     assert "escape-pending-steer-preserves-draft" in captured.out
     assert "running-follow-up-queued" in captured.out
+    assert "status-surface" in captured.out
+    assert "commands-info-surface" in captured.out
     assert "settings-search" in captured.out
     assert "bracketed-paste-large-marker" in captured.out
     assert "tool-output-preview" in captured.out
@@ -68,6 +70,15 @@ def test_native_tui_playback_runner_runs_settings_search_scenario(capsys) -> Non
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "PASS settings-search" in captured.out
+
+
+def test_native_tui_playback_runner_runs_info_surface_scenarios(capsys) -> None:
+    exit_code = run_playback_cli(["status-surface", "commands-info-surface"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS status-surface" in captured.out
+    assert "PASS commands-info-surface" in captured.out
 
 
 def test_native_tui_playback_runner_writes_artifacts(tmp_path, capsys) -> None:
