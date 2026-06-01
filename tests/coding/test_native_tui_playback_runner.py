@@ -10,6 +10,11 @@ from loushang.coding.ui.playback_runner import (
     run_playback_cli,
     run_playback_scenarios,
 )
+from loushang.coding.ui.playback_suite import NativePlaybackSuite as SuiteFromModule
+
+
+def test_native_tui_playback_runner_reexports_suite_types_from_playback_suite_module() -> None:
+    assert NativePlaybackSuite is SuiteFromModule
 
 
 def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
