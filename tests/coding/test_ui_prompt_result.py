@@ -19,12 +19,16 @@ class _Renderer:
     def __init__(self) -> None:
         self.errors: list[str] = []
         self.worked: list[float] = []
+        self.statuses: list[str] = []
 
     def render_error(self, text: str) -> None:
         self.errors.append(text)
 
     def render_worked(self, elapsed_seconds: float) -> None:
         self.worked.append(elapsed_seconds)
+
+    def render_status(self, text: str) -> None:
+        self.statuses.append(text)
 
 
 async def _emit(write, *, label: str) -> None:
@@ -182,3 +186,41 @@ def test_prompt_result_renders_worked_for_successful_work_intent() -> None:
     assert exit_code is None
     assert emitted == ["prompt:worked"]
     assert renderer.worked == [2.5]
+
+
+def test_prompt_result_renders_controller_status_message_instead_of_worked() -> None:
+    from loushang.coding.ui.controller import ControllerResult
+    from loushang.coding.ui.prompt_dispatch import PromptDispatchOutcome
+    from loushang.coding.ui.prompt_result import PromptResultHandler
+
+    renderer = _Renderer()
+    emitted: list[str] = []
+    outcome = PromptDispatchOutcome(
+        result=ControllerResult(exit_code=None, status_message="Session name set: Project Alpha"),
+        run_id=2,
+        work_intent=True,
+        started_at=10.0,
+    )
+
+    async def emit(write, *, label: str) -> None:
+        emitted.append(label)
+        write()
+
+    handler = PromptResultHandler(
+        lifecycle=_Lifecycle(),
+        renderer=renderer,
+        emit=emit,
+        stderr=StringIO(),
+        verbose=False,
+        last_error_message=lambda: None,
+        session_error_message=lambda: None,
+        now=lambda: 12.5,
+        trace=lambda _name, **_data: None,
+    )
+
+    exit_code = asyncio.run(handler.handle(outcome, prompt_started=8.0))
+
+    assert exit_code is None
+    assert emitted == ["prompt:status"]
+    assert renderer.statuses == ["Session name set: Project Alpha"]
+    assert renderer.worked == []

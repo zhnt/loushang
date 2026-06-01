@@ -176,7 +176,15 @@ def test_controller_dispatches_catalog_session_command_without_prompting_agent()
 
         async def execute_command_async(self, invocation_name: str, args: str) -> object:
             self.commands.append((invocation_name, args))
-            return SimpleNamespace(invocation_name=invocation_name, result=None)
+            return SimpleNamespace(
+                invocation_name=invocation_name,
+                result={
+                    "source": "builtin",
+                    "command": invocation_name,
+                    "status": "ok",
+                    "message": "Session name set: Project Alpha",
+                },
+            )
 
     session = CommandSession()
     controller = CodingUiController(session=session)
@@ -184,6 +192,7 @@ def test_controller_dispatches_catalog_session_command_without_prompting_agent()
     result = asyncio.run(controller.dispatch(PromptIntent(text="/name Project Alpha")))
 
     assert result.error_message is None
+    assert result.status_message == "Session name set: Project Alpha"
     assert session.commands == [("name", "Project Alpha")]
     assert session.prompts == []
 

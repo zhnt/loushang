@@ -27,6 +27,7 @@ class ControllerResult:
     handled: bool = True
     exit_code: int | None = None
     error_message: str | None = None
+    status_message: str | None = None
     traceback_text: str | None = None
 
 
@@ -41,8 +42,9 @@ class CodingUiController:
             return ControllerResult(handled=False)
         try:
             if isinstance(intent, PromptIntent):
-                if await self._dispatch_session_command(intent):
-                    return ControllerResult()
+                command_result = await self._dispatch_session_command(intent)
+                if command_result is not None:
+                    return command_result
                 await self._prompt(intent.text, images=intent.images)
                 return ControllerResult()
             if isinstance(intent, BashIntent):
@@ -136,24 +138,24 @@ class CodingUiController:
             raise RuntimeError("Session does not support prompts")
         await _call_text_method(method, text, images=images)
 
-    async def _dispatch_session_command(self, intent: PromptIntent) -> bool:
+    async def _dispatch_session_command(self, intent: PromptIntent) -> ControllerResult | None:
         if intent.images:
-            return False
+            return None
         executor = getattr(self.session, "execute_command_async", None)
         if not callable(executor):
-            return False
+            return None
         catalog = CodingCommandCatalog(session_commands=_session_commands_provider(self.session))
         effect = catalog.effect_for_route("dispatch", intent)
         if effect is None or effect.kind is not CommandEffectKind.SESSION:
-            return False
+            return None
         if effect.command.source not in {"builtin", "extension"}:
-            return False
+            return None
         invocation_name = effect.payload.get("invocation_name")
         args = effect.payload.get("args", "")
         if not isinstance(invocation_name, str) or not isinstance(args, str):
-            return False
-        await _maybe_await(executor(invocation_name, args))
-        return True
+            return None
+        execution = await _maybe_await(executor(invocation_name, args))
+        return _controller_result_from_command_execution(execution, invocation_name=invocation_name)
 
     async def _bash(self, command: str) -> None:
         method = getattr(self.session, "execute_bash", None)
@@ -216,6 +218,19 @@ def _session_commands_provider(session: Any):
     if not callable(getter):
         return None
     return getter
+
+
+def _controller_result_from_command_execution(execution: object, *, invocation_name: str) -> ControllerResult:
+    result = getattr(execution, "result", None)
+    if result is None and not hasattr(execution, "result"):
+        result = execution
+    if isinstance(result, dict):
+        message = result.get("message")
+        if isinstance(message, str) and message:
+            if result.get("status") == "error":
+                return ControllerResult(error_message=message)
+            return ControllerResult(status_message=message)
+    return ControllerResult(status_message=f"Command /{invocation_name} completed.")
 
 
 async def _maybe_await(value: Any) -> Any:

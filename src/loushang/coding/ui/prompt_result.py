@@ -14,6 +14,7 @@ class Lifecycle(Protocol):
 
 
 class Renderer(Protocol):
+    def render_status(self, text: str) -> None: ...
     def render_error(self, text: str) -> None: ...
     def render_worked(self, elapsed_seconds: float) -> None: ...
 
@@ -69,6 +70,8 @@ class PromptResultHandler:
             if self._verbose and result.traceback_text:
                 self._stderr.write(result.traceback_text)
                 self._stderr.flush()
+        elif result.status_message:
+            await self._emit(lambda: self._renderer.render_status(result.status_message or ""), label="prompt:status")
         elif outcome.work_intent and result.exit_code is None:
             await self._emit(
                 lambda: self._renderer.render_worked(self._now() - outcome.started_at),
