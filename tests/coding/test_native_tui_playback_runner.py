@@ -30,6 +30,7 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "escape-pending-steer-preserves-draft" in captured.out
     assert "running-follow-up-queued" in captured.out
     assert "status-surface" in captured.out
+    assert "statusline-command" in captured.out
     assert "commands-info-surface" in captured.out
     assert "settings-search" in captured.out
     assert "model-select" in captured.out
@@ -83,6 +84,14 @@ def test_native_tui_playback_runner_runs_info_surface_scenarios(capsys) -> None:
     assert exit_code == 0
     assert "PASS status-surface" in captured.out
     assert "PASS commands-info-surface" in captured.out
+
+
+def test_native_tui_playback_runner_runs_statusline_command_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["statusline-command"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS statusline-command" in captured.out
 
 
 def test_native_tui_playback_runner_runs_model_select_scenario(capsys) -> None:

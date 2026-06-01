@@ -589,6 +589,38 @@ def _run_commands_info_surface() -> object:
     return result
 
 
+def _run_statusline_command() -> object:
+    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    manager = _surface_manager(playback.app)
+
+    off_result = playback.run(
+        (0.00, "/statusline off\r"),
+        (0.02, ""),
+        handle_local=manager.handle_text,
+        is_local_command=manager.is_local_command,
+    )
+
+    off_result.assert_exit_code(0)
+    assert playback.app.state.statusline_visible is False
+    assert playback.app.state.status_message == "Status line: off"
+    off_result.assert_no_clear_screen()
+
+    on_result = playback.run(
+        (0.00, "/statusline on\r"),
+        (0.02, ""),
+        handle_local=manager.handle_text,
+        is_local_command=manager.is_local_command,
+    )
+
+    on_result.assert_exit_code(0)
+    assert playback.app.state.statusline_visible is True
+    assert playback.app.state.status_message == "Status line: on"
+    on_result.assert_text_contains("Status line: on")
+    on_result.assert_text_contains("moonshot/kimi-for-coding | repo | main | abcd | idle")
+    on_result.assert_no_clear_screen()
+    return on_result
+
+
 def _run_settings_search() -> object:
     playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     manager = _surface_manager(playback.app)
@@ -1196,6 +1228,11 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="status-surface",
             description="Open and close the native status info surface through the local command path.",
             run=_run_status_surface,
+        ),
+        NativePlaybackScenarioSpec(
+            name="statusline-command",
+            description="Toggle the native status line through the local command path.",
+            run=_run_statusline_command,
         ),
         NativePlaybackScenarioSpec(
             name="commands-info-surface",
