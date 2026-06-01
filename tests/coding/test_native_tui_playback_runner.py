@@ -12,6 +12,7 @@ from loushang.coding.ui.playback_runner import (
     run_playback_scenarios,
 )
 from loushang.coding.ui.playback_scenarios.command import COMMAND_ROUTING_SCENARIOS
+from loushang.coding.ui.playback_scenarios.composer import COMPOSER_SCENARIOS
 from loushang.coding.ui.playback_scenarios.lifecycle import LIFECYCLE_SCENARIOS
 from loushang.coding.ui.playback_scenarios.surface import SURFACE_SCENARIOS
 from loushang.coding.ui.playback_suite import NativePlaybackSuite as SuiteFromModule
@@ -40,6 +41,19 @@ def test_native_tui_playback_command_scenarios_live_in_command_module() -> None:
         "session-command-error",
         "unknown-slash-prompt",
         "non-executable-session-command",
+    ]
+
+
+def test_native_tui_playback_composer_scenarios_live_in_composer_module() -> None:
+    assert [scenario.name for scenario in COMPOSER_SCENARIOS] == [
+        "completion-tab",
+        "completion-session-command",
+        "completion-navigation-priority",
+        "history-navigation",
+        "bracketed-paste-large-marker",
+        "resize-reflow-stable",
+        "wide-char-input-cursor",
+        "keyboard-shift-enter-newline",
     ]
 
 
