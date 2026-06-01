@@ -668,6 +668,31 @@ def _run_model_select() -> object:
     return result
 
 
+def _run_model_select_search() -> object:
+    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    session = _ModelSession()
+    manager = _surface_manager(playback.app, session=session)
+
+    result = playback.run(
+        (0.00, "/model\r"),
+        (0.01, "gpt"),
+        (0.03, "\r"),
+        (0.05, ""),
+        handle_local=manager.handle_text,
+        handle_surface_intent=manager.handle_surface_intent,
+        is_local_command=manager.is_local_command,
+    )
+
+    result.assert_exit_code(0)
+    assert session.current_model == ModelSelection(provider="openai", model_id="gpt-5.4")
+    assert playback.app.state.model_label == "openai/gpt-5.4"
+    result.assert_text_contains("Search: gpt")
+    result.assert_text_contains("Model set: openai/gpt-5.4")
+    result.assert_no_clear_screen()
+    assert result.app.active_surface is None
+    return result
+
+
 def _run_approval_surface() -> object:
     return _run_approval_surface_response(input_text="y", approved=True, expected_status="Action confirmed: write file")
 
@@ -1248,6 +1273,11 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="model-select",
             description="Open the native model selector and switch models without clearing the screen.",
             run=_run_model_select,
+        ),
+        NativePlaybackScenarioSpec(
+            name="model-select-search",
+            description="Search the native model selector and select the filtered model.",
+            run=_run_model_select_search,
         ),
         NativePlaybackScenarioSpec(
             name="approval-surface",

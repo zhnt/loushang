@@ -34,6 +34,7 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "commands-info-surface" in captured.out
     assert "settings-search" in captured.out
     assert "model-select" in captured.out
+    assert "model-select-search" in captured.out
     assert "approval-surface" in captured.out
     assert "approval-reject-surface" in captured.out
     assert "dialog-surface" in captured.out
@@ -100,6 +101,14 @@ def test_native_tui_playback_runner_runs_model_select_scenario(capsys) -> None:
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "PASS model-select" in captured.out
+
+
+def test_native_tui_playback_runner_runs_model_select_search_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["model-select-search"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS model-select-search" in captured.out
 
 
 def test_native_tui_playback_runner_runs_approval_surface_scenario(capsys) -> None:
