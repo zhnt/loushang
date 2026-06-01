@@ -637,6 +637,14 @@ def _run_model_select() -> object:
 
 
 def _run_approval_surface() -> object:
+    return _run_approval_surface_response(input_text="y", approved=True, expected_status="Action confirmed: write file")
+
+
+def _run_approval_reject_surface() -> object:
+    return _run_approval_surface_response(input_text="n", approved=False, expected_status="Action rejected")
+
+
+def _run_approval_surface_response(*, input_text: str, approved: bool, expected_status: str) -> object:
     playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     approvals: list[dict[str, object]] = []
 
@@ -647,7 +655,7 @@ def _run_approval_surface() -> object:
     manager.open_approval(action="write file", risk="Will modify /repo/app.py", action_id="write:app.py")
 
     result = playback.run(
-        (0.00, "y"),
+        (0.00, input_text),
         (0.02, ""),
         handle_surface_intent=manager.handle_surface_intent,
     )
@@ -657,13 +665,13 @@ def _run_approval_surface() -> object:
         {
             "action_id": "write:app.py",
             "action": "write file",
-            "approved": True,
+            "approved": approved,
             "raw_note": "write:app.py",
         }
     ]
     result.assert_text_contains("Approval")
     result.assert_text_contains("write file")
-    result.assert_text_contains("Action confirmed: write file")
+    result.assert_text_contains(expected_status)
     result.assert_no_clear_screen()
     assert result.app.active_surface is None
     return result
@@ -1208,6 +1216,11 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="approval-surface",
             description="Approve an active native approval surface and verify its callback payload.",
             run=_run_approval_surface,
+        ),
+        NativePlaybackScenarioSpec(
+            name="approval-reject-surface",
+            description="Reject an active native approval surface and verify its callback payload.",
+            run=_run_approval_reject_surface,
         ),
         NativePlaybackScenarioSpec(
             name="dialog-surface",

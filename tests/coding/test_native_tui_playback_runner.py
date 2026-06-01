@@ -34,6 +34,7 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "settings-search" in captured.out
     assert "model-select" in captured.out
     assert "approval-surface" in captured.out
+    assert "approval-reject-surface" in captured.out
     assert "dialog-surface" in captured.out
     assert "bracketed-paste-large-marker" in captured.out
     assert "tool-output-preview" in captured.out
@@ -98,6 +99,14 @@ def test_native_tui_playback_runner_runs_approval_surface_scenario(capsys) -> No
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "PASS approval-surface" in captured.out
+
+
+def test_native_tui_playback_runner_runs_approval_reject_surface_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["approval-reject-surface"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS approval-reject-surface" in captured.out
 
 
 def test_native_tui_playback_runner_runs_dialog_surface_scenario(capsys) -> None:
