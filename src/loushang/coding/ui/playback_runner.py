@@ -8,10 +8,14 @@ import sys
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, fields
+from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TextIO
 
 from loushang.coding.types import ModelSelection
+from loushang.coding.ui.controller import CodingUiController
+from loushang.coding.ui.mode import _native_prompt_handler
 from loushang.coding.ui.native_surfaces import NativeSurfaceManager, NativeSurfaceView
 from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
 from loushang.coding.ui.playback import (
@@ -543,6 +547,35 @@ def _run_running_follow_up_queued() -> NativeTuiInputPlaybackResult:
     result.assert_no_clear_screen()
     result.assert_cursor_matches_diagnostics()
     INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
+def _run_session_name_command() -> object:
+    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    session = _SessionCommandSession()
+    controller = CodingUiController(session=session)
+    manager = _surface_manager(playback.app, session=session)
+
+    result = playback.run(
+        (0.00, "/name Project Alpha\r"),
+        (0.03, ""),
+        handle_prompt=_native_prompt_handler(
+            app=playback.app,
+            controller=controller,
+            stderr=StringIO(),
+            verbose=False,
+        ),
+        handle_local=manager.handle_text,
+        is_local_command=manager.is_local_command,
+    )
+
+    result.assert_exit_code(0)
+    result.assert_idle()
+    assert session.commands == [("name", "Project Alpha")]
+    assert session.prompts == []
+    result.assert_text_contains("› /name Project Alpha")
+    result.assert_text_contains("Session name set: Project Alpha")
+    result.assert_no_clear_screen()
     return result
 
 
@@ -1165,6 +1198,37 @@ class _ModelSession:
             self.current_model = selection
 
 
+class _SessionCommandSession:
+    def __init__(self) -> None:
+        self.commands: list[tuple[str, str]] = []
+        self.prompts: list[str] = []
+
+    def list_commands(self) -> list[object]:
+        return [
+            SimpleNamespace(
+                name="name",
+                description="Set session display name",
+                source="builtin",
+                argument_hint="<name>",
+            )
+        ]
+
+    async def execute_command_async(self, invocation_name: str, args: str) -> object:
+        self.commands.append((invocation_name, args))
+        return SimpleNamespace(
+            invocation_name=invocation_name,
+            result={
+                "source": "builtin",
+                "command": invocation_name,
+                "status": "ok",
+                "message": f"Session name set: {args}",
+            },
+        )
+
+    async def prompt(self, text: str, **_kwargs: object) -> None:
+        self.prompts.append(text)
+
+
 def _recording_drain(calls: list[str]) -> Callable[..., str]:
     def drain(*_args: object, **_kwargs: object) -> str:
         calls.append("drain")
@@ -1260,6 +1324,11 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="escape-pending-steer-preserves-draft",
             description="Run an interrupt pending steer without clearing an unsubmitted composer draft.",
             run=_run_escape_pending_steer_preserves_draft,
+        ),
+        NativePlaybackScenarioSpec(
+            name="session-name-command",
+            description="Dispatch /name through the native session command path without prompting the agent.",
+            run=_run_session_name_command,
         ),
         NativePlaybackScenarioSpec(
             name="native-loop-ctrl-c-abort-running",
