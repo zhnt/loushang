@@ -11,6 +11,7 @@ from loushang.coding.ui.playback_runner import (
     run_playback_cli,
     run_playback_scenarios,
 )
+from loushang.coding.ui.playback_scenarios.command import COMMAND_ROUTING_SCENARIOS
 from loushang.coding.ui.playback_suite import NativePlaybackSuite as SuiteFromModule
 
 
@@ -28,6 +29,15 @@ def test_native_tui_playback_fake_session_lists_command_sources() -> None:
         ("export", "builtin"),
         ("review", "prompt"),
         ("debugging", "skill"),
+    ]
+
+
+def test_native_tui_playback_command_scenarios_live_in_command_module() -> None:
+    assert [scenario.name for scenario in COMMAND_ROUTING_SCENARIOS] == [
+        "session-name-command",
+        "session-command-error",
+        "unknown-slash-prompt",
+        "non-executable-session-command",
     ]
 
 

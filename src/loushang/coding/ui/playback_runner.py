@@ -5,14 +5,11 @@ import asyncio
 import json
 import sys
 from collections.abc import Callable, Sequence
-from io import StringIO
 from pathlib import Path
 from typing import TextIO
 
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.completion import coding_inline_completion_provider
-from loushang.coding.ui.controller import CodingUiController
-from loushang.coding.ui.mode import _native_prompt_handler
 from loushang.coding.ui.native_surfaces import NativeSurfaceManager, NativeSurfaceView
 from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
 from loushang.coding.ui.playback import (
@@ -39,6 +36,7 @@ from loushang.coding.ui.playback_fakes import (
 from loushang.coding.ui.playback_fakes import (
     recording_drain as _recording_drain,
 )
+from loushang.coding.ui.playback_scenarios.command import COMMAND_ROUTING_SCENARIOS
 from loushang.coding.ui.playback_suite import (
     NativePlaybackScenarioResult,
     NativePlaybackScenarioSpec,
@@ -527,122 +525,6 @@ def _run_running_follow_up_queued() -> NativeTuiInputPlaybackResult:
     result.assert_no_clear_screen()
     result.assert_cursor_matches_diagnostics()
     INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
-    return result
-
-
-def _run_session_name_command() -> object:
-    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
-    session = _SessionCommandSession()
-    controller = CodingUiController(session=session)
-    manager = _surface_manager(playback.app, session=session)
-
-    result = playback.run(
-        (0.00, "/name Project Alpha\r"),
-        (0.03, ""),
-        handle_prompt=_native_prompt_handler(
-            app=playback.app,
-            controller=controller,
-            stderr=StringIO(),
-            verbose=False,
-        ),
-        handle_local=manager.handle_text,
-        is_local_command=manager.is_local_command,
-    )
-
-    result.assert_exit_code(0)
-    result.assert_idle()
-    assert session.commands == [("name", "Project Alpha")]
-    assert session.prompts == []
-    result.assert_text_contains("› /name Project Alpha")
-    result.assert_text_contains("Session name set: Project Alpha")
-    result.assert_no_clear_screen()
-    return result
-
-
-def _run_session_command_error() -> object:
-    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
-    session = _SessionCommandSession()
-    controller = CodingUiController(session=session)
-    manager = _surface_manager(playback.app, session=session)
-
-    result = playback.run(
-        (0.00, "/export /root/out.jsonl\r"),
-        (0.03, ""),
-        handle_prompt=_native_prompt_handler(
-            app=playback.app,
-            controller=controller,
-            stderr=StringIO(),
-            verbose=False,
-        ),
-        handle_local=manager.handle_text,
-        is_local_command=manager.is_local_command,
-    )
-
-    result.assert_exit_code(0)
-    result.assert_idle()
-    assert session.commands == [("export", "/root/out.jsonl")]
-    assert session.prompts == []
-    result.assert_text_contains("› /export /root/out.jsonl")
-    result.assert_text_contains("Export failed: /root/out.jsonl")
-    result.assert_no_clear_screen()
-    return result
-
-
-def _run_unknown_slash_prompt() -> object:
-    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
-    session = _SessionCommandSession()
-    controller = CodingUiController(session=session)
-    manager = _surface_manager(playback.app, session=session)
-
-    result = playback.run(
-        (0.00, "/unknown keep me\r"),
-        (0.03, ""),
-        handle_prompt=_native_prompt_handler(
-            app=playback.app,
-            controller=controller,
-            stderr=StringIO(),
-            verbose=False,
-        ),
-        handle_local=manager.handle_text,
-        is_local_command=manager.is_local_command,
-    )
-
-    result.assert_exit_code(0)
-    result.assert_idle()
-    assert session.commands == []
-    assert session.prompts == ["/unknown keep me"]
-    result.assert_text_contains("› /unknown keep me")
-    result.assert_no_clear_screen()
-    return result
-
-
-def _run_non_executable_session_command() -> object:
-    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
-    session = _SessionCommandSession()
-    controller = CodingUiController(session=session)
-    manager = _surface_manager(playback.app, session=session)
-
-    result = playback.run(
-        (0.00, "/review check dispatch\r"),
-        (0.04, "/debugging trace queue\r"),
-        (0.08, ""),
-        handle_prompt=_native_prompt_handler(
-            app=playback.app,
-            controller=controller,
-            stderr=StringIO(),
-            verbose=False,
-        ),
-        handle_local=manager.handle_text,
-        is_local_command=manager.is_local_command,
-    )
-
-    result.assert_exit_code(0)
-    result.assert_idle()
-    assert session.commands == []
-    assert session.prompts == ["/review check dispatch", "/debugging trace queue"]
-    result.assert_text_contains("› /review check dispatch")
-    result.assert_text_contains("› /debugging trace queue")
-    result.assert_no_clear_screen()
     return result
 
 
@@ -1345,30 +1227,7 @@ DEFAULT_SUITE = NativePlaybackSuite(
             description="Run an interrupt pending steer without clearing an unsubmitted composer draft.",
             run=_run_escape_pending_steer_preserves_draft,
         ),
-        NativePlaybackScenarioSpec(
-            name="session-name-command",
-            description="Dispatch /name through the native session command path without prompting the agent.",
-            run=_run_session_name_command,
-            tags=("command", "session"),
-        ),
-        NativePlaybackScenarioSpec(
-            name="session-command-error",
-            description="Render session command errors through the native command path without prompting the agent.",
-            run=_run_session_command_error,
-            tags=("command", "session"),
-        ),
-        NativePlaybackScenarioSpec(
-            name="unknown-slash-prompt",
-            description="Leave unknown slash-prefixed prompts on the agent prompt path.",
-            run=_run_unknown_slash_prompt,
-            tags=("command", "prompt"),
-        ),
-        NativePlaybackScenarioSpec(
-            name="non-executable-session-command",
-            description="Leave prompt and skill slash commands on the agent prompt path in native TUI.",
-            run=_run_non_executable_session_command,
-            tags=("command", "session", "prompt"),
-        ),
+        *COMMAND_ROUTING_SCENARIOS,
         NativePlaybackScenarioSpec(
             name="native-loop-ctrl-c-abort-running",
             description="Abort a running native loop prompt via raw Ctrl-C without clearing the screen.",
