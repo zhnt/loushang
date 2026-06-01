@@ -30,6 +30,7 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "escape-pending-steer-preserves-draft" in captured.out
     assert "running-follow-up-queued" in captured.out
     assert "bracketed-paste-large-marker" in captured.out
+    assert "tool-output-preview" in captured.out
     assert "resize-reflow-stable" in captured.out
     assert "wide-char-input-cursor" in captured.out
     assert "keyboard-alt-enter-follow-up" in captured.out

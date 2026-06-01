@@ -59,6 +59,25 @@ def test_builtin_bash_tool_transcript_block_shows_bounded_output_preview() -> No
     assert "line 7" in block.body
 
 
+def test_builtin_bash_tool_transcript_block_shows_head_and_tail_preview_by_default() -> None:
+    block = _project(
+        "bash",
+        {"command": "pytest tests/coding -q"},
+        _result("\n".join(f"line {index}" for index in range(1, 13))),
+        max_body_lines=8,
+    )
+
+    assert block.body == (
+        "line 1\n"
+        "line 2\n"
+        "line 3\n"
+        "... (6 hidden lines)\n"
+        "line 10\n"
+        "line 11\n"
+        "line 12"
+    )
+
+
 def test_builtin_edit_and_write_blocks_do_not_dump_tool_result_bodies() -> None:
     edit = _project(
         "edit",

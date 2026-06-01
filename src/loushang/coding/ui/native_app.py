@@ -7,6 +7,12 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from loushang.coding.tools.output_preview import (
+    DEFAULT_TOOL_OUTPUT_PREVIEW_LINES,
+    collapse_tool_output_preview,
+    drop_tool_timing_tail_line,
+    prefers_tail_tool_output,
+)
 from loushang.coding.ui.native_state import NativeCodingTuiState, NativeTranscriptWindow
 from loushang.coding.ui.transcript_style import apply_coding_transcript_style
 from loushang.tui import (
@@ -634,7 +640,13 @@ def _native_coding_display_record(record: DisplayRecord, *, cwd: str = "") -> Di
         return record
     name = _compact_display_paths(record.name, cwd=cwd)
     command = "" if _tool_command_duplicates_heading(record) else record.command
-    output = _drop_redundant_tool_timing_line(record.output)
+    output = drop_tool_timing_tail_line(record.output)
+    if record.output_kind == "text":
+        output = collapse_tool_output_preview(
+            output,
+            max_lines=DEFAULT_TOOL_OUTPUT_PREVIEW_LINES,
+            tail=prefers_tail_tool_output(name),
+        )
     if name == record.name and command == record.command and output == record.output:
         return record
     return replace(record, name=name, command=command, output=output)
@@ -677,36 +689,6 @@ def _compact_absolute_path(path: str, *, cwd: str, home: str) -> str:
 def _normalized_path(path: str) -> str:
     normalized = path.rstrip("/")
     return normalized or path
-
-
-def _drop_redundant_tool_timing_line(output: str) -> str:
-    if not output:
-        return output
-    lines = output.splitlines()
-    if not lines or not _is_tool_timing_line(lines[-1].strip()):
-        return output
-    return "\n".join(lines[:-1])
-
-
-def _is_tool_timing_line(line: str) -> bool:
-    parts = line.split()
-    if len(parts) != 2 or parts[0] not in {"Took", "Elapsed"}:
-        return False
-    return _looks_like_duration(parts[1])
-
-
-def _looks_like_duration(value: str) -> bool:
-    if value.endswith("ms"):
-        value = value[:-2]
-    elif value.endswith(("s", "m", "h")):
-        value = value[:-1]
-    if not value:
-        return False
-    try:
-        float(value)
-    except ValueError:
-        return False
-    return True
 
 
 def _coding_lines(

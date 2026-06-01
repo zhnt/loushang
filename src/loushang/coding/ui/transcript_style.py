@@ -11,7 +11,7 @@ from loushang.tui.transcript import (
 
 _FLAG_RE = re.compile(r"(?<!\S)(-{1,2}[A-Za-z0-9][A-Za-z0-9_-]*)(?=$|[\s=])")
 _ELLIPSIS_LINES_RE = re.compile(r"… \+\d+ lines(?: \([^)]*\))?")
-_COLLAPSED_LINES_RE = re.compile(r"\.\.\. \(\d+ (?:earlier|more) lines?\)")
+_COLLAPSED_LINES_RE = re.compile(r"\.\.\. \(\d+ (?:earlier|more|hidden) lines?\)")
 _TIMING_RE = re.compile(r"\b(?:took|Took|Elapsed) \d+(?:\.\d+)?(?:ms|s|m|h)?\b")
 _GIT_NOOP_RE = re.compile(r"\bnothing (?:added to commit|to commit)\b.*", re.IGNORECASE)
 _TOOL_VERBS = {"Ran", "Explored", "Edited", "Tested"}

@@ -41,8 +41,8 @@ scrollback policy.
   the output body instead of the tool header.
 - Structural connectors such as `│`, `└`, `├`, `┌`, `┐`, `└`, and `┘` use dim
   neutral gray.
-- Truncation metadata such as `… +4 lines`, `... (3 more lines)`, and
-  `(no output)` uses dim neutral gray.
+- Truncation metadata such as `… +4 lines`, `... (3 more lines)`,
+  `... (3 hidden lines)`, and `(no output)` uses dim neutral gray.
 - Tool timing metadata such as `Took 0.6s` and `Elapsed 250ms` uses dim neutral
   gray.
 - If a tool command detail row duplicates the heading command, the native coding

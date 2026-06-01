@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from loushang.ai.types import TextPart
 from loushang.agent.types import AgentToolResult
+from loushang.ai.types import TextPart
 
 
 def test_builtin_tool_definitions_expose_renderers_for_streaming_views() -> None:
@@ -124,14 +124,15 @@ def test_bash_renderer_uses_tail_preview_and_duration_labels() -> None:
     runtime = ToolRenderRuntime(cwd="/repo")
     runtime.render_call(definitions["bash"], "call-bash", {"command": "printf lines"})
     result = AgentToolResult(
-        content=[TextPart(type="text", text="\n".join(f"line {index}" for index in range(1, 9)))],
+        content=[TextPart(type="text", text="\n".join(f"line {index}" for index in range(1, 11)))],
         details={"fullOutputPath": "/tmp/bash.log"},
     )
 
     partial = runtime.render_result(definitions["bash"], "call-bash", result, is_partial=True)
     final = runtime.render_result(definitions["bash"], "call-bash", result)
 
-    assert partial.startswith("... (3 earlier lines)\nline 4\nline 5\nline 6\nline 7\nline 8")
+    assert partial.startswith("... (5 earlier lines)\nline 6\nline 7\nline 8\nline 9\nline 10")
+    assert final.startswith("line 1\nline 2\nline 3\n... (4 hidden lines)\nline 8\nline 9\nline 10")
     assert "[Full output: /tmp/bash.log]" in partial
     assert "Elapsed " in partial
     assert "Took " in final

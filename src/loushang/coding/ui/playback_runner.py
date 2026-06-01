@@ -31,6 +31,7 @@ from loushang.tui.terminal_session import (
     MOUSE_ENABLE_SEQUENCES,
     TerminalSession,
 )
+from loushang.tui.transcript import ToolExecutionRecord
 
 INTERACTION_FRAME_BUDGET = PlaybackFrameBudget(
     disallowed_operation_classes=("baseline_repaint", "recovery_repaint"),
@@ -553,6 +554,36 @@ def _run_long_transcript_input() -> NativeTuiInputPlaybackResult:
     return result
 
 
+def _run_tool_output_preview() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=100, height=16)
+        .with_records(
+            (
+                ToolExecutionRecord(
+                    name="bash pytest tests/coding -q",
+                    state="completed",
+                    elapsed_seconds=0.6,
+                    output="\n".join(f"line {index}" for index in range(1, 13)),
+                ),
+            )
+        )
+        .render()
+        .type_text("next")
+        .run()
+    )
+    result.assert_visible_contains("  └ line 1")
+    result.assert_visible_contains("    line 3")
+    result.assert_visible_contains("    ... (6 hidden lines)")
+    result.assert_visible_contains("    line 12")
+    result.assert_visible_not_contains("    line 4")
+    result.assert_visible_not_contains("    line 9")
+    result.assert_visible_contains("› next")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
 def _run_bracketed_paste_large_marker() -> NativeTuiInputPlaybackResult:
     pasted = "\n".join(f"line {index}" for index in range(10))
     result = (
@@ -956,6 +987,11 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="long-transcript-input",
             description="Echo input after a long transcript using bounded frame updates.",
             run=_run_long_transcript_input,
+        ),
+        NativePlaybackScenarioSpec(
+            name="tool-output-preview",
+            description="Render long tool output as head, hidden-count, and tail without flicker.",
+            run=_run_tool_output_preview,
         ),
         NativePlaybackScenarioSpec(
             name="bracketed-paste-large-marker",

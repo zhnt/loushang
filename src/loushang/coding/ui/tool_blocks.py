@@ -10,6 +10,11 @@ from loushang.coding.tools import (
     ToolRenderRuntime,
     render_tool_result_presentation,
 )
+from loushang.coding.tools.output_preview import (
+    collapse_tool_output_preview,
+    drop_tool_timing_tail_line,
+    prefers_tail_tool_output,
+)
 from loushang.tui.render import diff_stat
 
 ToolTranscriptStatus = Literal["running", "ok", "error", "cancelled", "timed_out", "terminate"]
@@ -265,7 +270,14 @@ def _body(
     text = rendered_result or _fallback_result_text(event, max_lines=max_lines)
     if not text:
         return None
-    return _collapse_lines(text.strip(), max_lines=max_lines, tail=_prefers_tail_body(tool_name))
+    text = drop_tool_timing_tail_line(text.strip())
+    if not text:
+        return None
+    return collapse_tool_output_preview(
+        text,
+        max_lines=max_lines,
+        tail=prefers_tail_tool_output(tool_name),
+    )
 
 
 def _should_show_body(tool_name: str, status: ToolTranscriptStatus) -> bool:
@@ -273,11 +285,6 @@ def _should_show_body(tool_name: str, status: ToolTranscriptStatus) -> bool:
         return False
     normalized = tool_name.lower()
     return any(part in normalized for part in ("bash", "shell", "exec", "run", "grep", "find", "ls", "test", "lint", "ruff", "pytest"))
-
-
-def _prefers_tail_body(tool_name: str) -> bool:
-    normalized = tool_name.lower()
-    return any(part in normalized for part in ("bash", "shell", "exec", "run", "test", "lint", "ruff", "pytest"))
 
 
 def _fallback_result_text(event: Mapping[str, Any], *, max_lines: int) -> str:
@@ -289,16 +296,6 @@ def _fallback_result_text(event: Mapping[str, Any], *, max_lines: int) -> str:
         result.details,
         max_collapsed_lines=max_lines,
     ).collapsed
-
-
-def _collapse_lines(text: str, *, max_lines: int, tail: bool = False) -> str:
-    lines = text.splitlines()
-    if len(lines) <= max_lines:
-        return text
-    remaining = len(lines) - max_lines
-    if tail:
-        return "\n".join([f"... ({remaining} earlier lines)", *lines[-max_lines:]])
-    return "\n".join([*lines[:max_lines], f"... ({remaining} more lines)"])
 
 
 def _tool_error_summary(result: object) -> str | None:

@@ -282,6 +282,42 @@ def test_native_coding_tui_structures_tool_command_and_output_body() -> None:
     assert "\x1b[2;90mnothing added to commit but untracked files present" in nothing_line
 
 
+def test_native_coding_tui_summarizes_long_tool_output_with_head_and_tail() -> None:
+    from loushang.coding.ui.native_app import NativeCodingTuiApp
+
+    app = NativeCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd1234",
+        now=lambda: 1.0,
+    )
+    app.state.records.append(
+        ToolExecutionRecord(
+            name="bash pytest tests/coding -q",
+            state="completed",
+            elapsed_seconds=0.6,
+            output="\n".join(f"line {index}" for index in range(1, 13)),
+        )
+    )
+
+    raw = _raw_lines(app, width=120, height=20)
+    plain = tuple(strip_control_sequences(line) for line in raw)
+
+    assert "  └ line 1" in plain
+    assert "    line 2" in plain
+    assert "    line 3" in plain
+    assert "    ... (6 hidden lines)" in plain
+    assert "    line 10" in plain
+    assert "    line 11" in plain
+    assert "    line 12" in plain
+    assert "    line 4" not in plain
+    assert "    line 9" not in plain
+
+    collapsed_line = next(line for line in raw if "hidden lines" in strip_control_sequences(line))
+    assert "\x1b[2;90m... (6 hidden lines)\x1b[22;39m" in collapsed_line
+
+
 def test_native_coding_tui_keeps_restyled_tool_output_within_screen_width() -> None:
     from loushang.coding.ui.native_app import NativeCodingTuiApp
 

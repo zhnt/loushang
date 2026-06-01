@@ -6,7 +6,15 @@ from typing import Any
 
 from loushang.agent.types import AgentToolResult
 
-from .presentation import get_tool_text_output, normalize_display_text, render_tool_result_presentation
+from .output_preview import (
+    DEFAULT_TOOL_OUTPUT_PREVIEW_LINES,
+    collapse_tool_output_preview,
+)
+from .presentation import (
+    get_tool_text_output,
+    normalize_display_text,
+    render_tool_result_presentation,
+)
 from .types import ToolRenderContext, ToolRenderOutput, ToolRenderResultOptions
 
 
@@ -116,7 +124,7 @@ def render_bash_result(
         result,
         options,
         context,
-        max_collapsed_lines=5,
+        max_collapsed_lines=5 if options.is_partial else DEFAULT_TOOL_OUTPUT_PREVIEW_LINES,
         tail=True,
     )
     started_at = context.state.get("started_at")
@@ -287,10 +295,10 @@ def _collapse_body(
     lines = _trim_trailing_empty_lines(text.splitlines())
     if expanded or len(lines) <= max_lines:
         return "\n".join(lines)
+    if tail:
+        return collapse_tool_output_preview("\n".join(lines), max_lines=max_lines, tail=True)
     remaining = len(lines) - max_lines
     suffix = remaining_suffix.format(total=len(lines)) if remaining_suffix else ""
-    if tail:
-        return "\n".join([f"... ({remaining} earlier lines)", *lines[-max_lines:]])
     return "\n".join([*lines[:max_lines], f"... ({remaining} more lines{suffix})"])
 
 
