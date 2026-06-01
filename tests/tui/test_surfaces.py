@@ -290,8 +290,30 @@ def test_command_surface_filters_and_returns_command_intent() -> None:
         query="/h",
     )
 
-    assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=20, height=4)) == ("> /help",)
+    assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=20, height=4)) == (
+        "Search: /h",
+        "",
+        "> /help",
+    )
     assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(kind="command", text="help")
+
+
+def test_command_surface_searches_from_typed_text() -> None:
+    surface = CommandSurface(
+        [
+            SelectItem("/model", value="/model"),
+            SelectItem("/status", value="/status"),
+        ],
+    )
+
+    surface.handle_input(InputEvent(kind="text", text="sta"))
+
+    assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=30, height=4)) == (
+        "Search: sta",
+        "",
+        "> /status",
+    )
+    assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(kind="command", text="/status")
 
 
 def test_settings_surface_renders_description_and_returns_setting_intent() -> None:

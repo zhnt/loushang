@@ -289,7 +289,14 @@ class CommandSurface(SelectionSurface):
         query: str = "",
         max_visible: int = 5,
     ) -> None:
-        super().__init__(items=items, max_visible=max_visible, select_kind="command")
+        super().__init__(
+            items=items,
+            max_visible=max_visible,
+            select_kind="command",
+            enable_search=True,
+            show_search_when_empty=False,
+            filter_mode="contains",
+        )
         if query:
             self.set_filter(query)
 

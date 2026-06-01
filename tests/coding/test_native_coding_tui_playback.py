@@ -281,6 +281,64 @@ def test_native_tui_playback_smokes_surfaces_editor_and_image_fallback(monkeypat
     assert "\x1b_G" not in output
 
 
+def test_native_tui_playback_command_surface_filters_and_selects_command() -> None:
+    session = _Session()
+    app = _app()
+    playback = _NativeInteractivePlayback(
+        app,
+        _manager(app, session),
+        columns=100,
+        rows=18,
+    )
+
+    steps = playback.play(
+        [
+            PlaybackEvent.input("/command\r"),
+            PlaybackEvent.input("sta\r"),
+        ]
+    )
+
+    assert all(step.flush_succeeded for step in steps)
+    assert app.composer.value == "/status "
+    assert app.active_surface is None
+    assert app.surface_host is not None
+    assert app.surface_host.entries == []
+    lines = _plain_lines(steps[-1].diagnostics)
+    assert "Commands" not in lines
+    assert "› /status " in lines
+    assert "Command selected: /status" in lines[-1]
+    for step in steps:
+        step.assert_no_clear_scrollback()
+
+
+def test_native_tui_playback_settings_surface_toggles_statusline() -> None:
+    session = _Session()
+    app = _app()
+    playback = _NativeInteractivePlayback(
+        app,
+        _manager(app, session),
+        columns=100,
+        rows=18,
+    )
+
+    steps = playback.play(
+        [
+            PlaybackEvent.input("/settings\r"),
+            PlaybackEvent.input("\r"),
+        ]
+    )
+
+    assert all(step.flush_succeeded for step in steps)
+    assert app.active_surface is None
+    assert app.state.statusline_visible is False
+    assert app.state.status_message == "Status line: off"
+    lines = _plain_lines(steps[-1].diagnostics)
+    assert "Settings" not in lines
+    assert not any("moonshot/kimi-for-coding | repo | main | abcd | idle" in line for line in lines)
+    for step in steps:
+        step.assert_no_clear_scrollback()
+
+
 def test_native_tui_playback_smokes_terminal_context_model_selector_and_resize() -> None:
     context = _PlaybackTerminalContext()
     session = _Session()
