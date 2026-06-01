@@ -11,6 +11,7 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import TextIO
 
+from loushang.coding.types import ModelSelection
 from loushang.coding.ui.native_surfaces import NativeSurfaceManager
 from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
 from loushang.coding.ui.playback import (
@@ -605,6 +606,31 @@ def _run_settings_search() -> object:
     return result
 
 
+def _run_model_select() -> object:
+    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    session = _ModelSession()
+    manager = _surface_manager(playback.app, session=session)
+
+    result = playback.run(
+        (0.00, "/model\r"),
+        (0.01, "2"),
+        (0.03, ""),
+        handle_local=manager.handle_text,
+        handle_surface_intent=manager.handle_surface_intent,
+        is_local_command=manager.is_local_command,
+    )
+
+    result.assert_exit_code(0)
+    assert session.current_model == ModelSelection(provider="openai", model_id="gpt-5.4")
+    assert playback.app.state.model_label == "openai/gpt-5.4"
+    result.assert_text_contains("Select Model")
+    result.assert_text_contains("Model set: openai/gpt-5.4")
+    result.assert_text_contains("openai/gpt-5.4 | repo | main | abcd | idle")
+    result.assert_no_clear_screen()
+    assert result.app.active_surface is None
+    return result
+
+
 def _run_long_transcript_input() -> NativeTuiInputPlaybackResult:
     result = (
         NativeTuiInputScenario(width=100, height=18)
@@ -970,6 +996,25 @@ class _RecordingTerminalMode:
         return False
 
 
+class _ModelSession:
+    def __init__(self) -> None:
+        self.current_model = ModelSelection(provider="moonshot", model_id="kimi-for-coding")
+        self.models = [
+            ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
+            ModelSelection(provider="openai", model_id="gpt-5.4"),
+        ]
+
+    def get_model_selection(self) -> ModelSelection:
+        return self.current_model
+
+    def get_available_models(self) -> list[ModelSelection]:
+        return self.models
+
+    async def set_model(self, selection: object) -> None:
+        if isinstance(selection, ModelSelection):
+            self.current_model = selection
+
+
 def _recording_drain(calls: list[str]) -> Callable[..., str]:
     def drain(*_args: object, **_kwargs: object) -> str:
         calls.append("drain")
@@ -990,10 +1035,10 @@ def _status_provider(app: object) -> CodingTuiStatusProvider:
     )
 
 
-def _surface_manager(app: object) -> NativeSurfaceManager:
+def _surface_manager(app: object, *, session: object | None = None) -> NativeSurfaceManager:
     return NativeSurfaceManager(
         app=app,
-        session=object(),
+        session=object() if session is None else session,
         status_provider=_status_provider(app),
     )
 
@@ -1084,6 +1129,11 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="settings-search",
             description="Search the settings surface opened through the native command path.",
             run=_run_settings_search,
+        ),
+        NativePlaybackScenarioSpec(
+            name="model-select",
+            description="Open the native model selector and switch models without clearing the screen.",
+            run=_run_model_select,
         ),
         NativePlaybackScenarioSpec(
             name="long-transcript-input",
