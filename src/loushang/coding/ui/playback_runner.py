@@ -11,6 +11,7 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import TextIO
 
+from loushang.coding.ui.native_surfaces import NativeSurfaceManager
 from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
 from loushang.coding.ui.playback import (
     NativeTuiInputPlaybackResult,
@@ -18,6 +19,7 @@ from loushang.coding.ui.playback import (
     NativeTuiLoopPlayback,
     NativeTuiLoopScenario,
 )
+from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 from loushang.tui import PlaybackFrameBudget, SelectionSurface, SelectItem
 from loushang.tui.input import BRACKETED_PASTE_END, BRACKETED_PASTE_START
 from loushang.tui.keyboard_protocol import (
@@ -538,6 +540,32 @@ def _run_running_follow_up_queued() -> NativeTuiInputPlaybackResult:
     return result
 
 
+def _run_settings_search() -> object:
+    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    manager = NativeSurfaceManager(
+        app=playback.app,
+        session=object(),
+        status_provider=_status_provider(playback.app),
+    )
+
+    result = playback.run(
+        (0.00, "/settings\r"),
+        (0.01, "zz"),
+        (0.03, ""),
+        handle_local=manager.handle_text,
+        handle_surface_intent=manager.handle_surface_intent,
+        is_local_command=manager.is_local_command,
+    )
+
+    result.assert_exit_code(0)
+    result.assert_text_contains("Settings")
+    result.assert_text_contains("Search: zz")
+    result.assert_text_contains("No matching settings")
+    result.assert_text_not_contains("Status line: off")
+    result.assert_no_clear_screen()
+    return result
+
+
 def _run_long_transcript_input() -> NativeTuiInputPlaybackResult:
     result = (
         NativeTuiInputScenario(width=100, height=18)
@@ -911,6 +939,18 @@ def _recording_drain(calls: list[str]) -> Callable[..., str]:
     return drain
 
 
+def _status_provider(app: object) -> CodingTuiStatusProvider:
+    state = getattr(app, "state")
+    return CodingTuiStatusProvider(
+        model_label=state.model_label,
+        cwd=state.cwd,
+        branch=state.branch,
+        session_label=lambda: state.session_label,
+        thinking_level=lambda: None,
+        running=lambda: state.running,
+    )
+
+
 DEFAULT_SUITE = NativePlaybackSuite(
     (
         NativePlaybackScenarioSpec(
@@ -982,6 +1022,11 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="running-follow-up-queued",
             description="Queue a follow-up while a prompt is running.",
             run=_run_running_follow_up_queued,
+        ),
+        NativePlaybackScenarioSpec(
+            name="settings-search",
+            description="Search the settings surface opened through the native command path.",
+            run=_run_settings_search,
         ),
         NativePlaybackScenarioSpec(
             name="long-transcript-input",

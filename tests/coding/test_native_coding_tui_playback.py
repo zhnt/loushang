@@ -339,6 +339,33 @@ def test_native_tui_playback_settings_surface_toggles_statusline() -> None:
         step.assert_no_clear_scrollback()
 
 
+def test_native_tui_playback_settings_surface_searches_when_opened_by_command() -> None:
+    session = _Session()
+    app = _app()
+    playback = _NativeInteractivePlayback(
+        app,
+        _manager(app, session),
+        columns=100,
+        rows=18,
+    )
+
+    steps = playback.play(
+        [
+            PlaybackEvent.input("/settings\r"),
+            PlaybackEvent.input("zz"),
+        ]
+    )
+
+    assert all(step.flush_succeeded for step in steps)
+    lines = _plain_lines(steps[-1].diagnostics)
+    assert "Settings" in lines
+    assert "Search: zz" in lines
+    assert "  No matching settings" in lines
+    assert app.state.statusline_visible is True
+    for step in steps:
+        step.assert_no_clear_scrollback()
+
+
 def test_native_tui_playback_smokes_terminal_context_model_selector_and_resize() -> None:
     context = _PlaybackTerminalContext()
     session = _Session()

@@ -542,7 +542,7 @@ class NativeSurfaceManager:
         self._open_info("Terminal", text)
 
     def _open_settings(self) -> None:
-        surface = SettingsSurface(list(self.status_provider.settings_list().items), max_visible=8)
+        surface = SettingsSurface(list(self.status_provider.settings_list().items), max_visible=8, enable_search=True)
         self._open_surface(
             NativeSurfaceView(
                 title="Settings",

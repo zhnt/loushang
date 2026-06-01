@@ -29,6 +29,7 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "escape-pending-steer-fifo" in captured.out
     assert "escape-pending-steer-preserves-draft" in captured.out
     assert "running-follow-up-queued" in captured.out
+    assert "settings-search" in captured.out
     assert "bracketed-paste-large-marker" in captured.out
     assert "tool-output-preview" in captured.out
     assert "resize-reflow-stable" in captured.out
@@ -59,6 +60,14 @@ def test_native_tui_playback_runner_runs_lifecycle_scenario(capsys) -> None:
     assert exit_code == 0
     assert "PASS running-steer-queued" in captured.out
     assert "PASS completion-tab" not in captured.out
+
+
+def test_native_tui_playback_runner_runs_settings_search_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["settings-search"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS settings-search" in captured.out
 
 
 def test_native_tui_playback_runner_writes_artifacts(tmp_path, capsys) -> None:
