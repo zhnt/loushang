@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TextIO
 
 from loushang.coding.types import ModelSelection
-from loushang.coding.ui.native_surfaces import NativeSurfaceManager
+from loushang.coding.ui.native_surfaces import NativeSurfaceManager, NativeSurfaceView
 from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
 from loushang.coding.ui.playback import (
     NativeTuiInputPlaybackResult,
@@ -21,7 +21,12 @@ from loushang.coding.ui.playback import (
     NativeTuiLoopScenario,
 )
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
-from loushang.tui import PlaybackFrameBudget, SelectionSurface, SelectItem
+from loushang.tui import (
+    DialogSurface,
+    PlaybackFrameBudget,
+    SelectionSurface,
+    SelectItem,
+)
 from loushang.tui.input import BRACKETED_PASTE_END, BRACKETED_PASTE_START
 from loushang.tui.keyboard_protocol import (
     KITTY_DISABLE_SEQUENCE,
@@ -664,6 +669,31 @@ def _run_approval_surface() -> object:
     return result
 
 
+def _run_dialog_surface() -> object:
+    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    manager = _surface_manager(playback.app)
+    playback.app.active_surface = NativeSurfaceView(
+        title="Confirm",
+        purpose="dialog",
+        content=DialogSurface(title="Confirm", message="Proceed?"),
+        footer="",
+        presentation="bottom-exclusive",
+    )
+
+    result = playback.run(
+        (0.00, "\r"),
+        (0.02, ""),
+        handle_surface_intent=manager.handle_surface_intent,
+    )
+
+    result.assert_exit_code(0)
+    result.assert_text_contains("Confirm")
+    result.assert_text_contains("Proceed?")
+    result.assert_no_clear_screen()
+    assert result.app.active_surface is None
+    return result
+
+
 def _run_long_transcript_input() -> NativeTuiInputPlaybackResult:
     result = (
         NativeTuiInputScenario(width=100, height=18)
@@ -1178,6 +1208,11 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="approval-surface",
             description="Approve an active native approval surface and verify its callback payload.",
             run=_run_approval_surface,
+        ),
+        NativePlaybackScenarioSpec(
+            name="dialog-surface",
+            description="Confirm an active native dialog surface without repainting the screen.",
+            run=_run_dialog_surface,
         ),
         NativePlaybackScenarioSpec(
             name="long-transcript-input",
