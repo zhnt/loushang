@@ -709,6 +709,31 @@ def _run_commands_info_surface() -> object:
     return result
 
 
+def _run_commands_info_session_command() -> object:
+    playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
+    session = _SessionCommandSession()
+    manager = _surface_manager(playback.app, session=session)
+
+    result = playback.run(
+        (0.00, "/commands name\r"),
+        (0.01, "\r"),
+        (0.03, ""),
+        handle_local=manager.handle_text,
+        handle_surface_intent=manager.handle_surface_intent,
+        is_local_command=manager.is_local_command,
+    )
+
+    result.assert_exit_code(0)
+    result.assert_text_contains("Commands")
+    result.assert_text_contains("/name <name> - Set session display name (builtin)")
+    result.assert_text_not_contains("/status - Show current status (local)")
+    result.assert_no_clear_screen()
+    assert session.commands == []
+    assert session.prompts == []
+    assert result.app.active_surface is None
+    return result
+
+
 def _run_statusline_command() -> object:
     playback = NativeTuiLoopPlayback(width=100, height=18, model_label="moonshot/kimi-for-coding")
     manager = _surface_manager(playback.app)
@@ -1519,6 +1544,11 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="commands-info-surface",
             description="Open and close the native commands info surface through the local command path.",
             run=_run_commands_info_surface,
+        ),
+        NativePlaybackScenarioSpec(
+            name="commands-info-session-command",
+            description="Show session commands in the native commands info surface without executing them.",
+            run=_run_commands_info_session_command,
         ),
         NativePlaybackScenarioSpec(
             name="settings-search",

@@ -38,6 +38,7 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "command-palette-select" in captured.out
     assert "command-palette-session-command" in captured.out
     assert "commands-info-surface" in captured.out
+    assert "commands-info-session-command" in captured.out
     assert "settings-search" in captured.out
     assert "model-select" in captured.out
     assert "model-select-search" in captured.out
@@ -123,6 +124,14 @@ def test_native_tui_playback_runner_runs_info_surface_scenarios(capsys) -> None:
     assert exit_code == 0
     assert "PASS status-surface" in captured.out
     assert "PASS commands-info-surface" in captured.out
+
+
+def test_native_tui_playback_runner_runs_commands_info_session_command_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["commands-info-session-command"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS commands-info-session-command" in captured.out
 
 
 def test_native_tui_playback_runner_runs_statusline_command_scenario(capsys) -> None:
