@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from loushang.ai.types import ImagePart
+from loushang.coding.commands.catalog import CodingCommandCatalog
 from loushang.coding.ui.intent import (
     AbortIntent,
     BashIntent,
@@ -16,6 +17,7 @@ from loushang.coding.ui.intent import (
     QuitIntent,
 )
 from loushang.observability import get_log
+from loushang.runtime.commands import CommandEffectKind
 
 log = get_log(__name__).bind(component="CodingUiController")
 
@@ -39,6 +41,8 @@ class CodingUiController:
             return ControllerResult(handled=False)
         try:
             if isinstance(intent, PromptIntent):
+                if await self._dispatch_session_command(intent):
+                    return ControllerResult()
                 await self._prompt(intent.text, images=intent.images)
                 return ControllerResult()
             if isinstance(intent, BashIntent):
@@ -132,6 +136,25 @@ class CodingUiController:
             raise RuntimeError("Session does not support prompts")
         await _call_text_method(method, text, images=images)
 
+    async def _dispatch_session_command(self, intent: PromptIntent) -> bool:
+        if intent.images:
+            return False
+        executor = getattr(self.session, "execute_command_async", None)
+        if not callable(executor):
+            return False
+        catalog = CodingCommandCatalog(session_commands=_session_commands_provider(self.session))
+        effect = catalog.effect_for_route("dispatch", intent)
+        if effect is None or effect.kind is not CommandEffectKind.SESSION:
+            return False
+        if effect.command.source not in {"builtin", "extension"}:
+            return False
+        invocation_name = effect.payload.get("invocation_name")
+        args = effect.payload.get("args", "")
+        if not isinstance(invocation_name, str) or not isinstance(args, str):
+            return False
+        await _maybe_await(executor(invocation_name, args))
+        return True
+
     async def _bash(self, command: str) -> None:
         method = getattr(self.session, "execute_bash", None)
         if not callable(method):
@@ -186,6 +209,13 @@ def _supports_keyword(method: Any, keyword: str) -> bool:
         return False
     parameters = signature.parameters.values()
     return any(parameter.kind is inspect.Parameter.VAR_KEYWORD or parameter.name == keyword for parameter in parameters)
+
+
+def _session_commands_provider(session: Any):
+    getter = getattr(session, "list_commands", None)
+    if not callable(getter):
+        return None
+    return getter
 
 
 async def _maybe_await(value: Any) -> Any:

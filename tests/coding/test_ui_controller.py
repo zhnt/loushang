@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 
 class _Session:
@@ -152,6 +153,72 @@ def test_controller_dispatches_prompt_intent_to_session_prompt() -> None:
 
     assert result.error_message is None
     assert session.prompts == ["hello"]
+
+
+def test_controller_dispatches_catalog_session_command_without_prompting_agent() -> None:
+    from loushang.coding.ui.controller import CodingUiController
+    from loushang.coding.ui.intent import PromptIntent
+
+    class CommandSession(_Session):
+        def __init__(self) -> None:
+            super().__init__()
+            self.commands: list[tuple[str, str]] = []
+
+        def list_commands(self) -> list[object]:
+            return [
+                SimpleNamespace(
+                    name="name",
+                    description="Set session display name",
+                    source="builtin",
+                    argument_hint="<name>",
+                )
+            ]
+
+        async def execute_command_async(self, invocation_name: str, args: str) -> object:
+            self.commands.append((invocation_name, args))
+            return SimpleNamespace(invocation_name=invocation_name, result=None)
+
+    session = CommandSession()
+    controller = CodingUiController(session=session)
+
+    result = asyncio.run(controller.dispatch(PromptIntent(text="/name Project Alpha")))
+
+    assert result.error_message is None
+    assert session.commands == [("name", "Project Alpha")]
+    assert session.prompts == []
+
+
+def test_controller_leaves_prompt_resource_commands_on_prompt_path() -> None:
+    from loushang.coding.ui.controller import CodingUiController
+    from loushang.coding.ui.intent import PromptIntent
+
+    class PromptResourceSession(_Session):
+        def __init__(self) -> None:
+            super().__init__()
+            self.commands: list[tuple[str, str]] = []
+
+        def list_commands(self) -> list[object]:
+            return [
+                SimpleNamespace(
+                    name="review",
+                    description="Review pull request",
+                    source="prompt",
+                    argument_hint="<PR-URL>",
+                )
+            ]
+
+        async def execute_command_async(self, invocation_name: str, args: str) -> object:
+            self.commands.append((invocation_name, args))
+            return SimpleNamespace(invocation_name=invocation_name, result={"text": "expanded prompt"})
+
+    session = PromptResourceSession()
+    controller = CodingUiController(session=session)
+
+    result = asyncio.run(controller.dispatch(PromptIntent(text="/review https://example.test/pr/1")))
+
+    assert result.error_message is None
+    assert session.commands == []
+    assert session.prompts == ["/review https://example.test/pr/1"]
 
 
 def test_controller_dispatches_prompt_images_to_session_prompt() -> None:
