@@ -579,17 +579,13 @@ class InputRouter:
     def _move_up_or_history(self) -> None:
         if self.composer.browsing_history:
             self.composer.history_previous()
-        elif self.composer.value:
-            self.composer.move_visual_up(width=self.width)
-        else:
+        elif not self.composer.value or not self.composer.move_visual_up(width=self.width):
             self.composer.history_previous()
 
     def _move_down_or_history(self) -> None:
         if self.composer.browsing_history:
             self.composer.history_next()
-        elif self.composer.value:
-            self.composer.move_visual_down(width=self.width)
-        else:
+        elif not self.composer.value or not self.composer.move_visual_down(width=self.width):
             self.composer.history_next()
 
     def _keybindings(self) -> KeybindingManager:

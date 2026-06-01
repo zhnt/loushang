@@ -387,6 +387,35 @@ def test_input_router_history_down_restores_draft_after_browsing() -> None:
     assert composer.value == ""
 
 
+def test_input_router_browses_history_from_non_empty_single_line_draft() -> None:
+    composer = Composer(prompt="> ")
+    composer.add_history("first")
+    composer.add_history("second")
+    composer.insert_text("draft")
+    router = InputRouter(composer=composer, width=20)
+
+    assert router.route(InputEvent(kind="key", key="up")) == ()
+    assert composer.value == "second"
+    assert router.route(InputEvent(kind="key", key="up")) == ()
+    assert composer.value == "first"
+    assert router.route(InputEvent(kind="key", key="down")) == ()
+    assert composer.value == "second"
+    assert router.route(InputEvent(kind="key", key="down")) == ()
+    assert composer.value == "draft"
+
+
+def test_input_router_uses_visual_up_before_history_for_multiline_draft() -> None:
+    composer = Composer(prompt="> ")
+    composer.add_history("history")
+    composer.insert_text("alpha\nbeta")
+    router = InputRouter(composer=composer, width=20)
+
+    assert router.route(InputEvent(kind="key", key="up")) == ()
+    assert composer.value == "alpha\nbeta"
+    assert router.route(InputEvent(kind="key", key="up")) == ()
+    assert composer.value == "history"
+
+
 def test_input_router_routes_completion_navigation_before_composer_arrows() -> None:
     composer = Composer(prompt="> ")
     assert callable(getattr(composer, "set_completion_items", None))

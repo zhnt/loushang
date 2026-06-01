@@ -190,6 +190,9 @@ class NativeTuiInputPlaybackResult(PlaybackResult):
     def assert_abort_requested(self) -> None:
         assert any(result.abort_requested for result in self.input_results)
 
+    def assert_no_abort_requested(self) -> None:
+        assert not any(result.abort_requested for result in self.input_results)
+
     def assert_pending_steers(self, *expected: str) -> None:
         assert self.app.state.pending_steers == list(expected)
 
@@ -237,6 +240,11 @@ class NativeTuiInputScenario(PlaybackScenario):
     def with_pending_steers(self, *texts: str) -> NativeTuiInputScenario:
         for text in texts:
             self.app.queue_steer(text)
+        return self
+
+    def with_history(self, *texts: str) -> NativeTuiInputScenario:
+        for text in texts:
+            self.app.composer.add_history(text)
         return self
 
     def with_active_surface(self, surface: object) -> NativeTuiInputScenario:

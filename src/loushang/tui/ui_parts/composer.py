@@ -255,11 +255,11 @@ class Composer:
                 self._refresh_completion_items()
                 return
 
-    def move_visual_up(self, *, width: int) -> None:
-        self._move_visual(delta=-1, width=width)
+    def move_visual_up(self, *, width: int) -> bool:
+        return self._move_visual(delta=-1, width=width)
 
-    def move_visual_down(self, *, width: int) -> None:
-        self._move_visual(delta=1, width=width)
+    def move_visual_down(self, *, width: int) -> bool:
+        return self._move_visual(delta=1, width=width)
 
     def move_visual_page_up(self, *, width: int, visible_lines: int) -> None:
         for _ in range(_page_visual_delta(visible_lines)):
@@ -616,7 +616,7 @@ class Composer:
             index += 1
         return index
 
-    def _move_visual(self, *, delta: int, width: int) -> None:
+    def _move_visual(self, *, delta: int, width: int) -> bool:
         segments = _visual_segments(
             "".join(_atom_display(atom) for atom in self._atoms),
             prompt=self.prompt,
@@ -624,7 +624,8 @@ class Composer:
             width=width,
         )
         if not segments:
-            return
+            return False
+        previous_cursor = self._cursor
         display_cursor = self._display_cursor()
         current_index = _find_visual_segment_index(segments, display_cursor)
         target_index = max(0, min(len(segments) - 1, current_index + delta))
@@ -641,6 +642,7 @@ class Composer:
         snapped = self._move_cursor_to_display_width(target_segment.start_width + min(current_column, target_width))
         if snapped:
             self._preferred_visual_column = current_column
+        return self._cursor != previous_cursor
 
     def _move_cursor_to_display_width(self, target_width: int) -> bool:
         target_width = max(0, target_width)

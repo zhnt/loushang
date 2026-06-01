@@ -226,6 +226,69 @@ def _run_completion_tab() -> NativeTuiInputPlaybackResult:
     return result
 
 
+def _run_completion_navigation_priority() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .with_history("history prompt")
+        .with_completion_items("/model", "/models")
+        .render()
+        .type_text("/mod")
+        .key("\x1b[B")
+        .tab()
+        .run()
+    )
+    result.assert_composer_text("/models ")
+    result.assert_visible_contains("› /models")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
+def _run_history_navigation() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .with_history("first prompt", "second prompt")
+        .render()
+        .type_text("draft")
+        .key("\x1b[A")
+        .key("\x1b[A")
+        .key("\x1b[B")
+        .key("\x1b[B")
+        .run()
+    )
+    assert [state["composer_text"] for state in result.step_coding_states[1:]] == [
+        "draft",
+        "second prompt",
+        "first prompt",
+        "second prompt",
+        "draft",
+    ]
+    result.assert_composer_text("draft")
+    result.assert_visible_contains("› draft")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
+def _run_idle_escape_clears_draft() -> NativeTuiInputPlaybackResult:
+    result = (
+        NativeTuiInputScenario(width=80, height=12)
+        .render()
+        .type_text("draft")
+        .escape()
+        .run()
+    )
+    result.assert_composer_text("")
+    result.assert_no_abort_requested()
+    result.assert_visible_not_contains("› draft")
+    result.assert_no_clear_screen()
+    result.assert_cursor_matches_diagnostics()
+    INTERACTION_FRAME_BUDGET.assert_result(result, skip_first=True)
+    return result
+
+
 def _run_local_command() -> NativeTuiInputPlaybackResult:
     result = (
         NativeTuiInputScenario(width=80, height=12)
@@ -823,6 +886,21 @@ DEFAULT_SUITE = NativePlaybackSuite(
             name="completion-tab",
             description="Apply tab completion without clearing or repainting the screen.",
             run=_run_completion_tab,
+        ),
+        NativePlaybackScenarioSpec(
+            name="completion-navigation-priority",
+            description="Route completion navigation before history navigation.",
+            run=_run_completion_navigation_priority,
+        ),
+        NativePlaybackScenarioSpec(
+            name="history-navigation",
+            description="Browse prompt history from a non-empty draft and restore the draft.",
+            run=_run_history_navigation,
+        ),
+        NativePlaybackScenarioSpec(
+            name="idle-escape-clears-draft",
+            description="Clear an idle composer draft with ESC without aborting a run.",
+            run=_run_idle_escape_clears_draft,
         ),
         NativePlaybackScenarioSpec(
             name="local-command",

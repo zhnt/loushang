@@ -116,15 +116,15 @@ class NativeInputRouter:
             self._jump_mode = "backward"
             return NativeInputResult()
         if keybindings.matches(event.key, "tui.editor.cursorUp"):
-            if self.app.composer.value:
-                self.app.composer.move_visual_up(width=self.width)
-            else:
+            if self.app.composer.browsing_history:
+                self.app.composer.history_previous()
+            elif not self.app.composer.value or not self.app.composer.move_visual_up(width=self.width):
                 self.app.composer.history_previous()
             return NativeInputResult()
         if keybindings.matches(event.key, "tui.editor.cursorDown"):
-            if self.app.composer.value:
-                self.app.composer.move_visual_down(width=self.width)
-            else:
+            if self.app.composer.browsing_history:
+                self.app.composer.history_next()
+            elif not self.app.composer.value or not self.app.composer.move_visual_down(width=self.width):
                 self.app.composer.history_next()
             return NativeInputResult()
         if self.app.state.running and event.key in self.follow_up_keys:

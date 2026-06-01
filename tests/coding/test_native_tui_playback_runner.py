@@ -18,6 +18,9 @@ def test_native_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "completion-tab" in captured.out
+    assert "completion-navigation-priority" in captured.out
+    assert "history-navigation" in captured.out
+    assert "idle-escape-clears-draft" in captured.out
     assert "long-transcript-input" in captured.out
     assert "escape-pending-steer" in captured.out
     assert "running-steer-queued" in captured.out
