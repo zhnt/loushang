@@ -23,6 +23,11 @@ async def run_prompt_command(
     verbose: bool = False,
     work_event_log: EventLogBackend | None = None,
     method_id: str | None = None,
+    plan_id: str | None = None,
+    step_id: str | None = None,
+    step_index: int | None = None,
+    step_title: str | None = None,
+    dispose: bool = True,
 ) -> int:
     """Run one product prompt and render the stable coding transcript."""
 
@@ -44,6 +49,10 @@ async def run_prompt_command(
             images=images,
             work_event_log=work_event_log,
             method_id=method_id,
+            plan_id=plan_id,
+            step_id=step_id,
+            step_index=step_index,
+            step_title=step_title,
         )
         if exit_code == 0:
             for message in follow_up_messages:
@@ -54,6 +63,10 @@ async def run_prompt_command(
                     message,
                     work_event_log=work_event_log,
                     method_id=method_id,
+                    plan_id=plan_id,
+                    step_id=step_id,
+                    step_index=step_index,
+                    step_title=step_title,
                 )
                 if exit_code != 0:
                     break
@@ -64,13 +77,14 @@ async def run_prompt_command(
         exit_code = 1
     finally:
         unsubscribe()
-        try:
-            await _dispose_runtime_or_session(runtime, session)
-        except Exception as exc:
-            renderer.render_error(str(exc) or exc.__class__.__name__)
-            if verbose:
-                traceback.print_exception(type(exc), exc, exc.__traceback__, file=stderr)
-            exit_code = 1
+        if dispose:
+            try:
+                await _dispose_runtime_or_session(runtime, session)
+            except Exception as exc:
+                renderer.render_error(str(exc) or exc.__class__.__name__)
+                if verbose:
+                    traceback.print_exception(type(exc), exc, exc.__traceback__, file=stderr)
+                exit_code = 1
     return exit_code
 
 
@@ -83,11 +97,25 @@ async def _run_turn(
     images: list[object] | None = None,
     work_event_log: EventLogBackend | None = None,
     method_id: str | None = None,
+    plan_id: str | None = None,
+    step_id: str | None = None,
+    step_index: int | None = None,
+    step_title: str | None = None,
 ) -> int:
     started_at = time.monotonic()
     previous_error = event_renderer.last_error_message
     renderer.render_user(prompt)
-    await _run_prompt_session(session, prompt, images=images, work_event_log=work_event_log, method_id=method_id)
+    await _run_prompt_session(
+        session,
+        prompt,
+        images=images,
+        work_event_log=work_event_log,
+        method_id=method_id,
+        plan_id=plan_id,
+        step_id=step_id,
+        step_index=step_index,
+        step_title=step_title,
+    )
     await session.wait_for_idle()
     assistant_failure = _last_assistant_failure_message(session)
     if assistant_failure is None and event_renderer.last_error_message != previous_error:
@@ -105,6 +133,10 @@ async def _run_prompt_session(
     images: list[object] | None = None,
     work_event_log: EventLogBackend | None = None,
     method_id: str | None = None,
+    plan_id: str | None = None,
+    step_id: str | None = None,
+    step_index: int | None = None,
+    step_title: str | None = None,
 ) -> None:
     if work_event_log is None:
         await _prompt_session(session, user_input, images=images)
@@ -115,6 +147,10 @@ async def _run_prompt_session(
         session_id=_work_session_id(session),
         images=images,
         method_id=method_id,
+        plan_id=plan_id,
+        step_id=step_id,
+        step_index=step_index,
+        step_title=step_title,
     )
 
 

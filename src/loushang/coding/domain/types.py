@@ -35,6 +35,11 @@ class CodingDomainRequest:
 class CodingDomainPreparedTurn:
     prepared_prompt: str
     method_id: str | None = None
+    plan_id: str | None = None
+    plan_mode: str | None = None
+    step_id: str | None = None
+    step_index: int | None = None
+    step_title: str | None = None
     method_guidance: str | None = None
     metadata: Mapping[str, object] = field(default_factory=lambda: _EMPTY_METADATA)
 

@@ -132,6 +132,10 @@ def create_mode_adapter(
     session: Any | None = None,
     work_event_log: EventLogBackend | None = None,
     method_id: str | None = None,
+    plan_id: str | None = None,
+    step_id: str | None = None,
+    step_index: int | None = None,
+    step_title: str | None = None,
 ) -> ModeAdapter:
     """Create the concrete adapter for a configured coding mode."""
 
@@ -164,6 +168,10 @@ def create_mode_adapter(
         render_tool_events=config.render_tool_events,
         work_event_log=work_event_log,
         method_id=method_id,
+        plan_id=plan_id,
+        step_id=step_id,
+        step_index=step_index,
+        step_title=step_title,
     )
 
 
@@ -180,6 +188,11 @@ async def run_mode(
     follow_up_messages: Sequence[str] = (),
     work_event_log: EventLogBackend | None = None,
     method_id: str | None = None,
+    plan_id: str | None = None,
+    step_id: str | None = None,
+    step_index: int | None = None,
+    step_title: str | None = None,
+    dispose: bool = True,
 ) -> int:
     adapter = create_mode_adapter(
         config,
@@ -190,7 +203,16 @@ async def run_mode(
         stderr=stderr,
         work_event_log=work_event_log,
         method_id=method_id,
+        plan_id=plan_id,
+        step_id=step_id,
+        step_index=step_index,
+        step_title=step_title,
     )
     if config.mode == "rpc":
         return await adapter.start(user_input)
-    return await adapter.start(user_input, images=images, follow_up_messages=follow_up_messages)
+    return await adapter.start(
+        user_input,
+        images=images,
+        follow_up_messages=follow_up_messages,
+        dispose=dispose,
+    )

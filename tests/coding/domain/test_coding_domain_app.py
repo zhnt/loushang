@@ -29,6 +29,11 @@ def test_coding_domain_prepared_turn_defaults() -> None:
 
     assert prepared.prepared_prompt == "review this change"
     assert prepared.method_id is None
+    assert prepared.plan_id is None
+    assert prepared.plan_mode is None
+    assert prepared.step_id is None
+    assert prepared.step_index is None
+    assert prepared.step_title is None
     assert prepared.method_guidance is None
     assert prepared.metadata == {}
 
@@ -177,6 +182,49 @@ def test_prepare_turn_with_method_resource_adds_guidance(tmp_path: Path) -> None
     assert "Use the review method." in prepared.method_guidance
     assert prepared.metadata["meta_role"] == "VALIDATOR"
     assert prepared.prepared_prompt.endswith("User request:\n\ncheck src/app.py")
+
+
+def test_prepare_turns_with_fixed_method_prepares_each_step(tmp_path: Path) -> None:
+    method_dir = tmp_path / "methods" / "task" / "review"
+    method_dir.mkdir(parents=True)
+    (method_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: review\n"
+        "description: Review changes.\n"
+        "type: task\n"
+        "meta_role: VALIDATOR\n"
+        "plan_mode: fixed\n"
+        "steps:\n"
+        "  - inspect\n"
+        "  - verify\n"
+        "step_titles:\n"
+        "  inspect: Inspect current changes\n"
+        "  verify: Run focused checks\n"
+        "step_guidance:\n"
+        "  inspect: Read changed files and summarize intent.\n"
+        "  verify: Run focused tests or explain why they cannot run.\n"
+        "---\n\n"
+        "Use the review method.",
+        encoding="utf-8",
+    )
+    request = CodingDomainRequest(
+        user_input="check src/app.py",
+        cwd=tmp_path,
+        method="review",
+    )
+
+    prepared_turns = CodingDomainApp().prepare_turns(request)
+
+    assert len(prepared_turns) == 2
+    assert [turn.step_id for turn in prepared_turns] == ["inspect", "verify"]
+    assert [turn.step_index for turn in prepared_turns] == [0, 1]
+    assert [turn.step_title for turn in prepared_turns] == ["Inspect current changes", "Run focused checks"]
+    assert all(turn.method_id == "method:task:review" for turn in prepared_turns)
+    assert all(turn.plan_id == "plan:method:task:review" for turn in prepared_turns)
+    assert all(turn.plan_mode == "fixed" for turn in prepared_turns)
+    assert "Read changed files and summarize intent." in prepared_turns[0].prepared_prompt
+    assert "Run focused tests or explain why they cannot run." in prepared_turns[1].prepared_prompt
+    assert prepared_turns[0].prepared_prompt.endswith("User request:\n\ncheck src/app.py")
 
 
 def test_prepare_turn_missing_method_raises_value_error(tmp_path: Path) -> None:

@@ -319,6 +319,31 @@ def _write_debug_method(project_root: Path) -> None:
     )
 
 
+def _write_fixed_review_method(project_root: Path) -> None:
+    method_dir = project_root / "methods" / "task" / "review"
+    method_dir.mkdir(parents=True)
+    (method_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: review\n"
+        "description: Review changes.\n"
+        "type: task\n"
+        "meta_role: VALIDATOR\n"
+        "plan_mode: fixed\n"
+        "steps:\n"
+        "  - inspect\n"
+        "  - verify\n"
+        "step_titles:\n"
+        "  inspect: Inspect current changes\n"
+        "  verify: Run focused checks\n"
+        "step_guidance:\n"
+        "  inspect: Read changed files and summarize intent.\n"
+        "  verify: Run focused tests or explain why they cannot run.\n"
+        "---\n\n"
+        "Use concise review guidance.",
+        encoding="utf-8",
+    )
+
+
 def test_parse_args_supports_modes_sessions_and_overrides() -> None:
     from loushang.coding.cli.args import parse_args
 
@@ -2338,6 +2363,47 @@ def test_run_cli_dash_p_with_method_prepares_prompt_and_method_id(tmp_path) -> N
     assert call["prompt"].endswith("User request:\n\ncheck src/app.py")
 
 
+def test_run_cli_dash_p_with_fixed_method_executes_each_step(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    _write_fixed_review_method(tmp_path)
+    runtime = FakeRuntime(FakeSession("session-1"))
+    prompt_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--method", "review", "-p", "check src/app.py"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            prompt_runner=prompt_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert len(prompt_runner.calls) == 2
+    first_call = prompt_runner.calls[0]
+    second_call = prompt_runner.calls[1]
+    assert first_call["method_id"] == "method:task:review"
+    assert first_call["plan_id"] == "plan:method:task:review"
+    assert first_call["step_id"] == "inspect"
+    assert first_call["step_index"] == 0
+    assert first_call["step_title"] == "Inspect current changes"
+    assert "Read changed files and summarize intent." in first_call["prompt"]
+    assert first_call["prompt"].endswith("User request:\n\ncheck src/app.py")
+    assert second_call["method_id"] == "method:task:review"
+    assert second_call["plan_id"] == "plan:method:task:review"
+    assert second_call["step_id"] == "verify"
+    assert second_call["step_index"] == 1
+    assert second_call["step_title"] == "Run focused checks"
+    assert "Run focused tests or explain why they cannot run." in second_call["prompt"]
+    assert second_call["prompt"].endswith("User request:\n\ncheck src/app.py")
+
+
 def test_run_cli_dash_p_with_no_method_suppresses_method(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
@@ -2895,6 +2961,49 @@ def test_run_cli_mode_print_with_method_prepares_prompt_and_method_id(tmp_path) 
     assert "Use concise review guidance." in call["user_input"]
     assert call["user_input"].endswith("User request:\n\ncheck src/app.py")
     assert call["output_mode"] == "text"
+
+
+def test_run_cli_mode_print_with_fixed_method_executes_each_step(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    _write_fixed_review_method(tmp_path)
+    runtime = FakeRuntime(FakeSession("session-1"))
+    print_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--method", "review", "--mode", "print", "check src/app.py"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            print_runner=print_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert len(print_runner.calls) == 2
+    first_call = print_runner.calls[0]
+    second_call = print_runner.calls[1]
+    assert first_call["method_id"] == "method:task:review"
+    assert first_call["plan_id"] == "plan:method:task:review"
+    assert first_call["step_id"] == "inspect"
+    assert first_call["step_index"] == 0
+    assert first_call["step_title"] == "Inspect current changes"
+    assert "Read changed files and summarize intent." in first_call["user_input"]
+    assert first_call["user_input"].endswith("User request:\n\ncheck src/app.py")
+    assert first_call["output_mode"] == "text"
+    assert second_call["method_id"] == "method:task:review"
+    assert second_call["plan_id"] == "plan:method:task:review"
+    assert second_call["step_id"] == "verify"
+    assert second_call["step_index"] == 1
+    assert second_call["step_title"] == "Run focused checks"
+    assert "Run focused tests or explain why they cannot run." in second_call["user_input"]
+    assert second_call["user_input"].endswith("User request:\n\ncheck src/app.py")
+    assert second_call["output_mode"] == "text"
 
 
 def test_run_cli_mode_print_uses_method_default_from_settings(tmp_path) -> None:
@@ -3611,6 +3720,47 @@ def test_run_cli_default_path_with_method_prepares_prompt_and_method_id(tmp_path
     assert call["method_id"] == "method:task:review"
     assert "Use concise review guidance." in call["user_input"]
     assert call["user_input"].endswith("User request:\n\ncheck src/app.py")
+
+
+def test_run_cli_default_path_with_fixed_method_executes_each_step(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    _write_fixed_review_method(tmp_path)
+    runtime = FakeRuntime(FakeSession("session-1"))
+    mode_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--mode", "json", "--method", "review", "check src/app.py"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            mode_runner=mode_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert len(mode_runner.calls) == 2
+    first_call = mode_runner.calls[0]
+    second_call = mode_runner.calls[1]
+    assert first_call["config"].mode == "json"
+    assert first_call["method_id"] == "method:task:review"
+    assert first_call["plan_id"] == "plan:method:task:review"
+    assert first_call["step_id"] == "inspect"
+    assert first_call["step_index"] == 0
+    assert "Read changed files and summarize intent." in first_call["user_input"]
+    assert first_call["user_input"].endswith("User request:\n\ncheck src/app.py")
+    assert second_call["config"].mode == "json"
+    assert second_call["method_id"] == "method:task:review"
+    assert second_call["plan_id"] == "plan:method:task:review"
+    assert second_call["step_id"] == "verify"
+    assert second_call["step_index"] == 1
+    assert "Run focused tests or explain why they cannot run." in second_call["user_input"]
+    assert second_call["user_input"].endswith("User request:\n\ncheck src/app.py")
 
 
 def test_run_cli_default_path_passes_work_log_backend_to_unified_mode_runner(tmp_path) -> None:

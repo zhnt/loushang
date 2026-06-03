@@ -467,7 +467,7 @@ async def run_cli(
                 return 2
 
             try:
-                prepared_turn = CodingDomainApp(cwd=project_root).prepare_turn(
+                prepared_turns = CodingDomainApp(cwd=project_root).prepare_turns(
                     CodingDomainRequest(
                         user_input=print_input.user_input,
                         cwd=project_root,
@@ -479,51 +479,101 @@ async def run_cli(
                 return 1
 
             if args.prompt is not None:
-                return await prompt_runner(
-                    runtime=runtime,
-                    session=session,
-                    prompt=prepared_turn.prepared_prompt,
-                    stdout=stdout,
-                    stderr=stderr,
-                    images=print_input.images,
-                    follow_up_messages=print_input.follow_up_messages,
-                    verbose=args.verbose,
-                    work_event_log=work_event_log,
-                    method_id=prepared_turn.method_id,
-                )
+                for turn_index, prepared_turn in enumerate(prepared_turns):
+                    is_first_turn = turn_index == 0
+                    is_last_turn = turn_index == len(prepared_turns) - 1
+                    exit_code = await prompt_runner(
+                        runtime=runtime,
+                        session=session,
+                        prompt=prepared_turn.prepared_prompt,
+                        stdout=stdout,
+                        stderr=stderr,
+                        images=print_input.images if is_first_turn else None,
+                        follow_up_messages=print_input.follow_up_messages if is_last_turn else (),
+                        verbose=args.verbose,
+                        work_event_log=work_event_log,
+                        method_id=prepared_turn.method_id,
+                        plan_id=prepared_turn.plan_id,
+                        step_id=prepared_turn.step_id,
+                        step_index=prepared_turn.step_index,
+                        step_title=prepared_turn.step_title,
+                        dispose=is_last_turn,
+                    )
+                    if exit_code != 0:
+                        if not is_last_turn:
+                            await _dispose_runtime_or_session(runtime, session)
+                        return exit_code
+                return 0
 
             output_mode = "text" if args.mode == "print" else args.mode
             if print_runner is not run_print_mode:
-                return await print_runner(
+                for turn_index, prepared_turn in enumerate(prepared_turns):
+                    is_first_turn = turn_index == 0
+                    is_last_turn = turn_index == len(prepared_turns) - 1
+                    exit_code = await print_runner(
+                        runtime=runtime,
+                        session=session,
+                        user_input=prepared_turn.prepared_prompt,
+                        stdout=stdout,
+                        stderr=stderr,
+                        images=print_input.images if is_first_turn else None,
+                        follow_up_messages=print_input.follow_up_messages if is_last_turn else (),
+                        output_mode=output_mode,
+                        render_tool_events=args.render_tool_events,
+                        work_event_log=work_event_log,
+                        method_id=prepared_turn.method_id,
+                        plan_id=prepared_turn.plan_id,
+                        step_id=prepared_turn.step_id,
+                        step_index=prepared_turn.step_index,
+                        step_title=prepared_turn.step_title,
+                        dispose=is_last_turn,
+                    )
+                    if exit_code != 0:
+                        if not is_last_turn:
+                            await _dispose_runtime_or_session(runtime, session)
+                        return exit_code
+                return 0
+
+            for turn_index, prepared_turn in enumerate(prepared_turns):
+                is_first_turn = turn_index == 0
+                is_last_turn = turn_index == len(prepared_turns) - 1
+                exit_code = await mode_runner(
+                    config=ModeConfig(
+                        mode=args.mode,
+                        render_tool_events=args.render_tool_events,
+                    ),
                     runtime=runtime,
                     session=session,
                     user_input=prepared_turn.prepared_prompt,
+                    images=print_input.images if is_first_turn else None,
+                    follow_up_messages=print_input.follow_up_messages if is_last_turn else (),
+                    stdin=stdin,
                     stdout=stdout,
                     stderr=stderr,
-                    images=print_input.images,
-                    follow_up_messages=print_input.follow_up_messages,
-                    output_mode=output_mode,
-                    render_tool_events=args.render_tool_events,
                     work_event_log=work_event_log,
                     method_id=prepared_turn.method_id,
+                    plan_id=prepared_turn.plan_id,
+                    step_id=prepared_turn.step_id,
+                    step_index=prepared_turn.step_index,
+                    step_title=prepared_turn.step_title,
+                    dispose=is_last_turn,
                 )
+                if exit_code != 0:
+                    if not is_last_turn:
+                        await _dispose_runtime_or_session(runtime, session)
+                    return exit_code
+            return 0
 
-            return await mode_runner(
-                config=ModeConfig(
-                    mode=args.mode,
-                    render_tool_events=args.render_tool_events,
-                ),
-                runtime=runtime,
-                session=session,
-                user_input=prepared_turn.prepared_prompt,
-                images=print_input.images,
-                follow_up_messages=print_input.follow_up_messages,
-                stdin=stdin,
-                stdout=stdout,
-                stderr=stderr,
-                work_event_log=work_event_log,
-                method_id=prepared_turn.method_id,
-            )
+
+async def _dispose_runtime_or_session(runtime: Any, session: Any) -> None:
+    disposer = getattr(runtime, "dispose", None)
+    if not callable(disposer):
+        disposer = getattr(session, "dispose", None)
+    if not callable(disposer):
+        return
+    result = disposer()
+    if inspect.isawaitable(result):
+        await result
 
 
 def _resolve_session_dir(args: CliArgs, project_root: Path, services: Any) -> Path:
