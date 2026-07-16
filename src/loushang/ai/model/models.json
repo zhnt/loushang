@@ -91,6 +91,92 @@
         }
       }
     },
+    "atlascloud": {
+      "displayName": "Atlas Cloud",
+      "website": "https://www.atlascloud.ai/docs",
+      "auth": {
+        "kind": "apiKey",
+        "apiKeyEnv": "ATLASCLOUD_API_KEY",
+        "header": "Authorization",
+        "prefix": "Bearer "
+      },
+      "endpoints": {
+        "openai-completions": {
+          "displayName": "Atlas Cloud OpenAI-compatible Chat Completions",
+          "api": "openai-completions",
+          "baseUrl": "https://api.atlascloud.ai/v1",
+          "preferred": true,
+          "docs": "https://www.atlascloud.ai/docs",
+          "transport": {
+            "kind": "http",
+            "stream": "sse"
+          },
+          "models": {
+            "qwen/qwen3.5-flash": {
+              "displayName": "Qwen3.5 Flash",
+              "family": "qwen3.5",
+              "alias": "default-chat",
+              "defaults": {
+                "maxOutputTokens": 4096
+              },
+              "capabilities": {
+                "contextWindow": 131072,
+                "maxTokens": 32768,
+                "input": [
+                  "text"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": false,
+                "stream": true,
+                "toolUse": false,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": true
+              }
+            },
+            "deepseek-ai/deepseek-v4-pro": {
+              "displayName": "DeepSeek V4 Pro",
+              "family": "deepseek-v4",
+              "defaults": {
+                "maxOutputTokens": 4096
+              },
+              "capabilities": {
+                "contextWindow": 131072,
+                "maxTokens": 32768,
+                "input": [
+                  "text"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": false,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": true
+              }
+            }
+          },
+          "adapter": {
+            "store": false,
+            "developerRole": false,
+            "streamingUsage": false,
+            "reasoningEffort": false,
+            "strictSchema": false,
+            "maxOutputTokensField": "max_tokens",
+            "toolResultName": false,
+            "assistantAfterToolResult": false,
+            "toolStream": false,
+            "thinkingAsText": false,
+            "assistantReasoningContent": false,
+            "reasoningFormat": "openai"
+          }
+        }
+      }
+    },
     "baidu-qianfan": {
       "displayName": "Baidu Qianfan",
       "website": "https://cloud.baidu.com/product/qianfan",
