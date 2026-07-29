@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from io import StringIO
 
-from loushang.channel import ProductHostLifecycle, stream_is_tty
+from loushang.harness.host.product_host import ProductHostLifecycle, stream_is_tty
 
 
 def test_product_host_lifecycle_resolves_injected_streams() -> None:

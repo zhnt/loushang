@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
 
@@ -11,14 +9,12 @@ from loushang.channel import (
     ChannelEnvelope,
     ChannelError,
     ChannelEventDelivery,
-    ChannelJsonProjectionError,
     ChannelOperationAccepted,
     ChannelOperationCancelled,
     ChannelOperationCancelRequest,
     ChannelOperationRequest,
     decode_rpc_jsonl_frame,
     encode_rpc_jsonl_frame,
-    project_channel_value,
     rpc_jsonl_frame_from_json,
     rpc_jsonl_frame_to_json,
 )
@@ -176,26 +172,6 @@ def test_frames_reject_channel_envelopes_with_the_wrong_payload_family() -> None
                 payload=_event(),
             ),
         )
-
-
-def test_coding_rpc_projection_is_a_thin_channel_compatibility_entrypoint() -> None:
-    @dataclass(frozen=True)
-    class Result:
-        path: Path
-        values: tuple[int, int]
-
-    value = Result(path=Path("report.md"), values=(1, 2))
-
-    assert project_channel_value(value) == project_channel_value(value)
-    assert ChannelJsonProjectionError.__module__ == "loushang.channel.json_projection"
-
-    cyclic: list[object] = []
-    cyclic.append(cyclic)
-    with pytest.raises(
-        ChannelJsonProjectionError,
-        match=r"rpc_output\[0\] cannot be projected to RPC JSON: circular reference",
-    ):
-        project_channel_value(cyclic, name="rpc_output", surface="RPC")
 
 
 def _operation_envelope() -> ChannelEnvelope:

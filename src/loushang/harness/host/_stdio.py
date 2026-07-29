@@ -1,4 +1,4 @@
-"""Shared stdio behavior for Channel hosts."""
+"""Shared stdio behavior for Product-facing hosts."""
 
 from __future__ import annotations
 

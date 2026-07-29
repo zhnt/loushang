@@ -1,7 +1,7 @@
 """Reusable lifecycle primitives for injected Product-facing hosts.
 
 The standard Channel protocol host owns its operation frames in
-``loushang.channel.host``.  This module is deliberately lower level: it owns
+``loushang.channel.host``. This Harness module is deliberately lower level: it owns
 the line-input lifecycle, background task tracking, and a small lifecycle
 action contract that Product-specific RPC, terminal, or embedded hosts can
 adopt without sharing a wire schema.

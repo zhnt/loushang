@@ -1,4 +1,4 @@
-"""Channel binding for the canonical session Work runtime."""
+"""Channel-owned binding for the canonical session Work runtime."""
 
 from __future__ import annotations
 

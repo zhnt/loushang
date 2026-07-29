@@ -35,6 +35,14 @@ planning, work event persistence, or AI provider behavior.
 - [CLI Product Host Collapse](cli-product-host-collapse.md) defines ordered
   standard CLI operation dispatch and shared session/resource/package host
   operations while Products retain grammar, policy, and mode selection.
+- [Product Host Runtime Boundary](product-host-runtime-boundary.md) defines
+  Product-neutral input, task, stream, and disposal lifecycle mechanics below
+  Channel and Product protocols.
+- [JSONL Command Host Boundary](jsonl-command-host-boundary.md) defines strict
+  Product-owned JSONL command input and remote UI correlation without making
+  either mechanism a Channel protocol.
+- [Product CLI Lifecycle Boundary](product-cli-lifecycle-boundary.md) records
+  shared turn ordering, stream binding, TTY detection, and failure disposal.
 - [Coding Shared-Layer Owner Rebaseline](coding-shared-layer-owner-rebaseline.md)
   records shared owners, actual Coding adapters and kernels, and the source
   boundary required before a further migration wave can claim LOC.

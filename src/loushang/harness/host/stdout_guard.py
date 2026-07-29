@@ -1,4 +1,4 @@
-"""Protect structured Channel output from incidental process stdout writes."""
+"""Protect structured host output from incidental process stdout writes."""
 
 from __future__ import annotations
 

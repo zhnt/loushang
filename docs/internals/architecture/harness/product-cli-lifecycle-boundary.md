@@ -8,8 +8,8 @@ resource/package wording, Work/Method preparation, or output schemas.
 
 | Source mechanism | Shared owner | Product injection | Deletion condition |
 | --- | --- | --- | --- |
-| Repeated sequential turn invocation and non-final failure disposal in `coding.cli.__main__` | `channel.ProductHostLifecycle.run_turns` | Product supplies turn values, invocation callback, and runtime/session disposal candidates | Coding uses the lifecycle helper for prompt, print, and mode runner loops; no duplicate loop remains |
-| TTY detection for injected streams | `channel.stream_is_tty` | None | Coding does not implement its own `isatty` probe |
+| Repeated sequential turn invocation and non-final failure disposal in `coding.cli.__main__` | `harness.host.product_host.ProductHostLifecycle.run_turns` | Product supplies turn values, invocation callback, and runtime/session disposal candidates | Coding uses the lifecycle helper for prompt, print, and mode runner loops; no duplicate loop remains |
+| TTY detection for injected streams | `harness.host.product_host.stream_is_tty` | None | Coding does not implement its own `isatty` probe |
 | Prompt/stdin/file/image input normalization | `harness.host.prompt_input` | Coding supplies prompt/file arguments and the image-resize choice | Coding keeps argument parsing and prompt policy; shared resolver has no Coding import |
 | Model listing normalization, sorting, query matching, and metadata table | `harness.session.model_selection` | Coding supplies the model getter and selects JSON/TSV output | Coding keeps preferred-model policy and persistence wording |
 | Command descriptor listing projection | `harness.commands.project_command_descriptor` | Coding supplies descriptors and chooses JSON/TSV output | RPC serializers remain separate; no product wire fields are changed |
@@ -27,9 +27,10 @@ resource/package wording, Work/Method preparation, or output schemas.
 
 ## Non-goals
 
-The Channel layer must not import Coding, Harness, Agent, Method, or Work.  It
-must not parse Coding arguments, choose a mode, construct a session, or project
-product output.  Harness resource/session projections likewise do not parse
+The Harness Host layer must not import Coding, Channel, Method, or Work. It
+must not parse Coding arguments, choose a Product mode, construct a Product
+session, or project Product-specific output. Harness resource/session
+projections likewise do not parse
 Coding arguments or own product wording.  This slice therefore preserves all
 CLI grammar, handlers, wire fields, error text, and product turn metadata.
 

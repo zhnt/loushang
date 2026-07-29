@@ -11,17 +11,6 @@ from pathlib import Path
 from typing import Any, NotRequired, Required, TextIO, TypedDict, cast
 
 from loushang.ai.model import ModelSelection
-from loushang.channel import (
-    JsonlCommand,
-    JsonlCommandHost,
-    JsonlCommandHostError,
-    JsonlCommandRoute,
-    JsonlCommandRouter,
-    ProductHostRuntime,
-    ProductHostTaskTracker,
-    RemoteUiContext,
-    project_channel_value,
-)
 from loushang.harness.commands import complete_slash_commands
 from loushang.harness.diagnostics.serialization import (
     serialize_diagnostic,
@@ -33,7 +22,22 @@ from loushang.harness.events import (
     RuntimeEvent,
     normalize_event_select,
 )
+from loushang.harness.host.json_projection import project_host_value
+from loushang.harness.host.jsonl_command_host import (
+    JsonlCommand,
+    JsonlCommandHost,
+    JsonlCommandHostError,
+)
+from loushang.harness.host.jsonl_command_router import (
+    JsonlCommandRoute,
+    JsonlCommandRouter,
+)
 from loushang.harness.host.mode import ModeAdapter, ModeState
+from loushang.harness.host.product_host import (
+    ProductHostRuntime,
+    ProductHostTaskTracker,
+)
+from loushang.harness.host.remote_ui import RemoteUiContext
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.harness.session import (
     SUPPORTED_JSON_EVENT_VIEWS,
@@ -2476,7 +2480,7 @@ class RpcHost(ModeAdapter):
             return default
 
     def _serialize_json_value(self, value: object) -> object:
-        return project_channel_value(value, name="rpc_output", surface="RPC")
+        return project_host_value(value, name="rpc_output", surface="RPC")
 
     def _camelize(self, value: object) -> object:
         if isinstance(value, dict):
@@ -2646,7 +2650,7 @@ class RpcHost(ModeAdapter):
             if type(value) is not str:
                 return None
             try:
-                projected = project_channel_value(
+                projected = project_host_value(
                     value, name="rpc_fallback", surface="RPC"
                 )
             except Exception:
@@ -2669,7 +2673,7 @@ class RpcHost(ModeAdapter):
             if fallback_command is not None:
                 fallback_payload["command"] = fallback_command
             line = json.dumps(
-                project_channel_value(
+                project_host_value(
                     fallback_payload, name="rpc_fallback", surface="RPC"
                 ),
                 ensure_ascii=False,

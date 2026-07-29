@@ -17,7 +17,6 @@ def test_channel_public_api_exposes_boundary_and_jsonl_surfaces() -> None:
         "ChannelEnvelope",
         "ChannelEnvelopeKind",
         "ChannelEventDelivery",
-        "ChannelJsonProjectionError",
         "ChannelHost",
         "ChannelHostPort",
         "ChannelOperationAccepted",
@@ -28,44 +27,12 @@ def test_channel_public_api_exposes_boundary_and_jsonl_surfaces() -> None:
         "ChannelRpcFrame",
         "ChannelRpcFrameKind",
         "ChannelUnsubscribe",
-        "ProductHostAction",
-        "ProductHostActionType",
-        "ProductHostAdapter",
-        "ProductHostLifecycle",
-        "ProductHostRuntime",
-        "ProductHostStreams",
-        "ProductHostState",
-        "ProductHostStateReader",
-        "ProductHostTaskTracker",
-        "dispose_product_host",
-        "JsonlCommand",
-        "JsonlCommandErrorListener",
-        "JsonlCommandHost",
-        "JsonlCommandHostError",
-        "JsonlCommandHostErrorKind",
-        "JsonlCommandHostErrorReason",
-        "JsonlCommandPort",
-        "JsonlCommandHandler",
-        "JsonlCommandRoute",
-        "JsonlCommandRouter",
-        "JsonlUnsupportedCommandHandler",
-        "RemoteUiContext",
         "channel_envelope_from_json",
         "channel_envelope_to_json",
         "decode_rpc_jsonl_frame",
-        "dispatch_product_host_action",
         "encode_rpc_jsonl_frame",
-        "normalize_product_host_action",
-        "project_channel_value",
         "rpc_jsonl_frame_from_json",
         "rpc_jsonl_frame_to_json",
-        "flush_raw_stdout",
-        "is_stdout_taken_over",
-        "restore_stdout",
-        "stream_is_tty",
-        "stdout_guard",
-        "take_over_stdout",
-        "write_raw_stdout",
     }
 
 
@@ -178,6 +145,18 @@ def test_channel_envelope_rejects_mismatched_payload_kind() -> None:
 
     with pytest.raises(TypeError, match="operation"):
         ChannelEnvelope(envelope_id="env-1", kind="event", payload=operation)
+
+
+def test_channel_envelope_rejects_unknown_event_payload_without_lazy_import_error() -> (
+    None
+):
+    from loushang.channel import ChannelEnvelope
+
+    with pytest.raises(
+        TypeError,
+        match="event channel envelopes cannot carry object payload",
+    ):
+        ChannelEnvelope(envelope_id="env-unknown", kind="event", payload=object())
 
 
 def test_channel_envelope_rejects_unknown_kind_at_runtime() -> None:

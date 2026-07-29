@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 
-from loushang.channel.jsonl_command_host import JsonlCommand, JsonlCommandPort
+from loushang.harness.host.jsonl_command_host import JsonlCommand, JsonlCommandPort
 
 JsonlCommandHandler = Callable[[JsonlCommand], Awaitable[None] | None]
 JsonlUnsupportedCommandHandler = Callable[[JsonlCommand], Awaitable[None] | None]

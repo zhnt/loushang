@@ -325,7 +325,7 @@ moving Coding content or command syntax:
 | `coding.runtime.agent_session_runtime` lifecycle forwarding | `harness.session.SessionLifecycleOperationAdapter` | CWD/session-file acceptance, fork policy, Coding hooks, diagnostics, and resource policy |
 | `coding.bootstrap` resource activation ordering and contained diagnostics | `harness.bootstrap.ResourceBootstrapRuntime` and `BootstrapActivationRuntime` | Resource loader, extension factory, flags, prompt/tool rebuild, and Product diagnostics callbacks |
 | removed `coding.control.settings_manager` and `coding.control.types` | `harness.config.agent.SettingsManager` and standard Agent settings records over the existing `SettingsRuntime` / `ScopedConfigRuntime` / `LayeredConfig` chain | Coding settings paths, command-backed value execution, `ModelRegistry`, and Product-only policy/presentation |
-| `coding.cli.__main__` stream binding, output guard, and disposal fallback | `channel.ProductHostLifecycle` | Argument grammar, mode selection, Product startup policy, output format, and command handlers |
+| `coding.cli.__main__` stream binding, output guard, and disposal fallback | `harness.host.product_host.ProductHostLifecycle` | Argument grammar, mode selection, Product startup policy, output format, and command handlers |
 
 These are adapter collapses rather than new protocol layers. Harness and Channel
 do not import Coding, and no RPC/CLI wire fields changed in this wave. The
@@ -334,14 +334,14 @@ existing Coding settings and CLI regressions.
 
 ### Wave 6, Slice B: Generic Product CLI Surfaces (In Progress)
 
-The detailed boundary is [Product CLI Lifecycle Boundary](../channel/product-cli-lifecycle-boundary.md).
+The detailed boundary is [Product CLI Lifecycle Boundary](product-cli-lifecycle-boundary.md).
 This slice extracts only object-shape and lifecycle mechanisms. It does not move
 Coding argument grammar, mode selection, package/work/method handlers, product
 wording, or RPC schemas.
 
 | Source region | Shared owner | Coding retained | Status |
 | --- | --- | --- | --- |
-| repeated prompt/print/mode turn loops and TTY probing | `channel.ProductHostLifecycle` | Turn values, runner selection, output, and disposal candidates | Complete |
+| repeated prompt/print/mode turn loops and TTY probing | `harness.host.product_host.ProductHostLifecycle` | Turn values, runner selection, output, and disposal candidates | Complete |
 | prompt/stdin/file/image input resolution | `harness.host.prompt_input` | CLI argument grammar and product prompt policy | Complete |
 | model listing normalization and metadata formatting | `harness.session.model_selection` | Preferred model candidates and persistence wording | Complete |
 | command descriptor listing projection | `harness.commands.project_command_descriptor` | Descriptor source selection and JSON/TSV output | Complete |
@@ -784,7 +784,7 @@ projector, or transport.
 | standard Agent plain JSON event projection | `harnesstui.conversation.agent_binding` plus existing `PlainHost` | plain renderer selection | Complete |
 | prompt and fixed-plan subscribe/failure/worked/dispose lifecycle | existing `plain_prompt_host` with Agent binding helpers | model preparation and Coding Work factory | Complete |
 | host metadata to session Work turns | `work.session.SessionWorkHostPort` over `SessionWorkRuntime` | Coding Work profile | Complete |
-| Work operation acceptance, cancellation and Channel delivery | `work.channel.SessionWorkChannelPort` over `ChannelHost` | `coding` domain and `SubmitCodingTurn` vocabulary | Complete |
+| Work operation acceptance, cancellation and Channel delivery | `channel.adapters.session_work.SessionWorkChannelPort` over `ChannelHost` | `coding` domain and `SubmitCodingTurn` vocabulary | Complete |
 | standard Agent runtime views to Channel envelopes | `harness.host.AgentRuntimeChannelProjection` | event-view selection | Complete |
 
 Production accounting: `src/loushang/coding` changed from 9,519 to 9,071
@@ -887,7 +887,7 @@ scenario engine, footer model, or transport.
 
 | Source mechanism | Existing shared owner | Coding retained | Status |
 | --- | --- | --- | --- |
-| RPC/plain/Channel mode facades | `harness.host.rpc`, `harnesstui.conversation`, `channel`, and `work.channel` | Product runner callbacks, Work profile, renderer, and diagnostics | Removed |
+| RPC/plain/Channel mode facades | `harness.host.rpc`, `harnesstui.conversation`, and `channel.adapters` | Product runner callbacks, Work profile, renderer, and diagnostics | Removed |
 | standard Agent Product configuration and construction | `harness.session.AgentProductConstructionRuntime` over existing configuration, prompt, model, tool, capability, and session construction runtimes | Coding prompt, pack IDs, image policy, and concrete session factory | Complete |
 | Agent Product session runtime port assembly | `harness.session.build_agent_product_session_runtime_ports` over existing lifecycle, transcript, fork, and Product session runtimes | Coding store/profile binding and diagnostic mapping | Complete |
 | screen/plain Agent application binding | `harnesstui.conversation.AgentScreenConversationApplicationBinding` and `AgentPlainConversationApplicationBinding` | screen app, surfaces, Product controller/action host, renderer, completion, copy, theme, and policy | Complete |

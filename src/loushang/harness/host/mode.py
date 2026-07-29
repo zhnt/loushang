@@ -18,7 +18,7 @@ from typing import (
     cast,
 )
 
-from loushang.channel.product_host import (
+from loushang.harness.host.product_host import (
     ProductHostAction,
     ProductHostActionType,
     ProductHostAdapter,

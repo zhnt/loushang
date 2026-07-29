@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from loushang.channel import RemoteUiContext
+from loushang.harness.host.remote_ui import RemoteUiContext
 
 
 def test_remote_ui_context_records_state_and_emits_requests() -> None:

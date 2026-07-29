@@ -5,7 +5,7 @@ from io import StringIO
 
 import pytest
 
-from loushang.channel import (
+from loushang.harness.host.product_host import (
     ProductHostAction,
     ProductHostRuntime,
     ProductHostStreams,

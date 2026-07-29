@@ -86,13 +86,16 @@ harness.session.event_projection    -> agent + ai + harness.presentation
 harness.session.runtime_event_views -> harness.events + harness.session
 harness.host                        -> harness.session + harness.events
 channel                             -> work
-channel                             -> harness.events.projection (RuntimeEventView only)
+channel.host                        -> harness.host.product_host
+channel.adapters.runtime_events     -> harness.events + harness.session
 ```
 
-Harness has no Channel import. Channel may import only the projection value
-module, never `harness.session`, a bus, publisher, store, Agent, AI, Coding,
-Method, or TUI. This narrow direction lets an OEM Channel implementation carry
-runtime views without making its transport part of the Host runtime.
+Harness has no Channel import. Channel core imports stable Harness Host and
+event-view contracts; its optional runtime-event adapter imports the standard
+Harness session projection. Channel never imports a Harness event bus,
+publisher, store, Product adapter, Coding, Method, or TUI. This one-way
+direction lets an OEM Channel implementation carry runtime views without
+making its transport part of the Harness runtime.
 
 ## Coding Adoption
 

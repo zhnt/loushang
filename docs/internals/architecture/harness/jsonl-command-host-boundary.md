@@ -2,7 +2,7 @@
 
 ## Decision
 
-`loushang.channel.jsonl_command_host` owns the reusable input half of a
+`loushang.harness.host.jsonl_command_host` owns the reusable input half of a
 line-oriented JSON command host. It reads input, rejects invalid JSON and
 non-finite values, validates a JSON-object command with an optional string
 `id` and a required string `type`, and dispatches a `JsonlCommand` to an
@@ -52,7 +52,7 @@ and process-exit policy remain Product-owned.
 
 ## Remote UI Context
 
-`loushang.channel.remote_ui.RemoteUiContext` owns remote-dialog request IDs,
+`loushang.harness.host.remote_ui.RemoteUiContext` owns remote-dialog request IDs,
 response resolution, timeout defaults, and a small state snapshot for
 headless hosts. It accepts an injected mapping emitter and does not define a
 Channel frame, extension manifest, widget vocabulary, or client UI protocol.
@@ -82,9 +82,9 @@ own a distinct, versioned command schema.
 
 ## Dependencies and Exclusions
 
-The two Channel helpers may depend on `loushang.protocol` and the Python
-standard library. They must not import AI, Agent, Harness runtime, Coding,
-Method, TUI, or a Product extension package.
+The Harness Host helpers may depend on `loushang.protocol` and the Python
+standard library. They must not import AI, Agent runtime, Channel, Coding,
+Method, Work, TUI, or a Product extension package.
 
 This boundary does not add a common RPC response envelope, command registry,
 Work-operation mapping, sockets, HTTP/WebSocket transport, durable delivery,
@@ -93,7 +93,7 @@ UI widget protocol.
 
 ## Verification
 
-- Channel tests cover valid command dispatch, strict JSON failures, handler
+- Harness Host tests cover valid command dispatch, strict JSON failures, handler
   failures, stop behavior, UI state, dialog response, and timeout behavior.
 - Coding RPC regressions assert unchanged parse errors, strict-JSON field
   paths, legacy responses, extension UI request/response behavior, and event

@@ -3,15 +3,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Literal, TypeAlias
+from typing import Literal, TypeAlias
 
-from loushang.work import WorkEvent, WorkOperation
-
-if TYPE_CHECKING:
-    from loushang.harness.events.projection import RuntimeEventView
+from loushang.harness.events.projection import RuntimeEventView
+from loushang.work.types import WorkEvent, WorkOperation
 
 ChannelEnvelopeKind: TypeAlias = Literal["operation", "event"]
-ChannelPayload: TypeAlias = WorkOperation | WorkEvent | object
+ChannelPayload: TypeAlias = WorkOperation | WorkEvent | RuntimeEventView
 
 
 @dataclass(frozen=True)
@@ -56,13 +54,7 @@ def _payload_name(payload: object) -> str:
 
 
 def _is_event_payload(payload: object) -> bool:
-    if isinstance(payload, WorkEvent):
-        return True
-    # Keep importing the optional Agent event view lazy so importing Channel
-    # never initializes Agent/AI provider modules.
-    from loushang.harness.events.projection import RuntimeEventView
-
-    return isinstance(payload, RuntimeEventView)
+    return isinstance(payload, WorkEvent | RuntimeEventView)
 
 
 __all__ = [

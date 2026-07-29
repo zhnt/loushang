@@ -4,8 +4,8 @@ import asyncio
 
 import pytest
 
-from loushang.channel import (
-    JsonlCommand,
+from loushang.harness.host.jsonl_command_host import JsonlCommand
+from loushang.harness.host.jsonl_command_router import (
     JsonlCommandRoute,
     JsonlCommandRouter,
 )

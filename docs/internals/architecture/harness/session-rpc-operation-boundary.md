@@ -2,10 +2,10 @@
 
 ## Status
 
-Status: implemented on `lane/harness`. The Channel command-routing slice and
-standard operation cutover are complete: Channel owns command routing, Harness
-owns the standard operation binding, and Coding remains the public protocol
-adapter.
+Status: implemented on `lane/harness`. The generic Host command-routing slice
+and standard operation cutover are complete: Harness Host owns command input
+and routing, Harness Session owns the standard operation binding, and Coding
+remains the public protocol adapter.
 
 ## Problem
 
@@ -27,23 +27,23 @@ RPC-shaped session executor merely to move code out of Coding.
 
 | Concern | Canonical owner | Product responsibility |
 | --- | --- | --- |
-| Strict JSON line parsing and one-command dispatch | `channel.JsonlCommandHost` | Bind an RPC schema and response projection. |
-| Explicit command route registration and unknown-command fallback | `channel` | Register Product handlers and preserve Product error text. |
-| Background task tracking and host lifecycle | `channel.ProductHostTaskTracker` / `ProductHostRuntime` | Choose which Product operations run in the background. |
+| Strict JSON line parsing and one-command dispatch | `harness.host.jsonl_command_host.JsonlCommandHost` | Bind an RPC schema and response projection. |
+| Explicit command route registration and unknown-command fallback | `harness.host.jsonl_command_router.JsonlCommandRouter` | Register Product handlers and preserve Product error text. |
+| Background task tracking and host lifecycle | `harness.host.product_host.ProductHostTaskTracker` / `ProductHostRuntime` | Choose which Product operations run in the background. |
 | Typed prompt, input, queue, lifecycle, identity, retry, and maintenance operations | `harness.session.SessionOperationRuntime` | Bind a session control port and choose capability availability. |
 | RPC payload grammar and lifecycle rebinding for standard operations | `harness.session.SessionRpcOperationBinding` | Select exposed commands and project operation results. |
 | Coding JSON field aliases and camelCase success/error frames | `coding.mode.rpc_mode` | Preserve the public Coding RPC contract. |
 | Model/auth, package, bash, extension UI, event rendering, and state projection | `coding` | Retain domain policy and presentation. |
 
-`channel` may depend on `protocol`, but it must not import Harness or Coding.
-`harness.session` may depend on stable Agent/AI value contracts where required,
-but it must not import `channel` or a Product protocol schema.
+`harness.host` may depend on `protocol` and other lower Harness contracts, but
+it must not import Channel, Work, Coding, or a Product protocol schema.
+`harness.session` may depend on stable Agent/AI value contracts where required.
 
 ## Target Composition
 
 ```text
 JsonlCommandHost
-  -> Channel command router
+  -> Harness Host command router
      -> Coding RPC request parser and response projector
         -> SessionRpcOperationBinding
            -> SessionOperationRuntime
@@ -86,12 +86,13 @@ The following remain Coding-owned in this wave:
 ## Delivery Slices
 
 1. **Channel routing contract**
-   - Add an immutable explicit JSONL command router under `channel`. Complete.
+   - Add an immutable explicit JSONL command router under `harness.host`.
+     Complete.
    - It receives `JsonlCommand`, dispatches only registered handlers, and
      delegates unsupported-command output to an injected Product callback.
    - `RpcMode` binds every current command through an explicit route table;
      reflection is no longer part of its dispatch path.
-   - Add a fake Product test with no Coding or Harness import.
+   - Add a fake Product test with no Coding, Channel, or Work import.
 
 2. **Standard session-operation adapter**
    - Bind the admitted operation group through
@@ -103,7 +104,7 @@ The following remain Coding-owned in this wave:
 
 3. **Coding cutover and deletion**
    - Replace `RpcMode` standard-operation parsing and calls with the Channel
-     router and Harness binding.
+     Harness Host router and Harness Session binding.
    - Delete duplicated standard input/lifecycle/maintenance parsing while
      retaining Coding response frames and product handlers.
    - Retain the Coding-only handlers listed above and add an import boundary

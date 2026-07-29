@@ -3,12 +3,12 @@ from __future__ import annotations
 import asyncio
 
 from loushang.channel import ChannelOperationRequest
-from loushang.channel.types import ChannelEnvelope
-from loushang.work import InMemoryEventLogBackend, WorkOperation
-from loushang.work.channel import (
+from loushang.channel.adapters.session_work import (
     SessionWorkChannelPort,
     SessionWorkChannelProfile,
 )
+from loushang.channel.types import ChannelEnvelope
+from loushang.work import InMemoryEventLogBackend, WorkOperation
 from loushang.work.session import SessionWorkProfile, SessionWorkRuntime
 
 

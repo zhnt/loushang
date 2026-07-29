@@ -1,4 +1,4 @@
-"""Product-neutral remote UI interaction context for JSONL-like channels."""
+"""Product-neutral remote UI interaction context for headless hosts."""
 
 from __future__ import annotations
 

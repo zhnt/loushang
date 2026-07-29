@@ -2,7 +2,7 @@
 
 ## Decision
 
-`loushang.channel.product_host` owns the reusable lifecycle mechanics for an
+`loushang.harness.host.product_host` owns the reusable lifecycle mechanics for an
 injected Product-facing host. It provides three independent mechanisms:
 
 - `ProductHostAction` and `ProductHostAdapter` for start, stop, input,
@@ -48,7 +48,7 @@ or equivalent outside this package.
 
 Coding preserves `ModeAction`, `ModeAdapter`, and `dispatch_mode_action` as
 compatibility names. Their generic lifecycle semantics delegate to
-`channel.product_host`; Coding retains `ModeConfig`, mode selection, Print
+`harness.host.product_host`; Coding retains `ModeConfig`, mode selection, Print
 mode construction, work-specific options, and its `ModeState` projection.
 
 Coding CLI resolves injected or process stdio through `ProductHostStreams` and
@@ -64,8 +64,9 @@ background-task drain hook remains as a thin compatibility forwarder.
 
 ## Dependency Rule
 
-`channel.product_host` may depend only on the Python standard library. It must
-not import Work, Harness, Agent, AI, Coding, Method, or TUI packages.
+`harness.host.product_host` may depend only on the Python standard library and
+its sibling stdout guard. It must not import Work, Channel, Agent, AI, Coding,
+Method, or TUI packages.
 
 The runtime must not acquire sockets, HTTP, WebSockets, authentication,
 capability negotiation, persistent subscriptions, replay/outbox storage,
@@ -74,12 +75,13 @@ schema.
 
 ## Verification
 
-- Channel contract tests use an independent fake Product adapter to verify
+- Harness Host tests use an independent fake Product adapter to verify
   lifecycle action dispatch, line stopping, terminal failure handling, and
   task draining.
 - Channel JSONL host tests prove the standard operation protocol still runs
   through the common input lifecycle.
 - Coding RPC, Print mode, and Channel adapter regressions preserve existing
   commands, Pi projection, and background task behavior.
-- Architecture tests prohibit Product or Harness imports from the runtime and
+- Architecture tests prohibit Product, Channel, Work, or model-runtime imports
+  from the runtime and
   require both ChannelHost and RpcMode to adopt it.

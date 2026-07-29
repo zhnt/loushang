@@ -70,6 +70,7 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
                 "loushang.agent.Agent",
                 "loushang.agent.agent",
                 "loushang.agent.harness",
+                "loushang.channel",
                 "loushang.coding",
                 "loushang.method",
                 "loushang.tui",
@@ -90,6 +91,7 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
             root=Path("src/loushang/work"),
             forbidden_prefixes=(
                 "loushang.agent",
+                "loushang.channel",
                 "loushang.coding",
                 "loushang.method",
                 "loushang.tui",
@@ -116,15 +118,8 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
                 "loushang.agent",
                 "loushang.ai",
                 "loushang.coding",
-                "loushang.harness",
                 "loushang.method",
                 "loushang.tui",
-            ),
-            allowed_paths=frozenset(
-                {
-                    "src/loushang/channel/json_codec.py",
-                    "src/loushang/channel/types.py",
-                }
             ),
         ),
     )
@@ -250,6 +245,21 @@ def test_harness_internal_dependency_graph_is_acyclic() -> None:
     ]
 
     assert cycles == []
+
+
+def test_harness_work_channel_dependency_graph_is_one_way() -> None:
+    graph = _package_dependency_graph(
+        Path("src/loushang"),
+        packages=frozenset({"harness", "work", "channel"}),
+    )
+
+    assert graph["harness"].isdisjoint({"work", "channel"})
+    assert "channel" not in graph["work"]
+    assert [
+        component
+        for component in _strongly_connected_components(graph)
+        if len(component) > 1
+    ] == []
 
 
 def test_runtime_event_layers_follow_declared_dependency_direction() -> None:
@@ -841,23 +851,24 @@ def test_session_rpc_operations_are_neutral_and_adopted() -> None:
 
 
 def test_jsonl_command_router_is_neutral_and_rpc_uses_explicit_routes() -> None:
-    router_source = Path("src/loushang/channel/jsonl_command_router.py").read_text(
-        encoding="utf-8"
-    )
+    router_source = Path(
+        "src/loushang/harness/host/jsonl_command_router.py"
+    ).read_text(encoding="utf-8")
     rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(encoding="utf-8")
     boundary = Path(
         "docs/internals/architecture/harness/session-rpc-operation-boundary.md"
     ).read_text(encoding="utf-8")
 
-    assert "loushang.harness" not in router_source
+    assert "loushang.channel" not in router_source
     assert "loushang.coding" not in router_source
+    assert "loushang.work" not in router_source
     assert "JsonlCommandRouter(" in rpc_source
     assert 'getattr(self, f"_handle_{command.command_type}_command")' not in rpc_source
-    assert "Channel command-routing slice" in boundary
+    assert "Host command-routing slice" in boundary
 
 
 def test_channel_product_host_runtime_is_neutral_and_adopted() -> None:
-    runtime_source = Path("src/loushang/channel/product_host.py").read_text(
+    runtime_source = Path("src/loushang/harness/host/product_host.py").read_text(
         encoding="utf-8"
     )
     channel_host_source = Path("src/loushang/channel/host.py").read_text(
@@ -865,7 +876,7 @@ def test_channel_product_host_runtime_is_neutral_and_adopted() -> None:
     )
     rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(encoding="utf-8")
     boundary = Path(
-        "docs/internals/architecture/channel/product-host-runtime-boundary.md"
+        "docs/internals/architecture/harness/product-host-runtime-boundary.md"
     ).read_text(encoding="utf-8")
 
     assert "from loushang." not in runtime_source
@@ -1030,13 +1041,15 @@ def test_plain_services_and_work_bindings_remove_coding_duplication() -> None:
         assert duplicate not in coding_prompt
 
 
-def test_channel_product_host_stdio_and_shutdown_helpers_are_neutral() -> None:
-    product_host_source = Path("src/loushang/channel/product_host.py").read_text(
+def test_harness_product_host_stdio_and_shutdown_helpers_are_neutral() -> None:
+    product_host_source = Path(
+        "src/loushang/harness/host/product_host.py"
+    ).read_text(
         encoding="utf-8"
     )
-    stdout_guard_source = Path("src/loushang/channel/stdout_guard.py").read_text(
-        encoding="utf-8"
-    )
+    stdout_guard_source = Path(
+        "src/loushang/harness/host/stdout_guard.py"
+    ).read_text(encoding="utf-8")
     cli_source = Path("src/loushang/coding/cli/__main__.py").read_text(encoding="utf-8")
     application_source = Path("src/loushang/harness/cli/application.py").read_text(
         encoding="utf-8"
@@ -2020,11 +2033,11 @@ def test_agent_product_host_bindings_use_existing_shared_owners() -> None:
             root=Path("src/loushang/harnesstui/conversation/agent_binding.py"),
             forbidden_prefixes=("loushang.coding",),
         ),
-        ImportBoundary(
-            name="session Work Channel binding",
-            root=Path("src/loushang/work/channel.py"),
-            forbidden_prefixes=("loushang.coding",),
-        ),
+            ImportBoundary(
+                name="session Work Channel binding",
+                root=Path("src/loushang/channel/adapters/session_work.py"),
+                forbidden_prefixes=("loushang.coding",),
+            ),
     )
     assert [
         f"{boundary.name}: {boundary.root.as_posix()} imports {imported}"
@@ -4806,6 +4819,25 @@ def _harness_internal_dependency_graph(root: Path) -> dict[str, set[str]]:
             if target != source:
                 graph[source].add(target)
                 graph.setdefault(target, set())
+    return graph
+
+
+def _package_dependency_graph(
+    root: Path,
+    *,
+    packages: frozenset[str],
+) -> dict[str, set[str]]:
+    graph = {package: set() for package in packages}
+    for source in sorted(packages):
+        package_root = root / source
+        for path in sorted(package_root.rglob("*.py")):
+            for imported in _absolute_imports(path):
+                prefix = "loushang."
+                if not imported.startswith(prefix):
+                    continue
+                target = imported.removeprefix(prefix).split(".", 1)[0]
+                if target in packages and target != source:
+                    graph[source].add(target)
     return graph
 
 

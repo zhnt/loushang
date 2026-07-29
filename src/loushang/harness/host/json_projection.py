@@ -8,8 +8,8 @@ from pathlib import Path
 from loushang.protocol import JSONValue, require_json_value
 
 
-class ChannelJsonProjectionError(TypeError):
-    """A value cannot be represented by the Channel JSON transport contract."""
+class HostJsonProjectionError(TypeError):
+    """A value cannot be represented by a strict host JSON contract."""
 
     def __init__(self, message: str, *, path: str, value_type: str) -> None:
         super().__init__(message)
@@ -17,21 +17,21 @@ class ChannelJsonProjectionError(TypeError):
         self.value_type = value_type
 
 
-def project_channel_value(
+def project_host_value(
     value: object,
     *,
-    name: str = "channel_output",
-    surface: str = "Channel",
+    name: str = "host_output",
+    surface: str = "Host",
 ) -> JSONValue:
     """Project documented transport values into strict JSON without coercion."""
 
     return require_json_value(
-        _project_channel_value(value, path=name, seen=set(), surface=surface),
+        _project_host_value(value, path=name, seen=set(), surface=surface),
         name=name,
     )
 
 
-def _project_channel_value(
+def _project_host_value(
     value: object,
     *,
     path: str,
@@ -65,7 +65,7 @@ def _project_channel_value(
             seen=seen,
             surface=surface,
             project=lambda: {
-                field.name: _project_channel_value(
+                field.name: _project_host_value(
                     getattr(value, field.name),
                     path=f"{path}.{field.name}",
                     seen=seen,
@@ -94,7 +94,7 @@ def _project_channel_value(
             seen=seen,
             surface=surface,
             project=lambda: [
-                _project_channel_value(
+                _project_host_value(
                     item,
                     path=f"{path}[{index}]",
                     seen=seen,
@@ -126,7 +126,7 @@ def _project_mapping(
             )
         key = str(key)
         child_path = f"{path}.{key}" if key else f"{path}['']"
-        result[key] = _project_channel_value(
+        result[key] = _project_host_value(
             item,
             path=child_path,
             seen=seen,
@@ -159,13 +159,13 @@ def _projection_error(
     reason: str,
     *,
     surface: str,
-) -> ChannelJsonProjectionError:
+) -> HostJsonProjectionError:
     value_type = type(value).__name__
-    return ChannelJsonProjectionError(
+    return HostJsonProjectionError(
         f"{path} cannot be projected to {surface} JSON: {reason} ({value_type})",
         path=path,
         value_type=value_type,
     )
 
 
-__all__ = ["ChannelJsonProjectionError", "project_channel_value"]
+__all__ = ["HostJsonProjectionError", "project_host_value"]

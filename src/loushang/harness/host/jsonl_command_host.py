@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Literal, Protocol, TextIO, cast
 
-from loushang.channel._stdio import read_line, stream_supports_fileno
+from loushang.harness.host._stdio import read_line, stream_supports_fileno
 from loushang.protocol import (
     JSONValue,
     JsonValueError,

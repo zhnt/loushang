@@ -7,7 +7,6 @@ from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from typing import Protocol, TextIO
 
-from loushang.channel.product_host import ProductHostRuntime
 from loushang.channel.rpc_jsonl import (
     ChannelError,
     ChannelEventDelivery,
@@ -20,6 +19,7 @@ from loushang.channel.rpc_jsonl import (
     encode_rpc_jsonl_frame,
 )
 from loushang.channel.types import ChannelEnvelope
+from loushang.harness.host.product_host import ProductHostRuntime
 
 ChannelDelivery = ChannelEventDelivery | ChannelError
 ChannelDeliveryListener = Callable[[ChannelDelivery], Awaitable[None] | None]

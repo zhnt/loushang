@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from io import StringIO
 
-from loushang.channel import (
+from loushang.harness.host.jsonl_command_host import (
     JsonlCommand,
     JsonlCommandHost,
     JsonlCommandHostError,

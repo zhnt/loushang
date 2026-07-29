@@ -11,7 +11,6 @@ from loushang.ai.model import (
     parse_model_selection_reference,
 )
 from loushang.ai.model.registry import get_default_model_registry
-from loushang.channel import ProductHostLifecycle, stream_is_tty
 from loushang.coding.bootstrap import (
     BootstrapServices,
     create_agent_session_runtime,
@@ -115,6 +114,7 @@ from loushang.harness.diagnostics.observability_runtime import (
     session_observability_context,
     startup_observability_context,
 )
+from loushang.harness.host.product_host import ProductHostLifecycle, stream_is_tty
 from loushang.harness.host.rpc import run_rpc_host
 from loushang.harness.policy_engine import PolicyEngine
 from loushang.harness.resources.packages import (

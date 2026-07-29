@@ -73,7 +73,8 @@ a second CLI parser, transport, session runtime, or product host.
   projection, failure detection, prompt sequencing, and disposal to the
   existing plain prompt host.
 - `work.SessionWorkHostPort` maps host metadata onto
-  `SessionWorkRuntime`; `work.channel.SessionWorkChannelPort` maps that runtime
+  `SessionWorkRuntime`; `channel.adapters.session_work.SessionWorkChannelPort`
+  maps that runtime
   onto the Channel protocol. Neither creates another Work or Channel engine.
 - `work.project_prepared_session_work_turns()` maps generic prepared turns into
   the existing Work turn shape; `method.MethodDomainRuntime` composes existing

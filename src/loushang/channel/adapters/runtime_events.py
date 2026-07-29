@@ -1,4 +1,4 @@
-"""Standard Agent runtime-event projection for Channel delivery."""
+"""Standard Agent runtime-event projection owned by Channel delivery."""
 
 from __future__ import annotations
 

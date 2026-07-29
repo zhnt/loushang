@@ -34,7 +34,7 @@
 ## Out Of Scope
 
 - mode lifecycle
-- structured stdout protection, owned by `loushang.channel.stdout_guard`
+- structured stdout protection, owned by `loushang.harness.host.stdout_guard`
 - TUI rendering policy
 - text clipboard copying, owned by `loushang.tui.clipboard`
 - clipboard-image acquisition, MIME normalization, and attachment adaptation

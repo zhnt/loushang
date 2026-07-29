@@ -10,7 +10,6 @@ from io import StringIO
 from pathlib import Path
 from typing import Generic, TextIO, TypeAlias, TypeVar, cast
 
-from loushang.channel import ProductHostLifecycle
 from loushang.harness.cli.agent_args import (
     AgentCliArgs,
     agent_cli_bootstrap_args,
@@ -33,6 +32,7 @@ from loushang.harness.cli.resource_toggles import (
     report_agent_resource_settings_errors,
 )
 from loushang.harness.cli.session_resolution import resolve_agent_cli_session
+from loushang.harness.host.product_host import ProductHostLifecycle
 from loushang.harness.tools.workspace import (
     WorkspaceToolRuntimeSettings,
     workspace_tool_runtime_settings,

@@ -52,7 +52,9 @@ def test_work_runtime_is_product_neutral_and_harness_does_not_import_work() -> N
 
 
 def test_channel_adapter_delegates_operation_lifecycle_to_work_runtime() -> None:
-    shared_source = Path("src/loushang/work/channel.py").read_text(
+    shared_source = Path(
+        "src/loushang/channel/adapters/session_work.py"
+    ).read_text(
         encoding="utf-8"
     )
     coding_source = Path("src/loushang/coding/domain/work.py").read_text(
@@ -67,4 +69,9 @@ def test_channel_adapter_delegates_operation_lifecycle_to_work_runtime() -> None
     assert "self._tasks" not in shared_source
     assert "CODING_WORK_CHANNEL_PROFILE" in coding_source
     assert "run_session_work_channel_host" in coding_source
+    assert not Path("src/loushang/work/channel.py").exists()
+    assert "loushang.channel" not in "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in Path("src/loushang/work").glob("*.py")
+    )
     assert not tuple(Path("src/loushang/coding/mode").glob("*.py"))

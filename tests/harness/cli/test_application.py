@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from io import StringIO
 from types import SimpleNamespace
 
-from loushang.channel import ProductHostLifecycle
 from loushang.harness.cli import (
     AgentCliApplicationBinding,
     AgentCliStatePreparationPorts,
@@ -26,6 +25,7 @@ from loushang.harness.cli import (
     report_agent_resource_settings_errors,
     run_agent_cli_application,
 )
+from loushang.harness.host.product_host import ProductHostLifecycle
 from loushang.harness.runtime import SessionOperationResult
 from loushang.harness.tools.workspace import WorkspaceToolRuntimeSettings
 

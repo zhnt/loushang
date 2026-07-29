@@ -7,7 +7,7 @@ from typing import Literal, cast
 from loushang.channel.types import ChannelEndpoint, ChannelEnvelope
 from loushang.harness.events.projection import RuntimeEventView
 from loushang.protocol import JSONValue, require_json_mapping
-from loushang.work import WorkEvent, WorkOperation
+from loushang.work.types import WorkEvent, WorkOperation
 
 
 def channel_envelope_to_json(envelope: ChannelEnvelope) -> dict[str, JSONValue]:
