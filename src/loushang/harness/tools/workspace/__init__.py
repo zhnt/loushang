@@ -1,3 +1,11 @@
+from loushang.harness.tools.authoring import (
+    ToolContext,
+    ToolContextProvider,
+    ToolEventSink,
+    authorized_tool,
+    direct_tool,
+)
+
 from .bash import (
     BashOperations,
     BashSpawnContext,
@@ -9,7 +17,6 @@ from .bash import (
     create_bash_tool_definition,
     create_local_bash_operations,
 )
-from .context import ToolContext, ToolContextProvider, ToolEventSink
 from .edit import (
     EditToolDetails,
     EditToolInput,
@@ -77,7 +84,6 @@ from .grep import (
     create_grep_tool_definition,
 )
 from .ls import LsToolDetails, LsToolInput, LsToolOptions, create_ls_tool_definition
-from .normalize import authorized_tool, direct_tool, tool_to_definition
 from .operations import (
     LOCAL_TOOL_OPERATIONS,
     EditOperations,
@@ -247,5 +253,4 @@ __all__ = [
     "wrap_tool_definition",
     "wrap_tool_definitions",
     "workspace_tool_runtime_settings",
-    "tool_to_definition",
 ]

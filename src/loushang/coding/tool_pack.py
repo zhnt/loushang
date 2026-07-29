@@ -12,9 +12,9 @@ from typing import Any, cast
 
 from loushang.agent.types import AgentTool
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.tools.authoring import ToolContextProvider
 from loushang.harness.tools.contribution import ToolPackDefinition
 from loushang.harness.tools.core import ToolDefinition
-from loushang.harness.tools.workspace.context import ToolContextProvider
 from loushang.harness.tools.workspace.external_tools import (
     ExternalToolDownloader,
     ExternalToolPolicy,
@@ -29,7 +29,6 @@ from loushang.harness.tools.workspace.factory import (
     create_profiled_workspace_tool_definitions,
     create_profiled_workspace_tools,
 )
-from loushang.harness.tools.workspace.policy import ToolPolicyEvaluator
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.workspace.exec import ExecService
 from loushang.harness.workspace.operations import ToolOperations
@@ -146,7 +145,6 @@ def create_coding_tools(
 def register_coding_builtin_tools(
     registry: WorkspaceToolRegistry,
     *,
-    policy_engine: ToolPolicyEvaluator | None = None,
     exec_service: ExecService | None = None,
     diagnostics_service: DiagnosticsService | None = None,
     operations: ToolOperations | None = None,
@@ -156,7 +154,6 @@ def register_coding_builtin_tools(
     allow_external_tool_downloads: bool = False,
     require_external_tools: bool = False,
 ) -> WorkspaceToolRegistry:
-    registry.policy_evaluator = policy_engine
     options = ToolsOptions(
         exec_service=exec_service or ExecService(),
         diagnostics_service=diagnostics_service,

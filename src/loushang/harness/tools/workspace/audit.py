@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from loushang.harness.authorization import EffectiveExecutionProfile
+from loushang.harness.effects import effect_audit_summary, effect_capability
 from loushang.harness.policy import CommandPolicySubject, ToolPolicySubject
 
 _SAFE_NAME = re.compile(r"[A-Za-z0-9_.+-]{1,64}")
@@ -72,11 +73,15 @@ _KNOWN_EXECUTABLES = frozenset(
 )
 _CAPABILITY_RANK = {
     "process.execute": 0,
+    "filesystem.read": 5,
+    "filesystem.write": 15,
     "git.read": 10,
     "git.write": 20,
     "network.request": 30,
+    "network.mutate": 45,
     "github.request": 40,
     "git.remote_write": 50,
+    "repository.publish": 55,
     "filesystem.delete": 60,
     "privilege.escalate": 70,
 }
@@ -101,6 +106,10 @@ def build_action_audit_details(
     }
     if command is not None:
         details["command_summary"] = command
+    if policy_subject is not None and policy_subject.effects:
+        details["declared_effects"] = tuple(
+            effect_audit_summary(effect) for effect in policy_subject.effects
+        )
     return details
 
 
@@ -141,26 +150,36 @@ def _classify_capability(
     tool_name: str,
     subject: ToolPolicySubject | None,
 ) -> tuple[str, dict[str, object] | None]:
+    declared = (
+        [effect_capability(effect) for effect in subject.effects]
+        if subject is not None
+        else []
+    )
     if tool_name == "read":
-        return "filesystem.read", None
+        return _highest_capability([*declared, "filesystem.read"]), None
     if tool_name in {"write", "edit"}:
-        return "filesystem.write", None
+        return _highest_capability([*declared, "filesystem.write"]), None
     if tool_name != "bash":
-        return f"tool.{_safe_name(tool_name)}", None
+        return (
+            _highest_capability(declared)
+            if declared
+            else f"tool.{_safe_name(tool_name)}"
+        ), None
 
     command = subject.command if subject is not None else None
     summary = _command_summary(command)
-    capabilities = [
+    capabilities = declared + [
         _signature_capability(executable, operation)
         for executable, operation in _command_signatures(command)
     ]
     if summary.get("privilege_wrapper") is True:
         capabilities.append("privilege.escalate")
-    capability = max(
-        capabilities or ["process.execute"],
-        key=_CAPABILITY_RANK.__getitem__,
-    )
+    capability = _highest_capability(capabilities or ["process.execute"])
     return capability, summary
+
+
+def _highest_capability(capabilities: list[str]) -> str:
+    return max(capabilities, key=lambda value: _CAPABILITY_RANK.get(value, 0))
 
 
 def _command_summary(command: CommandPolicySubject | None) -> dict[str, object]:

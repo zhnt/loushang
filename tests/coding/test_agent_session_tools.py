@@ -1142,7 +1142,6 @@ def test_agent_session_execute_bash_records_command_execution(tmp_path) -> None:
     exec_service = RecordingExecService()
     register_builtin_tools(
         registry,
-        policy_engine=AllowingPolicyEngine(),
         exec_service=exec_service,
     )
     model = Model(
@@ -1170,6 +1169,7 @@ def test_agent_session_execute_bash_records_command_execution(tmp_path) -> None:
         session_manager=manager,
         tool_registry=registry,
         active_tool_names=["bash"],
+        tool_policy_evaluator=AllowingPolicyEngine(),
     )
 
     async def scenario() -> None:
@@ -1240,7 +1240,6 @@ def test_agent_session_abort_bash_cancels_active_execution_and_records_command(
     exec_service = BlockingExecService()
     register_builtin_tools(
         registry,
-        policy_engine=AllowingPolicyEngine(),
         exec_service=exec_service,
     )
     model = Model(
@@ -1268,6 +1267,7 @@ def test_agent_session_abort_bash_cancels_active_execution_and_records_command(
         session_manager=manager,
         tool_registry=registry,
         active_tool_names=["bash"],
+        tool_policy_evaluator=AllowingPolicyEngine(),
     )
 
     async def scenario() -> None:

@@ -3394,15 +3394,18 @@ def test_harness_workspace_path_and_mutation_boundary_is_documented() -> None:
 
 
 def test_harness_tools_core_does_not_expose_pi_style_module_aliases() -> None:
-    module = importlib.import_module("loushang.harness.tools.core")
-
     pi_style_aliases = {
         "createToolDefinitionFromAgentTool",
         "wrapToolDefinition",
         "wrapToolDefinitions",
     }
 
-    assert [name for name in sorted(pi_style_aliases) if hasattr(module, name)] == []
+    for module_name in (
+        "loushang.harness.tools.core",
+        "loushang.harness.tools.workspace.wrapper",
+    ):
+        module = importlib.import_module(module_name)
+        assert [name for name in sorted(pi_style_aliases) if hasattr(module, name)] == []
 
 
 def test_harness_workspace_tool_pack_boundary_is_documented() -> None:
@@ -3557,7 +3560,7 @@ def test_harness_slice2_execution_context_design_is_documented() -> None:
         "neutral execution context",
         "product execution adapter",
         "runtime dynamic extension registration",
-        "`loushang.harness.tools.workspace.context.ToolContext`",
+        "`loushang.harness.tools.authoring.ToolContext`",
         "`ExtensionRuntimeBindings.register_tool`",
         "`ToolController.register_runtime_tool`",
         "`harness.tools.contribution`",
@@ -3654,6 +3657,37 @@ def test_core_workspace_effects_only_execute_through_gateway() -> None:
         ), tool_name
         assert "execute_workspace_tool_action(" not in source, tool_name
         assert "enforce_tool_policy(" not in source, tool_name
+        assert "CallableToolActionAdapter" not in source, tool_name
+
+    for tool_name in ("read", "write", "edit", "grep", "find", "ls"):
+        source = (workspace_root / f"{tool_name}.py").read_text(encoding="utf-8")
+        assert "FilesystemActionAdapter" in source, tool_name
+    assert "ProcessEffect" in (workspace_root / "bash.py").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_tool_authoring_and_execution_scope_have_single_harness_owners() -> None:
+    workspace_root = Path("src/loushang/harness/tools/workspace")
+    assert not (workspace_root / "authoring.py").exists()
+    assert not (workspace_root / "context.py").exists()
+    assert not (workspace_root / "normalize.py").exists()
+    assert not (workspace_root / "schema.py").exists()
+
+    registry_source = (workspace_root / "registry.py").read_text(encoding="utf-8")
+    assert "policy_evaluator" not in registry_source
+    assert "approval_resolver" not in registry_source
+    assert "create_workspace_tool_execution_host" not in registry_source
+
+    controller_source = Path(
+        "src/loushang/harness/session/tool_controller.py"
+    ).read_text(encoding="utf-8")
+    assert "create_workspace_tool_execution_host" in controller_source
+
+    for path in Path("src/loushang/coding").rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        assert "WorkspaceToolAuthorizationGateway" not in source, path
+        assert "create_workspace_tool_execution_host" not in source, path
 
 
 def test_resource_package_runtime_has_harness_owners() -> None:

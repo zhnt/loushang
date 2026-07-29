@@ -19,7 +19,9 @@ from loushang.harness.tools.core import (
 )
 from loushang.harness.tools.execution import ToolExecutionHost
 
-from .authorization import WorkspaceToolAuthorizationGateway
+from .authorization import (
+    create_workspace_tool_execution_host as _create_workspace_tool_execution_host,
+)
 from .policy import ToolPolicyEvaluator
 
 
@@ -30,11 +32,9 @@ def create_workspace_tool_execution_host(
 ) -> ToolExecutionHost:
     """Compose the Workspace gateway for one standalone or session host."""
 
-    return ToolExecutionHost(
-        WorkspaceToolAuthorizationGateway(
-            policy_evaluator=policy_evaluator or PolicyEngine(),
-            approval_resolver=approval_resolver,
-        )
+    return _create_workspace_tool_execution_host(
+        policy_evaluator=policy_evaluator or PolicyEngine(),
+        approval_resolver=approval_resolver,
     )
 
 
@@ -88,35 +88,10 @@ def wrap_tool_definitions(
     )
 
 
-def wrapToolDefinition(
-    definition: ToolDefinition,
-    context_provider: object | None = None,
-) -> AgentTool[Any]:
-    return wrap_tool_definition(
-        definition,
-        context_provider=context_provider if callable(context_provider) else None,
-    )
-
-
-def wrapToolDefinitions(
-    definitions: list[ToolDefinition],
-    context_provider: object | None = None,
-) -> list[AgentTool[Any]]:
-    return wrap_tool_definitions(
-        definitions,
-        context_provider=context_provider if callable(context_provider) else None,
-    )
-
-
-createToolDefinitionFromAgentTool = create_tool_definition_from_tool
-
 __all__ = [
     "WrappedToolDefinition",
-    "createToolDefinitionFromAgentTool",
     "create_workspace_tool_execution_host",
     "create_tool_definition_from_tool",
-    "wrapToolDefinition",
-    "wrapToolDefinitions",
     "wrap_tool_definition",
     "wrap_tool_definitions",
 ]

@@ -26,6 +26,10 @@ from loushang.harness.multiagent import (
     RecipeRunRequest,
     core_recipe_catalog,
 )
+from loushang.harness.policy_engine import PolicyEngine
+from loushang.harness.tools.workspace.factory import (
+    workspace_tool_runtime_settings,
+)
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
 RecipeOutputFormat = Literal["plain", "json"]
@@ -196,6 +200,10 @@ async def run_coding_multiagent_command(
             resolved_services = scripted_multiagent_services(resolved_services)
             stream_fn = scripted_multiagent_stream
         settings_manager = getattr(resolved_services, "settings_manager", None)
+        tool_settings = workspace_tool_runtime_settings(
+            settings_manager,
+            policy_factory=PolicyEngine,
+        )
         session_dir = _resolve_session_dir(
             command.session_dir,
             project_root=project_root,
@@ -223,6 +231,8 @@ async def run_coding_multiagent_command(
             "services": resolved_services,
             "persist": False,
             "enable_multiagent": True,
+            "approval_resolver": tool_settings.approval_resolver,
+            "tool_policy_evaluator": tool_settings.policy_engine,
         }
         if stream_fn is not None:
             runtime_options["stream_fn"] = stream_fn

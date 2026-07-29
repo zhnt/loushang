@@ -1,7 +1,32 @@
-"""Focused harness tool modules.
+"""Product-neutral tool authoring and hosted-execution contracts."""
 
-Slice 1 consumers should import concrete contracts from
-`loushang.harness.tools.core`.
-"""
+from .authoring import (
+    FilesystemActionAdapter,
+    NetworkActionAdapter,
+    ProcessActionAdapter,
+    PublicationActionAdapter,
+    ToolContext,
+    ToolContextProvider,
+    ToolEventSink,
+    authorized_tool,
+    direct_tool,
+    tool,
+)
+from .core import ToolDefinition, ToolRegistry
+from .execution import ToolExecutionHost
 
-__all__: list[str] = []
+__all__ = [
+    "FilesystemActionAdapter",
+    "NetworkActionAdapter",
+    "ProcessActionAdapter",
+    "PublicationActionAdapter",
+    "ToolContext",
+    "ToolContextProvider",
+    "ToolDefinition",
+    "ToolEventSink",
+    "ToolExecutionHost",
+    "ToolRegistry",
+    "authorized_tool",
+    "direct_tool",
+    "tool",
+]

@@ -339,8 +339,9 @@ Slice 2A routes coding runtime extension tool registration through neutral
 active-tool policy, prompt rebuilds, diagnostics mapping, session mutation, and
 concrete execution remain coding-owned.
 
-The reusable `ToolContext` now lives with the workspace tool pack after a
-Coding adapter and independent contract probe validated its shape. Keep
+The reusable `ToolContext` now lives in the Product-neutral
+`harness.tools.authoring` surface after a Coding adapter and independent
+contract probe validated its shape. Keep
 `ExtensionRuntimeBindings`, active-tool policy, prompt rebuilds, session
 mutation, and product model/diagnostic interpretation in Coding. The shared
 live capability application now belongs to

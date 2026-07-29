@@ -77,9 +77,10 @@ planning, work event persistence, or AI provider behavior.
   approval coordination, and explicit Coding/TUI/Work/daemon/MCP/multi-agent
   integration boundaries.
 - [Tool Execution Binding Boundary](tool-execution-binding-boundary.md) defines
-  one hosted dispatch path, explicit direct or authorized bindings, a
-  session-owned authorization gateway, and the migration that removes raw tool
-  execution bypasses without changing permission behavior.
+  one hosted dispatch path, a Product-neutral authoring API, explicit direct or
+  authorized bindings, typed common effects, a session-owned authorization
+  gateway, and the migration that removes raw tool execution bypasses without
+  changing permission behavior.
 - [Sandbox Runtime Boundary](sandbox-runtime-boundary.md) defines the optional,
   disabled-by-default process containment service, its cross-platform
   Protocols, centralized host detection and backend selection, existing

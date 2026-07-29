@@ -18,6 +18,7 @@ from loushang.harness.session import (
     ToolActivationProfile,
     create_tool_prompt_rebuilder,
 )
+from loushang.harness.tools.authoring import ToolContext
 from loushang.harness.tools.contribution import resolve_tool_contributions
 from loushang.harness.tools.core import ToolDefinition, project_tool_definition
 from loushang.harness.tools.execution import (
@@ -25,9 +26,8 @@ from loushang.harness.tools.execution import (
     ToolExecutionHost,
 )
 from loushang.harness.tools.workspace.authorization import (
-    WorkspaceToolAuthorizationGateway,
+    create_workspace_tool_execution_host,
 )
-from loushang.harness.tools.workspace.context import ToolContext
 from loushang.harness.tools.workspace.policy import ToolPolicyEvaluator
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.workspace.exec import ExecService
@@ -96,10 +96,7 @@ class SessionToolController:
                     "raw preinstalled AgentTool values are not admitted"
                 )
             self.tool_registry = WorkspaceToolRegistry()
-        policy_evaluator = (
-            self.policy_evaluator
-            or getattr(self.tool_registry, "policy_evaluator", None)
-        )
+        policy_evaluator = self.policy_evaluator
         if policy_evaluator is None:
             from loushang.harness.policy_engine import PolicyEngine
 
@@ -108,12 +105,10 @@ class SessionToolController:
             self.get_approval_resolver()
             if self.get_approval_resolver is not None
             else None
-        ) or getattr(self.tool_registry, "approval_resolver", None)
-        self._execution_host = ToolExecutionHost(
-            WorkspaceToolAuthorizationGateway(
-                policy_evaluator=policy_evaluator,
-                approval_resolver=approval_resolver,
-            )
+        )
+        self._execution_host = create_workspace_tool_execution_host(
+            policy_evaluator=policy_evaluator,
+            approval_resolver=approval_resolver,
         )
         self.tool_registry.bind_execution_host(self._execution_host)
         profile = self.activation_profile or ToolActivationProfile(

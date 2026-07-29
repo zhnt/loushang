@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import ToolCall
 from loushang.harness.authorization import EffectiveExecutionProfile
+from loushang.harness.effects import ToolEffect
 from loushang.harness.policy import ToolPolicySubject
 
 if TYPE_CHECKING:
@@ -95,6 +96,7 @@ class PreparedToolAction:
     authorization_arguments: Mapping[str, Any]
     execution_arguments: Mapping[str, Any]
     cwd: str | None
+    effects: tuple[ToolEffect, ...] = ()
     policy_subject: ToolPolicySubject | None = None
     execution_environment: object | None = None
 
@@ -108,6 +110,7 @@ class AuthorizedToolAction:
     execution_arguments: Mapping[str, Any]
     cwd: str | None
     fingerprint: str
+    effects: tuple[ToolEffect, ...] = ()
     actor_id: str = "root"
     execution_profile: EffectiveExecutionProfile | None = None
     policy_code: str | None = None

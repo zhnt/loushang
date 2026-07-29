@@ -93,12 +93,18 @@ class PermissionBehaviorHarness:
             execution_profile=execution_profile,
         )
         runtime_settings = workspace_tool_runtime_settings(self.settings)
+        from loushang.harness.tools.workspace.authorization import (
+            create_workspace_tool_execution_host,
+        )
+
         self.registry = WorkspaceToolRegistry(
-            approval_resolver=approval_resolver,  # type: ignore[arg-type]
+            execution_host=create_workspace_tool_execution_host(
+                policy_evaluator=runtime_settings.policy_engine,  # type: ignore[arg-type]
+                approval_resolver=approval_resolver,  # type: ignore[arg-type]
+            )
         )
         register_coding_builtin_tools(
             self.registry,
-            policy_engine=runtime_settings.policy_engine,  # type: ignore[arg-type]
             exec_service=self.exec_service,
         )
         self._call_sequence = 0

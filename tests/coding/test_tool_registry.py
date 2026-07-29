@@ -3,6 +3,20 @@ from __future__ import annotations
 import json
 
 
+def _bind_workspace_scope(registry, *, policy_evaluator=None):
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.tools.workspace.authorization import (
+        create_workspace_tool_execution_host,
+    )
+
+    registry.bind_execution_host(
+        create_workspace_tool_execution_host(
+            policy_evaluator=policy_evaluator or PolicyEngine(),
+        )
+    )
+    return registry
+
+
 def _tool_context_provider(*, cwd: str, model=None):
     from loushang.harness.tools.workspace import ToolContext
 
@@ -44,7 +58,7 @@ def test_registry_rejects_raw_runtime_agent_tool() -> None:
             del tool_call_id, params, signal, on_update
             return AgentToolResult(content=[], details={})
 
-    registry = ToolRegistry()
+    registry = _bind_workspace_scope(ToolRegistry())
     with pytest.raises(TypeError, match="explicitly bound ToolDefinition"):
         registry.register_tool(RuntimeTool())  # type: ignore[arg-type]
 
@@ -627,7 +641,7 @@ def test_register_builtin_tools_reuses_factory_but_keeps_legacy_order() -> None:
         WorkspaceToolRegistry as ToolRegistry,
     )
 
-    registry = ToolRegistry()
+    registry = _bind_workspace_scope(ToolRegistry())
     register_builtin_tools(registry)
 
     assert [definition.name for definition in registry.list_definitions()] == [
@@ -721,7 +735,7 @@ def test_register_builtin_tools_forwards_external_tool_policy_to_read_only_tools
             return str(fake_fd) if name == "fd" else None
 
     downloader = Downloader()
-    registry = ToolRegistry()
+    registry = _bind_workspace_scope(ToolRegistry())
     register_builtin_tools(
         registry,
         external_tool_policy="auto",
@@ -775,9 +789,13 @@ def test_bash_tool_uses_policy_and_exec(tmp_path) -> None:
         policy_engine = RecordingPolicyEngine()
         exec_service = RecordingExecService()
 
-        registry = ToolRegistry()
+        registry = _bind_workspace_scope(
+            ToolRegistry(),
+            policy_evaluator=policy_engine,
+        )
         register_builtin_tools(
-            registry, policy_engine=policy_engine, exec_service=exec_service
+            registry,
+            exec_service=exec_service,
         )
         result = await registry.materialize_tool("bash").execute(
             "call-1",
@@ -813,8 +831,11 @@ def test_bash_tool_invokes_canonical_policy_once(tmp_path) -> None:
 
     async def scenario() -> None:
         policy_engine = CountingPolicyEngine()
-        registry = ToolRegistry()
-        register_builtin_tools(registry, policy_engine=policy_engine)
+        registry = _bind_workspace_scope(
+            ToolRegistry(),
+            policy_evaluator=policy_engine,
+        )
+        register_builtin_tools(registry)
         bash = registry.materialize_tool("bash")
 
         await bash.execute(
@@ -858,9 +879,13 @@ def test_bash_tool_accepts_pi_style_shell_command_string(tmp_path) -> None:
     async def scenario() -> None:
         policy_engine = RecordingPolicyEngine()
         exec_service = RecordingExecService()
-        registry = ToolRegistry()
+        registry = _bind_workspace_scope(
+            ToolRegistry(),
+            policy_evaluator=policy_engine,
+        )
         register_builtin_tools(
-            registry, policy_engine=policy_engine, exec_service=exec_service
+            registry,
+            exec_service=exec_service,
         )
 
         result = await registry.materialize_tool("bash").execute(
@@ -1256,7 +1281,7 @@ def test_bash_tool_truncates_large_output_with_shared_tail_policy(tmp_path) -> N
             return ExecResult(exit_code=0, stdout=stdout, stderr=stderr)
 
     async def scenario() -> None:
-        registry = ToolRegistry()
+        registry = _bind_workspace_scope(ToolRegistry())
         register_builtin_tools(
             registry,
             exec_service=LargeOutputExecService(),
@@ -1534,9 +1559,13 @@ def test_bash_tool_raises_for_invalid_command_and_env_shapes(tmp_path) -> None:
     async def scenario() -> None:
         policy_engine = RecordingPolicyEngine()
         exec_service = RecordingExecService()
-        registry = ToolRegistry()
+        registry = _bind_workspace_scope(
+            ToolRegistry(),
+            policy_evaluator=policy_engine,
+        )
         register_builtin_tools(
-            registry, policy_engine=policy_engine, exec_service=exec_service
+            registry,
+            exec_service=exec_service,
         )
         bash_tool = registry.materialize_tool("bash")
 
@@ -1591,10 +1620,13 @@ def test_bash_tool_policy_decisions_do_not_record_runtime_diagnostics(tmp_path) 
 
     async def scenario() -> None:
         diagnostics_service = DiagnosticsService()
-        registry = ToolRegistry()
+        policy_engine = SequencedPolicyEngine()
+        registry = _bind_workspace_scope(
+            ToolRegistry(),
+            policy_evaluator=policy_engine,
+        )
         register_builtin_tools(
             registry,
-            policy_engine=SequencedPolicyEngine(),
             exec_service=RecordingExecService(),
             diagnostics_service=diagnostics_service,
         )
@@ -1645,7 +1677,7 @@ def test_bash_tool_exec_timeout_does_not_record_runtime_diagnostics(tmp_path) ->
 
     async def scenario() -> None:
         diagnostics_service = DiagnosticsService()
-        registry = ToolRegistry()
+        registry = _bind_workspace_scope(ToolRegistry())
         register_builtin_tools(
             registry,
             exec_service=TimeoutExecService(),
@@ -1691,7 +1723,7 @@ def test_bash_tool_timeout_error_includes_buffered_output(tmp_path) -> None:
             )
 
     async def scenario() -> None:
-        registry = WorkspaceToolRegistry()
+        registry = _bind_workspace_scope(WorkspaceToolRegistry())
         diagnostics_service = DiagnosticsService()
         register_coding_builtin_tools(
             registry,
@@ -1739,7 +1771,7 @@ def test_bash_tool_exec_exception_does_not_record_runtime_diagnostics_and_rerais
 
     async def scenario() -> None:
         diagnostics_service = DiagnosticsService()
-        registry = WorkspaceToolRegistry()
+        registry = _bind_workspace_scope(WorkspaceToolRegistry())
         register_coding_builtin_tools(
             registry,
             exec_service=FailingExecService(),

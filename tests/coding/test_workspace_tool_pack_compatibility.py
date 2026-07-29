@@ -7,7 +7,6 @@ def test_workspace_tool_modules_are_owned_by_harness() -> None:
     module_names = (
         "bash",
         "builtin_renderers",
-        "context",
         "edit",
         "edit_diff",
         "external_tools",
@@ -15,7 +14,6 @@ def test_workspace_tool_modules_are_owned_by_harness() -> None:
         "grep",
         "ignore",
         "ls",
-        "normalize",
         "operations",
         "output_preview",
         "path_utils",

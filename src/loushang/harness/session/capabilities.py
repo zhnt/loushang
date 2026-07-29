@@ -37,13 +37,13 @@ from loushang.harness.commands import (
 from loushang.harness.conversation import CommandExecutionRecord
 from loushang.harness.resources.activation import ResourceActivationRuntime
 from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.tools.authoring import ToolContextProvider
 from loushang.harness.tools.contribution import (
     ToolContribution,
     ToolResolutionResult,
     resolve_tool_contributions,
 )
 from loushang.harness.tools.core import ToolDefinition
-from loushang.harness.tools.workspace.context import ToolContextProvider
 from loushang.harness.workspace.exec import ExecOutputChunk
 
 

@@ -15,12 +15,18 @@ from loushang.harness.authorization import (
     ExecutionAuthorizationError,
     resolve_effective_execution_profile,
 )
+from loushang.harness.effects import (
+    FilesystemEffect,
+    ToolEffect,
+    effect_snapshot,
+)
 from loushang.harness.policy import ToolPolicySubject
 from loushang.harness.tools.execution import (
     AuthorizedToolAction,
     AuthorizedToolContext,
     AuthorizedToolHandler,
     PreparedToolAction,
+    ToolExecutionHost,
 )
 
 from .audit import (
@@ -60,6 +66,7 @@ class WorkspaceToolAuthorizationGateway:
             tool_name=prepared.tool_name,
             arguments=prepared.authorization_arguments,
             execution_arguments=prepared.execution_arguments,
+            effects=prepared.effects,
             executor=lambda action: handler(action, context),
             cwd=prepared.cwd,
             policy_subject=prepared.policy_subject,
@@ -79,12 +86,30 @@ class WorkspaceToolAuthorizationGateway:
         )
 
 
+def create_workspace_tool_execution_host(
+    *,
+    policy_evaluator: ToolPolicyEvaluator,
+    approval_resolver: ApprovalResolver | None = None,
+    execution_environment: object | None = None,
+) -> ToolExecutionHost:
+    """Compose the one live Workspace Gateway owned by an execution scope."""
+
+    return ToolExecutionHost(
+        WorkspaceToolAuthorizationGateway(
+            policy_evaluator=policy_evaluator,
+            approval_resolver=approval_resolver,
+            execution_environment=execution_environment,
+        )
+    )
+
+
 async def _authorize_workspace_tool_action(
     policy_engine: ToolPolicyEvaluator | None,
     *,
     tool_name: str,
     arguments: Mapping[str, Any],
     execution_arguments: Mapping[str, Any] | None = None,
+    effects: tuple[ToolEffect, ...] = (),
     cwd: str | None = None,
     policy_subject: ToolPolicySubject | None = None,
     approval_resolver: ApprovalResolver | None = None,
@@ -112,7 +137,13 @@ async def _authorize_workspace_tool_action(
         authorization_arguments=frozen_arguments,
         execution_arguments=frozen_execution_arguments,
         cwd=cwd,
-        fingerprint=_fingerprint(tool_name, frozen_arguments, cwd),
+        fingerprint=_fingerprint(
+            tool_name,
+            frozen_arguments,
+            cwd,
+            effects=effects,
+        ),
+        effects=effects,
         actor_id=approval_actor_id(approval_resolver),
         audit_details=audit_details,
     )
@@ -130,6 +161,7 @@ async def _authorize_workspace_tool_action(
         arguments=action.authorization_arguments,
         cwd=action.cwd,
         policy_subject=policy_subject,
+        effects=effects,
         approval_resolver=approval_resolver,
         tool_call_id=tool_call_id,
         audit_sink=audit_sink,
@@ -152,6 +184,7 @@ async def _authorize_workspace_tool_action(
         execution_arguments=action.execution_arguments,
         cwd=action.cwd,
         fingerprint=action.fingerprint,
+        effects=action.effects,
         actor_id=action.actor_id,
         execution_profile=effective,
         policy_code=authorization.decision.code,
@@ -166,6 +199,7 @@ async def _execute_authorized_tool_action(
     tool_name: str,
     arguments: Mapping[str, Any],
     execution_arguments: Mapping[str, Any] | None = None,
+    effects: tuple[ToolEffect, ...] = (),
     executor: WorkspaceActionExecutor[T],
     on_authorized: WorkspaceActionObservation | None = None,
     cwd: str | None = None,
@@ -187,6 +221,7 @@ async def _execute_authorized_tool_action(
         tool_name=tool_name,
         arguments=arguments,
         execution_arguments=execution_arguments,
+        effects=effects,
         cwd=cwd,
         policy_subject=policy_subject,
         approval_resolver=approval_resolver,
@@ -286,6 +321,7 @@ def _revalidate_authorized_action(action: AuthorizedToolAction) -> None:
         action.tool_name,
         action.authorization_arguments,
         action.cwd,
+        effects=action.effects,
     )
     if fingerprint != action.fingerprint:
         raise ExecutionAuthorizationError(
@@ -296,6 +332,7 @@ def _revalidate_authorized_action(action: AuthorizedToolAction) -> None:
             action.tool_name,
             action.authorization_arguments,
             action.execution_profile,
+            effects=action.effects,
         )
 
 
@@ -349,13 +386,20 @@ def _fingerprint(
     tool_name: str,
     arguments: Mapping[str, Any],
     cwd: str | None,
+    *,
+    effects: tuple[ToolEffect, ...] = (),
 ) -> str:
+    payload_value: dict[str, object] = {
+        "tool_name": tool_name,
+        "arguments": _json_value(arguments),
+        "cwd": cwd,
+    }
+    if effects:
+        payload_value["effects"] = [
+            effect_snapshot(effect) for effect in effects
+        ]
     payload = json.dumps(
-        {
-            "tool_name": tool_name,
-            "arguments": _json_value(arguments),
-            "cwd": cwd,
-        },
+        payload_value,
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
@@ -394,7 +438,22 @@ def _validate_path_authority(
     tool_name: str,
     arguments: Mapping[str, Any],
     profile: EffectiveExecutionProfile,
+    *,
+    effects: tuple[ToolEffect, ...] = (),
 ) -> None:
+    filesystem_effects = tuple(
+        effect for effect in effects if isinstance(effect, FilesystemEffect)
+    )
+    if filesystem_effects:
+        for effect in filesystem_effects:
+            roots = (
+                profile.readable_roots
+                if effect.operation == "read"
+                else profile.writable_roots
+            )
+            for path_value in effect.paths:
+                _validate_one_path(path_value, roots=roots, profile=profile)
+        return
     path_value = arguments.get("path")
     if not isinstance(path_value, str):
         return
@@ -416,6 +475,28 @@ def _validate_path_authority(
         )
 
 
+def _validate_one_path(
+    path_value: str,
+    *,
+    roots: tuple[Path, ...],
+    profile: EffectiveExecutionProfile,
+) -> None:
+    path = Path(path_value).resolve(strict=False)
+    if any(
+        path == root or path.is_relative_to(root)
+        for root in profile.denied_roots
+    ):
+        raise ExecutionAuthorizationError(
+            f"path is denied by execution profile: {path}"
+        )
+    if roots and any(path == root or path.is_relative_to(root) for root in roots):
+        return
+    raise ExecutionAuthorizationError(
+        f"path is outside the authorized roots: {path}"
+    )
+
+
 __all__ = [
     "WorkspaceToolAuthorizationGateway",
+    "create_workspace_tool_execution_host",
 ]

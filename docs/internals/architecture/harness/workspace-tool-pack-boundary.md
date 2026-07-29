@@ -13,9 +13,9 @@ through a product compatibility facade.
 
 Harness owns:
 
-- `ToolContext` and the neutral context-provider/event-sink shapes;
-- definition normalization, wrapping, argument preparation, cancellation, and
-  update helpers;
+- the Product-neutral `ToolContext`, context-provider/event-sink shapes, and
+  explicit binding helpers in `harness.tools.authoring`;
+- workspace argument preparation, cancellation, and update helpers;
 - read, list, find, grep, write, edit, and bash implementations;
 - local operation adapters, ignore matching, diff generation, process helpers,
   output previews, truncation projections, and neutral renderers;

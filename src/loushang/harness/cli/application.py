@@ -124,6 +124,7 @@ class AgentCliApplicationState(Generic[AgentArgsT]):
     settings_manager: object | None
     tool_registry: object
     approval_resolver: object | None
+    tool_policy_evaluator: object | None = None
 
 
 @dataclass(frozen=True)
@@ -251,6 +252,7 @@ async def prepare_agent_cli_application_state(
             settings_manager=settings_manager,
             tool_registry=tool_registry,
             approval_resolver=interactive_resolver,
+            tool_policy_evaluator=tool_settings.policy_engine,
         )
     )
 
@@ -480,6 +482,7 @@ def build_agent_cli_application_ports(
                         services=services,
                         tool_registry=registry,
                         approval_resolver=None,
+                        tool_policy_evaluator=None,
                     )
                 ),
                 resolve_session=resolve_agent_cli_session,
@@ -523,6 +526,7 @@ def build_agent_cli_application_ports(
             services=state.services,
             tool_registry=state.tool_registry,
             approval_resolver=state.approval_resolver,
+            tool_policy_evaluator=state.tool_policy_evaluator,
         ),
         runtime_operation=lambda context: run_agent_cli_session_listing(
             context.state.args,
@@ -779,6 +783,7 @@ def invoke_agent_cli_runtime_builder(
     services: object,
     tool_registry: object,
     approval_resolver: object | None,
+    tool_policy_evaluator: object | None = None,
 ) -> ResultT:
     """Invoke an Agent runtime builder with the standard CLI arguments."""
 
@@ -791,7 +796,10 @@ def invoke_agent_cli_runtime_builder(
             "services": services,
             "tool_registry": tool_registry,
         },
-        optional={"approval_resolver": approval_resolver},
+        optional={
+            "approval_resolver": approval_resolver,
+            "tool_policy_evaluator": tool_policy_evaluator,
+        },
     )
 
 

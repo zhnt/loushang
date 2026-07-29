@@ -1790,10 +1790,9 @@ def _child_approval_playback() -> object:
             executed.append((request.cwd or "", command))
             return ExecResult(exit_code=0, stdout="published\n")
 
-        root_registry = WorkspaceToolRegistry(approval_resolver=resolver)
+        root_registry = WorkspaceToolRegistry()
         register_coding_builtin_tools(
             root_registry,
-            policy_engine=PolicyEngine(),
             exec_service=ExecService(backend=exec_backend),
         )
 
@@ -1812,9 +1811,15 @@ def _child_approval_playback() -> object:
             )
             child_registry = kwargs["tool_registry"]
             assert isinstance(child_registry, WorkspaceToolRegistry)
-            child_registry.bind_workspace_authorization(
-                policy_evaluator=PolicyEngine(),
-                approval_resolver=kwargs["approval_resolver"],  # type: ignore[arg-type]
+            from loushang.harness.tools.workspace.authorization import (
+                create_workspace_tool_execution_host,
+            )
+
+            child_registry.bind_execution_host(
+                create_workspace_tool_execution_host(
+                    policy_evaluator=PolicyEngine(),
+                    approval_resolver=kwargs["approval_resolver"],  # type: ignore[arg-type]
+                )
             )
             session = _ApprovalPlaybackSession(
                 cwd=str(cwd),

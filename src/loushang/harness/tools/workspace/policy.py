@@ -15,6 +15,7 @@ from loushang.harness.approval import (
     find_approval_grant,
     resolve_approval,
 )
+from loushang.harness.effects import ToolEffect
 from loushang.harness.policy import (
     PolicyDecision,
     PolicyEvaluationError,
@@ -55,6 +56,7 @@ async def enforce_tool_policy(
     arguments: Mapping[str, Any],
     cwd: str | None = None,
     policy_subject: ToolPolicySubject | None = None,
+    effects: tuple[ToolEffect, ...] = (),
     approval_resolver: ApprovalResolver | None = None,
     tool_call_id: str | None = None,
     audit_sink: Any = None,
@@ -82,6 +84,7 @@ async def enforce_tool_policy(
         tool_name=tool_name,
         arguments=arguments,
         cwd=cwd,
+        effects=effects,
     )
     environment_snapshot = _snapshot_execution_environment(execution_environment)
     _validate_execution_arguments(execution_subject)
@@ -286,6 +289,8 @@ def _validate_policy_subject_matches_execution(
         mismatches.append("cwd")
     if subject.paths != execution.paths:
         mismatches.append("paths")
+    if subject.effects != execution.effects:
+        mismatches.append("effects")
     argument_command = execution.arguments.get("command")
     if argument_command is None:
         if subject.command is not None:

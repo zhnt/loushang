@@ -4,23 +4,22 @@ from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
 from loushang.agent.types import AgentToolResult, TextPart
-from loushang.harness.tools.execution import (
-    CallableToolActionAdapter,
-    PreparedToolAction,
+from loushang.harness.tools.authoring import (
+    FilesystemActionAdapter,
+    ToolContext,
+    authorized_tool,
+    tool,
 )
 from loushang.harness.workspace.mutation_queue import with_file_mutation_queue
 from loushang.harness.workspace.operations import EditOperations, resolve_operation
 
-from .authoring import tool
 from .builtin_renderers import render_edit_call, render_edit_result
-from .context import ToolContext
 from .edit_diff import (
     EditEntry,
     apply_text_edits,
     build_unified_diff,
     first_changed_line,
 )
-from .normalize import authorized_tool
 from .operations import (
     normalize_edit_operations,
     raise_if_operation_aborted,
@@ -107,21 +106,9 @@ def create_edit_tool_definition(
     return replace(
         authorized_tool(
             edit,
-            action=CallableToolActionAdapter(
-                lambda call, context: PreparedToolAction(
-                    tool_name="edit",
-                    authorization_arguments={
-                        "path": str(
-                            resolve_tool_path(
-                                str(call.arguments["path"]),
-                                cwd=context.cwd,
-                            )
-                        ),
-                        "edits": call.arguments["edits"],
-                    },
-                    execution_arguments=call.arguments,
-                    cwd=context.cwd,
-                )
+            action=FilesystemActionAdapter(
+                "write",
+                authorization_fields=("edits",),
             ),
         ),
         prepare_arguments=_prepare_edit_arguments,

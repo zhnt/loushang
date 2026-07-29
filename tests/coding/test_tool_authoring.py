@@ -2,25 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from typing import Any
 
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart
-from loushang.harness.tools.core import ToolDefinition, tool
-from loushang.harness.tools.execution import direct_execution
-from loushang.harness.tools.workspace import ToolContext, direct_tool
-from loushang.harness.tools.workspace.normalize import tool_to_definition
+from loushang.harness.tools import ToolContext, direct_tool, tool
 from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
-
-
-async def _dummy_execute(
-    tool_call_id: str,
-    params: dict[str, Any],
-    signal: object | None = None,
-    on_update: object | None = None,
-) -> AgentToolResult[dict[str, Any]]:
-    del tool_call_id, params, signal, on_update
-    return AgentToolResult(content=[], details={})
 
 
 def _provider(*, tool_call_id: str) -> ToolContext:
@@ -73,22 +59,6 @@ async def fail_loudly(name: str) -> str:
     raise ValueError(f"boom: {name}")
 
 
-def test_tool_to_definition_accepts_tool_definition_passthrough() -> None:
-    definition = ToolDefinition(
-        name="demo",
-        label="Demo",
-        description="demo",
-        parameters={
-            "type": "object",
-            "properties": {},
-            "required": [],
-            "additionalProperties": False,
-        },
-        execution=direct_execution(_dummy_execute),
-    )
-    assert tool_to_definition(definition) is definition
-
-
 def test_direct_tool_compiles_decorated_tool_metadata() -> None:
     definition = direct_tool(greet)
     assert definition.name == "greet"
@@ -116,32 +86,6 @@ def test_authoring_private_spec_attr_is_direct_import_only() -> None:
     assert (
         not hasattr(authoring, "__all__") or "_TOOL_SPEC_ATTR" not in authoring.__all__
     )
-
-
-def test_tool_to_definition_rejects_duck_typed_tool_like_objects() -> None:
-    class DuckTypedTool:
-        name = "duck"
-        label = "Duck"
-        description = "duck typed tool"
-        parameters: dict[str, object] = {}
-        prepare_arguments = None
-
-        async def execute(
-            self,
-            tool_call_id: str,
-            params: dict[str, object],
-            signal=None,
-            on_update=None,
-        ):
-            del tool_call_id, params, signal, on_update
-            return AgentToolResult(content=[], details={})
-
-    try:
-        tool_to_definition(DuckTypedTool())
-    except TypeError as exc:
-        assert "decorated tool" in str(exc)
-    else:
-        raise AssertionError("expected duck-typed object to be rejected")
 
 
 def test_decorated_tool_spec_remains_callable() -> None:

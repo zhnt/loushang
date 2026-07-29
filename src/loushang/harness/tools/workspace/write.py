@@ -3,17 +3,16 @@ from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
 from loushang.agent.types import AgentToolResult, TextPart
-from loushang.harness.tools.execution import (
-    CallableToolActionAdapter,
-    PreparedToolAction,
+from loushang.harness.tools.authoring import (
+    FilesystemActionAdapter,
+    ToolContext,
+    authorized_tool,
+    tool,
 )
 from loushang.harness.workspace.mutation_queue import with_file_mutation_queue
 from loushang.harness.workspace.operations import WriteOperations, resolve_operation
 
-from .authoring import tool
 from .builtin_renderers import render_write_call, render_write_result
-from .context import ToolContext
-from .normalize import authorized_tool
 from .operations import (
     normalize_write_operations,
     raise_if_operation_aborted,
@@ -94,21 +93,9 @@ def create_write_tool_definition(
     return replace(
         authorized_tool(
             write,
-            action=CallableToolActionAdapter(
-                lambda call, context: PreparedToolAction(
-                    tool_name="write",
-                    authorization_arguments={
-                        "path": str(
-                            resolve_tool_path(
-                                str(call.arguments["path"]),
-                                cwd=context.cwd,
-                            )
-                        ),
-                        "content": call.arguments["content"],
-                    },
-                    execution_arguments=call.arguments,
-                    cwd=context.cwd,
-                )
+            action=FilesystemActionAdapter(
+                "write",
+                authorization_fields=("content",),
             ),
         ),
         prepare_arguments=lambda value: prepare_tool_arguments(

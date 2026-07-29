@@ -8,6 +8,11 @@ from dataclasses import dataclass
 from pathlib import PurePath
 from typing import Literal
 
+from loushang.harness.effects import (
+    FilesystemEffect,
+    NetworkEffect,
+    PublicationEffect,
+)
 from loushang.harness.policy import (
     CommandPolicySubject,
     PolicySubject,
@@ -100,6 +105,7 @@ def detect_policy_effects(subject: PolicySubject) -> tuple[DetectedPolicyEffect,
     command = _command_subject(subject)
 
     if tool_subject is not None:
+        _detect_declared_effects(tool_subject, effects)
         _detect_secret_path_effect(tool_subject, effects)
         _detect_secret_environment_effect(tool_subject, effects)
 
@@ -144,6 +150,40 @@ def detect_policy_effects(subject: PolicySubject) -> tuple[DetectedPolicyEffect,
             if isinstance(unresolved_stdin, str):
                 _detect_incomplete_text_effects(unresolved_stdin, effects)
     return tuple(effects)
+
+
+def _detect_declared_effects(
+    subject: ToolPolicySubject,
+    effects: list[DetectedPolicyEffect],
+) -> None:
+    for effect in subject.effects:
+        if isinstance(effect, FilesystemEffect) and effect.operation == "delete":
+            _append_effect(
+                effects,
+                DetectedPolicyEffect(
+                    "destructive",
+                    "filesystem_deletion",
+                    "Filesystem content would be deleted or truncated",
+                ),
+            )
+        elif isinstance(effect, NetworkEffect) and effect.mutation:
+            _append_effect(
+                effects,
+                DetectedPolicyEffect(
+                    "external_effect",
+                    "external_system_effect",
+                    "An external system would be changed",
+                ),
+            )
+        elif isinstance(effect, PublicationEffect):
+            _append_effect(
+                effects,
+                DetectedPolicyEffect(
+                    "publication",
+                    "external_publication",
+                    "Content or repository state would be published",
+                ),
+            )
 
 
 def _detect_secret_path_effect(

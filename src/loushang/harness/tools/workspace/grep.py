@@ -8,15 +8,15 @@ from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
 from loushang.agent.types import AgentToolResult, TextPart
-from loushang.harness.tools.execution import (
-    CallableToolActionAdapter,
-    PreparedToolAction,
+from loushang.harness.tools.authoring import (
+    FilesystemActionAdapter,
+    ToolContext,
+    authorized_tool,
+    tool,
 )
 from loushang.harness.workspace.operations import GrepOperations, resolve_operation
 
-from .authoring import tool
 from .builtin_renderers import render_grep_call, render_grep_result
-from .context import ToolContext
 from .external_tools import (
     ExternalToolDownloader,
     ExternalToolPolicy,
@@ -29,7 +29,6 @@ from .external_tools import (
     resolve_external_tool,
 )
 from .ignore import load_ignore_matcher
-from .normalize import authorized_tool
 from .operations import (
     normalize_grep_operations,
     raise_if_operation_aborted,
@@ -221,21 +220,10 @@ def create_grep_tool_definition(
     return replace(
         authorized_tool(
             grep,
-            action=CallableToolActionAdapter(
-                lambda call, context: PreparedToolAction(
-                    tool_name="grep",
-                    authorization_arguments={
-                        "path": str(
-                            resolve_tool_path(
-                                str(call.arguments.get("path") or "."),
-                                cwd=context.cwd,
-                            )
-                        ),
-                        "pattern": call.arguments["pattern"],
-                    },
-                    execution_arguments=call.arguments,
-                    cwd=context.cwd,
-                )
+            action=FilesystemActionAdapter(
+                "read",
+                default_path=".",
+                authorization_fields=("pattern",),
             ),
         ),
         prepare_arguments=lambda value: prepare_tool_arguments(

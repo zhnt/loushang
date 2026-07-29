@@ -1328,12 +1328,19 @@ def test_cli_builtin_tool_registry_uses_settings_external_tool_policy(
     assert captured["external_tool_policy"] == "required"
 
 
-def test_cli_builtin_tool_registry_binds_headless_policy_from_settings(
+def test_cli_policy_settings_bind_to_an_explicit_execution_scope(
     tmp_path,
 ) -> None:
     from loushang.coding.cli import __main__ as cli_main
     from loushang.coding.control import ControlConfig, SettingsManager, ToolSettings
+    from loushang.harness.policy_engine import PolicyEngine
     from loushang.harness.tools.workspace import ToolContext
+    from loushang.harness.tools.workspace.authorization import (
+        create_workspace_tool_execution_host,
+    )
+    from loushang.harness.tools.workspace.factory import (
+        workspace_tool_runtime_settings,
+    )
 
     def context_provider(*, tool_call_id: str) -> ToolContext:
         return ToolContext(tool_call_id=tool_call_id, cwd=str(tmp_path))
@@ -1348,6 +1355,16 @@ def test_cli_builtin_tool_registry_binds_headless_policy_from_settings(
     )
     allow_registry = cli_main.build_builtin_tool_registry(
         settings_manager=allow_manager
+    )
+    allow_settings = workspace_tool_runtime_settings(
+        allow_manager,
+        policy_factory=PolicyEngine,
+    )
+    allow_registry.bind_execution_host(
+        create_workspace_tool_execution_host(
+            policy_evaluator=allow_settings.policy_engine,
+            approval_resolver=allow_settings.approval_resolver,
+        )
     )
     allow_tool = allow_registry.materialize_tool(
         "write", context_provider=context_provider
@@ -1367,6 +1384,16 @@ def test_cli_builtin_tool_registry_binds_headless_policy_from_settings(
         )
     )
     deny_registry = cli_main.build_builtin_tool_registry(settings_manager=deny_manager)
+    deny_settings = workspace_tool_runtime_settings(
+        deny_manager,
+        policy_factory=PolicyEngine,
+    )
+    deny_registry.bind_execution_host(
+        create_workspace_tool_execution_host(
+            policy_evaluator=deny_settings.policy_engine,
+            approval_resolver=deny_settings.approval_resolver,
+        )
+    )
     deny_tool = deny_registry.materialize_tool(
         "write", context_provider=context_provider
     )

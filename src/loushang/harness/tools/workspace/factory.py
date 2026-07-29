@@ -15,6 +15,7 @@ from loushang.harness.permissions import (
     PermissionProfilePolicyEvaluator,
 )
 from loushang.harness.policy_engine import PolicyEngine
+from loushang.harness.tools.authoring import ToolContext, ToolContextProvider
 from loushang.harness.tools.execution import ToolExecutionHost
 from loushang.harness.workspace.exec import ExecService
 from loushang.harness.workspace.operations import (
@@ -34,7 +35,6 @@ from .bash import (
     BashToolOptions,
     create_bash_tool_definition,
 )
-from .context import ToolContext, ToolContextProvider
 from .edit import EditToolOptions, create_edit_tool_definition
 from .external_tools import (
     ExternalToolDownloader,

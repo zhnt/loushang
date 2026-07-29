@@ -7,6 +7,7 @@ from typing import Any, NotRequired, Protocol, TypedDict
 from loushang.agent.types import AgentToolResult, TextPart
 from loushang.ai.types import ToolCall
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.effects import ProcessEffect
 from loushang.harness.policy import (
     build_tool_policy_subject,
     executable_search_path_from_env,
@@ -248,12 +249,14 @@ class _BashActionAdapter:
             arguments=arguments,
             assume_shell=isinstance(arguments.get("command"), str),
         )
+        effect = ProcessEffect(exec_request.command)
         return PreparedToolAction(
             tool_name="bash",
             authorization_arguments=effective_arguments,
             execution_arguments={"request": exec_request},
             cwd=exec_request.cwd,
             policy_subject=policy_subject,
+            effects=(effect,),
             execution_environment=exec_request.effective_environment,
         )
 
@@ -410,6 +413,7 @@ def _bash_policy_facts(
         arguments=effective_arguments,
         cwd=exec_request.cwd,
         command=command_subject,
+        effects=(ProcessEffect(exec_request.command),),
     )
     return effective_arguments, policy_subject
 

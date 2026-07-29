@@ -178,10 +178,7 @@ def build_builtin_tool_registry(
         if approval_resolver is not None
         else resolved_runtime_settings.approval_resolver
     )
-    registry = WorkspaceToolRegistry(
-        policy_evaluator=resolved_runtime_settings.policy_engine,
-        approval_resolver=resolved_approval_resolver,
-    )
+    registry = WorkspaceToolRegistry()
     configure_persistent_approval_policy(
         resolved_approval_resolver,
         settings_manager,
@@ -195,7 +192,6 @@ def build_builtin_tool_registry(
         external_tool_policy=get_external_tool_policy()
         if callable(get_external_tool_policy)
         else None,
-        policy_engine=resolved_runtime_settings.policy_engine,
     )
     return registry
 
@@ -208,6 +204,7 @@ def default_runtime_builder(
     services: BootstrapServices,
     tool_registry: WorkspaceToolRegistry,
     approval_resolver: InteractiveApprovalResolver | None = None,
+    tool_policy_evaluator: object | None = None,
 ):
     allowed_tool_names, active_tool_names = agent_tool_selection(args)
     resource_loader_options = configure_agent_resource_loader(
@@ -228,6 +225,7 @@ def default_runtime_builder(
         active_tool_names=active_tool_names,
         persist=not args.no_session,
         approval_resolver=approval_resolver,
+        tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=True,
     )
 

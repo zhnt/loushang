@@ -41,6 +41,7 @@ from loushang.harness.diagnostics.types import StartupCheckResult
 from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.multiagent import DelegatedExecutionProfile
+from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.resources.packages.materializer import (
     GitPackageMaterializerBackend,
     resolve_session_package_install_root,
@@ -199,6 +200,7 @@ def _create_agent_session(
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     extension_flag_values: ExtensionFlagValues | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
+    tool_policy_evaluator: PolicyEvaluator | None = None,
     enable_multiagent: bool = False,
     sandbox_workspace_writable: bool = True,
     delegated_execution_profile: DelegatedExecutionProfile | None = None,
@@ -292,9 +294,7 @@ def _create_agent_session(
             package_materializer=resolved_package_materializer,
             exec_service=sandbox_runtime.exec_service,
             approval_resolver=approval_resolver,
-            tool_policy_evaluator=(
-                registry.policy_evaluator if registry is not None else None
-            ),
+            tool_policy_evaluator=tool_policy_evaluator,
             capability_runtime=capability_runtime,
             sandbox_runtime=sandbox_runtime,
             delegated_execution_profile=delegated_execution_profile,
@@ -368,6 +368,7 @@ def _create_agent_session(
                     _create_agent_session_runtime,
                     stream_fn=stream_fn,
                     agent_factory=agent_factory,
+                    tool_policy_evaluator=tool_policy_evaluator,
                 ),
             ),
             agent_types=multiagent_types,
@@ -395,6 +396,7 @@ def create_agent_session(
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     extension_flag_values: ExtensionFlagValues | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
+    tool_policy_evaluator: PolicyEvaluator | None = None,
     enable_multiagent: bool = False,
 ) -> AgentSession:
     return _create_agent_session(
@@ -415,6 +417,7 @@ def create_agent_session(
         append_system_prompt=append_system_prompt,
         extension_flag_values=extension_flag_values,
         approval_resolver=approval_resolver,
+        tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=enable_multiagent,
         sandbox_workspace_writable=True,
     )
@@ -438,6 +441,7 @@ def create_agent_session_from_services(
     package_materializer: PackageMaterializer | None = None,
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
+    tool_policy_evaluator: PolicyEvaluator | None = None,
     enable_multiagent: bool = False,
 ) -> CreateAgentSessionResult:
     extension_flag_values = (
@@ -463,6 +467,7 @@ def create_agent_session_from_services(
         append_system_prompt=append_system_prompt,
         extension_flag_values=extension_flag_values,
         approval_resolver=approval_resolver,
+        tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=enable_multiagent,
     )
 
@@ -486,6 +491,7 @@ def create_agent_session_result(
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     extension_flag_values: ExtensionFlagValues | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
+    tool_policy_evaluator: PolicyEvaluator | None = None,
     enable_multiagent: bool = False,
 ) -> CreateAgentSessionResult:
     resolved_services = services or create_services()
@@ -507,6 +513,7 @@ def create_agent_session_result(
         append_system_prompt=append_system_prompt,
         extension_flag_values=extension_flag_values,
         approval_resolver=approval_resolver,
+        tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=enable_multiagent,
     )
     return build_standard_agent_session_result(
@@ -582,6 +589,7 @@ def _create_agent_session_runtime(
     persist: bool = True,
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
+    tool_policy_evaluator: PolicyEvaluator | None = None,
     enable_multiagent: bool = False,
     sandbox_workspace_writable: bool = True,
     delegated_execution_profile: DelegatedExecutionProfile | None = None,
@@ -608,6 +616,7 @@ def _create_agent_session_runtime(
                 session_start_event=cast(SessionStartEvent | None, start_event),
                 append_system_prompt=append_system_prompt,
                 approval_resolver=approval_resolver,
+                tool_policy_evaluator=tool_policy_evaluator,
                 enable_multiagent=enable_multiagent,
                 sandbox_workspace_writable=sandbox_workspace_writable,
                 delegated_execution_profile=delegated_execution_profile,
@@ -643,6 +652,7 @@ def create_agent_session_runtime(
     persist: bool = True,
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
+    tool_policy_evaluator: PolicyEvaluator | None = None,
     enable_multiagent: bool = False,
 ) -> AgentSessionRuntime:
     return _create_agent_session_runtime(
@@ -662,6 +672,7 @@ def create_agent_session_runtime(
         persist=persist,
         append_system_prompt=append_system_prompt,
         approval_resolver=approval_resolver,
+        tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=enable_multiagent,
         sandbox_workspace_writable=True,
     )
@@ -672,7 +683,7 @@ def _clone_workspace_tool_registry(
 ) -> WorkspaceToolRegistry:
     """Keep session-bound tool closures out of a shared Product registry."""
 
-    cloned = WorkspaceToolRegistry(policy_evaluator=registry.policy_evaluator)
+    cloned = WorkspaceToolRegistry()
     for contribution in registry.list_contributions():
         cloned.register_tool(
             contribution.definition,

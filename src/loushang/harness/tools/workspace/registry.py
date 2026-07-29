@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from loushang.agent.types import AgentTool
-from loushang.harness.approval import ApprovalResolver
+from loushang.harness.tools.authoring import ToolContextProvider
 from loushang.harness.tools.contribution import (
     ToolContribution,
     ToolPackDefinition,
@@ -16,14 +16,11 @@ from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.core import ToolRegistry as CoreToolRegistry
 from loushang.harness.tools.execution import ToolExecutionHost
 
-from .context import ToolContextProvider
 from .factory import (
     ToolsOptions,
     WorkspaceToolProfile,
     create_profiled_workspace_tool_definitions,
 )
-from .policy import ToolPolicyEvaluator
-from .wrapper import create_workspace_tool_execution_host
 
 
 class WorkspaceToolRegistry(CoreToolRegistry):
@@ -33,33 +30,8 @@ class WorkspaceToolRegistry(CoreToolRegistry):
         self,
         *,
         execution_host: ToolExecutionHost | None = None,
-        policy_evaluator: ToolPolicyEvaluator | None = None,
-        approval_resolver: ApprovalResolver | None = None,
     ) -> None:
         super().__init__(execution_host=execution_host)
-        self.policy_evaluator = policy_evaluator
-        self.approval_resolver = approval_resolver
-
-    def bind_workspace_authorization(
-        self,
-        *,
-        policy_evaluator: ToolPolicyEvaluator | None = None,
-        approval_resolver: ApprovalResolver | None = None,
-    ) -> None:
-        """Bind a standalone Workspace host; sessions may replace it later."""
-
-        self.policy_evaluator = policy_evaluator or self.policy_evaluator
-        self.approval_resolver = approval_resolver or self.approval_resolver
-        self.bind_execution_host(
-            create_workspace_tool_execution_host(
-                policy_evaluator=self.policy_evaluator,
-                approval_resolver=self.approval_resolver,
-            )
-        )
-
-    def _ensure_execution_host(self) -> None:
-        if self._execution_host is None:
-            self.bind_workspace_authorization()
 
     def register_tool(
         self,
@@ -80,7 +52,6 @@ class WorkspaceToolRegistry(CoreToolRegistry):
         *,
         context_provider: ToolContextProvider | None = None,
     ) -> AgentTool[Any]:
-        self._ensure_execution_host()
         return self.materialize_definitions(
             [self.get_definition(name)],
             context_provider=context_provider,
@@ -92,7 +63,6 @@ class WorkspaceToolRegistry(CoreToolRegistry):
         *,
         context_provider: ToolContextProvider | None = None,
     ) -> list[AgentTool[Any]]:
-        self._ensure_execution_host()
         return super().materialize_definitions(
             definitions,
             context_provider=context_provider,

@@ -12,6 +12,8 @@ from shutil import which
 from types import MappingProxyType
 from typing import Literal, Protocol, TypeAlias, TypeVar, cast
 
+from loushang.harness.effects import ToolEffect
+
 PolicyDisposition = Literal["allow", "deny", "ask"]
 PolicyChainStrategy = Literal[
     "first_non_allow",
@@ -247,12 +249,14 @@ class ToolPolicySubject:
     cwd: str | None = None
     command: CommandPolicySubject | None = None
     paths: tuple[PathPolicySubject, ...] = ()
+    effects: tuple[ToolEffect, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.tool_name, str) or not self.tool_name:
             raise ValueError("tool_name must be a non-empty string")
         object.__setattr__(self, "arguments", _freeze_mapping(self.arguments))
         object.__setattr__(self, "paths", tuple(self.paths))
+        object.__setattr__(self, "effects", tuple(self.effects))
 
 
 @dataclass(frozen=True)
@@ -582,6 +586,7 @@ def build_tool_policy_subject(
     cwd: str | None = None,
     command: CommandPolicySubject | None = None,
     paths: tuple[PathPolicySubject, ...] | None = None,
+    effects: tuple[ToolEffect, ...] = (),
 ) -> ToolPolicySubject:
     return ToolPolicySubject(
         tool_name=tool_name,
@@ -591,6 +596,7 @@ def build_tool_policy_subject(
         paths=build_path_policy_subjects(arguments, cwd=cwd)
         if paths is None
         else paths,
+        effects=effects,
     )
 
 

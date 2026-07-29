@@ -764,10 +764,18 @@ def test_screen_approval_presenter_resolves_ask_tools_and_clears_pending(
         def dismiss_approval(self, action_id: str) -> None:
             del action_id
 
-    registry = WorkspaceToolRegistry(approval_resolver=resolver)
+    from loushang.harness.tools.workspace.authorization import (
+        create_workspace_tool_execution_host,
+    )
+
+    registry = WorkspaceToolRegistry(
+        execution_host=create_workspace_tool_execution_host(
+            policy_evaluator=PolicyEngine(ask_tools=["write"]),
+            approval_resolver=resolver,
+        )
+    )
     register_coding_builtin_tools(
         registry,
-        policy_engine=PolicyEngine(ask_tools=["write"]),
     )
 
     def context_provider(*, tool_call_id: str) -> ToolContext:

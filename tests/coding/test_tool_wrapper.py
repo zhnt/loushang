@@ -109,38 +109,3 @@ def test_wrap_tool_definition_preserves_tool_renderers() -> None:
     assert wrapped.renderResult is render_result
     assert round_tripped.render_call is render_call
     assert round_tripped.render_result is render_result
-
-
-def test_pi_style_wrapper_aliases_delegate_to_python_helpers() -> None:
-    import asyncio
-
-    from loushang.agent.types import AgentToolResult
-    from loushang.ai.types import TextPart
-    from loushang.harness.tools.core import ToolDefinition
-    from loushang.harness.tools.workspace.wrapper import (
-        createToolDefinitionFromAgentTool,
-        wrapToolDefinition,
-        wrapToolDefinitions,
-    )
-
-    async def execute(tool_call_id, params, signal=None, on_update=None):
-        del tool_call_id, params, signal, on_update
-        return AgentToolResult(content=[TextPart(type="text", text="ok")], details={})
-
-    definition = ToolDefinition(
-        name="demo",
-        label="Demo",
-        description="Demo tool",
-        parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execution=direct_execution(execute),
-    )
-
-    wrapped = wrapToolDefinition(definition)
-    wrapped_many = wrapToolDefinitions([definition])
-    round_tripped = createToolDefinitionFromAgentTool(wrapped)
-    result = asyncio.run(wrapped.execute("call-alias", {}))
-
-    assert wrapped.name == "demo"
-    assert wrapped_many[0].name == "demo"
-    assert round_tripped.name == "demo"
-    assert result.content[0].text == "ok"

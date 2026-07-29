@@ -81,8 +81,8 @@ or how a session records diagnostics.
 
 ## Current Coding Mapping
 
-`loushang.harness.tools.workspace.context.ToolContext` is a product context. It currently
-contains:
+`loushang.harness.tools.authoring.ToolContext` is the restricted,
+Product-neutral tool-time context. It currently contains:
 
 - `tool_call_id`
 - `cwd`
@@ -91,9 +91,10 @@ contains:
 - model
 - event sink
 
-Only a subset is neutral. A future harness context may carry `tool_call_id`,
-`cwd`, `signal`, and opaque metadata. The diagnostics service, model object,
-and event payload semantics stay adapter-owned unless a separate neutral
+The context shape is Harness-owned, while each live value is supplied by the
+Product/session adapter. Diagnostics, model, event, and execution services are
+optional scoped ports rather than Product-global state. Their concrete
+interpretation stays adapter-owned unless a separate neutral
 diagnostics or model-reference contract is accepted.
 
 `ExtensionRuntimeBindings.register_tool` is a product runtime callback. It

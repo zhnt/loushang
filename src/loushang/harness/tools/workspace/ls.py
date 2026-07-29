@@ -3,16 +3,15 @@ from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
 from loushang.agent.types import AgentToolResult, TextPart
-from loushang.harness.tools.execution import (
-    CallableToolActionAdapter,
-    PreparedToolAction,
+from loushang.harness.tools.authoring import (
+    FilesystemActionAdapter,
+    ToolContext,
+    authorized_tool,
+    tool,
 )
 from loushang.harness.workspace.operations import LsOperations, resolve_operation
 
-from .authoring import tool
 from .builtin_renderers import render_find_or_ls_result, render_ls_call
-from .context import ToolContext
-from .normalize import authorized_tool
 from .operations import (
     normalize_ls_operations,
     raise_if_operation_aborted,
@@ -117,21 +116,7 @@ def create_ls_tool_definition(
     return replace(
         authorized_tool(
             ls,
-            action=CallableToolActionAdapter(
-                lambda call, context: PreparedToolAction(
-                    tool_name="ls",
-                    authorization_arguments={
-                        "path": str(
-                            resolve_tool_path(
-                                str(call.arguments.get("path") or "."),
-                                cwd=context.cwd,
-                            )
-                        )
-                    },
-                    execution_arguments=call.arguments,
-                    cwd=context.cwd,
-                )
-            ),
+            action=FilesystemActionAdapter("read", default_path="."),
         ),
         prepare_arguments=lambda value: prepare_tool_arguments(
             value, aliases=(("file_path", "path"),)

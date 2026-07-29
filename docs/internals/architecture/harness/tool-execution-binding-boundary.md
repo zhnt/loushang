@@ -376,12 +376,22 @@ harness.tools.execution
   AuthorizedToolAction
   ToolAuthorizationGateway
 
+harness.tools.authoring
+  @tool schema metadata
+  ToolContext
+  direct_tool / authorized_tool
+  typed filesystem, process, network, and publication action adapters
+
+harness.effects
+  immutable protected-resource effect records
+  capability and redacted-audit projections
+
 harness.tools.workspace.authorization
   session-owned Workspace Gateway and path revalidation
 
 harness.tools.workspace
-  decorated-tool convenience binders
-  action adapters and authorized handlers for the seven core tools
+  authorized handlers for the seven core workspace tools
+  Workspace-specific Gateway revalidation
 
 Product
   selects and contributes ToolDefinitions
@@ -390,17 +400,22 @@ Product
   does not own Policy, Approval, or Gateway dispatch
 ```
 
-`ToolRegistry` stores definitions. It does not evaluate Policy and does not
-execute effects.
+`ToolRegistry` stores definitions and may be bound to a host supplied by its
+execution scope. It does not select Policy, retain Approval, construct a
+Gateway, or execute effects.
 
 `SessionToolController` owns the live `ToolExecutionHost` for a composed
 session. Its `WorkspaceToolAuthorizationGateway` receives the typed Policy
 evaluator and the live Approval resolver once; the per-call context supplies
 the audit sink, execution service, execution environment, and profile ceiling.
 `ToolDefinition` and individual tool factories receive none of those session
-services. Standalone `WorkspaceToolRegistry` materialization composes the same
-host and Gateway with the platform Policy default. A new Product therefore
-does not need to implement Policy or Approval merely to define tools.
+services. A standalone caller that materializes an authorized definition must
+construct an explicit host with
+`create_workspace_tool_execution_host(...)`; there is no Registry fallback
+that silently selects a Policy or Approval resolver. A new Product therefore
+defines and contributes tools without implementing Policy, Approval, or
+Gateway dispatch; the Product's session composition selects the standard
+Policy evaluator.
 
 ## 9. Registration Invariants
 
@@ -476,6 +491,30 @@ extension examples and API documentation migrate in the same branch. This is
 an execution-safety migration, not a new extension permission-contribution
 feature.
 
+### 10.2 Typed common effects
+
+An authorized action describes common protected resources with immutable
+Harness records:
+
+```python
+FilesystemEffect("write", (resolved_path,))
+ProcessEffect(("git", "status"))
+NetworkEffect("https://service.example/api", mutation=False)
+PublicationEffect("refs/heads/main", repository=repo, remote="origin")
+```
+
+The action adapter freezes these records together with the authorization
+arguments. The Gateway includes them in the action fingerprint, feeds them to
+Policy effect detection, and uses filesystem effects for execution-profile
+revalidation. Common audit events receive only a redacted capability summary;
+raw commands, paths, URLs, repository names, and remotes do not enter that
+event stream through an effect record.
+
+`FilesystemActionAdapter`, `ProcessActionAdapter`, `NetworkActionAdapter`, and
+`PublicationActionAdapter` are authoring conveniences, not a closed tool list.
+`ToolActionAdapter` remains the extension point for a custom protected
+resource.
+
 ## 11. Migration Plan
 
 The migration was intentionally limited to four bounded batches. All four are
@@ -507,7 +546,8 @@ No public compatibility executor remains.
 
 - convert Bash, read, write, edit, grep, find, and ls to
   `AuthorizedExecution`;
-- move their existing action preparation into small adapters;
+- use the common filesystem adapter for file tools and a typed process effect
+  for Bash;
 - retain the current operation implementations and output shapes;
 - remove per-tool calls to `execute_workspace_tool_action`;
 - remove Policy and Approval parameters from their options and factories.
@@ -555,6 +595,9 @@ an alternate model-tool route.
 - effect-changing built-in arguments are present in
   `authorization_arguments`, while execution-only fields do not alter the
   existing fingerprint;
+- the Registry never retains Policy or Approval state and never constructs a
+  Gateway implicitly;
+- common action adapters freeze typed effects into the action fingerprint;
 - an input transformation changes the frozen fingerprint and is evaluated
   again;
 - only the host invokes execution bindings.
@@ -567,6 +610,8 @@ an alternate model-tool route.
 - managed deny and execution ceilings still win;
 - Root and child approval routing remains actor-scoped;
 - Gateway audit ordering and redaction remain unchanged;
+- common effect audit projection never copies raw commands, paths, URLs,
+  repository names, or remotes;
 - all seven Workspace tool outputs, streaming, cancellation, and rendering
   remain compatible at the user-visible boundary.
 
@@ -624,9 +669,11 @@ The completed architecture is:
 
 ```text
 one ToolDefinition
+one Product-neutral authoring surface
 one ToolExecutionHost
 two execution bindings
 one session authorization gateway
+four common typed effect records
 zero Product-owned Policy/Approval execution paths
 zero raw definition.execute call sites
 zero Registry-less model-tool execution paths
