@@ -4,7 +4,7 @@ import ast
 import importlib
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 
 import pytest
@@ -3665,6 +3665,37 @@ def test_core_workspace_effects_only_execute_through_gateway() -> None:
     assert "ProcessEffect" in (workspace_root / "bash.py").read_text(
         encoding="utf-8"
     )
+
+
+def test_authorized_tool_context_does_not_become_a_capability_bag() -> None:
+    from loushang.harness.tools.execution import AuthorizedToolContext
+
+    assert tuple(field.name for field in fields(AuthorizedToolContext)) == (
+        "tool_call_id",
+        "cwd",
+        "diagnostics",
+        "signal",
+        "model",
+        "event_sink",
+        "exec_service",
+        "on_update",
+        "operation_bindings",
+    )
+
+    workspace_root = Path("src/loushang/harness/tools/workspace")
+    for tool_name in ("read", "write", "edit", "grep", "find", "ls"):
+        source = (workspace_root / f"{tool_name}.py").read_text(encoding="utf-8")
+        assert "context.exec_service" not in source, tool_name
+        assert "context.operation_bindings" not in source, tool_name
+
+    boundary = " ".join(
+        Path(
+            "docs/internals/architecture/harness/tool-execution-binding-boundary.md"
+        )
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    assert "not a capability registry or service locator" in boundary
 
 
 def test_tool_authoring_and_execution_scope_have_single_harness_owners() -> None:

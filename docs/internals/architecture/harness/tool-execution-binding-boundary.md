@@ -354,6 +354,15 @@ The handler receives the already-authorized immutable action plus an
 enforce that action, such as the session `ExecService` carrying the effective
 profile.
 
+`AuthorizedToolContext` is a closed invocation-state contract, not a
+capability registry or service locator. Its existing `exec_service` and
+`operation_bindings` fields support the current session-scoped process/Bash
+override; filesystem tools must not consume them. New filesystem, network,
+publication, credential, or Product service clients must not be added to this
+context. A second demonstrated need for a live protected-resource port requires
+a separate boundary decision based on the real consumers rather than another
+optional context field.
+
 The handler does not receive `PolicyEngine` or `ApprovalResolver`.
 
 The implementation preserves the proven Workspace authorization sequence
