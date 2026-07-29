@@ -10,6 +10,7 @@ from loushang.harness.approval import ApprovalResolver
 from loushang.harness.workspace.operations import FindOperations, resolve_operation
 
 from .authoring import tool
+from .authorization import AuthorizedWorkspaceAction, execute_workspace_tool_action
 from .builtin_renderers import render_find_call, render_find_or_ls_result
 from .context import ToolContext, context_approval_resolver
 from .external_tools import (
@@ -30,7 +31,7 @@ from .operations import (
     raise_if_operation_aborted,
 )
 from .path_utils import resolve_tool_path
-from .policy import ToolPolicyEvaluator, enforce_tool_policy
+from .policy import ToolPolicyEvaluator
 from .process import run_external_process
 from .runtime import coerce_int_parameter, pi_truncation_details, prepare_tool_arguments
 from .truncate import truncate_head, truncation_details
@@ -138,11 +139,63 @@ def create_find_tool_definition(
         ctx: ToolContext,
     ) -> AgentToolResult[dict[str, Any]]:
         raise_if_operation_aborted(ctx.signal)
-        resolved_root = await _resolve_directory(path or ".", ctx, operations=ops)
-        await enforce_tool_policy(
+        resolved_root = resolve_tool_path(path or ".", cwd=ctx.cwd)
+
+        async def execute(
+            _action: AuthorizedWorkspaceAction,
+        ) -> AgentToolResult[dict[str, Any]]:
+            root = await _require_directory(resolved_root, operations=ops)
+            effective_limit = _effective_limit(limit)
+            matches, result_limit_reached = await _walk_matching_paths(
+                root,
+                pattern=pattern,
+                limit=effective_limit,
+                operations=ops,
+                use_external_tools=use_external_tools,
+                external_tool_resolver=external_tool_resolver,
+                require_external_tool=require_external_tool,
+                signal=ctx.signal,
+            )
+            raise_if_operation_aborted(ctx.signal)
+            raw_output = "\n".join(match["path"] for match in matches)
+            truncation = truncate_head(raw_output)
+            visible_matches = _visible_find_matches(matches, truncation.content)
+            rendered = (
+                truncation.content
+                if matches
+                else "No files found matching pattern"
+            )
+            if matches:
+                rendered = _append_find_notices(
+                    rendered,
+                    result_limit=effective_limit,
+                    result_limit_reached=result_limit_reached,
+                    byte_truncated=truncation.truncated_by == "bytes",
+                )
+            return AgentToolResult(
+                content=[TextPart(type="text", text=rendered)],
+                details={
+                    "path": str(root),
+                    "matches": visible_matches,
+                    **truncation_details(truncation),
+                    "truncated": result_limit_reached or truncation.truncated,
+                    "result_limit_reached": result_limit_reached,
+                    "result_limit": (
+                        effective_limit if result_limit_reached else None
+                    ),
+                    "truncation": (
+                        pi_truncation_details(truncation)
+                        if truncation.truncated
+                        else None
+                    ),
+                },
+            )
+
+        return await execute_workspace_tool_action(
             resolved_policy_engine,
             tool_name="find",
             arguments={"path": str(resolved_root), "pattern": pattern},
+            executor=execute,
             cwd=ctx.cwd,
             approval_resolver=context_approval_resolver(
                 ctx,
@@ -150,43 +203,11 @@ def create_find_tool_definition(
             ),
             tool_call_id=ctx.tool_call_id,
             audit_sink=ctx.event_sink,
-        )
-        effective_limit = _effective_limit(limit)
-        matches, result_limit_reached = await _walk_matching_paths(
-            resolved_root,
-            pattern=pattern,
-            limit=effective_limit,
-            operations=ops,
-            use_external_tools=use_external_tools,
-            external_tool_resolver=external_tool_resolver,
-            require_external_tool=require_external_tool,
-            signal=ctx.signal,
-        )
-        raise_if_operation_aborted(ctx.signal)
-        raw_output = "\n".join(match["path"] for match in matches)
-        truncation = truncate_head(raw_output)
-        visible_matches = _visible_find_matches(matches, truncation.content)
-        rendered = truncation.content if matches else "No files found matching pattern"
-        if matches:
-            rendered = _append_find_notices(
-                rendered,
-                result_limit=effective_limit,
-                result_limit_reached=result_limit_reached,
-                byte_truncated=truncation.truncated_by == "bytes",
-            )
-        return AgentToolResult(
-            content=[TextPart(type="text", text=rendered)],
-            details={
-                "path": str(resolved_root),
-                "matches": visible_matches,
-                **truncation_details(truncation),
-                "truncated": result_limit_reached or truncation.truncated,
-                "result_limit_reached": result_limit_reached,
-                "result_limit": effective_limit if result_limit_reached else None,
-                "truncation": pi_truncation_details(truncation)
-                if truncation.truncated
-                else None,
-            },
+            execution_profile_ceiling=getattr(
+                ctx.exec_service,
+                "execution_profile",
+                None,
+            ),
         )
 
     return replace(
@@ -199,10 +220,8 @@ def create_find_tool_definition(
     )
 
 
-async def _resolve_directory(
-    path: str, ctx: ToolContext, *, operations: FindOperations
-) -> Path:
-    resolved = resolve_tool_path(path, cwd=ctx.cwd)
+async def _require_directory(path: Path, *, operations: FindOperations) -> Path:
+    resolved = path
     if not await resolve_operation(operations.exists(resolved)):
         raise FileNotFoundError(str(resolved))
     if not await resolve_operation(operations.is_dir(resolved)):

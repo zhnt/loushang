@@ -758,8 +758,8 @@ def test_bash_tool_uses_policy_and_exec(tmp_path) -> None:
         def __init__(self) -> None:
             self.calls: list[tuple[str, object]] = []
 
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            self.calls.append((tool_name, exec_request))
+        def evaluate(self, subject):
+            self.calls.append((subject.tool_name, subject))
             return PolicyDecision.allow()
 
     class RecordingExecService:
@@ -790,7 +790,7 @@ def test_bash_tool_uses_policy_and_exec(tmp_path) -> None:
     asyncio.run(scenario())
 
 
-def test_bash_tool_does_not_double_invoke_policy_for_builtin_engines(tmp_path) -> None:
+def test_bash_tool_invokes_canonical_policy_once(tmp_path) -> None:
     import asyncio
 
     from loushang.coding.tool_pack import (
@@ -803,18 +803,11 @@ def test_bash_tool_does_not_double_invoke_policy_for_builtin_engines(tmp_path) -
 
     class CountingPolicyEngine:
         def __init__(self) -> None:
-            self.calls = {"tool_call": 0, "action": 0}
+            self.calls = 0
 
-        def evaluate_tool_call(
-            self, *, tool_name: str, arguments, cwd: str | None = None
-        ):
-            del arguments, tool_name, cwd
-            self.calls["tool_call"] += 1
-            return PolicyDecision.allow()
-
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
-            self.calls["action"] += 1
+        def evaluate(self, subject):
+            del subject
+            self.calls += 1
             return PolicyDecision.allow()
 
     async def scenario() -> None:
@@ -827,8 +820,7 @@ def test_bash_tool_does_not_double_invoke_policy_for_builtin_engines(tmp_path) -
             "call-bash-count", {"command": "printf ok", "cwd": str(tmp_path)}
         )
 
-        assert policy_engine.calls["tool_call"] == 1
-        assert policy_engine.calls["action"] == 0
+        assert policy_engine.calls == 1
 
     asyncio.run(scenario())
 
@@ -849,9 +841,8 @@ def test_bash_tool_accepts_pi_style_shell_command_string(tmp_path) -> None:
         def __init__(self) -> None:
             self.requests: list[object] = []
 
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name
-            self.requests.append(exec_request)
+        def evaluate(self, subject):
+            self.requests.append(subject)
             return PolicyDecision.allow()
 
     class RecordingExecService:
@@ -883,7 +874,7 @@ def test_bash_tool_accepts_pi_style_shell_command_string(tmp_path) -> None:
             "printf shell-ok",
         )
         assert exec_service.requests[0].timeout_seconds == 3
-        assert policy_engine.requests[0].command == (
+        assert policy_engine.requests[0].command.command == (
             "/bin/bash",
             "-lc",
             "printf shell-ok",
@@ -908,9 +899,8 @@ def test_bash_tool_applies_prefix_shell_path_and_spawn_hook(tmp_path) -> None:
         def __init__(self) -> None:
             self.requests: list[object] = []
 
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name
-            self.requests.append(exec_request)
+        def evaluate(self, subject):
+            self.requests.append(subject)
             return PolicyDecision.allow()
 
     class RecordingExecService:
@@ -958,7 +948,10 @@ def test_bash_tool_applies_prefix_shell_path_and_spawn_hook(tmp_path) -> None:
         )
         assert exec_service.requests[0].cwd == str(alt_cwd)
         assert ("HOOKED", "1") in exec_service.requests[0].env
-        assert policy_engine.requests[0].command == exec_service.requests[0].command
+        assert (
+            policy_engine.requests[0].command.command
+            == exec_service.requests[0].command
+        )
 
     asyncio.run(scenario())
 
@@ -972,8 +965,8 @@ def test_bash_tool_can_execute_through_custom_operations(tmp_path) -> None:
     from loushang.harness.workspace.exec import ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class FailingExecService:
@@ -1031,8 +1024,8 @@ def test_bash_tool_requests_rolling_capture_by_default(tmp_path) -> None:
     from loushang.harness.workspace.exec import ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class RecordingExecService:
@@ -1072,8 +1065,8 @@ def test_bash_tool_accepts_pi_style_request_aliases(tmp_path) -> None:
     from loushang.harness.workspace.exec import ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class RecordingExecService:
@@ -1129,8 +1122,8 @@ def test_bash_tool_rejects_conflicting_alias_parameters(tmp_path) -> None:
     from loushang.harness.workspace.exec import ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class RecordingExecService:
@@ -1197,8 +1190,8 @@ def test_bash_tool_rejects_runtime_values_that_do_not_match_schema() -> None:
     from loushang.harness.workspace.exec import ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class RecordingExecService:
@@ -1255,8 +1248,8 @@ def test_bash_tool_truncates_large_output_with_shared_tail_policy(tmp_path) -> N
     from loushang.harness.workspace.exec import ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class LargeOutputExecService:
@@ -1305,8 +1298,8 @@ def test_bash_tool_preserves_interleaved_stdout_and_stderr_output(tmp_path) -> N
     from loushang.harness.workspace.exec import ExecOutputChunk, ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class InterleavedExecService:
@@ -1354,8 +1347,8 @@ def test_bash_tool_error_message_preserves_interleaved_stdout_and_stderr(
     from loushang.harness.workspace.exec import ExecOutputChunk, ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class InterleavedFailingExecService:
@@ -1400,8 +1393,8 @@ def test_bash_tool_rolling_artifact_details_count_full_output(tmp_path) -> None:
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     full_output = "".join(f"line-{index:04d}\n" for index in range(3000))
@@ -1453,8 +1446,8 @@ def test_bash_tool_returns_no_output_placeholder(tmp_path) -> None:
     from loushang.harness.workspace.exec import ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class EmptyExecService:
@@ -1491,8 +1484,8 @@ def test_bash_tool_raises_for_nonzero_exit_code_with_buffered_output(tmp_path) -
     from loushang.harness.workspace.exec import ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class FailingExecService:
@@ -1537,7 +1530,7 @@ def test_bash_tool_raises_for_invalid_command_and_env_shapes(tmp_path) -> None:
         def __init__(self) -> None:
             self.calls = 0
 
-        def evaluate_action(self, *, tool_name: str, exec_request):
+        def evaluate(self, subject):
             self.calls += 1
             raise AssertionError("policy should not run for invalid params")
 
@@ -1596,8 +1589,8 @@ def test_bash_tool_policy_decisions_do_not_record_runtime_diagnostics(tmp_path) 
         def __init__(self) -> None:
             self.calls = 0
 
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             self.calls += 1
             if self.calls == 1:
                 return PolicyDecision.deny("blocked by policy")
@@ -1652,8 +1645,8 @@ def test_bash_tool_exec_timeout_does_not_record_runtime_diagnostics(tmp_path) ->
     from loushang.harness.workspace.exec import ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class TimeoutExecService:
@@ -1688,15 +1681,15 @@ def test_bash_tool_timeout_error_includes_buffered_output(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.policy import PolicyDecision
     from loushang.coding.tool_pack import register_coding_builtin_tools
     from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
     from loushang.harness.workspace.exec import ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision(disposition="allow")
 
     class TimeoutExecService:
@@ -1748,8 +1741,8 @@ def test_bash_tool_exec_exception_does_not_record_runtime_diagnostics_and_rerais
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class FailingExecService:

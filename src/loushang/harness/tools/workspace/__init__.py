@@ -96,7 +96,6 @@ from .operations import (
     resolve_operation,
 )
 from .policy import (
-    PolicyDecisionLike,
     PolicyEnforcementError,
     ToolPolicyEvaluator,
     enforce_tool_policy,
@@ -173,7 +172,6 @@ __all__ = [
     "LsToolInput",
     "LsToolOptions",
     "PillowReadImageResizer",
-    "PolicyDecisionLike",
     "PolicyEnforcementError",
     "ReadOperations",
     "ReadImageResizeResult",

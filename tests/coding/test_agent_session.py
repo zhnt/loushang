@@ -3287,13 +3287,13 @@ def test_agent_session_disposes_footer_data_provider(tmp_path) -> None:
 
 def test_agent_session_disposal_paths_complete_pending_approvals(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.policy import (
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
-    from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
 
     async def run(dispose_method: str) -> None:
         presented = asyncio.Event()
@@ -3340,13 +3340,13 @@ def test_agent_session_disposal_closes_approval_before_waiting_for_host(
     tmp_path,
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.policy import (
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
-    from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
 
     async def run(dispose_method: str) -> None:
         presented = asyncio.Event()
@@ -3396,13 +3396,13 @@ def test_agent_session_disposal_closes_approval_before_waiting_for_host(
 
 def test_agent_session_presenter_detach_denies_pending_approvals(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.policy import (
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
-    from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
 
     async def run() -> None:
         presented = asyncio.Event()
@@ -3446,13 +3446,13 @@ def test_agent_session_presenter_rebind_reopens_active_approval_generation(
     tmp_path,
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.policy import (
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
-    from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
 
     async def run() -> None:
         resolver = InteractiveApprovalResolver(
@@ -3502,13 +3502,13 @@ def test_agent_session_disposal_finalizes_when_host_dispose_fails(tmp_path) -> N
     import pytest
 
     from loushang.agent import Agent
-    from loushang.coding.policy import (
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
-    from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
 
     class FailingHostRuntime:
         async def dispose(self) -> None:
@@ -5082,7 +5082,6 @@ def test_agent_session_records_remote_package_manifest_diagnostics(tmp_path) -> 
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.policy import PackageSecurityPolicy
     from loushang.coding.resource_runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
@@ -5092,6 +5091,7 @@ def test_agent_session_records_remote_package_manifest_diagnostics(tmp_path) -> 
     from loushang.harness.resources.packages.materializer import (
         PackageMaterializationRecord,
     )
+    from loushang.harness.resources.packages.security import PackageSecurityPolicy
     from loushang.harness.resources.packages.source import PackageSourceConfig
 
     source = "https://packages.example.invalid/review-pack.git"
@@ -5622,7 +5622,6 @@ def test_agent_session_update_packages_dedupes_configured_sources_by_identity(
 
     from loushang.agent import Agent
     from loushang.coding.control import SettingsManager
-    from loushang.coding.policy import PackageSecurityPolicy
     from loushang.coding.resource_runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
@@ -5631,6 +5630,7 @@ def test_agent_session_update_packages_dedupes_configured_sources_by_identity(
     from loushang.harness.resources.packages.materializer import (
         PackageMaterializationRecord,
     )
+    from loushang.harness.resources.packages.security import PackageSecurityPolicy
 
     global_settings = tmp_path / "global" / "settings.json"
     project_settings = tmp_path / "project" / ".loushang" / "settings.json"

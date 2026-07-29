@@ -27,11 +27,7 @@ from .authorization import (
 )
 from .builtin_renderers import render_bash_call, render_bash_result
 from .context import ToolContextProvider, context_approval_resolver
-from .policy import (
-    ToolPolicyEvaluator,
-    evaluate_legacy_policy_method,
-    get_policy_method,
-)
+from .policy import ToolPolicyEvaluator
 from .runtime import (
     emit_tool_update,
     pi_truncation_details,
@@ -116,7 +112,7 @@ class BashOperations(Protocol):
 @dataclass(frozen=True)
 class BashToolOptions:
     operations: BashOperations | None = None
-    policy_engine: ToolPolicyEvaluator | object | None = None
+    policy_engine: ToolPolicyEvaluator | None = None
     approval_resolver: ApprovalResolver | None = None
     exec_service: ExecService | None = None
     diagnostics_service: DiagnosticsService | None = None
@@ -231,7 +227,7 @@ def _build_exec_request(
 @dataclass(frozen=True)
 class _BashToolExecute:
     bash_operations: BashOperations
-    policy_engine: ToolPolicyEvaluator | object | None
+    policy_engine: ToolPolicyEvaluator | None
     approval_resolver: ApprovalResolver | None
     command_prefix: str | None
     shell_path: str | None
@@ -395,22 +391,8 @@ def _shell_command(
     return (shell, "-lc", command)
 
 
-@dataclass(frozen=True, slots=True)
-class _LegacyBashPolicyAdapter:
-    policy_engine: object
-    exec_request: ExecRequest
-
-    async def evaluate(self, _subject: object):
-        return await evaluate_legacy_policy_method(
-            self.policy_engine,
-            "evaluate_action",
-            tool_name="bash",
-            exec_request=self.exec_request,
-        )
-
-
 async def _execute_bash_action(
-    policy_engine: ToolPolicyEvaluator | object | None,
+    policy_engine: ToolPolicyEvaluator | None,
     *,
     tool_call_id: str,
     exec_request: ExecRequest,
@@ -462,20 +444,8 @@ async def _execute_bash_action(
         cwd=exec_request.cwd,
         command=command_subject,
     )
-    resolved_policy_engine = policy_engine
-    if policy_engine is not None:
-        evaluate = get_policy_method(policy_engine, "evaluate")
-        evaluate_tool_call = get_policy_method(
-            policy_engine,
-            "evaluate_tool_call",
-        )
-        if not callable(evaluate) and not callable(evaluate_tool_call):
-            resolved_policy_engine = _LegacyBashPolicyAdapter(
-                policy_engine,
-                exec_request,
-            )
     return await execute_workspace_tool_action(
-        resolved_policy_engine,
+        policy_engine,
         tool_name="bash",
         arguments=effective_arguments,
         executor=executor,
@@ -543,7 +513,7 @@ def _bash_provider_parameters() -> dict[str, Any]:
 
 def create_bash_tool_definition(
     *,
-    policy_engine: ToolPolicyEvaluator | object | None = None,
+    policy_engine: ToolPolicyEvaluator | None = None,
     approval_resolver: ApprovalResolver | None = None,
     exec_service: ExecService | None = None,
     diagnostics_service: DiagnosticsService | None = None,

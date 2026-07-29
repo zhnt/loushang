@@ -16,12 +16,15 @@ from loushang.ai.types import (
     ToolResultMessage,
     UserMessage,
 )
-from loushang.coding.policy import InteractiveApprovalResolver
 from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.sandbox import coding_workspace_execution_profile
 from loushang.coding.session import AgentSession
-from loushang.harness.approval import ActorBoundApprovalResolver, DenyApprovalResolver
+from loushang.harness.approval import (
+    ActorBoundApprovalResolver,
+    DenyApprovalResolver,
+    InteractiveApprovalResolver,
+)
 from loushang.harness.multiagent import (
     AgentCaller,
     AgentInputMessage,

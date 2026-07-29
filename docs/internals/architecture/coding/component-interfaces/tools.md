@@ -16,9 +16,9 @@
 ## Depends On
 
 - registry core 不强依赖 `exec` / `policy`
-- built-in executable tool definitions 可依赖 `exec` / `policy`
-- built-in tool definitions 可在执行前调用 injected `PolicyEngine.evaluate_tool_call(...)`
-- built-in tool definitions 可在 `ask` 时调用 injected `ApprovalResolver.resolve(...)`
+- built-in executable tool definitions 可依赖 Harness workspace execution
+- 所有 effectful built-in tools 必须把冻结后的 action 交给统一 Gateway
+- 只有 Gateway 可以调用 injected Policy evaluator 与 Approval resolver
 
 ## Commands
 

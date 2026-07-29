@@ -13,7 +13,6 @@ from loushang.coding.control.settings_store import (
     default_project_settings_path,
 )
 from loushang.coding.diagnostics.profile import coding_runtime_identity
-from loushang.coding.policy import InteractiveApprovalResolver
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE
 from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
 from loushang.coding.resource_runtime import (
@@ -26,7 +25,10 @@ from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.sandbox import bind_coding_sandbox_runtime
 from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import SessionManager
-from loushang.harness.approval import approval_actor_id
+from loushang.harness.approval import (
+    InteractiveApprovalResolver,
+    approval_actor_id,
+)
 from loushang.harness.bootstrap import (
     create_standard_resource_bootstrap_runtime,
 )

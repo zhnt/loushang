@@ -729,12 +729,12 @@ def test_run_coding_tui_injects_on_approval_callback(monkeypatch) -> None:
 def test_screen_approval_presenter_resolves_ask_tools_and_clears_pending(
     tmp_path,
 ) -> None:
-    from loushang.coding.policy import (
+    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.harness.approval import (
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
-        PolicyEngine,
     )
-    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.harness.policy_engine import PolicyEngine
     from loushang.harness.tools.workspace import ToolContext
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
@@ -826,7 +826,7 @@ def test_screen_approval_presenter_resolves_ask_tools_and_clears_pending(
 
 
 def test_screen_approval_unbind_targets_runtime_current_session() -> None:
-    from loushang.coding.policy import (
+    from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
@@ -898,7 +898,7 @@ def test_screen_approval_unbind_targets_runtime_current_session() -> None:
 
 
 def test_screen_approval_unbind_clears_host_presenter_without_current_session() -> None:
-    from loushang.coding.policy import (
+    from loushang.harness.approval import (
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
@@ -944,7 +944,7 @@ def test_screen_approval_unbind_clears_host_presenter_without_current_session() 
 def test_screen_approval_unbind_clears_initial_presenter_when_current_has_none() -> (
     None
 ):
-    from loushang.coding.policy import (
+    from loushang.harness.approval import (
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
@@ -988,12 +988,12 @@ def test_screen_approval_unbind_clears_initial_presenter_when_current_has_none()
 def test_screen_tui_failure_detaches_presenter_and_denies_pending(
     monkeypatch,
 ) -> None:
-    from loushang.coding.policy import (
+    from loushang.coding.ui import mode
+    from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
-    from loushang.coding.ui import mode
 
     resolver = InteractiveApprovalResolver(
         fallback=HeadlessApprovalResolver(mode="allow")
@@ -1058,11 +1058,11 @@ def test_screen_tui_failure_detaches_presenter_and_denies_pending(
 def test_screen_tui_projector_failure_still_unbinds_presenter(
     monkeypatch,
 ) -> None:
-    from loushang.coding.policy import (
+    from loushang.coding.ui import mode
+    from loushang.harness.approval import (
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
-    from loushang.coding.ui import mode
     from loushang.harnesstui.conversation import agent_application
 
     resolver = InteractiveApprovalResolver(

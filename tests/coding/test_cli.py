@@ -1230,7 +1230,7 @@ def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(
     monkeypatch,
 ) -> None:
     from loushang.coding.cli import __main__ as cli_main
-    from loushang.coding.policy import InteractiveApprovalResolver
+    from loushang.harness.approval import InteractiveApprovalResolver
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )

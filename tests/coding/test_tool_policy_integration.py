@@ -28,10 +28,10 @@ def _tool_context_provider_with_events(*, cwd: str, events: list[dict[str, objec
 
 
 def test_global_policy_engine_blocks_write_tool_before_mutation(tmp_path) -> None:
-    from loushang.coding.policy import PolicyEngine
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.policy_engine import PolicyEngine
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -66,10 +66,10 @@ def test_global_policy_engine_blocks_write_tool_before_mutation(tmp_path) -> Non
 
 
 def test_global_policy_engine_blocks_bash_by_tool_name(tmp_path) -> None:
-    from loushang.coding.policy import PolicyEngine
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.policy_engine import PolicyEngine
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -123,10 +123,10 @@ def test_default_tool_registration_does_not_enable_policy_by_default(tmp_path) -
 
 
 def test_default_approval_resolver_denies_ask_policy_before_write(tmp_path) -> None:
-    from loushang.coding.policy import PolicyEngine
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.policy_engine import PolicyEngine
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -166,10 +166,11 @@ def test_default_approval_resolver_denies_ask_policy_before_write(tmp_path) -> N
 
 
 def test_sync_approval_resolver_can_allow_ask_policy_for_write(tmp_path) -> None:
-    from loushang.coding.policy import ApprovalDecision, PolicyEngine
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.approval import ApprovalDecision
+    from loushang.harness.policy_engine import PolicyEngine
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -210,14 +211,15 @@ def test_sync_approval_resolver_can_allow_ask_policy_for_write(tmp_path) -> None
 def test_live_child_context_overrides_the_root_definition_approval_actor(
     tmp_path,
 ) -> None:
-    from loushang.coding.policy import ApprovalDecision, PolicyEngine
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.approval import (
         ActorBoundApprovalResolver,
+        ApprovalDecision,
         HeadlessApprovalResolver,
     )
+    from loushang.harness.policy_engine import PolicyEngine
     from loushang.harness.tools.workspace import ToolContext
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
@@ -265,10 +267,11 @@ def test_live_child_context_overrides_the_root_definition_approval_actor(
 
 
 def test_ask_policy_allow_emits_tool_approval_audit_events(tmp_path) -> None:
-    from loushang.coding.policy import ApprovalDecision, PolicyEngine
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.approval import ApprovalDecision
+    from loushang.harness.policy_engine import PolicyEngine
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -326,10 +329,10 @@ def test_ask_policy_allow_emits_tool_approval_audit_events(tmp_path) -> None:
 
 
 def test_deny_policy_emits_tool_policy_evaluated_audit_event(tmp_path) -> None:
-    from loushang.coding.policy import PolicyEngine
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.policy_engine import PolicyEngine
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -368,10 +371,11 @@ def test_deny_policy_emits_tool_policy_evaluated_audit_event(tmp_path) -> None:
 
 
 def test_async_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -> None:
-    from loushang.coding.policy import ApprovalDecision, PolicyEngine
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.approval import ApprovalDecision
+    from loushang.harness.policy_engine import PolicyEngine
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -418,14 +422,14 @@ def test_async_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -> None
 
 
 def test_interactive_approval_resolver_can_allow_ask_policy_for_write(tmp_path) -> None:
-    from loushang.coding.policy import (
-        HeadlessApprovalResolver,
-        InteractiveApprovalResolver,
-        PolicyEngine,
-    )
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.approval import (
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+    )
+    from loushang.harness.policy_engine import PolicyEngine
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -470,14 +474,14 @@ def test_interactive_approval_resolver_can_allow_ask_policy_for_write(tmp_path) 
 
 
 def test_interactive_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -> None:
-    from loushang.coding.policy import (
-        HeadlessApprovalResolver,
-        InteractiveApprovalResolver,
-        PolicyEngine,
-    )
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.approval import (
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+    )
+    from loushang.harness.policy_engine import PolicyEngine
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -532,10 +536,11 @@ def test_interactive_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -
 
 
 def test_headless_approval_resolver_modes_are_stable(tmp_path) -> None:
-    from loushang.coding.policy import HeadlessApprovalResolver, PolicyEngine
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.approval import HeadlessApprovalResolver
+    from loushang.harness.policy_engine import PolicyEngine
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -583,21 +588,19 @@ def test_headless_approval_resolver_modes_are_stable(tmp_path) -> None:
 
 
 def test_persistent_permission_never_overrides_current_managed_deny(tmp_path) -> None:
-    from loushang.coding.policy import (
-        HeadlessApprovalResolver,
-        InteractiveApprovalResolver,
-        PolicyEngine,
-    )
     from loushang.harness.approval import (
         ApprovalGrantProposal,
         ApprovalRequest,
+        HeadlessApprovalResolver,
         InMemoryApprovalPolicyRuleStore,
+        InteractiveApprovalResolver,
         PolicyAmendmentProposal,
     )
     from loushang.harness.policy import (
         build_tool_policy_subject,
         normalize_command_subject,
     )
+    from loushang.harness.policy_engine import PolicyEngine
     from loushang.harness.tools.workspace.policy import (
         PolicyEnforcementError,
         enforce_tool_policy,

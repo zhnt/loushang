@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import pytest
 
+from loushang.harness.policy import (
+    build_tool_policy_subject,
+    normalize_command_subject,
+)
 from loushang.harness.policy_engine import PolicyEngine
 
 
@@ -115,10 +119,9 @@ def test_default_policy_tool_playback(
     expected: str,
     code: str | None,
 ) -> None:
-    decision = PolicyEngine().evaluate_tool_call(
+    decision = _tool_decision(
         tool_name=tool_name,
         arguments=arguments,
-        cwd="/workspace/project",
     )
 
     assert decision.disposition == expected
@@ -128,10 +131,9 @@ def test_default_policy_tool_playback(
 def test_default_policy_allows_dry_run_and_incomplete_unknown_commands() -> None:
     decisions = (
         _bash_decision("git clean -nd"),
-        PolicyEngine().evaluate_tool_call(
+        _tool_decision(
             tool_name="bash",
             arguments={"command": ["env", "-S", "${RUNNER} -c 'printf ok'"]},
-            cwd="/workspace/project",
         ),
     )
 
@@ -139,8 +141,32 @@ def test_default_policy_allows_dry_run_and_incomplete_unknown_commands() -> None
 
 
 def _bash_decision(command: str):
-    return PolicyEngine().evaluate_tool_call(
+    return _tool_decision(
         tool_name="bash",
         arguments={"command": command},
-        cwd="/workspace/project",
+    )
+
+
+def _tool_decision(*, tool_name: str, arguments: dict[str, object]):
+    cwd = "/workspace/project"
+    raw_command = arguments.get("command")
+    command = None
+    if tool_name == "bash" and isinstance(raw_command, str):
+        command = normalize_command_subject(
+            ("/bin/sh", "-lc", raw_command),
+            cwd=cwd,
+        )
+    elif (
+        tool_name == "bash"
+        and isinstance(raw_command, (list, tuple))
+        and all(isinstance(part, str) for part in raw_command)
+    ):
+        command = normalize_command_subject(tuple(raw_command), cwd=cwd)
+    return PolicyEngine().evaluate(
+        build_tool_policy_subject(
+            tool_name=tool_name,
+            arguments=arguments,
+            cwd=cwd,
+            command=command,
+        )
     )

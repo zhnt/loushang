@@ -1256,7 +1256,7 @@ def test_screen_surface_manager_handles_approval_submit() -> None:
 
 
 def test_screen_surface_manager_dismisses_timeout_and_cancelled_requests() -> None:
-    from loushang.coding.policy import (
+    from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,

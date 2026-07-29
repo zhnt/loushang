@@ -56,7 +56,10 @@ def test_workspace_authorization_gateway_freezes_and_fingerprints_actions() -> N
         first.arguments["path"] = "/other"  # type: ignore[index]
 
 
-def test_workspace_gateway_enforces_file_roots_from_execution_profile() -> None:
+@pytest.mark.parametrize("tool_name", ("read", "grep", "find", "ls"))
+def test_workspace_gateway_enforces_read_roots_from_execution_profile(
+    tool_name: str,
+) -> None:
     profile = EffectiveExecutionProfile(
         readable_roots=(Path("/workspace"),),
     )
@@ -66,7 +69,7 @@ def test_workspace_gateway_enforces_file_roots_from_execution_profile() -> None:
         asyncio.run(
             execute_workspace_tool_action(
                 None,
-                tool_name="read",
+                tool_name=tool_name,
                 arguments={"path": "/outside/secret"},
                 cwd="/workspace",
                 execution_profile_ceiling=profile,

@@ -3135,47 +3135,44 @@ def test_harness_control_plane_symbols_are_not_top_level_exports() -> None:
     assert control_plane_symbols.isdisjoint(set(harness.__all__))
 
 
-def test_coding_control_plane_adapters_use_harness_mechanisms() -> None:
-    approval_path = Path("src/loushang/coding/policy/approval.py")
-    approval_imports = set(_absolute_imports(approval_path))
-    assert "loushang.harness.approval.InteractiveApprovalResolver" in approval_imports
+def test_policy_and_approval_have_only_harness_owners() -> None:
+    retired_policy_root = Path("src/loushang/coding/policy")
+    assert not tuple(retired_policy_root.glob("*.py"))
 
-    approval_tree = ast.parse(
-        approval_path.read_text(encoding="utf-8"),
-        filename=approval_path.as_posix(),
-    )
-    approval_names = {
-        node.id for node in ast.walk(approval_tree) if isinstance(node, ast.Name)
+    owner_names = {
+        "ApprovalDecision",
+        "ApprovalRequest",
+        "ApprovalResolver",
+        "HeadlessApprovalResolver",
+        "InteractiveApprovalResolver",
+        "PolicyDecision",
+        "PolicyEngine",
     }
-    approval_attributes = {
-        node.attr for node in ast.walk(approval_tree) if isinstance(node, ast.Attribute)
-    }
-    approval_calls = {
-        node.func.id
-        for node in ast.walk(approval_tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-    }
-    assert "super" in approval_calls
-    assert not any(
-        _matches_any(imported, ("asyncio",)) for imported in approval_imports
-    )
-    assert {"Future", "create_future", "_pending"}.isdisjoint(
-        approval_names | approval_attributes
-    )
+    reimplementations: list[str] = []
+    for path in sorted(Path("src/loushang/coding").rglob("*.py")):
+        tree = ast.parse(
+            path.read_text(encoding="utf-8"),
+            filename=path.as_posix(),
+        )
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name in owner_names:
+                reimplementations.append(f"{path.as_posix()} defines {node.name}")
+    assert reimplementations == []
 
-    policy_path = Path("src/loushang/coding/policy/engine.py")
-    policy_imports = set(_absolute_imports(policy_path))
-    assert "loushang.harness.policy_engine.PolicyEngine" in policy_imports
-    policy_tree = ast.parse(
-        policy_path.read_text(encoding="utf-8"),
-        filename=policy_path.as_posix(),
-    )
-    policy_function_names = {
-        node.name
-        for node in ast.walk(policy_tree)
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
-    }
-    assert policy_function_names <= {"__init__"}
+    retired_prefix = "loushang.coding.policy"
+    offenders: list[str] = []
+    for root in (Path("src"), Path("tests"), Path("examples")):
+        for path in sorted(root.rglob("*.py")):
+            for imported in _absolute_imports(path):
+                if imported == retired_prefix or imported.startswith(
+                    f"{retired_prefix}."
+                ):
+                    offenders.append(f"{path.as_posix()} imports {imported}")
+    assert offenders == []
+
+    import loushang.coding as coding
+
+    assert owner_names.isdisjoint(coding.__all__)
 
     shared_policy_path = Path("src/loushang/harness/policy_engine.py")
     shared_policy_imports = set(_absolute_imports(shared_policy_path))
@@ -3641,15 +3638,23 @@ def test_harness_dependency_first_migration_rule_is_documented() -> None:
     )
 
 
+def test_core_workspace_effects_only_execute_through_gateway() -> None:
+    workspace_root = Path("src/loushang/harness/tools/workspace")
+    effectful_tools = ("bash", "read", "write", "edit", "grep", "find", "ls")
+
+    for tool_name in effectful_tools:
+        source = (workspace_root / f"{tool_name}.py").read_text(encoding="utf-8")
+        assert "execute_workspace_tool_action(" in source, tool_name
+        assert "enforce_tool_policy(" not in source, tool_name
+
+
 def test_resource_package_runtime_has_harness_owners() -> None:
     import loushang.coding as coding
-    from loushang.coding.policy import PolicyDecision as CodingPolicyDecision
     from loushang.coding.resource_runtime import (
         CodingPackageMaterializer,
         CodingResourceLoader,
         CodingSkillLoader,
     )
-    from loushang.harness.policy import PolicyDecision
     from loushang.harness.resources.loader import ResourceLoader
     from loushang.harness.resources.packages import (
         PackageCatalogBuilder,
@@ -3658,7 +3663,6 @@ def test_resource_package_runtime_has_harness_owners() -> None:
     )
     from loushang.harness.resources.skills import SkillLoader
 
-    assert CodingPolicyDecision is PolicyDecision
     assert issubclass(CodingResourceLoader, ResourceLoader)
     assert issubclass(CodingPackageMaterializer, PackageMaterializer)
     assert issubclass(CodingSkillLoader, SkillLoader)
@@ -3712,8 +3716,7 @@ def test_coding_legacy_shared_utility_facades_are_extinct() -> None:
         "loushang.coding.event",
         "loushang.coding.extensions",
         "loushang.coding.frontmatter",
-        "loushang.coding.policy.types",
-        "loushang.coding.policy.tui",
+        "loushang.coding.policy",
         "loushang.coding.prompt.preflight",
         "loushang.coding.prompt.templates",
         "loushang.coding.prompt.types",

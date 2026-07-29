@@ -1090,13 +1090,13 @@ def test_package_materializer_skips_update_work_in_offline_mode(tmp_path, monkey
 
 
 def test_package_materializer_updates_remote_sources_with_bounded_concurrency(tmp_path) -> None:
-    from loushang.coding.policy import PackageSecurityPolicy
     from loushang.coding.resource_runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
         PackageMaterializationRecord,
     )
+    from loushang.harness.resources.packages.security import PackageSecurityPolicy
 
     active = 0
     max_active = 0
@@ -1125,13 +1125,13 @@ def test_package_materializer_updates_remote_sources_with_bounded_concurrency(tm
 
 
 def test_package_materializer_check_updates_uses_configured_timeout(tmp_path, monkeypatch) -> None:
-    from loushang.coding.policy import PackageSecurityPolicy
     from loushang.coding.resource_runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
         PackageMaterializationRecord,
     )
+    from loushang.harness.resources.packages.security import PackageSecurityPolicy
 
     source = "https://packages.example.invalid/review-pack.git"
     captured_timeouts: list[float | None] = []
@@ -1163,13 +1163,13 @@ def test_package_materializer_check_updates_uses_configured_timeout(tmp_path, mo
 
 
 def test_package_materializer_check_updates_emits_progress_events(tmp_path, monkeypatch) -> None:
-    from loushang.coding.policy import PackageSecurityPolicy
     from loushang.coding.resource_runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
         PackageMaterializationRecord,
     )
+    from loushang.harness.resources.packages.security import PackageSecurityPolicy
 
     source = "https://packages.example.invalid/review-pack.git"
     progress: list[tuple[str, str, str]] = []
@@ -1295,13 +1295,13 @@ def test_package_materializer_check_updates_skips_pinned_python_packages(tmp_pat
 
 
 def test_package_materializer_persists_trusted_sources(tmp_path) -> None:
-    from loushang.coding.policy import PackageSecurityPolicy
     from loushang.coding.resource_runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.harness.resources.packages.materializer import (
         PackageMaterializationRecord,
     )
+    from loushang.harness.resources.packages.security import PackageSecurityPolicy
 
     source = "https://packages.example.invalid/review-pack.git"
 
@@ -1393,7 +1393,7 @@ def test_package_materializer_updates_all_and_checks_available_updates(
 
 
 def test_package_security_policy_can_restrict_remote_hosts() -> None:
-    from loushang.coding.policy import PackageSecurityPolicy
+    from loushang.harness.resources.packages.security import PackageSecurityPolicy
 
     policy = PackageSecurityPolicy(trusted_hosts=("packages.example.invalid",))
 
@@ -1404,7 +1404,7 @@ def test_package_security_policy_can_restrict_remote_hosts() -> None:
 
 
 def test_package_security_policy_trusted_sources_use_normalized_identity() -> None:
-    from loushang.coding.policy import PackageSecurityPolicy
+    from loushang.harness.resources.packages.security import PackageSecurityPolicy
 
     policy = PackageSecurityPolicy(
         trusted_hosts=("packages.example.invalid",),
@@ -1415,7 +1415,7 @@ def test_package_security_policy_trusted_sources_use_normalized_identity() -> No
 
 
 def test_package_security_policy_explains_source_trust_decision() -> None:
-    from loushang.coding.policy import (
+    from loushang.harness.resources.packages.security import (
         PackageSecurityPolicy,
         PackageSourceSecurityReport,
     )

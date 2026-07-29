@@ -53,7 +53,7 @@ class AuthorizedWorkspaceAction:
 
 
 async def _authorize_workspace_tool_action(
-    policy_engine: ToolPolicyEvaluator | object | None,
+    policy_engine: ToolPolicyEvaluator | None,
     *,
     tool_name: str,
     arguments: Mapping[str, Any],
@@ -128,7 +128,7 @@ async def _authorize_workspace_tool_action(
 
 
 async def execute_workspace_tool_action(
-    policy_engine: ToolPolicyEvaluator | object | None,
+    policy_engine: ToolPolicyEvaluator | None,
     *,
     tool_name: str,
     arguments: Mapping[str, Any],
@@ -364,14 +364,14 @@ def _validate_path_authority(
         raise ExecutionAuthorizationError(f"path is denied by execution profile: {path}")
     roots = (
         profile.readable_roots
-        if tool_name == "read"
+        if tool_name in {"read", "grep", "find", "ls"}
         else profile.writable_roots
         if tool_name in {"write", "edit"}
         else ()
     )
     if roots and any(path == root or path.is_relative_to(root) for root in roots):
         return
-    if tool_name in {"read", "write", "edit"}:
+    if tool_name in {"read", "grep", "find", "ls", "write", "edit"}:
         raise ExecutionAuthorizationError(
             f"path is outside the authorized {tool_name} roots: {path}"
         )

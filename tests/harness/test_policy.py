@@ -838,15 +838,15 @@ def test_workspace_policy_wraps_protocol_and_decision_property_failures() -> Non
         def disposition(self):
             raise RuntimeError("decision exploded")
 
-    class LegacyEvaluator:
-        def evaluate_tool_call(self, **kwargs):
-            del kwargs
+    class InvalidEvaluator:
+        def evaluate(self, subject):
+            del subject
             return ExplosiveDecision()
 
-    with pytest.raises(PolicyEvaluationError, match="decision exploded"):
+    with pytest.raises(PolicyEvaluationError, match="expected PolicyDecision"):
         asyncio.run(
             enforce_tool_policy(
-                LegacyEvaluator(),
+                InvalidEvaluator(),
                 tool_name="read",
                 arguments={},
             )
@@ -856,10 +856,6 @@ def test_workspace_policy_wraps_protocol_and_decision_property_failures() -> Non
         def evaluate(self, subject):
             del subject
             return PolicyDecision.allow()
-
-        @property
-        def evaluate_tool_call(self):
-            raise AssertionError("legacy getter must not be inspected")
 
     asyncio.run(
         enforce_tool_policy(
@@ -1015,7 +1011,7 @@ def test_workspace_policy_adapter_rejects_unknown_evaluator() -> None:
     from loushang.harness.policy import PolicyEvaluationError
     from loushang.harness.tools.workspace.policy import enforce_tool_policy
 
-    with pytest.raises(PolicyEvaluationError, match="no supported evaluate method"):
+    with pytest.raises(PolicyEvaluationError, match="no callable evaluate method"):
         asyncio.run(
             enforce_tool_policy(
                 object(),
@@ -1166,12 +1162,9 @@ def test_workspace_policy_rejects_bash_argument_cwd_mismatch() -> None:
         )
 
 
-def test_dual_protocol_policy_falls_back_to_legacy_when_new_contract_abstains() -> None:
+def test_workspace_policy_does_not_fall_back_after_canonical_abstention() -> None:
     from loushang.harness.policy import PolicyDecision
-    from loushang.harness.tools.workspace.policy import (
-        PolicyEnforcementError,
-        enforce_tool_policy,
-    )
+    from loushang.harness.tools.workspace.policy import enforce_tool_policy
 
     class TransitionalEvaluator:
         def evaluate(self, subject):
@@ -1182,32 +1175,31 @@ def test_dual_protocol_policy_falls_back_to_legacy_when_new_contract_abstains() 
             del arguments, cwd
             return PolicyDecision.deny(f"legacy denied {tool_name}")
 
-    with pytest.raises(PolicyEnforcementError, match="legacy denied write"):
-        asyncio.run(
-            enforce_tool_policy(
-                TransitionalEvaluator(),
-                tool_name="write",
-                arguments={"path": "notes.txt", "content": "text"},
-            )
+    asyncio.run(
+        enforce_tool_policy(
+            TransitionalEvaluator(),
+            tool_name="write",
+            arguments={"path": "notes.txt", "content": "text"},
         )
+    )
 
 
-def test_legacy_tool_policy_revalidates_policy_decision_instances() -> None:
+def test_workspace_policy_revalidates_policy_decision_instances() -> None:
     from loushang.harness.policy import PolicyDecision, PolicyEvaluationError
     from loushang.harness.tools.workspace.policy import enforce_tool_policy
 
     malformed = PolicyDecision.allow()
     object.__setattr__(malformed, "disposition", "prompt")
 
-    class MalformedLegacyEvaluator:
-        def evaluate_tool_call(self, *, tool_name, arguments, cwd=None):
-            del tool_name, arguments, cwd
+    class MalformedEvaluator:
+        def evaluate(self, subject):
+            del subject
             return malformed
 
     with pytest.raises(PolicyEvaluationError, match="invalid PolicyDecision"):
         asyncio.run(
             enforce_tool_policy(
-                MalformedLegacyEvaluator(),
+                MalformedEvaluator(),
                 tool_name="write",
                 arguments={"path": "notes.txt", "content": "text"},
             )

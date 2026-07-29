@@ -1,36 +1,28 @@
-# `policy`
+# Policy / Approval
 
 ## Role
 
-- 权限、审批与 guardrail 判定组件
+- Coding 对 Harness 权限、审批与 guardrail 能力的消费边界
 
 ## Owns
 
-- `PolicyEngine`
-- `PackageSecurityPolicy`
-- `PolicyDecision`
-- `ApprovalRequest`
-- `ApprovalDecision`
-- `ApprovalResolver`
-- `PolicyEnforcementError`
-- destructive action guardrails
-- sandbox / approval policy
-- generic tool-call allow / deny / ask rules
-- package/plugin source security guardrails
+- Coding permission profile settings
+- Coding session 与 Harness approval presenter 的绑定
+- Coding package 操作何时请求 Harness source-security 判定
 
 ## Depends On
 
-- `control`
-- `exec`
-- optional tool metadata as policy input
+- `loushang.harness.policy`
+- `loushang.harness.policy_engine`
+- `loushang.harness.approval`
+- `loushang.harness.tools.workspace.authorization`
+- `loushang.harness.resources.packages.security`
 
 ## Commands
 
-- `evaluate_action(...)`
-- `evaluate_tool_call(...)`
-- `ApprovalResolver.resolve(...)`
+- `PolicyEngine.evaluate(PolicySubject)`
+- `ApprovalResolver.resolve(ApprovalRequest)`
 - `PackageSecurityPolicy.evaluate_package_source(...)`
-  - compatibility alias: `evaluate_plugin_source(...)`
 
 ## Queries
 
@@ -59,8 +51,9 @@
 
 ## Out Of Scope
 
-- tool registration
-- shell execution
+- Product-owned Policy/Approval classes or wrappers
+- alternate tool authorization gateways
+- tool registration and shell execution
 - approval UI rendering
 - session transcript persistence
 - model selection
@@ -68,8 +61,8 @@
 ## Reference Implementation Alignment
 
 - 语义上对齐 `reference CLI` 中 permissions / approvals / guardrails
-- 保留显式 `PolicyEngine`，不把这层判定逻辑散落进 mode、tool、exec
-- `evaluate_tool_call(...)` 对齐 `reference CLI` 的 `beforeToolCall` 判定点：工具参数校验后、实际执行前做 allow / deny / ask。
+- 保留显式 Harness `PolicyEngine`，不把判定逻辑散落进 mode、tool、exec
+- 统一 Gateway 对齐 `beforeToolCall` 判定点：工具参数校验后、实际执行前做 allow / deny / ask。
 - `ApprovalResolver` 是 UI/RPC/CLI 未来承接审批交互的注入点；当前默认 `DenyApprovalResolver`
   保持无 UI 环境下的阻断语义。
 - mode 可以承接审批交互呈现，但 `PolicyEngine` 自身应保持 mode-neutral

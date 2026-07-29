@@ -18,14 +18,13 @@ from loushang.coding.multiagent import (
     CodingSubagentFactory,
     coding_agent_types,
 )
-from loushang.coding.policy import (
-    HeadlessApprovalResolver,
-    InteractiveApprovalResolver,
-    PolicyEngine,
-)
 from loushang.coding.tool_pack import register_coding_builtin_tools
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.coding.worktree import CodingGitWorktreeLeasePort
+from loushang.harness.approval import (
+    HeadlessApprovalResolver,
+    InteractiveApprovalResolver,
+)
 from loushang.harness.multiagent import (
     AgentCaller,
     AgentCompletionNotice,
@@ -41,6 +40,7 @@ from loushang.harness.multiagent import (
     SubagentRoundResult,
     core_recipe_catalog,
 )
+from loushang.harness.policy_engine import PolicyEngine
 from loushang.harness.runtime import HostInputQueue
 from loushang.harness.session.multiagent import (
     AgentInputFacade,

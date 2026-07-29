@@ -53,14 +53,6 @@ from loushang.coding.model_selection import (
     apply_model_selection,
     persistence_warning_message,
 )
-from loushang.coding.policy import (
-    ApprovalResolver,
-    HeadlessApprovalResolver,
-    InteractiveApprovalResolver,
-    PackageSecurityPolicy,
-    PolicyEngine,
-    configure_persistent_approval_policy,
-)
 from loushang.coding.prompt_command import (
     run_prompt_command,
     run_prompt_plan_command,
@@ -69,6 +61,12 @@ from loushang.coding.resource_runtime import collect_coding_package_entries
 from loushang.coding.tool_pack import register_coding_builtin_tools
 from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.workflow import run_prompt_steps_workflow
+from loushang.harness.approval import (
+    ApprovalResolver,
+    HeadlessApprovalResolver,
+    InteractiveApprovalResolver,
+    configure_persistent_approval_policy,
+)
 from loushang.harness.cli import (
     AgentCliApplicationBinding,
     AgentCliApplicationState,
@@ -118,9 +116,11 @@ from loushang.harness.diagnostics.observability_runtime import (
     startup_observability_context,
 )
 from loushang.harness.host.rpc import run_rpc_host
+from loushang.harness.policy_engine import PolicyEngine
 from loushang.harness.resources.packages import (
     record_package_source_policy_denial,
 )
+from loushang.harness.resources.packages.security import PackageSecurityPolicy
 from loushang.harness.resources.plugins import is_remote_plugin_source
 from loushang.harness.scenario import run_fake_workflow_cli
 from loushang.harness.tools.workspace import (

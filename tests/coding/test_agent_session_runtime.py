@@ -3039,7 +3039,7 @@ async def test_runtime_session_replacement_keeps_shared_approval_presenter(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.policy import (
+    from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
@@ -3111,12 +3111,12 @@ async def test_runtime_direct_replacement_reactivates_shared_approval_presenter(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.policy import (
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
-    from loushang.coding.session_manager import SessionManager
 
     project = tmp_path / "project"
     project.mkdir()
@@ -3188,14 +3188,14 @@ async def test_runtime_injected_current_session_reopens_shared_approval_resolver
     tmp_path,
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.policy import (
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
-    from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
 
     resolver = InteractiveApprovalResolver(
         fallback=HeadlessApprovalResolver(mode="deny")

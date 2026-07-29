@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 from loushang.agent.types import AgentTool
 from loushang.harness.approval import (
@@ -120,7 +120,7 @@ class ToolsOptions:
     grep_operations: GrepOperations | None = None
     write_operations: WriteOperations | None = None
     edit_operations: EditOperations | None = None
-    policy_engine: ToolPolicyEvaluator | object | None = None
+    policy_engine: ToolPolicyEvaluator | None = None
     approval_resolver: ApprovalResolver | None = None
     exec_service: ExecService | None = None
     diagnostics_service: DiagnosticsService | None = None
@@ -137,14 +137,14 @@ class ToolsOptions:
 
 @dataclass(frozen=True)
 class WorkspaceToolRuntimeSettings:
-    policy_engine: object | None = None
+    policy_engine: ToolPolicyEvaluator | None = None
     approval_resolver: ApprovalResolver | None = None
 
 
 def workspace_tool_runtime_settings(
     settings_manager: object | None,
     *,
-    policy_factory: Callable[..., object] = PolicyEngine,
+    policy_factory: Callable[..., ToolPolicyEvaluator] = PolicyEngine,
 ) -> WorkspaceToolRuntimeSettings:
     """Resolve standard tool policy and headless approval settings."""
 
@@ -219,7 +219,7 @@ def create_tool_definition(
     tool_name: ToolName, *, options: ToolsOptions | None = None
 ) -> ToolDefinition:
     options = options or ToolsOptions()
-    policy_engine = cast(ToolPolicyEvaluator | None, options.policy_engine)
+    policy_engine = options.policy_engine
     if tool_name == "read":
         return create_read_tool_definition(
             options=options.read,

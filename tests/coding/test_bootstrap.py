@@ -190,11 +190,11 @@ def test_create_agent_session_uses_manager_header_as_agent_session_id(tmp_path) 
 
 def test_create_agent_session_keeps_runtime_approval_resolver(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session
-    from loushang.coding.policy import (
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.approval import (
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
-    from loushang.coding.session_manager import SessionManager
 
     resolver = InteractiveApprovalResolver(
         fallback=HeadlessApprovalResolver(mode="deny")

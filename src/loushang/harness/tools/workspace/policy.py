@@ -4,7 +4,7 @@ import inspect
 import os
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any, Literal, Protocol, cast
+from typing import Any, Protocol, cast
 
 from loushang.harness.approval import (
     ApprovalDecision,
@@ -34,17 +34,6 @@ from loushang.harness.policy_grants import (
 from .audit import snapshot_audit_event
 
 
-class PolicyDecisionLike(Protocol):
-    @property
-    def disposition(self) -> Literal["allow", "deny", "ask"]: ...
-
-    @property
-    def reason(self) -> str | None: ...
-
-    @property
-    def code(self) -> str | None: ...
-
-
 class ToolPolicyEvaluator(Protocol):
     def evaluate(
         self, subject: ToolPolicySubject, /
@@ -65,7 +54,7 @@ class ToolPolicyAuthorization:
 
 
 async def enforce_tool_policy(
-    policy_engine: ToolPolicyEvaluator | object | None,
+    policy_engine: ToolPolicyEvaluator | None,
     *,
     tool_name: str,
     arguments: Mapping[str, Any],
@@ -258,44 +247,19 @@ async def enforce_tool_policy(
 
 
 async def _evaluate_tool_policy(
-    policy_engine: ToolPolicyEvaluator | object,
+    policy_engine: ToolPolicyEvaluator,
     *,
     tool_name: str,
     arguments: Mapping[str, Any],
     cwd: str | None,
     subject: ToolPolicySubject,
 ) -> PolicyDecision:
-    evaluate = get_policy_method(policy_engine, "evaluate")
-    if callable(evaluate):
-        decision = await evaluate_policy(
-            cast(PolicyEvaluator, policy_engine),
-            subject,
-        )
-        if decision is not None:
-            return decision
-        legacy_evaluate = get_policy_method(policy_engine, "evaluate_tool_call")
-        if not callable(legacy_evaluate):
-            return PolicyDecision.allow()
-    else:
-        legacy_evaluate = get_policy_method(policy_engine, "evaluate_tool_call")
-
-    # Compatibility evaluators keep their established call shape during the
-    # transition. When a dual-protocol adapter abstains through the new
-    # contract, its legacy result remains authoritative.
-    if callable(legacy_evaluate):
-        return await _evaluate_legacy_tool_policy(
-            policy_engine,
-            legacy_evaluate=legacy_evaluate,
-            tool_name=tool_name,
-            arguments=arguments,
-            cwd=cwd,
-        )
-
-    if not callable(evaluate):
-        raise PolicyEvaluationError(
-            f"Policy evaluator {type(policy_engine).__name__} has no supported evaluate method"
-        )
-    return PolicyDecision.allow()
+    del tool_name, arguments, cwd
+    decision = await evaluate_policy(
+        cast(PolicyEvaluator, policy_engine),
+        subject,
+    )
+    return decision if decision is not None else PolicyDecision.allow()
 
 
 def _validate_execution_arguments(execution: ToolPolicySubject) -> None:
@@ -398,106 +362,12 @@ def _snapshot_execution_environment(
     return tuple(snapshot)
 
 
-def get_policy_method(policy_engine: object, name: str) -> object:
-    try:
-        return getattr(policy_engine, name, None)
-    except Exception as exc:
-        raise PolicyEvaluationError(
-            f"Policy evaluator {type(policy_engine).__name__} failed while "
-            f"accessing {name}: {exc}"
-        ) from exc
-
-
-async def _evaluate_legacy_tool_policy(
-    policy_engine: object,
-    *,
-    legacy_evaluate: Any,
-    tool_name: str,
-    arguments: Mapping[str, Any],
-    cwd: str | None,
-) -> PolicyDecision:
-    return await evaluate_legacy_policy_method(
-        policy_engine,
-        "evaluate_tool_call",
-        method=legacy_evaluate,
-        tool_name=tool_name,
-        arguments=arguments,
-        cwd=cwd,
-    )
-
-
-async def evaluate_legacy_policy_method(
-    policy_engine: object,
-    method_name: str,
-    *,
-    method: object | None = None,
-    **kwargs: object,
-) -> PolicyDecision:
-    resolved_method = (
-        method if method is not None else get_policy_method(policy_engine, method_name)
-    )
-    if not callable(resolved_method):
-        raise PolicyEvaluationError(
-            f"Policy evaluator {type(policy_engine).__name__} has no callable "
-            f"{method_name} method"
-        )
-    try:
-        result = resolved_method(**kwargs)
-        if inspect.isawaitable(result):
-            result = await result
-    except PolicyEvaluationError:
-        raise
-    except Exception as exc:
-        raise PolicyEvaluationError(
-            f"Policy evaluator {type(policy_engine).__name__} failed: {exc}"
-        ) from exc
-    return _coerce_legacy_decision(result, evaluator=policy_engine)
-
-
-def _coerce_legacy_decision(
-    result: object,
-    *,
-    evaluator: object,
-) -> PolicyDecision:
-    if isinstance(result, PolicyDecision):
-        try:
-            result.__post_init__()
-        except (TypeError, ValueError) as exc:
-            raise PolicyEvaluationError(
-                f"Policy evaluator {type(evaluator).__name__} returned an invalid "
-                f"PolicyDecision: {exc}"
-            ) from exc
-        return result
-    try:
-        disposition = getattr(result, "disposition", None)
-        reason = getattr(result, "reason", None)
-        code = getattr(result, "code", None)
-    except Exception as exc:
-        raise PolicyEvaluationError(
-            f"Policy evaluator {type(evaluator).__name__} returned an invalid "
-            f"decision: {exc}"
-        ) from exc
-    if disposition not in {"allow", "deny", "ask"}:
-        raise PolicyEvaluationError(
-            f"Policy evaluator {type(evaluator).__name__} returned an invalid decision"
-        )
-    if reason is not None and not isinstance(reason, str):
-        raise PolicyEvaluationError(
-            f"Policy evaluator {type(evaluator).__name__} returned a non-string reason"
-        )
-    if code is not None and not isinstance(code, str):
-        raise PolicyEvaluationError(
-            f"Policy evaluator {type(evaluator).__name__} returned a non-string code"
-        )
-    return PolicyDecision(disposition=disposition, reason=reason, code=code)
-
-
 def _policy_error_details(
     *,
     tool_name: str,
     arguments: Mapping[str, Any],
     cwd: str | None,
-    decision: PolicyDecisionLike,
+    decision: PolicyDecision,
     approval_required: bool,
     approval: ApprovalDecision | None = None,
     approval_reason: str | None = None,
@@ -537,7 +407,7 @@ def _policy_error_details(
 def _policy_audit_details(
     *,
     tool_name: str,
-    decision: PolicyDecisionLike,
+    decision: PolicyDecision,
     approval_required: bool,
     tool_call_id: str | None,
     audit_context: Mapping[str, object] | None,
@@ -560,7 +430,7 @@ def _policy_audit_details(
 def _approval_audit_details(
     *,
     tool_name: str,
-    decision: PolicyDecisionLike,
+    decision: PolicyDecision,
     action_id: str,
     tool_call_id: str | None,
     approval: ApprovalDecision | None = None,

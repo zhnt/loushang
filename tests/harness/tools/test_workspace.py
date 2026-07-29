@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
 
 import pytest
+
+from loushang.harness.policy import PolicyDecision
 
 
 def _context_provider(cwd: Path):
@@ -88,17 +89,12 @@ def test_bash_tool_uses_the_live_session_execution_service(
 
 
 @dataclass(frozen=True)
-class _Decision:
-    disposition: Literal["allow", "deny", "ask"]
-    reason: str | None = None
-    code: str | None = None
-
-
-@dataclass(frozen=True)
 class _DenyReads:
-    def evaluate_tool_call(self, *, tool_name, arguments, cwd=None) -> _Decision:
-        del arguments, cwd
-        return _Decision("deny", f"{tool_name} disabled", "disabled")
+    def evaluate(self, subject) -> PolicyDecision:
+        return PolicyDecision.deny(
+            f"{subject.tool_name} disabled",
+            code="disabled",
+        )
 
 
 def test_workspace_policy_accepts_product_neutral_evaluator(tmp_path: Path) -> None:

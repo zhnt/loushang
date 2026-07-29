@@ -8,7 +8,6 @@ from loushang.coding.compaction.adapter import (
     execute_coding_branch_summary,
     execute_coding_compaction,
 )
-from loushang.coding.policy import InteractiveApprovalResolver
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE
 from loushang.coding.resource_runtime import (
     CodingPackageMaterializer as PackageMaterializer,
@@ -18,6 +17,7 @@ from loushang.coding.resource_runtime import (
 )
 from loushang.coding.resource_runtime import summarize_coding_package_root
 from loushang.coding.session_manager import SessionManager
+from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.capabilities import (
     CapabilityCompositionRuntime,
     bind_capability_composition_runtime,

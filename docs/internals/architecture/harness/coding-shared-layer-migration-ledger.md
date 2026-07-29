@@ -398,13 +398,13 @@ Closure probes:
 `coding.policy.engine` was an implementation duplicate over the existing
 Harness policy subjects, matchers, command normalization, and rule evaluator.
 The evaluator now lives in `harness.policy_engine.PolicyEngine` and accepts a
-product rule-id namespace plus product-supplied rule values. Coding retains a
-thin `PolicyEngine` binding that preserves its historic `coding.*` rule ids and
-default policy values; no decision codes, messages, or tool behavior changed.
+product rule-id namespace plus product-supplied rule values. The later
+Policy/Approval extinction slice removed the temporary Coding binding; Coding
+now imports the Harness evaluator directly.
 
 | Source region | Shared owner | Coding retained | Status |
 | --- | --- | --- | --- |
-| `coding.policy.engine` rule assembly and action/tool evaluation | `harness.policy_engine.PolicyEngine` | Product namespace binding and policy defaults | Complete |
+| removed `coding.policy.engine` rule assembly and action/tool evaluation | `harness.policy_engine.PolicyEngine` | Policy settings only | Complete |
 
 Slice C accounting: the Coding implementation shrank from 298 to 17 LOC
 (-281); Harness gained the shared implementation at 300 LOC. The shared module
@@ -415,11 +415,13 @@ rule namespaces.
 The same slice also collapsed the callback-backed approval lifecycle. The
 `ApprovalBroker` wrapper, presenter lifecycle, timeout/cancellation behavior,
 and result correlation now live in `harness.approval.InteractiveApprovalResolver`.
-Coding keeps only its `action`/`risk` payload projector and a thin subclass:
+The later extinction slice also moved the `action`/`risk` projection and
+standard project/user rule-store binding into Harness, then deleted the thin
+Coding subclass:
 
 | Source region | Shared owner | Coding retained | Status |
 | --- | --- | --- | --- |
-| `coding.policy.approval.InteractiveApprovalResolver` | `harness.approval.InteractiveApprovalResolver` | Coding approval payload fields | Complete |
+| removed `coding.policy.approval.InteractiveApprovalResolver` | `harness.approval.InteractiveApprovalResolver` | Presenter binding only | Complete |
 
 Approval accounting: Coding shrank from 135 to 56 LOC (-79); Harness gained
 104 LOC of parameterized lifecycle and presenter code. Existing Coding approval
@@ -428,7 +430,7 @@ no Product imports.
 
 Package source trust evaluation is also now a shared resource capability. The
 `PackageSecurityPolicy` and `PackageSourceSecurityReport` types moved to
-`harness.resources.packages.security`; Coding only re-exports them while it
+`harness.resources.packages.security`; Coding imports them directly while it
 continues to choose when a package operation asks for a security decision.
 This keeps trusted-host/source configuration injectable for Design, PPT, and
 other Products without changing the existing package wire shape.

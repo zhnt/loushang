@@ -1273,22 +1273,24 @@ Exit gate:
   backend is available.
 - Revalidate immediately before execution.
 
-Implementation checkpoint (2026-07-27): Bash, read, write, and edit now enter a
-shared Workspace authorization gateway which freezes canonical arguments and a
-deterministic action fingerprint before invoking the current Policy/Approval
-adapter. When a session execution ceiling is bound, the gateway resolves a
-per-action `EffectiveExecutionProfile` beneath it; read/write/edit validate the
-canonical path against that profile, and Bash carries it on the materialized
-`ExecRequest` so the Coding Sandbox intersects and enforces it. The legacy
-adapter remains the decision backend. The gateway now owns the executor
-callback for all four tools and revalidates the frozen fingerprint plus path
-authority immediately before invoking it. Its optional `on_authorized` hook is
-observation-only and is revalidated on both sides; tool effects belong only in
-the executor. This closes the application-level authorization/execution
-separation. Descriptor-safe filesystem operations and backend containment
-remain responsible for operating-system races after an asynchronous executor
-has begun. The same gateway now emits the ordered audit sequence documented in
-section 11. Its common payload contains a deterministic fingerprint, safe
+Implementation checkpoint (2026-07-29): all seven effectful tools in the core
+Workspace pack — Bash, read, write, edit, grep, find, and ls — enter the shared
+Workspace authorization gateway. The gateway freezes canonical arguments and a
+deterministic action fingerprint before invoking the tool executor. No tool
+performs filesystem inspection before this authorization boundary. When a
+session execution ceiling is bound, the gateway resolves a per-action
+`EffectiveExecutionProfile` beneath it; all filesystem tools validate the
+canonical path against the appropriate readable or writable roots, and Bash
+carries the profile on the materialized `ExecRequest` so the Coding Sandbox
+intersects and enforces it. The gateway owns every executor callback and
+revalidates the frozen fingerprint plus path authority immediately before
+invocation. Its optional `on_authorized` hook is observation-only and is
+revalidated on both sides; tool effects belong only in the executor. This
+closes the application-level authorization/execution separation.
+Descriptor-safe filesystem operations and backend containment remain
+responsible for operating-system races after an asynchronous executor has
+begun. The same gateway emits the ordered audit sequence documented in section
+11. Its common payload contains a deterministic fingerprint, safe
 action/command structure, primary capability classification, Policy code,
 Approval ID, execution-profile summary, and terminal outcome. Raw commands,
 paths, contents, environment values, reasons, and exception text are excluded;
@@ -1432,6 +1434,17 @@ Exit gate:
 - Delete legacy evaluation coercion and exclusive approval extensions.
 - Update diagnostics, event projections, public docs, and examples.
 - Run repository-wide import and architecture checks.
+
+Implementation checkpoint (2026-07-29): Batch 6 is complete for the current
+Coding and Workspace surface. `loushang.coding.policy` has been removed; Coding
+imports the Harness-owned Approval contracts and `PolicyEngine` directly and
+does not re-export them. Policy evaluation has one contract,
+`evaluate(PolicySubject)`, with no `evaluate_action` or `evaluate_tool_call`
+fallback or decision-shape coercion. Approval presentation projection and
+standard project/user rule-store binding are Harness-owned. Architecture tests
+reject Product-owned authorization class implementations, imports of the
+retired Coding package, Product top-level authorization re-exports, and any
+core Workspace effectful tool that does not invoke the mandatory gateway.
 
 ## 18. Required Test Matrix
 

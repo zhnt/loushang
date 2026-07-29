@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import shlex
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
 from copy import deepcopy
@@ -10,6 +11,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal, Never, Protocol, TypeAlias, TypeVar
 from uuid import uuid4
+
+from loushang.harness.diagnostics.export import redact_text
 
 T = TypeVar("T")
 MaybeAwaitable: TypeAlias = T | Awaitable[T]
@@ -643,6 +646,14 @@ def approval_request_to_dict(request: ApprovalRequest) -> dict[str, object]:
         "reason": request.reason,
         "policy_code": request.policy_code,
         "action_id": request.action_id,
+        "action": _approval_action(request),
+        "risk": request.reason or "Tool call requires approval",
+        "environment": "local",
+        "grant_summary": (
+            request.session_grant.summary
+            if request.session_grant is not None
+            else None
+        ),
     }
     if request.action_fingerprint is not None:
         projection["action_fingerprint"] = request.action_fingerprint
@@ -674,6 +685,55 @@ def approval_request_to_dict(request: ApprovalRequest) -> dict[str, object]:
             for amendment in request.policy_amendments
         )
     return projection
+
+
+def _approval_action(request: ApprovalRequest) -> str:
+    command = request.arguments.get("command")
+    if isinstance(command, str) and command.strip():
+        return _approval_display_text(command)
+    if isinstance(command, (tuple, list)) and command and all(
+        isinstance(part, str) for part in command
+    ):
+        return _approval_display_text(shlex.join(command))
+    path = request.arguments.get("path")
+    if isinstance(path, str) and path.strip():
+        return f"{request.tool_name} {_approval_display_text(path)}"
+    return f"{request.tool_name} tool call"
+
+
+def _approval_display_text(value: str) -> str:
+    redacted = redact_text(value.strip())
+    flattened = " ⏎ ".join(redacted.splitlines())
+    safe = "".join(
+        character if character.isprintable() else "�"
+        for character in flattened
+    )
+    return safe[:2048]
+
+
+def configure_persistent_approval_policy(
+    resolver: ApprovalResolver | None,
+    settings_manager: object | None,
+) -> None:
+    """Bind standard project and user Policy stores to an approval resolver."""
+
+    setter = getattr(resolver, "set_policy_stores", None)
+    if not callable(setter) or settings_manager is None:
+        return
+    project_base = getattr(settings_manager, "project_base_dir", None)
+    global_base = getattr(settings_manager, "global_base_dir", None)
+    stores = {}
+    if isinstance(project_base, Path):
+        stores["project"] = JsonApprovalPolicyRuleStore(
+            "project",
+            project_base / "approval-policy.json",
+        )
+    if isinstance(global_base, Path):
+        stores["user"] = JsonApprovalPolicyRuleStore(
+            "user",
+            global_base / "approval-policy.json",
+        )
+    setter(stores)
 
 
 def approval_options(request: ApprovalRequest) -> tuple[ApprovalOption, ...]:
@@ -1493,6 +1553,7 @@ __all__ = [
     "ApprovalPayloadProjector",
     "approval_options",
     "approval_request_to_dict",
+    "configure_persistent_approval_policy",
     "ensure_approval_action_id",
     "find_approval_grant",
     "resolve_approval",
