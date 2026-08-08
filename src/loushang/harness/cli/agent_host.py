@@ -407,8 +407,6 @@ async def run_agent_cli_host(
             "stdin": request.stdin,
             "stdout": request.stdout,
             "stderr": request.stderr,
-            "output_mode": output_mode,
-            "render_tool_events": request.launch_plan.render_tool_events,
             "work_event_log": request.work_event_log,
             "work_port": request.plain_work_port,
         },
