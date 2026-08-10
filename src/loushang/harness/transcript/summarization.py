@@ -14,7 +14,7 @@ from types import MappingProxyType
 from typing import cast
 
 from loushang.agent.types import AgentMessage
-from loushang.ai import ApiKeyAuth, CallOptions, Context, Model, complete
+from loushang.ai import ApiKeyAuth, CallOptions, Context, Model, complete, stream
 from loushang.ai.types import AssistantMessage, TextPart, UserMessage
 from loushang.foundation.json import JSONValue, require_json_value
 from loushang.harness.context import (
@@ -212,7 +212,7 @@ def default_summary_completer(
     context: Context,
     options: CallOptions | None = None,
 ) -> Awaitable[str]:
-    """Call the stable AI completion surface and return assistant text."""
+    """Use the model's declared completion mode and return assistant text."""
 
     return _complete_text(model, context, options)
 
@@ -493,7 +493,12 @@ async def _complete_text(
     context: Context,
     options: CallOptions | None,
 ) -> str:
-    message = await complete(cast(Model, model), context, options)
+    typed_model = cast(Model, model)
+    if typed_model.supports_stream:
+        event_stream = await stream(typed_model, context, options)
+        message = await event_stream.result()
+    else:
+        message = await complete(typed_model, context, options)
     return "".join(
         part.text
         for part in getattr(message, "content", ())

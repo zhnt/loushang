@@ -640,7 +640,7 @@ def test_screen_event_projector_renders_same_text_queued_message_after_initial_e
     assert app.state.records == [UserPromptRecord("same"), UserPromptRecord("same")]
 
 
-def test_screen_event_projector_appends_compaction_record_and_tracks_baseline_reset() -> (
+def test_screen_event_projector_appends_compaction_record_without_trimming_history() -> (
     None
 ):
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
@@ -675,19 +675,14 @@ def test_screen_event_projector_appends_compaction_record_and_tracks_baseline_re
         }
     )
 
-    assert app.state.evicted_prefix_record_count > 0
+    assert len(app.state.records) == 122
+    assert app.state.evicted_prefix_record_count == 0
     assert isinstance(app.state.records[-1], ContextCompactionRecord)
     assert app.state.records[-1].summary == "condensed summary"
     assert app.state.records[-1].tokens_before == 500_000
-    assert all(
-        not getattr(record, "text", "").startswith("old prompt 0")
-        for record in app.state.records
-    )
+    assert app.state.records[0] == UserPromptRecord("old prompt 0")
     assert UserPromptRecord("recent prompt") in app.state.records
-    assert (
-        app.consume_render_baseline_reset_reason()
-        == "transcript_window_trimmed:context_compaction"
-    )
+    assert app.consume_render_baseline_reset_reason() is None
 
 
 def test_screen_event_projector_does_not_reset_baseline_without_compaction_eviction() -> (

@@ -104,24 +104,23 @@ def test_screen_conversation_app_owns_compaction_window_mechanics() -> None:
     )
 
 
-def test_screen_conversation_app_appends_compaction_fact_and_trims_records() -> None:
+def test_screen_conversation_app_appends_compaction_fact_without_trimming_records() -> None:
     app = _app()
     app.state.records.extend(UserPromptRecord(str(index)) for index in range(3))
 
     app.append_context_compaction_record(
         summary="condensed",
         tokens_before=42,
-        max_records=2,
     )
 
     assert app.state.records == [
+        UserPromptRecord("0"),
+        UserPromptRecord("1"),
         UserPromptRecord("2"),
         ContextCompactionRecord(summary="condensed", tokens_before=42),
     ]
-    assert app.state.evicted_prefix_record_count == 2
-    assert app.consume_render_baseline_reset_reason() == (
-        "transcript_window_trimmed:context_compaction"
-    )
+    assert app.state.evicted_prefix_record_count == 0
+    assert app.consume_render_baseline_reset_reason() is None
 
 
 def test_screen_conversation_app_applies_active_logical_line_budget() -> None:

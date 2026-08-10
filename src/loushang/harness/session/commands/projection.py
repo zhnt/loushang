@@ -28,7 +28,11 @@ def project_standard_session_command_result(
             session = result.value
             if isinstance(session, Mapping):
                 session = dict(session)
-            return _ok_command_result(command, session=session)
+            return _ok_command_result(
+                command,
+                session=session,
+                message=_session_message(session),
+            )
         case StandardSessionCommandId.RENAME:
             name = result.value
             return _ok_command_result(
@@ -197,6 +201,23 @@ def _standard_argument_error(result: StandardSessionCommandResult) -> str:
             return "Usage: /tree <entry-id> [--summarize] [--label <label>]"
         case _:
             return f"Invalid arguments for /{result.command_id.value}"
+
+
+def _session_message(session: object) -> str:
+    if not isinstance(session, Mapping):
+        return "Session information available."
+
+    fields = (
+        ("Session", session.get("session_id")),
+        ("Name", session.get("session_name")),
+        ("CWD", session.get("cwd")),
+    )
+    parts = [
+        f"{label}: {value}"
+        for label, value in fields
+        if isinstance(value, str) and value
+    ]
+    return " | ".join(parts) or "Session information available."
 
 
 def _ok_command_result(command: str, **fields: object) -> dict[str, object]:

@@ -3,6 +3,7 @@ import asyncio
 import pytest
 
 from loushang.ai import ApiKeyAuth, CallOptions
+from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import (
     AssistantMessage,
     TextPart,
@@ -39,46 +40,121 @@ from loushang.harness.transcript import (
 
 
 @pytest.mark.anyio
-async def test_complete_text_calls_root_complete_with_options(monkeypatch) -> None:
+async def test_complete_text_aggregates_root_stream_with_options(monkeypatch) -> None:
     from loushang.ai import Context
     from loushang.harness.transcript import summarization as summary_module
 
     captured: dict[str, object] = {}
 
-    async def fake_complete(model, context, options=None):
+    message = AssistantMessage(
+        role="assistant",
+        content=[TextPart(type="text", text="summary text")],
+        api="faux",
+        provider="faux",
+        model="faux-model",
+        response_id=None,
+        usage=Usage(
+            input=0,
+            output=0,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=0,
+            cost=None,
+        ),
+        stop_reason="stop",
+        error_message=None,
+        timestamp=0.0,
+    )
+
+    class FakeEventStream:
+        async def result(self):
+            captured["result_called"] = True
+            return message
+
+    async def fake_stream(model, context, options=None):
         captured["model"] = model
         captured["context"] = context
         captured["options"] = options
-        return AssistantMessage(
-            role="assistant",
-            content=[TextPart(type="text", text="summary text")],
-            api="faux",
-            provider="faux",
-            model="faux-model",
-            response_id=None,
-            usage=Usage(
-                input=0,
-                output=0,
-                cache_read=0,
-                cache_write=0,
-                total_tokens=0,
-                cost=None,
-            ),
-            stop_reason="stop",
-            error_message=None,
-            timestamp=0.0,
-        )
+        return FakeEventStream()
 
-    monkeypatch.setattr(summary_module, "complete", fake_complete)
+    monkeypatch.setattr(summary_module, "stream", fake_stream)
     options = CallOptions(auth=ApiKeyAuth("key"), headers={"x-test": "1"})
     context = Context(
         messages=[UserMessage(role="user", content="summarize", timestamp=0.0)]
     )
+    model = Model(
+        id="stream-model",
+        name="Stream Model",
+        provider="faux",
+        endpoint="anthropic-messages",
+        capabilities=Capabilities(stream=True),
+    )
 
-    result = await summary_module._complete_text("model", context, options)
+    result = await summary_module._complete_text(model, context, options)
 
     assert result == "summary text"
-    assert captured == {"model": "model", "context": context, "options": options}
+    assert captured == {
+        "model": model,
+        "context": context,
+        "options": options,
+        "result_called": True,
+    }
+
+
+@pytest.mark.anyio
+async def test_complete_text_uses_complete_for_non_stream_model(monkeypatch) -> None:
+    from loushang.ai import Context
+    from loushang.harness.transcript import summarization as summary_module
+
+    captured: dict[str, object] = {}
+    message = AssistantMessage(
+        role="assistant",
+        content=[TextPart(type="text", text="non-stream summary")],
+        api="faux",
+        provider="faux",
+        model="faux-model",
+        response_id=None,
+        usage=Usage(
+            input=0,
+            output=0,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=0,
+            cost=None,
+        ),
+        stop_reason="stop",
+        error_message=None,
+        timestamp=0.0,
+    )
+
+    async def fake_complete(model, context, options=None):
+        captured["model"] = model
+        captured["context"] = context
+        captured["options"] = options
+        return message
+
+    async def unexpected_stream(*args, **kwargs):
+        del args, kwargs
+        raise AssertionError("stream() must not be used without stream capability")
+
+    monkeypatch.setattr(summary_module, "complete", fake_complete)
+    monkeypatch.setattr(summary_module, "stream", unexpected_stream)
+    options = CallOptions(auth=ApiKeyAuth("key"), headers={"x-test": "1"})
+    context = Context(
+        messages=[UserMessage(role="user", content="summarize", timestamp=0.0)]
+    )
+    model = Model(
+        id="complete-model",
+        name="Complete Model",
+        provider="faux",
+        endpoint="anthropic-messages",
+        capabilities=Capabilities(stream=False),
+    )
+
+    result = await summary_module._complete_text(model, context, options)
+
+    assert result == "non-stream summary"
+    assert captured == {"model": model, "context": context, "options": options}
 
 
 def test_compaction_package_exports_product_symbols() -> None:

@@ -333,6 +333,7 @@ def test_command_controller_executes_builtin_rename_session_and_unsupported_comm
         "command": "session",
         "status": "ok",
         "session": {"session_id": "session-1", "cwd": "/tmp/project"},
+        "message": "Session: session-1 | CWD: /tmp/project",
     }
     assert controller.extract_builtin_command_invocation("/model") is None
 

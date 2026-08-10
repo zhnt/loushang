@@ -284,9 +284,8 @@ class ScreenConversationApp:
         *,
         summary: str = "",
         tokens_before: int | None = None,
-        max_records: int = 80,
     ) -> None:
-        """Append a compaction fact and bound the active record window."""
+        """Append a compaction fact without changing the active transcript window."""
 
         self.state.records.append(
             ContextCompactionRecord(
@@ -295,11 +294,6 @@ class ScreenConversationApp:
             )
         )
         self.state.mark_records_changed()
-        evicted = self.state.trim_transcript_prefix(max_records=max_records)
-        if evicted:
-            self._render_baseline_reset_reason = (
-                "transcript_window_trimmed:context_compaction"
-            )
 
     def trim_active_transcript_window(self) -> None:
         """Apply the configured logical-line budget to the active window."""

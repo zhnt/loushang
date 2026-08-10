@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from io import StringIO
+from types import SimpleNamespace
 
 import pytest
 
+from loushang.ai import TextPart
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_input import build_screen_input_router
 from loushang.harnesstui.testing.performance import (
@@ -27,6 +29,138 @@ from loushang.tui.transcript import ToolExecutionRecord
 from tests.coding.tui_support.playback import ScreenTuiScenario
 
 pytestmark = pytest.mark.tui_render_contract
+
+
+def _assistant(text: str = "") -> SimpleNamespace:
+    return SimpleNamespace(
+        role="assistant",
+        content=[TextPart(type="text", text=text)] if text else [],
+        stop_reason="stop",
+        error_message=None,
+    )
+
+
+def test_screen_coding_tui_playback_preserves_history_across_auto_compaction_and_streaming() -> None:
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_screen_conversation_projection,
+    )
+
+    app = _app()
+    runtime, port = _runtime(app, width=80, height=18)
+    projector = build_agent_screen_conversation_projection(app)
+
+    app.start_prompt("earlier prompt", started_at=0.0)
+    runtime.render_now()
+    app.begin_assistant()
+    for index in range(80):
+        app.append_assistant_chunk(f"earlier line {index}\n")
+        runtime.render_now()
+    app.end_assistant()
+    app.complete_run(elapsed_seconds=1.0)
+    runtime.render_now()
+
+    projector.handle({"type": "compaction_start", "reason": "threshold"})
+    runtime.render_now()
+    projector.handle(
+        {
+            "type": "compaction_end",
+            "reason": "threshold",
+            "result": {
+                "summary": "first summary line\nsecond summary line",
+                "first_kept_entry_id": "entry-100",
+                "tokens_before": 500_000,
+            },
+        }
+    )
+    compact_step = runtime.render_now()
+
+    app.start_prompt("continue", started_at=0.0)
+    runtime.render_now()
+    projector.handle({"type": "message_start", "message": _assistant()})
+    streaming_steps = []
+    streamed_text = ""
+    expected_after_lines = tuple(
+        f"AFTER_COMPACT_{index:03d}" for index in range(1, 41)
+    )
+    line_index = 0
+    batch_index = 0
+    batch_sizes = (1, 3, 2, 4)
+    while line_index < len(expected_after_lines):
+        batch_size = batch_sizes[batch_index % len(batch_sizes)]
+        batch_end = min(line_index + batch_size, len(expected_after_lines))
+        batch = "\n".join(expected_after_lines[line_index:batch_end])
+        if batch_end < len(expected_after_lines):
+            batch += "\n"
+
+        # Provider deltas do not align with rendered lines, while stream render
+        # requests may be coalesced. Split each batch mid-line and render only
+        # after the full batch to exercise multi-row viewport advances.
+        split_at = min(7, len(batch))
+        for chunk in (batch[:split_at], batch[split_at:]):
+            if not chunk:
+                continue
+            streamed_text += chunk
+            projector.handle(
+                {
+                    "type": "message_update",
+                    "message": _assistant(streamed_text),
+                    "assistant_message_event": {
+                        "type": "text_delta",
+                        "delta": chunk,
+                    },
+                }
+            )
+        streaming_steps.append(runtime.render_now())
+        line_index = batch_end
+        batch_index += 1
+    projector.handle(
+        {"type": "message_end", "message": _assistant(streamed_text)}
+    )
+    commit_step = runtime.render_now()
+
+    terminal_text = strip_control_sequences(
+        "\n".join((*port.screen.scrollback_lines, *port.screen.visible_lines))
+    )
+    compact_lines = tuple(
+        strip_control_sequences(line)
+        for line in compact_step.diagnostics.current_logical_lines
+    )
+    final_step = streaming_steps[-1]
+
+    assert sum(
+        "Context compacted (500000 tokens before)" in line
+        for line in compact_lines
+    ) == 1
+    assert "earlier prompt" in terminal_text
+    assert "earlier line 0" in terminal_text
+    assert "earlier line 79" in terminal_text
+    assert terminal_text.count("Context compacted (500000 tokens before)") == 1
+    assert all(terminal_text.count(line) == 1 for line in expected_after_lines)
+    assert [terminal_text.index(line) for line in expected_after_lines] == sorted(
+        terminal_text.index(line) for line in expected_after_lines
+    )
+    assert "first summary line" not in terminal_text
+    assert "second summary line" not in terminal_text
+    assert all(
+        step.diagnostics.operation_class != "recovery_repaint"
+        for step in (*streaming_steps, commit_step)
+    )
+    assert any(
+        current.diagnostics.viewport_top - previous.diagnostics.viewport_top > 1
+        for previous, current in zip(streaming_steps, streaming_steps[1:])
+    )
+    assert final_step.frame is not None
+    expected_physical_cursor_row = (
+        final_step.diagnostics.hardware_cursor_row
+        - final_step.diagnostics.viewport_top
+    )
+    assert final_step.frame.screen_after.cursor_row == expected_physical_cursor_row
+    assert (
+        final_step.frame.screen_after.cursor_column
+        == final_step.diagnostics.hardware_cursor_column
+    )
+    assert port.screen.cursor_row == expected_physical_cursor_row
+    assert port.screen.cursor_column == final_step.diagnostics.hardware_cursor_column
 
 
 def test_screen_coding_tui_streaming_uses_differential_updates_without_clearing_screen() -> None:
