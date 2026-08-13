@@ -108,6 +108,7 @@ HARNESS_TEST_PATHS := \
 	tests/architecture/test_import_boundaries.py
 
 .PHONY: bootstrap test test-ai check-ai test-tui test-tui-render-contract test-tui-terminal-platform test-tui-native test-tui-tmux lint-ai fmt-ai typecheck-ai typecheck-tui build-binary install-binary clean-binary vendor-ai-moonshot-anthropic-stream vendor-ai-moonshot-anthropic-complete vendor-ai-moonshot-anthropic-tools vendor-ai-moonshot-openai-stream vendor-ai-moonshot-openai-complete vendor-ai-moonshot-openai-tools vendor-ai-dashscope-openai-responses-stream vendor-ai-dashscope-openai-responses-tools example-ai-model-lookup example-ai-complete example-ai-stream example-ai-tools example-ai-typed-context example-ai-advanced-faux-stream example-ai-advanced-context-tools example-ai-advanced-tool-result-roundtrip example-ai-kimi-anthropic-stream example-ai-kimi-anthropic-complete example-ai-kimi-anthropic-tools example-ai-kimi-openai-stream example-ai-kimi-openai-complete example-ai-kimi-openai-tools example-ai-dashscope-openai-responses-stream example-ai-dashscope-openai-responses-tools example-ai-custom-base-url-openai-advanced example-ai-faux-stream example-ai-context-tools-minimal example-ai-tool-result-roundtrip
+.PHONY: test-sandbox test-host-runtime
 .PHONY: check-ai-catalog check-ai-examples check-ai-imports check-ai-coverage
 .PHONY: check-harness lint-harness typecheck-harness test-harness
 .PHONY: check-architecture-docs
@@ -120,6 +121,12 @@ bootstrap:
 
 test:
 	. .venv/bin/activate && uv run pytest tests -q
+
+test-sandbox:
+	. .venv/bin/activate && uv run pytest tests --skip-host-runtime -q
+
+test-host-runtime:
+	. .venv/bin/activate && uv run pytest tests -m requires_host_runtime -q
 
 test-ai:
 	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run pytest tests/ai tests/protocols tests/examples/test_ai_examples.py tests/examples/test_auth_examples.py -m "not live" -q

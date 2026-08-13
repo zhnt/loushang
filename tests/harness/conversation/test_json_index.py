@@ -5,6 +5,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
 
 @dataclass(frozen=True)
 class _Projection:
@@ -112,6 +114,7 @@ def test_projection_index_skips_invalid_items_and_marks_snapshot_stale(
     assert [item.projection_id for item in snapshot.projections] == ["ok"]
 
 
+@pytest.mark.requires_host_runtime
 def test_revision_aware_json_index_rejects_stale_upsert_and_late_recreation(
     tmp_path: Path,
 ) -> None:

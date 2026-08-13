@@ -39,6 +39,7 @@ testpaths = ["tests"]
 addopts = ["--import-mode=importlib"]
 markers = [
   "live: real provider verification that may require network access and credentials",
+  "requires_host_runtime: requires host loopback, process, or file-index capabilities unavailable in a restricted sandbox",
   "tui_render_contract: deterministic TUI render correctness, structural performance, and terminal-operation contract",
   "tui_terminal_backend: native POSIX PTY or Windows ConPTY driver conformance",
   "tui_terminal_contract: shared real CLI contract over the native terminal backend",

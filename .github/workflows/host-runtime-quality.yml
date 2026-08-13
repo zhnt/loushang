@@ -1,0 +1,26 @@
+name: Host Runtime Quality
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  host-runtime-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: make bootstrap
+
+      - name: Host runtime tests
+        run: make test-host-runtime
