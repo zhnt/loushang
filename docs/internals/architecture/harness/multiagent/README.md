@@ -3,7 +3,7 @@
 > Status: **implemented**（已实现，Phases 1A-1C / 2A-2B 全部完成）。
 > 本目录的文档描述已实现的架构边界；与代码冲突时以代码
 > 与已接受 ARD 为准（见
-> [Loushang Documentation Model](../../loushang-documentation-model.md)）。
+> [Architecture Artifact Model](../../../architecture-method/artifact-model.md)）。
 
 `loushang.harness.multiagent` 提供子 agent 的派生、隔离、通信与生命
 周期管控——是**纯技术态**能力：它不理解 stage / acceptance / artifact

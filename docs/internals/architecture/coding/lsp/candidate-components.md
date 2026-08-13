@@ -2,7 +2,15 @@
 
 ## Status
 
-Proposed.
+- Authority: historical/proposed design-working inventory
+- Design status: proposed
+- Implementation status: not applicable
+- Owner: Coding Product
+
+This is candidate-discovery material, not the final Current component model.
+Once the LSP architecture is accepted, the canonical final model is
+[Component Boundaries](component-boundaries.md) and this inventory becomes
+historical rationale.
 
 ## Selection Basis
 

@@ -1,9 +1,20 @@
 # Loushang Subsystems
 
+## Status
+
+- Authority: normative — top-level scope responsibilities with Current notes
+- Design status: accepted
+- Implementation status: partial
+- Owner: Loushang architecture
+
 ## Scope
 
-本文档定义 `loushang` 的主要子系统及其职责边界。
+本文档定义 `loushang` 的顶层 Architecture Scope 及其职责边界。
 它关注系统分工，不展开实现细节、类型系统或边界协议。
+
+精确的当前 Python package 和静态 import 关系由
+[Current Observed Package Dependencies](./generated/current-package-dependencies.md)
+生成；本文不复制该物理事实图。
 
 ## Subsystem List
 
@@ -20,15 +31,15 @@
 - `loushang.harnesswork`
 - `loushang.work`（迁移期 compatibility/integration namespace）
 
-当前已落地的支撑/实验性包包括：
+当前已落地的支撑包包括：
 
 - `loushang.foundation`
 - `loushang.ontology`
 
-`loushang.runtime` 不再作为子系统保留。若某个 worktree 中仍存在
-`src/loushang/runtime`，它只是待删除的旧 command/effect 临时路径；迁移目标是
-`loushang.harness.commands`，不保留 runtime shim。跨产品 host / adapter /
-command substrate 的目标归属是 `loushang.harness`，见
+`loushang.resource` 是指向 Harness resource ownership 的小型兼容 package，
+不是新的顶层 Architecture Scope。`loushang.runtime`、`loushang.protocol` 和
+`loushang.observability` 已退出源码所有权；空目录不构成 Architecture Scope。
+跨产品 host / adapter / command substrate 归属 `loushang.harness`，见
 [ARD-002: Harness Product Adapter Substrate](./agent/ARD-002-harness-product-adapter-substrate.md)。
 
 目标产品线概念包括：
@@ -38,9 +49,20 @@ command substrate 的目标归属是 `loushang.harness`，见
 - `loushang.ppt`
 - `loushang.cowork`
 
-`loushang.channel` 已有对应 Python package implementation。现有
-`loushang.coding.mode.RpcMode` 仍是 Coding-local transitional adapter；它的
-命令表与 UI payload 不属于长期 Channel core。
+`loushang.channel` 已有对应 Python package implementation。Product command
+JSONL 由 `loushang.harness.host.rpc` 拥有；Channel 的 `rpc_jsonl` 是独立的
+Work/runtime-view boundary adapter。两者不互相包装，也不共享命令表。
+
+### Nested Architecture Scopes
+
+顶层 Scope 可以拥有有独立黑盒边界和内部组件模型的嵌套 Scope，例如：
+
+- `coding.lsp` 和 `coding.arch` 由 Coding Product 拥有；
+- `harness.multiagent` 由 Harness 拥有。
+
+嵌套 Scope 不因拥有独立文档目录或 Capability ID 就自动成为顶层子系统。
+父级负责 placement、装配策略与 sibling dependency；子级负责自己的 contract、
+组件和证据。
 
 ## Subsystem Responsibilities
 
@@ -53,7 +75,7 @@ command substrate 的目标归属是 `loushang.harness`，见
 - `loushang.foundation.observability`，负责日志上下文、问题记录、trace/debug
   事件、sink 路由、运行时配置与运行时身份。
 
-旧顶层包 `loushang.protocol` 和 `loushang.observability` 已退出；所有调用方直接
+旧顶层源码 owner `loushang.protocol` 和 `loushang.observability` 已退出；调用方直接
 使用上述 canonical owners。Foundation 不负责 Product 策略、Agent/Harness 编排、
 Work 权威事件、Channel schema，或者为诊断投影之外的新 wire schema 提供任意
 Python 对象到 JSON 的容错转换。
@@ -293,7 +315,7 @@ Harness conversation contract 与通用 TUI 之间的 product-neutral compositio
 
 `method` 是可选的结构化工作组织层。产品线可以在 plan / guided / staged
 workflows 中使用 `method`，但轻量 turn 可以直接使用 `loushang.harness` 和
-`work`。
+Product Session；只有被接受为持久业务承诺的运行才需要 HarnessWork。
 
 ### loushang-harnesswork / loushang-work compatibility
 
@@ -351,10 +373,11 @@ Artifact 分层规则：
 - 默认策略
 - coding workflow
 - CLI 入口
-- 与 `tui`、`method`、`work` 的产品化集成
-- transitional RPC/JSONL mode adapter
+- 与 `harnesstui`、`tui`、`method`、`harnesswork` 和 `channel` 的产品化集成
+- Product-specific Host/RPC binding and projection
+- `coding.lsp` 与 `coding.arch` Product Capability
 - `loushang.coding.ui` 终端产品适配层
-- session/runtime 与 terminal UI 的交互编排
+- 最终 session/UI composition 与 terminal binding
 
 不负责：
 
@@ -364,7 +387,7 @@ Artifact 分层规则：
 - 通用 terminal UI primitives
 
 `coding` 可以直接依赖 `loushang.harness` 处理轻量 coding turn；只有被受理为持久
-业务承诺的工作才进入 `work`，其中需要结构化 / guided 方法的工作再选择性消费
+业务承诺的工作才进入 `harnesswork`，其中需要结构化 / guided 方法的工作再选择性消费
 `method`。
 
 ## Layer Relationship
@@ -449,66 +472,36 @@ operation/event 边界，不是 Product runtime 的统一入口。Product 本身
 - `design`、`research`、`ppt`、`cowork` 是目标产品线概念，和 `coding` 并列，而不是
   `work` 或 `agent` 的子层
 
-## Future Dependency Map
+## Dependency Governance
 
-目标二级组件依赖关系。本节中 `A -> B` 表示 `A` 可以依赖 / 调用 `B`。
+本节只定义稳定的 dependency policy；精确 Current imports 见生成的
+[package dependency graph](./generated/current-package-dependencies.md)。
 
-```text
-all Python packages -> observability
+顶层规则是：
 
-method / work / Product implementation Python packages -> ontology
-  # only when semantic typing is needed
+- Foundation 不依赖 AI、Agent、Harness、Work、Channel、Ontology 或 Product；
+- AI 只消费 product-neutral foundations，不依赖 Agent 或上层运行时；
+- Agent 可以依赖 AI，但不依赖 Harness、Work、Method、TUI 或 Product；
+- Harness 可以通过受控 profile 依赖 Agent/AI contract，但不依赖 Product、
+  HarnessWork、Method、Channel、HarnessTUI 或 TUI；
+- HarnessWork 位于 Harness 之上，不把 Work ownership 反向注入 Harness；
+- HarnessTUI 可以依赖 Harness 与 TUI，但不依赖 Coding；
+- Product 位于 composition root，可以依赖其选择的稳定公共 contract；
+- Ontology core 保持 Foundation-only，不反向拥有 Product、Harness 或 Work 类型。
 
-agent -> ai
-Product implementation Python packages -> ai
-  # only for product-level helper AI calls
+Product implementation scopes are peers. Cross-Product coordination requires
+an explicit host, Work, Channel, or other accepted boundary; Products do not
+import one another merely for convenience.
 
-harness -> agent
-Product implementation Python packages -> harness
-Product implementation Python packages -> agent
-  # only through stable agent primitives when bypassing harness is justified
+嵌套 Scope 之间的新 sibling dependency 由最近共同父级批准。例如未来
+`coding.arch -> coding.lsp` 的 optional semantic-fact contract 必须同时进入
+Coding dependency graph、consumer/provider ports 和 architecture tests，不能
+由任一 child 单方面建立。
 
-Product implementation Python packages -> harnesswork
-Product implementation Python packages -> work
-channel -> work
-  # the latter two are migration edges through compatibility/integration surfaces
-
-Product implementation Python packages -> method
-  # optional and only for structured work; Product binds Method output to Work
-
-product TUI adapters -> tui
-
-UI clients / SDK hosts / RPC clients -> channel
-```
-
-Product implementation Python packages are peers:
-
-```text
-coding
-design
-research
-ppt
-cowork
-```
-
-Product implementation Python packages should not depend on each other
-directly. Cross-Product coordination should go through explicit adapters,
-`work` events, `channel` protocol, or a future host-level orchestration layer.
-
-Multi-UI target shape:
-
-```text
-TUI / WebUI / AppUI / SDK / RPC client
-  -> channel client
-  -> channel server / host assembly
-  -> WorkOperation / WorkEvent / RuntimeEventView
-  -> product adapter
-  -> harness
-```
-
-The channel core transports and replays work operations/events and can deliver
-already-projected runtime views. It does not render UI, create runtime views,
-or own product execution internals.
+Channel 当前承载其已接受的 Work/runtime-view 边界值、framing、correlation
+和 delivery adapter。它不是所有 UI、SDK、Session 或 Product 操作的强制总线；
+capability negotiation、通用 interaction 和更广 transport 只有在对应 Target
+被接受并实现后才进入 Current。
 
 ## Loop Boundaries
 
@@ -519,8 +512,8 @@ or own product execution internals.
 | Provider stream loop | `loushang.ai` | provider/model/auth/stream protocol and upstream API capability mapping | agent state, product policy, UI |
 | Agent loop | `loushang.agent` | message/tool-call turn execution, low-level events, abort/error semantics | product preparation, work/method projection, UI |
 | Product-run loop | `loushang.harness` plus product adapter | prepared run handoff, product-neutral host/adapter/lifecycle contracts, shared engines | second agent loop, product defaults, provider behavior |
-| Work/method loop | `loushang.work` and optional `loushang.method` | durable operations/events/projections, method plan/step guidance | model streaming, product UI, harness execution mechanics |
-| Channel loop | `loushang.channel` | external operation/event transport, subscription, replay, correlation | local UI widgets, product internals, agent state machine |
+| Work/method loop | `loushang.harnesswork` and optional `loushang.method` | durable operations/events/projections, method plan/step guidance | model streaming, product UI, harness execution mechanics |
+| Channel delivery loop | `loushang.channel` | accepted boundary framing, correlation and event delivery | local UI widgets, product internals, agent state machine |
 | TUI render loop | `loushang.tui` plus product UI adapter | terminal input/render planning, terminal operations, and product-specific final wiring | agent loop, provider behavior, harness policy, durable transcript truth |
 
 This split lets `harness`, `tui`, `agent`, and `ai` develop in parallel. A

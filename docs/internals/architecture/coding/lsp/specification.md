@@ -4,7 +4,10 @@
 
 ## Status
 
-Proposed target specification.
+- Authority: normative proposed specification
+- Design status: proposed
+- Implementation status: partial
+- Owner: Coding Product
 
 ## 1. Naming And Packaging
 

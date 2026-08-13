@@ -4,7 +4,12 @@
 
 ## Status
 
-Proposed target requirements. Where a requirement contains a later target,
+- Authority: normative proposed requirements
+- Design status: proposed
+- Implementation status: partial
+- Owner: Coding Product
+
+Where a requirement contains a later target,
 the narrower P0 contract in [Specification](specification.md#16-initial-implementation-slice)
 is normative for the first implementation.
 

@@ -1,5 +1,12 @@
 # Loushang Architecture Principles
 
+## Status
+
+- Authority: normative cross-scope principles
+- Design status: accepted
+- Implementation status: not-applicable
+- Owner: Loushang architecture
+
 ## Scope
 
 本文档定义 `loushang` 的通用架构准则。  
@@ -28,6 +35,8 @@
 
 - [Architecture Overview](./architecture-overview.md)
   - 定义整体分层与子系统地图
+- [Architecture Design And Governance Method](../architecture-method/README.md)
+  - 定义 truth plane、递归 Architecture Scope、设计流程与治理规则
 - [Product And OEM Glossary](../glossary/loushang-product.md)
   - 定义 Product、OEM、Capability、Package、Plugin 与 Extension 等跨层术语
 - [Capability Variation And Replacement Boundary](./harness/capability-variation-and-replacement-boundary.md)
@@ -95,9 +104,10 @@
 
 优先约束如下：
 
-1. `architecture` 文档主要表达 should-be 的目标边界、结构约束与已接受设计。
-2. `spec / plan` 文档主要表达某次迭代的临时设计与落地步骤。
-3. 具体实现状态以代码与测试为准，而不是以架构文档为准。
+1. normative architecture 主要表达 should-be 的目标边界、结构约束与已接受设计。
+2. descriptive Current 文档必须链接代码、测试或 generated facts，不得冒充 Target。
+3. specification 精确定义长期 observable contract；plan 只表达本次迭代的临时步骤。
+4. 具体实现状态以代码、测试与 generated facts 为准，而不是以 Target 文档为准。
 
 在分析设计与实现关系时，统一使用：
 

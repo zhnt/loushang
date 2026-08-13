@@ -2,7 +2,20 @@
 
 ## Status
 
-Accepted
+Superseded as the canonical Current Coding topology.
+
+This ARD is retained as a historical decision record for the original Coding
+Product boundary. Its Coding-owned shared component list and mode placement
+predate the completed Harness/HarnessTUI migration. Current placement and
+ownership are defined by:
+
+- [Coding Architecture](README.md);
+- [Coding System Context](loushang-coding-system-context.md);
+- [Harness Current Owner Map](../harness/current-owner-map.md);
+- [Harness Mode/Host Boundary](../harness/mode-host-boundary.md).
+
+Stable Product principles preserved by those replacements remain valid; this
+file must not be read as a current source/module inventory.
 
 ## Context
 

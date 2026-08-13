@@ -110,6 +110,7 @@ HARNESS_TEST_PATHS := \
 .PHONY: bootstrap test test-ai check-ai test-tui test-tui-render-contract lint-ai fmt-ai typecheck-ai typecheck-tui build-binary install-binary clean-binary vendor-ai-moonshot-anthropic-stream vendor-ai-moonshot-anthropic-complete vendor-ai-moonshot-anthropic-tools vendor-ai-moonshot-openai-stream vendor-ai-moonshot-openai-complete vendor-ai-moonshot-openai-tools vendor-ai-dashscope-openai-responses-stream vendor-ai-dashscope-openai-responses-tools example-ai-model-lookup example-ai-complete example-ai-stream example-ai-tools example-ai-typed-context example-ai-advanced-faux-stream example-ai-advanced-context-tools example-ai-advanced-tool-result-roundtrip example-ai-kimi-anthropic-stream example-ai-kimi-anthropic-complete example-ai-kimi-anthropic-tools example-ai-kimi-openai-stream example-ai-kimi-openai-complete example-ai-kimi-openai-tools example-ai-dashscope-openai-responses-stream example-ai-dashscope-openai-responses-tools example-ai-custom-base-url-openai-advanced example-ai-faux-stream example-ai-context-tools-minimal example-ai-tool-result-roundtrip
 .PHONY: check-ai-catalog check-ai-examples check-ai-imports check-ai-coverage
 .PHONY: check-harness lint-harness typecheck-harness test-harness
+.PHONY: check-architecture-docs
 .PHONY: check-harnesstui lint-harnesstui typecheck-harnesstui test-harnesstui
 
 bootstrap:
@@ -149,6 +150,10 @@ typecheck-harness:
 
 test-harness:
 	uv --cache-dir .uv-cache run --extra dev pytest $(HARNESS_TEST_PATHS) -q
+
+check-architecture-docs:
+	uv --cache-dir .uv-cache run --extra dev python scripts/architecture/render_current_package_dependencies.py --check
+	uv --cache-dir .uv-cache run --extra dev pytest tests/architecture/test_architecture_documentation.py -q
 
 check-harnesstui: lint-harnesstui typecheck-harnesstui test-harnesstui
 

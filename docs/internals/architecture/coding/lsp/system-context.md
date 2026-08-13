@@ -2,7 +2,10 @@
 
 ## Status
 
-Proposed.
+- Authority: normative proposed black-box context
+- Design status: proposed
+- Implementation status: partial
+- Owner: Coding Product
 
 ## Scope
 

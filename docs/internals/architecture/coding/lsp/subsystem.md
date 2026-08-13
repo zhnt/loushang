@@ -2,7 +2,14 @@
 
 ## Status
 
-Proposed.
+- Authority: normative proposed parent placement and black-box boundary
+- Design status: proposed
+- Implementation status: partial
+- Owner: Coding Product
+
+The filename is retained for stable links; under the repository architecture
+method this document serves as `placement-and-boundary` for the nested scope,
+not as a claim that LSP is a top-level Loushang subsystem.
 
 ## Placement Decision
 

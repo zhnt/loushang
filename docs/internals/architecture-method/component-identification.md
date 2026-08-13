@@ -1,5 +1,16 @@
 # Loushang Design Method: Identify Component
 
+## Status
+
+- Authority: normative supporting method for candidate component discovery
+- Design status: accepted
+- Implementation status: not-applicable
+- Owner: Loushang architecture method
+
+The canonical end-to-end method and Architecture Scope promotion rules are
+defined by
+[Architecture Design And Governance Method](README.md).
+
 ## Scope
 
 本文档定义 `loushang` 在进入子系统白盒设计阶段时，如何识别候选组件。

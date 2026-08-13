@@ -2,7 +2,19 @@
 
 ## Status
 
-Accepted
+Superseded.
+
+The transition described here completed by removing `coding.mode` and placing
+Product command JSONL under `loushang.harness.host.rpc`. Channel's
+`rpc_jsonl` remains a separate Work/runtime-view boundary adapter. Current
+authority:
+
+- [Harness Mode/Host Boundary](../harness/mode-host-boundary.md);
+- [Harness Session/RPC Operation Boundary](../harness/session-rpc-operation-boundary.md);
+- [Channel RPC JSONL Boundary](../channel/rpc-jsonl-boundary.md).
+
+The remainder of this ARD is retained as migration rationale and historical
+protocol comparison, not Current architecture.
 
 ## Context
 

@@ -26,7 +26,7 @@
 
 - [Loushang-AI Whitebox Candidate Functions](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-whitebox-candidate-functions.md)
 - [Loushang-AI Whitebox Candidate Components](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-whitebox-candidate-components.md)
-- [Loushang Design Method: Identify Component](/home/dev/workspace/loushang/docs/architecture/loushang-design-method-identify-component.md)
+- [Component Identification Method](../../architecture-method/component-identification.md)
 
 ---
 

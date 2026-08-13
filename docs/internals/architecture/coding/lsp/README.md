@@ -1,36 +1,51 @@
 # Coding LSP Architecture
 
-[Coding Architecture](../loushang-coding-system-context.md)
+[Coding Architecture](../README.md)
 
 ## Status
 
-Architecture package under staged implementation.
+- Scope: `coding.lsp`
+- Parent: `coding`
+- Authority: normative — proposed architecture with evidence-linked Current summary
+- Design status: proposed
+- Implementation status: partial
+- Owner: Coding Product
 
 This package defines the target `coding.lsp` Product capability. Individual
 delivery slices may exist before the complete target is accepted. Current code
-and accepted Coding/Harness ARDs remain authoritative for implemented behavior.
+and executable tests remain authoritative for implemented behavior. Coding owns
+placement, activation and sibling dependencies; this scope owns the LSP
+black-box contract and internal component model.
 
 ## Architecture Method
 
-The design follows the repository's architecture method in this order:
+The design follows the repository's
+[Architecture Design And Governance Method](../../../architecture-method/README.md)
+in this order:
 
 ```text
 Requirements
-  -> Specification
-  -> Subsystem placement
+  -> Placement and boundary
   -> System context
+  -> Specification
   -> Candidate components
-  -> Component boundaries
+  -> Final component boundaries
+  -> Traceability
 ```
 
 Read the documents in that order:
 
 1. [Requirements](requirements.md)
-2. [Specification](specification.md)
-3. [Subsystem Placement](subsystem.md)
-4. [System Context](system-context.md)
+2. [Subsystem Placement And Boundary](subsystem.md)
+3. [System Context](system-context.md)
+4. [Specification](specification.md)
 5. [Candidate Components](candidate-components.md)
-6. [Component Boundaries](component-boundaries.md)
+6. [Final Component Boundaries](component-boundaries.md)
+7. [Traceability](traceability.md)
+
+`candidate-components.md` is design-working material. Once this scope is
+accepted, `component-boundaries.md` is the canonical final component model and
+the candidate inventory becomes historical rationale.
 
 The adjacent [Harness Foundation](harness-foundation.md) design records the
 rationale for the Product-neutral Process Hosting, authorization/sandbox-

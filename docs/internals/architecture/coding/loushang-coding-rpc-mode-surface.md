@@ -1,5 +1,18 @@
 # Loushang Coding RPC Mode Surface
 
+## Status
+
+- Authority: historical compatibility contract
+- Design status: superseded
+- Implementation status: retired at this owner/path
+- Superseded by: `loushang.harness.host.rpc`
+
+The body below records the former `coding.mode.RpcMode` surface. It is retained
+for protocol migration and compatibility analysis; it does not describe the
+Current owner or import path. Current boundaries are
+[Harness Mode/Host](../harness/mode-host-boundary.md) and
+[Session/RPC Operations](../harness/session-rpc-operation-boundary.md).
+
 ## Scope
 
 本文档记录当前 `RpcMode` 的 concrete JSONL surface。

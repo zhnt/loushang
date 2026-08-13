@@ -1,7 +1,7 @@
 # Loushang Multi-Agent System Context
 
 > Status: **implemented**（已实现，与当前代码一致）。按
-> [Loushang Documentation Model](../../loushang-documentation-model.md) 的分层，
+> [Architecture Artifact Model](../../../architecture-method/artifact-model.md) 的分层，
 > 本文描述已实现的系统边界与外部实体关系；与代码冲突时以代码
 > 与已接受 ARD 为准。
 

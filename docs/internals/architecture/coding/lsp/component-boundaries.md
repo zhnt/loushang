@@ -2,7 +2,10 @@
 
 ## Status
 
-Proposed.
+- Authority: normative proposed final component model
+- Design status: proposed
+- Implementation status: partial
+- Owner: Coding Product
 
 ## Boundary Conventions
 

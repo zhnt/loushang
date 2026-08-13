@@ -1,555 +1,249 @@
 # Loushang Coding System Context
 
+[Coding Architecture](README.md)
+
+## Status
+
+- Scope: `coding`
+- Parent: Loushang
+- Authority: descriptive — Current black-box context
+- Design status: accepted
+- Implementation status: implemented
+- Owner: Coding Product
+
 ## Scope
 
-本文档将 `loushang-coding` 视为一个黑盒子系统，描述它的外部子系统、依赖关系与信息流关系。
+This document treats `loushang.coding` as a black-box Product and describes its
+direct actors, neighboring Architecture Scopes, information flows, trust
+boundaries, and physical carriers. Coding internals and child-capability
+components are deliberately deferred to their owning documents.
 
-本文档目标是先确定 `loushang-coding` 的系统边界，为后续：
+## Positioning
 
-- 组件结构关系及职责
-- 组件数据对象
-- 组件接口
-- 组件依赖关系
+Coding is the installed Product composition root. It owns coding-specific
+intent, prompts, policy choices, tools, Capability selection, compatibility
+projection and final CLI/UI composition.
 
-提供稳定落点。
+Coding consumes reusable contracts from Harness, Agent, AI, HarnessTUI, TUI,
+Method, HarnessWork and Channel. Reusable mechanisms retain their lower owner;
+Coding does not reimplement them to make the Product convenient.
 
-本文不展开：
-
-- `loushang-coding` 内部白盒组件分解
-- 具体文件结构
-- 具体类名、函数签名与字段设计
-- TUI 的详细交互流程
-
-这些内容将在后续文档中继续展开。
-
-## Why This Exists
-
-当前 `loushang` 的收敛方向中，`loushang-coding` 已被明确为：
-
-- 面向 coding 场景的产品装配层
-- `loushang-agent` 的直接上游装配子系统
-- 与 `tui`、`method`、`work` 发生产品化集成的主承载层
-- 当前 RPC/JSONL transitional surface 的承载层
-
-但在设计推进中，仍有几个高频边界问题会反复影响后续工作：
-
-- `coding` 是否必须先依赖 `channel`
-- `coding` 与 `tui` 的边界如何划分
-- `rpc / print / json / interactive` 是否属于 `coding`
-- `coding` 与 `method` / `work` 是依赖关系还是包含关系
-
-因此，需要先用系统环境图把这些边界钉住。
-
-## External Entities
-
-从当前阶段看，`loushang-coding` 的直接外部对象建议保留以下几类。
-
-### External Systems
-
-- `loushang-agent`
-  - `loushang-coding` 的直接下游 runtime 子系统
-  - 提供通用 agent loop、message、event、tool orchestration 与 runtime state
-
-- `loushang-ai`
-  - `loushang-coding` 的直接下游能力子系统之一
-  - `coding` 不直接承担 provider 细节，但会直接消费部分 AI 能力，例如 model registry、model selection、summarization 与其他 helper-style AI 调用
-
-- `loushang-method`
-  - `loushang-coding` 的方法层相邻子系统
-  - 提供 `MethodDescriptor`、`MethodPlan`、`MethodStep`、`MethodProjection`、guidance 等方法元与方法资产
-
-- `loushang-work`
-  - `loushang-coding` 的工作运行语义相邻子系统
-  - 提供 `WorkOperation`、`WorkRun`、`WorkEvent`、event log、plan/step projection
-
-- `loushang-channel`
-  - `loushang-coding` 的潜在边界协议相邻子系统
-  - 当前阶段不作为 `coding` 起步的前置依赖
-  - 未来可承接 `rpc_jsonl / web / host` 的统一边界协议
-
-- `loushang-tui`
-  - `loushang-coding` 的终端交互相邻子系统
-  - 为 coding screen UI 提供 terminal primitives、render loop、input、surfaces、layout 与编辑基础设施
-
-### Actors
-
-- `CLI User`
-  - 通过本地命令行直接使用 `loushang-coding`
-
-- `Embedding Host / SDK Consumer`
-  - 通过 `sdk` 嵌入 `loushang-coding` 的宿主程序
-
-- `RPC / Web Client`
-  - RPC client 当前可通过 `loushang.coding.mode.RpcMode` 消费 coding-local JSONL surface
-  - Web / remote client 是未来 channel actor
-
-## Internal Adjacent Subsystems
-
-### loushang-agent
-
-`loushang-agent` 是 `loushang-coding` 最关键的直接下游子系统。
-
-`coding` 向 `agent` 提供的不是 provider 协议，而是 coding 场景特有的运行装配，例如：
-
-- prompt augmentation
-- toolset enablement
-- policy / approval 规则
-- method / skill 注入
-- memory / compaction / workflow 策略
-
-`agent` 负责把这些装配结果转化为实际 runtime 推进。
-
-### loushang-method
-
-`loushang-method` 是 `loushang-coding` 的直接上游资源/策略子系统。
-
-它向 `coding` 提供的是：
-
-- skill 资产
-- 方法元
-- `MethodPlan` / `MethodStep`
-- guidance
-- work product 模板
-
-`method` 不直接承担 coding runtime，而是为 `coding` 提供方法层资产、编译与投影。当前兼容路径通过薄的
-`CodingDomainApp` facade 把 method plan/prepared turn 应用到 coding turn；v3 目标由 Coding Product 的 Work
-Preparer 和 Product Work Executor 吸收该职责，不保留独立的 DomainApp runtime。
-
-### loushang-work
-
-`loushang-work` 是 `loushang-coding` 的 work lifecycle / event log 相邻子系统。
-
-它向 `coding` 提供的是：
-
-- `WorkOperation`
-- `WorkRun`
-- `WorkEvent`
-- `EventLogBackend`
-- method plan/step lifecycle projection
-- `work-log-inspect` 使用的 replay / plan summary 语义
-
-`work` 不负责 coding tool policy、prompt assembly 或 TUI 呈现。
-
-### loushang-channel
-
-`loushang-channel` 是 `coding` 的未来相邻边界协议子系统，但不是当前阶段的起步前提。
-
-它承接的是：
-
-- protocol
-- transport
-- event / request / response / notification
-- capability negotiation
-- replay / audit trail
-
-当前阶段 `coding` 可以先直接基于 `session/runtime/event` 实现本地 mode；后续再决定是否把跨边界共性上提到 `channel`。
-
-### loushang-tui
-
-`loushang-tui` 是 coding screen UI 的下游通用交互子系统。
-
-它不负责 coding runtime，也不负责 agent loop。
-它应只负责：
-
-- render loop / terminal writer / input reader
-- terminal UI parts / surfaces / display records
-- input / select / modal / status primitives
-- 交互事件与界面呈现
-
-`coding` 则负责把 session/runtime/event 映射为交互流程。
-
-## Dependency Relations
-
-本节只描述依赖关系，不描述运行时信息是否真的流过该边界。
+## Logical System Context
 
 ```mermaid
 flowchart LR
-    CLI["CLI User (actor)"]
-    SDK["Embedding Host / SDK Consumer (actor)"]
-    RPC["RPC / Web Client (future actor)"]
+    USER["CLI / terminal user"]
+    HOST["Embedding host / SDK consumer"]
+    WORKSPACE[("Repository workspace")]
 
-    METHOD["loushang-method (internal)"]
-    WORK["loushang-work (internal)"]
-    CHANNEL["loushang-channel (target, future package)"]
-    TUI["loushang-tui (internal, current screen UI)"]
-    AGENT["loushang-agent (internal)"]
-    AI["loushang-ai (internal)"]
+    CODING[["Coding Product"]]
+    LSP["coding.lsp child scope"]
+    ARCH["coding.arch child scope"]
 
-    CODING[[loushang-coding]]
+    HARNESS["Harness"]
+    HTUI["HarnessTUI"]
+    TUI["TUI"]
+    METHOD["Method"]
+    HWORK["HarnessWork"]
+    CHANNEL["Channel"]
 
-    CLI --> CODING
-    SDK --> CODING
-    RPC -. future .-> CODING
+    USER <-->|intent, interaction, presentation| CODING
+    HOST <-->|Product API / host control| CODING
+    CODING <-->|read, edit, execute, analyze| WORKSPACE
 
-    METHOD --> CODING
-    CODING --> WORK
-    CODING --> AGENT
-    CODING --> AI
-    AGENT --> AI
-
-    CODING -. future channel adapter .-> CHANNEL
-    CODING --> TUI
+    CODING -->|selects and binds| LSP
+    CODING -->|selects and binds| ARCH
+    CODING -->|Session, Host, tools, policy, approval| HARNESS
+    CODING -->|conversation interaction| HTUI
+    HTUI -->|terminal substrate| TUI
+    CODING -->|optional method resources and plans| METHOD
+    CODING -->|optional durable fulfillment| HWORK
+    CODING -->|selected boundary protocol| CHANNEL
 ```
 
-### CLI User / SDK Consumer -> loushang-coding
+The diagram is an information/composition view. It is not the physical import
+graph.
 
-这是当前阶段 `loushang-coding` 最明确的直接消费关系。
+## Direct Actors
 
-`coding` 不是只能由命令行进程使用；它还应保留 `sdk` 形式的嵌入入口。
+### CLI / terminal user
 
-### loushang-method -> loushang-coding
+Provides intent, input, workspace selection, configuration overrides,
+approvals, interrupts, follow-up and steering. Receives Product-projected
+messages, tool activity, diagnostics, status, approval requests and terminal
+presentation.
 
-这是当前接受的上游策略/资源依赖关系。
+### Embedding host / SDK consumer
 
-`method` 提供方法资产与 plan/projection，`coding` 决定如何在具体 coding runtime 中使用这些资产。
+Creates or controls Coding Product sessions through supported Product entry or
+Host surfaces. It does not gain access to Harness or Session internals merely by
+embedding Coding.
 
-### loushang-coding -> loushang-work
+## Direct Neighboring Scopes
 
-这是当前已经存在的 work event/log/projection 依赖关系。
+### Harness
 
-`coding` 在 non-interactive method path 中通过 work shell / work event log 记录
-`WorkRun`、`WorkPlan*`、`WorkStep*` lifecycle；未来 TUI method status layer 也应消费
-`WorkEvent` / `WorkPlanRun` projection，而不是直接消费裸 `MethodPlan`。
+Harness is Coding's primary reusable execution substrate. Coding supplies
+Product policy, defaults, prompts, adapters and final bindings. Harness supplies
+Session/Host lifecycle, prepared runs, tools, policy/approval/sandbox
+mechanisms, resources, extensions, events and shared runtime contracts.
 
-### loushang-coding -> loushang-agent
+Product command JSONL is implemented by Harness Host/RPC mechanics with Coding
+bindings. It is not `coding.mode.RpcMode` and is not the Channel Work JSONL
+protocol.
 
-这是 `coding` 最关键的直接下游依赖关系。
+### Agent and AI
 
-依据当前子系统定义：
+The primary execution path reaches Agent and AI through Harness:
 
-- `coding` 负责 coding 场景装配
-- `agent` 负责通用 agent runtime
+```text
+Coding -> Harness prepared run -> Agent loop -> AI provider stream
+```
 
-因此，`coding` 必然依赖 `agent`，而不是反过来。
+Coding may consume stable Agent/AI public values directly for Product-level
+model selection, compatibility and composition where architecture gates allow
+it. It does not own provider transport or a second Agent loop.
 
-### loushang-agent -> loushang-ai
+### HarnessTUI and TUI
 
-这是 `coding` 所依赖主链路中的下游能力关系。
+HarnessTUI owns Product-neutral conversation interaction and presentation
+composition. TUI owns terminal rendering, input, layout, surfaces and playback
+mechanisms. Coding owns feature-local interpretation and final Product/terminal
+binding.
 
-`coding` 不应直接吸收 provider family、transport、streaming 细节，这些变化面仍由 `ai` 承担。
+### Method
 
-### loushang-coding -> loushang-ai
+Method provides optional resources, compilation, fixed plans and projections.
+Coding interprets Method output as Product work preparation or turn guidance.
+Method does not execute Coding tools or own Coding runtime state.
 
-这是需要显式保留的直接依赖关系，而不只是通过 `agent` 的间接依赖。
+### HarnessWork
 
-参考 `reference coding agent`，`coding` 产品层除了装配 `agent`，还会直接依赖部分 AI 能力，例如：
+HarnessWork owns an accepted durable business operation's lifecycle,
+authoritative outcome, event log, query and replay. Lightweight Coding Session
+turns do not require HarnessWork. Coding owns the adapter from Product intent,
+Method output and runtime evidence into Work semantics.
 
-- model registry / model selection
-- direct summarization / compaction requests
-- 某些不经完整 agent loop 的 AI helper 调用
+`loushang.work` is a compatibility/integration namespace over the migrated
+HarnessWork kernel, not a second Work owner.
 
-因此，对 `loushang-coding` 而言，更稳的边界不是：
+### Channel
 
-- 只依赖 `agent`
+Channel owns its accepted boundary values and JSONL framing/correlation/delivery
+adapters. It is optional and does not mediate every local Session or UI
+interaction. Coding supplies Product/Host adapters for the operations and views
+that a Channel boundary explicitly accepts.
 
-而是：
+### Coding LSP and Coding Arch
 
-- 直接依赖 `agent`
-- 同时直接依赖 `ai`
+LSP and Arch are direct child Architecture Scopes and Product Capabilities.
+Coding owns their placement, activation policy, configuration sources, tool
+exposure and sibling dependency decisions. Each child owns its internal
+components and black-box contract.
 
-### loushang-coding -> loushang-channel
+## Deliberately Not Direct
 
-当前仅保留为未来依赖方向，而不是当前起步前置。
+- model providers are reached through AI owner contracts;
+- language-server processes are inside the `coding.lsp` child boundary;
+- terminal devices and protocols are inside TUI's physical boundary;
+- Agent child execution internals are owned by Harness multi-agent;
+- Work persistence internals are owned by HarnessWork;
+- Ontology is consumed only through an explicit Product/domain adapter when
+  semantic facts are required.
 
-这是一个明确决定：
+Keeping indirect systems out of the direct context prevents their physical
+details from becoming Coding Product contracts.
 
-- `channel` 有长期价值
-- 但 `coding` 前期不被 `channel` 阻塞
+## Physical System Context
 
-### loushang-coding -> loushang-tui
-
-这条依赖关系当前已经成立，由 `loushang.coding.ui` 适配 coding session/runtime 状态到 screen terminal UI。
-
-## Information Flow Relations
-
-本节只描述 `loushang-coding` 黑盒边界上的信息输入与信息输出。
-
-### CLI User / SDK Consumer <-> loushang-coding
-
-外部 actor 向 `coding` 输入的信息包括：
-
-- 用户输入
-- mode 选择
-- model / config / policy override
-- work directory / session 选择
-- shell / SDK 调用参数
-
-`coding` 向外部 actor 输出的信息包括：
-
-- assistant message
-- tool execution 结果
-- 结构化 JSON 输出
-- print mode 文本输出
-- session metadata
-- error / interrupted / approval-needed 等语义
-
-### loushang-method <-> loushang-coding
-
-`method` 向 `coding` 输入的信息包括：
-
-- skill 资产
-- 方法 guidance
-- `MethodPlan` / `MethodStep`
-- role / task 元信息
-- work product 模板或约束
-
-`coding` 向 `method` 的需求包括：
-
-- 当前场景所需的方法选择
-- 当前 mode / policy 下可用的方法装配需求
-
-这里的关键点是：
-
-- `method` 提供方法资产、编译与投影
-- `coding` 决定如何把这些资产应用到 coding turn
-
-### loushang-coding <-> loushang-work
-
-`coding` 向 `work` 输入的信息包括：
-
-- coding turn operation metadata
-- `method_id` / `plan_id` / `step_id`
-- step policy / deviation metadata
-- agent events requiring work projection
-
-`work` 向 `coding` 输出的信息包括：
-
-- work event log backend
-- `WorkEvent` stream / persisted records
-- `WorkPlanRun` / `WorkStepRun` projection
-- replay / inspect summaries
-
-这里的关键点是：
-
-- `coding` 仍负责 coding-specific execution
-- `work` 负责 run/event/log/projection 的通用语义
-
-### loushang-coding <-> loushang-agent
-
-`coding` 向 `agent` 输入的信息包括：
-
-- system prompt augmentation
-- tool definitions / tool enablement
-- approval / permission / execution policy
-- memory strategy
-- compaction strategy
-- user input 的 coding 场景组织结果
-- skill / method 注入后的控制信息
-
-`agent` 向 `coding` 输出的信息包括：
-
-- assistant message
-- tool call / tool result
-- runtime event stream
-- turn / run lifecycle events
-- interrupted / aborted / failure 语义
-
-这里的关键点是：
-
-- `coding` 决定“如何装配并控制一次 coding 运行”
-- `agent` 决定“运行时如何推进与产出标准 agent 语义”
-
-### loushang-coding <-> loushang-ai
-
-`coding` 向 `ai` 输入的信息包括：
-
-- model selection / model registry 查询
-- provider/profile 选择相关输入
-- direct summarization / compaction requests
-- 不经完整 agent loop 的 AI helper 请求
-
-`ai` 向 `coding` 输出的信息包括：
-
-- model metadata
-- completion / stream result
-- usage / cost / finish reason
-- provider / model 相关错误
-
-这里的关键点是：
-
-- `coding` 不应承担 provider family、auth、transport 的变化吸收
-- 但 `coding` 仍可直接消费 `ai` 提供的统一能力，而不必所有 AI 调用都绕经 `agent`
-
-### loushang-coding <-> loushang-channel
-
-当前阶段只保留未来信息流方向。
-
-未来若接入 `channel`，`coding` 可能向 `channel` 投影的信息包括：
-
-- `WorkOperation` / `WorkEvent` 的 protocol projection
-- approval / question / input / selection requests
-- replay / audit 所需的边界记录
-
-而 `channel` 可能向 `coding` 返回：
-
-- response / acknowledgement
-- client-side input / selection / approval 决策
-- capability negotiation 结果
-
-### loushang-coding <-> loushang-tui
-
-当前 screen UI 中：
-
-- `coding` 向 `tui` 输入可渲染的状态、事件与交互请求
-- `tui` 向 `coding` 返回用户输入、选择、确认与界面动作
-
-关键点是：
-
-- `tui` 负责呈现与交互
-- `coding` 负责流程编排与 runtime 驱动
-
-## Functional Boundary
-
-### loushang-coding
-
-`loushang-coding` 应承载：
-
-- coding-specific prompt / tool / policy 装配
-- mode adapters
-- CLI / SDK 入口
-- session/runtime/store 的产品化组织
-- method / skills 的使用策略
-- work-log / WorkEvent projection 接入
-- memory / compaction / workflow 决策
-- 与 `channel` / `tui` 的产品化集成入口
-
-它不应承载：
-
-- 通用 provider / model protocol
-- 通用 agent core 类型系统
-- 独立的 channel protocol 定义
-- 独立的 TUI primitives 实现
-
-### loushang-agent
-
-`loushang-agent` 应承载：
-
-- 通用 agent runtime
-- loop / turn / message / tool orchestration
-- runtime state
-- agent events
-
-### loushang-method
-
-`loushang-method` 应承载：
-
-- `MethodDescriptor` / `MethodPlan` / `MethodStep` / `MethodProjection`
-- method resource loading
-- method compilation and projection
-- guidance / work product assets
-
-### loushang-work
-
-`loushang-work` 应承载：
-
-- `WorkOperation`
-- `WorkRun`
-- `WorkEvent`
-- `EventLogBackend`
-- plan/step lifecycle projection
-- replay / inspect summaries
-
-### loushang-channel
-
-`loushang-channel` 应承载：
-
-- protocol
-- transport
-- request / response / notification / event 的边界语义
-- replay / audit / capability negotiation
-
-### loushang-tui
-
-`loushang-tui` 应承载：
-
-- screen terminal UI runtime
-- render loop / input / surface / layout / status primitives
-- terminal interaction rendering
-
-## Data Boundary
-
-在 `loushang-coding` 黑盒边界上，建议明确区分以下几层数据。
-
-### loushang-coding 的主数据
-
-- mode config
-- coding session state
-- session store records
-- coding-specific custom messages
-- prompt assembly artifacts
-- compaction artifacts
-- policy decisions
-
-### loushang-agent 的主数据
-
-- `AgentMessage`
-- `AgentState`
-- `AgentEvent`
-- `AgentTool`
-
-### loushang-method 的主数据
-
-- skill descriptors
-- `MethodDescriptor`
-- `MethodPlan`
-- `MethodStep`
-- `MethodProjection`
-- guidance / work product assets
-
-### loushang-work 的主数据
-
-- `WorkOperation`
-- `WorkRun`
-- `WorkEvent`
-- `WorkPlanRun`
-- `WorkStepRun`
-- event log entries
-
-### loushang-channel 的主数据
-
-- protocol message envelope
-- `event`
-- `request`
-- `response`
-- `notification`
-
-### loushang-tui 的主数据
-
-- UI state
-- widget state
-- user interaction results
-
-这意味着：
-
-- `coding` 持有的是“产品装配与场景控制”层数据
-- `agent` 持有的是“通用运行时”层数据
-- `method` 持有的是“方法资产与投影”层数据
-- `work` 持有的是“运行与事件投影”层数据
-- `channel` 持有的是“边界协议投影”层数据
-- `tui` 持有的是“本地呈现与交互”层数据
-
-## Boundary Decisions Already Accepted
-
-本系统环境图建立在以下已接受决定之上：
-
-1. `loushang-coding` 前期不依赖 `loushang-channel`
-2. `loushang-channel` 不并入 `loushang-coding`
-3. screen UI 属于 `coding` product adapter，但 generic primitives 归属 `loushang.tui`
-4. `loushang-tui` 保持独立子系统定位
-5. `loushang.method` / `loushang.work` 不并入 `loushang-coding`
-6. 当前不在 `coding` 中单列 `context`
-
-这些决定的正式记录见：
-
-- [ARD-001-coding-product-boundaries.md](./ARD-001-coding-product-boundaries.md)
-- [ARD-005-rpc-mode-transitional-channel-positioning.md](./ARD-005-rpc-mode-transitional-channel-positioning.md)
-- [ARD-006-tui-method-integration-constraints.md](./ARD-006-tui-method-integration-constraints.md)
-
-## Next Step
-
-基于当前系统环境图，后续建议按以下顺序继续：
-
-1. `loushang-coding` 组件结构关系及职责
-2. `loushang-coding` 组件核心数据对象
-3. `loushang-coding` 组件接口
-4. `loushang-coding` 组件依赖关系
+```mermaid
+flowchart LR
+    SHELL["Shell / terminal"]
+    EMBED["Python embedding process"]
+    CLI["loushang / loushang-tui entrypoints"]
+    PACKAGE["loushang.coding Python package"]
+    HRPC["loushang.harness.host.rpc"]
+    SCREEN["HarnessTUI + TUI screen loop"]
+    FS[("Workspace filesystem / Git")]
+    LS["Language-server executable"]
+    PROVIDER["Model provider API"]
+
+    SHELL --> CLI
+    EMBED --> PACKAGE
+    CLI --> PACKAGE
+    PACKAGE --> HRPC
+    PACKAGE --> SCREEN
+    PACKAGE <--> FS
+    PACKAGE -->|through coding.lsp| LS
+    PACKAGE -->|through Harness / Agent / AI| PROVIDER
+```
+
+Exact console targets and package imports are generated in
+[Current Package Dependencies](../generated/current-package-dependencies.md).
+
+## Dependency Policy
+
+- shared owners do not import `loushang.coding`;
+- Coding may depend on stable public contracts from the scopes it composes;
+- Coding child scopes do not import one another's internals;
+- new `coding.arch`/`coding.lsp` relationships require a Coding-owned narrow
+  port, explicit optionality, and an architecture gate;
+- Product UI adapters may depend on HarnessTUI/TUI, but generic TUI and
+  HarnessTUI do not depend on Coding;
+- Coding does not introduce a compatibility facade for a removed shared owner
+  unless an accepted compatibility decision requires it.
+
+## Authority And Trust Flow
+
+Coding owns:
+
+- Product defaults and user-facing configuration semantics;
+- admission of Product tools, language-server definitions and Capability
+  activation requests;
+- Product risk choices and approval wording;
+- Product intent parsing and final presentation;
+- Product adapters into Method, Work and Channel.
+
+Harness owns enforcement mechanics, but Coding does not grant itself authority
+by constructing a tool or capability. External packages/extensions may
+contribute declarations only through the admitted Harness/Product mechanism.
+
+Method plans, model todo state and Session transcript are not durable Work
+authority. Work events and terminal outcomes remain HarnessWork-owned.
+
+## Current And Target
+
+Current:
+
+- installed CLI/TUI entrypoints compose Coding;
+- shared mode/Host mechanisms have moved to Harness/HarnessTUI;
+- LSP and Arch have concrete implementation slices;
+- Method, HarnessWork and Channel integrations are optional;
+- Coding remains the only installed Product.
+
+Accepted or proposed Target:
+
+- Product Capability graph/mount semantics become explicit without turning
+  Coding into a service locator;
+- LSP and Arch complete their child-scope requirements, component and
+  traceability governance;
+- additional Products validate shared Harness boundaries through real
+  composition rather than forecast abstractions.
+
+Target-only capability graph, remote runtime and durable recovery behavior must
+remain labeled until implemented.
+
+## Child Scope Entry Points
+
+- [Coding LSP Architecture](lsp/README.md)
+- [Coding Arch Architecture](arch/README.md)
+
+## Related Decisions
+
+- [ARD-001: Coding Product Boundaries](ARD-001-coding-product-boundaries.md),
+  retained for accepted Product principles but superseded for old Coding-owned
+  shared topology and mode placement;
+- [ARD-005: RpcMode Transitional Positioning](ARD-005-rpc-mode-transitional-channel-positioning.md),
+  superseded by the completed Harness Host separation;
+- [Harness Mode/Host Boundary](../harness/mode-host-boundary.md);
+- [Harness Session/RPC Operation Boundary](../harness/session-rpc-operation-boundary.md).

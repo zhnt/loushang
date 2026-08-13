@@ -1,5 +1,16 @@
 # Loushang Method Notes
 
+## Status
+
+- Authority: historical method evidence
+- Design status: superseded
+- Implementation status: not-applicable
+- Owner: Loushang architecture method history
+
+This document preserves lessons from the original AI architecture exercise.
+The canonical reusable process is now
+[Architecture Design And Governance Method](../README.md).
+
 ## Scope
 
 本文档沉淀本次 `loushang.ai` 前期设计过程中形成的方法论经验。  
@@ -23,8 +34,8 @@
 
 这次没有直接写 API，而是先写：
 
-- [Loushang AI Glossary](../glossary/loushang-ai.md)
-- [Loushang AI Types](../glossary/loushang-ai-types.md)
+- [Loushang AI Glossary](../../glossary/loushang-ai.md)
+- [Loushang AI Types](../../glossary/loushang-ai-types.md)
 
 这样做的价值在于：
 
@@ -36,7 +47,7 @@
 
 这次 streaming / cancellation / asyncio 绑定边界，没有塞进 glossary 或 types，而是单独形成：
 
-- [Loushang AI Streaming and Cancellation](./ai/loushang-ai-streaming-and-cancellation.md)
+- [Loushang AI Streaming and Cancellation](../../architecture/ai/loushang-ai-streaming-and-cancellation.md)
 
 这一步很重要，因为：
 
@@ -89,8 +100,8 @@
 
 ### spike 层
 
-- [AI Streaming Spike README](../../spikes/ai-streaming/README.md)
-- [AI Streaming Spike Results](../../spikes/ai-streaming/RESULTS.md)
+- [AI Streaming Spike README](../../../../spikes/ai-streaming/README.md)
+- [AI Streaming Spike Results](../../../../spikes/ai-streaming/RESULTS.md)
 
 记录：
 
@@ -100,7 +111,7 @@
 
 ### architecture validation 层
 
-- [Loushang AI Streaming Validation](./ai/validation/loushang-ai-streaming-validation.md)
+- [Loushang AI Streaming Validation](../../architecture/ai/validation/loushang-ai-streaming-validation.md)
 
 记录：
 
@@ -150,7 +161,7 @@
 
 本次会话信息量很大，因此单独写了：
 
-- [Loushang AI Historical Handoff Summary](./ai/history/loushang-ai-historical-handoff.md)
+- [Loushang AI Historical Handoff Summary](../../architecture/ai/history/loushang-ai-historical-handoff.md)
 
 这说明一个实用方法：
 
