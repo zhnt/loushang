@@ -6,9 +6,14 @@ on:
       - main
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   harnesstui-quality:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -21,5 +26,23 @@ jobs:
       - name: Install dependencies
         run: make bootstrap
 
+      - name: Create report directory
+        run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
+
       - name: Harnesstui quality gate
+        env:
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/harnesstui-quality.xml
         run: make check-harnesstui
+
+      - name: Reject empty, skipped, or failing report
+        run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/harnesstui-quality.xml
+
+      - name: Upload pytest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harnesstui-quality-pytest-report
+          path: .artifacts/harnesstui-quality.xml
+          if-no-files-found: warn

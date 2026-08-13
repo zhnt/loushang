@@ -1435,6 +1435,83 @@ def test_agent_session_execute_bash_records_command_execution(tmp_path) -> None:
     assert session.agent.state.messages[-1].role == "user"
 
 
+def test_agent_session_execute_bash_compatibility_uses_windows_shell_tool(
+    tmp_path,
+) -> None:
+    import asyncio
+    import base64
+
+    from loushang.agent import Agent
+    from loushang.coding import SessionManager
+    from loushang.coding.session import AgentSession
+    from loushang.harness.environment import HostEnvironment
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace import create_shell_tool_definition
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+    from loushang.harness.workspace.exec import ExecResult
+    from loushang.harness.workspace.shell import ResolvedShell
+
+    class AllowingPolicy:
+        def evaluate(self, subject):
+            del subject
+            return PolicyDecision.allow()
+
+    class Resolver:
+        def resolve(self, selection=None):
+            del selection
+            return ResolvedShell(
+                kind="powershell",
+                executable=r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+                flavor="windows-powershell",
+                target_id="windows-local",
+                target_os_family="windows",
+                source="system",
+                version="5.1",
+                edition="Desktop",
+            )
+
+    class Operations:
+        def __init__(self) -> None:
+            self.requests: list[object] = []
+
+        async def execute(self, request, *, signal=None, on_update=None):
+            del signal, on_update
+            self.requests.append(request)
+            return ExecResult(exit_code=0, stdout="windows\n")
+
+    operations = Operations()
+    registry = WorkspaceToolRegistry()
+    registry.register_tool(
+        create_shell_tool_definition(
+            operations=operations,
+            environment=HostEnvironment(
+                os_family="windows",
+                platform_name="win32",
+                architecture="amd64",
+            ),
+            resolver_factory=lambda environment, environ, cwd: Resolver(),
+        )
+    )
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd=r"C:\workspace", persist=False)
+    )
+    session = AgentSession(
+        agent=Agent(),
+        session_manager=manager,
+        tool_registry=registry,
+        active_tool_names=["shell"],
+        tool_policy_evaluator=AllowingPolicy(),
+    )
+
+    result = asyncio.run(session.execute_bash("Get-Location"))
+
+    assert result["output"] == "windows\n"
+    request = operations.requests[0]
+    assert request.command[0].endswith("powershell.exe")
+    decoded = base64.b64decode(request.command[-1]).decode("utf-16le")
+    assert "Get-Location" in decoded
+
+
 def test_agent_session_abort_bash_cancels_active_execution_and_records_command(
     tmp_path,
 ) -> None:

@@ -489,9 +489,11 @@ def test_agent_application_state_preparation_resolves_tool_settings_once(
     assert result.value.tool_registry == "registry"
     assert policy_calls == [
         {
-            "blocked_tools": ("bash",),
-            "ask_tools": (),
-            "blocked_substrings": (),
+                "blocked_tools": ("bash",),
+                "ask_tools": (),
+                "blocked_capabilities": ("workspace.command",),
+                "ask_capabilities": (),
+                "blocked_substrings": (),
             "ask_substrings": (),
             "blocked_path_substrings": (),
             "ask_path_substrings": (),

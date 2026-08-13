@@ -334,6 +334,8 @@ def _serialize_tool_settings(value: object) -> dict[str, Any]:
             ),
             "blocked_tools": list(value.blocked_tools),
             "ask_tools": list(value.ask_tools),
+            "blocked_capabilities": list(value.blocked_capabilities),
+            "ask_capabilities": list(value.ask_capabilities),
             "blocked_substrings": list(value.blocked_substrings),
             "ask_substrings": list(value.ask_substrings),
             "blocked_path_substrings": list(value.blocked_path_substrings),
@@ -351,6 +353,8 @@ def _serialize_tool_settings(value: object) -> dict[str, Any]:
     for key in (
         "blocked_tools",
         "ask_tools",
+        "blocked_capabilities",
+        "ask_capabilities",
         "blocked_substrings",
         "ask_substrings",
         "blocked_path_substrings",
@@ -438,6 +442,8 @@ def _apply_tool_settings_patch(
     for key in (
         "blocked_tools",
         "ask_tools",
+        "blocked_capabilities",
+        "ask_capabilities",
         "blocked_substrings",
         "ask_substrings",
         "blocked_path_substrings",
@@ -449,6 +455,16 @@ def _apply_tool_settings_patch(
                 next_settings = replace(next_settings, blocked_tools=normalized)
             elif key == "ask_tools":
                 next_settings = replace(next_settings, ask_tools=normalized)
+            elif key == "blocked_capabilities":
+                next_settings = replace(
+                    next_settings,
+                    blocked_capabilities=normalized,
+                )
+            elif key == "ask_capabilities":
+                next_settings = replace(
+                    next_settings,
+                    ask_capabilities=normalized,
+                )
             elif key == "blocked_substrings":
                 next_settings = replace(next_settings, blocked_substrings=normalized)
             elif key == "ask_substrings":

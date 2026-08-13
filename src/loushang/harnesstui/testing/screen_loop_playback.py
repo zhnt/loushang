@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 from collections.abc import Coroutine, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -109,6 +110,87 @@ class TimedInputChunkReader:
             await asyncio.sleep(delay)
         self._index += 1
         return chunk.data
+
+
+class BlockingPromptController:
+    """Bound one abort-settled prompt used by deterministic lifecycle tests.
+
+    The prompt handler awaits :meth:`wait_until_settled`, while the simulated
+    abort callback invokes :meth:`settle_on_abort`.  The context manager fails
+    closed unless the prompt started, the abort released it, and its task
+    finished before the scenario returned.
+    """
+
+    def __init__(self, *, timeout_seconds: float = 1.0) -> None:
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+            raise ValueError("blocking prompt timeout must be finite and greater than zero")
+        self._timeout_seconds = timeout_seconds
+        self._started = False
+        self._settle_requested = False
+        self._finished = False
+        self._settled_event: asyncio.Event | None = None
+        self._waiter: asyncio.Task[object] | None = None
+
+    @property
+    def started(self) -> bool:
+        return self._started
+
+    @property
+    def settled(self) -> bool:
+        return self._settle_requested and self._finished
+
+    async def wait_until_settled(self) -> None:
+        if self._started:
+            raise RuntimeError("blocking prompt controller supports one prompt")
+        waiter = asyncio.current_task()
+        if waiter is None:
+            raise RuntimeError("blocking prompt must run inside an asyncio task")
+        self._started = True
+        self._waiter = waiter
+        settled_event = asyncio.Event()
+        self._settled_event = settled_event
+        if self._settle_requested:
+            settled_event.set()
+        try:
+            await asyncio.wait_for(
+                settled_event.wait(),
+                timeout=self._timeout_seconds,
+            )
+        except TimeoutError as error:
+            raise AssertionError(
+                "blocking prompt was not settled by abort within "
+                f"{self._timeout_seconds:.3f}s"
+            ) from error
+        finally:
+            self._finished = True
+
+    def settle_on_abort(self) -> None:
+        self._settle_requested = True
+        if self._settled_event is not None:
+            self._settled_event.set()
+
+    def assert_finished(self) -> None:
+        if not self._started:
+            raise AssertionError("blocking prompt never started")
+        if not self._settle_requested:
+            raise AssertionError("blocking prompt abort never requested settlement")
+        if not self._finished:
+            raise AssertionError("blocking prompt did not finish")
+        if self._waiter is None or not self._waiter.done():
+            raise AssertionError("blocking prompt left a residual asyncio task")
+
+    def __enter__(self) -> BlockingPromptController:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: object,
+        _exc: object,
+        _traceback: object,
+    ) -> Literal[False]:
+        if exc_type is None:
+            self.assert_finished()
+        return False
 
 
 @dataclass(frozen=True, slots=True)
@@ -410,6 +492,7 @@ def _ignore_abort() -> None:
 
 
 __all__ = [
+    "BlockingPromptController",
     "ConversationScreenLoopArtifacts",
     "ConversationScreenLoopPlayback",
     "ConversationScreenLoopPlaybackResult",

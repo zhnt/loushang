@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable
 from typing import NoReturn, Protocol, cast
 
 from loushang.harness.workspace._local_process import (
-    kill_local_process,
+    kill_local_process_tree,
     spawn_local_process,
 )
 
@@ -141,7 +141,7 @@ class LocalProcessSpawner:
         try:
             on_spawn(process)
         except BaseException:
-            kill_local_process(process)
+            await kill_local_process_tree(process)
             await process.wait()
             raise
         return process
@@ -175,7 +175,7 @@ async def _reclaim_spawn_before_propagating_cancellation(
     else:
         attachment_error = None
 
-    kill_local_process(process)
+    await kill_local_process_tree(process)
     wait_task = asyncio.create_task(
         process.wait(),
         name="harness-cancelled-local-process-wait",

@@ -42,20 +42,38 @@ async def run_external_process(
     abort_task = (
         asyncio.create_task(_wait_for_abort(signal)) if signal is not None else None
     )
-    tasks = [communicate_task, *([abort_task] if abort_task is not None else [])]
-    done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-    if abort_task is not None and abort_task in done:
+    tasks = {communicate_task, *([abort_task] if abort_task is not None else [])}
+    try:
+        while not communicate_task.done():
+            # Keep a bounded wake-up in addition to the child-watcher signal.
+            # Some contained Linux hosts can reap a very short-lived process
+            # without waking the selector even though asyncio queued the exit
+            # callback. Cycling the loop settles that callback without imposing
+            # a process runtime limit.
+            done, _pending = await asyncio.wait(
+                tasks,
+                timeout=0.01,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if abort_task is not None and abort_task in done:
+                _kill_process(process)
+                if not await _settle_task(communicate_task, timeout=1):
+                    communicate_task.cancel()
+                    await asyncio.gather(communicate_task, return_exceptions=True)
+                raise_if_operation_aborted(signal)
+                raise RuntimeError("Operation aborted")
+            if communicate_task in done:
+                break
+        stdout, stderr = communicate_task.result()
+    except asyncio.CancelledError:
         _kill_process(process)
-        try:
-            await asyncio.wait_for(communicate_task, timeout=1)
-        except asyncio.TimeoutError:
-            communicate_task.cancel()
-        raise_if_operation_aborted(signal)
-        raise RuntimeError("Operation aborted")
-
-    for task in pending:
-        task.cancel()
-    stdout, stderr = communicate_task.result()
+        communicate_task.cancel()
+        await asyncio.gather(communicate_task, return_exceptions=True)
+        raise
+    finally:
+        if abort_task is not None and not abort_task.done():
+            abort_task.cancel()
+            await asyncio.gather(abort_task, return_exceptions=True)
     return ExternalProcessResult(
         returncode=process.returncode if process.returncode is not None else 0,
         stdout=stdout.decode("utf-8", errors="replace"),
@@ -128,11 +146,41 @@ async def _stream_stdout_lines(
 
 
 async def _wait_for_process_exit(process: asyncio.subprocess.Process) -> None:
-    try:
-        await asyncio.wait_for(process.wait(), timeout=1)
-    except asyncio.TimeoutError:
-        _kill_process(process)
-        await process.wait()
+    if await _wait_for_returncode(process, timeout=1):
+        return
+    _kill_process(process)
+    await _wait_for_returncode(process, timeout=None)
+
+
+async def _settle_task(task: asyncio.Task[object], *, timeout: float) -> bool:
+    deadline = asyncio.get_running_loop().time() + timeout
+    while not task.done():
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            return False
+        await asyncio.wait(
+            {task},
+            timeout=min(0.01, remaining),
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+    return True
+
+
+async def _wait_for_returncode(
+    process: asyncio.subprocess.Process,
+    *,
+    timeout: float | None,
+) -> bool:
+    deadline = (
+        asyncio.get_running_loop().time() + timeout
+        if timeout is not None
+        else None
+    )
+    while process.returncode is None:
+        if deadline is not None and asyncio.get_running_loop().time() >= deadline:
+            return False
+        await asyncio.sleep(0.01)
+    return True
 
 
 async def _read_stderr_result(stderr_task: asyncio.Task[bytes]) -> bytes:

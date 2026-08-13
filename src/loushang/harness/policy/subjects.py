@@ -15,6 +15,9 @@ from typing import Literal, TypeAlias, cast
 from loushang.harness.effects import ToolEffect
 from loushang.harness.policy._freeze import _freeze_mapping
 
+CommandDialect = Literal["direct", "posix", "powershell", "cmd"]
+_COMMAND_DIALECTS = frozenset({"direct", "posix", "powershell", "cmd"})
+
 _SHELL_ENTRY_BASENAMES = frozenset(
     {
         "sh",
@@ -186,6 +189,8 @@ class CommandPolicySubject:
     direct_tokens: tuple[str, ...]
     shell_payload: str | None = None
     normalization_complete: bool = True
+    dialect: CommandDialect = "direct"
+    shell_flavor: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "command", _string_tuple(self.command, "command"))
@@ -196,6 +201,10 @@ class CommandPolicySubject:
         )
         if not isinstance(self.normalization_complete, bool):
             raise TypeError("normalization_complete must be a boolean")
+        if self.dialect not in _COMMAND_DIALECTS:
+            raise ValueError(f"unsupported command dialect: {self.dialect!r}")
+        if self.shell_flavor is not None and not self.shell_flavor:
+            raise ValueError("shell_flavor must be a non-empty string or None")
 
 
 @dataclass(frozen=True)
@@ -212,6 +221,7 @@ class ToolPolicySubject:
     command: CommandPolicySubject | None = None
     paths: tuple[PathPolicySubject, ...] = ()
     effects: tuple[ToolEffect, ...] = ()
+    capability_id: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.tool_name, str) or not self.tool_name:
@@ -219,6 +229,10 @@ class ToolPolicySubject:
         object.__setattr__(self, "arguments", _freeze_mapping(self.arguments))
         object.__setattr__(self, "paths", tuple(self.paths))
         object.__setattr__(self, "effects", tuple(self.effects))
+        if self.capability_id is not None and (
+            not isinstance(self.capability_id, str) or not self.capability_id
+        ):
+            raise ValueError("capability_id must be a non-empty string or None")
 
 
 @dataclass(frozen=True)
@@ -269,6 +283,38 @@ def normalize_command_subject(
         direct_tokens=direct_tokens,
         shell_payload=payload,
         normalization_complete=normalization_complete,
+        dialect="posix" if payload is not None else "direct",
+    )
+
+
+def shell_command_policy_subject(
+    command: Sequence[str],
+    *,
+    script: str,
+    dialect: Literal["posix", "powershell", "cmd"],
+    shell_flavor: str | None = None,
+    cwd: str | None = None,
+    normalization_complete: bool = True,
+) -> CommandPolicySubject:
+    """Build a policy subject from one already-resolved shell launch.
+
+    The caller supplies the original plaintext script. Transport wrappers such
+    as PowerShell ``-EncodedCommand`` remain in ``command`` for approval
+    binding, but policy never has to reverse or analyze the transport blob.
+    """
+
+    if not isinstance(script, str) or not script.strip():
+        raise ValueError("shell policy script must be a non-empty string")
+    if dialect not in {"posix", "powershell", "cmd"}:
+        raise ValueError(f"unsupported shell policy dialect: {dialect!r}")
+    return CommandPolicySubject(
+        command=_string_tuple(command, "command"),
+        cwd=cwd,
+        direct_tokens=(),
+        shell_payload=script,
+        normalization_complete=normalization_complete,
+        dialect=dialect,
+        shell_flavor=shell_flavor,
     )
 
 
@@ -327,6 +373,7 @@ def build_tool_policy_subject(
     command: CommandPolicySubject | None = None,
     paths: tuple[PathPolicySubject, ...] | None = None,
     effects: tuple[ToolEffect, ...] = (),
+    capability_id: str | None = None,
 ) -> ToolPolicySubject:
     return ToolPolicySubject(
         tool_name=tool_name,
@@ -337,6 +384,7 @@ def build_tool_policy_subject(
         if paths is None
         else paths,
         effects=effects,
+        capability_id=capability_id,
     )
 
 

@@ -15,6 +15,7 @@ from loushang.harness.policy.decisions import PolicyDecision
 from loushang.harness.policy.effects_detection import detect_policy_effects
 from loushang.harness.policy.evaluators import PolicyRule, RulePolicyEvaluator
 from loushang.harness.policy.matchers import (
+    CapabilityIdMatcher,
     CommandSubstringMatcher,
     ExactToolNameMatcher,
     PathSubstringMatcher,
@@ -64,6 +65,8 @@ class PolicyEngine:
     ask_tools: tuple[str, ...] = field(default_factory=tuple)
     blocked_path_substrings: tuple[str, ...] = field(default_factory=tuple)
     ask_path_substrings: tuple[str, ...] = field(default_factory=tuple)
+    blocked_capabilities: tuple[str, ...] = field(default_factory=tuple)
+    ask_capabilities: tuple[str, ...] = field(default_factory=tuple)
     _evaluator: RulePolicyEvaluator = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -99,6 +102,19 @@ class PolicyEngine:
         )
         object.__setattr__(
             self,
+            "blocked_capabilities",
+            _normalize_strings(
+                self.blocked_capabilities,
+                "blocked_capabilities",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "ask_capabilities",
+            _normalize_strings(self.ask_capabilities, "ask_capabilities"),
+        )
+        object.__setattr__(
+            self,
             "blocked_path_substrings",
             _normalize_strings(
                 self.blocked_path_substrings,
@@ -127,6 +143,17 @@ class PolicyEngine:
 
     def _rules(self) -> tuple[PolicyRule, ...]:
         rules: list[PolicyRule] = []
+        rules.extend(
+            PolicyRule(
+                id=f"{self.rule_id_prefix}.capability.block.{index}",
+                matcher=CapabilityIdMatcher(capability_id),
+                decision=PolicyDecision.deny(
+                    f"Capability {capability_id} is blocked by policy",
+                    code="capability_blocked",
+                ),
+            )
+            for index, capability_id in enumerate(self.blocked_capabilities)
+        )
         rules.extend(
             PolicyRule(
                 id=f"{self.rule_id_prefix}.tool.block.{index}",
@@ -192,5 +219,16 @@ class PolicyEngine:
                 ),
             )
             for index, substring in enumerate(self.ask_path_substrings)
+        )
+        rules.extend(
+            PolicyRule(
+                id=f"{self.rule_id_prefix}.capability.ask.{index}",
+                matcher=CapabilityIdMatcher(capability_id),
+                decision=PolicyDecision.ask(
+                    f"Capability {capability_id} requires approval",
+                    code="capability_requires_approval",
+                ),
+            )
+            for index, capability_id in enumerate(self.ask_capabilities)
         )
         return tuple(rules)

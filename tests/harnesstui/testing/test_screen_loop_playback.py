@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass, field
 
+import pytest
+
 from loushang.harnesstui.conversation.screen_state import ScreenConversationState
 from loushang.harnesstui.testing.screen_loop_playback import (
+    BlockingPromptController,
     ConversationScreenLoopPlayback,
     ConversationScreenLoopScenario,
     ScriptedInputChunk,
@@ -68,6 +72,40 @@ class _ScreenApp:
 
 def _app_factory(*, now):
     return _ScreenApp(clock=now)
+
+
+def test_blocking_prompt_controller_settles_without_residual_task() -> None:
+    controller = BlockingPromptController(timeout_seconds=0.1)
+
+    async def run() -> None:
+        with controller:
+            waiter = asyncio.create_task(controller.wait_until_settled())
+            await asyncio.sleep(0)
+            assert controller.started
+            controller.settle_on_abort()
+            await waiter
+
+    asyncio.run(run())
+    assert controller.settled
+
+
+def test_blocking_prompt_controller_fails_closed_on_missing_abort() -> None:
+    controller = BlockingPromptController(timeout_seconds=0.001)
+
+    with pytest.raises(AssertionError, match="not settled by abort"):
+        asyncio.run(controller.wait_until_settled())
+
+
+def test_blocking_prompt_controller_context_requires_completed_lifecycle() -> None:
+    with pytest.raises(AssertionError, match="never started"):
+        with BlockingPromptController():
+            pass
+
+
+@pytest.mark.parametrize("timeout", [0, float("inf"), float("nan")])
+def test_blocking_prompt_controller_rejects_unbounded_timeout(timeout: float) -> None:
+    with pytest.raises(ValueError, match="finite and greater than zero"):
+        BlockingPromptController(timeout_seconds=timeout)
 
 
 def test_screen_loop_playback_runs_scripted_chunks_through_shared_runner() -> None:

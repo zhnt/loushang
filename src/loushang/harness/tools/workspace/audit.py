@@ -106,6 +106,11 @@ def build_action_audit_details(
     }
     if command is not None:
         details["command_summary"] = command
+    if policy_subject is not None and policy_subject.capability_id is not None:
+        details["policy_capability_id"] = _safe_name(policy_subject.capability_id)
+    shell_summary = _shell_summary(arguments)
+    if shell_summary is not None:
+        details["shell_summary"] = shell_summary
     if policy_subject is not None and policy_subject.effects:
         details["declared_effects"] = tuple(
             effect_audit_summary(effect) for effect in policy_subject.effects
@@ -159,7 +164,7 @@ def _classify_capability(
         return _highest_capability([*declared, "filesystem.read"]), None
     if tool_name in {"write", "edit"}:
         return _highest_capability([*declared, "filesystem.write"]), None
-    if tool_name != "bash":
+    if tool_name not in {"bash", "shell"}:
         return (
             _highest_capability(declared)
             if declared
@@ -176,6 +181,18 @@ def _classify_capability(
         capabilities.append("privilege.escalate")
     capability = _highest_capability(capabilities or ["process.execute"])
     return capability, summary
+
+
+def _shell_summary(arguments: Mapping[str, object]) -> dict[str, object] | None:
+    resolved = arguments.get("resolved_shell")
+    if not isinstance(resolved, Mapping):
+        return None
+    summary: dict[str, object] = {}
+    for field in ("kind", "flavor", "source", "target_id", "transport"):
+        value = resolved.get(field)
+        if isinstance(value, str):
+            summary[field] = _safe_name(value)
+    return summary or None
 
 
 def _highest_capability(capabilities: list[str]) -> str:

@@ -19,7 +19,8 @@ from loushang.harness.approval.requests import (
     ApprovalGrantProposal,
     PolicyAmendmentProposal,
 )
-from loushang.harness.policy.subjects import ToolPolicySubject
+from loushang.harness.policy._powershell import parse_simple_powershell_command
+from loushang.harness.policy.subjects import CommandPolicySubject, ToolPolicySubject
 
 _SHELL_CONTROL = frozenset({";", "&&", "||", "|", "&", "(", ")"})
 _GIT_GLOBAL_VALUE_OPTIONS = frozenset(
@@ -75,12 +76,16 @@ def propose_session_approval_grant(
 ) -> ApprovalGrantProposal | None:
     """Generalize only actions whose security-relevant scope is understood."""
 
-    if policy_code != "external_publication" or subject.tool_name != "bash":
+    if policy_code != "external_publication":
+        return None
+    if subject.capability_id != "workspace.command" and not (
+        subject.capability_id is None and subject.tool_name == "bash"
+    ):
         return None
     command = subject.command
     if command is None or not command.normalization_complete:
         return None
-    tokens = _simple_command_tokens(command.direct_tokens, command.shell_payload)
+    tokens = _simple_command_tokens(command)
     if not tokens:
         return None
     return _git_push_proposal(tokens, cwd=subject.cwd)
@@ -100,13 +105,16 @@ def propose_policy_amendments(
 
 
 def _simple_command_tokens(
-    direct_tokens: tuple[str, ...],
-    shell_payload: str | None,
+    command: CommandPolicySubject,
 ) -> tuple[str, ...]:
-    if shell_payload is None:
-        return direct_tokens
+    if command.shell_payload is None:
+        return command.direct_tokens
+    if command.dialect == "powershell":
+        return parse_simple_powershell_command(command.shell_payload) or ()
+    if command.dialect != "posix":
+        return ()
     try:
-        tokens = tuple(shlex.split(shell_payload, posix=True))
+        tokens = tuple(shlex.split(command.shell_payload, posix=True))
     except ValueError:
         return ()
     if any(token in _SHELL_CONTROL for token in tokens):
@@ -122,7 +130,10 @@ def _git_push_proposal(
     values = list(tokens)
     while values and os.path.basename(values[0]) in {"command", "exec", "nohup"}:
         values.pop(0)
-    if not values or os.path.basename(values.pop(0)) != "git":
+    if not values or os.path.basename(values.pop(0)).casefold() not in {
+        "git",
+        "git.exe",
+    }:
         return None
 
     repository = Path(cwd or ".").expanduser()

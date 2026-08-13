@@ -12,6 +12,7 @@ from loushang.harness.approval.proposals import (
 from loushang.harness.policy import (
     build_tool_policy_subject,
     normalize_command_subject,
+    shell_command_policy_subject,
 )
 
 
@@ -109,6 +110,57 @@ def test_policy_offers_project_amendment_only_for_safe_typed_publish_scope(
             policy_code="filesystem_deletion",
         )
         == ()
+    )
+
+
+def test_git_push_grant_uses_stable_workspace_command_capability_for_shell(
+    tmp_path: Path,
+) -> None:
+    command = "git push origin main"
+    subject = build_tool_policy_subject(
+        tool_name="shell",
+        capability_id="workspace.command",
+        arguments={"command": command},
+        cwd=str(tmp_path),
+        command=shell_command_policy_subject(
+            (
+                r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+                "-EncodedCommand",
+                "transport-blob",
+            ),
+            script=command,
+            dialect="powershell",
+            shell_flavor="windows-powershell",
+            cwd=str(tmp_path),
+        ),
+    )
+
+    proposal = propose_session_approval_grant(
+        subject,
+        policy_code="external_publication",
+    )
+
+    assert proposal is not None
+    assert proposal.capability == "git.publish_refs"
+    assert dict(proposal.constraints) == {
+        "force": "false",
+        "remote": "origin",
+        "repository": str(tmp_path.resolve()),
+    }
+
+
+def test_shell_name_without_workspace_command_capability_cannot_gain_git_grant(
+    tmp_path: Path,
+) -> None:
+    legacy_shape = _subject("git push origin main", cwd=tmp_path)
+    subject = replace(legacy_shape, tool_name="shell")
+
+    assert (
+        propose_session_approval_grant(
+            subject,
+            policy_code="external_publication",
+        )
+        is None
     )
 
 

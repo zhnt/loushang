@@ -10,6 +10,7 @@ from loushang.harness.approval import (
     HeadlessApprovalResolver,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.environment import HostEnvironment
 from loushang.harness.permissions import (
     PermissionProfileCeiling,
     PermissionProfilePolicyEvaluator,
@@ -27,6 +28,7 @@ from loushang.harness.workspace.operations import (
     ToolOperations,
     WriteOperations,
 )
+from loushang.harness.workspace.shell import ShellSelection
 
 from .authorization import WorkspaceToolAuthorizationGateway
 from .bash import (
@@ -49,16 +51,30 @@ from .grep import GrepToolOptions, create_grep_tool_definition
 from .ls import LsToolOptions, create_ls_tool_definition
 from .policy import ToolPolicyEvaluator
 from .read import ReadToolOptions, create_read_tool_definition
+from .shell import (
+    ShellToolOptions,
+    create_shell_tool_definition,
+)
 from .types import ToolDefinition
 from .wrapper import wrap_tool_definition
 from .write import WriteToolOptions, create_write_tool_definition
 
-ToolName = Literal["read", "bash", "edit", "write", "grep", "find", "ls"]
+ToolName = Literal[
+    "read",
+    "bash",
+    "shell",
+    "edit",
+    "write",
+    "grep",
+    "find",
+    "ls",
+]
 Tool = AgentTool[Any]
 ToolDef = ToolDefinition
 ALL_TOOL_NAMES: tuple[ToolName, ...] = (
     "read",
     "bash",
+    "shell",
     "edit",
     "write",
     "grep",
@@ -133,6 +149,9 @@ class ToolsOptions:
     external_tool_policy: ExternalToolPolicy | None = None
     allow_external_tool_downloads: bool = False
     require_external_tools: bool = False
+    shell: ShellToolOptions | None = None
+    shell_operations: BashOperations | None = None
+    host_environment: HostEnvironment | None = None
 
 
 @dataclass(frozen=True)
@@ -161,6 +180,16 @@ def workspace_tool_runtime_settings(
         ),
         "ask_path_substrings": _string_tuple(
             tool_settings, "ask_path_substrings"
+        ),
+        "blocked_capabilities": _command_capability_rules(
+            tool_settings,
+            tools_field="blocked_tools",
+            capabilities_field="blocked_capabilities",
+        ),
+        "ask_capabilities": _command_capability_rules(
+            tool_settings,
+            tools_field="ask_tools",
+            capabilities_field="ask_capabilities",
         ),
     }
     base_policy_engine = policy_factory(**policy_kwargs)
@@ -215,6 +244,18 @@ def _string_tuple(value: object, name: str) -> tuple[str, ...]:
     return tuple(item for item in items if isinstance(item, str))
 
 
+def _command_capability_rules(
+    settings: object,
+    *,
+    tools_field: str,
+    capabilities_field: str,
+) -> tuple[str, ...]:
+    configured = list(_string_tuple(settings, capabilities_field))
+    if "bash" in _string_tuple(settings, tools_field):
+        configured.append("workspace.command")
+    return tuple(dict.fromkeys(configured))
+
+
 def create_tool_definition(
     tool_name: ToolName, *, options: ToolsOptions | None = None
 ) -> ToolDefinition:
@@ -233,6 +274,20 @@ def create_tool_definition(
             command_prefix=options.command_prefix,
             shell_path=options.shell_path,
             spawn_hook=options.spawn_hook,
+        )
+    if tool_name == "shell":
+        return create_shell_tool_definition(
+            options=options.shell,
+            exec_service=options.exec_service,
+            diagnostics_service=options.diagnostics_service,
+            operations=options.shell_operations or options.bash_operations,
+            environment=options.host_environment,
+            selection=(
+                ShellSelection(path=options.shell_path)
+                if options.shell_path is not None
+                else None
+            ),
+            command_prefix=options.command_prefix,
         )
     if tool_name == "edit":
         return create_edit_tool_definition(
@@ -498,6 +553,22 @@ def create_bash_tool(
     )
 
 
+def create_shell_tool(
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+    *,
+    context_provider: ToolContextProvider | None = None,
+    model: object | None = None,
+) -> AgentTool[Any]:
+    return create_tool(
+        "shell",
+        cwd=cwd,
+        options=options,
+        context_provider=context_provider,
+        model=model,
+    )
+
+
 def create_edit_tool(
     cwd: str | None = None,
     options: ToolsOptions | None = None,
@@ -646,6 +717,12 @@ def createBashTool(
     cwd: str | None = None, options: ToolsOptions | None = None
 ) -> AgentTool[Any]:
     return create_bash_tool(cwd=cwd, options=options)
+
+
+def createShellTool(
+    cwd: str | None = None, options: ToolsOptions | None = None
+) -> AgentTool[Any]:
+    return create_shell_tool(cwd=cwd, options=options)
 
 
 def createEditTool(

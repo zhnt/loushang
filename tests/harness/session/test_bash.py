@@ -166,6 +166,49 @@ def test_bash_runtime_injects_session_owned_operations() -> None:
     assert operation_bindings_seen == [{"bash_operations": selected_operations}]
 
 
+def test_bash_compatibility_runtime_uses_plain_script_for_shell_definition() -> None:
+    executed: list[dict[str, object]] = []
+
+    async def append_record(record: object) -> None:
+        del record
+
+    class ShellTool:
+        name = "shell"
+
+    async def execute_definition(
+        definition,
+        *,
+        tool_call_id,
+        arguments,
+        signal=None,
+        on_update=None,
+        operation_bindings=None,
+    ):
+        del definition, tool_call_id, signal, on_update, operation_bindings
+        executed.append(arguments)
+        return AgentToolResult(
+            content=[TextPart(type="text", text="ok\n")],
+            details={"exit_code": 0},
+        )
+
+    runtime = BashExecutionRuntime(
+        BashExecutionPorts(
+            get_cwd=lambda: r"C:\workspace",
+            get_definition=ShellTool,
+            execute_definition=execute_definition,
+            create_call_id=lambda: "shell-session-1",
+            append_record=append_record,
+            refresh_context=lambda: None,
+        )
+    )
+
+    asyncio.run(runtime.execute("Get-Location"))
+
+    assert executed == [
+        {"command": "Get-Location", "cwd": r"C:\workspace"}
+    ]
+
+
 def test_command_execution_is_single_flight_during_before_execute() -> None:
     async def scenario() -> None:
         hook_entered = asyncio.Event()

@@ -137,6 +137,8 @@ def test_bash_golden_result_keeps_stderr_model_visible_and_preserves_artifacts(
                 stderr="err\n",
                 stdout_artifact_path=stdout_path,
                 stderr_artifact_path=stderr_path,
+                stdio_complete=False,
+                stdio_drain_reason="idle_timeout",
             )
 
     runtime_tool = wrap_tool_definition(
@@ -154,6 +156,8 @@ def test_bash_golden_result_keeps_stderr_model_visible_and_preserves_artifacts(
     assert result.details["full_output_path"] == stdout_path
     assert result.details["stdout_artifact_path"] == stdout_path
     assert result.details["stderr_artifact_path"] == stderr_path
+    assert result.details["stdio_complete"] is False
+    assert result.details["stdio_drain_reason"] == "idle_timeout"
 
 
 def test_find_fd_output_preserves_directory_suffix(tmp_path) -> None:

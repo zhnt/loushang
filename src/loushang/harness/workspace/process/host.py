@@ -8,8 +8,8 @@ from contextlib import suppress
 from dataclasses import dataclass
 
 from loushang.harness.workspace._local_process import (
-    kill_local_process,
-    terminate_local_process,
+    kill_local_process_tree,
+    terminate_local_process_tree,
 )
 
 from .local import (
@@ -246,7 +246,7 @@ class _HostedProcess(ProcessHandle):
             await self.close_stdin()
         except BaseException as exc:
             stdin_error = exc
-        terminate_local_process(self._transport)
+        await terminate_local_process_tree(self._transport)
         try:
             try:
                 result = await asyncio.wait_for(
@@ -254,7 +254,7 @@ class _HostedProcess(ProcessHandle):
                     self._termination_grace_seconds,
                 )
             except TimeoutError:
-                kill_local_process(self._transport)
+                await kill_local_process_tree(self._transport)
                 result = await asyncio.shield(self._exit)
         except BaseException as settlement_error:
             if stdin_error is not None:
@@ -429,9 +429,7 @@ class ProcessHost:
     async def _close_owned(self) -> None:
         async with self._lock:
             reservations = tuple(self._reservations.values())
-            reservation_tasks = tuple(
-                reservation.owner for reservation in reservations
-            )
+            reservation_tasks = tuple(reservation.owner for reservation in reservations)
         for task in reservation_tasks:
             if task is not asyncio.current_task():
                 task.cancel()
@@ -452,11 +450,7 @@ class ProcessHost:
             )
             close_errors = (
                 *close_errors,
-                *(
-                    result
-                    for result in results
-                    if isinstance(result, BaseException)
-                ),
+                *(result for result in results if isinstance(result, BaseException)),
             )
         async with self._lock:
             self._state = "closed"
@@ -508,12 +502,12 @@ async def _close_unpublished_transport(
                 await stream.wait_closed()
         except BaseException as exc:
             primary_error = exc
-    terminate_local_process(transport)
+    await terminate_local_process_tree(transport)
     try:
         try:
             await asyncio.wait_for(transport.wait(), grace_seconds)
         except TimeoutError:
-            kill_local_process(transport)
+            await kill_local_process_tree(transport)
             await transport.wait()
     except BaseException as exc:
         primary_error = _record_cleanup_error(

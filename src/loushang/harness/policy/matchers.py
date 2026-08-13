@@ -26,6 +26,17 @@ class ExactToolNameMatcher:
 
 
 @dataclass(frozen=True)
+class CapabilityIdMatcher:
+    capability_id: str
+
+    def matches(self, subject: PolicySubject, /) -> bool:
+        return (
+            isinstance(subject, ToolPolicySubject)
+            and subject.capability_id == self.capability_id
+        )
+
+
+@dataclass(frozen=True)
 class CommandTokenSequenceMatcher:
     tokens: tuple[str, ...]
 

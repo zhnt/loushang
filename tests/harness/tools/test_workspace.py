@@ -117,6 +117,33 @@ def test_workspace_policy_accepts_product_neutral_evaluator(tmp_path: Path) -> N
     assert exc_info.value.tool_result_details["policy_code"] == "disabled"
 
 
+def test_legacy_bash_tool_policy_maps_to_stable_command_capability() -> None:
+    from types import SimpleNamespace
+
+    from loushang.harness.policy import build_tool_policy_subject
+    from loushang.harness.tools.workspace import workspace_tool_runtime_settings
+
+    manager = SimpleNamespace(
+        get_tool_settings=lambda: SimpleNamespace(
+            blocked_tools=("bash",),
+            ask_tools=(),
+        )
+    )
+    runtime = workspace_tool_runtime_settings(manager)
+    assert runtime.policy_engine is not None
+
+    decision = runtime.policy_engine.evaluate(
+        build_tool_policy_subject(
+            tool_name="shell",
+            capability_id="workspace.command",
+            arguments={"command": "Get-Location"},
+        )
+    )
+
+    assert decision.disposition == "deny"
+    assert decision.code == "capability_blocked"
+
+
 def test_file_tools_enforce_the_live_session_execution_profile(
     tmp_path: Path,
 ) -> None:

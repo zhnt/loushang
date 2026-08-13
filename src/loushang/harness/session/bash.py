@@ -148,7 +148,11 @@ class BashCommandExecutionRuntime:
                 if inspect.isawaitable(forwarded):
                     await forwarded
 
-            params = dict(self.build_execution_params(command, effective_cwd))
+            params: dict[str, object] = (
+                {"command": command, "cwd": effective_cwd}
+                if getattr(definition, "name", None) == "shell"
+                else dict(self.build_execution_params(command, effective_cwd))
+            )
             if env is not None:
                 params["env"] = [list(pair) for pair in env]
             if timeout_seconds is not None:

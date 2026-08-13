@@ -28,6 +28,7 @@ from loushang.harness.policy.evaluators import (
     evaluate_policy,
 )
 from loushang.harness.policy.matchers import (
+    CapabilityIdMatcher,
     CommandSubstringMatcher,
     CommandTokenSequenceMatcher,
     ExactToolNameMatcher,
@@ -36,6 +37,7 @@ from loushang.harness.policy.matchers import (
     ShellPayloadSubstringMatcher,
 )
 from loushang.harness.policy.subjects import (
+    CommandDialect,
     CommandPolicySubject,
     CustomPolicySubject,
     PathPolicySubject,
@@ -46,12 +48,15 @@ from loushang.harness.policy.subjects import (
     environment_value_from_env,
     executable_search_path_from_env,
     normalize_command_subject,
+    shell_command_policy_subject,
 )
 
 __all__ = [
+    "CommandDialect",
     "CommandPolicySubject",
     "CommandSubstringMatcher",
     "CommandTokenSequenceMatcher",
+    "CapabilityIdMatcher",
     "CustomPolicySubject",
     "ExactToolNameMatcher",
     "IncompleteCommandMatcher",
@@ -76,4 +81,5 @@ __all__ = [
     "evaluate_policy",
     "executable_search_path_from_env",
     "normalize_command_subject",
+    "shell_command_policy_subject",
 ]

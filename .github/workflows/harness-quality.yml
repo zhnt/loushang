@@ -7,7 +7,8 @@ on:
   pull_request:
 
 jobs:
-  harness-quality:
+  linux-harness:
+    name: Linux harness
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,3 +24,58 @@ jobs:
 
       - name: Harness quality gate
         run: make check-harness
+
+  macos-exec:
+    name: macOS local exec contract
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Create report directory
+        run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
+
+      - name: Run local exec contract
+        env:
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/macos-local-exec.xml
+        run: uv run pytest tests/harness/workspace/test_exec.py -q
+
+      - name: Reject empty, skipped, or failing report
+        run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/macos-local-exec.xml
+
+      - name: Upload pytest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-local-exec-pytest-report
+          path: .artifacts/macos-local-exec.xml
+          if-no-files-found: warn
+
+  harness-quality:
+    name: harness-quality
+    if: always()
+    needs:
+      - linux-harness
+      - macos-exec
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require Linux and macOS contracts
+        env:
+          LINUX_RESULT: ${{ needs.linux-harness.result }}
+          MACOS_RESULT: ${{ needs.macos-exec.result }}
+        run: >-
+          python -c "import os, sys;
+          results = {'linux': os.environ['LINUX_RESULT'], 'macos': os.environ['MACOS_RESULT']};
+          print(results);
+          sys.exit(0 if all(value == 'success' for value in results.values()) else 1)"

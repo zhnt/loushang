@@ -103,6 +103,8 @@ class BashToolDetails(TypedDict, total=False):
     truncation: PiTruncationDetails | None
     full_output_path: str | None
     stream: str
+    stdio_complete: bool
+    stdio_drain_reason: str | None
 
 
 class BashOperations(Protocol):
@@ -420,6 +422,7 @@ def _bash_policy_facts(
         effective_arguments["env"] = exec_request.env
     policy_subject = build_tool_policy_subject(
         tool_name="bash",
+        capability_id="workspace.command",
         arguments=effective_arguments,
         cwd=exec_request.cwd,
         command=command_subject,
@@ -682,6 +685,8 @@ def _exec_result_to_tool_result(result: ExecResult) -> AgentToolResult[dict[str,
             "stderr_artifact_path": result.stderr_artifact_path,
             "timed_out": result.timed_out,
             "cancelled": result.cancelled,
+            "stdio_complete": result.stdio_complete,
+            "stdio_drain_reason": result.stdio_drain_reason,
             "truncated": truncated,
             "truncated_by": truncation_preview.truncated_by
             if truncated

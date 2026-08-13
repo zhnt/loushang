@@ -6,6 +6,13 @@ on:
       - main
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTEST_ADDOPTS: "-o faulthandler_timeout=60"
+
 jobs:
   deterministic-render:
     name: deterministic-render (${{ matrix.os }})
@@ -161,3 +168,33 @@ jobs:
 
       - name: Reject empty, skipped, or failing report
         run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/tmux-scrollback.xml
+
+  tui-cross-platform-contracts:
+    name: tui-cross-platform-contracts
+    if: always()
+    needs:
+      - deterministic-render
+      - terminal-platform-unit
+      - native-terminal
+      - tmux-scrollback
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every cross-platform terminal contract
+        env:
+          DETERMINISTIC_RENDER: ${{ needs.deterministic-render.result }}
+          TERMINAL_PLATFORM_UNIT: ${{ needs.terminal-platform-unit.result }}
+          NATIVE_TERMINAL: ${{ needs.native-terminal.result }}
+          TMUX_SCROLLBACK: ${{ needs.tmux-scrollback.result }}
+        run: |
+          for result in \
+            "$DETERMINISTIC_RENDER" \
+            "$TERMINAL_PLATFORM_UNIT" \
+            "$NATIVE_TERMINAL" \
+            "$TMUX_SCROLLBACK"
+          do
+            if [ "$result" != "success" ]; then
+              echo "required TUI job did not succeed: $result" >&2
+              exit 1
+            fi
+          done

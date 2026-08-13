@@ -106,6 +106,30 @@ def test_tool_registry_exposes_builtin_tool_family() -> None:
     assert registry.get_definition("bash").label == "Bash"
 
 
+def test_tool_registry_selects_powershell_tool_for_windows_target() -> None:
+    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.harness.environment import HostEnvironment
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+
+    registry = WorkspaceToolRegistry()
+    register_coding_builtin_tools(
+        registry,
+        host_environment=HostEnvironment(
+            os_family="windows",
+            platform_name="win32",
+            architecture="amd64",
+        ),
+    )
+
+    names = [definition.name for definition in registry.list_definitions()]
+    assert names == ["shell", "read", "ls", "find", "grep", "write", "edit"]
+    assert "bash" not in names
+    definition = registry.get_definition("shell")
+    assert definition.label == "PowerShell"
+    assert definition.parameters["properties"]["command"] == {"type": "string"}
+    assert "PowerShell" in definition.description
+
+
 def test_registry_resolves_harness_contributions_without_mutating_state() -> None:
     from loushang.coding.tool_pack import register_coding_builtin_tools
     from loushang.harness.tools.contribution import ToolPackDefinition
@@ -159,7 +183,16 @@ def test_workspace_factory_and_coding_pack_have_distinct_owners() -> None:
         create_tool_definition,
     )
 
-    assert ALL_TOOL_NAMES == ("read", "bash", "edit", "write", "grep", "find", "ls")
+    assert ALL_TOOL_NAMES == (
+        "read",
+        "bash",
+        "shell",
+        "edit",
+        "write",
+        "grep",
+        "find",
+        "ls",
+    )
     assert ToolName is not None
     assert create_tool_definition("read").name == "read"
     assert create_tool("read").name == "read"
@@ -186,6 +219,7 @@ def test_workspace_factory_and_coding_pack_have_distinct_owners() -> None:
     assert list(create_all_tool_definitions()) == [
         "read",
         "bash",
+        "shell",
         "edit",
         "write",
         "grep",
@@ -213,6 +247,7 @@ def test_workspace_factory_and_coding_pack_have_distinct_owners() -> None:
     assert list(create_all_tools()) == [
         "read",
         "bash",
+        "shell",
         "edit",
         "write",
         "grep",

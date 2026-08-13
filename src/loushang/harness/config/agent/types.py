@@ -96,6 +96,8 @@ class ToolSettings:
     external_tool_policy: ExternalToolPolicy = "auto"
     blocked_tools: tuple[str, ...] = ()
     ask_tools: tuple[str, ...] = ()
+    blocked_capabilities: tuple[str, ...] = ()
+    ask_capabilities: tuple[str, ...] = ()
     blocked_substrings: tuple[str, ...] = ()
     ask_substrings: tuple[str, ...] = ()
     blocked_path_substrings: tuple[str, ...] = ()

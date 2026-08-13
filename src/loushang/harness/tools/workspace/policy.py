@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import inspect
 import os
 from collections.abc import Iterable, Mapping
@@ -261,16 +263,16 @@ async def _evaluate_tool_policy(
 
 
 def _validate_execution_arguments(execution: ToolPolicySubject) -> None:
-    if execution.tool_name != "bash" or "cwd" not in execution.arguments:
+    if execution.tool_name not in {"bash", "shell"} or "cwd" not in execution.arguments:
         return
     argument_cwd = execution.arguments["cwd"]
     if argument_cwd is not None and not isinstance(argument_cwd, str):
         raise PolicyEvaluationError(
-            "Bash execution argument cwd must be a string or None"
+            "Shell execution argument cwd must be a string or None"
         )
     if argument_cwd != execution.cwd:
         raise PolicyEvaluationError(
-            "Bash execution argument cwd does not match the execution cwd"
+            "Shell execution argument cwd does not match the execution cwd"
         )
 
 
@@ -297,6 +299,11 @@ def _validate_policy_subject_matches_execution(
             mismatches.append("command")
     elif subject.command is None:
         mismatches.append("command")
+    elif subject.capability_id == "workspace.command" and isinstance(
+        execution.arguments.get("resolved_shell"), Mapping
+    ):
+        if not _resolved_shell_subject_matches_execution(subject, execution):
+            mismatches.append("command")
     else:
         stdin = execution.arguments.get("stdin")
         normalized_stdin = stdin if isinstance(stdin, str) else None
@@ -341,6 +348,57 @@ def _validate_policy_subject_matches_execution(
         raise PolicyEvaluationError(
             "Policy subject does not match execution fields: " + ", ".join(mismatches)
         )
+
+
+def _resolved_shell_subject_matches_execution(
+    subject: ToolPolicySubject,
+    execution: ToolPolicySubject,
+) -> bool:
+    command = subject.command
+    resolved = execution.arguments.get("resolved_shell")
+    script = execution.arguments.get("command")
+    if command is None or not isinstance(resolved, Mapping) or not isinstance(script, str):
+        return False
+    if command.shell_payload != script or not command.command:
+        return False
+    executable = resolved.get("executable")
+    kind = resolved.get("kind")
+    flavor = resolved.get("flavor")
+    transport = resolved.get("transport")
+    if (
+        not isinstance(executable, str)
+        or command.command[0] != executable
+        or command.shell_flavor != flavor
+    ):
+        return False
+    if kind == "powershell":
+        if command.dialect != "powershell" or transport != "encoded-command":
+            return False
+        try:
+            encoded_index = command.command.index("-EncodedCommand") + 1
+            encoded = command.command[encoded_index]
+            decoded = base64.b64decode(encoded, validate=True).decode("utf-16le")
+        except (ValueError, IndexError, UnicodeDecodeError, binascii.Error):
+            return False
+        return (
+            f"& {{\n{script}\n}} "
+            "| Microsoft.PowerShell.Core\\Out-Default\n"
+        ) in decoded
+    if kind == "cmd":
+        return (
+            command.dialect == "cmd"
+            and transport == "command"
+            and command.command[-1] == script
+        )
+    if kind in {"bash", "sh", "zsh"}:
+        return (
+            command.dialect == "posix"
+            and transport == "command"
+            and len(command.command) == 3
+            and command.command[1] in {"-c", "-lc"}
+            and command.command[2] == script
+        )
+    return False
 
 
 def _snapshot_execution_environment(

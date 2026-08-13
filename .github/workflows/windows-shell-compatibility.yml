@@ -1,0 +1,71 @@
+name: Windows Shell Compatibility
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-shell:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Create report directory
+        run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
+
+      - name: Run native Windows shell compatibility tests
+        env:
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/windows-shell-native.xml
+        run: >-
+          uv run pytest
+          tests/harness/workspace/test_local_process.py
+          tests/harness/workspace/test_exec.py
+          tests/harness/workspace/test_shell.py
+          tests/harness/tools/test_shell_tool.py
+          tests/harness/session/test_bash.py
+          tests/coding/test_tool_registry.py
+          tests/coding/test_agent_session_tools.py
+          -k "windows or stdio"
+          -q
+
+      - name: Reject empty, skipped, or failing native report
+        run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/windows-shell-native.xml
+
+      - name: Run PowerShell policy tests
+        env:
+          PYTEST_ADDOPTS: >-
+            -o faulthandler_timeout=60
+            --junitxml=.artifacts/windows-shell-policy.xml
+        run: >-
+          uv run pytest tests/harness/test_policy_engine.py
+          -k "powershell or cmd_policy"
+          -q
+
+      - name: Reject empty, skipped, or failing policy report
+        run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/windows-shell-policy.xml
+
+      - name: Upload pytest reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-shell-pytest-reports
+          path: .artifacts/windows-shell-*.xml
+          if-no-files-found: warn

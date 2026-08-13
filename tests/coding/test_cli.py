@@ -1420,12 +1420,18 @@ def test_cli_builtin_tool_registry_uses_settings_external_tool_policy(
         fake_register_coding_builtin_tools,
     )
     manager = SettingsManager(
-        ControlConfig(tools=ToolSettings(external_tool_policy="required"))
+        ControlConfig(
+            shell_path=r"C:\tools\pwsh.exe",
+            shell_command_prefix="$ErrorActionPreference = 'Stop'",
+            tools=ToolSettings(external_tool_policy="required"),
+        )
     )
 
     cli_main.build_builtin_tool_registry(settings_manager=manager)
 
     assert captured["external_tool_policy"] == "required"
+    assert captured["shell_path"] == r"C:\tools\pwsh.exe"
+    assert captured["command_prefix"] == "$ErrorActionPreference = 'Stop'"
 
 
 def test_cli_policy_settings_bind_to_an_explicit_execution_scope(

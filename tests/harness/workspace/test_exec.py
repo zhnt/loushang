@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import shlex
+import sys
 from pathlib import Path
 
 import pytest
 
 from loushang.agent import AbortController
 from loushang.harness.workspace.exec import (
+    ExecLaunchError,
     ExecOutputChunk,
     ExecRequest,
     ExecResult,
     ExecService,
+    LocalExecBackend,
     materialize_exec_request,
 )
 
@@ -30,9 +35,15 @@ def test_exec_records_normalize_sequences_and_validate_rolling_limit() -> None:
     assert request.env == (("A", "1"), ("B", "2"))
     assert result.stdout_chunks == ("out\n",)
     assert result.output_chunks == (ExecOutputChunk(stream="stdout", text="out\n"),)
+    assert result.stdio_complete is True
+    assert result.stdio_drain_reason is None
 
     with pytest.raises(ValueError, match="rolling_max_bytes must be >= 1"):
         ExecRequest(command=["true"], rolling_max_bytes=0)
+    with pytest.raises(ValueError, match="complete stdio cannot have a drain reason"):
+        ExecResult(exit_code=0, stdio_drain_reason="idle_timeout")
+    with pytest.raises(ValueError, match="incomplete stdio requires a drain reason"):
+        ExecResult(exit_code=0, stdio_complete=False)
 
 
 def test_exec_request_materialization_preserves_abi_and_freezes_process_state(
@@ -74,6 +85,33 @@ def test_exec_request_materialization_preserves_explicit_empty_cwd() -> None:
     )
 
     assert materialized.cwd == ""
+
+
+def test_exec_request_materialization_merges_windows_environment_case_insensitively(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harness.workspace.exec import types as exec_types
+
+    monkeypatch.setattr(
+        exec_types,
+        "_local_environment_is_case_insensitive",
+        lambda: True,
+    )
+
+    materialized = materialize_exec_request(
+        ExecRequest(
+            command=("tool",),
+            env=(("PATH", "override"), ("MiXeD", "caller")),
+        ),
+        environ={"Path": "inherited", "MIXED": "base", "KEEP": "value"},
+        cwd=".",
+    )
+
+    assert dict(materialized.effective_environment or ()) == {
+        "PATH": "override",
+        "MiXeD": "caller",
+        "KEEP": "value",
+    }
 
 
 def test_exec_service_delegates_to_custom_backend_and_streams_updates(
@@ -161,6 +199,48 @@ def test_exec_service_rejects_invalid_backend_result() -> None:
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize(
+    ("cwd_factory", "expected_kind"),
+    [
+        (lambda root: root / "missing", "cwd_not_found"),
+        (lambda root: root / "file", "cwd_not_directory"),
+    ],
+)
+def test_exec_service_reports_typed_cwd_launch_errors(
+    tmp_path: Path,
+    cwd_factory,
+    expected_kind: str,
+) -> None:
+    cwd = cwd_factory(tmp_path)
+    if expected_kind == "cwd_not_directory":
+        cwd.write_text("not a directory", encoding="utf-8")
+
+    async def scenario() -> None:
+        with pytest.raises(ExecLaunchError) as raised:
+            await ExecService().execute(
+                ExecRequest(command=("missing-tool",), cwd=str(cwd))
+            )
+        assert raised.value.kind == expected_kind
+        assert raised.value.cwd == str(cwd)
+
+    asyncio.run(scenario())
+
+
+def test_exec_service_reports_typed_executable_launch_error(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        with pytest.raises(ExecLaunchError) as raised:
+            await ExecService().execute(
+                ExecRequest(
+                    command=("loushang-command-that-does-not-exist",),
+                    cwd=str(tmp_path),
+                )
+            )
+        assert raised.value.kind == "executable_not_found"
+        assert raised.value.executable == "loushang-command-that-does-not-exist"
+
+    asyncio.run(scenario())
+
+
 def test_exec_service_runs_subprocess_and_preserves_per_stream_order(
     tmp_path: Path,
 ) -> None:
@@ -193,9 +273,7 @@ def test_exec_service_runs_subprocess_and_preserves_per_stream_order(
         assert result.exit_code == 0
         assert result.stdout == "out1\nout2\n"
         assert result.stderr == "err1\n"
-        observed = tuple(
-            (chunk.stream, chunk.text) for chunk in result.output_chunks
-        )
+        observed = tuple((chunk.stream, chunk.text) for chunk in result.output_chunks)
         # stdout and stderr are independent pipes. Preserve the order within each
         # stream, while treating their merged order as the host's observation order.
         assert tuple(text for stream, text in observed if stream == "stdout") == (
@@ -210,13 +288,174 @@ def test_exec_service_runs_subprocess_and_preserves_per_stream_order(
     asyncio.run(scenario())
 
 
+def test_exec_service_streams_output_larger_than_asyncio_line_limit(
+    tmp_path: Path,
+) -> None:
+    expected = "x" * (128 * 1024)
+
+    async def scenario() -> None:
+        result = await asyncio.wait_for(
+            ExecService().execute(
+                ExecRequest(
+                    command=[
+                        sys.executable,
+                        "-c",
+                        "import sys; sys.stdout.write('x' * (128 * 1024))",
+                    ],
+                    cwd=str(tmp_path),
+                )
+            ),
+            timeout=2,
+        )
+
+        assert result.exit_code == 0
+        assert result.stdout == expected
+        assert result.stdout_total_bytes == len(expected)
+        assert result.stdout_total_lines == 1
+
+    asyncio.run(scenario())
+
+
+def test_exec_service_incrementally_decodes_split_utf8_sequence(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        result = await ExecService().execute(
+            ExecRequest(
+                command=[
+                    sys.executable,
+                    "-c",
+                    (
+                        "import os, time; "
+                        "data='😀'.encode(); "
+                        "os.write(1, data[:2]); time.sleep(0.05); "
+                        "os.write(1, data[2:])"
+                    ),
+                ],
+                cwd=str(tmp_path),
+            )
+        )
+
+        assert result.stdout == "😀"
+        assert result.stdout_total_bytes == 4
+        assert result.stdout_total_lines == 1
+
+    asyncio.run(scenario())
+
+
+def test_exec_service_waits_for_delayed_stdio_after_root_exit(tmp_path: Path) -> None:
+    child_script = (
+        "import sys, time; "
+        "sys.stdout.write('\\n'); sys.stdout.flush(); "
+        "time.sleep(0.2); "
+        "sys.stdout.write('formatted\\n'); sys.stdout.flush()"
+    )
+    root_script = (
+        "import subprocess, sys; "
+        f"subprocess.Popen([sys.executable, '-c', {child_script!r}])"
+    )
+
+    async def scenario() -> None:
+        result = await asyncio.wait_for(
+            ExecService().execute(
+                ExecRequest(
+                    command=(sys.executable, "-c", root_script),
+                    cwd=str(tmp_path),
+                )
+            ),
+            timeout=2,
+        )
+
+        assert result.stdout.splitlines() == ["", "formatted"]
+        assert result.stdio_complete is True
+        assert result.stdio_drain_reason is None
+
+    asyncio.run(scenario())
+
+
+def test_exec_service_hard_limits_active_descendant_stdio(tmp_path: Path) -> None:
+    child_script = (
+        "import sys, time; "
+        "[(sys.stdout.write('x'), sys.stdout.flush(), time.sleep(0.02)) "
+        "for _ in range(100)]"
+    )
+    root_script = (
+        "import subprocess, sys; sys.stdout.write('r'); sys.stdout.flush(); "
+        f"subprocess.Popen([sys.executable, '-c', {child_script!r}])"
+    )
+    service = ExecService(
+        backend=LocalExecBackend(
+            post_exit_stdio_grace_seconds=0.25,
+            post_exit_stdio_hard_timeout_seconds=0.25,
+        )
+    )
+
+    async def scenario() -> None:
+        started_at = asyncio.get_running_loop().time()
+        result = await asyncio.wait_for(
+            service.execute(
+                ExecRequest(
+                    command=(sys.executable, "-c", root_script),
+                    cwd=str(tmp_path),
+                )
+            ),
+            timeout=2,
+        )
+
+        assert asyncio.get_running_loop().time() - started_at < 1
+        assert 0 < len(result.stdout) < 101
+        assert result.stdio_complete is False
+        assert result.stdio_drain_reason == "hard_timeout"
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX process-group regression")
+def test_exec_service_returns_when_descendant_holds_pipe_after_parent_exit(
+    tmp_path: Path,
+) -> None:
+    marker = tmp_path / "late-descendant-output"
+
+    async def scenario() -> None:
+        started_at = asyncio.get_running_loop().time()
+        result = await asyncio.wait_for(
+            ExecService(
+                backend=LocalExecBackend(
+                    post_exit_stdio_grace_seconds=0.1,
+                    post_exit_stdio_hard_timeout_seconds=0.5,
+                )
+            ).execute(
+                ExecRequest(
+                    command=[
+                        "/bin/sh",
+                        "-c",
+                        (
+                            "printf done; "
+                            f"(sleep 0.8; printf late > {shlex.quote(str(marker))}) &"
+                        ),
+                    ],
+                    cwd=str(tmp_path),
+                )
+            ),
+            timeout=2,
+        )
+
+        assert result.exit_code == 0
+        assert result.stdout == "done"
+        assert result.stdio_complete is False
+        assert result.stdio_drain_reason == "idle_timeout"
+        assert asyncio.get_running_loop().time() - started_at < 0.5
+        await asyncio.sleep(0.9)
+        assert marker.read_text(encoding="utf-8") == "late"
+
+    asyncio.run(scenario())
+
+
 def test_exec_service_accepts_a_process_that_exits_without_reading_stdin(
     tmp_path: Path,
 ) -> None:
     async def scenario() -> None:
         result = await ExecService().execute(
             ExecRequest(
-                command=["/bin/true"],
+                command=[sys.executable, "-c", "raise SystemExit(0)"],
                 cwd=str(tmp_path),
                 stdin="ignored\n" * 131_072,
             )
@@ -356,5 +595,36 @@ def test_exec_service_marks_timeout_and_cancellation(tmp_path: Path) -> None:
         assert cancelled.cancelled is True
         assert cancelled.timed_out is False
         assert cancelled.stdout == "cancelled"
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX process-group regression")
+def test_exec_service_task_cancellation_kills_process_tree(tmp_path: Path) -> None:
+    marker = tmp_path / "cancelled-descendant"
+
+    async def scenario() -> None:
+        task = asyncio.create_task(
+            ExecService().execute(
+                ExecRequest(
+                    command=(
+                        "/bin/sh",
+                        "-c",
+                        (
+                            "printf started; "
+                            f"(sleep 0.5; printf late > {shlex.quote(str(marker))}) & "
+                            "sleep 2"
+                        ),
+                    ),
+                    cwd=str(tmp_path),
+                )
+            )
+        )
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=1)
+        await asyncio.sleep(0.6)
+        assert not marker.exists()
 
     asyncio.run(scenario())

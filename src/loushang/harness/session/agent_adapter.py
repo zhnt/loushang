@@ -206,11 +206,13 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
 
     def _get_bash_definition(self):
         if self._tool_registry is None:
-            raise RuntimeError("Bash execution requires a tool registry")
-        try:
-            return self._tool_registry.get_definition("bash")
-        except KeyError as exc:
-            raise RuntimeError("Bash tool is not registered") from exc
+            raise RuntimeError("Shell execution requires a tool registry")
+        for name in ("shell", "bash"):
+            try:
+                return self._tool_registry.get_definition(name)
+            except KeyError:
+                continue
+        raise RuntimeError("Shell command tool is not registered")
 
     def _create_bash_call_id(self) -> str:
         return (

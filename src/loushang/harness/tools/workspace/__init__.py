@@ -64,6 +64,7 @@ from .factory import (
     create_read_only_tool_definitions,
     create_read_only_tools,
     create_read_tool,
+    create_shell_tool,
     create_tool,
     create_tool_definition,
     create_write_tool,
@@ -126,6 +127,14 @@ from .runtime import (
     raise_if_tool_aborted,
     resolve_maybe_awaitable,
 )
+from .shell import (
+    WORKSPACE_COMMAND_CAPABILITY,
+    ShellResolver,
+    ShellResolverFactory,
+    ShellToolInput,
+    ShellToolOptions,
+    create_shell_tool_definition,
+)
 from .types import ToolDefinition, ToolTruncationDetails
 from .wrapper import (
     create_workspace_tool_execution_host,
@@ -185,6 +194,10 @@ __all__ = [
     "ReadToolDetails",
     "ReadToolInput",
     "ReadToolOptions",
+    "ShellResolver",
+    "ShellResolverFactory",
+    "ShellToolInput",
+    "ShellToolOptions",
     "ToolContext",
     "ToolContextProvider",
     "ToolDefinition",
@@ -201,6 +214,7 @@ __all__ = [
     "WorkspaceToolRegistry",
     "WorkspaceToolProfile",
     "WorkspaceToolRuntimeSettings",
+    "WORKSPACE_COMMAND_CAPABILITY",
     "WriteOperations",
     "EditOperations",
     "FindOperations",
@@ -228,6 +242,8 @@ __all__ = [
     "create_read_only_tool_definitions",
     "create_read_only_tools",
     "create_read_tool",
+    "create_shell_tool",
+    "create_shell_tool_definition",
     "create_profiled_workspace_tool_definition",
     "create_profiled_workspace_tool_definitions",
     "create_profiled_workspace_tools",

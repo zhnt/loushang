@@ -103,7 +103,9 @@ def test_full_access_cannot_override_a_managed_policy_deny(tmp_path: Path) -> No
     )
 
     assert result.outcome == "denied"
-    assert result.policy_code == "tool_blocked"
+    # The legacy ``bash`` setting migrates to the stable command capability so
+    # the same managed deny also covers the Windows ``shell`` tool.
+    assert result.policy_code == "capability_blocked"
     assert result.approval_count == 0
     assert result.event_types == (
         "tool_action_frozen",
