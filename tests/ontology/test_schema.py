@@ -76,7 +76,7 @@ def test_compiler_emits_deterministic_strict_json_and_round_trips() -> None:
     assert compiled.object_type_by_id("project").property_by_id(  # type: ignore[union-attr]
         "project.name"
     ).state_authority is StateAuthority.SOURCE_BACKED  # type: ignore[union-attr]
-    assert compiled.format == "loushang.ontology.schema/v3"
+    assert compiled.format == "loushang.ontology.schema/v4"
 
 
 def test_compiled_schema_does_not_share_mutable_default_values() -> None:
@@ -215,12 +215,12 @@ def test_compiler_requires_unique_package_local_semantic_ids() -> None:
     ]
 
 
-def test_schema_v2_documents_are_not_loaded_as_v3() -> None:
+def test_schema_v3_documents_are_not_loaded_as_v4() -> None:
     compiler = OntologyCompiler()
     payload = json.loads(compiler.compile(_project_draft()).to_json())
-    payload["format"] = "loushang.ontology.schema/v2"
+    payload["format"] = "loushang.ontology.schema/v3"
 
-    with pytest.raises(SchemaCompilationError, match="schema/v3"):
+    with pytest.raises(SchemaCompilationError, match="schema/v4"):
         compiler.load_json(json.dumps(payload))
 
 

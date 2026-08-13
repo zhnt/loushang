@@ -28,7 +28,11 @@ def project_standard_session_command_result(
             session = result.value
             if isinstance(session, Mapping):
                 session = dict(session)
-            return _ok_command_result(command, session=session)
+            return _ok_command_result(
+                command,
+                session=session,
+                message=_session_message(session),
+            )
         case StandardSessionCommandId.RENAME:
             name = result.value
             return _ok_command_result(
@@ -197,6 +201,76 @@ def _standard_argument_error(result: StandardSessionCommandResult) -> str:
             return "Usage: /tree <entry-id> [--summarize] [--label <label>]"
         case _:
             return f"Invalid arguments for /{result.command_id.value}"
+
+
+def _session_message(session: object) -> str:
+    if not isinstance(session, Mapping):
+        return "Session information available."
+
+    fields = (
+        ("Session", session.get("session_id")),
+        ("Name", session.get("session_name")),
+        ("CWD", session.get("cwd")),
+    )
+    parts = [
+        f"{label}: {value}"
+        for label, value in fields
+        if isinstance(value, str) and value
+    ]
+    compaction = session.get("compaction")
+    compact_status = _compact_status_message(compaction)
+    if compact_status is not None:
+        parts.append(compact_status)
+    context = session.get("context")
+    context_status = _context_status_message(context)
+    if context_status is not None:
+        parts.append(context_status)
+    return " | ".join(parts) or "Session information available."
+
+
+def _compact_status_message(value: object) -> str | None:
+    if not isinstance(value, Mapping):
+        return None
+    if value.get("is_compacting") is True:
+        return "Compact: running"
+    reason = value.get("last_reason")
+    stage = value.get("last_stage")
+    if not isinstance(reason, str) or not reason:
+        return None
+    label = reason
+    if isinstance(stage, str) and stage:
+        label += f"/{stage}"
+    mode = value.get("last_summary_mode")
+    if isinstance(mode, str) and mode:
+        label += f", {mode}"
+    before = value.get("last_tokens_before")
+    after = value.get("last_tokens_after")
+    if isinstance(before, int) and not isinstance(before, bool):
+        label += f", {before}"
+        if isinstance(after, int) and not isinstance(after, bool):
+            label += f"→{after} tokens"
+        else:
+            label += " tokens before"
+    return f"Compact: {label}"
+
+
+def _context_status_message(value: object) -> str | None:
+    if not isinstance(value, Mapping):
+        return None
+    tokens = value.get("tokens")
+    window = value.get("context_window")
+    reserve = value.get("reserve_tokens")
+    parts: list[str] = []
+    if isinstance(tokens, int) and not isinstance(tokens, bool):
+        if isinstance(window, int) and not isinstance(window, bool):
+            parts.append(f"{tokens}/{window} tokens")
+        else:
+            parts.append(f"{tokens} tokens")
+    elif isinstance(window, int) and not isinstance(window, bool):
+        parts.append(f"window {window}")
+    if isinstance(reserve, int) and not isinstance(reserve, bool):
+        parts.append(f"reserve {reserve}")
+    return f"Context: {', '.join(parts)}" if parts else None
 
 
 def _ok_command_result(command: str, **fields: object) -> dict[str, object]:

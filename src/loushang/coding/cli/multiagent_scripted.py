@@ -19,6 +19,7 @@ from loushang.harness.model_catalog import ModelCatalog
 
 SCRIPTED_MODEL = ModelSelection(
     provider="scripted",
+    endpoint_id="anthropic-messages",
     model_id="multiagent-check",
 )
 
@@ -81,6 +82,7 @@ async def scripted_multiagent_stream(
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
         provider=SCRIPTED_MODEL.provider,
+        endpoint=SCRIPTED_MODEL.endpoint_id,
         model=SCRIPTED_MODEL.model_id,
         response_id=None,
         usage=Usage(

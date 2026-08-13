@@ -112,9 +112,7 @@ class RecordingTarget:
         )
 
 
-def test_projection_binding_forwards_product_events_and_exposes_shared_state() -> (
-    None
-):
+def test_projection_binding_forwards_product_events_and_exposes_shared_state() -> None:
     target = RecordingTarget()
     projector = ConversationProjector(target)
     seen: list[object] = []

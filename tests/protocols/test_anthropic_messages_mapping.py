@@ -485,6 +485,7 @@ def test_anthropic_payload_maps_images_tools_and_groups_tool_results() -> None:
                         ],
                         api="anthropic-messages",
                         provider="anthropic",
+                        endpoint="test-endpoint",
                         model="claude",
                         response_id=None,
                         usage=Usage(
@@ -821,6 +822,10 @@ def test_anthropic_provider_payload_snapshot_for_mixed_assistant_and_tool_result
                         ),
                         {
                             "role": "assistant",
+                            "api": "anthropic-messages",
+                            "provider": "anthropic",
+                            "endpoint": "anthropic-messages",
+                            "model": "claude-sonnet-4-5",
                             "content": [
                                 TextPart(type="text", text="working on it"),
                                 ThinkingPart(
@@ -1327,6 +1332,7 @@ def test_anthropic_payload_groups_consecutive_tool_results_from_same_turn() -> N
                         ],
                         api="anthropic-messages",
                         provider="anthropic",
+                        endpoint="test-endpoint",
                         model="claude-test",
                         response_id=None,
                         usage=Usage(

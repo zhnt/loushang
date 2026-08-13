@@ -27,18 +27,21 @@ def execute_query(store: ProjectionReadStore, request: QueryRequest) -> QueryRes
     """Evaluate a request against one captured immutable projection."""
 
     snapshot = store.read_snapshot()
-    current_version = str(snapshot.schema.version)
-    if request.schema_version is not None and request.schema_version != current_version:
+    current_identity = snapshot.state.schema_identity
+    if (
+        request.schema_identity is not None
+        and request.schema_identity != current_identity
+    ):
         return QueryResult(
             object_ids=(),
-            schema_version=current_version,
+            schema_identity=current_identity,
             projection=snapshot.projection_state,
             diagnostics=(
                 QueryDiagnostic(
-                    code="schema_version_mismatch",
+                    code="schema_identity_mismatch",
                     message=(
-                        f"Query requires schema {request.schema_version}; "
-                        f"store provides {current_version}"
+                        f"Query requires schema {request.schema_identity}; "
+                        f"store provides {current_identity}"
                     ),
                 ),
             ),
@@ -77,7 +80,7 @@ def execute_query(store: ProjectionReadStore, request: QueryRequest) -> QueryRes
 
     return QueryResult(
         object_ids=tuple(obj.id for obj in result),
-        schema_version=current_version,
+        schema_identity=current_identity,
         projection=snapshot.projection_state,
     )
 

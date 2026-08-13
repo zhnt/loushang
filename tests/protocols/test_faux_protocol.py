@@ -4,7 +4,7 @@ import asyncio
 
 from loushang.ai.context import normalize_context
 from loushang.ai.model import Auth, Model
-from loushang.ai.protocols.faux import FauxProvider
+from loushang.ai.protocols.faux import FauxAdapter
 from loushang.ai.types import UserMessage
 from tests.protocols._runtime import start_test_provider_stream
 
@@ -26,8 +26,8 @@ async def _stream(provider, model, context, options=None, request=None):
     )
 
 
-def test_faux_provider_stream_resolves_request_when_omitted() -> None:
-    provider = FauxProvider()
+def test_faux_adapter_stream_resolves_request_when_omitted() -> None:
+    adapter = FauxAdapter()
     model = Model(
         id="faux-model",
         provider="faux",
@@ -39,7 +39,7 @@ def test_faux_provider_stream_resolves_request_when_omitted() -> None:
 
     stream = asyncio.run(
         _stream(
-            provider,
+            adapter,
             model,
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             None,

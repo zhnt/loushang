@@ -9,6 +9,7 @@ from typing import cast
 
 from loushang.foundation.json import JSONValue, dump_json_value
 from loushang.ontology.schema.compiler import (
+    CompiledActionDefinition,
     CompiledInterfaceTypeDefinition,
     CompiledLinkTypeDefinition,
     CompiledObjectTypeDefinition,
@@ -17,7 +18,7 @@ from loushang.ontology.schema.compiler import (
 )
 from loushang.ontology.schema.definitions import SchemaVersion
 
-SCHEMA_DIFF_FORMAT = "loushang.ontology.schema-diff/v3"
+SCHEMA_DIFF_FORMAT = "loushang.ontology.schema-diff/v4"
 
 
 class ChangeImpact(str, Enum):
@@ -152,6 +153,7 @@ def compare_schemas(
     _compare_interface_types(old, new, changes)
     _compare_object_types(old, new, changes)
     _compare_link_types(old, new, changes)
+    _compare_actions(old, new, changes)
     ordered = tuple(sorted(changes, key=lambda change: (change.path, change.code)))
     return SchemaDiff(
         package_id=old.package_id,
@@ -481,6 +483,71 @@ def _compare_link_types(
         )
 
 
+def _compare_actions(
+    old: CompiledOntologySchema,
+    new: CompiledOntologySchema,
+    changes: list[SchemaChange],
+) -> None:
+    old_actions = {action.semantic_id: action for action in old.actions}
+    new_actions = {action.semantic_id: action for action in new.actions}
+    for semantic_id in sorted(old_actions.keys() - new_actions.keys()):
+        action = old_actions[semantic_id]
+        _add_change(
+            changes,
+            code="action_removed",
+            path=_action_path(semantic_id),
+            impact=ChangeImpact.BREAKING,
+            message=f"action '{action.name}' was removed",
+            before=_action_snapshot(action),
+            after=None,
+        )
+    for semantic_id in sorted(new_actions.keys() - old_actions.keys()):
+        action = new_actions[semantic_id]
+        _add_change(
+            changes,
+            code="action_added",
+            path=_action_path(semantic_id),
+            impact=ChangeImpact.NON_BREAKING,
+            message=f"action '{action.name}' was added",
+            before=None,
+            after=_action_snapshot(action),
+        )
+    for semantic_id in sorted(old_actions.keys() & new_actions.keys()):
+        old_action = old_actions[semantic_id]
+        new_action = new_actions[semantic_id]
+        path = _action_path(semantic_id)
+        if old_action.name != new_action.name:
+            _field_change(
+                changes,
+                code="action_name_changed",
+                path=f"{path}.name",
+                impact=ChangeImpact.BREAKING,
+                message=f"action '{old_action.name}' was renamed to '{new_action.name}'",
+                before=old_action.name,
+                after=new_action.name,
+            )
+        old_contract = _action_contract_snapshot(old_action)
+        new_contract = _action_contract_snapshot(new_action)
+        if _canonical_json(old_contract) != _canonical_json(new_contract):
+            _add_change(
+                changes,
+                code="action_contract_changed",
+                path=f"{path}.contract",
+                impact=ChangeImpact.BREAKING,
+                message=f"action '{old_action.name}' contract changed",
+                before=old_contract,
+                after=new_contract,
+            )
+        _behavioral_field(
+            changes,
+            code="action_description_changed",
+            path=f"{path}.description",
+            message=f"action '{old_action.name}' description changed",
+            before=old_action.description,
+            after=new_action.description,
+        )
+
+
 def _compare_interface_types(
     old: CompiledOntologySchema,
     new: CompiledOntologySchema,
@@ -737,6 +804,37 @@ def _link_snapshot(link: CompiledLinkTypeDefinition) -> dict[str, JSONValue]:
     }
 
 
+def _action_snapshot(action: CompiledActionDefinition) -> dict[str, JSONValue]:
+    return {
+        "semantic_id": action.semantic_id,
+        "name": action.name,
+        **_action_contract_snapshot(action),
+        "description": action.description,
+    }
+
+
+def _action_contract_snapshot(
+    action: CompiledActionDefinition,
+) -> dict[str, JSONValue]:
+    return {
+        "target_object_type_id": action.target_object_type_id,
+        "parameters": [
+            {
+                "name": parameter.name,
+                "value_type": parameter.value_type.value,
+                "description": parameter.description,
+            }
+            for parameter in action.parameters
+        ],
+        "effect": {
+            "kind": "set_property",
+            "property_id": action.effect.property_id,
+            "value_parameter": action.effect.value_parameter,
+        },
+        "policy_requirement_ref": action.policy_requirement_ref,
+    }
+
+
 def _interface_snapshot(
     interface: CompiledInterfaceTypeDefinition,
 ) -> dict[str, JSONValue]:
@@ -787,6 +885,10 @@ def _property_path(object_semantic_id: str, property_semantic_id: str) -> str:
 
 def _link_path(semantic_id: str) -> str:
     return f"$.link_types[{stdlib_json.dumps(semantic_id, ensure_ascii=True)}]"
+
+
+def _action_path(semantic_id: str) -> str:
+    return f"$.actions[{stdlib_json.dumps(semantic_id, ensure_ascii=True)}]"
 
 
 __all__ = [

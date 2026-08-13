@@ -39,19 +39,29 @@ def test_apply_session_model_selection_uses_product_persistence_callback() -> No
     result = asyncio.run(
         apply_session_model_selection(
             session,
-            {"provider": "example", "model_id": "model"},
+            {
+                "provider": "example",
+                "endpoint_id": "responses",
+                "model_id": "model",
+            },
             persist=persisted.append,
         )
     )
 
     assert result.persisted is True
-    assert session.applied == [ModelSelection(provider="example", model_id="model")]
-    assert persisted == [ModelSelection(provider="example", model_id="model")]
+    assert session.applied == [
+        ModelSelection(endpoint_id="responses", provider="example", model_id="model")
+    ]
+    assert persisted == [
+        ModelSelection(endpoint_id="responses", provider="example", model_id="model")
+    ]
 
 
 def test_ensure_usable_session_model_uses_product_candidate_policy() -> None:
     session = _Session()
-    candidate = ModelSelection(provider="example", model_id="first")
+    candidate = ModelSelection(
+        endpoint_id="test-endpoint", provider="example", model_id="first"
+    )
 
     result = asyncio.run(
         ensure_usable_session_model(session, candidates=lambda _: [candidate])
@@ -65,14 +75,17 @@ def test_model_listing_normalizes_dedupes_and_formats_shared_values() -> None:
     raw = [
         SimpleNamespace(
             provider="openai",
+            endpoint_id="responses",
             model_id="gpt-5",
             context_window=1_000_000,
             max_tokens=4096,
             reasoning=True,
             supports_image_input=True,
         ),
-        SimpleNamespace(provider="openai", model_id="gpt-5"),
-        SimpleNamespace(provider="anthropic", model_id="claude-3"),
+        SimpleNamespace(provider="openai", endpoint_id="responses", model_id="gpt-5"),
+        SimpleNamespace(
+            provider="anthropic", endpoint_id="messages", model_id="claude-3"
+        ),
     ]
 
     entries = normalize_model_listing(
@@ -80,13 +93,11 @@ def test_model_listing_normalizes_dedupes_and_formats_shared_values() -> None:
     )
 
     assert [entry["id"] for entry in entries] == [
-        "anthropic/claude-3",
-        "openai/gpt-5",
+        "anthropic:messages:claude-3",
+        "openai:responses:gpt-5",
     ]
     assert model_listing_matches_query(entries[1], "og5")
-    assert format_model_metadata_table(entries).splitlines()[0].startswith(
-        "provider"
-    )
+    assert format_model_metadata_table(entries).splitlines()[0].startswith("provider")
 
 
 def test_model_listing_accepts_mapping_details() -> None:
@@ -94,6 +105,7 @@ def test_model_listing_accepts_mapping_details() -> None:
         [
             {
                 "provider": "openai",
+                "endpoint_id": "responses",
                 "model_id": "gpt-5",
                 "context_window": 128_000,
                 "supports_thinking": True,
@@ -105,8 +117,9 @@ def test_model_listing_accepts_mapping_details() -> None:
     assert entries == [
         {
             "provider": "openai",
+            "endpoint_id": "responses",
             "model_id": "gpt-5",
-            "id": "openai/gpt-5",
+            "id": "openai:responses:gpt-5",
             "context_window": 128_000,
             "max_tokens": None,
             "supports_thinking": True,
@@ -136,9 +149,12 @@ def test_model_choice_data_projects_ai_details_without_tui_dependency() -> None:
 
     assert choices[0].value == "openai:responses:gpt-5"
     assert choices[0].preferred_endpoint is True
-    assert model_identity_data(
-        ModelSelection(provider="openai", endpoint_id="responses", model_id="gpt-5")
-    ).value == "openai:responses:gpt-5"
+    assert (
+        model_identity_data(
+            ModelSelection(provider="openai", endpoint_id="responses", model_id="gpt-5")
+        ).value
+        == "openai:responses:gpt-5"
+    )
 
 
 def test_model_selection_module_exports_all_public_selection_helpers() -> None:

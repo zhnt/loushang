@@ -23,7 +23,7 @@ Protocol mappings live under `loushang.ai.protocols`:
 - `OpenAIChatCompletionsAdapter`
 - `OpenAIResponsesAdapter`
 - `AnthropicMessagesAdapter`
-- `FauxProvider`
+- `FauxAdapter`
 
 Adapters translate the stable request into protocol payloads and normalize protocol output into public parts, events, stop reasons, errors, and usage. They do not select endpoints, read credential stores, implement login, refresh tokens, manage sessions, or encode product entitlement logic.
 

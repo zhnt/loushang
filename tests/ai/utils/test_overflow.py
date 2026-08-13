@@ -16,6 +16,7 @@ def _assistant(
         content=content or [],
         api="test",
         provider="test",
+        endpoint="test-endpoint",
         model="test-model",
         response_id=None,
         usage=usage

@@ -57,6 +57,7 @@ def _user_message(text: str) -> UserMessage:
 
 def _assistant_message(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -351,7 +352,11 @@ async def test_runtime_lists_session_summaries(tmp_path) -> None:
     assert summaries[0].session_id == session.session_id
     assert summaries[0].name == "Runtime Summary"
     assert summaries[0].last_message_preview == "summarize runtime sessions"
-    assert summaries[0].model == {"provider": "faux", "model_id": "faux-model"}
+    assert summaries[0].model == {
+        "provider": "faux",
+        "endpoint_id": "anthropic-messages",
+        "model_id": "faux-model",
+    }
 
 
 @_async_test

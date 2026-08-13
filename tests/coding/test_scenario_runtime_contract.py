@@ -18,6 +18,7 @@ from loushang.harness.scenario import (
 
 def _assistant_message(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="test-api",

@@ -22,7 +22,7 @@ from loushang.ai.provider import (
     resolve_request_for_model,
 )
 from loushang.ai.provider.invocation import (
-    call_api_provider_stream,
+    call_api_adapter_stream,
     validate_provider_request,
 )
 from loushang.ai.provider_registry import get_default_provider_registry
@@ -311,7 +311,7 @@ async def _start_stream(
                 "api": resolved_model.api,
             },
         )
-    return await call_api_provider_stream(adapter, resolved)
+    return await call_api_adapter_stream(adapter, resolved)
 
 
 async def stream(
@@ -372,5 +372,7 @@ def _with_explicit_auth(
     if options is None:
         return CallOptions(auth=auth)
     if options.auth is not None:
-        raise ValueError("Pass request auth through either auth= or CallOptions.auth, not both")
+        raise ValueError(
+            "Pass request auth through either auth= or CallOptions.auth, not both"
+        )
     return replace(options, auth=auth)

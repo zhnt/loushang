@@ -15,8 +15,8 @@ Model
 -> resolve_request_for_model
 -> ProviderRequest
 -> ProviderRegistry(provider, api)
--> APIRegistry(api)
--> protocol adapter
+   -> vendor-specific APIAdapter（精确命中）
+   -> APIRegistry(api) 通用 APIAdapter（未命中时回退）
 -> raw parts
 -> runtime / assembler
 -> AssistantMessageEventStream
@@ -62,6 +62,12 @@ loader 只读取 JSON、严格校验并构造原始 `Provider / Endpoint / Model
 `ModelRegistry` 是唯一 model binding owner：它将 endpoint facts 一次性绑定到 model，
 建立只读索引并提供查询。运行时不再次合并 catalog。
 
+`ModelSelection(provider, endpoint_id, model_id)` 是 Endpoint 完整的轻量引用，三个字段
+全部必填。`ModelRegistry.resolve_model_selection()` 将它解析为上述完整 `Model`。
+`provider:model`（也接受 `provider/model`）只属于最外层输入简写：仅当
+`provider + model_id` 恰好命中一个
+Endpoint 时才补全；零候选报不存在，多候选报歧义，不使用 `preferred` 或候选顺序。
+
 每个 endpoint 必须声明可解析的 `baseUrl` 或 `baseUrlEnv`。缺失、空值或未展开模板
 在 SDK client 构造前失败，不允许 SDK 隐式回退到厂商默认 URL。
 
@@ -102,20 +108,24 @@ from loushang.ai import (
 from loushang.ai.advanced.registry import (
     APIRegistry,
     ProviderRegistry,
-    clear_api_providers,
-    register_api_provider,
+    clear_api_adapters,
+    register_api_adapter,
     register_provider_adapter,
 )
 
-clear_api_providers()
-register_api_provider(custom_adapter)
+clear_api_adapters()
+register_api_adapter(custom_adapter)
 ```
 
 注册时一次性验证 `api`、`invoke_raw(request)` 和可选
 `validate_request(request)` 契约。重复注册同一个 API 会失败。
-`ApiProviderRegistry` 是 `APIRegistry` 的兼容别名，两者不维护平行状态。
+`APIAdapter` 是唯一正式 adapter 术语，不提供旧名称兼容层。
 只有通用协议无法表达的厂商差异才使用 `ProviderRegistry`；查找键固定为
 `(provider_id, api)`，不检查模型名。
+
+流式与非流式结果共用事件装配路径。每个 `AssistantMessage` 都包含 `api`、
+`provider`、`endpoint`、`model`，因此可以还原完整的
+`provider:endpoint:model` 响应来源。
 
 ## CallOptions
 

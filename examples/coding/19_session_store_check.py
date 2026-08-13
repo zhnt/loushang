@@ -66,6 +66,7 @@ def _assistant_text_message(text: str) -> AssistantMessage:
         content=[TextPart(type="text", text=text)],
         api="offline",
         provider="offline",
+        endpoint="offline",
         model="offline-session-check-model",
         response_id=None,
         usage=_offline_usage(),
@@ -75,14 +76,32 @@ def _assistant_text_message(text: str) -> AssistantMessage:
     )
 
 
-def _stream_with_final_message(message: AssistantMessage) -> AssistantMessageEventStream:
+def _stream_with_final_message(
+    message: AssistantMessage,
+) -> AssistantMessageEventStream:
     stream = AssistantMessageEventStream()
+
     async def _feed() -> None:
         stream.push({"type": "start", "partial": message})
         stream.push({"type": "text_start", "content_index": 0, "partial": message})
-        stream.push({"type": "text_delta", "content_index": 0, "delta": message.content[0].text, "partial": message})
-        stream.push({"type": "text_end", "content_index": 0, "content": message.content[0].text, "partial": message})
+        stream.push(
+            {
+                "type": "text_delta",
+                "content_index": 0,
+                "delta": message.content[0].text,
+                "partial": message,
+            }
+        )
+        stream.push(
+            {
+                "type": "text_end",
+                "content_index": 0,
+                "content": message.content[0].text,
+                "partial": message,
+            }
+        )
         stream.push({"type": "done", "reason": message.stop_reason, "message": message})  # type: ignore[typeddict-item]
+
     asyncio.create_task(_feed())
     return stream
 
@@ -92,11 +111,15 @@ async def _offline_stream_fn(model, context, options=None):
     last_message = context.messages[-1] if context.messages else None
     if isinstance(last_message, UserMessage):
         user_text = " ".join(
-            part.text for part in last_message.content if getattr(part, "type", None) == "text"
+            part.text
+            for part in last_message.content
+            if getattr(part, "type", None) == "text"
         )
     else:
         user_text = "unknown"
-    return _stream_with_final_message(_assistant_text_message(f"Offline assistant reply to: {user_text}"))
+    return _stream_with_final_message(
+        _assistant_text_message(f"Offline assistant reply to: {user_text}")
+    )
 
 
 def main() -> None:
@@ -110,13 +133,16 @@ def main() -> None:
         print(f"resolved catalog: {catalog_path}")
 
     model = _offline_model()
-    print_event("model.start", {
-        "provider": model.provider_id,
-        "endpoint": model.endpoint_id,
-        "api": "offline",
-        "base_url": "n/a",
-        "model": model.id,
-    })
+    print_event(
+        "model.start",
+        {
+            "provider": model.provider_id,
+            "endpoint": model.endpoint_id,
+            "api": "offline",
+            "base_url": "n/a",
+            "model": model.id,
+        },
+    )
 
     with TemporaryDirectory(prefix="loushang-examples-session-check-") as workspace:
         session_dir = Path(workspace) / ".loushang" / "sessions"
@@ -137,16 +163,37 @@ def main() -> None:
         session_file = session.session_manager.get_session_file()
         if session_file is None:
             raise RuntimeError("persisted session file is missing")
-        print(f"session_created: id={session.session_manager.get_header().conversation_id}")
+        print(
+            f"session_created: id={session.session_manager.get_header().conversation_id}"
+        )
         print(f"session_file: {session_file}")
-        print_event("tool.end", {"name": "session_create", "status": "ok", "session_file": str(session_file)})
-
-        print_event("message.start", {"step": "round-1", "session_id": session.session_manager.get_header().conversation_id})
-        asyncio.run(
-            _prompt(session, "请确认会话已创建，并写入一条用户状态记录。", timeout_seconds=6.0)
+        print_event(
+            "tool.end",
+            {
+                "name": "session_create",
+                "status": "ok",
+                "session_file": str(session_file),
+            },
         )
 
-        print_event("message.end", {"step": "round-1", "count_after": _message_count(session)})
+        print_event(
+            "message.start",
+            {
+                "step": "round-1",
+                "session_id": session.session_manager.get_header().conversation_id,
+            },
+        )
+        asyncio.run(
+            _prompt(
+                session,
+                "请确认会话已创建，并写入一条用户状态记录。",
+                timeout_seconds=6.0,
+            )
+        )
+
+        print_event(
+            "message.end", {"step": "round-1", "count_after": _message_count(session)}
+        )
 
         before_count = _message_count(session)
         print(f"messages_before_restore={before_count}")
@@ -154,7 +201,9 @@ def main() -> None:
 
         restored = asyncio.run(runtime.restore_session(session_file))
         print_event("message.start", {"step": "restore"})
-        print(f"restored_session_id={restored.session_manager.get_header().conversation_id}")
+        print(
+            f"restored_session_id={restored.session_manager.get_header().conversation_id}"
+        )
         print(f"messages_after_restore={_message_count(restored)}")
         print(
             f"restore_ok="
@@ -162,9 +211,17 @@ def main() -> None:
         )
         print_event("message.end", {"step": "restore", "restore_ok": True})
 
-        print_event("message.start", {"step": "round-2", "session_id": restored.session_manager.get_header().conversation_id})
+        print_event(
+            "message.start",
+            {
+                "step": "round-2",
+                "session_id": restored.session_manager.get_header().conversation_id,
+            },
+        )
         asyncio.run(
-            _prompt(restored, "请继续刚才会话，说明落盘与恢复一致。", timeout_seconds=6.0)
+            _prompt(
+                restored, "请继续刚才会话，说明落盘与恢复一致。", timeout_seconds=6.0
+            )
         )
         after_count = _message_count(restored)
         print(f"messages_after_round_2={after_count}")
@@ -174,7 +231,15 @@ def main() -> None:
         print(f"runtime_session_list_count={len(sessions)}")
         ids = [record.session_id for record in sessions]
         print(f"runtime_session_ids={ids}")
-        print_event("model.end", {"step": "session_list", "count": len(sessions), "contains_current": session.session_manager.get_header().conversation_id in ids})
+        print_event(
+            "model.end",
+            {
+                "step": "session_list",
+                "count": len(sessions),
+                "contains_current": session.session_manager.get_header().conversation_id
+                in ids,
+            },
+        )
 
         print_event("message.end", {"result": "pass", "status": "done"})
 

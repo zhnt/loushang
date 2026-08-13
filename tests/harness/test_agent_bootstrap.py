@@ -82,7 +82,11 @@ def test_standard_agent_services_bind_research_resources_and_shared_defaults() -
         ai_model_registry=ai_registry,
         diagnostics_service=diagnostics,
         exec_service=exec_service,
-        default_model=ModelSelection("research", "primary"),
+        default_model=ModelSelection(
+            provider="research",
+            endpoint_id="test-endpoint",
+            model_id="primary",
+        ),
         thinking_level="medium",
         system_prompt="Use primary sources.",
     )
@@ -92,7 +96,11 @@ def test_standard_agent_services_bind_research_resources_and_shared_defaults() -
     assert services.diagnostics_service is diagnostics
     assert services.exec_service is exec_service
     settings = services.settings_manager.get_settings()
-    assert settings.default_model == ModelSelection("research", "primary")
+    assert settings.default_model == ModelSelection(
+        provider="research",
+        endpoint_id="test-endpoint",
+        model_id="primary",
+    )
     assert settings.thinking_level == "medium"
     assert settings.system_prompt == "Use primary sources."
 

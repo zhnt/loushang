@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from loushang.ai.errors import AICancelledError, AIRateLimitError
+from loushang.ai.errors import AICancelledError, AIRateLimitError, AIStreamError
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
 from loushang.ai.model import Pricing
 from loushang.ai.types import AssistantMessage, Usage
@@ -16,6 +16,7 @@ def test_raw_assembler_uses_real_content_index_for_thinking_only_stream() -> Non
         stream=stream,
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
     )
 
@@ -39,6 +40,8 @@ def test_raw_assembler_uses_real_content_index_for_thinking_only_stream() -> Non
         "done",
     ]
     assert events[1]["content_index"] == 0
+    assert events[0]["partial"].endpoint == "test-endpoint"
+    assert events[-1]["message"].endpoint == "test-endpoint"
     assert events[-1]["message"].content[0].type == "thinking"
     assert events[-1]["message"].content[0].thinking == "plan"
 
@@ -49,6 +52,7 @@ def test_raw_assembler_uses_real_content_index_for_toolcall_only_stream() -> Non
         stream=stream,
         api="openai-completions",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
     )
 
@@ -80,6 +84,7 @@ def test_raw_assembler_groups_interleaved_tool_calls_by_id_and_index() -> None:
         stream=stream,
         api="openai-completions",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
     )
 
@@ -143,6 +148,7 @@ def test_raw_assembler_preserves_content_order_across_block_types() -> None:
         stream=stream,
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
     )
 
@@ -183,6 +189,7 @@ def _empty_message() -> AssistantMessage:
         content=[],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id=None,
         usage=Usage(
@@ -203,6 +210,7 @@ def test_event_stream_cancels_producer_when_consumer_stops() -> None:
             content=[],
             api="openai-responses",
             provider="openai",
+            endpoint="test-endpoint",
             model="gpt-test",
             response_id=None,
             usage=Usage(
@@ -265,6 +273,7 @@ def test_event_stream_emit_waits_when_queue_is_full() -> None:
             content=[],
             api="openai-responses",
             provider="openai",
+            endpoint="test-endpoint",
             model="gpt-test",
             response_id=None,
             usage=Usage(
@@ -342,6 +351,7 @@ def test_raw_assembler_preserves_http_error_code() -> None:
         stream=stream,
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
     )
 
@@ -361,7 +371,9 @@ def test_raw_assembler_preserves_http_error_code() -> None:
     assert events[-1]["error_info"]["source"] == "openai-responses"
     assert events[-1]["error_info"]["retryable"] is True
     assert events[-1]["error_info"]["provider"] == "openai"
+    assert events[-1]["error_info"]["endpoint"] == "test-endpoint"
     assert events[-1]["error_info"]["model"] == "gpt-test"
+    assert events[-1]["error"].endpoint == "test-endpoint"
 
 
 def test_event_stream_result_raises_typed_error_for_error_terminal() -> None:
@@ -370,6 +382,7 @@ def test_event_stream_result_raises_typed_error_for_error_terminal() -> None:
         stream=stream,
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
     )
 
@@ -384,7 +397,7 @@ def test_event_stream_result_raises_typed_error_for_error_terminal() -> None:
                 "source": "openai-responses",
                 "retryable": True,
                 "provider": "openai",
-                "endpoint": None,
+                "endpoint": "wrong-endpoint",
                 "model": "gpt-test",
                 "statusCode": 429,
                 "requestId": "req_123",
@@ -400,10 +413,43 @@ def test_event_stream_result_raises_typed_error_for_error_terminal() -> None:
     assert error.info.status_code == 429
     assert error.info.request_id == "req_123"
     assert error.info.retryable is True
+    assert error.info.endpoint == "test-endpoint"
 
     message = asyncio.run(stream.final_message())
     assert message.stop_reason == "error"
     assert message.error_message == "Provider rate limit exceeded."
+    assert message.endpoint == "test-endpoint"
+
+
+def test_event_stream_fallback_error_uses_message_endpoint() -> None:
+    stream = AssistantMessageEventStream()
+    message = AssistantMessage(
+        role="assistant",
+        content=[],
+        api="openai-responses",
+        provider="openai",
+        endpoint="test-endpoint",
+        model="gpt-test",
+        response_id=None,
+        usage=Usage(
+            input=0,
+            output=0,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=0,
+            cost=None,
+        ),
+        stop_reason="error",
+        error_message="stream failed",
+        timestamp=0.0,
+    )
+    stream.push({"type": "error", "reason": "error", "error": message})
+
+    with pytest.raises(AIStreamError) as exc_info:
+        asyncio.run(stream.result())
+
+    assert exc_info.value.info.endpoint == "test-endpoint"
+    assert asyncio.run(stream.final_message()).endpoint == "test-endpoint"
 
 
 def test_event_stream_result_raises_cancelled_for_aborted_terminal() -> None:
@@ -412,6 +458,7 @@ def test_event_stream_result_raises_cancelled_for_aborted_terminal() -> None:
         stream=stream,
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
     )
 
@@ -421,8 +468,11 @@ def test_event_stream_result_raises_cancelled_for_aborted_terminal() -> None:
         asyncio.run(stream.result())
 
     assert exc_info.value.info.provider == "openai"
+    assert exc_info.value.info.endpoint == "test-endpoint"
     assert exc_info.value.info.model == "gpt-test"
-    assert asyncio.run(stream.final_message()).stop_reason == "aborted"
+    message = asyncio.run(stream.final_message())
+    assert message.stop_reason == "aborted"
+    assert message.endpoint == "test-endpoint"
 
 
 def test_raw_assembler_keeps_first_terminal_event() -> None:
@@ -431,6 +481,7 @@ def test_raw_assembler_keeps_first_terminal_event() -> None:
         stream=stream,
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
     )
 
@@ -450,6 +501,7 @@ def test_raw_assembler_uses_clock_timestamp_for_final_message() -> None:
         stream=stream,
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         clock=lambda: 123.5,
     )
@@ -469,6 +521,7 @@ def test_raw_assembler_omits_non_http_top_level_code_but_normalizes_known_code()
         stream=stream,
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
     )
 
@@ -491,7 +544,11 @@ def test_raw_assembler_omits_non_http_top_level_code_but_normalizes_known_code()
 def test_raw_assembler_derives_total_tokens_when_provider_omits_total() -> None:
     stream = AssistantMessageEventStream()
     assembler = RawAssembler(
-        stream=stream, api="test", provider="test", model="test-model"
+        stream=stream,
+        api="test",
+        provider="test",
+        endpoint="test-endpoint",
+        model="test-model",
     )
 
     assembler.feed({"type": "response_start", "response_id": "resp-1"})
@@ -519,7 +576,11 @@ def test_raw_assembler_derives_total_tokens_when_provider_omits_total() -> None:
 def test_raw_assembler_leaves_cost_unknown_without_pricing() -> None:
     stream = AssistantMessageEventStream()
     assembler = RawAssembler(
-        stream=stream, api="test", provider="test", model="test-model"
+        stream=stream,
+        api="test",
+        provider="test",
+        endpoint="test-endpoint",
+        model="test-model",
     )
 
     assembler.feed({"type": "usage_delta", "input": 10, "output": 4})
@@ -536,6 +597,7 @@ def test_raw_assembler_leaves_cost_unknown_for_used_unknown_price_component() ->
         stream=stream,
         api="test",
         provider="test",
+        endpoint="test-endpoint",
         model="test-model",
         pricing=Pricing(input=1.0, output=None),
     )
@@ -553,7 +615,11 @@ def test_raw_assembler_recomputes_total_tokens_for_incremental_usage_without_tot
 ):
     stream = AssistantMessageEventStream()
     assembler = RawAssembler(
-        stream=stream, api="test", provider="test", model="test-model"
+        stream=stream,
+        api="test",
+        provider="test",
+        endpoint="test-endpoint",
+        model="test-model",
     )
 
     assembler.feed({"type": "response_start", "response_id": "resp-1"})
@@ -573,7 +639,11 @@ def test_raw_assembler_recomputes_total_tokens_for_incremental_usage_without_tot
 def test_raw_assembler_preserves_provider_total_tokens_when_present() -> None:
     stream = AssistantMessageEventStream()
     assembler = RawAssembler(
-        stream=stream, api="test", provider="test", model="test-model"
+        stream=stream,
+        api="test",
+        provider="test",
+        endpoint="test-endpoint",
+        model="test-model",
     )
 
     assembler.feed({"type": "response_start", "response_id": "resp-1"})
@@ -590,7 +660,11 @@ def test_raw_assembler_preserves_provider_total_tokens_when_present() -> None:
 def test_raw_assembler_never_reports_total_below_usage_components() -> None:
     stream = AssistantMessageEventStream()
     assembler = RawAssembler(
-        stream=stream, api="test", provider="test", model="test-model"
+        stream=stream,
+        api="test",
+        provider="test",
+        endpoint="test-endpoint",
+        model="test-model",
     )
 
     assembler.feed({"type": "response_start", "response_id": "resp-1"})

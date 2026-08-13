@@ -223,14 +223,14 @@ class AgentTranscriptSession:
         provider: str,
         model_id: str,
         *,
-        endpoint_id: str | None = None,
+        endpoint_id: str,
     ) -> str:
         return self._complete_commit(
             await self._transcript.append_model_selection(
                 ModelSelectionSnapshot(
                     provider=provider,
-                    model_id=model_id,
                     endpoint_id=endpoint_id,
+                    model_id=model_id,
                 )
             )
         )

@@ -13,14 +13,14 @@
 
 - `loushang-ai` 内部有哪些关键实现层
 - provider API 是通过哪些物理依赖接入的
-- `ApiProvider registry`、adapter、SDK、HTTP client 之间如何连接
+- `API adapter registry`、adapter、SDK、HTTP client 之间如何连接
 - 哪些实现依赖属于内部技术选择，而不是 public contract
 
 本文档只讨论：
 
 - `Top-level AI API`
 - `Model Registry`
-- `ApiProvider Registry`
+- `API Adapter Registry`
 - `Provider Adapter Layer`
 - application protocol families
 - adapter implementation carriers
@@ -81,7 +81,7 @@
 ## Why A Physical Context
 
 [Loushang AI System Context](./loushang-ai-system-context.md) 把 `loushang-ai` 视为黑盒，这对于定义子系统边界是正确的。  
-但当 `loushang-ai` 进入 `ApiProvider registry`、provider adapter 与真实 provider 接入阶段时，还需要一层物理视图，来避免以下混淆：
+但当 `loushang-ai` 进入 `API adapter registry`、provider adapter 与真实 provider 接入阶段时，还需要一层物理视图，来避免以下混淆：
 
 1. 把 `Model Provider APIs` 和 `openai` / `anthropic` SDK 混成同一层
 2. 把 public contract 和内部实现依赖混成同一组对象
@@ -108,7 +108,7 @@
 - `loushang-ai.__init__` 与 `loushang-ai.types` 不应直接暴露 SDK 类型
 - official SDK 与 `httpx` 都应被视为内部实现依赖
 - SDK 不是应用协议本身，而是协议内部实现依赖
-- `ApiProvider Registry -> Provider Adapter -> application protocol -> implementation carrier -> transport -> Provider APIs` 是更准确的主接线路径
+- `API Adapter Registry -> Provider Adapter -> application protocol -> implementation carrier -> transport -> Provider APIs` 是更准确的主接线路径
 
 ---
 
@@ -175,16 +175,16 @@
 - `get_model`
 - `list_models`
 - `get_providers`
-- `register_api_provider`
-- `get_api_provider`
-- `list_api_providers`
-- `clear_api_providers`
-- `reset_api_providers`
+- `register_api_adapter`
+- `get_api_adapter`
+- `list_api_adapters`
+- `clear_api_adapters`
+- `reset_api_adapters`
 
 它负责：
 
 - 接收 public contract 输入
-- 根据 `resolve_model_api(model)` 解析 `ApiProvider`
+- 根据 `resolve_model_api(model)` 解析 `APIAdapter`
 - 将调用委托给 registry 返回的 provider
 
 ### Model Registry
@@ -197,11 +197,11 @@
 
 它不直接接入 provider API。
 
-### ApiProvider Registry
+### API Adapter Registry
 
 负责：
 
-- 维护 `api -> ApiProvider` 映射
+- 维护 `api -> APIAdapter` 映射
 - 为顶层入口提供稳定 provider 解析能力
 
 它不自己发起模型请求。
@@ -405,7 +405,7 @@ flowchart LR
     USER[Physical User / Adjacent Runtime User]
     TOP[Top-level AI API]
     MR[Model Registry]
-    AR[ApiProvider Registry]
+    AR[API Adapter Registry]
     ADP[Provider Adapter Layer]
     APP[Application Protocol Families]
     AUTH[Provider Auth Material]
@@ -457,18 +457,18 @@ flowchart LR
 顶层入口直接依赖：
 
 - `Model Registry`
-- `ApiProvider Registry`
+- `API Adapter Registry`
 
 原因是：
 
 - `stream()` 等统一入口需要先解析 `Model`
-- 再按 `resolve_model_api(model)` 找到 `ApiProvider`
+- 再按 `resolve_model_api(model)` 找到 `APIAdapter`
 
 这里的 `Top-level AI API` 从物理视角看，首先是被 `Physical User` 调用的入口，而不是先被内部组件调用的入口。
 
-### ApiProvider Registry -> Provider Adapter Layer
+### API Adapter Registry -> Provider Adapter Layer
 
-registry 不直接调用上游 API，但它持有的 `ApiProvider` 本质上指向 adapter 能力。
+registry 不直接调用上游 API，但它持有的 `APIAdapter` 本质上指向 adapter 能力。
 
 因此，从物理实现看，registry 与 adapter 是相邻层：
 
@@ -551,7 +551,7 @@ carrier 选择与 transport / provider actor kinds 高度相关。
 - SDK 与 `httpx` 最终仍然要落到传输层
 - 传输层与应用协议层不是同一个建模层级
 
-`HTTPS`、`SSE` 等对象更适合放在这里，而不是直接和 `ApiProvider` 或 `Model` 处在同一层。
+`HTTPS`、`SSE` 等对象更适合放在这里，而不是直接和 `APIAdapter` 或 `Model` 处在同一层。
 
 ### SDK / HTTPX -> Model Provider APIs
 
@@ -622,7 +622,7 @@ flowchart LR
 flowchart LR
     TOP[Top-level AI API]
     MR[Model Registry]
-    AR[ApiProvider Registry]
+    AR[API Adapter Registry]
     ADP[Provider Adapter Layer]
     APP[Application Protocol Families]
     CARR[Adapter Implementation Carriers]
@@ -638,7 +638,7 @@ flowchart LR
     HOST[Host Environment]
 
     TOP -->|lookup model| MR
-    TOP -->|resolve api provider by resolve_model_api(model)| AR
+    TOP -->|resolve API adapter by resolve_model_api(model)| AR
     TOP -->|invoke unified stream request| ADP
 
     ADP -->|choose protocol family| APP
@@ -677,7 +677,7 @@ flowchart LR
 
 1. top-level API 接收统一调用
 2. model registry 提供 `Model`
-3. api provider registry 根据 `resolve_model_api(model)` 解析 provider
+3. API adapter registry 根据 `resolve_model_api(model)` 解析 provider
 4. provider adapter 选择应用协议族
 5. provider adapter 选择 SDK 或 `httpx-thin` 这类实现载体
 6. 实现载体经由传输层访问外部 provider API
@@ -703,7 +703,7 @@ flowchart LR
 - `httpx-thin` 是一等能力，不只是 fallback
 - `openai-compatible` / `anthropic-messages` 属于应用协议层
 - `HTTPS` / `SSE` 属于传输 / physical protocol 层
-- `Provider Adapter Layer` 是内部实现边界，不等同于 `ApiProvider Registry`
+- `Provider Adapter Layer` 是内部实现边界，不等同于 `API Adapter Registry`
 - `Model Provider APIs` 仍然是外部黑盒系统，不应与 SDK 混成同一对象
 - 逻辑 system context 继续回答“谁与 `loushang-ai` 交互”
 - physical system context 回答“`loushang-ai` 通过什么实现层与外部 provider 接通”
@@ -715,7 +715,7 @@ flowchart LR
 当前建议在物理实现层冻结以下方向：
 
 1. 为 `loushang-ai` 新增独立的 physical system context 视图
-2. 默认承认 `ApiProvider Registry -> Provider Adapter -> SDK / HTTPX -> Provider APIs` 这条主接线结构
+2. 默认承认 `API Adapter Registry -> Provider Adapter -> SDK / HTTPX -> Provider APIs` 这条主接线结构
 3. 在物理视图中显式区分：
    - application protocol family
    - adapter implementation carrier

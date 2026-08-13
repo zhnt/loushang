@@ -67,6 +67,7 @@ def _assistant(
     timestamp: float = 1.0,
 ) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="responses",
@@ -194,11 +195,24 @@ def test_compaction_runtime_commits_checkpoint_and_publishes_common_events() -> 
             "tokens_before": 20,
             "details": {"plan": "standard"},
         }
+        status = runtime.get_status()
+        assert status.last_reason == "manual"
+        assert status.last_stage == "committed"
+        assert status.last_started_at is not None
+        assert status.last_completed_at is not None
+        assert status.last_tokens_before == 20
+        assert status.last_tokens_after is None
+        assert status.last_summary_mode == "complete"
+        assert status.last_succeeded is True
+        assert status.context_window == 100
+        assert status.reserve_tokens == 10
 
     asyncio.run(scenario())
 
 
-def test_compaction_runtime_counts_the_completed_message_before_context_refresh() -> None:
+def test_compaction_runtime_counts_the_completed_message_before_context_refresh() -> (
+    None
+):
     async def scenario() -> None:
         session = await _session()
         user_id = await session.append_message(
@@ -371,9 +385,7 @@ def test_compaction_abort_cancels_executor_without_committing_checkpoint() -> No
             has_queued_messages=lambda: False,
         )
 
-        task = asyncio.create_task(
-            runtime.compact(reason="manual", will_retry=False)
-        )
+        task = asyncio.create_task(runtime.compact(reason="manual", will_retry=False))
         await started.wait()
         runtime.abort()
 
@@ -519,9 +531,7 @@ def test_abort_after_commit_does_not_cancel_post_commit_observer() -> None:
             after_compaction=after,
         )
 
-        task = asyncio.create_task(
-            runtime.compact(reason="manual", will_retry=False)
-        )
+        task = asyncio.create_task(runtime.compact(reason="manual", will_retry=False))
         await observer_started.wait()
         assert runtime.is_compacting is False
         runtime.abort()

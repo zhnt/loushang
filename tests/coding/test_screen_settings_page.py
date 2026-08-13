@@ -13,10 +13,18 @@ from loushang.tui.cell_width import strip_control_sequences
 
 class _Session:
     def __init__(self) -> None:
-        self.current_model = ModelSelection(provider="moonshot", model_id="kimi-for-coding")
+        self.current_model = ModelSelection(
+            endpoint_id="test-endpoint", provider="moonshot", model_id="kimi-for-coding"
+        )
         self.models = (
-            ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
-            ModelSelection(provider="openai", model_id="gpt-5.4"),
+            ModelSelection(
+                endpoint_id="test-endpoint",
+                provider="moonshot",
+                model_id="kimi-for-coding",
+            ),
+            ModelSelection(
+                endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
+            ),
         )
         self.set_model_calls: list[object] = []
 
@@ -88,7 +96,7 @@ class _SettingsManager:
 
 def test_status_provider_exposes_read_only_snapshot() -> None:
     provider = StatusProvider(
-        model_label="moonshot/kimi-for-coding",
+        model_label="moonshot:test-endpoint:kimi-for-coding",
         cwd="/repo",
         branch="main",
         session_label=lambda: "abcd",
@@ -98,7 +106,7 @@ def test_status_provider_exposes_read_only_snapshot() -> None:
 
     snapshot = provider.snapshot()
 
-    assert snapshot.model_label == "moonshot/kimi-for-coding"
+    assert snapshot.model_label == "moonshot:test-endpoint:kimi-for-coding"
     assert snapshot.cwd == "/repo"
     assert snapshot.branch == "main"
     assert snapshot.session_label == "abcd"
@@ -109,7 +117,7 @@ def test_status_provider_exposes_read_only_snapshot() -> None:
 
 def _status_provider() -> StatusProvider:
     return StatusProvider(
-        model_label="moonshot/kimi-for-coding",
+        model_label="moonshot:test-endpoint:kimi-for-coding",
         cwd="/repo",
         branch="main",
         session_label=lambda: "abcd",
@@ -122,7 +130,7 @@ def _preview_snapshot(**overrides: object) -> StatusLinePreviewSnapshot:
     from dataclasses import replace
 
     snapshot = StatusLinePreviewSnapshot(
-        model_label="moonshot/kimi-for-coding",
+        model_label="moonshot:test-endpoint:kimi-for-coding",
         cwd="/repo",
         branch="main",
         session_label="abcd",
@@ -146,13 +154,20 @@ def _page(
     )
 
 
-def _plain(page: SettingsPageView, *, width: int = 100, height: int = 18) -> tuple[str, ...]:
+def _plain(
+    page: SettingsPageView, *, width: int = 100, height: int = 18
+) -> tuple[str, ...]:
     rendered = page.render(RenderConstraints(width=width, max_height=height))
     return tuple(strip_control_sequences(line.text) for line in rendered.lines)
 
 
-def _raw(page: SettingsPageView, *, width: int = 100, height: int = 18) -> tuple[str, ...]:
-    return tuple(line.text for line in page.render(RenderConstraints(width=width, max_height=height)).lines)
+def _raw(
+    page: SettingsPageView, *, width: int = 100, height: int = 18
+) -> tuple[str, ...]:
+    return tuple(
+        line.text
+        for line in page.render(RenderConstraints(width=width, max_height=height)).lines
+    )
 
 
 def test_settings_page_uses_canonical_page_components() -> None:
@@ -179,7 +194,13 @@ def test_settings_page_opens_config_tab_with_search_focus() -> None:
     page = _page()
     lines = _plain(page)
 
-    assert any("Status" in line and "Config" in line and "Model" in line and "Status Line" in line for line in lines)
+    assert any(
+        "Status" in line
+        and "Config" in line
+        and "Model" in line
+        and "Status Line" in line
+        for line in lines
+    )
     assert "*[Config]" in lines[0]
     assert any("Search settings" in line for line in lines)
     assert not any("Status line" in line for line in lines[2:])
@@ -189,10 +210,14 @@ def test_settings_page_opens_config_tab_with_search_focus() -> None:
 def test_settings_page_config_no_longer_shows_old_statusline_row() -> None:
     page = _page(settings_manager=_SettingsManager())
 
-    assert not any("Status line" in line for line in _plain(page, width=96, height=24)[2:])
+    assert not any(
+        "Status line" in line for line in _plain(page, width=96, height=24)[2:]
+    )
 
 
-def test_settings_page_config_uses_boxed_search_table_columns_footer_and_styles() -> None:
+def test_settings_page_config_uses_boxed_search_table_columns_footer_and_styles() -> (
+    None
+):
     page = _page(settings_manager=_SettingsManager())
     raw_lines = _raw(page, width=96, height=24)
     lines = tuple(strip_control_sequences(line) for line in raw_lines)
@@ -201,7 +226,9 @@ def test_settings_page_config_uses_boxed_search_table_columns_footer_and_styles(
     assert "*[Config]" in lines[0]
     assert "> [Config]" not in lines[0]
     assert any(line.startswith("╭") for line in lines)
-    search_index = next(index for index, line in enumerate(lines) if "Search settings..." in line)
+    search_index = next(
+        index for index, line in enumerate(lines) if "Search settings..." in line
+    )
     assert lines[search_index].startswith("│ ")
     assert "\x1b[" in raw_lines[search_index]
     assert any(line.startswith("╰") for line in lines)
@@ -247,7 +274,10 @@ def test_settings_page_statusline_tab_rows_search_cycles_and_preview() -> None:
         "Style",
     ):
         assert any(label in line for line in lines)
-    assert any("moonshot/kimi-for-coding" in line and "repo" in line for line in lines)
+    assert any(
+        "moonshot:test-endpoint:kimi-for-coding" in line and "repo" in line
+        for line in lines
+    )
 
     assert page.handle_input(InputEvent(kind="text", text="style")) is True
     intent = page.handle_input(InputEvent(kind="key", key="enter"))
@@ -256,7 +286,11 @@ def test_settings_page_statusline_tab_rows_search_cycles_and_preview() -> None:
 
 
 def test_settings_page_statusline_apply_updates_rows_and_preview() -> None:
-    page = _page(statusline_preview=lambda: _preview_snapshot(pending_followups=1, pending_steers=2))
+    page = _page(
+        statusline_preview=lambda: _preview_snapshot(
+            pending_followups=1, pending_steers=2
+        )
+    )
     page.tabs.focus_header()
     page.handle_input(InputEvent(kind="key", key="right"))
     page.handle_input(InputEvent(kind="key", key="right"))
@@ -269,7 +303,11 @@ def test_settings_page_statusline_apply_updates_rows_and_preview() -> None:
     assert result.message == "Status line separator: dot"
     lines = _plain(page, width=120, height=24)
     assert any("Separator" in line and "dot" in line for line in lines)
-    assert any("moonshot/kimi-for-coding · repo · main · abcd · idle · queued=1 steer=2" in line for line in lines)
+    assert any(
+        "moonshot:test-endpoint:kimi-for-coding · repo · main · abcd · idle · queued=1 steer=2"
+        in line
+        for line in lines
+    )
 
 
 def test_settings_page_statusline_enabled_toggle_returns_visibility_result() -> None:
@@ -283,7 +321,9 @@ def test_settings_page_statusline_enabled_toggle_returns_visibility_result() -> 
     assert result.message == "Status line: off"
 
 
-def test_settings_page_terminal_progress_apply_updates_settings_manager_and_rows() -> None:
+def test_settings_page_terminal_progress_apply_updates_settings_manager_and_rows() -> (
+    None
+):
     settings_manager = _SettingsManager()
     page = _page(settings_manager=settings_manager)
 
@@ -294,7 +334,9 @@ def test_settings_page_terminal_progress_apply_updates_settings_manager_and_rows
     assert any("Terminal progress" in line and "true" in line for line in _plain(page))
 
 
-def test_settings_page_down_moves_past_terminal_progress_when_more_config_rows_are_available() -> None:
+def test_settings_page_down_moves_past_terminal_progress_when_more_config_rows_are_available() -> (
+    None
+):
     page = _page(settings_manager=_SettingsManager())
 
     assert page.handle_input(InputEvent(kind="key", key="down")) is True
@@ -303,7 +345,9 @@ def test_settings_page_down_moves_past_terminal_progress_when_more_config_rows_a
     assert page.handle_input(InputEvent(kind="key", key="down")) is True
 
     assert page.config_page.settings.active_key == "terminal.show_images"
-    assert any(line.startswith("> Show images") for line in _plain(page, width=96, height=24))
+    assert any(
+        line.startswith("> Show images") for line in _plain(page, width=96, height=24)
+    )
 
 
 def test_settings_page_q_is_search_text_but_closes_from_list_focus() -> None:
@@ -315,7 +359,9 @@ def test_settings_page_q_is_search_text_but_closes_from_list_focus() -> None:
     list_page = _page(settings_manager=_SettingsManager())
     list_page.handle_input(InputEvent(kind="key", key="down"))
 
-    assert list_page.handle_input(InputEvent(kind="text", text="q")) == InputIntent(kind="surface_close")
+    assert list_page.handle_input(InputEvent(kind="text", text="q")) == InputIntent(
+        kind="surface_close"
+    )
 
 
 def test_settings_page_search_editing_keys_do_not_switch_tabs() -> None:
@@ -350,16 +396,22 @@ def test_settings_page_model_tab_filters_and_selects_model() -> None:
     assert page.handle_input(InputEvent(kind="text", text="gpt")) is True
     intent = page.handle_input(InputEvent(kind="key", key="enter"))
 
-    assert intent == InputIntent(kind="setting", text="model.current", note="openai/gpt-5.4")
+    assert intent == InputIntent(
+        kind="setting", text="model.current", note="openai:test-endpoint:gpt-5.4"
+    )
 
 
 def test_settings_page_model_apply_persists_with_page_settings_manager() -> None:
     settings_manager = _SettingsManager()
     page = _page(settings_manager=settings_manager)
 
-    result = asyncio.run(page.apply_setting("model.current", "openai/gpt-5.4"))
+    result = asyncio.run(
+        page.apply_setting("model.current", "openai:test-endpoint:gpt-5.4")
+    )
 
-    selection = ModelSelection(provider="openai", model_id="gpt-5.4")
-    assert result.message == "Model set: openai/gpt-5.4"
+    selection = ModelSelection(
+        endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
+    )
+    assert result.message == "Model set: openai:test-endpoint:gpt-5.4"
     assert result.refresh_model_label is True
     assert settings_manager.default_model_calls == [(selection, "global")]

@@ -26,7 +26,7 @@ from loushang.harnesstui.surface.workflow import (
 )
 
 _CODING_MODEL_SELECTOR_PROFILE = SessionModelSelectorSurfaceProfile(
-    subtitle="Access legacy models by running loushang --model <provider/model>.",
+    subtitle="Access legacy models by running loushang --model <provider:model>.",
     footer="  Press number or enter to confirm or esc to go back",
     presentation="bottom-exclusive",
 )
@@ -51,9 +51,7 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         self.session = session
         self.runtime = runtime
         self.status_provider = status_provider
-        continuity = (
-            bind_coding_continuity(runtime) if runtime is not None else None
-        )
+        continuity = bind_coding_continuity(runtime) if runtime is not None else None
         ports = build_standard_agent_screen_surface_workflow_ports(
             session,
             runtime=runtime,
@@ -122,5 +120,6 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             settings_manager=getattr(session, "settings_manager", None),
             statusline_preview=self.coding_app.statusline_preview_snapshot,
         )
+
 
 __all__ = ["ScreenSurfaceManager"]

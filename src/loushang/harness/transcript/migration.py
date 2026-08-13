@@ -306,8 +306,8 @@ def _convert_session_entry(value: dict[str, JSONValue]) -> AgentTranscriptRecord
         kind = MODEL_SELECTION_KIND
         payload = ModelSelectionSnapshot(
             provider=_text(value, "provider"),
+            endpoint_id=_text(value, "endpointId"),
             model_id=_text(value, "modelId"),
-            endpoint_id=_optional_text(value, "endpointId", missing=None),
         )
     elif entry_type == "compaction":
         kind = CONTEXT_COMPACTION_CHECKPOINT_KIND

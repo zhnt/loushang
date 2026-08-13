@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from loushang.ai import CallOptions, complete
-from loushang.ai.advanced.registry import get_default_api_provider_registry
+from loushang.ai.advanced.registry import get_default_api_registry
 from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.model import (
     load_builtin_model_registry,
@@ -102,9 +102,9 @@ def test_json_only_custom_model_loads_merges_queries_and_completes(
     assert model.upstream_id == "vendor/company-chat-2026-06"
 
     provider = RecordingProvider()
-    provider_registry = get_default_api_provider_registry()
-    provider_registry.clear_api_providers()
-    provider_registry.register_api_provider(provider)
+    provider_registry = get_default_api_registry()
+    provider_registry.clear_api_adapters()
+    provider_registry.register_api_adapter(provider)
 
     async def run_complete():
         return await complete(

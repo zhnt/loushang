@@ -40,7 +40,7 @@ class ModelChoiceData:
     label: str
     value: str
     selection: object
-    endpoint_id: str = ""
+    endpoint_id: str
     region: str = ""
     lane: str = ""
     api: str = ""
@@ -53,7 +53,7 @@ def model_identity_data(selection: object | None) -> ModelIdentityData:
     if normalized is None:
         return ModelIdentityData()
     label = _model_label(normalized)
-    value = model_selection_ref(normalized) if normalized.endpoint_id else None
+    value = model_selection_ref(normalized)
     return ModelIdentityData(label=label, value=value)
 
 
@@ -76,7 +76,7 @@ def model_choice_data_from_details(
                 label=label,
                 value=value,
                 selection=detail,
-                endpoint_id=normalized.endpoint_id or "",
+                endpoint_id=normalized.endpoint_id,
                 region=_detail_string(detail, "region"),
                 lane=_detail_string(detail, "lane"),
                 api=_detail_string(detail, "api"),
@@ -107,8 +107,9 @@ def model_choice_data_from_selections(
         choices.append(
             ModelChoiceData(
                 label=label,
-                value=label,
+                value=model_selection_ref(normalized),
                 selection=selection,
+                endpoint_id=normalized.endpoint_id,
             )
         )
     return choices
@@ -145,7 +146,7 @@ async def apply_session_model_selection(
 
     normalized = normalize_model_selection(selection)
     if normalized is None:
-        raise ValueError("Model selection requires provider and model id.")
+        raise ValueError("Model selection requires provider, endpoint, and model ids.")
     setter = getattr(session, "set_model", None)
     if not callable(setter):
         raise RuntimeError("Model selection is not available.")
@@ -245,7 +246,7 @@ def _dedupe_model_selections(values: object) -> list[ModelSelection]:
         selection = normalize_model_selection(raw_value)
         if selection is None or not is_usable_model_selection(selection):
             continue
-        key = (selection.provider, selection.endpoint_id or "", selection.model_id)
+        key = (selection.provider, selection.endpoint_id, selection.model_id)
         if key not in seen:
             seen.add(key)
             selections.append(selection)
@@ -267,14 +268,19 @@ def model_listing_getter(
 
 
 def unique_sorted_model_entries(models: Iterable[object]) -> list[object]:
-    """Dedupe model values by provider/model id in stable display order."""
+    """Dedupe model values by complete identity in stable display order."""
 
-    by_key: dict[tuple[str, str], object] = {}
+    by_key: dict[tuple[str, str, str], object] = {}
     for selection in models:
         normalized = _safe_normalize_model_selection(selection)
         if normalized is not None:
             by_key.setdefault(
-                (normalized.provider, normalized.model_id), selection
+                (
+                    normalized.provider,
+                    normalized.endpoint_id,
+                    normalized.model_id,
+                ),
+                selection,
             )
     return [by_key[key] for key in sorted(by_key)]
 
@@ -291,8 +297,9 @@ def normalize_model_listing(
             continue
         entry: dict[str, object] = {
             "provider": normalized.provider,
+            "endpoint_id": normalized.endpoint_id,
             "model_id": normalized.model_id,
-            "id": _model_label(normalized),
+            "id": model_selection_ref(normalized),
         }
         if include_metadata:
             entry.update(
@@ -315,12 +322,13 @@ def model_listing_matches_query(entry: Mapping[str, object], query: str) -> bool
     """Match a normalized model entry by substring or subsequence."""
 
     provider = str(entry.get("provider") or "").lower()
+    endpoint_id = str(entry.get("endpoint_id") or "").lower()
     model_id = str(entry.get("model_id") or "").lower()
     if not provider and not model_id:
         return False
     if query in provider or query in model_id:
         return True
-    haystack = f"{provider}/{model_id}"
+    haystack = f"{provider}:{endpoint_id}:{model_id}"
     return query in haystack or _is_subsequence(query, haystack)
 
 
@@ -330,6 +338,7 @@ def format_model_metadata_table(models: Sequence[Mapping[str, object]]) -> str:
     rows = [
         (
             str(model["provider"]),
+            str(model["endpoint_id"]),
             str(model["model_id"]),
             _format_context_window(model.get("context_window")),
             _format_optional_int(model.get("max_tokens")),
@@ -338,7 +347,15 @@ def format_model_metadata_table(models: Sequence[Mapping[str, object]]) -> str:
         )
         for model in models
     ]
-    headers = ("provider", "model", "context", "max-out", "thinking", "images")
+    headers = (
+        "provider",
+        "endpoint",
+        "model",
+        "context",
+        "max-out",
+        "thinking",
+        "images",
+    )
     widths = [
         max(len(headers[index]), *(len(row[index]) for row in rows))
         if rows
@@ -358,7 +375,7 @@ def _safe_normalize_model_selection(selection: object) -> ModelSelection | None:
 
 
 def _model_label(selection: ModelSelection) -> str:
-    return f"{selection.provider}/{selection.model_id}"
+    return model_selection_ref(selection)
 
 
 def _optional_int_attr(selection: object, attr: str) -> int | None:

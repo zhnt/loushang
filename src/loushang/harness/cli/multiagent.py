@@ -266,7 +266,10 @@ def _run_parser() -> _NoExitParser:
     parser.add_argument("--cwd", help="Existing Product workspace directory.")
     parser.add_argument("--session-dir", help="Temporary session runtime directory.")
     parser.add_argument("--provider", help="Default model provider.")
-    parser.add_argument("--model", help="Default model or provider/model reference.")
+    parser.add_argument(
+        "--model",
+        help="Default provider:model shorthand or provider:endpoint:model reference.",
+    )
     parser.add_argument(
         "--thinking",
         choices=("off", "minimal", "low", "medium", "high", "xhigh"),

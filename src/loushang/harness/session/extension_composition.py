@@ -8,7 +8,7 @@ from functools import partial
 from typing import Any, Protocol
 
 from loushang.agent.types import ThinkingLevel
-from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.api_registry import APIRegistry
 from loushang.ai.model import ModelSelection
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions import ExtensionProviderRuntime
@@ -74,7 +74,7 @@ class AgentSessionExtensionCompositionPorts:
     agent: ExtensionCompositionAgentPort
     session: ProductTranscriptSession[Any, Any]
     model_registry: object | None
-    api_provider_registry: ApiProviderRegistry
+    api_registry: APIRegistry
     extension_runner: SessionExtensionAssemblyPort | None
     provider_controller: ExtensionProviderRuntime | None
     replacement_controller: ExtensionReplacementRuntime | None
@@ -126,7 +126,7 @@ def compose_agent_session_extensions(
     )
     provider_controller = ports.provider_controller or ExtensionProviderRuntime(
         model_registry=ports.model_registry,
-        api_provider_registry=ports.api_provider_registry,
+        api_registry=ports.api_registry,
         provider_factory=provider_from_extension_config,
     )
     replacement_controller = (

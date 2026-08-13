@@ -338,24 +338,26 @@ Content
 
 模型输出消息。
 
-建议字段：
+当前字段：
 
 - `role: Literal["assistant"] = "assistant"`
-- `content: list[TextContent | ThinkingContent | ToolCall]`
+- `content: list[TextContent | ThinkingContent | ToolCall | ImageContent]`
 - `api: Api`
 - `provider: Provider`
+- `endpoint: str`
 - `model: str`
 - `response_id: str | None = None`
 - `usage: Usage`
 - `stop_reason: StopReason`
 - `error_message: str | None = None`
-- `timestamp: int`
+- `timestamp: float`
 
 说明：
 
 - `thinking` 不作为独立顶层字段暴露
 - `thinking` 与 `text`、`toolCall` 一样进入 `content`
 - `thinking_*` 事件中的 `content_index` 应指向 `partial.content` 中真实存在的 thinking block
+- `provider:endpoint:model` 唯一标识响应来源；流式 partial 和 final 都保留该三元组
 
 ### ToolResultMessage
 
@@ -664,10 +666,10 @@ v0.1 建议的 Python 表达方式如下：
 
 ---
 
-## 14. Next Step
+## 14. Current Runtime Mapping
 
-在本类型系统基础上，下一步建议继续定义：
+以上类型已经由当前运行时实现：
 
-1. `AssistantMessageEventStream` 的 Python 形态
-2. `ApiProvider` registry 形态
-3. `stream()` / `complete()` 的 public API 签名
+1. `AssistantMessageEventStream` 位于 `loushang.ai.event_stream`。
+2. `APIAdapter` Protocol、通用 `APIRegistry` 和厂商优先的 `ProviderRegistry` 已落地。
+3. `stream()` / `complete()` 公共入口只接收已经绑定 Endpoint 配置的 `Model`。

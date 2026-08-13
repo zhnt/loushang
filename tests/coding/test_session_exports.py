@@ -43,6 +43,7 @@ def _build_export_session(
     asyncio.run(
         manager.append_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[
                     TextPart(type="text", text="Calling read"),
@@ -218,6 +219,7 @@ def test_render_transcript_renders_markdown_code_fences_with_syntax_highlighting
     html = render_transcript(
         [
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[
                     TextPart(
@@ -466,6 +468,7 @@ def test_render_tool_sections_uses_shared_renderer_runtime_state() -> None:
     html = render_tool_sections(
         [
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[
                     ToolCall(
@@ -529,6 +532,7 @@ def test_export_session_to_html_embeds_entry_tree_and_summary_entries(tmp_path) 
     asyncio.run(
         manager.append_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="main branch")],
                 api="anthropic-messages",

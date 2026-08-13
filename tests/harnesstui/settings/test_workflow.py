@@ -70,12 +70,24 @@ def test_boolean_workflow_adapter_projects_rows_and_only_claims_bound_ids() -> N
 def test_session_settings_binding_loads_models_and_reuses_product_config() -> None:
     class Session:
         async def get_model_selection(self) -> ModelSelection:
-            return ModelSelection("provider", "research")
+            return ModelSelection(
+                provider="provider",
+                endpoint_id="test-endpoint",
+                model_id="research",
+            )
 
         async def get_available_models(self) -> list[ModelSelection]:
             return [
-                ModelSelection("provider", "research"),
-                ModelSelection("provider", "analysis"),
+                ModelSelection(
+                    provider="provider",
+                    endpoint_id="test-endpoint",
+                    model_id="research",
+                ),
+                ModelSelection(
+                    provider="provider",
+                    endpoint_id="test-endpoint",
+                    model_id="analysis",
+                ),
             ]
 
     manager = _BooleanManager()
@@ -110,13 +122,11 @@ def test_session_settings_binding_loads_models_and_reuses_product_config() -> No
 
     assert snapshot == asyncio.run(session_model_settings_snapshot(Session()))
     assert tuple(choice.value for choice in snapshot.choices) == (
-        "provider/research",
-        "provider/analysis",
+        "provider:test-endpoint:research",
+        "provider:test-endpoint:analysis",
     )
-    assert snapshot.current_value == "provider/research"
-    assert ports.config_rows() == (
-        ConfigRow("feature.enabled", "Feature", "false"),
-    )
+    assert snapshot.current_value == "provider:test-endpoint:research"
+    assert ports.config_rows() == (ConfigRow("feature.enabled", "Feature", "false"),)
     assert asyncio.run(ports.apply_model("provider/analysis")) == (
         "selected:provider/analysis"
     )

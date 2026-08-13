@@ -436,9 +436,7 @@ def test_common_resume_loads_next_page_without_wrapping_to_first_item() -> None:
         )
         assert surface.selected_target == hub.summaries[49].target
         loading = surface.render(RenderConstraints(width=80, max_height=24))
-        loading_lines = [
-            strip_control_sequences(line.text) for line in loading.lines
-        ]
+        loading_lines = [strip_control_sequences(line.text) for line in loading.lines]
         assert "  (50/50)" in loading_lines
         assert "  (1/50)" not in loading_lines
 
@@ -493,9 +491,7 @@ def test_common_resume_page_down_crosses_page_boundary_without_wrapping() -> Non
         async def query(self, request: ContinuityQuery) -> ContinuityPage:
             self.queries.append(request)
             items = (
-                self.summaries[:50]
-                if request.cursor is None
-                else self.summaries[50:]
+                self.summaries[:50] if request.cursor is None else self.summaries[50:]
             )
             return ContinuityPage(
                 items=items,

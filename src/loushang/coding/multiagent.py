@@ -342,8 +342,16 @@ class CodingSubagentFactory(SessionSubagentFactory):
             model_ref = plan.model if plan is not None else None
             if model_ref is None:
                 model_ref = request.agent_type.default_model
+            selection_registry = getattr(
+                getattr(self._services, "model_registry", None),
+                "ai_registry",
+                None,
+            )
             model: Model | ModelSelection | None = (
-                parse_model_selection_reference(model_ref)
+                parse_model_selection_reference(
+                    model_ref,
+                    registry=selection_registry,
+                )
                 if model_ref is not None
                 else self._default_model_provider()
             )

@@ -81,6 +81,7 @@ def _usage() -> Usage:
 
 def _assistant_with_tool_call() -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[
             TextPart(type="text", text="Calling read"),
@@ -239,6 +240,7 @@ def test_build_session_stats_reports_token_totals_after_compaction(tmp_path) -> 
     asyncio.run(
         manager.append_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="first response")],
                 api="anthropic-messages",
@@ -271,6 +273,7 @@ def test_build_session_stats_reports_token_totals_after_compaction(tmp_path) -> 
     asyncio.run(
         manager.append_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="second response")],
                 api="anthropic-messages",
@@ -304,6 +307,7 @@ def test_build_session_stats_reports_token_totals_after_compaction(tmp_path) -> 
     asyncio.run(
         manager.append_message(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="third response")],
                 api="anthropic-messages",

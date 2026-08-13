@@ -217,6 +217,7 @@ def _assistant(
             )
         )
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=content,
         api="test",
@@ -279,7 +280,7 @@ def _request(
 
 def test_coding_analysis_agent_types_are_bounded_and_have_no_write_tools() -> None:
     registry = coding_read_only_agent_types(
-        default_model="provider/model",
+        default_model="provider:test-endpoint:model",
         maximum_children=2,
     )
 
@@ -292,7 +293,7 @@ def test_coding_analysis_agent_types_are_bounded_and_have_no_write_tools() -> No
         "synthesizer",
     ]
     for spec in registry.values():
-        assert spec.default_model == "provider/model"
+        assert spec.default_model == "provider:test-endpoint:model"
         assert spec.allowed_tools == (
             ("bash", "read", "grep", "find", "ls")
             if spec.name == "explorer"
@@ -669,7 +670,7 @@ def test_factory_builds_a_non_persistent_child_and_uses_existing_session_rounds(
 
     spec = AgentTypeSpec(
         name="reviewer",
-        default_model="provider/model",
+        default_model="provider:test-endpoint:model",
         allowed_tools=("read", "grep", "find", "ls"),
     )
     factory = CodingSubagentFactory(
@@ -716,7 +717,9 @@ def test_factory_builds_a_non_persistent_child_and_uses_existing_session_rounds(
 
     assert captured["persist"] is False
     assert captured["sandbox_workspace_writable"] is False
-    assert captured["model"] == ModelSelection(provider="provider", model_id="model")
+    assert captured["model"] == ModelSelection(
+        endpoint_id="test-endpoint", provider="provider", model_id="model"
+    )
     assert captured["allowed_tool_names"] == ["read", "grep", "find", "ls"]
     assert captured["active_tool_names"] == ["read", "grep", "find", "ls"]
     assert [
@@ -742,7 +745,7 @@ def test_factory_installs_forked_history_and_cannot_widen_tools(
     )
     plan = SubagentContextPlan(
         system_prompt="Bounded reviewer prompt",
-        model="provider/other",
+        model="provider:test-endpoint:other",
         history=history,
         allowed_tools=("read",),
     )
@@ -768,7 +771,9 @@ def test_factory_installs_forked_history_and_cannot_widen_tools(
 
     assert session.agent.state.messages == [history_message]
     assert captured["system_prompt"] == "Bounded reviewer prompt"
-    assert captured["model"] == ModelSelection(provider="provider", model_id="other")
+    assert captured["model"] == ModelSelection(
+        endpoint_id="test-endpoint", provider="provider", model_id="other"
+    )
     assert captured["allowed_tool_names"] == ["read"]
 
     widened = SubagentContextPlan(

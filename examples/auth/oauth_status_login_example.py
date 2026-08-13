@@ -16,9 +16,9 @@ import httpx
 
 import loushang.ai as ai
 from loushang.ai.advanced.registry import (
-    clear_api_providers,
-    register_api_provider,
-    reset_api_providers,
+    clear_api_adapters,
+    register_api_adapter,
+    reset_api_adapters,
 )
 from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model import Auth, Capabilities, Model, OAuthConfig
@@ -129,8 +129,8 @@ async def run(base_url: str) -> dict[str, object]:
         await browser
         request_auth = await ai.auth.get_auth(model, store=store)
         after = await ai.auth.status(model, store=store)
-        clear_api_providers()
-        register_api_provider(provider)
+        clear_api_adapters()
+        register_api_adapter(provider)
         try:
             await ai.complete(
                 model,
@@ -138,7 +138,7 @@ async def run(base_url: str) -> dict[str, object]:
                 auth=request_auth,
             )
         finally:
-            reset_api_providers()
+            reset_api_adapters()
 
     if provider.request is None:
         raise RuntimeError("ProviderRequest was not captured")

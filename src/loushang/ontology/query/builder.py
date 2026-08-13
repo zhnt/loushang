@@ -5,7 +5,10 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from loushang.ontology.projection import ProjectedObject, ProjectionReadStore
+from loushang.ontology.projection import (
+    ProjectedObject,
+    ProjectionReadStore,
+)
 from loushang.ontology.query.contracts import (
     Limit,
     ObjectTypeFilter,
@@ -21,6 +24,7 @@ from loushang.ontology.query.contracts import (
     Traverse,
 )
 from loushang.ontology.query.engine import execute_query
+from loushang.ontology.schema import SchemaIdentity
 
 
 class QueryBuilder:
@@ -68,8 +72,8 @@ class QueryBuilder:
         return self
 
     def to_request(self) -> QueryRequest:
-        schema_version = str(self._store.schema.version)
-        return QueryRequest(steps=self._steps, schema_version=schema_version)
+        schema_identity = SchemaIdentity.from_schema(self._store.schema)
+        return QueryRequest(steps=self._steps, schema_identity=schema_identity)
 
     def execute_result(self) -> QueryResult:
         snapshot = self._store.read_snapshot()
@@ -100,7 +104,7 @@ class QueryBuilder:
     def _request_for(self, store: ProjectionReadStore) -> QueryRequest:
         return QueryRequest(
             steps=self._steps,
-            schema_version=str(store.schema.version),
+            schema_identity=store.projection_state.schema_identity,
         )
 
 

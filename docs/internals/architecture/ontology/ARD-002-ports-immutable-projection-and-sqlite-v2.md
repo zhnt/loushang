@@ -6,8 +6,9 @@ Tracking: [#438](https://github.com/zhnt/loushang/issues/438).
 
 The materialization and freshness portions are partially superseded by
 [ARD-003](ARD-003-declared-state-authority-and-multi-source-materialization.md).
-The port separation, adapter independence, immutable replacement, and Phase 2
-SQLite v2 table set remain accepted.
+The port separation, adapter independence, and immutable replacement remain
+accepted. [ARD-005](ARD-005-source-aware-sqlite-v3.md) supersedes the Phase 2
+SQLite v2 physical table set with the source-aware v3 layout.
 
 ## Context
 

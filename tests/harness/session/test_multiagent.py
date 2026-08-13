@@ -791,6 +791,7 @@ def test_standard_agent_history_and_round_projection_are_product_neutral() -> No
     install_agent_forked_history(session, plan)
 
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[
             TextPart(type="text", text="No blockers."),

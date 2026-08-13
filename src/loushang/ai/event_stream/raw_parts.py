@@ -19,6 +19,7 @@ class ResponseErrorPart(TypedDict):
     message: str
     code: NotRequired[int]
     error_info: NotRequired[dict[str, JSONValue]]
+    provider_response_summary: NotRequired[str]
 
 
 class TextDeltaPart(TypedDict):

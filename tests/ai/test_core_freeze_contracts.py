@@ -11,8 +11,8 @@ import pytest
 
 import loushang.ai as ai
 from loushang.ai.api_registry import (
-    ApiProviderRegistry,
-    get_default_api_provider_registry,
+    APIRegistry,
+    get_default_api_registry,
 )
 from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.model import (
@@ -139,9 +139,7 @@ def test_cryptography_compatibility_constraint_is_scoped_to_intel_macos() -> Non
         dependency
         for dependency in dependencies
         if dependency.lower().startswith("cryptography")
-    ] == [
-        "cryptography<49; sys_platform == 'darwin' and platform_machine == 'x86_64'"
-    ]
+    ] == ["cryptography<49; sys_platform == 'darwin' and platform_machine == 'x86_64'"]
 
 
 def test_simple_api_is_not_part_of_root_or_api_contract() -> None:
@@ -197,12 +195,8 @@ def test_auth_is_owned_by_ai_package_without_top_level_auth_package() -> None:
     import loushang.ai.auth as auth_module
 
     assert not (REPO_ROOT / "src/loushang/auth").exists()
-    assert (
-        AI_SRC / "auth" / "sources" / "openai_codex.py"
-    ).is_file()
-    assert not (
-        AI_SRC / "auth" / "oauth" / "providers" / "openai_codex.py"
-    ).exists()
+    assert (AI_SRC / "auth" / "sources" / "openai_codex.py").is_file()
+    assert not (AI_SRC / "auth" / "oauth" / "providers" / "openai_codex.py").exists()
 
     for name in (
         "OAuthCredential",
@@ -295,11 +289,11 @@ def test_reload_default_registry_keeps_existing_registry_when_user_file_fails(
 
 
 def test_provider_registry_accepts_invoke_raw_and_rejects_stream_raw() -> None:
-    registry = ApiProviderRegistry()
+    registry = APIRegistry()
 
-    registry.register_api_provider(_InvokeRawOnlyProvider())
+    registry.register_api_adapter(_InvokeRawOnlyProvider())
     with pytest.raises(TypeError):
-        registry.register_api_provider(_StreamRawOnlyProvider())
+        registry.register_api_adapter(_StreamRawOnlyProvider())
 
 
 def test_public_invocation_does_not_expose_registry_injection() -> None:
@@ -319,9 +313,9 @@ def test_complete_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
             "company-chat",
         )
         provider = _InvokeRawOnlyProvider()
-        provider_registry = get_default_api_provider_registry()
-        provider_registry.clear_api_providers()
-        provider_registry.register_api_provider(provider)
+        provider_registry = get_default_api_registry()
+        provider_registry.clear_api_adapters()
+        provider_registry.register_api_adapter(provider)
 
         message = await ai.complete(
             model,
@@ -345,9 +339,9 @@ def test_stream_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
             "company-chat",
         )
         provider = _InvokeRawOnlyProvider()
-        provider_registry = get_default_api_provider_registry()
-        provider_registry.clear_api_providers()
-        provider_registry.register_api_provider(provider)
+        provider_registry = get_default_api_registry()
+        provider_registry.clear_api_adapters()
+        provider_registry.register_api_adapter(provider)
 
         event_stream = await ai.stream(
             model,
@@ -372,9 +366,9 @@ def test_complete_and_stream_pass_distinct_provider_modes(tmp_path: Path) -> Non
             "company-chat",
         )
         provider = _RecordingProvider()
-        provider_registry = get_default_api_provider_registry()
-        provider_registry.clear_api_providers()
-        provider_registry.register_api_provider(provider)
+        provider_registry = get_default_api_registry()
+        provider_registry.clear_api_adapters()
+        provider_registry.register_api_adapter(provider)
         context = {"messages": [{"role": "user", "content": "hello"}]}
 
         await ai.complete(

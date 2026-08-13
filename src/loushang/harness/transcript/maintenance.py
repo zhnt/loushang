@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
-from datetime import datetime
+from datetime import UTC, datetime
 from time import monotonic
 from typing import Any, Literal, Protocol
 
@@ -79,6 +79,15 @@ class CompactionStatus:
     last_result: CompactionResult | None = None
     last_error: str | None = None
     aborted: bool = False
+    last_started_at: str | None = None
+    last_completed_at: str | None = None
+    last_stage: str | None = None
+    last_tokens_before: int | None = None
+    last_tokens_after: int | None = None
+    last_summary_mode: Literal["stream", "complete", "hook"] | None = None
+    last_succeeded: bool | None = None
+    context_window: int | None = None
+    reserve_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -210,6 +219,15 @@ class AgentTranscriptCompactionRuntime:
             CompactionCoordinator()
         )
         self._overflow_recovery_attempted = False
+        self._last_started_at: str | None = None
+        self._last_completed_at: str | None = None
+        self._last_stage: str | None = None
+        self._last_tokens_before: int | None = None
+        self._last_tokens_after: int | None = None
+        self._last_summary_mode: Literal["stream", "complete", "hook"] | None = None
+        self._last_succeeded: bool | None = None
+        self._last_context_window: int | None = None
+        self._last_reserve_tokens: int | None = None
 
     @property
     def is_compacting(self) -> bool:
@@ -223,6 +241,15 @@ class AgentTranscriptCompactionRuntime:
             last_result=status.last_result,
             last_error=status.last_error,
             aborted=status.aborted,
+            last_started_at=self._last_started_at,
+            last_completed_at=self._last_completed_at,
+            last_stage=self._last_stage,
+            last_tokens_before=self._last_tokens_before,
+            last_tokens_after=self._last_tokens_after,
+            last_summary_mode=self._last_summary_mode,
+            last_succeeded=self._last_succeeded,
+            context_window=self._last_context_window,
+            reserve_tokens=self._last_reserve_tokens,
         )
 
     def abort(self) -> None:
@@ -321,6 +348,15 @@ class AgentTranscriptCompactionRuntime:
         started_at = monotonic()
         policy = self._get_policy()
         usage_before = _snapshot_payload(self.build_usage_snapshot(policy))
+        self._last_started_at = _utc_timestamp()
+        self._last_completed_at = None
+        self._last_stage = "started"
+        self._last_tokens_before = _usage_tokens(usage_before)
+        self._last_tokens_after = None
+        self._last_summary_mode = _summary_mode(self._get_model())
+        self._last_succeeded = None
+        self._last_context_window = _usage_integer(usage_before, "context_window")
+        self._last_reserve_tokens = policy.reserve_tokens
         await self._dispatch_event(
             ContextCompactionStarted(
                 reason=reason,
@@ -412,6 +448,9 @@ class AgentTranscriptCompactionRuntime:
                     exc=exc,
                 )
 
+        if committed is not None and committed[2]:
+            self._last_summary_mode = "hook"
+
         await self._dispatch_compaction_completed(
             reason=reason,
             result=asdict(result),
@@ -440,6 +479,10 @@ class AgentTranscriptCompactionRuntime:
         checkpoint_record_id: str | None = None,
     ) -> None:
         usage_after = _snapshot_payload(self.build_usage_snapshot(policy))
+        self._last_completed_at = _utc_timestamp()
+        self._last_stage = stage
+        self._last_tokens_after = _usage_tokens(usage_after)
+        self._last_succeeded = stage in {"committed", "post_hook_failed"}
         await self._dispatch_event(
             ContextCompactionCompleted(
                 reason=reason,
@@ -581,6 +624,23 @@ def _snapshot_payload(snapshot: ContextUsageSnapshot) -> dict[str, Any]:
 def _usage_tokens(usage: Mapping[str, object]) -> int | None:
     tokens = usage.get("tokens")
     return tokens if isinstance(tokens, int) and not isinstance(tokens, bool) else None
+
+
+def _usage_integer(usage: Mapping[str, object], key: str) -> int | None:
+    value = usage.get(key)
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _summary_mode(
+    model: object | None,
+) -> Literal["stream", "complete"] | None:
+    if model is None:
+        return None
+    return "stream" if bool(getattr(model, "supports_stream", False)) else "complete"
+
+
+def _utc_timestamp() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _with_preparation_details(

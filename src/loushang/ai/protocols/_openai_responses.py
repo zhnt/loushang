@@ -824,7 +824,9 @@ def _normalize_responses_tool_call_id(
     call_id, item_id = tool_call_id.split("|", 1)
     normalized_call_id = _normalize_id_part(call_id)
     is_foreign_tool_call = (
-        source.provider != model.provider_id or source.api != resolve_model_api(model)
+        source.provider != model.provider_id
+        or source.endpoint != model.endpoint_id
+        or source.api != resolve_model_api(model)
     )
     normalized_item_id = (
         _build_foreign_responses_item_id(item_id)

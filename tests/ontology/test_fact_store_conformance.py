@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 from uuid import UUID
 
@@ -14,6 +15,7 @@ from loushang.ontology.facts import (
     FactRecord,
     FactStore,
     FactValidationError,
+    FactWatermarkConflictError,
     ObjectAssertion,
     PropertyAssertion,
 )
@@ -21,6 +23,7 @@ from loushang.ontology.schema import (
     ObjectTypeDefinition,
     OntologyCompiler,
     OntologyPackageDraft,
+    SchemaIdentity,
     StateAuthority,
 )
 from loushang.ontology.storage import MemoryFactStore, SQLiteFactStore
@@ -29,6 +32,7 @@ SUBJECT_ID = UUID("00000000-0000-0000-0000-000000000001")
 FACT_1 = UUID("10000000-0000-0000-0000-000000000001")
 FACT_2 = UUID("10000000-0000-0000-0000-000000000002")
 FACT_3 = UUID("10000000-0000-0000-0000-000000000003")
+SCHEMA_IDENTITY = SchemaIdentity("test.facts", "urn:test:facts", "1.0.0")
 
 
 def _schema():
@@ -62,7 +66,8 @@ def _fact(
     return FactRecord(
         fact_id=fact_id,
         subject_id=SUBJECT_ID,
-        assertion=PropertyAssertion("status", value),
+        schema_identity=SCHEMA_IDENTITY,
+        assertion=PropertyAssertion("asset.status", value),
         assertion_kind=assertion_kind,
         source_ref="source.erp",
         source_record_ref="asset:A-1:status",
@@ -128,6 +133,71 @@ def test_reusing_batch_id_with_other_content_is_rejected_atomically(
 
     assert fact_store.fact_watermark == 1
     assert len(fact_store.read_facts()) == 1
+
+
+def test_guarded_commit_checks_idempotency_before_the_expected_watermark(
+    fact_store: FactStore,
+) -> None:
+    original = FactBatch(
+        "guarded-request",
+        [_fact(FACT_1, "first", recorded_at=1)],
+    )
+    committed = fact_store.commit_fact_batch_guarded(
+        original,
+        expected_watermark=0,
+    )
+    fact_store.commit_fact_batch_guarded(
+        FactBatch("later", [_fact(FACT_2, "second", recorded_at=2)]),
+        expected_watermark=1,
+    )
+
+    replayed = fact_store.commit_fact_batch_guarded(
+        FactBatch.from_json(original.to_json()),
+        expected_watermark=0,
+    )
+    assert committed.replayed is False
+    assert replayed.replayed is True
+    assert replayed.first_sequence == committed.first_sequence
+
+    with pytest.raises(FactBatchConflictError, match="guarded-request"):
+        fact_store.commit_fact_batch_guarded(
+            FactBatch(
+                "guarded-request",
+                [_fact(FACT_3, "different", recorded_at=3)],
+            ),
+            expected_watermark=0,
+        )
+
+    with pytest.raises(FactWatermarkConflictError) as captured:
+        fact_store.commit_fact_batch_guarded(
+            FactBatch("stale", [_fact(FACT_3, "stale", recorded_at=3)]),
+            expected_watermark=0,
+        )
+    assert captured.value.expected_watermark == 0
+    assert captured.value.actual_watermark == 2
+    assert fact_store.fact_watermark == 2
+
+
+def test_fact_store_rejects_cross_schema_batches_without_changing_the_journal(
+    fact_store: FactStore,
+) -> None:
+    fact_store.commit_fact_batch(
+        FactBatch("first", [_fact(FACT_1, "old", recorded_at=1)])
+    )
+    foreign = replace(
+        _fact(FACT_2, "new", recorded_at=2),
+        schema_identity=SchemaIdentity(
+            "test.other-facts",
+            "urn:test:other-facts",
+            "1.0.0",
+        ),
+    )
+
+    with pytest.raises(FactValidationError, match="schema"):
+        fact_store.commit_fact_batch(FactBatch("foreign", [foreign]))
+
+    assert fact_store.fact_watermark == 1
+    assert [item.fact.fact_id for item in fact_store.read_facts()] == [FACT_1]
 
 
 def test_bitemporal_selection_preserves_history_across_correction(
@@ -201,7 +271,8 @@ def test_retraction_is_an_append_only_validity_correction(
             FactRecord(
                 fact_id=FACT_2,
                 subject_id=SUBJECT_ID,
-                assertion=PropertyAssertion("status", "new"),
+                schema_identity=SCHEMA_IDENTITY,
+                assertion=PropertyAssertion("asset.status", "new"),
                 assertion_kind=AssertionKind.ASSERTED,
                 source_ref="source.erp",
                 source_record_ref="asset:A-1:status",
@@ -215,7 +286,8 @@ def test_retraction_is_an_append_only_validity_correction(
             FactRecord(
                 fact_id=FACT_2,
                 subject_id=SUBJECT_ID,
-                assertion=PropertyAssertion("other", "new"),
+                schema_identity=SCHEMA_IDENTITY,
+                assertion=PropertyAssertion("asset.other", "new"),
                 assertion_kind=AssertionKind.ASSERTED,
                 source_ref="source.erp",
                 source_record_ref="asset:A-1:status",
@@ -229,7 +301,8 @@ def test_retraction_is_an_append_only_validity_correction(
             FactRecord(
                 fact_id=FACT_2,
                 subject_id=SUBJECT_ID,
-                assertion=PropertyAssertion("status", "new"),
+                schema_identity=SCHEMA_IDENTITY,
+                assertion=PropertyAssertion("asset.status", "new"),
                 assertion_kind=AssertionKind.ASSERTED,
                 source_ref="source.other",
                 source_record_ref="asset:A-1:status",
@@ -243,7 +316,8 @@ def test_retraction_is_an_append_only_validity_correction(
             FactRecord(
                 fact_id=FACT_2,
                 subject_id=SUBJECT_ID,
-                assertion=PropertyAssertion("status", "new"),
+                schema_identity=SCHEMA_IDENTITY,
+                assertion=PropertyAssertion("asset.status", "new"),
                 assertion_kind=AssertionKind.DERIVED,
                 source_ref="source.erp",
                 source_record_ref="asset:A-1:status",
@@ -277,7 +351,8 @@ def test_read_port_is_runtime_checkable(fact_store: FactStore) -> None:
                 FactRecord(
                     fact_id=FACT_1,
                     subject_id=SUBJECT_ID,
-                    assertion=ObjectAssertion("Asset"),
+                    schema_identity=SCHEMA_IDENTITY,
+                    assertion=ObjectAssertion("asset"),
                     assertion_kind=AssertionKind.INFERRED,
                     source_ref="model:1",
                     source_record_ref="asset:A-1",

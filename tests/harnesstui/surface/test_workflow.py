@@ -659,6 +659,8 @@ def test_surface_workflow_adapts_approval_decision_and_product_status_copy() -> 
     ]
     assert state.statuses == ["stale"]
     assert workflow.current is None
+
+
 def test_surface_workflow_opens_and_applies_session_permissions() -> None:
     workflow, state = _workflow()
 
@@ -668,9 +670,7 @@ def test_surface_workflow_opens_and_applies_session_permissions() -> None:
     assert workflow.current.purpose == "permissions"
 
     asyncio.run(
-        workflow.handle_intent(
-            InputIntent(kind="select", text="revoke:grant-1")
-        )
+        workflow.handle_intent(InputIntent(kind="select", text="revoke:grant-1"))
     )
 
     assert state.permission_actions == ["revoke:grant-1"]

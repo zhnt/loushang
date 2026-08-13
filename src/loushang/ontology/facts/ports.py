@@ -14,6 +14,18 @@ class FactBatchConflictError(FactValidationError):
     """Raised when an idempotency key is reused with different fact content."""
 
 
+class FactWatermarkConflictError(FactValidationError):
+    """Raised when a new guarded batch was planned from stale Fact state."""
+
+    def __init__(self, expected_watermark: int, actual_watermark: int) -> None:
+        self.expected_watermark = expected_watermark
+        self.actual_watermark = actual_watermark
+        super().__init__(
+            "Fact watermark changed from "
+            f"{expected_watermark} to {actual_watermark} before guarded commit"
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class StoredFact:
     """One committed semantic fact and its contiguous store sequence."""
@@ -86,6 +98,13 @@ class FactStore(FactReadStore, Protocol):
 
     def commit_fact_batch(self, batch: FactBatch) -> FactCommit: ...
 
+    def commit_fact_batch_guarded(
+        self,
+        batch: FactBatch,
+        *,
+        expected_watermark: int,
+    ) -> FactCommit: ...
+
 
 __all__ = [
     "FactBatchConflictError",
@@ -93,5 +112,6 @@ __all__ = [
     "FactReadStore",
     "FactSelection",
     "FactStore",
+    "FactWatermarkConflictError",
     "StoredFact",
 ]

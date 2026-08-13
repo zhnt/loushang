@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 
 from loushang.agent import Agent
-from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.api_registry import APIRegistry
 from loushang.coding.compaction.adapter import (
     execute_coding_branch_summary,
 )
@@ -126,7 +126,7 @@ class AgentSession(AgentProductSession):
         diagnostics_service: DiagnosticsService | None = None,
         package_materializer: PackageMaterializer | None = None,
         session_start_event: SessionStartEvent | None = None,
-        api_provider_registry: ApiProviderRegistry | None = None,
+        api_registry: APIRegistry | None = None,
         footer_data_provider: FooterDataProvider | None = None,
         exec_service: ExecService | None = None,
         approval_resolver: InteractiveApprovalResolver | None = None,
@@ -173,7 +173,7 @@ class AgentSession(AgentProductSession):
             diagnostics_service=diagnostics_service,
             package_materializer=package_materializer,
             session_start_event=session_start_event,
-            api_provider_registry=api_provider_registry,
+            api_registry=api_registry,
             exec_service=exec_service,
             tool_exec_service=(
                 exec_service

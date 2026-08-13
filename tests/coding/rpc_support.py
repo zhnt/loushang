@@ -36,6 +36,7 @@ from loushang.harness.transcript import (
 
 def _assistant_message(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -133,7 +134,7 @@ class FakeModelRegistry:
     def __init__(
         self,
         models: list[ModelSelection] | None = None,
-        resolved_models: dict[tuple[str, str], Model] | None = None,
+        resolved_models: dict[tuple[str, str, str], Model] | None = None,
         endpoints: dict[tuple[str, str], Endpoint] | None = None,
     ) -> None:
         self._models = list(models or [])
@@ -144,7 +145,7 @@ class FakeModelRegistry:
         return list(self._models)
 
     def build_model(self, selection: ModelSelection) -> Model:
-        key = (selection.provider, selection.model_id)
+        key = (selection.provider, selection.endpoint_id, selection.model_id)
         try:
             return self._resolved_models[key]
         except KeyError as error:

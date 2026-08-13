@@ -80,7 +80,7 @@
 - 高内聚
 - 与 provider 执行层低耦合
 
-### 3. ApiProvider Registry
+### 3. API Adapter Registry
 
 **动作：**
 
@@ -92,7 +92,7 @@
 - 与 `api` 维度直接绑定
 - 不应合并回 top-level API 或 model registry
 
-### 4. ApiProvider Protocol
+### 4. APIAdapter Protocol
 
 **动作：**
 
@@ -257,7 +257,7 @@
 **并入目标：**
 
 - `Provider Adapter Component`
-- `ApiProvider Registry`
+- `API Adapter Registry`
 - `Assistant Message Event Stream`
 
 **理由：**
@@ -468,8 +468,8 @@
 
 - `Top-Level AI API`
 - `Model Registry`
-- `ApiProvider Registry`
-- `ApiProvider Protocol`
+- `API Adapter Registry`
+- `APIAdapter Protocol`
 - `Provider Adapter Component`
 - `Raw Part Types`
 - `Raw Assembler`
@@ -509,7 +509,7 @@
 
 - `Top-Level AI API`
 - `Model Registry`
-- `ApiProvider Registry`
+- `API Adapter Registry`
 - `Provider Adapter Component`
 - `Raw Part Types`
 - `Raw Assembler`
@@ -520,7 +520,7 @@
 以下对象对外部世界天然高耦合，但这种耦合应被明确局部化：
 
 - `Provider Adapter Component`
-- `ApiProvider Protocol`
+- `APIAdapter Protocol`
 - `Carrier Invocation Cluster`
 - `Provider Payload Transformation`
 

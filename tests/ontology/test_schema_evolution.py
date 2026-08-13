@@ -629,5 +629,5 @@ def test_diff_json_is_strict_stable_and_detached() -> None:
     exposed["default"] = None
 
     assert diff.to_json() == payload
-    assert json.loads(payload)["format"] == "loushang.ontology.schema-diff/v3"
+    assert json.loads(payload)["format"] == "loushang.ontology.schema-diff/v4"
     assert json.loads(payload)["package_id"] == "test.evolution"

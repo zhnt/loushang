@@ -92,7 +92,9 @@ def test_transcript_reader_footer_chrome_is_dim_gray() -> None:
     assert raw[-1].startswith("\x1b[2;90m")
 
 
-def test_transcript_reader_short_content_fills_full_height_with_footer_at_bottom() -> None:
+def test_transcript_reader_short_content_fills_full_height_with_footer_at_bottom() -> (
+    None
+):
     reader = TranscriptReaderSurface(_Source((AssistantMessageRecord("short answer"),)))
 
     rendered = _render_text(reader, width=40, height=8)
@@ -233,7 +235,9 @@ def test_transcript_reader_title_shows_current_render_mode() -> None:
     assert _render_text(reader, width=80, height=6)[0] == "Transcript window · detail"
 
     reader.handle_input(InputEvent(kind="key", key="r"))
-    assert _render_text(reader, width=80, height=6)[0] == "Transcript window · raw+detail"
+    assert (
+        _render_text(reader, width=80, height=6)[0] == "Transcript window · raw+detail"
+    )
 
     reader.handle_input(InputEvent(kind="key", key="d"))
     assert _render_text(reader, width=80, height=6)[0] == "Transcript window · raw"
@@ -348,7 +352,9 @@ def test_transcript_reader_search_finds_matches_and_navigates_without_closing() 
 
 
 def test_transcript_reader_search_highlights_matches_without_changing_text() -> None:
-    reader = TranscriptReaderSurface(_Source((AssistantMessageRecord("alpha beta beta"),)))
+    reader = TranscriptReaderSurface(
+        _Source((AssistantMessageRecord("alpha beta beta"),))
+    )
 
     reader.handle_input(InputEvent(kind="text", text="/"))
     reader.handle_input(InputEvent(kind="text", text="beta"))
@@ -357,7 +363,9 @@ def test_transcript_reader_search_highlights_matches_without_changing_text() -> 
     raw = _render_raw(reader, width=80, height=7)
     stripped = tuple(strip_control_sequences(line) for line in raw)
     match_line = next(
-        line for line in raw if strip_control_sequences(line).endswith("alpha beta beta")
+        line
+        for line in raw
+        if strip_control_sequences(line).endswith("alpha beta beta")
     )
 
     assert "\x1b[" in match_line

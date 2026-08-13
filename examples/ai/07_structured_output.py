@@ -24,6 +24,7 @@ def _offline_message() -> AssistantMessage:
         content=[TextPart(type="text", text='{"answer":"Paris","score":10}')],
         api="openai-responses",
         provider="openai",
+        endpoint="openai-responses",
         model="gpt-5.4-mini",
         response_id="structured-demo",
         usage=None,

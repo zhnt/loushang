@@ -41,6 +41,7 @@ def _model() -> Model:
 
 def _assistant() -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[
             TextPart(type="text", text="answer"),
@@ -114,7 +115,7 @@ async def _inspector() -> AgentSessionInspector:
         is_compacting=lambda: False,
         get_last_diagnostics=lambda limit: [object()] if limit else [],
         get_model_selection=lambda: ModelSelection(
-            provider="test", model_id="test-model"
+            endpoint_id="test-endpoint", provider="test", model_id="test-model"
         ),
     )
 
@@ -134,7 +135,9 @@ def test_agent_session_inspector_builds_product_neutral_state_and_usage() -> Non
         is_compacting=False,
         is_retrying=True,
         thinking_level="high",
-        model_selection=ModelSelection(provider="test", model_id="test-model"),
+        model_selection=ModelSelection(
+            endpoint_id="test-endpoint", provider="test", model_id="test-model"
+        ),
     )
     assert state.run.status == "idle"
     assert usage.message_count == 3

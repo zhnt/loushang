@@ -23,6 +23,11 @@ The public invocation surface does not accept a registry, endpoint selector, reg
 
 The selected `Model` is the complete invocation target. Runtime code must not rebind it or select an alternative endpoint.
 
+`ModelSelection` is the complete lightweight reference `(provider, endpoint_id,
+model_id)`. `ModelRegistry.resolve_model_selection()` resolves it directly. Input
+shorthand without an endpoint is completed only when exactly one endpoint matches;
+preferred metadata and candidate order never break ambiguity.
+
 ## Provider Runtime
 
 `provider/` owns the stable execution contract:
@@ -37,11 +42,14 @@ The selected `Model` is the complete invocation target. Runtime code must not re
 
 `ProviderRequest` carries a selected model, normalized context, canonical options, invocation mode, and resolved request headers. It has no product, session, routing, or transport state.
 
-## Protocol Adapter Registry
+## Protocol Adapter Registries
 
-The default `ApiProviderRegistry` is process-level state. Built-in adapters are registered during bootstrap. Advanced applications may clear or register adapters before invocation through `loushang.ai.advanced.registry`; duplicate APIs fail immediately.
+The default `APIRegistry` is process-level state. Built-in adapters are registered during bootstrap. Advanced applications may clear or register adapters before invocation through `loushang.ai.advanced.registry`; duplicate APIs fail immediately.
 
-The root API resolves exactly one adapter by `model.api` and invokes `invoke_raw(request)`. Adapters do not access the model registry.
+The root API first asks `ProviderRegistry` for an exact `(model.provider_id,
+model.api)` vendor adapter. If absent, it falls back to the generic adapter in
+`APIRegistry` keyed by `model.api`. It then invokes `invoke_raw(request)`.
+Adapters do not access the model registry, and this lookup never changes the model.
 
 ## Authentication
 
@@ -63,6 +71,9 @@ Adapter configuration is a closed typed set of protocol switches. Unknown keys a
 ## Event Stream
 
 The event stream consumes normalized raw parts, emits public assistant events, assembles the final message, tracks usage, and enforces one terminal outcome. Cancellation, malformed part order, duplicate terminal parts, and missing terminal parts fail explicitly.
+
+Every partial and final `AssistantMessage` records `api`, `provider`, `endpoint`,
+and `model`; the latter three restore the complete model identity.
 
 ## Structured Output
 

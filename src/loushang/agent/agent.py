@@ -36,7 +36,7 @@ from loushang.ai.types import (
     UserMessage,
 )
 
-_ABORT_FORCE_CANCEL_DELAY_S = 0.05
+_ABORT_EXECUTION_CANCEL_DELAY_S = 0.05
 
 
 class AgentStateError(RuntimeError):
@@ -77,14 +77,46 @@ def _default_convert_to_llm(messages: list[AgentMessage]) -> list[Message]:
 class AbortSignal:
     def __init__(self) -> None:
         self.aborted = False
+        self._execution_tasks: set[asyncio.Task[Any]] = set()
+
+    def _register_execution_task(self, task: asyncio.Task[Any]) -> None:
+        self._execution_tasks.add(task)
+        task.add_done_callback(self._execution_tasks.discard)
+        if self.aborted and not task.done():
+            task.cancel()
+
+    def _unregister_execution_task(self, task: asyncio.Task[Any]) -> None:
+        self._execution_tasks.discard(task)
+
+    def _cancel_execution_tasks(self) -> None:
+        for task in tuple(self._execution_tasks):
+            if not task.done():
+                task.cancel()
 
 
 class AbortController:
     def __init__(self) -> None:
         self.signal = AbortSignal()
+        self._force_cancel_handle: asyncio.TimerHandle | None = None
 
     def abort(self) -> None:
+        if self.signal.aborted:
+            return
         self.signal.aborted = True
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self.signal._cancel_execution_tasks()
+            return
+        self._force_cancel_handle = loop.call_later(
+            _ABORT_EXECUTION_CANCEL_DELAY_S,
+            self.signal._cancel_execution_tasks,
+        )
+
+    def finish(self) -> None:
+        if self._force_cancel_handle is not None:
+            self._force_cancel_handle.cancel()
+            self._force_cancel_handle = None
 
 
 class PendingMessageQueue:
@@ -398,25 +430,11 @@ class Agent:
     def abort(self) -> None:
         if self._active_abort_controller is not None:
             self._active_abort_controller.abort()
-        active_task = self._active_run_task
-        if active_task is None or active_task.done():
-            return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            active_task.cancel()
-            return
-        loop.call_later(
-            _ABORT_FORCE_CANCEL_DELAY_S, self._force_cancel_active_task, active_task
-        )
-
-    def _force_cancel_active_task(self, task: asyncio.Task[None]) -> None:
-        if task is self._active_run_task and not task.done():
-            task.cancel()
 
     async def wait_for_idle(self) -> None:
-        if self._active_run_task is not None:
-            await self._active_run_task
+        active_task = self._active_run_task
+        if active_task is not None:
+            await asyncio.shield(active_task)
 
     def reset(self) -> None:
         self._state.set_messages([])
@@ -593,16 +611,17 @@ class Agent:
                 self._finish_run()
 
         self._active_run_task = asyncio.create_task(runner())
-        try:
-            await self._active_run_task
-        except asyncio.CancelledError:
-            if not abort_controller.signal.aborted:
-                raise
-            if self._active_run_task is not None:
-                await self._handle_run_failure(
-                    RuntimeError("Request aborted by user"), aborted=True
-                )
-                self._finish_run()
+        active_task = self._active_run_task
+        caller_cancelled = False
+        while not active_task.done():
+            try:
+                await asyncio.shield(active_task)
+            except asyncio.CancelledError:
+                caller_cancelled = True
+                abort_controller.abort()
+        active_task.result()
+        if caller_cancelled:
+            raise asyncio.CancelledError
 
     async def _handle_run_failure(self, error: Exception, *, aborted: bool) -> None:
         failure_message = AssistantMessage(
@@ -610,6 +629,7 @@ class Agent:
             content=[TextPart(type="text", text="")],
             api=_resolve_failure_message_api(self._state.model),
             provider=self._state.model.provider_id,
+            endpoint=self._state.model.endpoint_id,
             model=self._state.model.id,
             response_id=None,
             usage=_empty_usage(),
@@ -625,6 +645,8 @@ class Agent:
         self._state.is_streaming = False
         self._state.streaming_message = None
         self._state.pending_tool_calls = set()
+        if self._active_abort_controller is not None:
+            self._active_abort_controller.finish()
         self._active_abort_controller = None
         self._active_run_task = None
 
@@ -711,7 +733,9 @@ def _reasoning_options(
 def _retry_options(max_retry_delay_ms: int | None) -> RetryOptions | None:
     if not isinstance(max_retry_delay_ms, int):
         return None
-    return RetryOptions(max_attempts=1, max_delay_seconds=max(0, max_retry_delay_ms) / 1000)
+    return RetryOptions(
+        max_attempts=1, max_delay_seconds=max(0, max_retry_delay_ms) / 1000
+    )
 
 
 def _empty_usage() -> Usage:

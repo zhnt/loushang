@@ -26,7 +26,7 @@
 - `stream / complete / stream_simple / complete_simple`
 - `ModelRegistry`
 - built-in `models.json`
-- `ApiProviderRegistry`
+- `APIRegistry`
 - `resolve_auth_for_model(...)`
 - `ResolvedRequest / ResolvedEndpoint`
 - 多 provider 适配主链

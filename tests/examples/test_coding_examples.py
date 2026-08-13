@@ -172,6 +172,7 @@ def test_usage_inspect_example_marks_unknown_cost(
             content=[TextPart(type="text", text="ok")],
             api="anthropic-messages",
             provider="kimi-code",
+            endpoint="kimi-code-anthropic",
             model="kimi-for-coding",
             response_id=None,
             usage=Usage(
@@ -189,7 +190,9 @@ def test_usage_inspect_example_marks_unknown_cost(
 
     monkeypatch.setattr(sys, "argv", ["22_usage_inspect.py"])
     monkeypatch.setattr(module, "_resolve_model_catalog", lambda: None)
-    monkeypatch.setattr(module, "build_kimi_model", lambda **kwargs: SimpleNamespace(pricing=None))
+    monkeypatch.setattr(
+        module, "build_kimi_model", lambda **kwargs: SimpleNamespace(pricing=None)
+    )
     monkeypatch.setattr(
         module,
         "describe_model",
@@ -235,6 +238,7 @@ def test_runtime_capability_replacement_extension_example_runs_offline() -> None
         in completed.stdout
     )
     assert "Answer: extension:What is the current status?" in completed.stdout
-    assert "Lifecycle: create -> bind -> ask:What is the current status? -> dispose" in (
-        completed.stdout
+    assert (
+        "Lifecycle: create -> bind -> ask:What is the current status? -> dispose"
+        in (completed.stdout)
     )

@@ -101,7 +101,9 @@ def test_profile_replays_context_checkpoint_and_folds_runtime_state() -> None:
             "model",
             "thinking",
             MODEL_SELECTION_KIND,
-            ModelSelectionSnapshot(provider="provider", model_id="model"),
+            ModelSelectionSnapshot(
+                endpoint_id="test-endpoint", provider="provider", model_id="model"
+            ),
         ),
         _record(
             "metadata",
@@ -136,7 +138,11 @@ def test_profile_replays_context_checkpoint_and_folds_runtime_state() -> None:
     assert "A branch was explored" in _text(context.messages[2])
     assert context.messages[3] is application
     assert context.thinking_level == "medium"
-    assert context.model == {"provider": "provider", "model_id": "model"}
+    assert context.model == {
+        "provider": "provider",
+        "endpoint_id": "test-endpoint",
+        "model_id": "model",
+    }
     assert context.state.conversation_metadata == {"title": "Run"}
     assert context.state.annotations == {"kept": {"display.label": "Workspace"}}
 

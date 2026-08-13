@@ -17,9 +17,10 @@ from loushang.foundation.json import (
     require_json_mapping,
     require_json_value,
 )
+from loushang.ontology.schema.identity import SchemaIdentity
 
-FACT_FORMAT = "loushang.ontology.fact/v1"
-FACT_BATCH_FORMAT = "loushang.ontology.fact-batch/v1"
+FACT_FORMAT = "loushang.ontology.fact/v2"
+FACT_BATCH_FORMAT = "loushang.ontology.fact-batch/v2"
 
 
 class FactValidationError(ValueError):
@@ -36,28 +37,28 @@ class AssertionKind(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class ObjectAssertion:
-    """Assert that the subject exists as ``object_type``."""
+    """Assert that the subject exists as one stable object-type ID."""
 
-    object_type: str
+    object_type_id: str
 
     def __post_init__(self) -> None:
-        _require_text("object_type", self.object_type)
+        _require_text("object_type_id", self.object_type_id)
 
 
 @dataclass(frozen=True, slots=True, init=False)
 class PropertyAssertion:
-    """Assert one strict-JSON property value for the subject."""
+    """Assert one strict-JSON value for a stable property ID."""
 
-    property_name: str
+    property_id: str
     _value_json: str = field(repr=False)
 
-    def __init__(self, property_name: str, value: object) -> None:
-        _require_text("property_name", property_name)
+    def __init__(self, property_id: str, value: object) -> None:
+        _require_text("property_id", property_id)
         try:
             value_json = dump_json_value(value, name="fact property value", sort_keys=True)
         except JsonValueError as exc:
             raise FactValidationError(str(exc)) from exc
-        object.__setattr__(self, "property_name", property_name)
+        object.__setattr__(self, "property_id", property_id)
         object.__setattr__(self, "_value_json", value_json)
 
     @property
@@ -67,19 +68,19 @@ class PropertyAssertion:
 
 @dataclass(frozen=True, slots=True, init=False)
 class LinkAssertion:
-    """Assert one typed edge from the subject to ``target_id``."""
+    """Assert one stable link-type edge from the subject to ``target_id``."""
 
-    link_type: str
+    link_type_id: str
     target_id: UUID
     _properties_json: str = field(repr=False)
 
     def __init__(
         self,
-        link_type: str,
+        link_type_id: str,
         target_id: UUID,
         properties: object | None = None,
     ) -> None:
-        _require_text("link_type", link_type)
+        _require_text("link_type_id", link_type_id)
         _require_uuid("target_id", target_id)
         try:
             properties_json = dump_json_value(
@@ -92,7 +93,7 @@ class LinkAssertion:
             )
         except JsonValueError as exc:
             raise FactValidationError(str(exc)) from exc
-        object.__setattr__(self, "link_type", link_type)
+        object.__setattr__(self, "link_type_id", link_type_id)
         object.__setattr__(self, "target_id", target_id)
         object.__setattr__(self, "_properties_json", properties_json)
 
@@ -110,6 +111,7 @@ class FactRecord:
 
     fact_id: UUID
     subject_id: UUID
+    schema_identity: SchemaIdentity
     assertion: FactAssertion
     assertion_kind: AssertionKind
     source_ref: str
@@ -128,6 +130,8 @@ class FactRecord:
     def __post_init__(self) -> None:
         _require_uuid("fact_id", self.fact_id)
         _require_uuid("subject_id", self.subject_id)
+        if not isinstance(self.schema_identity, SchemaIdentity):
+            raise FactValidationError("schema_identity must be a SchemaIdentity")
         if not isinstance(
             self.assertion,
             (ObjectAssertion, PropertyAssertion, LinkAssertion),
@@ -190,8 +194,8 @@ class FactRecord:
         if isinstance(self.assertion, ObjectAssertion):
             return "$type"
         if isinstance(self.assertion, PropertyAssertion):
-            return self.assertion.property_name
-        return self.assertion.link_type
+            return self.assertion.property_id
+        return self.assertion.link_type_id
 
     @property
     def lineage_coordinate(self) -> tuple[UUID, str, str, str, str, str]:
@@ -215,6 +219,7 @@ class FactRecord:
             "format": FACT_FORMAT,
             "fact_id": str(self.fact_id),
             "subject_id": str(self.subject_id),
+            "schema_identity": self.schema_identity.to_dict(),
             "assertion": _assertion_to_document(self.assertion),
             "assertion_kind": self.assertion_kind.value,
             "source_ref": self.source_ref,
@@ -243,6 +248,7 @@ class FactRecord:
             return cls(
                 fact_id=UUID(_require_document_text(document, "fact_id")),
                 subject_id=UUID(_require_document_text(document, "subject_id")),
+                schema_identity=SchemaIdentity.from_dict(document["schema_identity"]),
                 assertion=_assertion_from_document(document["assertion"]),
                 assertion_kind=AssertionKind(
                     _require_document_text(document, "assertion_kind")
@@ -290,6 +296,11 @@ class FactBatch:
             raise FactValidationError("a FactBatch must contain at least one fact")
         if any(not isinstance(fact, FactRecord) for fact in facts):
             raise FactValidationError("FactBatch facts must be FactRecord values")
+        identities = {fact.schema_identity for fact in facts}
+        if len(identities) != 1:
+            raise FactValidationError(
+                "FactBatch facts must share one complete schema identity"
+            )
         fact_ids = [fact.fact_id for fact in facts]
         if len(set(fact_ids)) != len(fact_ids):
             raise FactValidationError("FactBatch contains a duplicate fact_id")
@@ -299,8 +310,13 @@ class FactBatch:
         return {
             "format": FACT_BATCH_FORMAT,
             "batch_id": self.batch_id,
+            "schema_identity": self.schema_identity.to_dict(),
             "facts": [fact.to_dict() for fact in self.facts],
         }
+
+    @property
+    def schema_identity(self) -> SchemaIdentity:
+        return self.facts[0].schema_identity
 
     def to_json(self) -> str:
         return dump_json_value(self.to_dict(), name="ontology fact batch", sort_keys=True)
@@ -320,10 +336,16 @@ class FactBatch:
             raw_facts = document["facts"]
             if not isinstance(raw_facts, list):
                 raise FactValidationError("ontology fact batch facts must be a list")
-            return cls(
+            batch = cls(
                 batch_id=_require_document_text(document, "batch_id"),
                 facts=[FactRecord.from_dict(item) for item in raw_facts],
             )
+            declared_identity = SchemaIdentity.from_dict(document["schema_identity"])
+            if batch.schema_identity != declared_identity:
+                raise FactValidationError(
+                    "FactBatch schema identity does not match its facts"
+                )
+            return batch
         except FactValidationError:
             raise
         except (json.JSONDecodeError, JsonValueError, KeyError, TypeError, ValueError) as exc:
@@ -332,16 +354,16 @@ class FactBatch:
 
 def _assertion_to_document(assertion: FactAssertion) -> dict[str, JSONValue]:
     if isinstance(assertion, ObjectAssertion):
-        return {"kind": "object", "object_type": assertion.object_type}
+        return {"kind": "object", "object_type_id": assertion.object_type_id}
     if isinstance(assertion, PropertyAssertion):
         return {
             "kind": "property",
-            "property_name": assertion.property_name,
+            "property_id": assertion.property_id,
             "value": require_json_value(assertion.value, name="fact property value"),
         }
     return {
         "kind": "link",
-        "link_type": assertion.link_type,
+        "link_type_id": assertion.link_type_id,
         "target_id": str(assertion.target_id),
         "properties": assertion.properties,
     }
@@ -351,15 +373,15 @@ def _assertion_from_document(value: object) -> FactAssertion:
     document = require_json_mapping(value, name="fact assertion")
     kind = _require_document_text(document, "kind")
     if kind == "object":
-        return ObjectAssertion(_require_document_text(document, "object_type"))
+        return ObjectAssertion(_require_document_text(document, "object_type_id"))
     if kind == "property":
         return PropertyAssertion(
-            _require_document_text(document, "property_name"),
+            _require_document_text(document, "property_id"),
             document["value"],
         )
     if kind == "link":
         return LinkAssertion(
-            _require_document_text(document, "link_type"),
+            _require_document_text(document, "link_type_id"),
             UUID(_require_document_text(document, "target_id")),
             document.get("properties", {}),
         )

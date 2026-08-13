@@ -40,6 +40,9 @@ addopts = ["--import-mode=importlib"]
 markers = [
   "live: real provider verification that may require network access and credentials",
   "tui_render_contract: deterministic TUI render correctness, structural performance, and terminal-operation contract",
+  "tui_terminal_backend: native POSIX PTY or Windows ConPTY driver conformance",
+  "tui_terminal_contract: shared real CLI contract over the native terminal backend",
+  "tui_tmux_integration: tmux pane, history, and scrollback integration contract",
   "vendor_verification: vendor or endpoint compatibility verification cases",
 ]
 

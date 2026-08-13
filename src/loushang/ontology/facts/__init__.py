@@ -4,6 +4,7 @@ from loushang.ontology.facts.commit import (
     CommittedFactBatch,
     PreparedFactCommit,
     prepare_fact_commit,
+    prepare_guarded_fact_commit,
 )
 from loushang.ontology.facts.model import (
     FACT_BATCH_FORMAT,
@@ -23,6 +24,7 @@ from loushang.ontology.facts.ports import (
     FactReadStore,
     FactSelection,
     FactStore,
+    FactWatermarkConflictError,
     StoredFact,
 )
 
@@ -39,6 +41,7 @@ __all__ = [
     "FactSelection",
     "FactRecord",
     "FactStore",
+    "FactWatermarkConflictError",
     "FactValidationError",
     "LinkAssertion",
     "ObjectAssertion",
@@ -46,4 +49,5 @@ __all__ = [
     "PreparedFactCommit",
     "StoredFact",
     "prepare_fact_commit",
+    "prepare_guarded_fact_commit",
 ]

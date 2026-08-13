@@ -253,9 +253,7 @@ def test_serialize_session_event_uses_snake_case_for_auto_retry_events() -> None
     }
 
 
-def test_serialize_session_event_uses_snake_case_for_package_progress_events() -> (
-    None
-):
+def test_serialize_session_event_uses_snake_case_for_package_progress_events() -> None:
     from loushang.harness.session import serialize_session_event
 
     payload = serialize_session_event(
@@ -287,6 +285,7 @@ def test_serialize_session_event_uses_snake_case_for_base_agent_events() -> None
         {
             "type": "message_update",
             "message": AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="hello")],
                 api="anthropic-messages",
@@ -316,6 +315,7 @@ def test_serialize_session_event_uses_snake_case_for_base_agent_events() -> None
                 "content_index": 0,
                 "delta": "he",
                 "partial": AssistantMessage(
+                    endpoint="test-endpoint",
                     role="assistant",
                     content=[TextPart(type="text", text="he")],
                     api="anthropic-messages",

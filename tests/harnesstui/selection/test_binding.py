@@ -15,7 +15,7 @@ from loushang.harnesstui.selection.binding import (
 class _Selection:
     provider: str
     model_id: str
-    endpoint_id: str | None = None
+    endpoint_id: str
 
 
 @dataclass(frozen=True)
@@ -47,7 +47,7 @@ class _Session:
         ]
 
     def get_available_models(self):
-        return [_Selection("provider", "fallback")]
+        return [_Selection("provider", "fallback", "secondary")]
 
 
 def test_session_binding_merges_details_and_fallback_selections() -> None:
@@ -57,7 +57,7 @@ def test_session_binding_merges_details_and_fallback_selections() -> None:
 
         assert [choice.value for choice in choices] == [
             "provider:primary:current",
-            "provider/fallback",
+            "provider:secondary:fallback",
         ]
         assert choices[0].region == "global"
         assert (
@@ -86,10 +86,10 @@ def test_session_binding_reuses_selection_runtime_to_apply_a_choice() -> None:
             apply_selection=lambda selection: selected.append(selection),
         )
 
-        assert message == "Model set: provider/fallback"
+        assert message == "Model set: provider:secondary:fallback"
         assert [
             (selection.provider, selection.model_id, selection.endpoint_id)
             for selection in selected
-        ] == [("provider", "fallback", None)]
+        ] == [("provider", "fallback", "secondary")]
 
     asyncio.run(scenario())

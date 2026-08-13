@@ -40,6 +40,7 @@ def _assistant_text_message(
     model_id: str = "faux-model",
 ) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -147,8 +148,16 @@ def test_navigate_tree_restores_target_branch_model_and_thinking(tmp_path) -> No
     class ModelRegistry:
         def list_models(self):
             return [
-                ModelSelection(provider="faux", model_id=first_model.id),
-                ModelSelection(provider="faux", model_id=second_model.id),
+                ModelSelection(
+                    endpoint_id="anthropic-messages",
+                    provider="faux",
+                    model_id=first_model.id,
+                ),
+                ModelSelection(
+                    endpoint_id="anthropic-messages",
+                    provider="faux",
+                    model_id=second_model.id,
+                ),
             ]
 
         def build_model(self, selection):
@@ -169,7 +178,11 @@ def test_navigate_tree_restores_target_branch_model_and_thinking(tmp_path) -> No
         manager.append_message(UserMessage(role="user", content="root", timestamp=0.0))
     )
     asyncio.run(manager.append_thinking_level_change("low"))
-    asyncio.run(manager.append_model_change("faux", first_model.id))
+    asyncio.run(
+        manager.append_model_change(
+            "faux", first_model.id, endpoint_id="anthropic-messages"
+        )
+    )
     first_branch_leaf = asyncio.run(
         manager.append_message(
             _assistant_text_message("first", model_id=first_model.id)
@@ -177,7 +190,11 @@ def test_navigate_tree_restores_target_branch_model_and_thinking(tmp_path) -> No
     )
     manager.branch(root_id)
     asyncio.run(manager.append_thinking_level_change("high"))
-    asyncio.run(manager.append_model_change("faux", second_model.id))
+    asyncio.run(
+        manager.append_model_change(
+            "faux", second_model.id, endpoint_id="anthropic-messages"
+        )
+    )
     asyncio.run(
         manager.append_message(
             _assistant_text_message("second", model_id=second_model.id)

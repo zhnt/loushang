@@ -54,6 +54,7 @@ def _usage() -> Usage:
 
 def _assistant_text_message(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -69,6 +70,7 @@ def _assistant_text_message(text: str) -> AssistantMessage:
 
 def _assistant_tool_call_message() -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[
             ToolCall(
@@ -93,6 +95,7 @@ def _assistant_tool_call_message_with_calls(
     tool_calls: list[ToolCall],
 ) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=tool_calls,
         api="anthropic-messages",

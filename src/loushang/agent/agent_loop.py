@@ -3,10 +3,10 @@ from __future__ import annotations
 import asyncio
 import inspect
 import time
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, TypeVar
 
 from loushang.agent.tool_output import (
     STRICT_JSON_TOOL_OUTPUT_PROJECTOR,
@@ -42,6 +42,11 @@ from loushang.foundation.observability import get_log
 AgentEventSink = Callable[[AgentEvent], Awaitable[None] | None]
 AgentEventStream = EventStream[AgentEvent, list[AgentMessage]]
 log = get_log(__name__).bind(component="AgentLoop")
+ExecutionResultT = TypeVar("ExecutionResultT")
+
+
+class _ExecutionAborted(Exception):
+    """An owned provider/tool execution child was cancelled by its run."""
 
 
 def agent_loop(
@@ -215,9 +220,34 @@ async def _run_loop(
                 )
                 return
 
-            assistant_message = await _stream_assistant_response(
-                current_context, config, emit, signal=signal, stream_fn=stream_fn
-            )
+            try:
+                assistant_message = await _stream_assistant_response(
+                    current_context,
+                    config,
+                    emit,
+                    signal=signal,
+                    stream_fn=stream_fn,
+                )
+            except _ExecutionAborted:
+                await _emit_aborted_turn(
+                    current_context,
+                    new_messages,
+                    config,
+                    emit,
+                    error_message="Request aborted by user",
+                )
+                return
+            except Exception as error:
+                if not _is_user_abort_error(error, signal):
+                    raise
+                await _emit_aborted_turn(
+                    current_context,
+                    new_messages,
+                    config,
+                    emit,
+                    error_message="Request aborted by user",
+                )
+                return
             new_messages.append(assistant_message)
 
             if assistant_message.stop_reason in {"error", "aborted"}:
@@ -242,9 +272,7 @@ async def _run_loop(
                 return
 
             tool_calls = [
-                item
-                for item in assistant_message.content
-                if getattr(item, "type", None) == "toolCall"
+                item for item in assistant_message.content if isinstance(item, ToolCall)
             ]
             has_more_tool_calls = len(tool_calls) > 0
 
@@ -283,6 +311,33 @@ async def _run_loop(
                         signal=signal,
                         finalized_messages=finalized_tool_results,
                     )
+                except _ExecutionAborted:
+                    tool_results.extend(finalized_tool_results)
+                    tool_results.extend(
+                        await _emit_aborted_tool_results(
+                            tool_calls,
+                            tool_results,
+                            emit,
+                        )
+                    )
+                    _append_tool_results(
+                        current_context,
+                        new_messages,
+                        tool_results,
+                    )
+                    await _emit_tool_turn_end(
+                        emit,
+                        assistant_message,
+                        tool_results,
+                    )
+                    await _emit_aborted_turn(
+                        current_context,
+                        new_messages,
+                        config,
+                        emit,
+                        error_message="Request aborted by user",
+                    )
+                    return
                 except asyncio.CancelledError:
                     tool_results.extend(finalized_tool_results)
                     tool_results.extend(
@@ -343,9 +398,7 @@ async def _run_loop(
                 return
             pending_messages = await _poll_immediate_inputs(config)
 
-        mailbox_messages = await _maybe_call(
-            config.get_mailbox_messages, default=[]
-        )
+        mailbox_messages = await _maybe_call(config.get_mailbox_messages, default=[])
         if mailbox_messages:
             pending_messages = mailbox_messages
             continue
@@ -379,6 +432,35 @@ async def _stream_assistant_response(
 ) -> AssistantMessage:
     if _is_aborted(signal):
         raise RuntimeError("Request aborted by user")
+
+    final_message, added_partial = await _run_execution(
+        _collect_assistant_response(
+            context,
+            config,
+            emit,
+            signal=signal,
+            stream_fn=stream_fn,
+        ),
+        signal,
+    )
+    if added_partial:
+        context.messages[-1] = final_message
+    else:
+        context.messages.append(final_message)
+        await _emit(emit, {"type": "message_start", "message": final_message})
+    await _emit(emit, {"type": "message_end", "message": final_message})
+    return final_message
+
+
+async def _collect_assistant_response(
+    context: AgentContext,
+    config: AgentLoopConfig,
+    emit: AgentEventSink,
+    *,
+    signal: object | None,
+    stream_fn: StreamFn | None,
+) -> tuple[AssistantMessage, bool]:
+    """Collect provider output without owning its durable message boundary."""
 
     messages = context.messages
     if config.transform_context is not None:
@@ -452,15 +534,7 @@ async def _stream_assistant_response(
 
             if event_type in {"done", "error"}:
                 final_message = await response.result()
-                if added_partial:
-                    context.messages[-1] = final_message
-                else:
-                    context.messages.append(final_message)
-                    await _emit(
-                        emit, {"type": "message_start", "message": final_message}
-                    )
-                await _emit(emit, {"type": "message_end", "message": final_message})
-                return final_message
+                return final_message, added_partial
 
         final_message = await response.result()
     except Exception as error:
@@ -474,13 +548,7 @@ async def _stream_assistant_response(
         )
         raise
 
-    if added_partial:
-        context.messages[-1] = final_message
-    else:
-        context.messages.append(final_message)
-        await _emit(emit, {"type": "message_start", "message": final_message})
-    await _emit(emit, {"type": "message_end", "message": final_message})
-    return final_message
+    return final_message, added_partial
 
 
 async def _execute_tool_calls(
@@ -495,9 +563,7 @@ async def _execute_tool_calls(
     if _is_aborted(signal):
         return _ToolCallBatchOutcome(messages=[], terminate=True)
     tool_calls = [
-        item
-        for item in assistant_message.content
-        if getattr(item, "type", None) == "toolCall"
+        item for item in assistant_message.content if isinstance(item, ToolCall)
     ]
     if config.tool_execution == "sequential" or _has_sequential_tool_call(
         current_context, tool_calls
@@ -627,26 +693,29 @@ async def _execute_tool_calls_sequential(
             return _ToolCallBatchOutcome(messages=[], terminate=True)
         if preparation.kind == "immediate":
             finalized = await _emit_tool_call_outcome(
-                    preparation.tool_call,
-                    preparation.result,
-                    preparation.is_error,
-                    emit,
-                )
+                preparation.tool_call,
+                preparation.result,
+                preparation.is_error,
+                emit,
+            )
             finalized_results.append(finalized)
             finalized_messages.append(finalized.message)
             continue
-        executed = await _execute_prepared_tool_call(preparation, emit, signal=signal)
-        if _is_aborted(signal):
+        execution = _create_execution_task(
+            _execute_prepared_tool_call(preparation, emit, signal=signal), signal
+        )
+        executed = await _await_execution_task(execution, signal)
+        if _is_aborted(signal) and not executed.completed_before_abort:
             return _ToolCallBatchOutcome(messages=[], terminate=True)
         finalized = await _finalize_executed_tool_call(
-                current_context,
-                assistant_message,
-                preparation,
-                executed,
-                config,
-                emit,
-                signal=signal,
-            )
+            current_context,
+            assistant_message,
+            preparation,
+            executed,
+            config,
+            emit,
+            signal=signal,
+        )
         finalized_results.append(finalized)
         finalized_messages.append(finalized.message)
     return _ToolCallBatchOutcome(
@@ -687,11 +756,11 @@ async def _execute_tool_calls_parallel(
             return _ToolCallBatchOutcome(messages=[], terminate=True)
         if preparation.kind == "immediate":
             finalized = await _emit_tool_call_outcome(
-                    preparation.tool_call,
-                    preparation.result,
-                    preparation.is_error,
-                    emit,
-                )
+                preparation.tool_call,
+                preparation.result,
+                preparation.is_error,
+                emit,
+            )
             finalized_results.append(finalized)
             finalized_messages.append(finalized.message)
         else:
@@ -700,32 +769,57 @@ async def _execute_tool_calls_parallel(
     running_calls = [
         (
             prepared,
-            asyncio.create_task(
-                _execute_prepared_tool_call(prepared, emit, signal=signal)
+            _create_execution_task(
+                _execute_prepared_tool_call(prepared, emit, signal=signal),
+                signal,
             ),
         )
         for prepared in runnable_calls
     ]
     try:
         for prepared, execution in running_calls:
-            executed = await execution
+            executed = await _await_execution_task(execution, signal)
             if _is_aborted(signal):
-                await _cancel_pending_tool_tasks(running_calls)
+                await _finalize_completed_tool_tasks(
+                    current_context,
+                    assistant_message,
+                    running_calls,
+                    finalized_results,
+                    finalized_messages,
+                    config,
+                    emit,
+                    signal=signal,
+                )
                 return _ToolCallBatchOutcome(
                     messages=list(finalized_messages),
                     terminate=True,
                 )
             finalized = await _finalize_executed_tool_call(
-                    current_context,
-                    assistant_message,
-                    prepared,
-                    executed,
-                    config,
-                    emit,
-                    signal=signal,
-                )
+                current_context,
+                assistant_message,
+                prepared,
+                executed,
+                config,
+                emit,
+                signal=signal,
+            )
             finalized_results.append(finalized)
             finalized_messages.append(finalized.message)
+    except _ExecutionAborted:
+        await _finalize_completed_tool_tasks(
+            current_context,
+            assistant_message,
+            running_calls,
+            finalized_results,
+            finalized_messages,
+            config,
+            emit,
+            signal=signal,
+        )
+        return _ToolCallBatchOutcome(
+            messages=list(finalized_messages),
+            terminate=True,
+        )
     except asyncio.CancelledError:
         await _cancel_pending_tool_tasks(running_calls)
         raise
@@ -766,6 +860,7 @@ def _create_aborted_assistant_message(
         content=[TextPart(type="text", text="")],
         api=config.model.endpoint_id,
         provider=config.model.provider_id,
+        endpoint=config.model.endpoint_id,
         model=config.model.id,
         response_id=None,
         usage=_empty_usage(),
@@ -791,11 +886,93 @@ async def _cancel_pending_tool_tasks(
         tuple["_PreparedToolCall", asyncio.Task["_ExecutedToolCallOutcome"]]
     ],
 ) -> None:
-    pending = [task for _prepared, task in running_calls if not task.done()]
+    tasks = [task for _prepared, task in running_calls]
+    pending = [task for task in tasks if not task.done()]
     for task in pending:
         task.cancel()
-    if pending:
-        await asyncio.gather(*pending, return_exceptions=True)
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def _finalize_completed_tool_tasks(
+    current_context: AgentContext,
+    assistant_message: AssistantMessage,
+    running_calls: list[
+        tuple["_PreparedToolCall", asyncio.Task["_ExecutedToolCallOutcome"]]
+    ],
+    finalized_results: list[_FinalizedToolCallOutcome],
+    finalized_messages: list[ToolResultMessage],
+    config: AgentLoopConfig,
+    emit: AgentEventSink,
+    *,
+    signal: object | None,
+) -> None:
+    tasks = [task for _prepared, task in running_calls]
+    for task in tasks:
+        if not task.done():
+            task.cancel()
+    drained = await asyncio.gather(*tasks, return_exceptions=True) if tasks else []
+    finalized_ids = {message.tool_call_id for message in finalized_messages}
+    for (prepared, _task), executed in zip(running_calls, drained, strict=True):
+        if prepared.tool_call.id in finalized_ids:
+            continue
+        if not isinstance(executed, _ExecutedToolCallOutcome):
+            continue
+        if _is_aborted(signal) and not executed.completed_before_abort:
+            continue
+        finalized = await _finalize_executed_tool_call(
+            current_context,
+            assistant_message,
+            prepared,
+            executed,
+            config,
+            emit,
+            signal=signal,
+        )
+        finalized_results.append(finalized)
+        finalized_messages.append(finalized.message)
+        finalized_ids.add(finalized.message.tool_call_id)
+
+
+def _create_execution_task(
+    operation: Coroutine[Any, Any, ExecutionResultT],
+    signal: object | None,
+) -> asyncio.Task[ExecutionResultT]:
+    task = asyncio.create_task(operation)
+    register = getattr(signal, "_register_execution_task", None)
+    if callable(register):
+        register(task)
+    elif _is_aborted(signal):
+        task.cancel()
+    return task
+
+
+async def _await_execution_task(
+    task: asyncio.Task[ExecutionResultT],
+    signal: object | None,
+) -> ExecutionResultT:
+    try:
+        return await task
+    except asyncio.CancelledError:
+        current = asyncio.current_task()
+        coordinator_cancelled = bool(current is not None and current.cancelling())
+        if _is_aborted(signal) and task.cancelled() and not coordinator_cancelled:
+            raise _ExecutionAborted from None
+        raise
+    finally:
+        unregister = getattr(signal, "_unregister_execution_task", None)
+        if callable(unregister):
+            unregister(task)
+
+
+async def _run_execution(
+    operation: Coroutine[Any, Any, ExecutionResultT],
+    signal: object | None,
+) -> ExecutionResultT:
+    return await _await_execution_task(
+        _create_execution_task(operation, signal),
+        signal,
+    )
 
 
 def _is_aborted(signal: object | None) -> bool:
@@ -884,6 +1061,7 @@ class _ExecutedToolCallOutcome:
     result: AgentToolResult[Any]
     is_error: bool
     duration_ms: int
+    completed_before_abort: bool
 
 
 async def _prepare_tool_call(
@@ -1091,7 +1269,10 @@ async def _execute_prepared_tool_call(
         for update in update_events:
             await update
         return _ExecutedToolCallOutcome(
-            result=result, is_error=False, duration_ms=_elapsed_ms(started_at)
+            result=result,
+            is_error=False,
+            duration_ms=_elapsed_ms(started_at),
+            completed_before_abort=not _is_aborted(signal),
         )
     except Exception as error:
         duration_ms = _elapsed_ms(started_at)
@@ -1106,6 +1287,7 @@ async def _execute_prepared_tool_call(
             result=_create_error_tool_result(str(error), error),
             is_error=True,
             duration_ms=duration_ms,
+            completed_before_abort=not _is_aborted(signal),
         )
 
 

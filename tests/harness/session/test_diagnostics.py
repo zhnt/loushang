@@ -95,6 +95,7 @@ def test_session_diagnostics_records_agent_and_policy_tool_failures() -> None:
     diagnostics = DiagnosticsService()
     runtime = _runtime(diagnostics)
     assistant_message = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[],
         api="responses",

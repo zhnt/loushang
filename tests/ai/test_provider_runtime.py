@@ -24,10 +24,12 @@ class _HTTPError(Exception):
         status_code: int,
         *,
         headers: dict[str, str] | None = None,
+        body: object | None = None,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.headers = headers or {}
+        self.body = body
 
 
 class _BlockingRawSource:
@@ -356,7 +358,18 @@ def test_provider_runtime_emits_error_trace_for_terminal_error() -> None:
     trace_events: list[dict[str, object]] = []
 
     async def _parts():
-        raise _HTTPError("unauthorized", 401, headers={"x-request-id": "req_401"})
+        raise _HTTPError(
+            "unauthorized",
+            401,
+            headers={"x-request-id": "req_401"},
+            body={
+                "error": {
+                    "type": "authentication_error",
+                    "message": "bad token=secret-token",
+                },
+                "request": {"prompt": "private prompt"},
+            },
+        )
         yield {"type": "response_done"}
 
     async def _run():
@@ -385,7 +398,14 @@ def test_provider_runtime_emits_error_trace_for_terminal_error() -> None:
         "retryable": False,
         "statusCode": 401,
         "requestId": "req_401",
+        "exceptionType": "_HTTPError",
+        "providerResponseSummary": (
+            '{"error":{"type":"authentication_error",'
+            '"message":"bad token=[REDACTED]"}}'
+        ),
     }
+    assert "provider_response_summary" not in events[0]
+    assert "private prompt" not in repr(trace_events)
 
 
 def test_provider_runtime_does_not_retry_nonretryable_error_before_output() -> None:

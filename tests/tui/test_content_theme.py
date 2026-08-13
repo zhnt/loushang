@@ -1653,8 +1653,23 @@ def test_detect_image_protocol_from_terminal_environment() -> None:
     assert detect_image_protocol({"TERM_PROGRAM": "Apple_Terminal"}) is None
 
 
-def test_render_terminal_image_defaults_to_auto_protocol_when_data_is_available(monkeypatch: Any) -> None:
+def _set_kitty_test_environment(monkeypatch: Any) -> None:
+    for name in (
+        "TERM_PROGRAM",
+        "ITERM_SESSION_ID",
+        "TMUX",
+        "STY",
+        "WEZTERM_PANE",
+        "WEZTERM_EXECUTABLE",
+        "GHOSTTY_RESOURCES_DIR",
+        "LOUSHANG_TUI_TMUX_PASSTHROUGH",
+    ):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("TERM", "xterm-kitty")
+
+
+def test_render_terminal_image_defaults_to_auto_protocol_when_data_is_available(monkeypatch: Any) -> None:
+    _set_kitty_test_environment(monkeypatch)
 
     line = render_terminal_image(alt_text="screenshot", source="shot.png", data=b"abc")
 
@@ -1737,7 +1752,7 @@ def test_image_block_accounts_for_terminal_image_rows_and_styles_fallback() -> N
 
 
 def test_image_component_allocates_kitty_image_id_when_auto_detected(monkeypatch: Any) -> None:
-    monkeypatch.setenv("TERM", "xterm-kitty")
+    _set_kitty_test_environment(monkeypatch)
     image = Image(
         data=b"abc",
         mime_type="image/png",
@@ -1791,7 +1806,7 @@ def test_image_block_renders_kitty_protocol_line_when_data_and_protocol_are_avai
 
 
 def test_image_block_defaults_to_auto_protocol_when_data_is_available(monkeypatch: Any) -> None:
-    monkeypatch.setenv("TERM", "xterm-kitty")
+    _set_kitty_test_environment(monkeypatch)
     image = ImageBlock(alt_text="screenshot", source="shot.png", data=b"abc")
 
     line = rendered_text(image, width=10)[0]

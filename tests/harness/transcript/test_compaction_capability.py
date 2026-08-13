@@ -24,6 +24,7 @@ from loushang.harness.transcript import (
 
 def _assistant(text: str, *, timestamp: float) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="responses",
@@ -114,7 +115,9 @@ def test_turn_aware_capability_prepares_a_tool_safe_transcript_plan() -> None:
         user_id = await session.append_message(
             UserMessage(role="user", content="older request", timestamp=0.0)
         )
-        assistant_id = await session.append_message(_assistant("older reply", timestamp=1.0))
+        assistant_id = await session.append_message(
+            _assistant("older reply", timestamp=1.0)
+        )
         recent_user_id = await session.append_message(
             UserMessage(role="user", content="current request", timestamp=2.0)
         )

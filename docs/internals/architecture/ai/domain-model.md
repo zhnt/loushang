@@ -1,289 +1,119 @@
-## `models.json` 领域模型
+# `loushang.ai` 领域模型
 
-说明：
+本文以当前 `src/loushang/ai/model/` 实现和 `models.json` 为准，描述模型接入领域语义。
 
-- 本文基于当前 `models.json` 的原生树结构描述领域来源。
-- 代码中的运行时领域对象已经统一命名为 `Provider`、`Endpoint`、`Model`、`Auth`、`Capabilities`、`Compat`、`Defaults`、`Pricing`。
-- 文中提到的 `EndpointModel` 可以直接理解为当前代码中的 `Model` 领域对象来源。
+## 核心结构
 
-本文只基于当前 `src/loushang/ai/model/models.json` 描述 `loushang.ai` 的底层接入领域模型。
+模型接入结构固定为：
 
-约束：
+```text
+Provider -> Endpoint -> Model
+```
 
-- 不参照 `reference repository` 或 `kilocode` 的数据模型
-- 不读取离线备份目录 `backup/ai/`
-- 只描述当前 `models.json` 原生存在的对象及其直接关系
-- API 层可参考外部项目，但领域模型层不参考
+- `Provider` 是模型服务提供方，也是 Endpoint 的归属边界。
+- `Endpoint` 是 Provider 下的一条完整模型接入通道，声明 `api`、地址、认证、静态
+  headers、adapter 配置、defaults 和模型清单。
+- `Model` 是 Endpoint 下可直接调用的模型。
 
+同一个 `model_id` 可以出现在多个 Endpoint 下。模型的完整、唯一标识始终是：
 
-## 领域边界
+```text
+provider:endpoint:model
+```
 
-`models.json` 是 `loushang.ai` 的底层接入事实源。
+因此，`provider + model_id` 不是已经确定的模型身份。
 
-它回答的是：
+## Provider
 
-- 系统有哪些 Provider
-- 每个 Provider 暴露哪些 Endpoint
-- 每个 Endpoint 通过什么 API 协议提供能力
-- 每个 Endpoint 下有哪些可调用模型
-- Provider 级和 Endpoint 级的认证信息是什么
+`Provider` 位于 `providers.{provider_id}`，包含元数据、可选认证声明和 Endpoint
+映射。Provider 不负责选择 API adapter，也不是可调用对象。
 
-它当前不直接回答的是：
+## Endpoint
 
-- 运行时 registry 应该长什么样
-- 统一 ModelView 应该长什么样
-- 调用时如何解析为 request
-- 上层 API 如何组织
+`Endpoint` 位于 `providers.{provider_id}.endpoints.{endpoint_id}`，是一条完整接入
+通道。主要事实包括：
 
-这些都属于后续实现与 API 设计层，而不是 `models.json` 的原生领域模型。
-
-
-## 原生领域对象
-
-当前 `models.json` 中可以直接确认的原生核心对象可以归纳为 4 类来源：
-
-- `Provider`
-- `Endpoint`
-- `Model`
-- `Auth`
-
-
-## 1. Provider
-
-顶层对象，位于 `providers.{providerKey}`。
-
-示例字段：
-
-- `displayName`
-- `website`
-- `auth`
-- `endpoints`
-
-语义：
-
-- Provider 表示一个供应方或接入来源
-- Provider 是 Endpoint 的归属边界
-- Provider 可定义默认认证方式
-
-当前可以明确确认的关系：
-
-- 一个 Provider 包含多个 Endpoint
-- 一个 Provider 可以有一个 provider-level `auth`
-
-
-## 2. Endpoint
-
-Provider 下的接入端点对象，位于 `providers.{providerKey}.endpoints.{endpointKey}`。
-
-示例字段：
-
-- `displayName`
-- `baseUrl`
-- `baseUrlEnv`
 - `api`
-- `region`
-- `lane`
-- `docs`
+- `baseUrl` / `baseUrlEnv`
+- `region` / `lane`
 - `auth`
 - `headers`
 - `adapter`
+- `defaults`
 - `models`
 
-语义：
+Endpoint 直接持有 Model。`region` 和 `lane` 只是 Endpoint 属性，不构成新的领域层级。
 
-- Endpoint 是实际可接入的协议/地址单元
-- Endpoint 决定该通道使用哪种 API 协议
-- Endpoint 可以定义自己的完整认证声明
-- Endpoint 是模型清单的直接挂载点
+## Model
 
-当前可以明确确认的关系：
+`Model` 位于
+`providers.{provider_id}.endpoints.{endpoint_id}.models.{model_id}`。原始模型定义包含
+能力、价格、模型级认证或 adapter 覆盖、defaults 和上游模型 ID 等事实。
 
-- 一个 Endpoint 属于一个 Provider
-- 一个 Endpoint 包含多个 EndpointModel
-- 一个 Endpoint 可选定义一个 endpoint-level `auth`
+`ModelRegistry` 构造索引时，将 Endpoint 的生效配置合并进每个 `Model`。Registry
+返回的 `Model` 已经携带：
 
-注意：
+- `provider_id` 和 `endpoint_id`
+- Endpoint 的 `api` 和地址
+- 生效认证与静态 headers
+- 合并后的 adapter 配置和 defaults
+- Model 自身的 capabilities、pricing 和 upstream ID
 
-- `region`、`lane` 目前都只是 Endpoint 的属性
-- 当前 `models.json` 中没有独立的 `Region` 对象
-- `headers` 是端点静态 header；`adapter` 是协议适配配置
-- 当前 `models.json` 中没有独立的 `Binding` 对象
+这个 `Model` 是完整调用对象。公共 `complete()` / `stream()` 只接收 `Model`，不会再
+单独接收 Endpoint，也不会在调用阶段重新选择 Endpoint。
 
+## ModelSelection
 
-## 3. Model
+`ModelSelection` 是已经确定的模型轻量引用，不是选择偏好：
 
-Endpoint 下的模型对象，位于 `providers.{providerKey}.endpoints.{endpointKey}.models.{modelId}`。
+```python
+@dataclass(frozen=True)
+class ModelSelection:
+    provider: str
+    endpoint_id: str
+    model_id: str
+```
 
-示例字段：
+三个身份字段都必须是非空字符串。`ModelSelection` 始终可以格式化为完整的
+`provider:endpoint:model`，并由 `ModelRegistry.resolve_model_selection()` 解析为完整
+可调用的 `Model`。配置传递、目录转换和持久化不得删除 `endpoint_id`。
 
-- `displayName`
-- `family`
-- `alias`
-- `knowledge`
-- `releaseDate`
-- `lastUpdated`
-- `capabilities`
-- `pricing`
-- `compat`
-- `defaults`
+最外层文本输入可以使用 `provider:model`（也接受 `provider/model`）或分别提供
+provider 与 model 的简写，但
+补全规则固定为：
 
-语义：
+1. 按 `provider + model_id` 查询候选。
+2. 恰好一个候选时，立即补全 Endpoint 并生成完整 `ModelSelection`。
+3. 没有候选时返回不存在错误。
+4. 多个候选时返回列出完整三元组的歧义错误。
 
-- Model 是当前 `models.json` 中“可被接入调用”的最小模型单元
-- 它不是 provider 无关的全局模型定义
-- 它天然隶属于某个 Endpoint
-- 同一个模型标识可以出现在多个 Endpoint 下，但在 `models.json` 当前结构中，这些仍是多个 endpoint-scoped 模型定义
+`preferred`、默认 Endpoint 和候选顺序都不能用于打破歧义。
 
-注意：
+## API adapter 路由
 
-- 当前 JSON 中不存在独立的 `Capability` 对象
-- 当前 JSON 中的模型能力字段统一收进 `capabilities`
-- `capabilities` 当前同时承载：
-  - `input` / `output`
-  - `reasoning`
-  - `contextWindow` / `maxTokens`
-  - `stream` / `toolUse` / `structuredOutput` / `attachment` / `temperature`
-- 当前 JSON 中的成本字段通过 `pricing` 内嵌在 model 原始定义上
+`APIAdapter` 是 API 调用适配单元的唯一正式术语，最小契约为
+`api + invoke_raw(request)`。调用路由保留两层：
 
+1. `ProviderRegistry` 先按 `(provider_id, api)` 查找厂商专用 adapter。
+2. 未命中时，回退 `APIRegistry` 中按 `api` 注册的通用 `APIAdapter`。
 
-## 4. Auth
+`ProviderRegistry` 只负责厂商专用优先路由，不拥有模型目录；`APIRegistry` 只拥有
+通用 API adapter 注册。两者都不会改变已选定的 `Model`。
 
-认证对象是嵌入式对象，不是顶层实体。
+## AssistantMessage 来源
 
-当前明确存在两种位置：
+流式和非流式调用共用同一事件装配路径。每个 partial/final `AssistantMessage` 都记录：
 
-- Provider 级 `auth`
-- Endpoint 级 `auth`
-- Model 级 `auth`（schema 支持，当前目录可按需使用）
+- `api`
+- `provider`
+- `endpoint`
+- `model`
 
-示例字段：
+其中 `provider:endpoint:model` 可以还原响应的完整模型来源。`endpoint` 只记录响应
+来源，不改变调用只传 `Model` 的边界。
 
-- `kind`
-- `apiKeyEnv`
-- `header`
-- `prefix`
+## 边界约束
 
-语义：
-
-- Auth 用来声明调用所需的认证种类和 header 绑定规则
-- Provider 级 `auth` 表示默认认证方式
-- Endpoint 或 Model 级 `auth` 是完整替换，不与上级字段合并
-- 生效优先级是 Model > Endpoint > Provider
-
-注意：
-
-- 当前 JSON 中不存在独立的 OAuth 领域对象
-- OAuth 登录、刷新和凭据存储不属于 `loushang.ai` 模型调用边界
-
-
-## 值对象与内嵌结构
-
-除上述 4 个原生对象外，当前 `models.json` 还包含若干内嵌值结构。
-
-### Pricing
-
-位于 `Model.pricing`。
-
-字段示例：
-
-- `currency`
-- `input`
-- `output`
-- `cacheRead`
-- `cacheWrite`
-
-语义：
-
-- 描述该 Model 在该接入通道下的价格信息
-- 它属于 Model 的内嵌值对象，而不是独立领域实体
-
-### Input / Output Modalities
-
-位于 `Model.input` 与 `Model.output`。
-
-语义：
-
-- 描述输入输出模态
-- 当前存储形式是字符串，而不是独立对象
-
-
-## 当前明确不存在的对象
-
-为了避免后续讨论混淆，这里明确列出当前 `models.json` 中**没有原生定义**的对象：
-
-- 全局规格表对象
-- 绑定表对象
-- `Capability`
-- `CapabilityOverlay`
-- `RegionConfig`
-- `GatewayConfig`
-- `CompatFlags`
-- `Defaults`
-- `SelectionPolicy`
-- `CodingPlan`
-
-这些概念如果后续还需要存在，只能作为：
-
-- API 层对象
-- 运行时解析对象
-- 内部实现对象
-
-而不能再被表述成“`models.json` 原生领域对象”。
-
-
-## 对象关系
-
-当前 `models.json` 的原生关系非常简单：
-
-- `Provider` 1..* `Endpoint`
-- `Endpoint` 1..* `Model`
-- `Provider` 0..1 `auth`
-- `Endpoint` 0..1 `auth`
-- `Model` 0..1 `auth`
-- `Model` 0..1 `pricing`
-
-从这套关系可以得出的结论是：
-
-- 当前底层接入目录是一个分层树结构
-- 不是全局规格表 + 绑定表的关系模型
-- 模型定义当前是 endpoint-scoped 的
-
-
-## 当前最小领域视图
-
-如果只从 `models.json` 出发，可以把底层领域模型压缩成一句话：
-
-> `Provider` 通过一个或多个 `Endpoint` 暴露模型接入能力；每个 `Endpoint` 使用一种 API 协议、可选定义完整认证声明，并直接持有一组可调用的 `Model` 定义。
-
-
-## 对后续重构的约束
-
-后续重构允许围绕 API 设计引入新的运行时对象，但必须遵守下面两点：
-
-### 1. 新对象不能冒充 `models.json` 原生对象
-
-例如如果后续需要：
-
-- `ResolvedModel`
-- `ResolvedEndpoint`
-- `ResolvedRequest`
-- `CapabilityView`
-- `Binding`
-
-应明确标注它们是：
-
-- 运行时派生对象
-- 或 API 设计对象
-
-而不是 `models.json` 的原生领域模型。
-
-### 2. 运行时对象应可由当前 4 类原生对象推导出来
-
-也就是任何新增抽象，都应能回溯到：
-
-- `Provider`
-- `Endpoint`
-- `EndpointModel`
-- `Auth`
-
-否则说明它不是底层接入事实源的一部分，而是上层策略对象。
+本领域不增加另一套模型绑定对象或 resolver 层。`Provider -> Endpoint -> Model`、
+`ModelRegistry`、`ModelSelection`、`APIAdapter` 和 `AssistantMessage` 已覆盖本次所需
+语义；认证类型、OAuth 生命周期和 `ProviderRequest` 也不因模型身份收敛而改变。

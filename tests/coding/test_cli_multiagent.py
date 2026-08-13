@@ -65,6 +65,7 @@ def _registry(model: Model) -> ModelRegistry:
 
 def _assistant(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -215,7 +216,11 @@ def test_real_parallel_review_uses_non_persistent_coding_children_and_full_fan_i
         model = _model()
         services = create_services(
             ai_model_registry=_registry(model),
-            default_model=ModelSelection(provider="faux", model_id="faux-model"),
+            default_model=ModelSelection(
+                endpoint_id="anthropic-messages",
+                provider="faux",
+                model_id="faux-model",
+            ),
         )
         stdout = StringIO()
         stderr = StringIO()
@@ -279,7 +284,11 @@ def test_real_debate_applies_per_role_model_override(tmp_path) -> None:
         registry = _registry(model)
         services = create_services(
             ai_model_registry=registry,
-            default_model=ModelSelection(provider="faux", model_id="faux-model"),
+            default_model=ModelSelection(
+                endpoint_id="anthropic-messages",
+                provider="faux",
+                model_id="faux-model",
+            ),
         )
         stdout = StringIO()
         stderr = StringIO()

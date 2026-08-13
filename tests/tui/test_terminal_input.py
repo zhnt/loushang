@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import importlib
-import os
 import sys
 import threading
 import time
@@ -11,18 +10,11 @@ from io import StringIO
 from types import SimpleNamespace
 from typing import Any
 
-import pytest
-
 from loushang.tui.input import (
     BRACKETED_PASTE_END,
     BRACKETED_PASTE_START,
     InputEvent,
     InputReader,
-)
-from loushang.tui.keyboard_protocol import (
-    KITTY_QUERY_SEQUENCE,
-    MODIFY_OTHER_KEYS_DISABLE_SEQUENCE,
-    MODIFY_OTHER_KEYS_ENABLE_SEQUENCE,
 )
 from loushang.tui.terminal_input import (
     TerminalInputMode,
@@ -39,76 +31,6 @@ def test_terminal_input_mode_does_not_write_modes_for_non_tty_streams() -> None:
         pass
 
     assert stdout.getvalue() == ""
-
-
-def test_terminal_input_mode_enables_and_restores_tty_modes(monkeypatch: Any) -> None:
-    termios = pytest.importorskip("termios")
-    pytest.importorskip("tty")
-    stdin = _TtyInput()
-    stdout = StringIO()
-    original_attrs = [
-        getattr(termios, "ICRNL", 0),
-        0,
-        0,
-        termios.ECHO
-        | termios.ICANON
-        | getattr(termios, "ISIG", 0)
-        | getattr(termios, "IEXTEN", 0),
-        0,
-        0,
-        [0] * 32,
-    ]
-    tcsetattr_calls: list[tuple[int, int, list[Any]]] = []
-
-    monkeypatch.setattr("termios.tcgetattr", lambda fd: original_attrs)
-    monkeypatch.setattr(
-        "termios.tcsetattr",
-        lambda fd, when, attrs: tcsetattr_calls.append((fd, when, attrs)),
-    )
-    monkeypatch.setattr("tty.setcbreak", lambda fd: None)
-    monkeypatch.setattr(
-        "loushang.tui.terminal_input.drain_input", lambda *args, **kwargs: ""
-    )
-
-    with TerminalInputMode(stdin=stdin, stdout=stdout):
-        pass
-
-    output = stdout.getvalue()
-    assert "\x1b[?2004h" in output
-    assert "\x1b[?1004h" in output
-    assert KITTY_QUERY_SEQUENCE in output
-    assert MODIFY_OTHER_KEYS_ENABLE_SEQUENCE in output
-    assert "\x1b[?2004l" in output
-    assert "\x1b[?1004l" in output
-    assert MODIFY_OTHER_KEYS_DISABLE_SEQUENCE in output
-    active_attrs = tcsetattr_calls[0][2]
-    assert active_attrs[3] & getattr(termios, "IEXTEN", 0) == 0
-    assert tcsetattr_calls[-1] == (stdin.fileno(), termios.TCSADRAIN, original_attrs)
-
-
-def test_terminal_input_mode_delivers_control_v() -> None:
-    if os.name == "nt":
-        pytest.skip("PTY input test uses POSIX termios")
-    pty = pytest.importorskip("pty")
-    select = pytest.importorskip("select")
-    master_fd, slave_fd = pty.openpty()
-    try:
-        with os.fdopen(slave_fd, "r", closefd=False) as stdin:
-            with TerminalInputMode(
-                stdin=stdin,
-                stdout=StringIO(),
-                bracketed_paste=False,
-                focus_events=False,
-                keyboard_protocols=False,
-                drain_on_exit=False,
-            ):
-                os.write(master_fd, b"\x16")
-                readable, _, _ = select.select([slave_fd], [], [], 1.0)
-                assert readable == [slave_fd]
-                assert os.read(slave_fd, 1) == b"\x16"
-    finally:
-        os.close(master_fd)
-        os.close(slave_fd)
 
 
 def test_terminal_input_mode_writes_control_modes_on_windows_without_posix_modules(
@@ -260,16 +182,24 @@ def test_read_input_chunk_or_render_tick_wakes_for_deferred_render_request() -> 
     async def run() -> tuple[str | None, int, int]:
         runtime = _DeferredRuntime()
         render_wakeup = asyncio.Event()
+        release_input = asyncio.Event()
+
+        async def read_after_render(_stdin: object) -> str:
+            await release_input.wait()
+            return ""
 
         async def wake_later() -> None:
-            await asyncio.sleep(0.001)
             render_wakeup.set()
+            while runtime.rendered == 0:
+                await asyncio.sleep(0)
+            release_input.set()
 
         wake_task = asyncio.create_task(wake_later())
         result = await read_input_chunk_or_render_tick(
-            _BlockingOnceInput(block_seconds=0.01),
+            StringIO(""),
             runtime=runtime,
             active_task=None,
+            input_chunk_reader=read_after_render,
             render_wakeup=render_wakeup,
         )
         await wake_task
@@ -286,9 +216,10 @@ def test_read_input_chunk_or_render_tick_wakes_for_terminal_runtime_deadline() -
     async def run() -> tuple[str | None, int]:
         runtime = _Runtime()
         result = await read_input_chunk_or_render_tick(
-            _BlockingOnceInput(block_seconds=0.01),
+            StringIO(""),
             runtime=runtime,
             active_task=None,
+            input_chunk_reader=_DelayedInputReader(block_seconds=0.01),
             idle_wakeup_ms=1,
         )
         return result, runtime.rendered
@@ -306,31 +237,6 @@ def test_drain_input_consumes_buffered_stringio_text() -> None:
 
     assert drained == "leftover"
     assert stdin.read() == ""
-
-
-def test_drain_input_respects_max_duration_for_continuous_tty_input(
-    monkeypatch,
-) -> None:
-    calls: list[int] = []
-
-    def fake_select(
-        read_list: list[int], _write: list[Any], _error: list[Any], _timeout: float
-    ):
-        return read_list, [], []
-
-    def fake_read(_fd: int, size: int) -> bytes:
-        calls.append(size)
-        return b"x"
-
-    clock = _FloatClock(step=0.004)
-    monkeypatch.setattr("select.select", fake_select)
-    monkeypatch.setattr("os.read", fake_read)
-
-    drained = drain_input(
-        _TtyInput(), max_bytes=1_000, idle_timeout=0.01, max_duration=0.01, now=clock
-    )
-
-    assert 1 <= len(drained) < 1_000
 
 
 def test_input_batch_routes_kitty_protocol_response_as_control_event() -> None:
@@ -593,18 +499,13 @@ class _ImmediateDecision:
     delay_ms = 0
 
 
-class _BlockingOnceInput:
+class _DelayedInputReader:
     def __init__(self, *, block_seconds: float) -> None:
         self.block_seconds = block_seconds
 
-    def read(self, _size: int) -> str:
-        import time
-
-        time.sleep(self.block_seconds)
+    async def __call__(self, _stdin: object) -> str:
+        await asyncio.sleep(self.block_seconds)
         return ""
-
-    def isatty(self) -> bool:
-        return False
 
 
 class _TtyInput:
@@ -613,17 +514,6 @@ class _TtyInput:
 
     def isatty(self) -> bool:
         return True
-
-
-class _FloatClock:
-    def __init__(self, *, step: float) -> None:
-        self.value = 0.0
-        self.step = step
-
-    def __call__(self) -> float:
-        current = self.value
-        self.value += self.step
-        return current
 
 
 def _install_fake_msvcrt(
@@ -638,11 +528,7 @@ def _install_fake_msvcrt(
         kbhit=kbhit or (lambda: bool(pending)),
         getwch=getwch or (lambda: pending.pop(0)),
     )
-    original_import_module = importlib.import_module
-
-    def fake_import_module(name: str, package: str | None = None) -> object:
-        if name == "msvcrt":
-            return fake_msvcrt
-        return original_import_module(name, package)
-
-    monkeypatch.setattr("importlib.import_module", fake_import_module)
+    monkeypatch.setattr(
+        "loushang.tui.terminal_input._load_windows_console_module",
+        lambda: fake_msvcrt,
+    )

@@ -176,7 +176,9 @@ def test_conversation_input_router_restores_pending_messages() -> None:
     assert app.state.pending_followups == []
 
 
-def test_conversation_input_router_reports_unconfigured_clipboard_as_unhandled() -> None:
+def test_conversation_input_router_reports_unconfigured_clipboard_as_unhandled() -> (
+    None
+):
     app = _ConversationApp()
     router = ConversationInputRouter(
         app=app,

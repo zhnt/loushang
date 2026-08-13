@@ -22,6 +22,7 @@ def _assistant_tool_call_message(
     tool_name: str = "calc", arguments: dict[str, object] | None = None
 ) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[
             ToolCall(

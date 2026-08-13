@@ -114,10 +114,11 @@ def _serialize_model_selection(
 ) -> dict[str, str] | None:
     if selection is None:
         return None
-    payload = {"provider": selection.provider, "model_id": selection.model_id}
-    if selection.endpoint_id:
-        payload["endpoint_id"] = selection.endpoint_id
-    return payload
+    return {
+        "provider": selection.provider,
+        "endpoint_id": selection.endpoint_id,
+        "model_id": selection.model_id,
+    }
 
 
 def _deserialize_model_selection(value: object) -> ModelSelection | None:
@@ -126,16 +127,20 @@ def _deserialize_model_selection(value: object) -> ModelSelection | None:
     if not isinstance(value, Mapping):
         raise TypeError("default_model must be a JSON object or null")
     provider = value.get("provider")
-    model_id = value.get("model_id")
-    if not isinstance(provider, str) or not isinstance(model_id, str):
-        raise TypeError(
-            "default_model must include string provider and model_id values"
-        )
     endpoint_id = value.get("endpoint_id") or value.get("endpointId")
+    model_id = value.get("model_id")
+    if (
+        not isinstance(provider, str)
+        or not isinstance(endpoint_id, str)
+        or not isinstance(model_id, str)
+    ):
+        raise TypeError(
+            "default_model must include string provider, endpoint_id, and model_id values"
+        )
     return ModelSelection(
         provider=provider,
+        endpoint_id=endpoint_id,
         model_id=model_id,
-        endpoint_id=endpoint_id if isinstance(endpoint_id, str) else None,
     )
 
 

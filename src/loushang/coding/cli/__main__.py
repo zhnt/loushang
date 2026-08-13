@@ -604,6 +604,11 @@ async def _configure_coding_cli_session(
         resolve_model_selection=lambda: parse_model_selection_reference(
             args.model,
             provider=args.provider,
+            registry=getattr(
+                getattr(context.state.services, "model_registry", None),
+                "ai_registry",
+                None,
+            ),
         ),
         thinking_level=args.thinking,
         apply_model_selection=lambda session, selection: apply_model_selection(

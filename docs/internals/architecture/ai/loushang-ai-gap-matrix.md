@@ -18,7 +18,7 @@
 | 能力项 | `reference AI SDK` 状态 | `loushang.ai` 状态 | 结论 | 证据 |
 |---|---|---|---|---|
 | 顶层统一 API：`stream/complete` | 完整，且额外包含 `streamSimple/completeSimple` | `stream/complete` 已冻结，Simple 入口有意删除 | 部分对齐；Python core 保持更窄根 API | [reference implementation stream](/home/dev/workspace/reference-repository/packages/ai/src/stream.ts#L25) [loushang api](/home/dev/workspace/loushang/src/loushang/ai/api/streaming.py#L51) |
-| API provider registry | 完整 | 完整 | 已基本对齐 | [reference implementation registry](/home/dev/workspace/reference-repository/packages/ai/src/api-registry.ts#L66) [loushang registry](/home/dev/workspace/loushang/src/loushang/ai/api_registry.py#L27) |
+| API adapter registry | 完整 | 完整 | 已基本对齐 | [reference implementation registry](/home/dev/workspace/reference-repository/packages/ai/src/api-registry.ts#L66) [loushang registry](/home/dev/workspace/loushang/src/loushang/ai/api_registry.py#L27) |
 | 模型注册/查询接口 | 完整 | 完整但规模小 | 语义对齐，数据面不足 | [reference implementation models](/home/dev/workspace/reference-repository/packages/ai/src/models.ts#L20) [loushang exports](/home/dev/workspace/loushang/src/loushang/ai/__init__.py#L36) |
 | 标准消息类型：`text/thinking/toolCall/image/toolResult` | 完整 | 完整 | 已基本对齐 | [reference implementation types](/home/dev/workspace/reference-repository/packages/ai/src/types.ts#L137) [loushang types](/home/dev/workspace/loushang/src/loushang/ai/types.py#L7) |
 | StopReason：`stop/length/toolUse/error/aborted` | 完整 | 完整 | 已对齐 | [reference implementation types](/home/dev/workspace/reference-repository/packages/ai/src/types.ts#L182) [loushang types](/home/dev/workspace/loushang/src/loushang/ai/types.py#L97) |

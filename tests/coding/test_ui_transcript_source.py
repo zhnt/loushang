@@ -38,7 +38,9 @@ def _session_transcript_source(
 
 
 def test_active_window_transcript_source_returns_snapshot_metadata() -> None:
-    state = ScreenConversationState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    state = ScreenConversationState(
+        model_label="model", cwd="/tmp/project", branch=None, session_label=None
+    )
     state.replace_transcript_window(
         (
             UserPromptRecord("hello"),
@@ -56,7 +58,9 @@ def test_active_window_transcript_source_returns_snapshot_metadata() -> None:
 
 
 def test_active_window_transcript_source_includes_live_assistant_draft() -> None:
-    state = ScreenConversationState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    state = ScreenConversationState(
+        model_label="model", cwd="/tmp/project", branch=None, session_label=None
+    )
     state.replace_transcript_window(
         (
             UserPromptRecord("hello"),
@@ -77,8 +81,12 @@ def test_active_window_transcript_source_includes_live_assistant_draft() -> None
     assert snapshot.source_label == "Transcript window"
 
 
-def test_active_window_transcript_source_recent_assistant_texts_are_filtered_newest_first() -> None:
-    state = ScreenConversationState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+def test_active_window_transcript_source_recent_assistant_texts_are_filtered_newest_first() -> (
+    None
+):
+    state = ScreenConversationState(
+        model_label="model", cwd="/tmp/project", branch=None, session_label=None
+    )
     state.records.extend(
         [
             AssistantMessageRecord("first"),
@@ -88,13 +96,20 @@ def test_active_window_transcript_source_recent_assistant_texts_are_filtered_new
         ]
     )
 
-    assert ActiveWindowTranscriptSource(state).recent_assistant_texts() == ("second", "first")
+    assert ActiveWindowTranscriptSource(state).recent_assistant_texts() == (
+        "second",
+        "first",
+    )
 
 
 def test_session_transcript_source_returns_complete_session_snapshot() -> None:
     session = _Session(
         messages=[
-            UserMessage(role="user", content=[TextPart(type="text", text="full question")], timestamp=1.0),
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="full question")],
+                timestamp=1.0,
+            ),
             _assistant_message("full answer", timestamp=2.0),
         ]
     )
@@ -110,32 +125,50 @@ def test_session_transcript_source_returns_complete_session_snapshot() -> None:
     )
 
 
-def test_session_transcript_source_recent_assistant_texts_are_filtered_newest_first() -> None:
+def test_session_transcript_source_recent_assistant_texts_are_filtered_newest_first() -> (
+    None
+):
     session = _Session(
         messages=[
             _assistant_message("first", timestamp=1.0),
             _assistant_message("   ", timestamp=2.0),
-            UserMessage(role="user", content=[TextPart(type="text", text="next")], timestamp=3.0),
+            UserMessage(
+                role="user", content=[TextPart(type="text", text="next")], timestamp=3.0
+            ),
             _assistant_message("second", timestamp=4.0),
         ]
     )
 
-    assert _session_transcript_source(session).recent_assistant_texts() == ("second", "first")
+    assert _session_transcript_source(session).recent_assistant_texts() == (
+        "second",
+        "first",
+    )
 
 
 def test_session_transcript_source_merges_live_active_window_records() -> None:
     session = _Session(
         messages=[
-            UserMessage(role="user", content=[TextPart(type="text", text="full question")], timestamp=1.0),
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="full question")],
+                timestamp=1.0,
+            ),
             _assistant_message("full answer", timestamp=2.0),
         ]
     )
-    state = ScreenConversationState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    state = ScreenConversationState(
+        model_label="model", cwd="/tmp/project", branch=None, session_label=None
+    )
     state.replace_transcript_window(
         (
             UserPromptRecord("full question"),
             AssistantMessageRecord("full answer", stable=True),
-            ToolExecutionRecord(name="bash run-tests", state="running", elapsed_seconds=0.1, output="live output"),
+            ToolExecutionRecord(
+                name="bash run-tests",
+                state="running",
+                elapsed_seconds=0.1,
+                output="live output",
+            ),
         )
     )
     state.begin_run(started_at=3.0)
@@ -147,18 +180,31 @@ def test_session_transcript_source_merges_live_active_window_records() -> None:
     assert snapshot.records == (
         UserPromptRecord("full question"),
         AssistantMessageRecord("full answer", stable=True),
-        ToolExecutionRecord(name="bash run-tests", state="running", elapsed_seconds=0.1, output="live output"),
+        ToolExecutionRecord(
+            name="bash run-tests",
+            state="running",
+            elapsed_seconds=0.1,
+            output="live output",
+        ),
     )
 
 
-def test_session_transcript_source_keeps_complete_metadata_for_identical_window() -> None:
+def test_session_transcript_source_keeps_complete_metadata_for_identical_window() -> (
+    None
+):
     session = _Session(
         messages=[
-            UserMessage(role="user", content=[TextPart(type="text", text="full question")], timestamp=1.0),
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="full question")],
+                timestamp=1.0,
+            ),
             _assistant_message("full answer", timestamp=2.0),
         ]
     )
-    state = ScreenConversationState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    state = ScreenConversationState(
+        model_label="model", cwd="/tmp/project", branch=None, session_label=None
+    )
     state.replace_transcript_window(
         (
             UserPromptRecord("full question"),
@@ -180,16 +226,28 @@ def test_session_transcript_source_keeps_complete_metadata_for_identical_window(
     )
 
 
-def test_session_transcript_source_deduplicates_decorated_active_window_history() -> None:
+def test_session_transcript_source_deduplicates_decorated_active_window_history() -> (
+    None
+):
     session = _Session(
         messages=[
-            UserMessage(role="user", content=[TextPart(type="text", text="first question")], timestamp=1.0),
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="first question")],
+                timestamp=1.0,
+            ),
             _assistant_message("first answer", timestamp=2.0),
-            UserMessage(role="user", content=[TextPart(type="text", text="second question")], timestamp=3.0),
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="second question")],
+                timestamp=3.0,
+            ),
             _assistant_message("second answer", timestamp=4.0),
         ]
     )
-    state = ScreenConversationState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    state = ScreenConversationState(
+        model_label="model", cwd="/tmp/project", branch=None, session_label=None
+    )
     state.replace_transcript_window(
         (
             UserPromptRecord("first question"),
@@ -216,11 +274,17 @@ def test_session_transcript_source_deduplicates_decorated_active_window_history(
 def test_session_transcript_source_merges_live_assistant_draft() -> None:
     session = _Session(
         messages=[
-            UserMessage(role="user", content=[TextPart(type="text", text="full question")], timestamp=1.0),
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="full question")],
+                timestamp=1.0,
+            ),
             _assistant_message("full answer", timestamp=2.0),
         ]
     )
-    state = ScreenConversationState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    state = ScreenConversationState(
+        model_label="model", cwd="/tmp/project", branch=None, session_label=None
+    )
     state.replace_transcript_window(
         (
             UserPromptRecord("full question"),
@@ -244,16 +308,24 @@ def test_session_transcript_source_merges_live_assistant_draft() -> None:
 def test_transcript_source_boundary_matrix() -> None:
     session = _Session(
         messages=[
-            UserMessage(role="user", content=[TextPart(type="text", text="full question")], timestamp=1.0),
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="full question")],
+                timestamp=1.0,
+            ),
             _assistant_message("full answer", timestamp=2.0),
         ]
     )
-    active_state = ScreenConversationState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    active_state = ScreenConversationState(
+        model_label="model", cwd="/tmp/project", branch=None, session_label=None
+    )
     active_state.replace_transcript_window((AssistantMessageRecord("active answer"),))
     active_state.begin_run(started_at=3.0)
     active_state.append_assistant_chunk("active draft")
 
-    running_tool_state = ScreenConversationState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    running_tool_state = ScreenConversationState(
+        model_label="model", cwd="/tmp/project", branch=None, session_label=None
+    )
     running_tool_state.replace_transcript_window(
         (
             UserPromptRecord("full question"),
@@ -262,7 +334,9 @@ def test_transcript_source_boundary_matrix() -> None:
         )
     )
 
-    draft_state = ScreenConversationState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    draft_state = ScreenConversationState(
+        model_label="model", cwd="/tmp/project", branch=None, session_label=None
+    )
     draft_state.replace_transcript_window(
         (
             UserPromptRecord("full question"),
@@ -273,18 +347,34 @@ def test_transcript_source_boundary_matrix() -> None:
     draft_state.append_assistant_chunk("streaming draft")
 
     cases = (
-        ("active", ActiveWindowTranscriptSource(active_state).snapshot(), False, "Transcript window", "active draft"),
-        ("session", _session_transcript_source(session).snapshot(), True, "Full transcript", "full answer"),
+        (
+            "active",
+            ActiveWindowTranscriptSource(active_state).snapshot(),
+            False,
+            "Transcript window",
+            "active draft",
+        ),
+        (
+            "session",
+            _session_transcript_source(session).snapshot(),
+            True,
+            "Full transcript",
+            "full answer",
+        ),
         (
             "session+tool",
-            _session_transcript_source(session, active_window_state=running_tool_state).snapshot(),
+            _session_transcript_source(
+                session, active_window_state=running_tool_state
+            ).snapshot(),
             False,
             "Full transcript + live window",
             "bash test",
         ),
         (
             "session+draft",
-            _session_transcript_source(session, active_window_state=draft_state).snapshot(),
+            _session_transcript_source(
+                session, active_window_state=draft_state
+            ).snapshot(),
             False,
             "Full transcript + live window",
             "streaming draft",
@@ -299,13 +389,16 @@ def test_transcript_source_boundary_matrix() -> None:
 
 def _assistant_message(text: str, *, timestamp: float) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="openai",
         provider="moonshot",
         model="kimi",
         response_id=None,
-        usage=Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}),
+        usage=Usage(
+            input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+        ),
         stop_reason="stop",
         error_message=None,
         timestamp=timestamp,

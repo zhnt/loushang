@@ -57,6 +57,8 @@ message = await complete(
 )
 ```
 
+`message.provider`、`message.endpoint` 和 `message.model` 共同记录完整响应来源。
+
 公共 `complete` 和 `stream` 不接收 registry 参数。
 
 ## 高级示例
@@ -66,12 +68,12 @@ message = await complete(
 
 ```python
 from loushang.ai.advanced.registry import (
-    clear_api_providers,
-    register_api_provider,
+    clear_api_adapters,
+    register_api_adapter,
 )
 
-clear_api_providers()
-register_api_provider(custom_adapter)
+clear_api_adapters()
+register_api_adapter(custom_adapter)
 ```
 
 高级离线 faux 示例：

@@ -36,7 +36,7 @@ raw part 是 `Provider Adapter Component` 与 `Raw Assembler` 之间的内部标
 
 `loushang-ai` 现在已经冻结了两条主链路：
 
-1. `Top-Level AI API -> ApiProvider Registry -> Provider Adapter`
+1. `Top-Level AI API -> API Adapter Registry -> Provider Adapter`
 2. `Provider Adapter -> Raw Part -> Raw Assembler -> Assistant Message Event Stream`
 
 第一条主链路已经基本明确。  

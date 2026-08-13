@@ -92,9 +92,7 @@ def test_window_budget_partially_trims_only_boundary_record() -> None:
     (
         (
             UserPromptRecord("a\nb\nc"),
-            UserPromptRecord(
-                "[older prompt content omitted from active UI window]\nc"
-            ),
+            UserPromptRecord("[older prompt content omitted from active UI window]\nc"),
         ),
         (
             AssistantMessageRecord("a\nb\nc", stable=False),
@@ -112,9 +110,7 @@ def test_window_budget_partially_trims_only_boundary_record() -> None:
         ),
         (
             StatusRecord("a\nb\nc"),
-            StatusRecord(
-                "[older status content omitted from active UI window]\nc"
-            ),
+            StatusRecord("[older status content omitted from active UI window]\nc"),
         ),
     ),
 )
@@ -130,9 +126,7 @@ def test_window_budget_preserves_text_record_kind_and_metadata(
 
 
 def test_window_budget_counts_blank_text_and_ignores_terminal_newline() -> None:
-    trailing_newline: tuple[DisplayRecord, ...] = (
-        AssistantMessageRecord("a\nb\n"),
-    )
+    trailing_newline: tuple[DisplayRecord, ...] = (AssistantMessageRecord("a\nb\n"),)
     blank: tuple[DisplayRecord, ...] = (StatusRecord(""),)
 
     result, evicted_count, changed = trim_records_to_line_budget(

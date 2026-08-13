@@ -10,7 +10,7 @@ import loushang.ai as ai
 import loushang.ai.options as options_module
 from loushang.ai import ApiKeyAuth, OAuthBearerAuth
 from loushang.ai import CallOptions as PublicCallOptions
-from loushang.ai.advanced.registry import ApiProviderRegistry
+from loushang.ai.advanced.registry import APIRegistry
 from loushang.ai.options import (
     CallOptions,
     ReasoningOptions,
@@ -275,7 +275,7 @@ def test_call_options_reject_non_canonical_reasoning() -> None:
 
 def test_provider_specific_options_are_removed_from_core() -> None:
     assert importlib.util.find_spec("loushang.ai.advanced.options") is None
-    assert ApiProviderRegistry.__module__ == "loushang.ai.api_registry"
+    assert APIRegistry.__module__ == "loushang.ai.api_registry"
 
     for module in (ai, options_module):
         for name in REMOVED_PROVIDER_OPTIONS:

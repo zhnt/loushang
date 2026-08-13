@@ -172,6 +172,13 @@ def matching_model_choices(
     exact_value = [choice for choice in model_choices if choice.value.lower() == needle]
     if exact_value:
         return exact_value
+    shorthand = [
+        choice
+        for choice in model_choices
+        if _model_choice_shorthand_ref(choice) == needle
+    ]
+    if shorthand:
+        return shorthand
     labelled = [
         choice for choice in model_choices if model_choice_matches(choice, needle)
     ]
@@ -193,6 +200,7 @@ def model_choice_matches(choice: ModelChoice, query: str) -> bool:
     return (
         needle in choice.label.lower()
         or needle in choice.value.lower()
+        or needle in _model_choice_shorthand_ref(choice)
         or bool(choice.endpoint_id and needle in choice.endpoint_id.lower())
         or bool(choice.description and needle in choice.description.lower())
     )
@@ -206,7 +214,7 @@ def model_choice_description(
     parts: list[str] = []
     if choice.value == current_value:
         parts.append("current")
-    if choice.endpoint_id:
+    if choice.endpoint_id and not _label_contains_endpoint(choice):
         parts.append(f"endpoint: {choice.endpoint_id}")
     if choice.region:
         parts.append(f"region: {choice.region}")
@@ -220,9 +228,13 @@ def model_choice_description(
 
 
 def model_choice_display_label(choice: ModelChoice) -> str:
-    if choice.endpoint_id:
+    if choice.endpoint_id and not _label_contains_endpoint(choice):
         return f"{choice.label} (endpoint: {choice.endpoint_id})"
     return choice.label
+
+
+def _label_contains_endpoint(choice: ModelChoice) -> bool:
+    return f":{choice.endpoint_id}:" in choice.label
 
 
 def model_choice_descriptions_by_label(
@@ -231,9 +243,7 @@ def model_choice_descriptions_by_label(
     """Collect non-empty detail text for selector rows."""
 
     return {
-        choice.label: choice.description
-        for choice in choices
-        if choice.description
+        choice.label: choice.description for choice in choices if choice.description
     }
 
 
@@ -272,36 +282,6 @@ def resolve_current_model_choice_value(
     return None
 
 
-def dedupe_preferred_model_choices(
-    choices: Iterable[ModelChoice],
-    *,
-    current_value: str | None,
-) -> list[ModelChoice]:
-    """Collapse duplicate labels only when a unique preferred endpoint exists."""
-
-    model_choices = list(choices)
-    by_label: dict[str, list[ModelChoice]] = {}
-    for choice in model_choices:
-        by_label.setdefault(choice.label, []).append(choice)
-
-    result: list[ModelChoice] = []
-    for choice in model_choices:
-        group = by_label[choice.label]
-        if len(group) == 1:
-            result.append(choice)
-            continue
-        preferred = [item for item in group if item.preferred_endpoint]
-        if len(preferred) != 1:
-            result.append(choice)
-            continue
-        keep_values = {preferred[0].value}
-        if current_value in {item.value for item in group}:
-            keep_values.add(str(current_value))
-        if choice.value in keep_values:
-            result.append(choice)
-    return result
-
-
 def merge_model_choice_sources(
     detail_choices: Iterable[ModelChoice],
     selection_choices: Iterable[ModelChoice],
@@ -311,19 +291,11 @@ def merge_model_choice_sources(
     """Merge normalized choice sources and keep the resolved current item first.
 
     Detail choices carry richer endpoint metadata and therefore replace fallback
-    selections with the same label or value. Duplicate detail labels retain the
-    unique preferred endpoint plus an independently selected current endpoint.
+    selections with the same label or value. Every distinct endpoint remains
+    visible so shorthand selection can report ambiguity instead of guessing.
     """
 
     details = list(detail_choices)
-    current_detail_value = resolve_current_model_choice_value(
-        details,
-        current_identity,
-    )
-    details = dedupe_preferred_model_choices(
-        details,
-        current_value=current_detail_value,
-    )
     fallbacks = list(selection_choices)
     if details:
         detail_labels = {choice.label for choice in details}
@@ -360,6 +332,17 @@ def model_choice_value(
     return fallback
 
 
+def _model_choice_shorthand_ref(choice: ModelChoice) -> str:
+    value = choice.value.lower()
+    if value.count(":") < 2:
+        return ""
+    provider, rest = value.split(":", 1)
+    _endpoint, model_id = rest.rsplit(":", 1)
+    if not provider or not model_id:
+        return ""
+    return f"{provider}:{model_id}"
+
+
 def _current_model_label_first(
     labels: Iterable[str],
     *,
@@ -389,7 +372,6 @@ __all__ = [
     "ModelChoice",
     "ModelChoiceIdentity",
     "current_model_choice_first",
-    "dedupe_preferred_model_choices",
     "filter_model_choices",
     "format_model_choices",
     "matching_model_choices",

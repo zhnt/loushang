@@ -69,7 +69,9 @@ def test_static_lines_page_truncates_and_consumes_horizontal_navigation() -> Non
 
     rendered = page.render(RenderConstraints(width=4, max_height=1))
 
-    assert tuple(strip_control_sequences(line.text) for line in rendered.lines) == ("1234",)
+    assert tuple(strip_control_sequences(line.text) for line in rendered.lines) == (
+        "1234",
+    )
     assert page.handle_input(InputEvent(kind="key", key="left")) is True
 
 

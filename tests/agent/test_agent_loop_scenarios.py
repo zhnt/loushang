@@ -597,6 +597,7 @@ def test_agent_loop_control_flow_scenarios(scenario: Scenario) -> None:
 
 def _assistant_text_message(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -612,6 +613,7 @@ def _assistant_text_message(text: str) -> AssistantMessage:
 
 def _assistant_tool_call_message(name: str, tool_call_id: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[ToolCall(type="toolCall", id=tool_call_id, name=name, arguments={})],
         api="anthropic-messages",

@@ -17,13 +17,21 @@ def test_load_coding_tui_startup_view_resolves_model_and_session_metadata() -> N
         session_name = "session-name"
 
         def __init__(self) -> None:
-            self.selection = ModelSelection(provider="unknown", model_id="unknown")
+            self.selection = ModelSelection(
+                endpoint_id="test-endpoint", provider="unknown", model_id="unknown"
+            )
 
         async def get_model_selection(self) -> ModelSelection:
             return self.selection
 
         async def get_available_models(self) -> list[ModelSelection]:
-            return [ModelSelection(provider="moonshot", model_id="kimi-for-coding")]
+            return [
+                ModelSelection(
+                    endpoint_id="test-endpoint",
+                    provider="moonshot",
+                    model_id="kimi-for-coding",
+                )
+            ]
 
         async def set_model(self, selection: ModelSelection) -> None:
             self.selection = selection
@@ -32,7 +40,7 @@ def test_load_coding_tui_startup_view_resolves_model_and_session_metadata() -> N
         load_coding_tui_startup_view(runtime=Runtime(), session=Session())
     )
 
-    assert snapshot.model_label == "moonshot/kimi-for-coding"
+    assert snapshot.model_label == "moonshot:test-endpoint:kimi-for-coding"
     assert snapshot.cwd == "/tmp/project"
     assert snapshot.project_label == "project"
     assert snapshot.session_label == "session-name"

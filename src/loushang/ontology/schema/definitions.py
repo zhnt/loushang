@@ -135,6 +135,41 @@ class LinkTypeDefinition:
 
 
 @dataclass(frozen=True, slots=True)
+class ActionParameterDefinition:
+    """One typed input accepted by a published semantic Action."""
+
+    name: str
+    value_type: ValueType | object
+    description: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class SetPropertyEffectDefinition:
+    """Set one stable property from one named Action parameter."""
+
+    property_id: str
+    value_parameter: str
+
+
+@dataclass(frozen=True, slots=True)
+class ActionDefinition:
+    """First narrow published Action contract compiled into Schema v4."""
+
+    name: str
+    target_object_type_id: str
+    parameters: (
+        tuple[ActionParameterDefinition, ...] | list[ActionParameterDefinition]
+    )
+    effect: SetPropertyEffectDefinition | object
+    policy_requirement_ref: str
+    semantic_id: str | None = field(default=None, kw_only=True)
+    description: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "parameters", tuple(self.parameters))
+
+
+@dataclass(frozen=True, slots=True)
 class OntologyPackageDraft:
     """Caller-owned declarations submitted to the pure schema compiler."""
 
@@ -150,6 +185,9 @@ class OntologyPackageDraft:
     interface_types: tuple[InterfaceTypeDefinition, ...] | list[
         InterfaceTypeDefinition
     ] = field(default_factory=tuple)
+    actions: tuple[ActionDefinition, ...] | list[ActionDefinition] = field(
+        default_factory=tuple
+    )
 
     def __post_init__(self) -> None:
         if isinstance(self.version, str):
@@ -157,9 +195,12 @@ class OntologyPackageDraft:
         object.__setattr__(self, "interface_types", tuple(self.interface_types))
         object.__setattr__(self, "object_types", tuple(self.object_types))
         object.__setattr__(self, "link_types", tuple(self.link_types))
+        object.__setattr__(self, "actions", tuple(self.actions))
 
 
 __all__ = [
+    "ActionDefinition",
+    "ActionParameterDefinition",
     "InterfaceTypeDefinition",
     "LinkCardinality",
     "LinkTypeDefinition",
@@ -167,6 +208,7 @@ __all__ = [
     "OntologyPackageDraft",
     "PropertyDefinition",
     "SchemaVersion",
+    "SetPropertyEffectDefinition",
     "StateAuthority",
     "ValueType",
 ]

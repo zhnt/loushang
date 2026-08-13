@@ -52,7 +52,7 @@
 **关键协作组件：**
 
 - `Model Registry`
-- `ApiProvider Registry`
+- `API Adapter Registry`
 - `Assistant Message Event Stream`
 - `Final Message Completion Cluster`
 
@@ -76,7 +76,7 @@
 **关键协作组件：**
 
 - `Top-Level AI API`
-- `ApiProvider Registry`
+- `API Adapter Registry`
 
 **映射关系：**
 
@@ -93,12 +93,12 @@
 
 **主承载组件：**
 
-- `ApiProvider Registry`
+- `API Adapter Registry`
 
 **关键协作组件：**
 
 - `Model Registry`
-- `ApiProvider Protocol`
+- `APIAdapter Protocol`
 - `Top-Level AI API`
 - `Provider Bootstrap And Extensibility Component`
 
@@ -122,7 +122,7 @@
 
 **关键协作组件：**
 
-- `ApiProvider Protocol`
+- `APIAdapter Protocol`
 - `Provider Adapter Component`
 - `Thinking / Reasoning Mapping Cluster`
 
@@ -169,7 +169,7 @@
 
 **关键协作组件：**
 
-- `ApiProvider Protocol`
+- `APIAdapter Protocol`
 - `Provider Payload Transformation`
 - `Carrier Invocation Cluster`
 - `Error Mapping Cluster`
@@ -383,7 +383,7 @@
 
 **关键协作组件：**
 
-- `ApiProvider Registry`
+- `API Adapter Registry`
 - `Provider Adapter Component`
 - `Carrier Invocation Cluster`
 - `Tool Validation Cluster`
@@ -502,8 +502,8 @@
 
 **关键协作组件：**
 
-- `ApiProvider Registry`
-- `ApiProvider Protocol`
+- `API Adapter Registry`
+- `APIAdapter Protocol`
 - `Provider Adapter Component`
 - `Test / Validation Support Cluster`
 
@@ -548,8 +548,8 @@
 
 - `Top-Level AI API`
 - `Model Registry`
-- `ApiProvider Registry`
-- `ApiProvider Protocol`
+- `API Adapter Registry`
+- `APIAdapter Protocol`
 - `Provider Adapter Component`
 - `Raw Part Types`
 - `Raw Assembler`

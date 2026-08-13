@@ -50,7 +50,9 @@ def test_extension_runtime_binding_factory_wires_session_callbacks_and_ui_error_
         model_registry="registry",
         get_active_tool_names=lambda: ["read"],
         get_all_tools=lambda: ["read-tool"],
-        get_model_selection=lambda: ModelSelection(provider="faux", model_id="alpha"),
+        get_model_selection=lambda: ModelSelection(
+            endpoint_id="test-endpoint", provider="faux", model_id="alpha"
+        ),
         set_active_tools=_set_active_tools,
         set_model=_set_model,
         register_tool=lambda tool, source_info=None: calls.append(
@@ -130,7 +132,7 @@ def test_extension_runtime_binding_factory_wires_session_callbacks_and_ui_error_
     assert bindings.get_active_tool_names() == ["read"]
     assert bindings.get_all_tools() == ["read-tool"]
     assert bindings.get_model_selection() == ModelSelection(
-        provider="faux", model_id="alpha"
+        endpoint_id="test-endpoint", provider="faux", model_id="alpha"
     )
     assert bindings.get_signal() == "signal"
     assert bindings.is_idle() is False

@@ -409,9 +409,7 @@ class AgentTranscriptSessionCatalog:
         self.session_dir: Path | None = resolved_session_dir
         self._layout: AgentTranscriptFileLayout | None = layout
         self._provider = ConversationProviderBinding(
-            provider_id=(
-                f"agent-conversation-jsonl:{resolved_session_dir.as_posix()}"
-            ),
+            provider_id=(f"agent-conversation-jsonl:{resolved_session_dir.as_posix()}"),
             namespace=layout.namespace,
             store=create_agent_transcript_file_store(layout),
         )
@@ -1095,14 +1093,19 @@ def _model(value: object) -> dict[str, str] | None:
     if not isinstance(value, dict):
         return None
     provider = value.get("provider")
-    model_id = value.get("model_id")
-    if not isinstance(provider, str) or not isinstance(model_id, str):
-        return None
-    result = {"provider": provider, "model_id": model_id}
     endpoint_id = value.get("endpoint_id") or value.get("endpointId")
-    if isinstance(endpoint_id, str):
-        result["endpoint_id"] = endpoint_id
-    return result
+    model_id = value.get("model_id")
+    if (
+        not isinstance(provider, str)
+        or not isinstance(endpoint_id, str)
+        or not isinstance(model_id, str)
+    ):
+        return None
+    return {
+        "provider": provider,
+        "endpoint_id": endpoint_id,
+        "model_id": model_id,
+    }
 
 
 def _sort_summaries(summaries) -> list[SessionSummary]:

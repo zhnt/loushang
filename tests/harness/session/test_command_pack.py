@@ -270,6 +270,42 @@ def test_standard_new_command_projects_cancelled_operation_explicitly() -> None:
     }
 
 
+def test_standard_session_command_projects_compaction_observability() -> None:
+    result = asyncio.run(
+        execute_standard_session_command_async(
+            "session",
+            "",
+            StandardSessionCommandPorts(
+                get_session_info=lambda: {
+                    "session_id": "session-1",
+                    "cwd": "/tmp/project",
+                    "compaction": {
+                        "is_compacting": False,
+                        "last_reason": "threshold",
+                        "last_stage": "committed",
+                        "last_summary_mode": "stream",
+                        "last_tokens_before": 90_000,
+                        "last_tokens_after": 12_000,
+                    },
+                    "context": {
+                        "tokens": 12_000,
+                        "context_window": 131_072,
+                        "reserve_tokens": 8_192,
+                    },
+                },
+            ),
+        )
+    )
+
+    assert result is not None
+    projected = project_standard_session_command_result(result)
+    assert projected["message"] == (
+        "Session: session-1 | CWD: /tmp/project | "
+        "Compact: threshold/committed, stream, 90000→12000 tokens | "
+        "Context: 12000/131072 tokens, reserve 8192"
+    )
+
+
 def test_standard_session_command_pack_manages_tools_without_coding() -> None:
     active = ["read"]
     tools = [

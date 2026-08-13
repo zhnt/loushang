@@ -87,6 +87,20 @@ def test_testing_strategy_documents_streaming_control_and_live_smoke() -> None:
     assert "Kitty, iTerm2, WezTerm, Ghostty, VS Code terminal" in strategy
 
 
+def test_testing_strategy_separates_native_terminal_and_tmux_evidence() -> None:
+    strategy = Path(
+        "docs/internals/architecture/tui/native-terminal-core/testing-strategy.md"
+    ).read_text(encoding="utf-8")
+
+    assert "Native Terminal Transport Tests" in strategy
+    assert "test-only `ctypes`" in strategy
+    assert "explicitly selects ConPTY" in strategy
+    assert "test_cli_terminal_contract.py" in strategy
+    assert "tmux is a separate terminal-implementation integration" in strategy
+    assert "make test-tui-native" in strategy
+    assert "fails closed" in strategy
+
+
 def test_theme_key_design_lists_editor_selection_token() -> None:
     text = Path(
         "docs/internals/architecture/tui/native-terminal-core/key-designs/KD-009-theme-resolution.md"

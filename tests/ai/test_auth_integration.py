@@ -6,9 +6,9 @@ from pathlib import Path
 
 from loushang.ai import OAuthBearerAuth, OAuthCredential, complete
 from loushang.ai.advanced.registry import (
-    clear_api_providers,
-    register_api_provider,
-    reset_api_providers,
+    clear_api_adapters,
+    register_api_adapter,
+    reset_api_adapters,
 )
 from loushang.ai.auth import FileCredentialStore, get_auth
 from loushang.ai.event_stream.raw_parts import RawPart
@@ -53,8 +53,8 @@ def test_get_auth_bearer_provider_request_chain(tmp_path: Path) -> None:
         store = FileCredentialStore(tmp_path)
         store.save(credential)
         request_auth = await get_auth(model, store=store)
-        clear_api_providers()
-        register_api_provider(provider)
+        clear_api_adapters()
+        register_api_adapter(provider)
         try:
             return await complete(
                 model,
@@ -62,7 +62,7 @@ def test_get_auth_bearer_provider_request_chain(tmp_path: Path) -> None:
                 auth=request_auth,
             )
         finally:
-            reset_api_providers()
+            reset_api_adapters()
 
     message = asyncio.run(scenario())
 

@@ -14,6 +14,7 @@ from loushang.ai.protocols._helpers import (
     canonicalize_sdk_headers,
     close_provider_stream,
 )
+from loushang.ai.protocols._openai_sdk import OPENAI_SDK_API_KEY_PLACEHOLDER
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.errors import (
     provider_error_part,
@@ -21,9 +22,7 @@ from loushang.ai.provider.errors import (
 )
 from loushang.ai.structured import openai_chat_response_format
 from loushang.ai.tool.providers import sanitize_tool_parameters
-from loushang.ai.tool.transform import (
-    MISSING_TOOL_RESULT_TEXT,
-)
+from loushang.ai.tool.transform import MISSING_TOOL_RESULT_TEXT
 from loushang.ai.trace import emit_trace as _emit_trace
 from loushang.ai.types import AssistantMessage, TextPart, Tool, ToolResultMessage
 from loushang.ai.utils import sanitize_surrogates
@@ -65,7 +64,7 @@ class OpenAIChatCompletionsAdapter:
         default_headers = canonicalize_sdk_headers(headers)
 
         client_kwargs: dict[str, Any] = {
-            "api_key": "",
+            "api_key": OPENAI_SDK_API_KEY_PLACEHOLDER,
             "base_url": resolved.base_url,
         }
         client = self._client or AsyncOpenAI(**client_kwargs)  # type: ignore[call-arg]

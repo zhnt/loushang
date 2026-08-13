@@ -13,6 +13,7 @@ from loushang.ai.provider.errors import (
     provider_error_info_from_raw,
     provider_error_part,
     provider_error_part_from_raw,
+    provider_response_summary,
 )
 
 
@@ -26,6 +27,12 @@ class _HttpErrorWithHeaders(_HttpError):
     def __init__(self, message: str, status_code: int) -> None:
         super().__init__(message, status_code)
         self.headers = {"x-request-id": "req_headers"}
+
+
+class _HttpErrorWithBody(_HttpError):
+    def __init__(self, body: object) -> None:
+        super().__init__("unsafe exception text", 400)
+        self.body = body
 
 
 HttpxReadTimeout = type("ReadTimeout", (Exception,), {"__module__": "httpx"})
@@ -155,6 +162,39 @@ def test_normalize_provider_error_preserves_request_id_from_headers() -> None:
     assert normalized.info.request_id == "req_headers"
 
 
+def test_provider_response_summary_keeps_only_diagnostic_fields_and_redacts() -> None:
+    error = _HttpErrorWithBody(
+        {
+            "error": {
+                "type": "invalid_request_error",
+                "message": "max_tokens is too large; Bearer secret-token",
+                "api_key": "sk-secret",
+            },
+            "request": {"prompt": "private user prompt"},
+        }
+    )
+
+    summary = provider_response_summary(error)
+
+    assert summary == (
+        '{"error":{"type":"invalid_request_error","message":'
+        '"max_tokens is too large; Bearer [REDACTED]"}}'
+    )
+    assert "sk-secret" not in summary
+    assert "private user prompt" not in summary
+
+
+def test_provider_response_summary_is_bounded_for_plain_text() -> None:
+    error = _HttpErrorWithBody("token=secret " + ("x" * 800))
+
+    summary = provider_response_summary(error)
+
+    assert summary is not None
+    assert len(summary) == 512
+    assert summary.endswith("…")
+    assert "secret" not in summary
+
+
 def test_existing_authentication_error_is_forced_non_retryable() -> None:
     normalized = normalize_provider_error(
         AIAuthenticationError(
@@ -229,6 +269,32 @@ def test_raw_non_authentication_retry_policy_is_preserved() -> None:
 
     assert info.code is AIErrorCode.RATE_LIMIT
     assert info.retryable is False
+
+
+def test_raw_error_call_context_overrides_conflicting_route_identity() -> None:
+    info = provider_error_info_from_raw(
+        {
+            "type": "response_error",
+            "error_info": {
+                "code": "provider",
+                "message": "unsafe",
+                "source": "wrong-api",
+                "retryable": False,
+                "provider": "wrong-provider",
+                "endpoint": "wrong-endpoint",
+                "model": "wrong-model",
+            },
+        },
+        source="openai-responses",
+        provider="openai",
+        endpoint="actual-endpoint",
+        model="gpt-test",
+    )
+
+    assert info.source == "openai-responses"
+    assert info.provider == "openai"
+    assert info.endpoint == "actual-endpoint"
+    assert info.model == "gpt-test"
 
 
 def test_outer_http_status_is_the_authoritative_error_classification() -> None:

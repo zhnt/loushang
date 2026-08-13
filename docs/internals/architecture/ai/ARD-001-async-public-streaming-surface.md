@@ -33,7 +33,7 @@ stream handle，并额外提供一层简化调用包装。
 并且：
 
 - `complete()` 建立在 `await stream(); await result()` 之上
-- `ApiProvider` 协议也采用 async-start 形态
+- `APIAdapter` 协议也采用 async-start 形态
 
 ## Alternatives Considered
 
@@ -108,7 +108,7 @@ stream handle，并额外提供一层简化调用包装。
 - `loushang-ai-component-interactions-v1.md`
 - `loushang-ai-streaming-and-cancellation.md`
 - `loushang-ai-provider-adapter-strategy.md`
-- `loushang-ai-api-provider-registry.md`
+- `loushang-ai-api-adapter-registry.md`
 
 ## Impacted Code
 

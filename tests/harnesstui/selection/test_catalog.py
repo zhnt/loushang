@@ -8,7 +8,6 @@ from loushang.harnesstui.selection.binding import (
 from loushang.harnesstui.selection.catalog import (
     ModelChoice,
     ModelChoiceIdentity,
-    dedupe_preferred_model_choices,
     format_model_choices,
     matching_model_choices,
     merge_model_choice_sources,
@@ -49,9 +48,12 @@ def test_ai_model_projection_keeps_endpoint_identity_and_metadata() -> None:
     assert choices[0].endpoint_id == "responses"
     assert choices[0].preferred_endpoint is True
     assert choices[0].description == "General model"
-    assert model_identity_from_value(
-        ModelSelection(provider="openai", endpoint_id="responses", model_id="gpt-5")
-    ).value == "openai:responses:gpt-5"
+    assert (
+        model_identity_from_value(
+            ModelSelection(provider="openai", endpoint_id="responses", model_id="gpt-5")
+        ).value
+        == "openai:responses:gpt-5"
+    )
 
 
 def _choices() -> tuple[ModelChoice, ...]:
@@ -115,6 +117,7 @@ def test_model_choice_filtering_and_exact_match_priority() -> None:
         "Available models:\n  moonshot/kimi"
     )
     assert matching_model_choices(choices, "openai:primary:gpt-5") == [choices[0]]
+    assert matching_model_choices(choices, "openai:gpt-5") == [choices[0]]
     assert matching_model_choices(choices, "moonshot/kimi") == [choices[1]]
     assert format_model_choices(choices, query="missing") == "No models match: missing"
 
@@ -216,34 +219,6 @@ def test_model_choice_select_items_preserve_metadata_and_description_filtering()
         kind="select",
         text="openai:primary:gpt-5",
     )
-
-
-def test_preferred_endpoint_dedupe_preserves_current_nonpreferred_choice() -> None:
-    preferred = ModelChoice(
-        label="provider/model",
-        value="provider:preferred:model",
-        selection=object(),
-        preferred_endpoint=True,
-    )
-    current = ModelChoice(
-        label="provider/model",
-        value="provider:current:model",
-        selection=object(),
-    )
-    other = ModelChoice(
-        label="other/model",
-        value="other/model",
-        selection=object(),
-    )
-
-    assert dedupe_preferred_model_choices(
-        (preferred, current, other),
-        current_value=current.value,
-    ) == [preferred, current, other]
-    assert dedupe_preferred_model_choices(
-        (preferred, current, other),
-        current_value=None,
-    ) == [preferred, other]
 
 
 def test_current_choice_resolution_prefers_value_then_falls_back_to_label() -> None:

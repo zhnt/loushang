@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from pathlib import Path
+from threading import Barrier, BrokenBarrierError
+from typing import Any
 from uuid import UUID
 
 import pytest
@@ -31,6 +35,7 @@ from loushang.ontology.schema import (
     OntologyCompiler,
     OntologyPackageDraft,
     PropertyDefinition,
+    SchemaIdentity,
     StateAuthority,
     ValueType,
 )
@@ -45,6 +50,11 @@ from loushang.ontology.storage import (
 ASSET_ID = UUID("00000000-0000-0000-0000-000000000001")
 OWNER_ID = UUID("00000000-0000-0000-0000-000000000002")
 SCORE_ID = UUID("10000000-0000-0000-0000-000000000003")
+SCHEMA_IDENTITY = SchemaIdentity(
+    "test.projection-store",
+    "urn:test:projection-store",
+    "1.0.0",
+)
 
 
 def _schema():
@@ -105,6 +115,7 @@ def _fact(
     return FactRecord(
         fact_id=UUID(f"10000000-0000-0000-0000-{suffix:012d}"),
         subject_id=subject_id,
+        schema_identity=SCHEMA_IDENTITY,
         assertion=assertion,  # type: ignore[arg-type]
         assertion_kind=AssertionKind.ASSERTED,
         source_ref="source.erp",
@@ -119,16 +130,16 @@ def _initial_batch() -> FactBatch:
     return FactBatch(
         "initial",
         [
-            _fact(1, ASSET_ID, ObjectAssertion("Asset")),
-            _fact(2, ASSET_ID, PropertyAssertion("code", "A-1")),
+            _fact(1, ASSET_ID, ObjectAssertion("asset")),
+            _fact(2, ASSET_ID, PropertyAssertion("asset.code", "A-1")),
             _fact(
                 3,
                 ASSET_ID,
-                PropertyAssertion("score", 1),
+                PropertyAssertion("asset.score", 1),
                 source_record_ref="asset:A-1:score",
             ),
-            _fact(4, OWNER_ID, ObjectAssertion("Owner")),
-            _fact(5, ASSET_ID, LinkAssertion("owned_by", OWNER_ID)),
+            _fact(4, OWNER_ID, ObjectAssertion("owner")),
+            _fact(5, ASSET_ID, LinkAssertion("asset.owned_by", OWNER_ID)),
         ],
     )
 
@@ -140,7 +151,7 @@ def _score_update() -> FactBatch:
             _fact(
                 6,
                 ASSET_ID,
-                PropertyAssertion("score", 2),
+                PropertyAssertion("asset.score", 2),
                 source_record_ref="asset:A-1:score",
                 recorded_at=20,
                 supersedes=SCORE_ID,
@@ -225,6 +236,60 @@ def test_projection_rebuild_replaces_the_whole_snapshot_monotonically(
     assert projections.all_objects() == rebuilt.objects
     with pytest.raises(ValueError, match="projection_version must be 3"):
         projections.replace(rebuilt)
+
+
+def test_memory_projection_replacement_serializes_competing_writers() -> None:
+    facts = MemoryFactStore()
+    facts.commit_fact_batch(_initial_batch())
+    store = MemoryProjectionStore()
+    store.replace(
+        materialize_projection(
+            facts.select_facts(valid_at=10, recorded_at=10),
+            _schema(),
+        )
+    )
+    facts.commit_fact_batch(_score_update())
+    first = materialize_projection(
+        facts.select_facts(valid_at=30, recorded_at=30),
+        _schema(),
+        projection_version=2,
+        built_at=30,
+    )
+    second = materialize_projection(
+        facts.select_facts(valid_at=30, recorded_at=30),
+        _schema(),
+        projection_version=2,
+        built_at=31,
+    )
+
+    barrier = Barrier(2)
+    installed = store.read_snapshot()
+
+    class CoordinatedInstalledSnapshot:
+        @property
+        def state(self):
+            with suppress(BrokenBarrierError):
+                barrier.wait(timeout=0.5)
+            return installed.state
+
+        @property
+        def schema(self):
+            return installed.schema
+
+    store._snapshot = CoordinatedInstalledSnapshot()  # type: ignore[assignment]
+
+    def replace(snapshot: Any) -> object:
+        try:
+            return store.replace(snapshot)
+        except ValueError as exc:
+            return exc
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = tuple(executor.map(replace, (first, second)))
+
+    assert sum(not isinstance(item, Exception) for item in outcomes) == 1
+    assert sum(isinstance(item, ValueError) for item in outcomes) == 1
+    assert store.projection_state.projection_version == 2
 
 
 def test_projection_state_is_immutable_and_freshness_is_an_explicit_observation(

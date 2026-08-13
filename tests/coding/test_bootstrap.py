@@ -73,6 +73,7 @@ def _usage() -> Usage:
 
 def _assistant_message(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -90,6 +91,7 @@ def _assistant_tool_call_message(
     tool_name: str = "calc", arguments: dict[str, object] | None = None
 ) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[
             ToolCall(
@@ -1769,14 +1771,17 @@ def test_create_agent_session_uses_saved_default_model_endpoint_when_valid(
 def test_create_agent_session_falls_back_when_saved_default_model_is_missing(
     tmp_path,
 ) -> None:
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.session import ModelSelection
     from loushang.coding.session_manager import SessionManager
 
-    ai_registry = AiModelRegistry()
+    ai_registry = _ai_model_registry(
+        Model(id="present", name="Present", provider="demo", endpoint="test-endpoint")
+    )
     services = create_services(ai_model_registry=ai_registry)
-    saved_default = ModelSelection(provider="demo", model_id="missing")
+    saved_default = ModelSelection(
+        endpoint_id="test-endpoint", provider="demo", model_id="missing"
+    )
     services.settings_manager.set_default_model(saved_default)
 
     manager = asyncio.run(
@@ -1795,6 +1800,7 @@ def test_create_agent_session_falls_back_when_saved_default_model_is_missing(
     ]
 
     assert session.get_model_selection() == ModelSelection(
+        endpoint_id="unknown",
         provider="unknown",
         model_id="unknown",
     )
@@ -1807,7 +1813,7 @@ def test_create_agent_session_falls_back_when_saved_default_model_is_missing(
     assert diagnostics[0].details["reason"] == "missing"
 
 
-def test_create_agent_session_falls_back_when_saved_default_model_is_ambiguous(
+def test_create_agent_session_uses_complete_default_when_provider_model_is_repeated(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
@@ -1819,7 +1825,9 @@ def test_create_agent_session_falls_back_when_saved_default_model_is_ambiguous(
         Model(id="alpha", name="Alpha", provider="demo", endpoint="completions"),
     )
     services = create_services(ai_model_registry=ai_registry)
-    saved_default = ModelSelection(provider="demo", model_id="alpha")
+    saved_default = ModelSelection(
+        endpoint_id="responses", provider="demo", model_id="alpha"
+    )
     services.settings_manager.set_default_model(saved_default)
 
     manager = asyncio.run(
@@ -1837,14 +1845,9 @@ def test_create_agent_session_falls_back_when_saved_default_model_is_ambiguous(
         if record.code == "default_model_unavailable"
     ]
 
-    assert session.get_model_selection() == ModelSelection(
-        provider="unknown",
-        model_id="unknown",
-    )
+    assert session.get_model_selection() == saved_default
     assert services.settings_manager.get_settings().default_model == saved_default
-    assert len(diagnostics) == 1
-    assert diagnostics[0].details["reason"] == "ambiguous"
-    assert diagnostics[0].details["endpoint_id"] is None
+    assert diagnostics == []
 
 
 def test_create_agent_session_falls_back_when_saved_default_endpoint_is_unavailable(
@@ -1881,6 +1884,7 @@ def test_create_agent_session_falls_back_when_saved_default_endpoint_is_unavaila
     ]
 
     assert session.get_model_selection() == ModelSelection(
+        endpoint_id="unknown",
         provider="unknown",
         model_id="unknown",
     )
@@ -2853,11 +2857,19 @@ def test_create_agent_session_applies_enabled_models_as_scoped_models(tmp_path) 
 
     assert session.scoped_models == [
         {
-            "model": {"provider": "faux", "model_id": "faux-model"},
+            "model": {
+                "provider": "faux",
+                "endpoint_id": "anthropic-messages",
+                "model_id": "faux-model",
+            },
             "thinkingLevel": "low",
         },
         {
-            "model": {"provider": "alt", "model_id": "alt-model"},
+            "model": {
+                "provider": "alt",
+                "endpoint_id": "responses",
+                "model_id": "alt-model",
+            },
             "thinkingLevel": "high",
         },
     ]

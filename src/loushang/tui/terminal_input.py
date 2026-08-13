@@ -5,11 +5,13 @@ import importlib
 import os
 import select
 import sys
+import threading
 import time
 import weakref
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
+from functools import partial
 from io import StringIO
 from typing import Any, Literal, Protocol, TextIO
 
@@ -47,6 +49,9 @@ _WINDOWS_TTY_READ_FUTURES: weakref.WeakKeyDictionary[
 class RuntimeLike(Protocol):
     def request_next_animation_frame(self) -> Any: ...
     def render_now(self) -> Any: ...
+
+
+InputChunkReader = Callable[[TextIO], Awaitable[str]]
 
 
 @dataclass(slots=True)
@@ -203,11 +208,13 @@ async def read_input_chunk_or_render_tick(
     *,
     runtime: RuntimeLike,
     active_task: asyncio.Task[Any] | None,
+    input_chunk_reader: InputChunkReader | None = None,
     render_wakeup: asyncio.Event | None = None,
     pending_input_idle_ms: int | None = None,
     idle_wakeup_ms: int | None = None,
 ) -> str | None:
-    input_task = asyncio.create_task(read_input_chunk(stdin))
+    read_chunk = input_chunk_reader or read_input_chunk
+    input_task = asyncio.create_task(read_chunk(stdin))
     try:
         while True:
             await asyncio.sleep(0)
@@ -369,9 +376,13 @@ async def _read_windows_tty_input_chunk_from_module_async(msvcrt: Any) -> str:
     loop = asyncio.get_running_loop()
     future = _WINDOWS_TTY_READ_FUTURES.get(loop)
     if future is None:
-        future = loop.run_in_executor(
-            None, _read_windows_tty_input_chunk_from_module, msvcrt
-        )
+        future = loop.create_future()
+        threading.Thread(
+            target=_read_windows_tty_input_in_thread,
+            args=(loop, future, msvcrt),
+            name="loushang-windows-console-reader",
+            daemon=True,
+        ).start()
         _WINDOWS_TTY_READ_FUTURES[loop] = future
     try:
         result = await asyncio.shield(future)
@@ -382,6 +393,33 @@ async def _read_windows_tty_input_chunk_from_module_async(msvcrt: Any) -> str:
     if _WINDOWS_TTY_READ_FUTURES.get(loop) is future:
         del _WINDOWS_TTY_READ_FUTURES[loop]
     return result
+
+
+def _read_windows_tty_input_in_thread(
+    loop: asyncio.AbstractEventLoop,
+    future: asyncio.Future[str],
+    msvcrt: Any,
+) -> None:
+    try:
+        result = _read_windows_tty_input_chunk_from_module(msvcrt)
+    except BaseException as error:
+        callback = partial(_set_future_exception, future, error)
+    else:
+        callback = partial(_set_future_result, future, result)
+    with suppress(RuntimeError):
+        loop.call_soon_threadsafe(callback)
+
+
+def _set_future_result(future: asyncio.Future[str], result: str) -> None:
+    if not future.done():
+        future.set_result(result)
+
+
+def _set_future_exception(
+    future: asyncio.Future[str], error: BaseException
+) -> None:
+    if not future.done():
+        future.set_exception(error)
 
 
 def _read_windows_tty_input_chunk_from_module(msvcrt: Any) -> str:

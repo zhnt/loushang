@@ -10,9 +10,9 @@ from tempfile import TemporaryDirectory
 
 import loushang.ai as ai
 from loushang.ai.advanced.registry import (
-    clear_api_providers,
-    register_api_provider,
-    reset_api_providers,
+    clear_api_adapters,
+    register_api_adapter,
+    reset_api_adapters,
 )
 from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model import Auth, Capabilities, Model
@@ -66,8 +66,8 @@ async def run() -> dict[str, object]:
         extensions = ai.auth.AuthExtensionRegistry([source])
         current = await ai.auth.status(model, extensions=extensions)
         request_auth = await ai.auth.get_auth(model, extensions=extensions)
-        clear_api_providers()
-        register_api_provider(provider)
+        clear_api_adapters()
+        register_api_adapter(provider)
         try:
             await ai.complete(
                 model,
@@ -75,7 +75,7 @@ async def run() -> dict[str, object]:
                 auth=request_auth,
             )
         finally:
-            reset_api_providers()
+            reset_api_adapters()
 
     if provider.request is None:
         raise RuntimeError("ProviderRequest was not captured")

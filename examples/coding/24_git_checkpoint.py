@@ -38,6 +38,7 @@ def print_event(name: str, payload: dict[str, object]) -> None:
 
 # ── Git primitives ──
 
+
 @dataclass(frozen=True)
 class StashEntry:
     ref: str
@@ -49,7 +50,9 @@ class Checkpointer:
     def __init__(self, repo_dir: Path) -> None:
         self.repo_dir = repo_dir
 
-    def _run(self, *args: str, check: bool = True, capture: bool = True) -> subprocess.CompletedProcess:
+    def _run(
+        self, *args: str, check: bool = True, capture: bool = True
+    ) -> subprocess.CompletedProcess:
         return subprocess.run(
             ["git", *args],
             cwd=str(self.repo_dir),
@@ -104,14 +107,22 @@ class Checkpointer:
 def _bootstrap_repo(repo_dir: Path) -> None:
     repo_dir.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=str(repo_dir), check=True)
-    subprocess.run(["git", "config", "user.email", "demo@loushang.local"], cwd=str(repo_dir), check=True)
-    subprocess.run(["git", "config", "user.name", "loushang demo"], cwd=str(repo_dir), check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "demo@loushang.local"],
+        cwd=str(repo_dir),
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "loushang demo"], cwd=str(repo_dir), check=True
+    )
     (repo_dir / "hello.py").write_text(
         'def main() -> None:\n    print("hello")\n\n\nif __name__ == "__main__":\n    main()\n',
         encoding="utf-8",
     )
     subprocess.run(["git", "add", "hello.py"], cwd=str(repo_dir), check=True)
-    subprocess.run(["git", "commit", "-q", "-m", "init: hello.py"], cwd=str(repo_dir), check=True)
+    subprocess.run(
+        ["git", "commit", "-q", "-m", "init: hello.py"], cwd=str(repo_dir), check=True
+    )
 
 
 def _apply_dirty(path: Path, marker: str) -> None:
@@ -123,6 +134,7 @@ def _apply_dirty(path: Path, marker: str) -> None:
 
 
 # ── AgentTool ──
+
 
 class GitCheckpointTool:
     name: str = "git_checkpoint"
@@ -168,24 +180,48 @@ class GitCheckpointTool:
         if action == "create":
             label = params.get("label", "untitled")
             entry = self._cp.create(label)
-            text = f"created {entry.ref} ({entry.label}) {entry.sha}" if entry else "no changes to checkpoint"
-            return AgentToolResult(content=[TextPart(type="text", text=text)], details={"action": "create", "entry": entry})
+            text = (
+                f"created {entry.ref} ({entry.label}) {entry.sha}"
+                if entry
+                else "no changes to checkpoint"
+            )
+            return AgentToolResult(
+                content=[TextPart(type="text", text=text)],
+                details={"action": "create", "entry": entry},
+            )
         if action == "list":
             entries = self._cp.list_entries()
             lines = [f"{e.ref}  {e.label}  {e.sha}" for e in entries]
-            return AgentToolResult(content=[TextPart(type="text", text="\n".join(lines) or "<no checkpoints>")], details={"action": "list", "entries": entries})
+            return AgentToolResult(
+                content=[
+                    TextPart(type="text", text="\n".join(lines) or "<no checkpoints>")
+                ],
+                details={"action": "list", "entries": entries},
+            )
         if action == "restore":
             ref = params.get("ref", "stash@{0}")
             out = self._cp.restore(ref)
-            return AgentToolResult(content=[TextPart(type="text", text=out)], details={"action": "restore", "ref": ref})
+            return AgentToolResult(
+                content=[TextPart(type="text", text=out)],
+                details={"action": "restore", "ref": ref},
+            )
         if action == "reset_workdir":
             self._cp.reset_workdir()
-            return AgentToolResult(content=[TextPart(type="text", text="workdir reset")], details={"action": "reset_workdir"})
+            return AgentToolResult(
+                content=[TextPart(type="text", text="workdir reset")],
+                details={"action": "reset_workdir"},
+            )
         if action == "show_stat":
             ref = params.get("ref", "stash@{0}")
             stat = self._cp.show_stat(ref)
-            return AgentToolResult(content=[TextPart(type="text", text=stat or "<empty>")], details={"action": "show_stat", "ref": ref})
-        return AgentToolResult(content=[TextPart(type="text", text=f"unknown action: {action}")], details={"action": action, "error": "unknown"})
+            return AgentToolResult(
+                content=[TextPart(type="text", text=stat or "<empty>")],
+                details={"action": "show_stat", "ref": ref},
+            )
+        return AgentToolResult(
+            content=[TextPart(type="text", text=f"unknown action: {action}")],
+            details={"action": action, "error": "unknown"},
+        )
 
 
 def _git_checkpoint_definition(tool: GitCheckpointTool) -> ToolDefinition:
@@ -232,6 +268,7 @@ def _assistant_text(text: str) -> AssistantMessage:
         content=[TextPart(type="text", text=text)],
         api="offline",
         provider="offline",
+        endpoint="offline",
         model="offline-git-checkpoint-model",
         response_id=None,
         usage=_OFFLINE_USAGE,
@@ -241,7 +278,9 @@ def _assistant_text(text: str) -> AssistantMessage:
     )
 
 
-def _assistant_tool_call(tool_name: str, arguments: dict[str, object]) -> AssistantMessage:
+def _assistant_tool_call(
+    tool_name: str, arguments: dict[str, object]
+) -> AssistantMessage:
     return AssistantMessage(
         role="assistant",
         content=[
@@ -254,6 +293,7 @@ def _assistant_tool_call(tool_name: str, arguments: dict[str, object]) -> Assist
         ],
         api="offline",
         provider="offline",
+        endpoint="offline",
         model="offline-git-checkpoint-model",
         response_id=None,
         usage=_OFFLINE_USAGE,
@@ -270,12 +310,42 @@ def _stream_with_message(message: AssistantMessage) -> AssistantMessageEventStre
         stream.push({"type": "start", "partial": message})
         if message.content and isinstance(message.content[0], TextPart):
             stream.push({"type": "text_start", "content_index": 0, "partial": message})
-            stream.push({"type": "text_delta", "content_index": 0, "delta": message.content[0].text, "partial": message})
-            stream.push({"type": "text_end", "content_index": 0, "content": message.content[0].text, "partial": message})
+            stream.push(
+                {
+                    "type": "text_delta",
+                    "content_index": 0,
+                    "delta": message.content[0].text,
+                    "partial": message,
+                }
+            )
+            stream.push(
+                {
+                    "type": "text_end",
+                    "content_index": 0,
+                    "content": message.content[0].text,
+                    "partial": message,
+                }
+            )
         elif message.content and isinstance(message.content[0], ToolCall):
-            stream.push({"type": "toolcall_start", "content_index": 0, "partial": message})
-            stream.push({"type": "toolcall_delta", "content_index": 0, "delta": str(message.content[0].arguments), "partial": message})
-            stream.push({"type": "toolcall_end", "content_index": 0, "tool_call": message.content[0], "partial": message})
+            stream.push(
+                {"type": "toolcall_start", "content_index": 0, "partial": message}
+            )
+            stream.push(
+                {
+                    "type": "toolcall_delta",
+                    "content_index": 0,
+                    "delta": str(message.content[0].arguments),
+                    "partial": message,
+                }
+            )
+            stream.push(
+                {
+                    "type": "toolcall_end",
+                    "content_index": 0,
+                    "tool_call": message.content[0],
+                    "partial": message,
+                }
+            )
         stream.push({"type": "done", "reason": message.stop_reason, "message": message})  # type: ignore[typeddict-item]
 
     asyncio.create_task(_feed())
@@ -283,6 +353,7 @@ def _stream_with_message(message: AssistantMessage) -> AssistantMessageEventStre
 
 
 # ── Demo runners ──
+
 
 async def _run_offline(repo_dir: Path) -> dict[str, object]:
     print("=== Git Checkpoint (offline) ===")
@@ -296,19 +367,37 @@ async def _run_offline(repo_dir: Path) -> dict[str, object]:
     session_dir = repo_dir / ".loushang-sessions"
     os.environ[ENV_EXAMPLES_SESSION_DIR] = str(session_dir)
 
-    async def _offline_stream_fn(model: Model, context: Any, options: Any = None) -> AssistantMessageEventStream:
+    async def _offline_stream_fn(
+        model: Model, context: Any, options: Any = None
+    ) -> AssistantMessageEventStream:
         del model, options
         messages = getattr(context, "messages", context)
         tool_results = [m for m in messages if getattr(m, "role", None) == "toolResult"]
         if len(tool_results) == 0:
             _apply_dirty(repo_dir / "hello.py", "before-cleanup")
-            return _stream_with_message(_assistant_tool_call("git_checkpoint", {"action": "create", "label": "loushang/checkpoint/before-cleanup"}))
+            return _stream_with_message(
+                _assistant_tool_call(
+                    "git_checkpoint",
+                    {"action": "create", "label": "loushang/checkpoint/before-cleanup"},
+                )
+            )
         if len(tool_results) == 1:
             _apply_dirty(repo_dir / "hello.py", "after-cleanup")
-            return _stream_with_message(_assistant_tool_call("git_checkpoint", {"action": "create", "label": "loushang/checkpoint/after-cleanup"}))
+            return _stream_with_message(
+                _assistant_tool_call(
+                    "git_checkpoint",
+                    {"action": "create", "label": "loushang/checkpoint/after-cleanup"},
+                )
+            )
         if len(tool_results) == 2:
-            return _stream_with_message(_assistant_tool_call("git_checkpoint", {"action": "list"}))
-        return _stream_with_message(_assistant_text(f"Offline checkpoint flow complete after {len(tool_results)} tool calls."))
+            return _stream_with_message(
+                _assistant_tool_call("git_checkpoint", {"action": "list"})
+            )
+        return _stream_with_message(
+            _assistant_text(
+                f"Offline checkpoint flow complete after {len(tool_results)} tool calls."
+            )
+        )
 
     tool = GitCheckpointTool(repo_dir)
     tool_definition = _git_checkpoint_definition(tool)
@@ -322,14 +411,20 @@ async def _run_offline(repo_dir: Path) -> dict[str, object]:
     )
     session = await runtime.create_session(cwd=str(repo_dir))
     print_event("tool.start", {"name": "session_create", "mode": "offline"})
-    print_event("tool.end", {"name": "session_create", "status": "ok", "tools": [tool.name]})
+    print_event(
+        "tool.end", {"name": "session_create", "status": "ok", "tools": [tool.name]}
+    )
 
     print_event("message.start", {"step": "prompt", "mode": "offline"})
     await session.prompt("Create two checkpoints and list them.")
     print_event("message.end", {"step": "prompt", "mode": "offline"})
 
     # Gather results from messages
-    tool_results = [m for m in session.get_session_context().messages if getattr(m, "role", None) == "toolResult"]
+    tool_results = [
+        m
+        for m in session.get_session_context().messages
+        if getattr(m, "role", None) == "toolResult"
+    ]
     labels = []
     for tr in tool_results:
         details = getattr(tr, "details", {})
@@ -343,7 +438,14 @@ async def _run_offline(repo_dir: Path) -> dict[str, object]:
         print(f"  {entry.ref}  {entry.label}  {entry.sha}")
 
     ok = len(entries) == 2
-    print_event("message.end", {"result": "pass" if ok else "fail", "checkpoint_count": len(entries), "labels": labels})
+    print_event(
+        "message.end",
+        {
+            "result": "pass" if ok else "fail",
+            "checkpoint_count": len(entries),
+            "labels": labels,
+        },
+    )
     return {
         "head_sha": head_sha,
         "checkpoint_count": len(entries),
@@ -370,13 +472,16 @@ async def _run_live(repo_dir: Path, timeout_seconds: float) -> dict[str, object]
 
     model = build_kimi_model()
     info = describe_model(model)
-    print_event("model.start", {
-        "provider": info["provider"],
-        "endpoint": info["endpoint"],
-        "api": info["api"],
-        "model": info["model"],
-        "base_url": info["base_url"],
-    })
+    print_event(
+        "model.start",
+        {
+            "provider": info["provider"],
+            "endpoint": info["endpoint"],
+            "api": info["api"],
+            "model": info["model"],
+            "base_url": info["base_url"],
+        },
+    )
 
     tool = GitCheckpointTool(repo_dir)
     tool_definition = _git_checkpoint_definition(tool)
@@ -391,13 +496,17 @@ async def _run_live(repo_dir: Path, timeout_seconds: float) -> dict[str, object]
         tools=[tool_definition],
         persist=False,
     )
-    print_event("tool.start", {"name": "session_create", "mode": "live", "tools": [tool.name]})
+    print_event(
+        "tool.start", {"name": "session_create", "mode": "live", "tools": [tool.name]}
+    )
     print_event("tool.end", {"name": "session_create", "status": "ok"})
 
     print_event("message.start", {"step": "prompt", "mode": "live"})
     try:
         await asyncio.wait_for(
-            session.prompt("Create a checkpoint named loushang/checkpoint/before-cleanup and list checkpoints."),
+            session.prompt(
+                "Create a checkpoint named loushang/checkpoint/before-cleanup and list checkpoints."
+            ),
             timeout=timeout_seconds,
         )
     except asyncio.TimeoutError:
@@ -410,7 +519,10 @@ async def _run_live(repo_dir: Path, timeout_seconds: float) -> dict[str, object]
         print(f"  {entry.ref}  {entry.label}  {entry.sha}")
 
     ok = len(entries) >= 1
-    print_event("message.end", {"result": "pass" if ok else "fail", "checkpoint_count": len(entries)})
+    print_event(
+        "message.end",
+        {"result": "pass" if ok else "fail", "checkpoint_count": len(entries)},
+    )
     return {
         "head_sha": head_sha,
         "checkpoint_count": len(entries),
@@ -466,7 +578,9 @@ async def main_async() -> int:
             print_event("message.end", {"result": "fail", "reason": "workspace_exists"})
             return 2
     else:
-        repo_dir = Path(TemporaryDirectory(prefix="loushang-git-checkpoint-").name) / "repo"
+        repo_dir = (
+            Path(TemporaryDirectory(prefix="loushang-git-checkpoint-").name) / "repo"
+        )
 
     try:
         if args.live:

@@ -108,7 +108,9 @@ def test_transcript_style_marks_tool_heading_verb_flags_and_timing(
         capabilities=None,
     )
 
-    marker_ansi = "\x1b[1;96m•\x1b[22;39m" if marker == "•" else "\x1b[1;31m■\x1b[22;39m"
+    marker_ansi = (
+        "\x1b[1;96m•\x1b[22;39m" if marker == "•" else "\x1b[1;31m■\x1b[22;39m"
+    )
     assert marker_ansi in styled
     assert "\x1b[1mRan\x1b[22m" in styled
     assert "\x1b[96m--short\x1b[39m" in styled

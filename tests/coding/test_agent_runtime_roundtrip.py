@@ -35,6 +35,7 @@ def _usage() -> Usage:
 
 def _assistant_text_message(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -106,6 +107,10 @@ def test_agent_messages_roundtrip_through_persisted_session_manager(tmp_path) ->
             "user",
             "assistant",
         ]
-        assert context.model == {"provider": "faux", "model_id": "faux-model"}
+        assert context.model == {
+            "provider": "faux",
+            "endpoint_id": "test-endpoint",
+            "model_id": "faux-model",
+        }
 
     asyncio.run(scenario())

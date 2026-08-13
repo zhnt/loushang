@@ -6,13 +6,20 @@ Tracking: [#439](https://github.com/zhnt/loushang/issues/439).
 
 This decision partially supersedes ARD-001 and narrowly amends the
 materialization and freshness parts of ARD-002. Its implemented foundation
-slices change runtime and schema contracts but keep the Phase 2 SQLite v2 table
-layout. Stable semantic IDs and StateAuthority declarations are implemented in
-the schema v3 contract. Concrete source bindings, full mapped object/property/
+slices originally kept the Phase 2 SQLite v2 table layout. Stable semantic IDs
+and StateAuthority declarations were introduced in schema v3 and are retained
+by the current schema v4 contract. Concrete source bindings, full mapped object/property/
 link snapshots, multi-input cuts, operational origins, authority failure
 contracts, and source-head freshness are implemented for the Memory-only
-slices. Change sets, logic bindings, transient derivation, and SQLite source
-persistence remain unimplemented.
+slices. [ARD-005](ARD-005-source-aware-sqlite-v3.md) later implements durable
+SQLite source cuts and origins. Change sets, logic bindings, and transient
+derivation remain unimplemented.
+
+[ARD-004](ARD-004-schema-identity-semantic-references-and-source-input-cuts.md)
+later refines this decision's identity and reproducibility coordinates: Facts
+and source bindings target one complete schema identity, Fact predicates use
+stable semantic IDs, and installed source cuts add coverage plus an exact
+mapped-payload digest while freshness retains cheap revision-head comparison.
 
 ## Context
 
@@ -191,9 +198,11 @@ FactStore is not required for:
 - transient derived values that are cheap and deterministic to recompute;
 - projections, indexes, and caches.
 
-Source-backed Facts are not prohibited. A binding may selectively factize a
-source value when its independent bitemporal or audit lifecycle justifies the
-cost. That choice must be explicit rather than a universal ingestion rule.
+Source-backed Facts are not prohibited as a future modeling choice. A binding
+may eventually select a source value for factization when its independent
+bitemporal or audit lifecycle justifies the cost. The current materializer does
+not accept such Facts as source-backed operational state; that contract remains
+deferred and must be explicit rather than becoming a universal ingestion rule.
 
 ### 6. Capture immutable selections and cuts
 
@@ -282,10 +291,11 @@ SchemaDefaultOrigin(schema_identity)
 ```
 
 Object existence and links use the operational subset `FactOrigin |
-SourceOrigin`; only properties may use `SchemaDefaultOrigin`. A mapped object
-therefore carries the source field used to establish its canonical identity,
-and a mapped link carries the source field or record that established the
-relationship.
+SourceOrigin`; only ontology-owned properties may materialize
+`SchemaDefaultOrigin`. A missing source-backed property remains unknown even if
+its schema definition carries a default. A mapped object therefore carries the
+source field used to establish its canonical identity, and a mapped link carries
+the source field or record that established the relationship.
 
 Ontology-owned edits and published derived Claims can initially use
 `FactOrigin`. Recursive computation lineage, Action edit origins, and policy
@@ -335,19 +345,18 @@ The following ARD-001 decisions remain:
 - failed projection installation cannot discard accepted semantic records;
 - raw, unmapped external records are not Ontology Facts.
 
-ARD-002 remains authoritative for port separation, adapter independence,
-immutable whole-snapshot replacement, and the currently implemented SQLite v2
-layout. Later implementation decisions may replace only its remaining Fact-only
-materialization assumptions and physical layout as needed. No compatibility
-reader or migration is implied.
+ARD-002 remains authoritative for port separation, adapter independence, and
+immutable whole-snapshot replacement. Its then-current SQLite v2 layout was
+later replaced by ARD-005; no compatibility reader or migration is implied.
 
 This ARD also supersedes the target identity rule in
 [Schema Evolution](schema-evolution.md): object-type, property, and link-type
 names stop being stable identity keys and become versioned metadata; explicit
 stable semantic IDs drive comparison and rename recognition. The remaining
 offline comparison, impact classification, determinism, and non-goal rules stay
-in force. Schema and schema-diff v2 now implement this identity rule for object
-types, object properties, and link types; interface identity remains name-keyed.
+in force. Schema and schema-diff v3 introduced this identity rule for object
+types, object properties, and link types; schema v4 retains it while adding
+Action identity. Interface identity remains name-keyed.
 
 ## Consequences
 
@@ -398,8 +407,9 @@ Completed in the stable semantic ID slice:
 
 - object types, object properties, and link types require an explicit
   package-local `semantic_id`;
-- compiled schema v3 enforces package-wide uniqueness and round-trips those IDs;
-- schema-diff v3 matches definitions by ID, reports an explicit breaking rename
+- compiled schema v3 introduced package-wide uniqueness and round-tripped those
+  IDs; schema v4 retains that contract;
+- schema-diff v3 introduced matching by ID, explicit breaking rename
   when only the name changes, and treats an ID change as removal plus addition;
 - current runtime lookups by API name remain available.
 
@@ -407,8 +417,8 @@ Completed in the declared StateAuthority slice:
 
 - object existence, object properties, and link families require exactly one
   `source-backed`, `ontology-owned`, or `derived` declaration;
-- authority declarations round-trip in compiled schema v3 and authority changes
-  are breaking in schema-diff v3;
+- authority declarations round-trip in compiled schema v4 and authority changes
+  are breaking in schema-diff v4;
 - interface contracts remain structural and do not accept operational
   authority;
 - declarations alone do not select a concrete source/logic binding or route
@@ -429,13 +439,19 @@ Completed in the Memory-only mapped-source and origin-contract slices:
   produces `unknown`;
 - source bindings refer to object-existence, property, and link-family authority
   declarations through stable semantic IDs rather than API names;
+- object existence and properties can be supplied by different bindings without
+  depending on input order, and source values later than the selected valid time
+  fail materialization;
+- source-backed property absence remains unknown rather than being replaced by
+  an ontology schema default;
 - missing inputs, mapping-version mismatches, unknown stable IDs, inherited
   property IDs, cross-authority impersonation, ambiguous objects/links, mapped
   link endpoints, and multi-source freshness are explicit regression contracts;
 - `ProjectionState` now owns a `MaterializationCut` with exact schema, source,
   Fact, validity, and recording coordinates;
-- SQLite v2 explicitly rejects source cuts and `SourceOrigin` values rather
-  than silently discarding lineage;
+- at this decision's first slice, SQLite v2 explicitly rejected source cuts and
+  `SourceOrigin` values rather than silently discarding lineage; ARD-005 later
+  supplied their durable representation;
 - Ontology gains no import dependency on Harness, HarnessWork, Method, Product,
   or a concrete source adapter.
 
@@ -444,20 +460,23 @@ Remaining gates after this slice:
 - reproducible change-set payloads with retained base-revision chains;
 - concrete versioned logic bindings and a computation origin before transient
   derived values enter a projection;
-- a new physical storage decision before SQLite persists source revision
-  vectors and source origins;
-- source-backed write routing, acknowledgement, and reconciliation remain in a
-  later Action/write-back ARD.
+- ARD-012 now decides the first source-backed write routing, acknowledgement,
+  and reconciliation boundary. Its ontology-owned Action path is implemented;
+  source-backed planning and execution remain outstanding.
 
 ## Deferred Decisions
 
-- source-backed Action write-back versus managed edit overlay;
-- external effect ordering, acknowledgement, idempotency, and reconciliation;
-- cross-authority Action behavior;
+- broader source-backed Action write-back beyond ARD-012's first external
+  `SetProperty` slice, including any managed edit overlay;
+- external multi-effect ordering and general reconciliation scheduling beyond
+  ARD-012's request and receipt contract;
+- cross-authority Action behavior beyond ARD-012's explicit rejection;
 - delta versus full-snapshot source persistence;
 - source-specific freshness and query dependency aggregation;
 - multi-source precedence, merge, and identity-resolution policies;
-- the physical SQLite layout after the contracts stabilize.
+- selective factization of source-backed operational state;
+- incremental physical persistence beyond ARD-005's whole-snapshot SQLite v3
+  layout.
 
 ## Evidence Reviewed
 

@@ -26,7 +26,9 @@ class _Session:
 def test_pending_queue_view_maps_session_queues_to_generic_tui_sections() -> None:
     view = pending_queue_view(SessionOperationRuntime(_Session()))
 
-    assert [(section.label, tuple(section.items), section.hint) for section in view.sections] == [
+    assert [
+        (section.label, tuple(section.items), section.hint) for section in view.sections
+    ] == [
         (
             "Messages to be submitted after next tool call",
             ("steer",),
@@ -37,8 +39,14 @@ def test_pending_queue_view_maps_session_queues_to_generic_tui_sections() -> Non
 
 
 def test_cleared_queue_messages_supports_aliases_and_stringifies_values() -> None:
-    assert cleared_queue_messages({"steering": [1], "follow_up": ["next"]}) == ["1", "next"]
-    assert cleared_queue_messages({"steering": ["steer"], "followUp": [2]}) == ["steer", "2"]
+    assert cleared_queue_messages({"steering": [1], "follow_up": ["next"]}) == [
+        "1",
+        "next",
+    ]
+    assert cleared_queue_messages({"steering": ["steer"], "followUp": [2]}) == [
+        "steer",
+        "2",
+    ]
     assert cleared_queue_messages(None) == []
 
 

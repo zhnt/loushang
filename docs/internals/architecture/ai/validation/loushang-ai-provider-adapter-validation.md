@@ -14,7 +14,7 @@
 
 本次验证主要回答以下问题：
 
-1. `ApiProvider registry -> adapter -> raw parts -> event stream` 主链路是否可行
+1. `APIRegistry -> APIAdapter -> raw parts -> event stream` 主链路是否可行
 2. `anthropic-messages` 是否可以作为第一个真实协议验证入口
 3. official SDK 是否可以作为可选 carrier
 4. `httpx-thin` 是否能作为独立可行且长期保留的 carrier
@@ -27,7 +27,7 @@
 验证原型包括：
 
 - 最小 model / context / options 类型
-- 最小 api provider registry
+- 最小 API adapter registry
 - 最小 top-level API
 - 最小 raw parts / assembler
 - 两条 adapter carrier 路径：
@@ -63,8 +63,8 @@
 这说明当前最小主链路：
 
 - top-level API
-- api provider registry
-- provider adapter
+- API adapter registry
+- API adapter
 - raw parts
 - assistant event stream
 

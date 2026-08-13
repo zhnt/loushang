@@ -175,6 +175,7 @@ def test_print_mode_work_event_log_records_coding_turn_and_preserves_prompt_beha
         input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
     )
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="done")],
         api="anthropic-messages",
@@ -307,6 +308,7 @@ def test_print_mode_projects_assistant_text_and_tool_events() -> None:
 
         async def prompt(self, user_input: str, images=None) -> None:
             assistant = AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="done")],
                 api="anthropic-messages",
@@ -563,6 +565,7 @@ def test_print_mode_returns_nonzero_and_disposes_on_assistant_error_message() ->
     )
 
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[],
         api="anthropic-messages",
@@ -1216,6 +1219,7 @@ def test_print_mode_json_output_writes_header_before_event_lines() -> None:
 
         async def prompt(self, user_input: str, images=None) -> None:
             assistant = AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="done")],
                 api="anthropic-messages",
@@ -1386,6 +1390,7 @@ def test_print_mode_json_compact_view_projects_assistant_stream_and_tool_lifecyc
         input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
     )
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="hello")],
         api="anthropic-messages",
@@ -1635,6 +1640,7 @@ def test_print_mode_json_event_select_filters_projected_events() -> None:
         input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
     )
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="hello")],
         api="anthropic-messages",
@@ -2194,6 +2200,7 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
         input=1, output=2, cache_read=3, cache_write=4, total_tokens=5, cost={}
     )
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="hello")],
         api="anthropic-messages",

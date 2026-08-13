@@ -58,6 +58,7 @@ def _assistant_message(
     text: str = "answer", *, total_tokens: int = 17, stop_reason: str = "toolUse"
 ) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[
             TextPart(type="text", text=text),
@@ -81,6 +82,7 @@ def _assistant_message(
 
 def _tool_only_assistant_message() -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[
             ToolCall(
@@ -152,7 +154,7 @@ def test_session_view_controller_builds_usage_and_pi_stats(tmp_path) -> None:
         is_retrying=True,
         is_compacting=False,
         model_selection=ModelSelection(
-            provider="faux", model_id="faux-model"
+            endpoint_id="test-endpoint", provider="faux", model_id="faux-model"
         ),
     )
 
@@ -172,7 +174,7 @@ def test_session_view_controller_builds_usage_and_pi_stats(tmp_path) -> None:
     assert stats.active_tool_count == 2
     assert stats.is_retrying is True
     assert stats.last_model_selection == ModelSelection(
-        provider="faux", model_id="faux-model"
+        endpoint_id="test-endpoint", provider="faux", model_id="faux-model"
     )
     pi_stats = project_session_stats(
         agent=agent,
@@ -410,7 +412,7 @@ def test_session_view_controller_builds_state_snapshot(tmp_path) -> None:
         is_retrying=True,
         is_compacting=False,
         model_selection=ModelSelection(
-            provider="faux", model_id="faux-model"
+            endpoint_id="test-endpoint", provider="faux", model_id="faux-model"
         ),
     )
 

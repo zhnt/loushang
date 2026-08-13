@@ -204,8 +204,8 @@ def _decode_model_selection(value: JSONValue) -> ModelSelectionSnapshot:
     )
     return ModelSelectionSnapshot(
         provider=_text(payload, "provider"),
+        endpoint_id=_text(payload, "endpointId"),
         model_id=_text(payload, "modelId"),
-        endpoint_id=_optional_text(payload, "endpointId"),
     )
 
 

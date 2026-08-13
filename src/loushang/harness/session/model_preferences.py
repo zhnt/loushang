@@ -52,10 +52,13 @@ def preferred_model_details(
     values = list(details)
     matches: list[object] = []
     for preferred in preferred_models:
-        for detail in values:
-            if _matches_preferred_model_detail(detail, preferred):
-                matches.append(detail)
-                break
+        candidates = [
+            detail
+            for detail in values
+            if _matches_preferred_model_detail(detail, preferred)
+        ]
+        if len(candidates) == 1:
+            matches.append(candidates[0])
     return matches
 
 
@@ -70,13 +73,16 @@ def preferred_model_selection(
                 normalized = normalize_model_selection(selection)
                 if normalized == _preferred_selection(preferred):
                     return selection
-        for selection in values:
-            normalized = normalize_model_selection(selection)
-            if normalized is not None and (
-                normalized.provider,
-                normalized.model_id,
-            ) == (preferred.provider, preferred.model_id):
-                return selection
+            continue
+        candidates = [
+            selection
+            for selection in values
+            if (normalized := normalize_model_selection(selection)) is not None
+            and (normalized.provider, normalized.model_id)
+            == (preferred.provider, preferred.model_id)
+        ]
+        if len(candidates) == 1:
+            return candidates[0]
     return None
 
 
@@ -94,10 +100,20 @@ def _matches_preferred_model_detail(
     detail: object,
     preferred: PreferredModel,
 ) -> bool:
-    return normalize_model_selection(detail) == _preferred_selection(preferred)
+    normalized = normalize_model_selection(detail)
+    if normalized is None:
+        return False
+    if preferred.endpoint_id is not None:
+        return normalized == _preferred_selection(preferred)
+    return (normalized.provider, normalized.model_id) == (
+        preferred.provider,
+        preferred.model_id,
+    )
 
 
 def _preferred_selection(preferred: PreferredModel) -> ModelSelection:
+    if preferred.endpoint_id is None:
+        raise ValueError("preferred model selection requires endpoint_id")
     return ModelSelection(
         provider=preferred.provider,
         endpoint_id=preferred.endpoint_id,

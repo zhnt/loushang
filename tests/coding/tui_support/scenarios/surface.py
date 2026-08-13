@@ -35,7 +35,7 @@ from tests.coding.tui_support.scenario_binding import (
 
 def _run_commands_info_surface() -> object:
     playback = ScreenTuiLoopPlayback(
-        width=100, height=18, model_label="moonshot/kimi-for-coding"
+        width=100, height=18, model_label="moonshot:test-endpoint:kimi-for-coding"
     )
     manager = _surface_manager(playback.app)
 
@@ -59,7 +59,7 @@ def _run_commands_info_surface() -> object:
 
 def _run_commands_info_session_command() -> object:
     playback = ScreenTuiLoopPlayback(
-        width=100, height=18, model_label="moonshot/kimi-for-coding"
+        width=100, height=18, model_label="moonshot:test-endpoint:kimi-for-coding"
     )
     session = SessionCommandPlaybackSession()
     manager = _surface_manager(playback.app, session=session)
@@ -86,7 +86,7 @@ def _run_commands_info_session_command() -> object:
 
 def _run_command_palette_select() -> object:
     playback = ScreenTuiLoopPlayback(
-        width=100, height=18, model_label="moonshot/kimi-for-coding"
+        width=100, height=18, model_label="moonshot:test-endpoint:kimi-for-coding"
     )
     manager = _surface_manager(playback.app)
 
@@ -110,7 +110,7 @@ def _run_command_palette_select() -> object:
 
 def _run_command_palette_session_command() -> object:
     playback = ScreenTuiLoopPlayback(
-        width=100, height=18, model_label="moonshot/kimi-for-coding"
+        width=100, height=18, model_label="moonshot:test-endpoint:kimi-for-coding"
     )
     session = SessionCommandPlaybackSession()
     manager = _surface_manager(playback.app, session=session)
@@ -137,7 +137,7 @@ def _run_command_palette_session_command() -> object:
 
 def _run_settings_search() -> object:
     playback = ScreenTuiLoopPlayback(
-        width=100, height=18, model_label="moonshot/kimi-for-coding"
+        width=100, height=18, model_label="moonshot:test-endpoint:kimi-for-coding"
     )
     manager = _surface_manager(playback.app)
 
@@ -162,7 +162,7 @@ def _run_settings_search() -> object:
 
 def _run_model_select() -> object:
     playback = ScreenTuiLoopPlayback(
-        width=100, height=18, model_label="moonshot/kimi-for-coding"
+        width=100, height=18, model_label="moonshot:test-endpoint:kimi-for-coding"
     )
     session = ModelPlaybackSession()
     manager = _surface_manager(playback.app, session=session)
@@ -178,12 +178,14 @@ def _run_model_select() -> object:
 
     result.assert_exit_code(0)
     assert session.current_model == ModelSelection(
-        provider="openai", model_id="gpt-5.4"
+        endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
     )
-    assert playback.app.state.model_label == "openai/gpt-5.4"
+    assert playback.app.state.model_label == "openai:test-endpoint:gpt-5.4"
     result.assert_text_contains("Select Model")
-    result.assert_text_contains("Model set: openai/gpt-5.4")
-    result.assert_text_contains("openai/gpt-5.4 | repo | main | abcd | idle")
+    result.assert_text_contains("Model set: openai:test-endpoint:gpt-5.4")
+    result.assert_text_contains(
+        "openai:test-endpoint:gpt-5.4 | repo | main | abcd | idle"
+    )
     result.assert_no_clear_screen()
     assert result.app.active_surface is None
     return result
@@ -191,7 +193,7 @@ def _run_model_select() -> object:
 
 def _run_model_select_search() -> object:
     playback = ScreenTuiLoopPlayback(
-        width=100, height=18, model_label="moonshot/kimi-for-coding"
+        width=100, height=18, model_label="moonshot:test-endpoint:kimi-for-coding"
     )
     session = ModelPlaybackSession()
     manager = _surface_manager(playback.app, session=session)
@@ -208,11 +210,11 @@ def _run_model_select_search() -> object:
 
     result.assert_exit_code(0)
     assert session.current_model == ModelSelection(
-        provider="openai", model_id="gpt-5.4"
+        endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
     )
-    assert playback.app.state.model_label == "openai/gpt-5.4"
+    assert playback.app.state.model_label == "openai:test-endpoint:gpt-5.4"
     result.assert_text_contains("Search: gpt")
-    result.assert_text_contains("Model set: openai/gpt-5.4")
+    result.assert_text_contains("Model set: openai:test-endpoint:gpt-5.4")
     result.assert_no_clear_screen()
     assert result.app.active_surface is None
     return result
@@ -267,9 +269,9 @@ def _run_approval_abort_surface() -> object:
 
 def _run_approval_persistent_surface() -> object:
     playback = ScreenTuiLoopPlayback(
-        width=100,
+        width=120,
         height=18,
-        model_label="moonshot/kimi-for-coding",
+        model_label="moonshot:test-endpoint:kimi-for-coding",
     )
     approvals: list[dict[str, object]] = []
 
@@ -319,7 +321,7 @@ def _run_approval_persistent_surface() -> object:
 
 def _run_permissions_reopen_and_revoke_surface() -> object:
     playback = ScreenTuiLoopPlayback(
-        width=100, height=18, model_label="moonshot/kimi-for-coding"
+        width=100, height=18, model_label="moonshot:test-endpoint:kimi-for-coding"
     )
     permission_actions: list[str] = []
     approvals: list[dict[str, object]] = []
@@ -457,7 +459,7 @@ class _PermissionProfilePlaybackSession:
 
 def _run_permissions_mode_surface() -> object:
     playback = ScreenTuiLoopPlayback(
-        width=100, height=20, model_label="moonshot/kimi-for-coding"
+        width=120, height=20, model_label="moonshot:test-endpoint:kimi-for-coding"
     )
     session = _PermissionProfilePlaybackSession()
     manager = _surface_manager(playback.app, session=session)
@@ -486,7 +488,7 @@ def _run_permissions_mode_surface() -> object:
 
 def _run_permissions_full_access_confirmation() -> object:
     playback = ScreenTuiLoopPlayback(
-        width=100, height=20, model_label="moonshot/kimi-for-coding"
+        width=100, height=20, model_label="moonshot:test-endpoint:kimi-for-coding"
     )
     session = _PermissionProfilePlaybackSession()
     manager = _surface_manager(playback.app, session=session)
@@ -529,7 +531,7 @@ def _run_approval_surface_response(
     action_id: str = "write:app.py",
 ) -> object:
     playback = ScreenTuiLoopPlayback(
-        width=100, height=18, model_label="moonshot/kimi-for-coding"
+        width=100, height=18, model_label="moonshot:test-endpoint:kimi-for-coding"
     )
     approvals: list[dict[str, object]] = []
 
@@ -582,7 +584,7 @@ def _run_approval_surface_response(
 
 def _run_dialog_surface() -> object:
     playback = ScreenTuiLoopPlayback(
-        width=100, height=18, model_label="moonshot/kimi-for-coding"
+        width=100, height=18, model_label="moonshot:test-endpoint:kimi-for-coding"
     )
     manager = _surface_manager(playback.app)
     playback.app.active_surface = ScreenSurfaceView(

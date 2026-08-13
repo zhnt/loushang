@@ -26,7 +26,10 @@ from loushang.tui.terminal import (
     TerminalSize,
     terminal_size_from_environment,
 )
-from loushang.tui.terminal_input import read_input_chunk_or_render_tick
+from loushang.tui.terminal_input import (
+    InputChunkReader,
+    read_input_chunk_or_render_tick,
+)
 from loushang.tui.terminal_session import TerminalSession
 from loushang.tui.tui import Tui
 
@@ -83,6 +86,7 @@ class TuiRunner:
     stdout: TextIO | None = None
     terminal_size_provider: TerminalSizeProvider | None = None
     terminal_session_factory: TerminalSessionFactory | None = None
+    input_chunk_reader: InputChunkReader | None = None
     _running: bool = field(default=False, init=False, repr=False)
 
     async def run(
@@ -139,6 +143,7 @@ class TuiRunner:
                         stdin,
                         runtime=runtime,
                         active_task=None,
+                        input_chunk_reader=self.input_chunk_reader,
                         render_wakeup=render_wakeup,
                         pending_input_idle_ms=10 if reader.has_pending else None,
                         idle_wakeup_ms=terminal_runtime_wakeup_ms(terminal_context),

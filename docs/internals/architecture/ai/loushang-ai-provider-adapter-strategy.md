@@ -24,7 +24,7 @@
 
 ## Design Question
 
-在 `ApiProvider registry` 与 physical system context 已明确后，当前需要继续回答：
+在 `API adapter registry` 与 physical system context 已明确后，当前需要继续回答：
 
 1. `loushang.ai` 至少要承接哪几类上游应用协议
 2. provider adapter 应优先依赖 official SDK，还是优先依赖薄 HTTP
@@ -59,12 +59,12 @@
 在当前架构中，provider adapter 位于：
 
 1. top-level AI API 之下
-2. `ApiProvider registry` 之后
+2. `API adapter registry` 之后
 3. raw assembler 之前
 
 主链路应保持为：
 
-`await stream()/complete() -> ApiProvider registry -> provider adapter -> raw parts -> assistant event stream`
+`await stream()/complete() -> API adapter registry -> provider adapter -> raw parts -> assistant event stream`
 
 这意味着：
 
@@ -314,7 +314,7 @@ provider adapter strategy 需要明确承接当前已冻结的 cancellation 方�
 当前实现已经把 provider support 分为两层：
 
 1. catalog 层：`models.json` 记录 provider、endpoint、model、auth、capability、pricing、compat
-2. adapter 层：`ApiProvider` 按 `endpoint.api` 接管真实请求
+2. adapter 层：`APIAdapter` 按 `endpoint.api` 接管真实请求
 
 当前内置 adapter 覆盖：
 

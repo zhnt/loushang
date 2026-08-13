@@ -36,6 +36,7 @@ from loushang.harnesstui.conversation.screen_runner import (
     run_conversation_screen,
 )
 from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
+from loushang.tui.terminal_input import InputChunkReader
 
 IntentT = TypeVar("IntentT")
 OutcomeT = TypeVar("OutcomeT")
@@ -352,6 +353,7 @@ async def run_action_host_conversation_screen(
     keybindings: KeybindingManager | KeybindingConfig | None = None,
     terminal_mode_factory: TerminalModeFactory | None = None,
     terminal_size_provider: TerminalSizeProvider | None = None,
+    input_chunk_reader: InputChunkReader | None = None,
 ) -> int:
     """Run a screen by binding one neutral action host exactly once."""
 
@@ -371,6 +373,7 @@ async def run_action_host_conversation_screen(
         keybindings=keybindings,
         terminal_mode_factory=terminal_mode_factory,
         terminal_size_provider=terminal_size_provider,
+        input_chunk_reader=input_chunk_reader,
         input_router_factory=profile.input_router_factory,
         interruption_message=profile.interruption_message,
         cancellation_message=profile.cancellation_message,

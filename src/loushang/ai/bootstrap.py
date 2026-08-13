@@ -12,11 +12,3 @@ def register_builtin_api_adapters(
     registry.register_api_adapter(AnthropicMessagesAdapter())
     registry.register_api_adapter(OpenAIChatCompletionsAdapter())
     registry.register_api_adapter(OpenAIResponsesAdapter())
-
-
-def register_builtin_ai_providers(
-    registry: APIRegistry,
-) -> None:
-    """Compatibility spelling for :func:`register_builtin_api_adapters`."""
-
-    register_builtin_api_adapters(registry)

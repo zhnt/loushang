@@ -33,7 +33,9 @@ def test_config_settings_page_renders_and_filters_rows() -> None:
 
 
 def test_config_settings_page_returns_boolean_setting_intent() -> None:
-    page = ConfigSettingsPage((ConfigRow("terminal.progress", "Terminal progress", "false"),))
+    page = ConfigSettingsPage(
+        (ConfigRow("terminal.progress", "Terminal progress", "false"),)
+    )
     page.focus()
     page.handle_input(InputEvent(kind="key", key="down"))
 

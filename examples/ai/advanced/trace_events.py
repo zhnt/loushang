@@ -6,7 +6,7 @@ import asyncio
 import json
 
 from loushang.ai import CallOptions, Model, RetryOptions, stream
-from loushang.ai.advanced.registry import clear_api_providers, register_api_provider
+from loushang.ai.advanced.registry import clear_api_adapters, register_api_adapter
 from loushang.ai.model import Auth, Capabilities, Endpoint, Provider
 from loushang.ai.model.registry import ModelRegistry
 from loushang.ai.provider import ProviderRequest
@@ -54,8 +54,8 @@ async def inspect_trace_events() -> dict[str, object]:
     trace_events: list[dict[str, object]] = []
     model_registry = _build_model_registry()
     model = model_registry.get_model("trace-demo", "anthropic-messages", "trace-demo")
-    clear_api_providers()
-    register_api_provider(provider)
+    clear_api_adapters()
+    register_api_adapter(provider)
     event_stream = await stream(
         model,
         {"messages": []},
@@ -79,7 +79,9 @@ async def inspect_trace_events() -> dict[str, object]:
         "eventTypes": [event["type"] for event in trace_events],
         "callIdStable": (
             len(runtime_call_ids) == 3
-            and all(isinstance(call_id, str) and call_id for call_id in runtime_call_ids)
+            and all(
+                isinstance(call_id, str) and call_id for call_id in runtime_call_ids
+            )
             and len(set(runtime_call_ids)) == 1
         ),
         "text": "".join(

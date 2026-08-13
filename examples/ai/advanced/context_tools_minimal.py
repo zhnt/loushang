@@ -13,9 +13,9 @@ import asyncio
 from collections.abc import Iterable
 
 from loushang.ai import Context, Model, Tool, UserMessage, stream
-from loushang.ai.advanced.registry import clear_api_providers, register_api_provider
+from loushang.ai.advanced.registry import clear_api_adapters, register_api_adapter
 from loushang.ai.model import Auth, Capabilities
-from loushang.ai.protocols.faux import FauxProvider
+from loushang.ai.protocols.faux import FauxAdapter
 
 
 def _build_model() -> Model:
@@ -36,7 +36,9 @@ def _build_context() -> Context:
     # 用来演示正式类型对象如何构造，而不是走最短 dict 形式。
     return Context(
         system_prompt="You are a tool-using assistant.",
-        messages=[UserMessage(role="user", content="Please solve this.", timestamp=0.0)],
+        messages=[
+            UserMessage(role="user", content="Please solve this.", timestamp=0.0)
+        ],
         tools=[
             Tool(
                 name="calc",
@@ -64,8 +66,8 @@ def _iter_text(parts: Iterable[object]) -> str:
 
 async def _main() -> None:
     # 这是高级场景：本地构造 faux 模型并手动注入 faux provider。
-    clear_api_providers()
-    register_api_provider(FauxProvider())
+    clear_api_adapters()
+    register_api_adapter(FauxAdapter())
 
     event_stream = await stream(
         _build_model(),

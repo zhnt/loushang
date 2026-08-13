@@ -69,6 +69,7 @@ def _assistant_text_message(text: str) -> AssistantMessage:
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
         provider="offline",
+        endpoint="offline",
         model="offline-demo-model",
         response_id=None,
         usage=_usage(),
@@ -78,14 +79,30 @@ def _assistant_text_message(text: str) -> AssistantMessage:
     )
 
 
-def _stream_with_final_message(message: AssistantMessage) -> AssistantMessageEventStream:
+def _stream_with_final_message(
+    message: AssistantMessage,
+) -> AssistantMessageEventStream:
     stream = AssistantMessageEventStream()
 
     async def _feed() -> None:
         stream.push({"type": "start", "partial": message})
         stream.push({"type": "text_start", "content_index": 0, "partial": message})
-        stream.push({"type": "text_delta", "content_index": 0, "delta": message.content[0].text, "partial": message})
-        stream.push({"type": "text_end", "content_index": 0, "content": message.content[0].text, "partial": message})
+        stream.push(
+            {
+                "type": "text_delta",
+                "content_index": 0,
+                "delta": message.content[0].text,
+                "partial": message,
+            }
+        )
+        stream.push(
+            {
+                "type": "text_end",
+                "content_index": 0,
+                "content": message.content[0].text,
+                "partial": message,
+            }
+        )
         stream.push({"type": "done", "reason": message.stop_reason, "message": message})
 
     asyncio.create_task(_feed())
@@ -97,7 +114,9 @@ async def _stream_fn(model, context, options=None):
     last_message = context.messages[-1] if context.messages else None
     if isinstance(last_message, UserMessage):
         user_text = " ".join(
-            part.text for part in last_message.content if getattr(part, "type", None) == "text"
+            part.text
+            for part in last_message.content
+            if getattr(part, "type", None) == "text"
         )
     else:
         user_text = "unknown"
@@ -133,7 +152,9 @@ async def main() -> None:
         discovered = loader.discover_skills(project_root)
         print(f"Discovered {len(discovered)} skill(s):")
         for skill in discovered:
-            print(f"  - {skill.name}: {skill.description} (source_kind={skill.source_kind})")
+            print(
+                f"  - {skill.name}: {skill.description} (source_kind={skill.source_kind})"
+            )
         print()
 
         all_skills = loader.list_skills()
@@ -148,12 +169,16 @@ async def main() -> None:
 
         loader.disable_skill("test")
         enabled_after_disable = loader.list_enabled_skills()
-        print(f"Enabled skills after disable('test'): {[s.name for s in enabled_after_disable]}")
+        print(
+            f"Enabled skills after disable('test'): {[s.name for s in enabled_after_disable]}"
+        )
         print()
 
         loader.enable_skill("test")
         enabled_after_enable = loader.list_enabled_skills()
-        print(f"Enabled skills after enable('test'): {[s.name for s in enabled_after_enable]}")
+        print(
+            f"Enabled skills after enable('test'): {[s.name for s in enabled_after_enable]}"
+        )
         print()
 
         runtime = create_agent_session_runtime(

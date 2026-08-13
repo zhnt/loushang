@@ -61,7 +61,9 @@ def test_persist_clipboard_image_uses_full_path_outside_display_root(tmp_path) -
     assert attachment.marker == f"@{attachment.display_path}"
 
 
-def test_persist_clipboard_image_rejects_unsupported_mime_before_writing(tmp_path) -> None:
+def test_persist_clipboard_image_rejects_unsupported_mime_before_writing(
+    tmp_path,
+) -> None:
     directory = tmp_path / "images"
 
     with pytest.raises(
@@ -153,7 +155,9 @@ def test_stage_clipboard_image_returns_attached_outcome(tmp_path) -> None:
     assert outcome.attachment.marker == "@images/clipboard-image.png"
 
 
-@pytest.mark.parametrize("image", (None, ClipboardImage(bytes=b"", mime_type="image/png")))
+@pytest.mark.parametrize(
+    "image", (None, ClipboardImage(bytes=b"", mime_type="image/png"))
+)
 def test_stage_clipboard_image_returns_empty_outcome_without_writing(
     tmp_path,
     image: ClipboardImage | None,

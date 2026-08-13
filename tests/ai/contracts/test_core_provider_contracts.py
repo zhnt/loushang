@@ -3,12 +3,12 @@ from __future__ import annotations
 import inspect
 from typing import NamedTuple
 
-from loushang.ai.api_registry import ApiProviderRegistry
-from loushang.ai.bootstrap import register_builtin_ai_providers
+from loushang.ai.api_registry import APIRegistry
+from loushang.ai.bootstrap import register_builtin_api_adapters
 from loushang.ai.protocols.anthropic_messages import AnthropicMessagesAdapter
 from loushang.ai.protocols.openai_chat_completions import OpenAIChatCompletionsAdapter
 from loushang.ai.protocols.openai_responses import OpenAIResponsesAdapter
-from loushang.ai.provider.protocol import ApiProvider
+from loushang.ai.provider.protocol import APIAdapter
 
 
 class CoreAdapterCase(NamedTuple):
@@ -27,7 +27,7 @@ def test_core_adapters_implement_invoke_raw_contract() -> None:
     for case in CORE_ADAPTERS:
         provider = case.provider_type()
 
-        assert isinstance(provider, ApiProvider)
+        assert isinstance(provider, APIAdapter)
         assert provider.api == case.api
         assert callable(provider.invoke_raw)
         assert list(inspect.signature(provider.invoke_raw).parameters) == ["request"]
@@ -35,10 +35,10 @@ def test_core_adapters_implement_invoke_raw_contract() -> None:
 
 
 def test_builtin_registration_matches_core_contracts() -> None:
-    registry = ApiProviderRegistry()
+    registry = APIRegistry()
 
-    register_builtin_ai_providers(registry)
+    register_builtin_api_adapters(registry)
 
-    assert sorted(provider.api for provider in registry.list_api_providers()) == [
+    assert sorted(provider.api for provider in registry.list_api_adapters()) == [
         case.api for case in CORE_ADAPTERS
     ]

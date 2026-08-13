@@ -33,7 +33,7 @@ def test_rpc_mode_applies_control_commands_to_active_session() -> None:
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     session.model_registry = FakeModelRegistry(
         resolved_models={
-            ("faux", "beta"): Model(
+            ("faux", "coding", "beta"): Model(
                 id="beta",
                 provider="faux",
                 endpoint="coding",
@@ -71,6 +71,7 @@ def test_rpc_mode_applies_control_commands_to_active_session() -> None:
                         "id": "model",
                         "type": "set_model",
                         "provider": "faux",
+                        "endpointId": "coding",
                         "modelId": "beta",
                     }
                 ),
@@ -97,7 +98,9 @@ def test_rpc_mode_applies_control_commands_to_active_session() -> None:
     assert session.steer_calls == [("watch this", None)]
     assert session.follow_up_calls == [("continue", None)]
     assert session.abort_calls == 1
-    assert session.set_model_calls == [ModelSelection(provider="faux", model_id="beta")]
+    assert session.set_model_calls == [
+        ModelSelection(endpoint_id="coding", provider="faux", model_id="beta")
+    ]
     assert session.set_active_tools_calls == [["bash", "read"]]
 
     lines = _parse_jsonl(stdout)
@@ -108,6 +111,7 @@ def test_rpc_mode_applies_control_commands_to_active_session() -> None:
         "success": True,
         "data": {
             "provider": "faux",
+            "endpointId": "coding",
             "id": "beta",
             "name": "Faux Beta",
             "api": "openai-completions",
@@ -133,7 +137,7 @@ def test_rpc_mode_set_model_rejects_models_outside_available_list() -> None:
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     session.model_registry = FakeModelRegistry(
-        [ModelSelection(provider="faux", model_id="alpha")]
+        [ModelSelection(endpoint_id="test-endpoint", provider="faux", model_id="alpha")]
     )
     runtime = FakeRuntime(session)
     stdin = StringIO(
@@ -142,6 +146,7 @@ def test_rpc_mode_set_model_rejects_models_outside_available_list() -> None:
                 "id": "model",
                 "type": "set_model",
                 "provider": "faux",
+                "endpointId": "test-endpoint",
                 "modelId": "missing",
             }
         )
@@ -163,7 +168,7 @@ def test_rpc_mode_set_model_rejects_models_outside_available_list() -> None:
             "type": "response",
             "command": "set_model",
             "success": False,
-            "error": "Model not found: faux/missing",
+            "error": "Model not found: faux:test-endpoint:missing",
         }
     ]
 
@@ -221,7 +226,13 @@ def test_rpc_mode_supports_thinking_stats_retry_compact_and_export_commands() ->
         session_id="session-a", session_name="Alpha", cwd="/tmp/project"
     )
     asyncio.run(session.set_active_tools(["bash"]))
-    asyncio.run(session.set_model(ModelSelection(provider="faux", model_id="alpha")))
+    asyncio.run(
+        session.set_model(
+            ModelSelection(
+                endpoint_id="test-endpoint", provider="faux", model_id="alpha"
+            )
+        )
+    )
     runtime = FakeRuntime(session)
     stdin = StringIO(
         "\n".join(
@@ -359,11 +370,15 @@ def test_rpc_mode_supports_queue_model_name_and_command_queries() -> None:
     )
     session.model_registry = FakeModelRegistry(
         [
-            ModelSelection(provider="faux", model_id="alpha"),
-            ModelSelection(provider="openai", model_id="gpt-5"),
+            ModelSelection(
+                endpoint_id="coding", provider="faux", model_id="alpha"
+            ),
+            ModelSelection(
+                endpoint_id="coding", provider="openai", model_id="gpt-5"
+            ),
         ],
         resolved_models={
-            ("faux", "alpha"): Model(
+            ("faux", "coding", "alpha"): Model(
                 id="alpha",
                 provider="faux",
                 endpoint="coding",
@@ -377,7 +392,7 @@ def test_rpc_mode_supports_queue_model_name_and_command_queries() -> None:
                 pricing=Pricing(input=1, output=2, cache_read=0.1, cache_write=0.2),
                 adapter=OpenAICompletionsConfig(reasoning_effort=False),
             ),
-            ("openai", "gpt-5"): Model(
+            ("openai", "coding", "gpt-5"): Model(
                 id="gpt-5",
                 provider="openai",
                 endpoint="coding",
@@ -480,6 +495,7 @@ def test_rpc_mode_supports_queue_model_name_and_command_queries() -> None:
             "models": [
                 {
                     "provider": "faux",
+                    "endpointId": "coding",
                     "id": "alpha",
                     "name": "Faux Alpha",
                     "api": "openai-completions",
@@ -497,6 +513,7 @@ def test_rpc_mode_supports_queue_model_name_and_command_queries() -> None:
                 },
                 {
                     "provider": "openai",
+                    "endpointId": "coding",
                     "id": "gpt-5",
                     "name": "GPT-5",
                     "api": "openai-responses",

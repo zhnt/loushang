@@ -15,6 +15,8 @@ from loushang.foundation.json import (
     require_json_value,
 )
 from loushang.ontology.schema.definitions import (
+    ActionDefinition,
+    ActionParameterDefinition,
     InterfaceTypeDefinition,
     LinkCardinality,
     LinkTypeDefinition,
@@ -22,6 +24,7 @@ from loushang.ontology.schema.definitions import (
     OntologyPackageDraft,
     PropertyDefinition,
     SchemaVersion,
+    SetPropertyEffectDefinition,
     StateAuthority,
     ValueType,
 )
@@ -30,7 +33,7 @@ from loushang.ontology.schema.diagnostics import (
     SchemaDiagnostic,
 )
 
-SCHEMA_FORMAT = "loushang.ontology.schema/v3"
+SCHEMA_FORMAT = "loushang.ontology.schema/v4"
 
 _IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
 _VERSION = re.compile(r"^[0-9]+(?:\.[0-9]+){0,2}(?:[-+][A-Za-z0-9.-]+)?$")
@@ -115,6 +118,39 @@ class CompiledInterfaceTypeDefinition:
 
 
 @dataclass(frozen=True, slots=True)
+class CompiledActionParameterDefinition:
+    """Validated immutable Action input."""
+
+    name: str
+    value_type: ValueType
+    description: str
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledSetPropertyEffectDefinition:
+    """Validated first-slice property mutation intent."""
+
+    property_id: str
+    value_parameter: str
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledActionDefinition:
+    """Validated published Action owned by one compiled Schema."""
+
+    name: str
+    semantic_id: str
+    target_object_type_id: str
+    parameters: tuple[CompiledActionParameterDefinition, ...]
+    effect: CompiledSetPropertyEffectDefinition
+    policy_requirement_ref: str
+    description: str
+
+    def parameter(self, name: str) -> CompiledActionParameterDefinition | None:
+        return next((item for item in self.parameters if item.name == name), None)
+
+
+@dataclass(frozen=True, slots=True)
 class CompiledOntologySchema:
     """Validated immutable schema snapshot consumed by runtimes."""
 
@@ -124,6 +160,7 @@ class CompiledOntologySchema:
     object_types: tuple[CompiledObjectTypeDefinition, ...]
     link_types: tuple[CompiledLinkTypeDefinition, ...]
     interface_types: tuple[CompiledInterfaceTypeDefinition, ...] = ()
+    actions: tuple[CompiledActionDefinition, ...] = ()
     format: str = SCHEMA_FORMAT
 
     def object_type(self, name: str) -> CompiledObjectTypeDefinition | None:
@@ -147,6 +184,15 @@ class CompiledOntologySchema:
     def link_type_by_id(self, semantic_id: str) -> CompiledLinkTypeDefinition | None:
         return next(
             (item for item in self.link_types if item.semantic_id == semantic_id),
+            None,
+        )
+
+    def action(self, name: str) -> CompiledActionDefinition | None:
+        return next((item for item in self.actions if item.name == name), None)
+
+    def action_by_id(self, semantic_id: str) -> CompiledActionDefinition | None:
+        return next(
+            (item for item in self.actions if item.semantic_id == semantic_id),
             None,
         )
 
@@ -201,6 +247,29 @@ class CompiledOntologySchema:
                     "description": link_type.description,
                 }
                 for link_type in self.link_types
+            ],
+            "actions": [
+                {
+                    "semantic_id": action.semantic_id,
+                    "name": action.name,
+                    "target_object_type_id": action.target_object_type_id,
+                    "parameters": [
+                        {
+                            "name": parameter.name,
+                            "value_type": parameter.value_type.value,
+                            "description": parameter.description,
+                        }
+                        for parameter in action.parameters
+                    ],
+                    "effect": {
+                        "kind": "set_property",
+                        "property_id": action.effect.property_id,
+                        "value_parameter": action.effect.value_parameter,
+                    },
+                    "policy_requirement_ref": action.policy_requirement_ref,
+                    "description": action.description,
+                }
+                for action in self.actions
             ],
         }
 
@@ -430,6 +499,13 @@ class OntologyCompiler:
                     )
                 )
 
+        compiled_actions = _compile_action_definitions(
+            draft.actions,
+            compiled_objects=compiled_objects,
+            semantic_ids=semantic_ids,
+            diagnostics=diagnostics,
+        )
+
         if diagnostics:
             return None, tuple(diagnostics)
 
@@ -447,6 +523,9 @@ class OntologyCompiler:
                 ),
                 link_types=tuple(
                     sorted(compiled_links, key=lambda item: item.semantic_id)
+                ),
+                actions=tuple(
+                    sorted(compiled_actions, key=lambda item: item.semantic_id)
                 ),
             ),
             (),
@@ -607,7 +686,7 @@ def _compile_property_definitions(
                     SchemaDiagnostic(
                         "interface_property_semantic_id_unsupported",
                         f"{property_path}.semantic_id",
-                        "interface property identity is not part of schema v3",
+                        "interface property identity is not part of schema v4",
                     )
                 )
             if prop.state_authority is not None:
@@ -615,7 +694,7 @@ def _compile_property_definitions(
                     SchemaDiagnostic(
                         "interface_property_state_authority_unsupported",
                         f"{property_path}.state_authority",
-                        "interface property authority is not part of schema v3",
+                        "interface property authority is not part of schema v4",
                     )
                 )
         else:
@@ -755,6 +834,223 @@ def _validate_interface_implementations(
                     )
 
 
+def _compile_action_definitions(
+    actions: tuple[ActionDefinition, ...] | list[ActionDefinition],
+    *,
+    compiled_objects: list[CompiledObjectTypeDefinition],
+    semantic_ids: dict[str, str],
+    diagnostics: list[SchemaDiagnostic],
+) -> tuple[CompiledActionDefinition, ...]:
+    compiled: list[CompiledActionDefinition] = []
+    action_names: set[str] = set()
+    objects_by_id = {item.semantic_id: item for item in compiled_objects}
+    objects_by_name = {item.name: item for item in compiled_objects}
+
+    for action_index, action in enumerate(actions):
+        action_path = f"$.actions[{action_index}]"
+        _validate_identifier(action.name, f"{action_path}.name", diagnostics)
+        semantic_id = _register_semantic_id(
+            action.semantic_id,
+            path=f"{action_path}.semantic_id",
+            semantic_ids=semantic_ids,
+            diagnostics=diagnostics,
+        )
+        if action.name in action_names:
+            diagnostics.append(
+                SchemaDiagnostic(
+                    "duplicate_action",
+                    f"{action_path}.name",
+                    f"action '{action.name}' is declared more than once",
+                )
+            )
+        action_names.add(action.name)
+
+        parameters: list[CompiledActionParameterDefinition] = []
+        parameter_names: set[str] = set()
+        for parameter_index, parameter in enumerate(action.parameters):
+            parameter_path = f"{action_path}.parameters[{parameter_index}]"
+            if not isinstance(parameter, ActionParameterDefinition):
+                diagnostics.append(
+                    SchemaDiagnostic(
+                        "invalid_action_parameter",
+                        parameter_path,
+                        "action parameters must be ActionParameterDefinition values",
+                    )
+                )
+                continue
+            _validate_identifier(
+                parameter.name,
+                f"{parameter_path}.name",
+                diagnostics,
+            )
+            if parameter.name in parameter_names:
+                diagnostics.append(
+                    SchemaDiagnostic(
+                        "duplicate_action_parameter",
+                        f"{parameter_path}.name",
+                        f"action parameter '{parameter.name}' is declared more than once",
+                    )
+                )
+            parameter_names.add(parameter.name)
+            value_type = _normalize_value_type(parameter.value_type)
+            if value_type is None:
+                diagnostics.append(
+                    SchemaDiagnostic(
+                        "unsupported_action_parameter_type",
+                        f"{parameter_path}.value_type",
+                        f"unsupported value type '{_value_label(parameter.value_type)}'",
+                    )
+                )
+                continue
+            parameters.append(
+                CompiledActionParameterDefinition(
+                    name=parameter.name,
+                    value_type=value_type,
+                    description=parameter.description,
+                )
+            )
+        if len(action.parameters) != 1:
+            diagnostics.append(
+                SchemaDiagnostic(
+                    "unsupported_action_parameter_shape",
+                    f"{action_path}.parameters",
+                    "the first Action format requires exactly one value parameter",
+                )
+            )
+
+        target = (
+            objects_by_id.get(action.target_object_type_id)
+            if isinstance(action.target_object_type_id, str)
+            else None
+        )
+        if target is None:
+            diagnostics.append(
+                SchemaDiagnostic(
+                    "unknown_action_target_type",
+                    f"{action_path}.target_object_type_id",
+                    "action target_object_type_id is not declared",
+                )
+            )
+        elif target.abstract:
+            diagnostics.append(
+                SchemaDiagnostic(
+                    "abstract_action_target_type",
+                    f"{action_path}.target_object_type_id",
+                    "the first Action format cannot target an abstract object type",
+                )
+            )
+
+        effect = action.effect
+        if not isinstance(effect, SetPropertyEffectDefinition):
+            diagnostics.append(
+                SchemaDiagnostic(
+                    "unsupported_action_effect",
+                    f"{action_path}.effect",
+                    "the first Action format supports only SetProperty",
+                )
+            )
+            compiled_effect = CompiledSetPropertyEffectDefinition("", "")
+        else:
+            compiled_effect = CompiledSetPropertyEffectDefinition(
+                property_id=effect.property_id,
+                value_parameter=effect.value_parameter,
+            )
+            target_property = (
+                None
+                if target is None
+                else _resolved_property_by_id(
+                    target,
+                    effect.property_id,
+                    objects_by_name,
+                )
+            )
+            if target is not None and target_property is None:
+                diagnostics.append(
+                    SchemaDiagnostic(
+                        "unknown_action_property",
+                        f"{action_path}.effect.property_id",
+                        "SetProperty target is not declared on the Action object type",
+                    )
+                )
+            value_parameter = next(
+                (item for item in parameters if item.name == effect.value_parameter),
+                None,
+            )
+            if value_parameter is None:
+                diagnostics.append(
+                    SchemaDiagnostic(
+                        "unknown_action_value_parameter",
+                        f"{action_path}.effect.value_parameter",
+                        "SetProperty value_parameter is not declared",
+                    )
+                )
+            elif (
+                target_property is not None
+                and value_parameter.value_type is not target_property.value_type
+            ):
+                diagnostics.append(
+                    SchemaDiagnostic(
+                        "action_parameter_type_mismatch",
+                        f"{action_path}.effect.value_parameter",
+                        "Action parameter type does not match the target property",
+                    )
+                )
+
+        if (
+            not isinstance(action.policy_requirement_ref, str)
+            or not action.policy_requirement_ref.strip()
+        ):
+            diagnostics.append(
+                SchemaDiagnostic(
+                    "invalid_action_policy_requirement",
+                    f"{action_path}.policy_requirement_ref",
+                    "policy_requirement_ref must be a non-empty opaque reference",
+                )
+            )
+
+        compiled.append(
+            CompiledActionDefinition(
+                name=action.name,
+                semantic_id=semantic_id,
+                target_object_type_id=(
+                    action.target_object_type_id
+                    if isinstance(action.target_object_type_id, str)
+                    else ""
+                ),
+                parameters=tuple(sorted(parameters, key=lambda item: item.name)),
+                effect=compiled_effect,
+                policy_requirement_ref=(
+                    action.policy_requirement_ref
+                    if isinstance(action.policy_requirement_ref, str)
+                    else ""
+                ),
+                description=action.description,
+            )
+        )
+
+    return tuple(compiled)
+
+
+def _resolved_property_by_id(
+    object_type: CompiledObjectTypeDefinition,
+    property_id: object,
+    objects_by_name: dict[str, CompiledObjectTypeDefinition],
+) -> CompiledPropertyDefinition | None:
+    if not isinstance(property_id, str):
+        return None
+    direct = object_type.property_by_id(property_id)
+    if direct is not None:
+        return direct
+    for parent_name in object_type.parent_types:
+        parent = objects_by_name.get(parent_name)
+        if parent is None:
+            continue
+        inherited = _resolved_property_by_id(parent, property_id, objects_by_name)
+        if inherited is not None:
+            return inherited
+    return None
+
+
 def _normalize_cardinality(value: object) -> LinkCardinality | None:
     if isinstance(value, LinkCardinality):
         return value
@@ -779,9 +1075,11 @@ def _draft_from_document(document: dict[str, JSONValue]) -> OntologyPackageDraft
     interface_values = _optional_list(document, "interface_types")
     object_values = _require_list(document, "object_types")
     link_values = _require_list(document, "link_types")
+    action_values = _require_list(document, "actions")
     interface_types = [_interface_from_value(value) for value in interface_values]
     object_types = [_object_from_value(value) for value in object_values]
     link_types = [_link_from_value(value) for value in link_values]
+    actions = [_action_from_value(value) for value in action_values]
 
     return OntologyPackageDraft(
         package_id=_require_string(document, "package_id"),
@@ -790,6 +1088,7 @@ def _draft_from_document(document: dict[str, JSONValue]) -> OntologyPackageDraft
         interface_types=interface_types,
         object_types=object_types,
         link_types=link_types,
+        actions=actions,
     )
 
 
@@ -873,6 +1172,41 @@ def _link_from_value(value: JSONValue) -> LinkTypeDefinition:
     )
 
 
+def _action_from_value(value: JSONValue) -> ActionDefinition:
+    document = require_json_mapping(value, name="action")
+    raw_parameters = _require_list(document, "parameters")
+    effect_document = require_json_mapping(document["effect"], name="action effect")
+    if _require_string(effect_document, "kind") != "set_property":
+        raise ValueError("action effect kind must be 'set_property'")
+    return ActionDefinition(
+        name=_require_string(document, "name"),
+        semantic_id=_require_string(document, "semantic_id"),
+        target_object_type_id=_require_string(
+            document,
+            "target_object_type_id",
+        ),
+        parameters=[_action_parameter_from_value(item) for item in raw_parameters],
+        effect=SetPropertyEffectDefinition(
+            property_id=_require_string(effect_document, "property_id"),
+            value_parameter=_require_string(effect_document, "value_parameter"),
+        ),
+        policy_requirement_ref=_require_string(
+            document,
+            "policy_requirement_ref",
+        ),
+        description=_require_string(document, "description"),
+    )
+
+
+def _action_parameter_from_value(value: JSONValue) -> ActionParameterDefinition:
+    document = require_json_mapping(value, name="action parameter")
+    return ActionParameterDefinition(
+        name=_require_string(document, "name"),
+        value_type=_require_string(document, "value_type"),
+        description=_require_string(document, "description"),
+    )
+
+
 def _require_list(document: dict[str, JSONValue], key: str) -> list[JSONValue]:
     value = document[key]
     if not isinstance(value, list):
@@ -931,11 +1265,14 @@ def _require_bool(document: dict[str, JSONValue], key: str) -> bool:
 
 
 __all__ = [
+    "CompiledActionDefinition",
+    "CompiledActionParameterDefinition",
     "CompiledInterfaceTypeDefinition",
     "CompiledLinkTypeDefinition",
     "CompiledObjectTypeDefinition",
     "CompiledOntologySchema",
     "CompiledPropertyDefinition",
+    "CompiledSetPropertyEffectDefinition",
     "OntologyCompiler",
     "SCHEMA_FORMAT",
 ]

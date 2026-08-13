@@ -58,7 +58,9 @@ def test_coding_cli_invocation_compiles_a_hardened_non_widening_command(
             cwd="src",
         ),
         default_cwd=str(workspace),
-        model=SimpleNamespace(provider_id="openai", id="gpt-test"),
+        model=SimpleNamespace(
+            provider_id="openai", endpoint_id="responses", id="gpt-test"
+        ),
     )
 
     request = prepared.exec_request
@@ -73,12 +75,12 @@ def test_coding_cli_invocation_compiles_a_hardened_non_widening_command(
         ("PROVIDER_TOKEN", "secret"),
     )
     assert prepared.allowed_tools == ("read", "grep")
-    assert prepared.model_ref == "openai/gpt-test"
+    assert prepared.model_ref == "openai:responses:gpt-test"
     assert request.command[0] == str(executable.resolve())
     assert _flag_value(request.command, "--mode") == "print"
     assert _flag_value(request.command, "--tools") == "read,grep"
     assert _flag_value(request.command, "--cwd") == str(nested)
-    assert _flag_value(request.command, "--model") == "openai/gpt-test"
+    assert _flag_value(request.command, "--model") == "openai:responses:gpt-test"
     assert _flag_value(request.command, "--system-prompt")
     assert {
         "--no-session",
@@ -268,9 +270,7 @@ def test_coding_delegate_cancels_the_real_subprocess(tmp_path: Path) -> None:
 
         abort_task = asyncio.create_task(abort_soon())
         with pytest.raises(RuntimeError, match="Delegated agent aborted"):
-            await create_workspace_tool_execution_host(
-                policy_evaluator=None
-            ).dispatch(
+            await create_workspace_tool_execution_host(policy_evaluator=None).dispatch(
                 definition,
                 ToolCall(
                     type="toolCall",

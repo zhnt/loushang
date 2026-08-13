@@ -12,6 +12,7 @@ from loushang.tui import (
     SelectionSurface,
     SelectItem,
     apply_theme_style,
+    visible_width,
 )
 from loushang.tui.input import InputIntentKind
 
@@ -101,6 +102,7 @@ class ModelSelectorSurface:
             enable_search=True,
             show_search_when_empty=False,
             filter_mode="contains",
+            primary_column_width=_model_primary_column_width(items),
         )
         if self._filter_text:
             self._surface.set_filter(self._filter_text)
@@ -214,6 +216,14 @@ def _selected_model_item_index(
         if item.selected_value == selected_value:
             return index
     return 0
+
+
+def _model_primary_column_width(items: tuple[SelectItem, ...]) -> int | None:
+    """Reserve enough room to distinguish complete model identities when possible."""
+
+    if not items:
+        return None
+    return max(visible_width(item.label or item.selected_value) + 2 for item in items)
 
 
 def _screen_input_intent_or_none(result: object) -> InputIntent | None:

@@ -17,47 +17,30 @@ from loushang.ontology.schema import (
     CompiledOntologySchema,
     CompiledPropertyDefinition,
     LinkCardinality,
+    SchemaIdentity,
     ValueType,
 )
-from loushang.ontology.source import SourceInputRevision
-
-
-@dataclass(frozen=True, slots=True)
-class SchemaIdentity:
-    """Stable identity of the compiled schema selected for one build."""
-
-    package_id: str
-    namespace: str
-    version: str
-
-    def __post_init__(self) -> None:
-        for name in ("package_id", "namespace", "version"):
-            _non_empty_text(name, getattr(self, name))
-
-    @classmethod
-    def from_schema(cls, schema: CompiledOntologySchema) -> SchemaIdentity:
-        if not isinstance(schema, CompiledOntologySchema):
-            raise TypeError("schema must be a CompiledOntologySchema")
-        return cls(schema.package_id, schema.namespace, str(schema.version))
+from loushang.ontology.source import SourceInputCut, SourceInputRevision
 
 
 @dataclass(frozen=True, slots=True)
 class MaterializationCut:
-    """Exact schema, source-revision vector, and Fact selection coordinates."""
+    """Exact schema, mapped-source payloads, and Fact selection coordinates."""
 
     schema_identity: SchemaIdentity
-    source_inputs: tuple[SourceInputRevision, ...]
+    source_inputs: tuple[SourceInputCut, ...]
     fact_watermark: int
     valid_at: float
     recorded_at: float
+    fact_revalidation_digest: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.schema_identity, SchemaIdentity):
             raise TypeError("schema_identity must be a SchemaIdentity")
         if any(
-            not isinstance(item, SourceInputRevision) for item in self.source_inputs
+            not isinstance(item, SourceInputCut) for item in self.source_inputs
         ):
-            raise TypeError("source_inputs must contain SourceInputRevision values")
+            raise TypeError("source_inputs must contain SourceInputCut values")
         values = tuple(
             sorted(
                 self.source_inputs,
@@ -72,6 +55,16 @@ class MaterializationCut:
             raise ValueError("fact_watermark must be a non-negative integer")
         for name in ("valid_at", "recorded_at"):
             object.__setattr__(self, name, _finite(name, getattr(self, name)))
+        if self.fact_revalidation_digest is not None and (
+            len(self.fact_revalidation_digest) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in self.fact_revalidation_digest
+            )
+        ):
+            raise ValueError(
+                "fact_revalidation_digest must be a lowercase SHA-256 digest or None"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -396,7 +389,9 @@ def evaluate_projection_freshness(
 
     if not isinstance(state, ProjectionState):
         raise TypeError("state must be a ProjectionState")
-    expected_sources = state.materialization_cut.source_inputs
+    expected_sources = tuple(
+        item.revision for item in state.materialization_cut.source_inputs
+    )
     observed_sources = (
         () if observed_source_heads is None else tuple(observed_source_heads)
     )
@@ -526,7 +521,9 @@ class ProjectionSnapshot:
             for link in link_values
         ):
             raise ValueError("projected values must reference selected fact_ids")
-        source_revisions = set(state.materialization_cut.source_inputs)
+        source_revisions = {
+            item.revision for item in state.materialization_cut.source_inputs
+        }
         for obj in object_values:
             _validate_snapshot_origin(
                 obj.origin,
@@ -798,7 +795,6 @@ __all__ = [
     "ProjectionSnapshot",
     "ProjectionState",
     "SchemaDefaultOrigin",
-    "SchemaIdentity",
     "SourceOrigin",
     "ValueOrigin",
 ]

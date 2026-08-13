@@ -15,7 +15,6 @@ from loushang.ontology.projection import (
     MaterializationCut,
     ProjectionFreshnessStatus,
     ProjectionState,
-    SchemaIdentity,
     evaluate_projection_freshness,
     materialize_projection,
 )
@@ -24,6 +23,7 @@ from loushang.ontology.schema import (
     OntologyCompiler,
     OntologyPackageDraft,
     PropertyDefinition,
+    SchemaIdentity,
     StateAuthority,
     ValueType,
 )
@@ -33,6 +33,11 @@ ASSET_ID = UUID("00000000-0000-0000-0000-000000000001")
 INITIAL_FACT_ID = UUID("10000000-0000-0000-0000-000000000001")
 STATUS_FACT_ID = UUID("10000000-0000-0000-0000-000000000002")
 UPDATED_STATUS_FACT_ID = UUID("10000000-0000-0000-0000-000000000003")
+SCHEMA_IDENTITY = SchemaIdentity(
+    "test.materialization-correctness",
+    "urn:test:materialization-correctness",
+    "1.0.0",
+)
 
 
 def _schema():
@@ -67,7 +72,8 @@ def _initial_batch() -> FactBatch:
             FactRecord(
                 fact_id=INITIAL_FACT_ID,
                 subject_id=ASSET_ID,
-                assertion=ObjectAssertion("Asset"),
+                schema_identity=SCHEMA_IDENTITY,
+                assertion=ObjectAssertion("asset"),
                 assertion_kind=AssertionKind.ASSERTED,
                 source_ref="source.erp",
                 source_record_ref="asset:A-1",
@@ -77,7 +83,8 @@ def _initial_batch() -> FactBatch:
             FactRecord(
                 fact_id=STATUS_FACT_ID,
                 subject_id=ASSET_ID,
-                assertion=PropertyAssertion("status", "planned"),
+                schema_identity=SCHEMA_IDENTITY,
+                assertion=PropertyAssertion("asset.status", "planned"),
                 assertion_kind=AssertionKind.ASSERTED,
                 source_ref="source.erp",
                 source_record_ref="asset:A-1:status",
@@ -95,7 +102,8 @@ def _update_batch() -> FactBatch:
             FactRecord(
                 fact_id=UPDATED_STATUS_FACT_ID,
                 subject_id=ASSET_ID,
-                assertion=PropertyAssertion("status", "active"),
+                schema_identity=SCHEMA_IDENTITY,
+                assertion=PropertyAssertion("asset.status", "active"),
                 assertion_kind=AssertionKind.ASSERTED,
                 source_ref="source.erp",
                 source_record_ref="asset:A-1:status",

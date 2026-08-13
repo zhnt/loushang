@@ -61,16 +61,13 @@ class ProviderRequest:
 
 
 @runtime_checkable
-class ApiProvider(Protocol):
+class APIAdapter(Protocol):
     api: str
 
     def invoke_raw(
         self,
         request: ProviderRequest,
     ) -> AsyncIterator[RawPart]: ...
-
-
-APIAdapter = ApiProvider
 
 
 @runtime_checkable

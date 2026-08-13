@@ -37,6 +37,7 @@ from loushang.harnesstui.testing.scenarios.factory import (
     ScenarioFrameContracts,
 )
 from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
+from loushang.tui.terminal_input import InputChunkReader
 from tests.coding.tui_support.scenarios.budgets import (
     INTERACTION_FRAME_BUDGET,
     LONG_TRANSCRIPT_FRAME_BUDGET,
@@ -78,6 +79,7 @@ async def run_coding_test_screen(
     keybindings: KeybindingManager | KeybindingConfig | None = None,
     terminal_mode_factory: TerminalModeFactory | None = None,
     terminal_size_provider: TerminalSizeProvider | None = None,
+    input_chunk_reader: InputChunkReader | None = None,
 ) -> int:
     """Bind the Coding test profile directly to canonical screen owners."""
 
@@ -94,6 +96,7 @@ async def run_coding_test_screen(
         keybindings=keybindings,
         terminal_mode_factory=terminal_mode_factory,
         terminal_size_provider=terminal_size_provider,
+        input_chunk_reader=input_chunk_reader,
     )
 
 
@@ -115,6 +118,7 @@ async def run_coding_scenario_screen_loop(
     interruption_message: str,
     cancellation_message: str,
     input_router_factory: ConversationInputRouterFactoryPort | None,
+    input_chunk_reader: InputChunkReader | None,
 ) -> int:
     del input_router_factory
     if (
@@ -138,6 +142,7 @@ async def run_coding_scenario_screen_loop(
         is_local_command=is_local_command,
         terminal_mode_factory=terminal_mode_factory,
         terminal_size_provider=terminal_size_provider,
+        input_chunk_reader=input_chunk_reader,
     )
 
 

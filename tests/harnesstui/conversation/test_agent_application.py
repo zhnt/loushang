@@ -132,12 +132,20 @@ def test_agent_screen_surface_ports_bind_structural_research_session() -> None:
 
     class ResearchSession:
         def get_model_selection(self) -> ModelSelection:
-            return ModelSelection(provider="research", model_id="analyst")
+            return ModelSelection(
+                endpoint_id="test-endpoint", provider="research", model_id="analyst"
+            )
 
         def get_available_models(self) -> tuple[ModelSelection, ...]:
             return (
-                ModelSelection(provider="research", model_id="analyst"),
-                ModelSelection(provider="research", model_id="reviewer"),
+                ModelSelection(
+                    endpoint_id="test-endpoint", provider="research", model_id="analyst"
+                ),
+                ModelSelection(
+                    endpoint_id="test-endpoint",
+                    provider="research",
+                    model_id="reviewer",
+                ),
             )
 
         async def list_commands(self) -> tuple[CommandDescriptor[object], ...]:
@@ -172,12 +180,12 @@ def test_agent_screen_surface_ports_bind_structural_research_session() -> None:
     assert asyncio.run(ports.format_commands("report")) == (
         "Commands:\n/report - Build a research report (research)"
     )
-    assert "research/analyst" in asyncio.run(ports.format_models(""))
+    assert "research:test-endpoint:analyst" in asyncio.run(ports.format_models(""))
     assert asyncio.run(ports.build_model_selector()).purpose == "model"
     assert asyncio.run(ports.build_command_selector()).purpose == "command"
     assert asyncio.run(ports.build_settings_content()) == {"product": "research"}
     asyncio.run(ports.refresh_model_label())
-    assert labels == ["research/analyst"]
+    assert labels == ["research:test-endpoint:analyst"]
 
     assert ports.decide_approval is not None
     assert asyncio.run(
@@ -347,7 +355,9 @@ def test_refresh_agent_screen_session_replaces_history_and_event_source(
         session_manager = Manager()
 
         def get_model_selection(self) -> ModelSelection:
-            return ModelSelection(provider="openai", model_id="gpt-5.4")
+            return ModelSelection(
+                endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
+            )
 
     class Runtime:
         def get_cwd(self) -> str:
@@ -377,7 +387,7 @@ def test_refresh_agent_screen_session_replaces_history_and_event_source(
 
     assert event_source.source is session
     assert app.state.cwd == str(tmp_path)
-    assert app.state.model_label == "openai/gpt-5.4"
+    assert app.state.model_label == "openai:test-endpoint:gpt-5.4"
     assert app.state.session_label == "Resumed"
     assert app.state.records == []
     assert render_requests == ["product"]
@@ -428,7 +438,9 @@ def test_agent_screen_application_binding_owns_live_session_rebinding(
             self.approval_interaction = Interaction(profile)
 
         def get_model_selection(self) -> ModelSelection:
-            return ModelSelection(provider="research", model_id=self.model)
+            return ModelSelection(
+                endpoint_id="test-endpoint", provider="research", model_id=self.model
+            )
 
         def get_tool_definition(self, _name: str) -> None:
             return None
@@ -542,14 +554,14 @@ def test_agent_screen_application_binding_owns_live_session_rebinding(
     asyncio.run(runtime.rebind(resumed))  # type: ignore[operator]
 
     assert event_source.source is resumed
-    assert app.state.model_label == "research/reviewer"
+    assert app.state.model_label == "research:test-endpoint:reviewer"
     assert app.state.session_label == "Resumed"
     assert app.state.permission_profile == "review"
     assert app.composer.completion_provider == "resumed-completions"
     assert loaded == [(resumed, str(tmp_path))]
     assert initial.approval_interaction.presenter is None
     assert resumed.approval_interaction.presenter is not None
-    assert statuses[0].snapshot().model_label == "research/reviewer"
+    assert statuses[0].snapshot().model_label == "research:test-endpoint:reviewer"
     assert app.errors == []
 
     unbind_transition()

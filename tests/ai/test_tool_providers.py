@@ -39,6 +39,7 @@ def _assistant_tool_call(api: str) -> AssistantMessage:
         ],
         api=api,
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id=None,
         usage=Usage(
@@ -354,6 +355,7 @@ def test_anthropic_provider_sanitizes_unpaired_surrogates_in_payload_text() -> N
                         ],
                         api="anthropic-messages",
                         provider="anthropic",
+                        endpoint="test-endpoint",
                         model="claude",
                         response_id=None,
                         usage=Usage(

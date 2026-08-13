@@ -86,7 +86,7 @@ class _Session:
             get_keybindings=lambda: self.keybindings,
         )
         self.current_model: object = ModelSelection(
-            provider="unknown", model_id="unknown"
+            endpoint_id="test-endpoint", provider="unknown", model_id="unknown"
         )
         self.model_details = [
             Model(
@@ -123,7 +123,9 @@ class _Session:
     async def set_model(self, selection: object) -> None:
         if isinstance(selection, Model):
             self.current_model = ModelSelection(
-                provider=selection.provider_id, model_id=selection.id
+                endpoint_id="test-endpoint",
+                provider=selection.provider_id,
+                model_id=selection.id,
             )
         else:
             self.current_model = selection
@@ -337,6 +339,7 @@ def test_run_coding_tui_interactive_replays_resumed_session_history(
             timestamp=1.0,
         ),
         AssistantMessage(
+            endpoint="test-endpoint",
             role="assistant",
             content=[TextPart(type="text", text="previous answer")],
             api="openai",
@@ -442,6 +445,7 @@ def test_run_coding_tui_interactive_bounds_resumed_long_transcript_render_window
         line_count = 900 if turn == 23 else 40
         session.context_messages.append(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[
                     TextPart(
@@ -528,6 +532,7 @@ def test_run_coding_tui_interactive_long_transcript_input_frame_does_not_clear_s
         )
         session.context_messages.append(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[
                     TextPart(
@@ -599,6 +604,7 @@ def test_run_coding_tui_interactive_long_transcript_working_timer_frame_stays_bo
         )
         session.context_messages.append(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[
                     TextPart(
@@ -675,6 +681,7 @@ def test_run_coding_tui_interactive_traces_resumed_transcript_window_trim(
         )
         session.context_messages.append(
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[
                     TextPart(
@@ -1047,7 +1054,9 @@ def test_screen_tui_projector_failure_still_unbinds_presenter(
     assert resolver._broker.pending_requests() == ()
 
 
-def test_screen_session_transition_binding_clears_approval_surfaces_and_rebinds() -> None:
+def test_screen_session_transition_binding_clears_approval_surfaces_and_rebinds() -> (
+    None
+):
 
     subscribers: list[Callable[[], None]] = []
     primary_calls = 0

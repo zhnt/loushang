@@ -30,24 +30,30 @@ def test_preferred_model_details_preserves_preference_order() -> None:
 
 
 def test_preferred_model_selection_falls_back_to_matching_model() -> None:
-    selection = ModelSelection(provider="preferred", model_id="model")
+    selection = ModelSelection(
+        endpoint_id="test-endpoint", provider="preferred", model_id="model"
+    )
 
-    assert preferred_model_selection(
-        [selection], [PreferredModel("preferred", None, "model")]
-    ) == selection
+    assert (
+        preferred_model_selection(
+            [selection], [PreferredModel("preferred", None, "model")]
+        )
+        == selection
+    )
 
 
 def test_preferred_model_selection_prioritizes_the_configured_endpoint() -> None:
-    other = ModelSelection(
-        provider="preferred", endpoint_id="other", model_id="model"
-    )
+    other = ModelSelection(provider="preferred", endpoint_id="other", model_id="model")
     preferred = ModelSelection(
         provider="preferred", endpoint_id="endpoint", model_id="model"
     )
 
-    assert preferred_model_selection(
-        [other, preferred], [PreferredModel("preferred", "endpoint", "model")]
-    ) == preferred
+    assert (
+        preferred_model_selection(
+            [other, preferred], [PreferredModel("preferred", "endpoint", "model")]
+        )
+        == preferred
+    )
 
 
 def test_preferred_model_details_accepts_mapping_values() -> None:

@@ -17,9 +17,7 @@ from loushang.harnesstui.conversation.tool_transcript import (
 from loushang.tui.transcript import ToolExecutionRecord
 
 
-def test_projection_binding_composes_raw_view_ports_with_neutral_projector() -> (
-    None
-):
+def test_projection_binding_composes_raw_view_ports_with_neutral_projector() -> None:
     calls: list[tuple[str, object]] = []
 
     def call_view(event: dict[str, object]) -> ToolCallView:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.api_registry import APIRegistry
 from loushang.ai.model import Provider
 
 ProviderFactory = Callable[..., Provider]
@@ -16,7 +16,7 @@ class ExtensionProviderRuntime:
     """Own provider registration lifecycle while Product supplies conversion."""
 
     model_registry: object | None
-    api_provider_registry: ApiProviderRegistry
+    api_registry: APIRegistry
     provider_factory: ProviderFactory
 
     def register_provider(self, name: str, config: object) -> None:
@@ -35,7 +35,7 @@ class ExtensionProviderRuntime:
         remover = getattr(self.model_registry, "unregister_provider", None)
         if callable(remover):
             remover(name)
-        self.api_provider_registry.unregister_api_providers(f"provider:{name}")
+        self.api_registry.unregister_api_adapters(f"provider:{name}")
 
     def get_registered_provider(self, name: str) -> Provider | None:
         ai_registry = getattr(self.model_registry, "ai_registry", None)

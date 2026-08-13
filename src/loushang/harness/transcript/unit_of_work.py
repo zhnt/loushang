@@ -294,7 +294,7 @@ class AgentTranscriptUnitOfWork:
         """Durably append one prebuilt record, then advance runtime state."""
 
         async with self._commit_lock:
-            return await self._commit_locked(record)
+            return await self._finish_commit_atomically(record)
 
     async def append(
         self,
@@ -312,7 +312,7 @@ class AgentTranscriptUnitOfWork:
                 payload_version=payload_version,
                 metadata=metadata,
             )
-            return await self._commit_locked(record)
+            return await self._finish_commit_atomically(record)
 
     async def append_agent_message(
         self,
@@ -444,18 +444,27 @@ class AgentTranscriptUnitOfWork:
                 self._revision += 1
                 return AgentTranscriptCommit(record=record, receipt=None)
             return await self._materialize_locked(record, candidate)
-        commit_result = await self._backend.append(
-            self._key,
-            record,
-            expected_revision=self._revision,
-            operation_id=record.record_id,
-        )
+        expected_revision = self._revision
+        try:
+            commit_result = await self._backend.append(
+                self._key,
+                record,
+                expected_revision=expected_revision,
+                operation_id=record.record_id,
+            )
+        except StoreCommitOutcomeUnknown:
+            commit_result = await self._backend.append(
+                self._key,
+                record,
+                expected_revision=expected_revision,
+                operation_id=record.record_id,
+            )
         receipt = commit_result.receipt
-        expected_revision = self._revision + 1
-        if receipt.revision != expected_revision:
+        next_revision = expected_revision + 1
+        if receipt.revision != next_revision:
             raise RuntimeError(
                 "conversation backend returned an invalid append revision: "
-                f"expected {expected_revision}, got {receipt.revision}"
+                f"expected {next_revision}, got {receipt.revision}"
             )
         if receipt.record_id not in {None, record.record_id}:
             raise RuntimeError(
@@ -469,6 +478,34 @@ class AgentTranscriptUnitOfWork:
             receipt=receipt,
             diagnostics=commit_result.diagnostics,
         )
+
+    async def _finish_commit_atomically(
+        self,
+        record: AgentTranscriptRecord,
+    ) -> AgentTranscriptCommit:
+        """Finish an accepted commit before releasing the lock.
+
+        Once the caller owns ``_commit_lock``, a successful durable write wins
+        over cancellation.  The owned child keeps the backend result and the
+        in-memory repository/revision update in one cancellation-atomic region.
+        Explicitly suppressed cancellation requests are removed so callers do
+        not continue with a stale ``Task.cancelling()`` count.
+        """
+
+        operation = asyncio.create_task(self._commit_locked(record))
+        caller = asyncio.current_task()
+        while not operation.done():
+            try:
+                await asyncio.shield(operation)
+            except asyncio.CancelledError:
+                if caller is not None and caller.cancelling():
+                    while caller.cancelling():
+                        caller.uncancel()
+                    continue
+                if operation.done():
+                    break
+                raise
+        return operation.result()
 
     async def _materialize_locked(
         self,

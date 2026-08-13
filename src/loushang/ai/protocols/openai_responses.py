@@ -18,6 +18,7 @@ from loushang.ai.protocols._openai_responses import (
     process_responses_response,
     process_responses_stream,
 )
+from loushang.ai.protocols._openai_sdk import OPENAI_SDK_API_KEY_PLACEHOLDER
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.errors import provider_error_part
 from loushang.ai.structured import openai_responses_text_format
@@ -140,7 +141,7 @@ class OpenAIResponsesAdapter:
             cache_retention=cache_retention,
         )
         client = self._client or AsyncOpenAI(  # type: ignore[call-arg]
-            api_key="",
+            api_key=OPENAI_SDK_API_KEY_PLACEHOLDER,
             base_url=resolved.base_url,
         )
         _debug(

@@ -152,6 +152,7 @@ async def test_evaluate_summary_case_accepts_fixed_compaction_workload() -> None
                     timestamp=1.0,
                 ),
                 AssistantMessage(
+                    endpoint="test-endpoint",
                     role="assistant",
                     content=[
                         ToolCall(
@@ -231,6 +232,7 @@ async def test_evaluate_summary_case_accepts_fixed_branch_workload() -> None:
                 timestamp=1.0,
             ),
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[
                     ToolCall(

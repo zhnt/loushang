@@ -14,8 +14,8 @@ from loushang.ai.api.streaming import (
     stream,
 )
 from loushang.ai.api_registry import (
-    ApiProviderRegistry,
-    get_default_api_provider_registry,
+    APIRegistry,
+    get_default_api_registry,
 )
 from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.context import NormalizedContext, normalize_context
@@ -31,7 +31,7 @@ from loushang.ai.options import get_reasoning_effort, is_reasoning_requested
 from loushang.ai.protocols.openai_chat_completions import OpenAIChatCompletionsAdapter
 from loushang.ai.protocols.openai_responses import OpenAIResponsesAdapter
 from loushang.ai.provider import ProviderRequest
-from loushang.ai.provider.invocation import call_api_provider_stream
+from loushang.ai.provider.invocation import call_api_adapter_stream
 from loushang.ai.types import (
     AssistantMessage,
     ImagePart,
@@ -167,15 +167,15 @@ class _StreamOnlyProvider:
         return None
 
 
-def _empty_test_registry() -> ApiProviderRegistry:
-    registry = get_default_api_provider_registry()
-    registry.clear_api_providers()
+def _empty_test_registry() -> APIRegistry:
+    registry = get_default_api_registry()
+    registry.clear_api_adapters()
     return registry
 
 
-def _test_registry_with(provider) -> ApiProviderRegistry:
+def _test_registry_with(provider) -> APIRegistry:
     registry = _empty_test_registry()
-    registry.register_api_provider(provider)
+    registry.register_api_adapter(provider)
     return registry
 
 
@@ -183,7 +183,7 @@ def _test_registry_with(provider) -> ApiProviderRegistry:
 def test_public_invocation_preserves_effective_model_identity(entrypoint: str) -> None:
     provider = _Provider()
     registry = _empty_test_registry()
-    registry.register_api_provider(provider)
+    registry.register_api_adapter(provider)
     model = Model(
         id="effective-model",
         provider="selected-provider",
@@ -195,29 +195,31 @@ def test_public_invocation_preserves_effective_model_identity(entrypoint: str) -
         capabilities=Capabilities(input=("text",), output=("text",), stream=True),
     )
 
-    async def _run() -> None:
+    async def _run() -> AssistantMessage:
         context = {
             "messages": [UserMessage(role="user", content="hello", timestamp=0.0)]
         }
         if entrypoint == "complete":
-            await complete(model, context)
-            return
+            return await complete(model, context)
         event_stream = await stream(model, context)
-        await event_stream.result()
+        return await event_stream.result()
 
-    asyncio.run(_run())
+    message = asyncio.run(_run())
 
     assert provider.request is not None
     assert provider.request.model is model
     assert provider.request.model.provider_id == model.provider_id
     assert provider.request.model.endpoint_id == model.endpoint_id
     assert provider.request.model.region == model.region
+    assert message.provider == "selected-provider"
+    assert message.endpoint == "selected-endpoint"
+    assert message.model == "effective-model"
 
 
 def test_public_stream_suppresses_cache_key_when_retention_is_none() -> None:
     provider = _Provider()
     registry = _empty_test_registry()
-    registry.register_api_provider(provider)
+    registry.register_api_adapter(provider)
     model = Model(
         id="cache-model",
         provider="custom",
@@ -266,6 +268,7 @@ def test_stream_defaults_to_repair_pairing_and_exposes_strict_option(
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id="resp_1",
         usage=Usage(
@@ -363,6 +366,7 @@ def test_stream_exposes_strict_pairing_through_public_options(
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id="resp_1",
         usage=Usage(
@@ -782,7 +786,7 @@ def test_stream_passes_request_through_registered_provider(
     )
     provider = _Provider()
     registry = _empty_test_registry()
-    registry.register_api_provider(provider)
+    registry.register_api_adapter(provider)
 
     asyncio.run(
         stream(
@@ -802,7 +806,7 @@ def test_stream_runs_optional_provider_request_validator_before_iteration(
     _patch_resolved_request(monkeypatch)
     provider = _ValidatingProvider()
     registry = _empty_test_registry()
-    registry.register_api_provider(provider)
+    registry.register_api_adapter(provider)
 
     event_stream = asyncio.run(
         stream(
@@ -824,7 +828,7 @@ def test_stream_raises_provider_request_validation_error_before_iteration(
     _patch_resolved_request(monkeypatch)
     provider = _RejectingValidatorProvider()
     registry = _empty_test_registry()
-    registry.register_api_provider(provider)
+    registry.register_api_adapter(provider)
 
     with pytest.raises(TypeError, match="invalid adapter for faux"):
         asyncio.run(
@@ -842,35 +846,35 @@ def test_stream_raises_provider_request_validation_error_before_iteration(
     assert provider.request is None
 
 
-def test_register_api_provider_rejects_stream_only_provider() -> None:
+def test_register_api_adapter_rejects_stream_only_provider() -> None:
     registry = _empty_test_registry()
 
     with pytest.raises(TypeError, match="invoke_raw"):
-        registry.register_api_provider(_StreamOnlyProvider())
+        registry.register_api_adapter(_StreamOnlyProvider())
 
 
-def test_register_api_provider_rejects_legacy_provider_signature() -> None:
+def test_register_api_adapter_rejects_legacy_provider_signature() -> None:
     provider = _LegacyProvider()
     registry = _empty_test_registry()
 
     with pytest.raises(TypeError, match="exactly one ProviderRequest"):
-        registry.register_api_provider(provider)
+        registry.register_api_adapter(provider)
 
 
-def test_register_api_provider_rejects_keyword_request_signature() -> None:
+def test_register_api_adapter_rejects_keyword_request_signature() -> None:
     provider = _KeywordRequestProvider()
     registry = _empty_test_registry()
 
     with pytest.raises(TypeError, match="exactly one ProviderRequest"):
-        registry.register_api_provider(provider)
+        registry.register_api_adapter(provider)
 
 
-def test_register_api_provider_rejects_optional_legacy_argument_signature() -> None:
+def test_register_api_adapter_rejects_optional_legacy_argument_signature() -> None:
     provider = _LegacyProviderWithOptionalDebug()
     registry = _empty_test_registry()
 
     with pytest.raises(TypeError, match="exactly one ProviderRequest"):
-        registry.register_api_provider(provider)
+        registry.register_api_adapter(provider)
 
 
 @pytest.mark.parametrize(
@@ -926,17 +930,17 @@ def test_default_registry_rejects_legacy_provider_at_registration() -> None:
         _test_registry_with(_LegacyProvider())
 
 
-def test_call_api_provider_stream_supports_registered_provider(
+def test_call_api_adapter_stream_supports_registered_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_resolved_request(monkeypatch)
     provider = _Provider()
     registry = _empty_test_registry()
-    registry.register_api_provider(provider)
+    registry.register_api_adapter(provider)
 
     asyncio.run(
-        call_api_provider_stream(
-            registry.get_api_provider("faux"),
+        call_api_adapter_stream(
+            registry.get_api_adapter("faux"),
             _provider_request(
                 provider="faux",
                 endpoint="faux",
@@ -960,17 +964,17 @@ def test_call_api_provider_stream_supports_registered_provider(
     assert provider.context.messages[0].role == "user"
 
 
-def test_call_api_provider_stream_requires_normalized_context() -> None:
+def test_call_api_adapter_stream_requires_normalized_context() -> None:
     provider = _Provider()
     registry = _empty_test_registry()
-    registry.register_api_provider(provider)
+    registry.register_api_adapter(provider)
 
     with pytest.raises(
         TypeError, match="ProviderRequest.context must be NormalizedContext"
     ):
         asyncio.run(
-            call_api_provider_stream(
-                registry.get_api_provider("faux"),
+            call_api_adapter_stream(
+                registry.get_api_adapter("faux"),
                 _provider_request(
                     provider="faux",
                     endpoint="faux",
@@ -989,26 +993,26 @@ def test_call_api_provider_stream_requires_normalized_context() -> None:
         )
 
 
-def test_get_api_provider_stream_rejects_legacy_provider_signature() -> None:
+def test_get_api_adapter_stream_rejects_legacy_provider_signature() -> None:
     provider = _LegacyProvider()
     registry = _empty_test_registry()
 
     with pytest.raises(TypeError, match="exactly one ProviderRequest"):
-        registry.register_api_provider(provider)
+        registry.register_api_adapter(provider)
 
 
-def test_get_api_provider_stream_rejects_legacy_optional_arg_signature() -> None:
+def test_get_api_adapter_stream_rejects_legacy_optional_arg_signature() -> None:
     provider = _LegacyProviderWithOptionalDebug()
     registry = _empty_test_registry()
 
     with pytest.raises(TypeError, match="exactly one ProviderRequest"):
-        registry.register_api_provider(provider)
+        registry.register_api_adapter(provider)
 
 
-def test_call_api_provider_stream_rejects_mismatched_resolved_request() -> None:
+def test_call_api_adapter_stream_rejects_mismatched_resolved_request() -> None:
     provider = _Provider()
     registry = _empty_test_registry()
-    registry.register_api_provider(provider)
+    registry.register_api_adapter(provider)
     request = _provider_request(
         provider="faux",
         endpoint="other",
@@ -1019,8 +1023,8 @@ def test_call_api_provider_stream_rejects_mismatched_resolved_request() -> None:
 
     with pytest.raises(ValueError, match="Mismatched api"):
         asyncio.run(
-            call_api_provider_stream(
-                registry.get_api_provider("faux"),
+            call_api_adapter_stream(
+                registry.get_api_adapter("faux"),
                 replace(
                     request,
                     context=normalize_context(
@@ -1040,12 +1044,12 @@ def test_call_api_provider_stream_rejects_mismatched_resolved_request() -> None:
         )
 
 
-def test_call_api_provider_stream_passes_normalized_context_without_renormalizing() -> (
+def test_call_api_adapter_stream_passes_normalized_context_without_renormalizing() -> (
     None
 ):
     provider = _Provider(api="anthropic-messages")
     registry = _empty_test_registry()
-    registry.register_api_provider(provider)
+    registry.register_api_adapter(provider)
     request = _provider_request(
         api="anthropic-messages",
         provider="anthropic",
@@ -1060,6 +1064,7 @@ def test_call_api_provider_stream_passes_normalized_context_without_renormalizin
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id="resp_1",
         usage=Usage(
@@ -1093,8 +1098,8 @@ def test_call_api_provider_stream_passes_normalized_context_without_renormalizin
     )
 
     asyncio.run(
-        call_api_provider_stream(
-            registry.get_api_provider("anthropic-messages"),
+        call_api_adapter_stream(
+            registry.get_api_adapter("anthropic-messages"),
             replace(
                 request,
                 context=normalized,
@@ -1208,6 +1213,7 @@ def test_stream_normalizes_context_against_effective_model_api() -> None:
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id="resp_1",
         usage=Usage(
@@ -1254,7 +1260,7 @@ def test_stream_public_path_uses_openai_completions_typed_request(
 ) -> None:
     _fake_openai_module(monkeypatch)
     registry = _empty_test_registry()
-    registry.register_api_provider(OpenAIChatCompletionsAdapter())
+    registry.register_api_adapter(OpenAIChatCompletionsAdapter())
     model = SimpleNamespace(
         id="gpt-test",
         provider_id="custom",
@@ -1329,7 +1335,7 @@ def test_stream_missing_base_url_fails_before_sdk_client_construction(
 ) -> None:
     _fake_openai_module(monkeypatch)
     registry = _empty_test_registry()
-    registry.register_api_provider(OpenAIChatCompletionsAdapter())
+    registry.register_api_adapter(OpenAIChatCompletionsAdapter())
     model = Model(
         id="missing-base-url",
         provider="custom",
@@ -1358,7 +1364,7 @@ def test_stream_public_path_uses_openai_responses_typed_request(
 ) -> None:
     _fake_openai_module(monkeypatch)
     registry = _empty_test_registry()
-    registry.register_api_provider(OpenAIResponsesAdapter())
+    registry.register_api_adapter(OpenAIResponsesAdapter())
     model = SimpleNamespace(
         id="gpt-test",
         api="anthropic-messages",
@@ -1403,6 +1409,7 @@ def test_stream_public_path_uses_openai_responses_typed_request(
         ],
         api="openai-responses",
         provider="custom",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id="resp_1",
         usage=Usage(
@@ -1482,7 +1489,7 @@ def test_stream_public_path_rejects_unsupported_long_cache_retention(
 ) -> None:
     _fake_openai_module(monkeypatch)
     registry = _empty_test_registry()
-    registry.register_api_provider(OpenAIResponsesAdapter())
+    registry.register_api_adapter(OpenAIResponsesAdapter())
     model = SimpleNamespace(
         id="gpt-test",
         provider_id="custom",
@@ -1527,7 +1534,7 @@ def test_stream_public_path_ignores_unsupported_cache_key(
 ) -> None:
     registry = _empty_test_registry()
     provider = _Provider(api="openai-completions")
-    registry.register_api_provider(provider)
+    registry.register_api_adapter(provider)
     model = SimpleNamespace(
         id="gpt-test",
         provider_id="custom",
@@ -1572,7 +1579,7 @@ def test_stream_public_path_uses_adapter_protocol_override_for_cache_validation(
 ) -> None:
     _fake_openai_module(monkeypatch)
     registry = _empty_test_registry()
-    registry.register_api_provider(OpenAIResponsesAdapter())
+    registry.register_api_adapter(OpenAIResponsesAdapter())
     model = SimpleNamespace(
         id="gpt-test",
         provider_id="custom",

@@ -2,15 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import threading
-import time
 from collections.abc import Coroutine, Iterator, Mapping, Sequence
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path
-from typing import Generic, Literal, Protocol, Self, TextIO, TypeVar, cast
+from typing import Generic, Literal, Protocol, Self, TextIO, TypeVar
 
 from loushang.harnesstui.conversation.screen_runner import (
     AbortHandler,
@@ -36,6 +33,7 @@ from loushang.harnesstui.testing.ports import (
 from loushang.tui.cell_width import strip_control_sequences
 from loushang.tui.playback import playback_artifacts_directory_from_env
 from loushang.tui.terminal import TerminalOperation, TerminalSize
+from loushang.tui.terminal_input import InputChunkReader
 
 ScreenAppT = TypeVar("ScreenAppT", bound=ConversationScreenPort)
 
@@ -62,6 +60,7 @@ class ConversationScreenLoopRunnerPort(Protocol):
         interruption_message: str,
         cancellation_message: str,
         input_router_factory: ConversationInputRouterFactoryPort | None,
+        input_chunk_reader: InputChunkReader | None,
     ) -> Coroutine[object, object, int]: ...
 
 
@@ -87,67 +86,29 @@ class NoTerminalMode:
         return False
 
 
-class TimedTtyChunkInput:
-    """TTY-like pipe that emits scripted chunks from a background writer."""
+class TimedInputChunkReader:
+    """Async test input source that emits chunks relative to its first read."""
 
     def __init__(
         self,
         chunks: Sequence[ScriptedInputChunk],
-        *,
-        block_seconds: float = 0.002,
     ) -> None:
-        self._start = time.perf_counter()
-        self._block_seconds = max(0.0001, block_seconds)
-        self._read_fd, self._write_fd = os.pipe()
-        self._closed = threading.Event()
-        self._writer = threading.Thread(
-            target=self._write_chunks,
-            args=(tuple(chunks),),
-            daemon=True,
-        )
-        self._writer.start()
+        self._chunks = tuple(chunks)
+        self._index = 0
+        self._started_at: float | None = None
 
-    def fileno(self) -> int:
-        return self._read_fd
-
-    def isatty(self) -> bool:
-        return True
-
-    def read(self, _size: int = -1) -> str:
-        return ""
-
-    def close(self) -> None:
-        if self._closed.is_set():
-            return
-        self._closed.set()
-        with suppress(OSError):
-            os.close(self._read_fd)
-        self._writer.join(timeout=0.1)
-
-    def __enter__(self) -> Self:
-        return self
-
-    def __exit__(self, *_args: object) -> Literal[False]:
-        self.close()
-        return False
-
-    def _write_chunks(self, chunks: tuple[ScriptedInputChunk, ...]) -> None:
-        try:
-            for chunk in chunks:
-                while (
-                    remaining := chunk.at_seconds - (time.perf_counter() - self._start)
-                ) > 0:
-                    if self._closed.wait(min(self._block_seconds, remaining)):
-                        return
-                if self._closed.is_set():
-                    return
-                try:
-                    os.write(self._write_fd, chunk.data.encode())
-                except OSError:
-                    return
-        finally:
-            with suppress(OSError):
-                os.close(self._write_fd)
+    async def __call__(self, _stdin: TextIO) -> str:
+        if self._index >= len(self._chunks):
+            return ""
+        loop = asyncio.get_running_loop()
+        if self._started_at is None:
+            self._started_at = loop.time()
+        chunk = self._chunks[self._index]
+        delay = chunk.at_seconds - (loop.time() - self._started_at)
+        if delay > 0:
+            await asyncio.sleep(delay)
+        self._index += 1
+        return chunk.data
 
 
 @dataclass(frozen=True, slots=True)
@@ -304,41 +265,35 @@ class ConversationScreenLoopPlayback(Generic[ScreenAppT]):
     ) -> ConversationScreenLoopPlaybackResult[ScreenAppT]:
         scripted_chunks = tuple(_coerce_chunk(chunk) for chunk in chunks)
         stdout = StringIO()
-        stdin: TextIO
-        timed_input: TimedTtyChunkInput | None = None
-        if scripted_chunks:
-            timed_input = TimedTtyChunkInput(scripted_chunks)
-            stdin = cast(TextIO, timed_input)
-        else:
-            stdin = StringIO("")
-        try:
-            exit_code: int = asyncio.run(
-                self._runner(
-                    app=self.app,
-                    stdin=stdin,
-                    stdout=stdout,
-                    handle_prompt=handle_prompt or _ignore_text,
-                    handle_local=handle_local,
-                    handle_steer=handle_steer,
-                    handle_followup=handle_followup,
-                    handle_surface_intent=handle_surface_intent,
-                    on_abort=on_abort or _ignore_abort,
-                    should_exit=should_exit or (lambda _text: False),
-                    is_local_command=is_local_command,
-                    terminal_mode_factory=terminal_mode_factory
-                    or (lambda _stdin, _stdout: NoTerminalMode()),
-                    terminal_size_provider=lambda: TerminalSize(
-                        columns=self.width,
-                        rows=self.height,
-                    ),
-                    interruption_message=self.interruption_message,
-                    cancellation_message=self.cancellation_message,
-                    input_router_factory=self._input_router_factory,
-                )
+        stdin = StringIO("")
+        input_chunk_reader = (
+            TimedInputChunkReader(scripted_chunks) if scripted_chunks else None
+        )
+        exit_code: int = asyncio.run(
+            self._runner(
+                app=self.app,
+                stdin=stdin,
+                stdout=stdout,
+                handle_prompt=handle_prompt or _ignore_text,
+                handle_local=handle_local,
+                handle_steer=handle_steer,
+                handle_followup=handle_followup,
+                handle_surface_intent=handle_surface_intent,
+                on_abort=on_abort or _ignore_abort,
+                should_exit=should_exit or (lambda _text: False),
+                is_local_command=is_local_command,
+                terminal_mode_factory=terminal_mode_factory
+                or (lambda _stdin, _stdout: NoTerminalMode()),
+                terminal_size_provider=lambda: TerminalSize(
+                    columns=self.width,
+                    rows=self.height,
+                ),
+                interruption_message=self.interruption_message,
+                cancellation_message=self.cancellation_message,
+                input_router_factory=self._input_router_factory,
+                input_chunk_reader=input_chunk_reader,
             )
-        finally:
-            if timed_input is not None:
-                timed_input.close()
+        )
         state = dict(self._state_snapshot(self.app))
         payload = (
             dict(self._result_payload(exit_code, self.app))
@@ -462,5 +417,5 @@ __all__ = [
     "ConversationScreenLoopScenario",
     "NoTerminalMode",
     "ScriptedInputChunk",
-    "TimedTtyChunkInput",
+    "TimedInputChunkReader",
 ]

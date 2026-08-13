@@ -60,12 +60,8 @@ def test_screen_conversation_state_tracks_live_run_records() -> None:
 
 def test_screen_conversation_state_updates_tools_and_restores_queues() -> None:
     state = ScreenConversationState(cwd="/repo")
-    running = ToolExecutionRecord(
-        name="read", state="running", elapsed_seconds=0.1
-    )
-    completed = ToolExecutionRecord(
-        name="read", state="completed", elapsed_seconds=0.2
-    )
+    running = ToolExecutionRecord(name="read", state="running", elapsed_seconds=0.1)
+    completed = ToolExecutionRecord(name="read", state="completed", elapsed_seconds=0.2)
 
     state.upsert_tool_record("tool-1", running)
     state.upsert_tool_record("tool-1", completed)

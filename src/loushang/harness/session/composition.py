@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from loushang.agent import Agent
-from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.api_registry import APIRegistry
 from loushang.ai.model import Model, ModelSelection
 from loushang.ai.types import AssistantMessage
 from loushang.ai.utils import is_context_overflow
@@ -241,7 +241,7 @@ class SessionProductInputs:
     """Product-facing model, command, extension, and presentation bindings."""
 
     model_registry: SessionModelCatalogPort | None
-    api_provider_registry: ApiProviderRegistry
+    api_registry: APIRegistry
     extension_runner: SessionExtensionCompositionPort | None
     session_start_event: SessionStartEvent
     footer_data_provider: object
@@ -362,9 +362,7 @@ def _legacy_composition_inputs(
         prepare_resource_refresh=take("prepare_resource_refresh"),
         rebuild_prompt_and_tools_view=take("rebuild_prompt_and_tools_view"),
         set_resource_bundle=take("set_resource_bundle"),
-        record_extension_runtime_diagnostic=take(
-            "record_extension_runtime_diagnostic"
-        ),
+        record_extension_runtime_diagnostic=take("record_extension_runtime_diagnostic"),
     )
     maintenance = SessionMaintenanceInputs(
         execute_compaction=take("execute_compaction"),
@@ -374,16 +372,14 @@ def _legacy_composition_inputs(
     )
     product = SessionProductInputs(
         model_registry=take("model_registry"),
-        api_provider_registry=take("api_provider_registry"),
+        api_registry=take("api_registry"),
         extension_runner=take("extension_runner"),
         session_start_event=take("session_start_event"),
         footer_data_provider=take("footer_data_provider"),
         command_controller=take("command_controller"),
         extension_provider_controller=take("extension_provider_controller"),
         extension_replacement_controller=take("extension_replacement_controller"),
-        extension_runtime_binding_factory=take(
-            "extension_runtime_binding_factory"
-        ),
+        extension_runtime_binding_factory=take("extension_runtime_binding_factory"),
         extension_bridge=take("extension_bridge"),
         get_context_usage=take("get_context_usage"),
         package_controller=take("package_controller"),
@@ -799,7 +795,7 @@ def _build_product_bindings(
             agent=agent,
             session=session,
             model_registry=product.model_registry,
-            api_provider_registry=product.api_provider_registry,
+            api_registry=product.api_registry,
             extension_runner=product.extension_runner,
             provider_controller=product.extension_provider_controller,
             replacement_controller=product.extension_replacement_controller,
@@ -1110,10 +1106,7 @@ async def _set_model(
 ) -> None:
     resolved = selection_runtime.resolve_model(cast(Model | ModelSelection, selection))
     previous = agent.model
-    endpoint_id = (
-        selection.endpoint_id if isinstance(selection, ModelSelection) else None
-    )
-    await selection_runtime.apply_model(resolved, endpoint_id=endpoint_id)
+    await selection_runtime.apply_model(resolved)
     await refresh_extension_runtime("model_selection_changed")
     if extension_runner is not None and previous != resolved:
         await extension_runner.emit_agent_event(

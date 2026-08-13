@@ -9,7 +9,7 @@
 - 模型与 provider 抽象
 - 统一消息与内容块协议
 - 统一流式事件协议
-- provider 注册与调用入口
+- API adapter 注册与调用入口
 - usage / stop reason / thinking / tool call 等 AI 交互语义
 
 它不负责：
@@ -71,6 +71,13 @@
 - `google`
 - `kimi`
 
+### Endpoint
+
+Provider 下的一条完整模型接入通道。Endpoint 声明 `api`、地址、认证、headers、
+adapter 配置、defaults 和 Model 清单。
+
+Endpoint 是模型身份的一部分，不是调用时可以省略的附加配置。
+
 ### Model
 
 统一模型描述对象。
@@ -79,15 +86,15 @@
 
 - `id`
 - `name`
-- `provider`
-- `endpoint`
+- `provider_id`
+- `endpoint_id`
 - `base_url`
 - `reasoning`
 - `input`
 - `context_window`
 - `max_tokens`
 - `headers`
-- `cost`
+- `pricing`
 
 说明：
 
@@ -95,6 +102,8 @@
 - `Endpoint` 表示一个具体调用入口，并携带 `api`
 - `Model` 表示该 endpoint 下的可调用模型句柄
 - 同一个模型名可以在多个 endpoint 下分别存在为不同的 `Model`
+- `provider:endpoint:model` 是 Model 的完整、唯一标识
+- `ModelRegistry` 返回的 Model 已包含 Endpoint 的生效配置；调用只传 Model
 
 例如：
 
@@ -104,11 +113,24 @@
 
 可以同时存在；它们的差异首先来自 endpoint，因此也来自 endpoint 绑定的 `api`。
 
+### ModelSelection
+
+Endpoint 完整的轻量模型引用，包含三个非空字段：
+
+- `provider`
+- `endpoint_id`
+- `model_id`
+
+它始终表示完整的 `provider:endpoint:model`，不是模型偏好。外层输入省略 Endpoint
+时，只能在 `provider + model_id` 恰好命中一个 Endpoint 后立即补全；零候选报不存在，
+多候选报歧义，不能用 `preferred`、默认值或候选顺序静默选择。
+
 ### Model Registry
 
 模型注册表。
 
-负责维护 provider 下可用模型定义，并提供查询能力。
+负责维护 `Provider -> Endpoint -> Model` 目录、把 Endpoint 生效配置绑定到 Model，并
+按完整 `ModelSelection` 返回可调用 `Model`。
 
 ---
 
@@ -243,11 +265,15 @@
 - `content`
 - `api`
 - `provider`
+- `endpoint`
 - `model`
 - `usage`
 - `stop_reason`
 - `error_message`
 - `timestamp`
+
+`provider:endpoint:model` 可以从消息中还原完整响应来源。流式 partial、流式 final
+和非流式结果使用相同的来源字段。
 
 ### ToolResultMessage
 
@@ -389,13 +415,13 @@
 
 ## 9. Registration Layer
 
-### Api Registry
+### APIRegistry
 
-API provider 注册表。
+API adapter 注册表。
 
-负责维护 `api -> ApiProvider` 映射，并提供查询与注册能力。
+负责维护 `api -> APIAdapter` 映射，并提供查询与注册能力。
 
-### ApiProvider
+### APIAdapter
 
 按 `Api` 维度注册的统一调用适配单元。
 
@@ -412,13 +438,18 @@ API provider 注册表。
 - `api`
 - `invoke_raw`
 
-### register_api_provider
+### register_api_adapter
 
-注册 API provider。
+注册 API adapter。
 
-### get_api_provider
+### get_api_adapter
 
-获取指定 API 的 provider。
+获取指定 API 的通用 adapter。
+
+### ProviderRegistry
+
+先按 `(provider_id, api)` 查找厂商专用 `APIAdapter`，未命中时回退
+`APIRegistry.get_api_adapter(api)`。它保留双层 adapter 路由，但不拥有或选择模型。
 
 ### stream
 

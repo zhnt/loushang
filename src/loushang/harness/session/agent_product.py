@@ -7,8 +7,8 @@ from typing import Any, Protocol, cast
 
 from loushang.agent import Agent
 from loushang.ai.api_registry import (
-    ApiProviderRegistry,
-    get_default_api_provider_registry,
+    APIRegistry,
+    get_default_api_registry,
 )
 from loushang.ai.model import ModelSelection
 from loushang.harness.approval import InteractiveApprovalResolver
@@ -132,7 +132,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         diagnostics_service: DiagnosticsService | None = None,
         package_materializer: PackageMaterializer | None = None,
         session_start_event: SessionStartEvent | None = None,
-        api_provider_registry: ApiProviderRegistry | None = None,
+        api_registry: APIRegistry | None = None,
         exec_service: ExecService | None = None,
         tool_exec_service: ExecService | None = None,
         approval_resolver: InteractiveApprovalResolver | None = None,
@@ -152,9 +152,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             set_follow_up_mode_callback=self._set_agent_follow_up_mode,
         )
         self.model_registry = model_registry
-        self.api_provider_registry = (
-            api_provider_registry or get_default_api_provider_registry()
-        )
+        self.api_registry = api_registry or get_default_api_registry()
         self._resource_loader = resource_loader
         self.resource_bundle = resource_bundle
         self._extension_runner = extension_runner
@@ -211,7 +209,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         )
         self._extension_provider_controller = ExtensionProviderRuntime(
             model_registry=self.model_registry,
-            api_provider_registry=self.api_provider_registry,
+            api_registry=self.api_registry,
             provider_factory=provider_from_extension_config,
         )
         self._extension_replacement_controller = ExtensionReplacementRuntime(
@@ -389,7 +387,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             ),
             product=SessionProductInputs(
                 model_registry=self.model_registry,
-                api_provider_registry=self.api_provider_registry,
+                api_registry=self.api_registry,
                 extension_runner=self._extension_runner,
                 session_start_event=self._session_start_event,
                 footer_data_provider=self.footer_data_provider,

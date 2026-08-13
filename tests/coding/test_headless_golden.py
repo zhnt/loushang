@@ -41,6 +41,7 @@ def _stream_with_message(message: AssistantMessage) -> AssistantMessageEventStre
 
 def _assistant_tool_call_message() -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[
             ToolCall(
@@ -63,6 +64,7 @@ def _assistant_tool_call_message() -> AssistantMessage:
 
 def _assistant_text_message(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",

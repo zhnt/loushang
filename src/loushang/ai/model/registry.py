@@ -11,6 +11,7 @@ from loushang.ai.model.domain import (
     Provider,
     merge_adapter_config,
 )
+from loushang.ai.model.selection import ModelSelection
 from loushang.ai.output_budget import default_output_tokens_from_capability
 
 # 全局
@@ -253,17 +254,6 @@ class AmbiguousModelReference(ValueError):
         super().__init__(message)
 
 
-class AmbiguousPreferredModelReference(ValueError):
-    def __init__(self, ref: str, candidates: list[Model]) -> None:
-        self.ref = ref
-        self.candidates = tuple(format_model_ref(model) for model in candidates)
-        message = (
-            f"Ambiguous preferred endpoint for model reference {ref!r}; "
-            "catalog marks multiple preferred endpoints: " + ", ".join(self.candidates)
-        )
-        super().__init__(message)
-
-
 def resolve_model_ref(
     registry: "ModelRegistry",
     ref: str,
@@ -275,6 +265,10 @@ def resolve_model_ref(
     if explicit_ref := _parse_explicit_model_ref(ref):
         p, e, mid = explicit_ref
         return registry.get_model(p, e, mid)
+    if ref.count(":") == 1 and provider is None and endpoint is None:
+        p, mid = ref.split(":", 1)
+        if p and mid:
+            return _resolve_provider_model_ref(registry, p, mid, ref=ref)
     if "/" in ref and provider is None and endpoint is None:
         p, mid = ref.split("/", 1)
         if p and mid:
@@ -297,13 +291,15 @@ def _resolve_provider_model_ref(
     registry: "ModelRegistry",
     provider: str,
     model_id: str,
+    *,
+    ref: str | None = None,
 ) -> Model:
     candidates = registry.list_models(provider=provider, model_id=model_id)
-    return _resolve_candidates(registry, f"{provider}/{model_id}", candidates)
+    return _resolve_candidates(registry, ref or f"{provider}/{model_id}", candidates)
 
 
 def _resolve_candidates(
-    registry: "ModelRegistry",
+    _registry: "ModelRegistry",
     ref: str,
     candidates: list[Model],
 ) -> Model:
@@ -311,17 +307,6 @@ def _resolve_candidates(
         raise KeyError(ref)
     if len(candidates) == 1:
         return candidates[0]
-    preferred = [
-        model
-        for model in candidates
-        if (endpoint := registry.get_endpoint(model.provider_id, model.endpoint_id))
-        is not None
-        and endpoint.preferred
-    ]
-    if len(preferred) == 1:
-        return preferred[0]
-    if len(preferred) > 1:
-        raise AmbiguousPreferredModelReference(ref, preferred)
     raise AmbiguousModelReference(ref, candidates)
 
 
@@ -394,6 +379,15 @@ class ModelRegistry:
             return self._models[(provider_id, endpoint_id, model_id)]
         except KeyError as error:
             raise KeyError((provider_id, endpoint_id, model_id)) from error
+
+    def resolve_model_selection(self, selection: ModelSelection) -> Model:
+        if not isinstance(selection, ModelSelection):
+            raise TypeError("selection must be ModelSelection")
+        return self.get_model(
+            selection.provider,
+            selection.endpoint_id,
+            selection.model_id,
+        )
 
     def find_model(self, *args: str) -> Model | None:
         if len(args) == 1:

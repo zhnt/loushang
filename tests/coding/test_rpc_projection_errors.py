@@ -323,7 +323,13 @@ def test_rpc_mode_set_model_reports_model_registry_errors() -> None:
     runtime = FakeRuntime(session)
     stdin = StringIO(
         json.dumps(
-            {"id": "model", "type": "set_model", "provider": "faux", "modelId": "alpha"}
+            {
+                "id": "model",
+                "type": "set_model",
+                "provider": "faux",
+                "endpointId": "test-endpoint",
+                "modelId": "alpha",
+            }
         )
         + "\n"
     )
@@ -358,7 +364,13 @@ def test_rpc_mode_set_model_reports_invalid_model_registry_response_type() -> No
     runtime = FakeRuntime(session)
     stdin = StringIO(
         json.dumps(
-            {"id": "model", "type": "set_model", "provider": "faux", "modelId": "alpha"}
+            {
+                "id": "model",
+                "type": "set_model",
+                "provider": "faux",
+                "endpointId": "test-endpoint",
+                "modelId": "alpha",
+            }
         )
         + "\n"
     )
@@ -590,11 +602,15 @@ def test_rpc_mode_supports_cycle_model_command() -> None:
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     session.model_registry = FakeModelRegistry(
         [
-            ModelSelection(provider="faux", model_id="alpha"),
-            ModelSelection(provider="openai", model_id="gpt-5"),
+            ModelSelection(
+                endpoint_id="coding", provider="faux", model_id="alpha"
+            ),
+            ModelSelection(
+                endpoint_id="coding", provider="openai", model_id="gpt-5"
+            ),
         ],
         resolved_models={
-            ("faux", "alpha"): Model(
+            ("faux", "coding", "alpha"): Model(
                 id="alpha",
                 provider="faux",
                 endpoint="coding",
@@ -607,7 +623,7 @@ def test_rpc_mode_supports_cycle_model_command() -> None:
                 ),
                 pricing=Pricing(input=1, output=2, cache_read=0.1, cache_write=0.2),
             ),
-            ("openai", "gpt-5"): Model(
+            ("openai", "coding", "gpt-5"): Model(
                 id="gpt-5",
                 provider="openai",
                 endpoint="coding",
@@ -637,7 +653,13 @@ def test_rpc_mode_supports_cycle_model_command() -> None:
             ),
         },
     )
-    asyncio.run(session.set_model(ModelSelection(provider="faux", model_id="alpha")))
+    asyncio.run(
+        session.set_model(
+            ModelSelection(
+                endpoint_id="coding", provider="faux", model_id="alpha"
+            )
+        )
+    )
     runtime = FakeRuntime(session)
     stdin = StringIO(json.dumps({"id": "cycle-model", "type": "cycle_model"}) + "\n")
     stdout = StringIO()
@@ -650,8 +672,10 @@ def test_rpc_mode_supports_cycle_model_command() -> None:
     asyncio.run(scenario())
 
     assert session.set_model_calls == [
-        ModelSelection(provider="faux", model_id="alpha"),
-        ModelSelection(provider="openai", model_id="gpt-5"),
+        ModelSelection(endpoint_id="coding", provider="faux", model_id="alpha"),
+        ModelSelection(
+            endpoint_id="coding", provider="openai", model_id="gpt-5"
+        ),
     ]
 
     assert _parse_jsonl(stdout) == [
@@ -663,6 +687,7 @@ def test_rpc_mode_supports_cycle_model_command() -> None:
             "data": {
                 "model": {
                     "provider": "openai",
+                    "endpointId": "coding",
                     "id": "gpt-5",
                     "name": "GPT-5",
                     "api": "openai-responses",

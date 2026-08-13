@@ -491,6 +491,7 @@ def _reduce_agent_message(
         state,
         model_selection=ModelSelectionSnapshot(
             provider=message.provider,
+            endpoint_id=message.endpoint,
             model_id=message.model,
         ),
     )

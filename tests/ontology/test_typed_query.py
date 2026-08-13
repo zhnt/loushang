@@ -26,6 +26,7 @@ from loushang.ontology.schema import (
     OntologyCompiler,
     OntologyPackageDraft,
     PropertyDefinition,
+    SchemaIdentity,
     StateAuthority,
     ValueType,
 )
@@ -34,6 +35,7 @@ from loushang.ontology.storage import MemoryFactStore
 SELECTED_ID = UUID("00000000-0000-0000-0000-000000000001")
 OTHER_ID = UUID("00000000-0000-0000-0000-000000000002")
 OWNER_ID = UUID("00000000-0000-0000-0000-000000000003")
+SCHEMA_IDENTITY = SchemaIdentity("test.query", "urn:test:query", "2.0.0")
 
 
 def _projected_assets():
@@ -89,15 +91,15 @@ def _projected_assets():
         )
     )
     records = [
-        _fact(1, SELECTED_ID, ObjectAssertion("Asset")),
-        _fact(2, SELECTED_ID, PropertyAssertion("code", "A-1")),
-        _fact(3, SELECTED_ID, PropertyAssertion("score", 5)),
-        _fact(4, OTHER_ID, ObjectAssertion("Asset")),
-        _fact(5, OTHER_ID, PropertyAssertion("code", "A-2")),
-        _fact(6, OTHER_ID, PropertyAssertion("score", 1)),
-        _fact(7, OWNER_ID, ObjectAssertion("Owner")),
-        _fact(8, OWNER_ID, PropertyAssertion("name", "Operations")),
-        _fact(9, SELECTED_ID, LinkAssertion("owned_by", OWNER_ID)),
+        _fact(1, SELECTED_ID, ObjectAssertion("asset")),
+        _fact(2, SELECTED_ID, PropertyAssertion("asset.code", "A-1")),
+        _fact(3, SELECTED_ID, PropertyAssertion("asset.score", 5)),
+        _fact(4, OTHER_ID, ObjectAssertion("asset")),
+        _fact(5, OTHER_ID, PropertyAssertion("asset.code", "A-2")),
+        _fact(6, OTHER_ID, PropertyAssertion("asset.score", 1)),
+        _fact(7, OWNER_ID, ObjectAssertion("owner")),
+        _fact(8, OWNER_ID, PropertyAssertion("owner.name", "Operations")),
+        _fact(9, SELECTED_ID, LinkAssertion("asset.owned_by", OWNER_ID)),
     ]
     facts = MemoryFactStore()
     facts.commit_fact_batch(FactBatch("query-fixture", records))
@@ -111,6 +113,7 @@ def _fact(suffix: int, subject_id: UUID, assertion: object) -> FactRecord:
     return FactRecord(
         fact_id=UUID(f"10000000-0000-0000-0000-{suffix:012d}"),
         subject_id=subject_id,
+        schema_identity=SCHEMA_IDENTITY,
         assertion=assertion,  # type: ignore[arg-type]
         assertion_kind=AssertionKind.ASSERTED,
         source_ref="source.query-fixture",
@@ -126,7 +129,7 @@ def test_typed_query_reports_schema_and_projection_build_coordinates() -> None:
     result = execute_query(
         projection,
         QueryRequest(
-            schema_version="2.0.0",
+            schema_identity=SCHEMA_IDENTITY,
             steps=(
                 StartFromType("Asset"),
                 PropertyFilter("score", ">=", 5),
@@ -135,7 +138,7 @@ def test_typed_query_reports_schema_and_projection_build_coordinates() -> None:
     )
 
     assert result.object_ids == (SELECTED_ID,)
-    assert result.schema_version == "2.0.0"
+    assert result.schema_identity == projection.state.schema_identity
     assert result.projection.fact_watermark == 9
     assert result.diagnostics == ()
 
@@ -146,14 +149,18 @@ def test_query_schema_mismatch_is_visible_without_returning_objects() -> None:
     result = execute_query(
         projection,
         QueryRequest(
-            schema_version="1.0.0",
+            schema_identity=SchemaIdentity(
+                "another.package",
+                "urn:another:package",
+                "2.0.0",
+            ),
             steps=(StartFromType("Asset"),),
         ),
     )
 
     assert result.object_ids == ()
     assert [diagnostic.code for diagnostic in result.diagnostics] == [
-        "schema_version_mismatch"
+        "schema_identity_mismatch"
     ]
 
 

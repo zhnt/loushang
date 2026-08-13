@@ -79,7 +79,9 @@ class ModelCatalog:
         resolved_project_dir = Path(project_dir).expanduser()
         if not resolved_project_dir.is_dir():
             return False
-        resolved_user_dir = Path(user_dir).expanduser() if user_dir is not None else None
+        resolved_user_dir = (
+            Path(user_dir).expanduser() if user_dir is not None else None
+        )
         self.reload(
             user_dir=(
                 resolved_user_dir
@@ -127,11 +129,19 @@ class ModelCatalog:
             model = resolve_model_ref(self._ai_registry, name)
         except (KeyError, ValueError):
             return None
-        return ModelSelection(provider=model.provider_id, model_id=model.id)
+        return ModelSelection(
+            provider=model.provider_id,
+            endpoint_id=model.endpoint_id,
+            model_id=model.id,
+        )
 
     def list_models(self) -> list[ModelSelection]:
         return [
-            ModelSelection(provider=model.provider_id, model_id=model.id)
+            ModelSelection(
+                provider=model.provider_id,
+                endpoint_id=model.endpoint_id,
+                model_id=model.id,
+            )
             for model in self._ai_registry.list_models()
         ]
 
@@ -142,54 +152,38 @@ class ModelCatalog:
             return selection_input
         if isinstance(selection_input, Model):
             return ModelSelection(
-                provider=selection_input.provider_id, model_id=selection_input.id
+                provider=selection_input.provider_id,
+                endpoint_id=selection_input.endpoint_id,
+                model_id=selection_input.id,
             )
         model = resolve_model_ref(self._ai_registry, selection_input)
-        return ModelSelection(provider=model.provider_id, model_id=model.id)
+        return ModelSelection(
+            provider=model.provider_id,
+            endpoint_id=model.endpoint_id,
+            model_id=model.id,
+        )
 
     def build_model(self, selection_input: ModelSelection | str | Model) -> Model:
         selection = self.resolve_model(selection_input)
         return self._resolve_model(selection)
 
     def _resolve_model(self, selection: ModelSelection) -> Model:
-        if selection.endpoint_id:
-            return self._ai_registry.get_model(
-                selection.provider,
-                selection.endpoint_id,
-                selection.model_id,
-            )
         try:
-            return resolve_model_ref(
-                self._ai_registry,
-                f"{selection.provider}/{selection.model_id}",
-            )
+            return self._ai_registry.resolve_model_selection(selection)
         except KeyError:
             log.problem(
                 "model_selection_not_found",
                 source="config",
-                message=f"Model selection not found: {selection.provider}:{selection.model_id}",
+                message=(
+                    "Model selection not found: "
+                    f"{selection.provider}:{selection.endpoint_id}:{selection.model_id}"
+                ),
                 recoverable=True,
                 provider_id=selection.provider,
+                endpoint_id=selection.endpoint_id,
                 model_id=selection.model_id,
             )
-            raise KeyError((selection.provider, selection.model_id))
-        except ValueError as error:
-            matches = self._ai_registry.list_models(
-                provider=selection.provider,
-                model_id=selection.model_id,
-            )
-            log.problem(
-                "model_selection_ambiguous",
-                source="config",
-                message=f"Ambiguous model selection: {selection.provider}:{selection.model_id}",
-                recoverable=True,
-                provider_id=selection.provider,
-                model_id=selection.model_id,
-                endpoint_ids=[model.endpoint_id for model in matches],
-            )
-            raise ValueError(
-                f"Ambiguous model selection: {selection.provider}:{selection.model_id}; {error}"
-            ) from error
+            raise
 
 
 __all__ = ["ModelCatalog"]

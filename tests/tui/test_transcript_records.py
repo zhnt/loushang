@@ -88,9 +88,19 @@ def test_worked_divider_commits_as_stable_transcript_record() -> None:
 
 
 def test_context_compaction_record_renders_as_single_stable_transcript_line() -> None:
-    view = TranscriptView([ContextCompactionRecord(summary="older context summarized", tokens_before=500_000)])
+    view = TranscriptView(
+        [
+            ContextCompactionRecord(
+                summary="older context\nsummarized",
+                tokens_before=500_000,
+            )
+        ]
+    )
 
-    assert rendered_text(view, width=80) == ("* Context compacted: older context summarized (500000 tokens before)",)
+    lines = rendered_text(view, width=80)
+
+    assert lines == ("* Context compacted (500000 tokens before)",)
+    assert all("\n" not in line and "\r" not in line for line in lines)
 
 
 def test_status_record_renders_message_without_thinking_prefix() -> None:

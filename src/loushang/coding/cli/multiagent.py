@@ -11,6 +11,7 @@ from loushang.ai.model import (
     model_selection_ref,
     parse_model_selection_reference,
 )
+from loushang.ai.model.registry import ModelRegistry
 from loushang.coding.bootstrap import BootstrapServices, create_agent_session_runtime
 from loushang.coding.multiagent import (
     coding_read_only_agent_types,
@@ -85,6 +86,16 @@ async def run_coding_multiagent_command(
         stderr.write(f"Error: not a directory: {project_root}\n")
         return 2
     try:
+        resolved_services = services or build_services(project_root)
+    except Exception as error:
+        stderr.write(f"Error: failed to prepare collaboration runtime: {error}\n")
+        return 1
+    selection_registry = getattr(
+        getattr(resolved_services, "model_registry", None),
+        "ai_registry",
+        None,
+    )
+    try:
         prompt = resolve_multiagent_prompt(
             command.prompt,
             command.attachments,
@@ -107,14 +118,14 @@ async def run_coding_multiagent_command(
         role_models = _resolve_role_models(
             command.agent_models,
             provider=command.provider,
+            registry=selection_registry,
         )
-        default_model = _resolve_default_model(command)
-    except (OSError, UnicodeError, ValueError) as error:
+        default_model = _resolve_default_model(command, registry=selection_registry)
+    except (KeyError, OSError, UnicodeError, ValueError) as error:
         stderr.write(f"Error: {error}\n")
         return 2
 
     try:
-        resolved_services = services or build_services(project_root)
         stream_fn = None
         if command.provider == "scripted":
             from loushang.coding.cli.multiagent_scripted import (
@@ -134,7 +145,7 @@ async def run_coding_multiagent_command(
             project_root=project_root,
             settings_manager=settings_manager,
         )
-        registry = build_tool_registry(
+        tool_registry = build_tool_registry(
             diagnostics_service=getattr(
                 resolved_services,
                 "diagnostics_service",
@@ -152,7 +163,7 @@ async def run_coding_multiagent_command(
             "session_dir": session_dir,
             "model": default_model,
             "thinking_level": command.thinking,
-            "tool_registry": registry,
+            "tool_registry": tool_registry,
             "services": resolved_services,
             "persist": False,
             "enable_multiagent": True,
@@ -213,6 +224,8 @@ async def run_coding_multiagent_command(
 
 def _resolve_default_model(
     command: MultiAgentRunCommand,
+    *,
+    registry: ModelRegistry | None = None,
 ) -> ModelSelection | None:
     if command.provider == "scripted":
         from loushang.coding.cli.multiagent_scripted import SCRIPTED_MODEL
@@ -225,6 +238,7 @@ def _resolve_default_model(
     return parse_model_selection_reference(
         command.model,
         provider=command.provider,
+        registry=registry,
     )
 
 
@@ -232,12 +246,14 @@ def _resolve_role_models(
     values: Mapping[str, str],
     *,
     provider: str | None,
+    registry: ModelRegistry | None = None,
 ) -> dict[str, str]:
     result: dict[str, str] = {}
     for role, value in values.items():
         selection = parse_model_selection_reference(
             value,
-            provider=(provider if "/" not in value and value.count(":") < 2 else None),
+            provider=(provider if "/" not in value and ":" not in value else None),
+            registry=registry,
         )
         assert selection is not None
         result[role] = model_selection_ref(selection)

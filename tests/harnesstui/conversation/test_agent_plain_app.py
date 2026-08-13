@@ -19,12 +19,20 @@ def test_agent_plain_ports_bind_structural_research_session() -> None:
         settings_manager = settings
 
         def get_model_selection(self) -> ModelSelection:
-            return ModelSelection(provider="research", model_id="analyst")
+            return ModelSelection(
+                endpoint_id="test-endpoint", provider="research", model_id="analyst"
+            )
 
         def get_available_models(self) -> tuple[ModelSelection, ...]:
             return (
-                ModelSelection(provider="research", model_id="analyst"),
-                ModelSelection(provider="research", model_id="reviewer"),
+                ModelSelection(
+                    endpoint_id="test-endpoint", provider="research", model_id="analyst"
+                ),
+                ModelSelection(
+                    endpoint_id="test-endpoint",
+                    provider="research",
+                    model_id="reviewer",
+                ),
             )
 
         def list_commands(self) -> tuple[CommandDescriptor[object], ...]:
@@ -63,7 +71,7 @@ def test_agent_plain_ports_bind_structural_research_session() -> None:
     assert [command.name for command in commands if command.source == "research"] == [
         "report"
     ]
-    assert "research/analyst" in asyncio.run(ports.format_models(""))
+    assert "research:test-endpoint:analyst" in asyncio.run(ports.format_models(""))
     assert asyncio.run(ports.select_model("reviewer", None)) == "selected:reviewer"
     assert ports.settings_manager is settings
     assert ports.command_effect("models", cast(Any, object())) is not None

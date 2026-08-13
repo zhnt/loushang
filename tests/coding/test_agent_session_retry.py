@@ -36,6 +36,7 @@ def _assistant_error_message(
     error_message: str, *, usage: Usage | None = None
 ) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="error")],
         api="anthropic-messages",
@@ -51,6 +52,7 @@ def _assistant_error_message(
 
 def _assistant_success_message(text: str = "ok") -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import loushang.ai as ai
 import loushang.ai.api as ai_api
-from loushang.ai.api_registry import ApiProviderRegistry
-from loushang.ai.bootstrap import register_builtin_ai_providers
+from loushang.ai.api_registry import APIRegistry
+from loushang.ai.bootstrap import register_builtin_api_adapters
 
 ROOT_STABLE_EXPORTS = (
     "AssistantMessage",
@@ -81,18 +81,18 @@ API_NON_ENTRYPOINTS = (
 )
 
 ADVANCED_ROOT_EXPORTS_REMOVED = {
-    "ApiProviderRegistry",
+    "APIRegistry",
     "AnthropicOptions",
     "ModelRegistry",
     "OpenAICompletionsOptions",
     "OpenAIResponsesOptions",
-    "clear_api_providers",
-    "get_api_provider",
+    "clear_api_adapters",
+    "get_api_adapter",
     "get_env_api_key",
     "get_providers",
-    "list_api_providers",
-    "register_api_provider",
-    "reset_api_providers",
+    "list_api_adapters",
+    "register_api_adapter",
+    "reset_api_adapters",
 }
 
 REGISTERED_CORE_PROVIDER_APIS = (
@@ -121,10 +121,10 @@ def test_advanced_exports_are_not_root_stable_exports() -> None:
 
 
 def test_builtin_provider_registration_stays_on_core_protocol_adapters() -> None:
-    registry = ApiProviderRegistry()
+    registry = APIRegistry()
 
-    register_builtin_ai_providers(registry)
+    register_builtin_api_adapters(registry)
 
-    assert tuple(
-        sorted(provider.api for provider in registry.list_api_providers())
-    ) == (REGISTERED_CORE_PROVIDER_APIS)
+    assert tuple(sorted(provider.api for provider in registry.list_api_adapters())) == (
+        REGISTERED_CORE_PROVIDER_APIS
+    )

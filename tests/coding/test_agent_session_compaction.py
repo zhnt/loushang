@@ -36,6 +36,7 @@ def _model() -> Model:
 
 def _assistant_text_message(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -58,6 +59,7 @@ def _assistant_message(
     timestamp: float = 0.0,
 ) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -353,8 +355,7 @@ def test_agent_session_abort_compaction_cancels_public_manual_operation(
     asyncio.run(scenario())
 
     assert all(
-        entry.kind != "context.compaction_checkpoint"
-        for entry in manager.get_entries()
+        entry.kind != "context.compaction_checkpoint" for entry in manager.get_entries()
     )
     assert session.get_compaction_status().is_compacting is False
     compaction_end = next(
@@ -736,6 +737,7 @@ def test_agent_session_auto_compacts_after_agent_end_when_threshold_exceeded(
 
     events: list[object] = []
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="recent reply")],
         api="anthropic-messages",
@@ -788,6 +790,113 @@ def test_agent_session_auto_compacts_after_agent_end_when_threshold_exceeded(
     )
     assert compaction_end["reason"] == "threshold"
     assert compaction_end["will_retry"] is False
+
+
+def test_agent_session_auto_compaction_uses_default_streaming_summarizer(
+    tmp_path, monkeypatch
+) -> None:
+    from loushang.agent import AbortSignal, Agent
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.transcript import summarization as summary_module
+
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="older context")],
+                timestamp=0.0,
+            )
+        )
+    )
+    model = Model(
+        id="tiny-stream-model",
+        name="Tiny Stream",
+        provider="faux",
+        endpoint="anthropic-messages",
+        capabilities=Capabilities(
+            reasoning=True,
+            stream=True,
+            input=("text",),
+            context_window=100,
+            max_tokens=64,
+        ),
+    )
+    session = AgentSession(
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": model,
+                "thinking_level": "off",
+            }
+        ),
+        session_manager=manager,
+        settings_manager=SettingsManager(
+            ControlConfig(
+                compaction=CompactionSettings(
+                    enabled=True, reserve_tokens=10, keep_recent_tokens=1
+                )
+            )
+        ),
+    )
+    events: list[object] = []
+    session.subscribe(events.append)
+    stream_calls: list[tuple[object, object, object | None]] = []
+    summary_message = _assistant_message("threshold stream summary")
+
+    class FakeEventStream:
+        async def result(self):
+            return summary_message
+
+    async def fake_stream(model, context, options=None):
+        stream_calls.append((model, context, options))
+        return FakeEventStream()
+
+    monkeypatch.setattr(summary_module, "stream", fake_stream)
+    assistant = _assistant_message(
+        "recent reply",
+        usage=Usage(
+            input=90,
+            output=5,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=95,
+            cost={},
+        ),
+        timestamp=1.0,
+    )
+
+    async def scenario() -> None:
+        await session._composition.session_runtime.handle_agent_event(
+            {"type": "message_end", "message": assistant}, AbortSignal()
+        )
+        await session._composition.session_runtime.handle_agent_event(
+            {"type": "agent_end", "messages": [assistant]}, AbortSignal()
+        )
+
+    asyncio.run(scenario())
+
+    assert len(stream_calls) == 1
+    assert all(call[0] is model for call in stream_calls)
+    checkpoint = next(
+        entry
+        for entry in manager.get_entries()
+        if entry.kind == "context.compaction_checkpoint"
+    )
+    assert "threshold stream summary" in checkpoint.payload.summary
+    compaction_end = next(
+        event for event in events if event["type"] == "compaction_end"
+    )
+    assert compaction_end["reason"] == "threshold"
+    assert compaction_end["stage"] == "committed"
 
 
 def test_agent_session_auto_compaction_uses_compact_percent_threshold(
@@ -850,6 +959,7 @@ def test_agent_session_auto_compaction_uses_compact_percent_threshold(
 
     events: list[object] = []
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="recent reply")],
         api="anthropic-messages",
@@ -920,6 +1030,7 @@ def test_agent_session_auto_compaction_ignores_stale_assistant_usage_before_late
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     stale_assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="stale usage before compaction")],
         api="test",
@@ -1413,6 +1524,7 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(
 
     events: list[object] = []
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="overflow error")],
         api="anthropic-messages",
@@ -1525,6 +1637,7 @@ def test_agent_session_overflow_recovery_is_limited_to_one_attempt(
 
     events: list[object] = []
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="overflow error")],
         api="anthropic-messages",

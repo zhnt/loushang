@@ -221,8 +221,8 @@ flowchart LR
 
 - `stream/complete`
 - `get_model/list_models`
-- `register_api_provider/list_api_providers/clear_api_providers`
-- `reset_api_providers`
+- `register_api_adapter/list_api_adapters/clear_api_adapters`
+- `reset_api_adapters`
 - auth helper
 
 ### loushang-coding -> loushang-ai

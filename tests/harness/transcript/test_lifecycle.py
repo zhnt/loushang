@@ -90,7 +90,9 @@ def test_lifecycle_creates_restores_and_disposes_native_session(tmp_path: Path) 
         assert not context.session_file.exists()
         assert created.transcript.is_materialized is False
         staged = await created.transcript.append_model_selection(
-            ModelSelectionSnapshot(provider="provider", model_id="model")
+            ModelSelectionSnapshot(
+                endpoint_id="test-endpoint", provider="provider", model_id="model"
+            )
         )
         assert staged.receipt is None
         assert not context.session_file.exists()

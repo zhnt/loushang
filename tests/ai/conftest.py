@@ -4,8 +4,8 @@ import os
 
 import pytest
 
-from loushang.ai.api_registry import get_default_api_provider_registry
-from loushang.ai.bootstrap import register_builtin_ai_providers
+from loushang.ai.api_registry import get_default_api_registry
+from loushang.ai.bootstrap import register_builtin_api_adapters
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -18,10 +18,10 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _isolate_default_api_provider_registry():
-    registry = get_default_api_provider_registry()
-    registry.clear_api_providers()
-    register_builtin_ai_providers(registry)
+def _isolate_default_api_registry():
+    registry = get_default_api_registry()
+    registry.clear_api_adapters()
+    register_builtin_api_adapters(registry)
     yield
-    registry.clear_api_providers()
-    register_builtin_ai_providers(registry)
+    registry.clear_api_adapters()
+    register_builtin_api_adapters(registry)

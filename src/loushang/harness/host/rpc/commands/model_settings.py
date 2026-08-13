@@ -75,16 +75,14 @@ class RpcModelSettingsCommands:
             ("set_session_name", self.set_session_name),
         )
 
-    async def set_model(
-        self, command_id: str | None, payload: dict[str, Any]
-    ) -> None:
+    async def set_model(self, command_id: str | None, payload: dict[str, Any]) -> None:
         provider = require_string(payload, "provider")
+        endpoint_id = require_string(payload, "endpointId", "endpoint_id")
         model_id = require_string(payload, "modelId", "model_id")
-        endpoint_id = payload.get("endpointId") or payload.get("endpoint_id")
         selection = ModelSelection(
             provider=provider,
+            endpoint_id=endpoint_id,
             model_id=model_id,
-            endpoint_id=endpoint_id if isinstance(endpoint_id, str) else None,
         )
         session = self._get_session()
         try:
@@ -107,7 +105,7 @@ class RpcModelSettingsCommands:
             self._error(
                 command_id,
                 "set_model",
-                f"Model not found: {provider}/{model_id}",
+                f"Model not found: {provider}:{endpoint_id}:{model_id}",
             )
             return
         try:
@@ -116,7 +114,7 @@ class RpcModelSettingsCommands:
             self._error(
                 command_id,
                 "set_model",
-                f"Model not found: {provider}/{model_id}",
+                f"Model not found: {provider}:{endpoint_id}:{model_id}",
             )
             return
         except Exception as error:

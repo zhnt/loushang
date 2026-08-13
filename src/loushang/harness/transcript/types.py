@@ -72,16 +72,13 @@ class ThinkingSelectionSnapshot:
 @dataclass(frozen=True)
 class ModelSelectionSnapshot:
     provider: str
+    endpoint_id: str
     model_id: str
-    endpoint_id: str | None = None
 
     def __post_init__(self) -> None:
         _require_text(self.provider, name="model selection provider")
+        _require_text(self.endpoint_id, name="model selection endpoint id")
         _require_text(self.model_id, name="model selection model id")
-        _require_optional_text(
-            self.endpoint_id,
-            name="model selection endpoint id",
-        )
 
 
 @dataclass(frozen=True)
@@ -316,13 +313,11 @@ class AgentTranscriptContext:
         selection = self.state.model_selection
         if selection is None:
             return None
-        result = {
+        return {
             "provider": selection.provider,
+            "endpoint_id": selection.endpoint_id,
             "model_id": selection.model_id,
         }
-        if selection.endpoint_id is not None:
-            result["endpoint_id"] = selection.endpoint_id
-        return result
 
 
 def application_message_content_blocks(

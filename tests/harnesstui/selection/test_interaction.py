@@ -67,6 +67,18 @@ def test_model_interaction_prefers_exact_endpoint_qualified_value() -> None:
     assert by_value.choice is choices[1]
 
 
+def test_model_interaction_reports_colon_shorthand_as_ambiguous() -> None:
+    choices = _choices()
+
+    result = resolve_model_interaction(
+        ModelInteractionSnapshot(choices),
+        query="provider:model",
+    )
+
+    assert result.kind == "ambiguous"
+    assert result.matches == choices[:2]
+
+
 def test_model_interaction_does_not_prioritize_bare_endpoint_match() -> None:
     choices = _choices()
 

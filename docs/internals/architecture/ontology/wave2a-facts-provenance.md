@@ -1,22 +1,32 @@
 # Ontology Wave 2A Facts And Provenance
 
 > The Fact envelope, lineage, and bitemporal authority in this document remain
-> accepted. ARD-002 supersedes its projection API and SQLite table-layout
-> descriptions: current code uses `ProjectionSnapshot`,
-> `materialize_projection`, independent adapters, and the Phase 2 v2 layout.
+> accepted. ARD-002 supersedes its projection API and original SQLite
+> table-layout descriptions: current code uses `ProjectionSnapshot`,
+> `materialize_projection`, and independent adapters.
 > See [ARD-002](ARD-002-ports-immutable-projection-and-sqlite-v2.md).
 > [ARD-003](ARD-003-declared-state-authority-and-multi-source-materialization.md)
 > later replaced direct live-store materialization with atomic `FactSelection`
 > and separated immutable projection state from runtime freshness.
+> [ARD-004](ARD-004-schema-identity-semantic-references-and-source-input-cuts.md)
+> advances Fact and FactBatch JSON to v2: every Fact targets one complete
+> `SchemaIdentity`, and assertion predicates are stable semantic IDs rather
+> than renameable API names. Those ARD-004 rules supersede the original payload
+> names below.
+> [ARD-005](ARD-005-source-aware-sqlite-v3.md) replaces the undeployed v2
+> physical layout with the sole supported source-aware SQLite v3 format.
+> [ARD-007](ARD-007-fact-schema-revalidation-receipts.md) permits an exact
+> selection to be revalidated against a compatible newer schema through an
+> immutable receipt; it does not change historical Fact identity or authority.
 
 ## Status
 
 Accepted implementation boundary for Wave 2A. This wave introduces the
 append-only semantic Fact/Provenance authority, deterministic bitemporal
-selection, and Fact-to-Object/Property/Link projection. It adopts SQLite
-physical format version 2 directly.
+selection, and Fact-to-Object/Property/Link projection. Its original SQLite
+format decision is historical; ARD-005 now controls physical format v3.
 
-SQLite persistence accepts only the current Phase 2 v2 layout. Incompatible
+SQLite persistence accepts only the current source-aware v3 layout. Incompatible
 development stores are rejected and must be recreated; there is no legacy
 reader or migration path.
 
@@ -57,7 +67,8 @@ path.
 
 Every immutable `FactRecord` contains:
 
-- a stable `fact_id` and one typed assertion payload;
+- a stable `fact_id`, one complete `SchemaIdentity`, and one typed assertion
+  payload using package-local stable semantic IDs;
 - `assertion_kind`: `asserted`, `derived`, or `inferred`;
 - non-empty `source_ref` and `source_record_ref`;
 - optional ordered `evidence_refs`, `methodology_ref`, `author_ref`, and
@@ -71,9 +82,9 @@ The three infrastructure assertion payloads are deliberately small:
 
 | Assertion | Meaning |
 | --- | --- |
-| `ObjectAssertion(object_type)` | the subject exists as one schema object type |
-| `PropertyAssertion(property_name, value)` | one strict Foundation JSON value is asserted for a subject property |
-| `LinkAssertion(link_type, target_id, properties)` | one typed edge exists from subject to target |
+| `ObjectAssertion(object_type_id)` | the subject exists as one stable schema object-type ID |
+| `PropertyAssertion(property_id, value)` | one strict Foundation JSON value is asserted for a stable property ID |
+| `LinkAssertion(link_type_id, target_id, properties)` | one stable link-family edge exists from subject to target |
 
 Measurement and Claim are domain object types built with these facts, not new
 hard-coded infrastructure enums. Property `null` is a real JSON value and is
@@ -113,7 +124,8 @@ of choosing a winner. Equivalent assertions are safely coalesced.
 ## Batch And Idempotency Contract
 
 `FactBatch` is the atomic ingestion unit and has a stable non-empty `batch_id`.
-All fact IDs within a batch are unique.
+All fact IDs within a batch are unique, and all Facts in the batch carry the
+same complete `SchemaIdentity`. A Fact journal cannot mix schema identities.
 
 - the first successful commit appends each fact with one contiguous fact
   sequence and advances the fact watermark;
@@ -148,14 +160,17 @@ Projection does not mutate the FactStore and does not append semantic or
 operational records. It is safe to rebuild after restart or from an online
 backup.
 
-## SQLite Physical Format V2
+## SQLite Physical Format
 
-The current physical identity is `loushang.ontology.sqlite`, version `2`, with
-`storage_layout=phase2`. `SQLiteFactStore` writes `semantic_facts` and
-`fact_batches` directly; it does not delegate to the Memory adapter or expose
-object mutation. One SQLite transaction persists fact rows, batch replay
-identity, the fact watermark, and projection staleness metadata. Reopen and
-online backup restore the same sequence and replay behavior.
+The current physical identity is `loushang.ontology.sqlite`, version `3`, with
+`storage_layout=source-aware-projection`. `SQLiteFactStore` writes
+`semantic_facts` and `fact_batches` directly; it does not delegate to the
+Memory adapter or expose object mutation. Fact commits and whole-projection
+replacement remain distinct transactions. Projection replacement atomically
+persists exact source-input cuts, all operational origins, immutable build
+coordinates, and any Fact revalidation receipt digest. Reopen and online
+backup restore the same Fact sequence, replay behavior, projection cut, and
+origins.
 
 The loader rejects other versions/layouts, incomplete tables, malformed facts,
 and inconsistent watermarks. There is no silent DDL repair, implicit migration,
@@ -190,7 +205,7 @@ backend selection is an application composition concern.
   unchanged;
 - projection materialization is deterministic, schema-valid, and rebuildable for objects,
   properties, links, uniqueness, and cardinality;
-- SQLite v2 rejects incompatible versions and layouts without altering them;
+- SQLite v3 rejects incompatible versions and layouts without altering them;
 - Fact authority and ProjectionStore APIs remain visibly separate;
 - Foundation-only and product-execution import boundaries remain intact.
 

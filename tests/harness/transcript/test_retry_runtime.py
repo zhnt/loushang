@@ -45,6 +45,7 @@ def test_retry_runtime_owns_identity_free_retry_lifecycle() -> None:
 
 def _assistant_error(error_message: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="error")],
         api="responses",

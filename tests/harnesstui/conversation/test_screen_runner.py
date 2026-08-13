@@ -155,20 +155,52 @@ def test_finish_active_task_preserves_success_error_and_cancellation_state() -> 
     assert app.state.aborts == [("cancelled", 0.0)]
 
 
-def test_abort_active_waits_for_cancel_before_presenting_interruption() -> None:
+def test_abort_active_waits_for_natural_completion_before_presenting_interruption() -> (
+    None
+):
     from loushang.harnesstui.conversation.screen_runner import abort_active
 
     calls: list[str] = []
     app = _RunnerApp(calls=calls)
 
     async def scenario() -> None:
+        release = asyncio.Event()
+
         async def pending() -> None:
-            try:
-                await asyncio.Event().wait()
-            finally:
-                calls.append("task.finally")
+            await release.wait()
+            calls.append("task.complete")
+
+        async def on_abort() -> None:
+            calls.append("on_abort")
+            release.set()
 
         task = asyncio.create_task(pending())
+        await asyncio.sleep(0)
+        await abort_active(
+            app=app,
+            active_task=task,
+            on_abort=on_abort,
+            interruption_message="interrupted",
+        )
+        assert task.cancelled() is False
+
+    asyncio.run(scenario())
+
+    assert calls == ["on_abort", "task.complete", "state.abort"]
+    assert app.state.aborts == [("interrupted", 0.0)]
+
+
+def test_abort_active_presents_prompt_failure_without_escaping_the_loop() -> None:
+    from loushang.harnesstui.conversation.screen_runner import abort_active
+
+    calls: list[str] = []
+    app = _RunnerApp(calls=calls)
+
+    async def scenario() -> None:
+        async def fail() -> None:
+            raise RuntimeError("prompt failed while aborting")
+
+        task = asyncio.create_task(fail())
         await asyncio.sleep(0)
         await abort_active(
             app=app,
@@ -179,7 +211,8 @@ def test_abort_active_waits_for_cancel_before_presenting_interruption() -> None:
 
     asyncio.run(scenario())
 
-    assert calls == ["on_abort", "task.finally", "state.abort"]
+    assert app.errors == ["prompt failed while aborting"]
+    assert calls == ["on_abort", "state.abort"]
     assert app.state.aborts == [("interrupted", 0.0)]
 
 

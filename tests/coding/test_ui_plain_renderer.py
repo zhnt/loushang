@@ -28,6 +28,7 @@ def _assistant(
     error_message: str | None = None,
 ) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",

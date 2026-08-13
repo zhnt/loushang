@@ -50,6 +50,7 @@ def _assistant_text_message(
     text: str, *, stop_reason: str = "stop", error_message: str | None = None
 ) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -65,6 +66,7 @@ def _assistant_text_message(
 
 def _assistant_tool_call_message() -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[ToolCall(type="toolCall", id="tc_1", name="calc", arguments={"x": 1})],
         api="anthropic-messages",
@@ -430,9 +432,7 @@ def test_clear_all_queues_removes_steering_and_follow_up_messages() -> None:
     from loushang.agent import Agent
 
     agent = Agent()
-    agent.enqueue_mailbox(
-        UserMessage(role="user", content="system", timestamp=0.0)
-    )
+    agent.enqueue_mailbox(UserMessage(role="user", content="system", timestamp=0.0))
     agent.steer(UserMessage(role="user", content="steer", timestamp=0.0))
     agent.follow_up(UserMessage(role="user", content="follow", timestamp=0.0))
 
@@ -647,6 +647,274 @@ def test_abort_cancels_non_cooperative_stream_prompt() -> None:
     assert agent.state.streaming_message is None
     assert agent.state.messages[-1].stop_reason == "aborted"
     assert agent.state.error_message == "Request aborted by user"
+
+
+def test_abort_during_stream_does_not_cancel_durable_terminalization() -> None:
+    from loushang.agent import Agent
+
+    started = asyncio.Event()
+    finalizer_started = asyncio.Event()
+    release_finalizer = asyncio.Event()
+    emitted: list[dict[str, object]] = []
+
+    async def stream_fn(model, context, options=None):
+        del model, context, options
+        started.set()
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    async def scenario() -> None:
+        agent = Agent(stream_fn=stream_fn, initial_state=agent_state_seed())
+
+        async def listener(event, signal) -> None:
+            del signal
+            emitted.append(event)
+            message = event.get("message")
+            if (
+                event["type"] == "message_end"
+                and isinstance(message, AssistantMessage)
+                and message.stop_reason == "aborted"
+            ):
+                finalizer_started.set()
+                await release_finalizer.wait()
+
+        agent.subscribe(listener)
+        task = asyncio.create_task(agent.prompt("hi"))
+        await started.wait()
+        agent.abort()
+        await asyncio.wait_for(finalizer_started.wait(), timeout=0.2)
+
+        agent.abort()
+        await asyncio.sleep(0.06)
+        assert task.done() is False
+
+        release_finalizer.set()
+        await task
+        assert agent.state.is_streaming is False
+
+    asyncio.run(scenario())
+
+    aborted_ends = [
+        event
+        for event in emitted
+        if event["type"] == "message_end"
+        and isinstance(event.get("message"), AssistantMessage)
+        and event["message"].stop_reason == "aborted"  # type: ignore[union-attr]
+    ]
+    assert len(aborted_ends) == 1
+    assert sum(event["type"] == "agent_end" for event in emitted) == 1
+
+
+def test_abort_during_sequential_tool_persists_one_result_and_boundary() -> None:
+    from loushang.agent import Agent
+
+    started = asyncio.Event()
+    emitted: list[dict[str, object]] = []
+
+    class BlockingTool(FakeTool):
+        async def execute(
+            self, tool_call_id, params, signal=None, on_update=None
+        ) -> AgentToolResult[dict[str, Any]]:
+            del tool_call_id, params, signal, on_update
+            started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+    calls = 0
+
+    async def stream_fn(model, context, options=None):
+        nonlocal calls
+        del model, context, options
+        calls += 1
+        return _stream_with_final_message(_assistant_tool_call_message())
+
+    async def scenario() -> Agent:
+        state = agent_state_seed()
+        state.set_tools([BlockingTool()])
+        agent = Agent(
+            stream_fn=stream_fn,
+            initial_state=state,
+            tool_execution="sequential",
+        )
+        agent.subscribe(lambda event, signal: emitted.append(event))
+        task = asyncio.create_task(agent.prompt("use tool"))
+        await started.wait()
+        agent.abort()
+        await asyncio.wait_for(task, timeout=0.2)
+        return agent
+
+    agent = asyncio.run(scenario())
+
+    tool_ends = [event for event in emitted if event["type"] == "tool_execution_end"]
+    assert len(tool_ends) == 1
+    assert tool_ends[0]["tool_call_id"] == "tc_1"
+    assert tool_ends[0]["is_error"] is True
+    aborted_messages = [
+        message
+        for message in agent.state.messages
+        if isinstance(message, AssistantMessage) and message.stop_reason == "aborted"
+    ]
+    assert len(aborted_messages) == 1
+    assert (
+        sum(
+            event["type"] == "message_end"
+            and isinstance(event.get("message"), AssistantMessage)
+            and event["message"].stop_reason == "aborted"  # type: ignore[union-attr]
+            for event in emitted
+        )
+        == 1
+    )
+    assert calls == 1
+
+
+def test_abort_during_parallel_tools_preserves_only_precompleted_result() -> None:
+    from loushang.agent import Agent
+    from loushang.ai.types import ToolResultMessage
+
+    slow_started = asyncio.Event()
+    fast_completed = asyncio.Event()
+    emitted: list[dict[str, object]] = []
+
+    class PartialTool(FakeTool):
+        async def execute(
+            self, tool_call_id, params, signal=None, on_update=None
+        ) -> AgentToolResult[dict[str, Any]]:
+            del params, signal, on_update
+            if tool_call_id == "tc_fast":
+                fast_completed.set()
+                return AgentToolResult(
+                    content=[TextPart(type="text", text="fast")],
+                    details={"value": "fast"},
+                )
+            slow_started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+    tool_message = AssistantMessage(
+        endpoint="test-endpoint",
+        role="assistant",
+        content=[
+            ToolCall(type="toolCall", id="tc_slow", name="calc", arguments={"x": 1}),
+            ToolCall(type="toolCall", id="tc_fast", name="calc", arguments={"x": 2}),
+        ],
+        api="anthropic-messages",
+        provider="faux",
+        model="faux-model",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=0.0,
+    )
+
+    async def stream_fn(model, context, options=None):
+        del model, context, options
+        return _stream_with_final_message(tool_message)
+
+    async def scenario() -> Agent:
+        state = agent_state_seed()
+        state.set_tools([PartialTool()])
+        agent = Agent(stream_fn=stream_fn, initial_state=state)
+        agent.subscribe(lambda event, signal: emitted.append(event))
+        task = asyncio.create_task(agent.prompt("use tools"))
+        await slow_started.wait()
+        await fast_completed.wait()
+        agent.abort()
+        await asyncio.wait_for(task, timeout=0.2)
+        return agent
+
+    agent = asyncio.run(scenario())
+
+    results = {
+        message.tool_call_id: message
+        for message in agent.state.messages
+        if isinstance(message, ToolResultMessage)
+    }
+    assert set(results) == {"tc_slow", "tc_fast"}
+    assert results["tc_slow"].details == {"code": "tool_call_aborted"}
+    assert results["tc_fast"].details == {"value": "fast"}
+    tool_end_ids = [
+        event["tool_call_id"]
+        for event in emitted
+        if event["type"] == "tool_execution_end"
+    ]
+    assert sorted(tool_end_ids) == ["tc_fast", "tc_slow"]
+
+
+def test_external_prompt_cancellation_waits_for_terminalization_then_propagates() -> (
+    None
+):
+    from loushang.agent import Agent
+
+    started = asyncio.Event()
+    finalizer_started = asyncio.Event()
+    release_finalizer = asyncio.Event()
+
+    async def stream_fn(model, context, options=None):
+        del model, context, options
+        started.set()
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    async def scenario() -> None:
+        agent = Agent(stream_fn=stream_fn, initial_state=agent_state_seed())
+
+        async def listener(event, signal) -> None:
+            del signal
+            message = event.get("message")
+            if (
+                event["type"] == "message_end"
+                and isinstance(message, AssistantMessage)
+                and message.stop_reason == "aborted"
+            ):
+                finalizer_started.set()
+                await release_finalizer.wait()
+
+        agent.subscribe(listener)
+        task = asyncio.create_task(agent.prompt("hi"))
+        await started.wait()
+        task.cancel()
+        await asyncio.wait_for(finalizer_started.wait(), timeout=0.2)
+        task.cancel()
+        await asyncio.sleep(0)
+        assert task.done() is False
+        release_finalizer.set()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert agent.state.messages[-1].stop_reason == "aborted"
+        assert agent.state.is_streaming is False
+
+    asyncio.run(scenario())
+
+
+def test_cancelling_wait_for_idle_does_not_cancel_the_active_run() -> None:
+    from loushang.agent import Agent
+
+    started = asyncio.Event()
+
+    async def stream_fn(model, context, options=None):
+        del model, context, options
+        started.set()
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    async def scenario() -> None:
+        agent = Agent(stream_fn=stream_fn, initial_state=agent_state_seed())
+        prompt_task = asyncio.create_task(agent.prompt("hi"))
+        await started.wait()
+        waiter = asyncio.create_task(agent.wait_for_idle())
+        await asyncio.sleep(0)
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+
+        assert prompt_task.done() is False
+        assert agent.state.is_streaming is True
+        agent.abort()
+        await asyncio.wait_for(prompt_task, timeout=0.2)
+
+    asyncio.run(scenario())
 
 
 def test_prompt_with_images_builds_single_user_message_with_text_and_images() -> None:

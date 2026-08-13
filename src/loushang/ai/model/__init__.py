@@ -24,7 +24,6 @@ from loushang.ai.model.loader import (
 )
 from loushang.ai.model.registry import (
     AmbiguousModelReference,
-    AmbiguousPreferredModelReference,
     ModelRegistry,
     clear_default_model_registry,
     format_model_ref,
@@ -47,7 +46,6 @@ from loushang.ai.model.selection import (
 __all__ = [
     "AdapterConfig",
     "AmbiguousModelReference",
-    "AmbiguousPreferredModelReference",
     "AnthropicMessagesConfig",
     "Auth",
     "Capabilities",

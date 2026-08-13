@@ -32,6 +32,7 @@ def _assistant(
     *, total_tokens: int, stop_reason: str = "stop", timestamp: float = 1.0
 ) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="reply")],
         api="anthropic-messages",
@@ -106,7 +107,11 @@ def test_context_usage_snapshot_consumes_ai_usage_derived_from_raw_parts() -> No
 
     stream = AssistantMessageEventStream()
     assembler = RawAssembler(
-        stream=stream, api="test", provider="test", model="test-model"
+        stream=stream,
+        api="test",
+        provider="test",
+        endpoint="test-endpoint",
+        model="test-model",
     )
     assembler.feed({"type": "response_start", "response_id": "resp-1"})
     assembler.feed({"type": "usage_delta", "input": 80, "output": 10, "cache_read": 1})

@@ -11,6 +11,7 @@ from loushang.harness.transcript import build_agent_transcript_session_context
 
 def _assistant(text: str, timestamp: float) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="responses",
@@ -115,7 +116,9 @@ def test_build_session_context_preserves_state_across_compaction(tmp_path) -> No
         SessionManager.new(tmp_path, cwd="/tmp/project", persist=False)
     )
     asyncio.run(manager.append_thinking_level_change("high"))
-    asyncio.run(manager.append_model_change("openai", "gpt-5.4"))
+    asyncio.run(
+        manager.append_model_change("openai", "gpt-5.4", endpoint_id="openai-responses")
+    )
     kept_id = asyncio.run(
         manager.append_message(UserMessage(role="user", content="kept", timestamp=1.0))
     )
@@ -124,7 +127,11 @@ def test_build_session_context_preserves_state_across_compaction(tmp_path) -> No
     context = manager.build_session_context()
 
     assert context.thinking_level == "high"
-    assert context.model == {"provider": "openai", "model_id": "gpt-5.4"}
+    assert context.model == {
+        "provider": "openai",
+        "endpoint_id": "openai-responses",
+        "model_id": "gpt-5.4",
+    }
     assert "summary" in _context_text(context.messages)
     assert "kept" in _context_text(context.messages)
 

@@ -78,6 +78,7 @@ def _assistant_text_message(text: str) -> AssistantMessage:
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
         provider="offline",
+        endpoint="offline",
         model="offline-demo-model",
         response_id=None,
         usage=_usage(),
@@ -87,14 +88,30 @@ def _assistant_text_message(text: str) -> AssistantMessage:
     )
 
 
-def _stream_with_final_message(message: AssistantMessage) -> AssistantMessageEventStream:
+def _stream_with_final_message(
+    message: AssistantMessage,
+) -> AssistantMessageEventStream:
     stream = AssistantMessageEventStream()
 
     async def _feed() -> None:
         stream.push({"type": "start", "partial": message})
         stream.push({"type": "text_start", "content_index": 0, "partial": message})
-        stream.push({"type": "text_delta", "content_index": 0, "delta": message.content[0].text, "partial": message})
-        stream.push({"type": "text_end", "content_index": 0, "content": message.content[0].text, "partial": message})
+        stream.push(
+            {
+                "type": "text_delta",
+                "content_index": 0,
+                "delta": message.content[0].text,
+                "partial": message,
+            }
+        )
+        stream.push(
+            {
+                "type": "text_end",
+                "content_index": 0,
+                "content": message.content[0].text,
+                "partial": message,
+            }
+        )
         stream.push({"type": "done", "reason": message.stop_reason, "message": message})
 
     asyncio.create_task(_feed())
@@ -106,7 +123,9 @@ async def _stream_fn(model, context, options=None):
     last_message = context.messages[-1] if context.messages else None
     if isinstance(last_message, UserMessage):
         user_text = " ".join(
-            part.text for part in last_message.content if getattr(part, "type", None) == "text"
+            part.text
+            for part in last_message.content
+            if getattr(part, "type", None) == "text"
         )
     else:
         user_text = "unknown"
@@ -126,7 +145,9 @@ async def main() -> None:
         (skills_dir / "test" / "SKILL.md").write_text(SKILL_TEST, encoding="utf-8")
         (skills_dir / "expert" / "SKILL.md").write_text(SKILL_EXPERT, encoding="utf-8")
 
-        print("=== Skill Advanced: disable-model-invocation & System Prompt Injection ===")
+        print(
+            "=== Skill Advanced: disable-model-invocation & System Prompt Injection ==="
+        )
         print(f"Project root: {project_root}")
         print()
 
@@ -150,7 +171,9 @@ async def main() -> None:
         print(session.agent.system_prompt)
         print()
 
-        print("--- Execute /skill:expert manually (bypass disable-model-invocation) ---")
+        print(
+            "--- Execute /skill:expert manually (bypass disable-model-invocation) ---"
+        )
         result = await session.execute_command_async("skill:expert", "--scope global")
         if result is not None and result.result is not None:
             print(result.result["text"])
@@ -160,7 +183,9 @@ async def main() -> None:
 
         await session.prompt("Hello from skill-02.")
         print("Messages after prompt:")
-        for index, message in enumerate(session.get_session_context().messages, start=1):
+        for index, message in enumerate(
+            session.get_session_context().messages, start=1
+        ):
             role = getattr(message, "role", "unknown")
             content = getattr(message, "content", [])
             text = " ".join(

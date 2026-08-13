@@ -1,4 +1,4 @@
-name: TUI Render Contract
+name: TUI Cross-platform Contracts
 
 on:
   push:
@@ -7,8 +7,14 @@ on:
   pull_request:
 
 jobs:
-  tui-render-contract:
-    runs-on: ubuntu-latest
+  deterministic-render:
+    name: deterministic-render (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
     steps:
       - uses: actions/checkout@v4
 
@@ -18,8 +24,140 @@ jobs:
 
       - uses: astral-sh/setup-uv@v5
 
-      - name: Install dependencies
-        run: make bootstrap
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev
 
-      - name: TUI render contract
-        run: make test-tui-render-contract
+      - name: Create report directory
+        run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
+
+      - name: Deterministic render and playback contracts
+        run: >-
+          uv run pytest tests/tui tests/harnesstui tests/coding
+          -m tui_render_contract --strict-markers --strict-config
+          --junitxml=.artifacts/deterministic-render.xml -q
+
+      - name: Reject empty, skipped, or failing report
+        run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/deterministic-render.xml
+
+  terminal-platform-unit:
+    name: terminal-platform-unit (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Create report directory
+        run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
+
+      - name: Shared terminal platform units
+        run: >-
+          uv run pytest tests/tui/test_terminal_platform.py
+          tests/tui/test_terminal_session.py tests/tui/test_terminal_input.py
+          --strict-markers --strict-config
+          --junitxml=.artifacts/terminal-platform-shared.xml -q
+
+      - name: Reject empty, skipped, or failing shared report
+        run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/terminal-platform-shared.xml
+
+      - name: POSIX terminal platform units
+        if: runner.os == 'Linux'
+        run: >-
+          uv run pytest tests/tui/test_terminal_input_posix.py
+          --strict-markers --strict-config
+          --junitxml=.artifacts/terminal-platform-posix.xml -q
+
+      - name: Reject empty, skipped, or failing POSIX report
+        if: runner.os == 'Linux'
+        run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/terminal-platform-posix.xml
+
+  native-terminal:
+    name: native-terminal (${{ matrix.backend }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            backend: posix-pty
+          - os: windows-2022
+            backend: conpty
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Create report directory
+        run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
+
+      - name: Native backend conformance and shared CLI contract
+        env:
+          LOUSHANG_REQUIRED_TERMINAL_BACKEND: ${{ matrix.backend }}
+        run: >-
+          uv run pytest tests/tui/test_terminal_query_responder.py
+          tests/tui/test_terminal_process_backend.py
+          tests/coding/test_cli_terminal_contract.py
+          --strict-markers --strict-config
+          --junitxml=.artifacts/native-terminal.xml -q
+
+      - name: Reject empty, skipped, failing, or wrong-backend report
+        run: >-
+          uv run python scripts/dev/verify_pytest_xml.py
+          .artifacts/native-terminal.xml
+          --require-property terminal_backend=${{ matrix.backend }}
+
+  tmux-scrollback:
+    name: tmux-scrollback (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install tmux
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes tmux
+          tmux -V
+
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Create report directory
+        run: uv run python -c "from pathlib import Path; Path('.artifacts').mkdir(exist_ok=True)"
+
+      - name: Required tmux pane and history contracts
+        env:
+          LOUSHANG_REQUIRE_TMUX: "1"
+        run: >-
+          uv run pytest tests/coding/test_screen_coding_tui_pty_smoke.py
+          -m tui_tmux_integration --strict-markers --strict-config
+          --junitxml=.artifacts/tmux-scrollback.xml -q
+
+      - name: Reject empty, skipped, or failing report
+        run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/tmux-scrollback.xml

@@ -21,6 +21,7 @@ def _usage() -> Usage:
 
 def _assistant(*calls: ToolCall) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=list(calls),
         api="responses",
@@ -106,9 +107,7 @@ def test_decorates_summary_with_profiled_tags_and_detail_keys() -> None:
         profile=_design_profile(),
     )
 
-    assert decoration.suffix == (
-        "\n\n<modified-slides>\nslide-3\n</modified-slides>"
-    )
+    assert decoration.suffix == ("\n\n<modified-slides>\nslide-3\n</modified-slides>")
     assert decoration.details == {
         "revision": 4,
         "inspectedSlides": [],

@@ -2,14 +2,19 @@
 
 from loushang.ontology.schema.compiler import (
     SCHEMA_FORMAT,
+    CompiledActionDefinition,
+    CompiledActionParameterDefinition,
     CompiledInterfaceTypeDefinition,
     CompiledLinkTypeDefinition,
     CompiledObjectTypeDefinition,
     CompiledOntologySchema,
     CompiledPropertyDefinition,
+    CompiledSetPropertyEffectDefinition,
     OntologyCompiler,
 )
 from loushang.ontology.schema.definitions import (
+    ActionDefinition,
+    ActionParameterDefinition,
     InterfaceTypeDefinition,
     LinkCardinality,
     LinkTypeDefinition,
@@ -17,6 +22,7 @@ from loushang.ontology.schema.definitions import (
     OntologyPackageDraft,
     PropertyDefinition,
     SchemaVersion,
+    SetPropertyEffectDefinition,
     StateAuthority,
     ValueType,
 )
@@ -32,15 +38,21 @@ from loushang.ontology.schema.evolution import (
     SchemaLineageError,
     compare_schemas,
 )
+from loushang.ontology.schema.identity import SchemaIdentity
 
 __all__ = [
     "SCHEMA_FORMAT",
     "SCHEMA_DIFF_FORMAT",
+    "ActionDefinition",
+    "ActionParameterDefinition",
+    "CompiledActionDefinition",
+    "CompiledActionParameterDefinition",
     "CompiledInterfaceTypeDefinition",
     "CompiledLinkTypeDefinition",
     "CompiledObjectTypeDefinition",
     "CompiledOntologySchema",
     "CompiledPropertyDefinition",
+    "CompiledSetPropertyEffectDefinition",
     "ChangeImpact",
     "InterfaceTypeDefinition",
     "LinkCardinality",
@@ -54,7 +66,9 @@ __all__ = [
     "SchemaDiagnostic",
     "SchemaDiff",
     "SchemaLineageError",
+    "SchemaIdentity",
     "SchemaVersion",
+    "SetPropertyEffectDefinition",
     "StateAuthority",
     "ValueType",
     "compare_schemas",

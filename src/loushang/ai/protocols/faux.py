@@ -8,7 +8,7 @@ from loushang.ai.provider import ProviderRequest
 from loushang.ai.types import TextPart, ToolResultMessage
 
 
-class FauxProvider:
+class FauxAdapter:
     api = "anthropic-messages"
 
     async def invoke_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:

@@ -28,12 +28,20 @@ class SmokeSession:
     def __init__(self, cwd: Path) -> None:
         self.cwd = cwd
         self.session_manager = SimpleNamespace(get_cwd=lambda: str(cwd))
-        self.current_model = ModelSelection(provider="smoke", model_id="fast")
+        self.current_model = ModelSelection(
+            provider="smoke", endpoint_id="local", model_id="fast"
+        )
         self.models = [
             self.current_model,
-            ModelSelection(provider="smoke", model_id="balanced"),
-            ModelSelection(provider="openai", model_id="gpt-5"),
-            ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
+            ModelSelection(provider="smoke", endpoint_id="local", model_id="balanced"),
+            ModelSelection(
+                provider="openai", endpoint_id="openai-responses", model_id="gpt-5"
+            ),
+            ModelSelection(
+                provider="moonshot",
+                endpoint_id="kimi-code-anthropic",
+                model_id="kimi-for-coding",
+            ),
         ]
 
     def list_commands(self) -> list[object]:
@@ -50,9 +58,18 @@ class SmokeSession:
             self.current_model = selection
             return
         provider = getattr(selection, "provider", None)
+        endpoint_id = getattr(selection, "endpoint_id", None)
         model_id = getattr(selection, "model_id", None)
-        if isinstance(provider, str) and isinstance(model_id, str):
-            self.current_model = ModelSelection(provider=provider, model_id=model_id)
+        if (
+            isinstance(provider, str)
+            and isinstance(endpoint_id, str)
+            and isinstance(model_id, str)
+        ):
+            self.current_model = ModelSelection(
+                provider=provider,
+                endpoint_id=endpoint_id,
+                model_id=model_id,
+            )
 
 
 async def main() -> int:

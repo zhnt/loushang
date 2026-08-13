@@ -21,9 +21,9 @@ from loushang.ai import (
     Usage,
     complete,
 )
-from loushang.ai.advanced.registry import clear_api_providers, register_api_provider
+from loushang.ai.advanced.registry import clear_api_adapters, register_api_adapter
 from loushang.ai.model import Auth
-from loushang.ai.protocols.faux import FauxProvider
+from loushang.ai.protocols.faux import FauxAdapter
 
 
 def _build_model() -> Model:
@@ -55,6 +55,7 @@ def _previous_tool_call_message() -> AssistantMessage:
         ],
         api="anthropic-messages",
         provider="faux",
+        endpoint="anthropic-messages",
         model="faux-model",
         response_id="faux-tool-call",
         usage=Usage(
@@ -73,16 +74,20 @@ def _previous_tool_call_message() -> AssistantMessage:
 
 async def _main() -> None:
     # 高级路径：显式注册 faux provider，避免依赖真实厂商网络。
-    clear_api_providers()
-    register_api_provider(FauxProvider())
+    clear_api_adapters()
+    register_api_adapter(FauxAdapter())
 
     model = _build_model()
 
     first = _previous_tool_call_message()
-    tool_call = next(part for part in first.content if getattr(part, "type", None) == "toolCall")
+    tool_call = next(
+        part for part in first.content if getattr(part, "type", None) == "toolCall"
+    )
 
     print("ROUND 1")
-    print(f"TOOL_CALL id={tool_call.id!r} name={tool_call.name!r} arguments={tool_call.arguments!r}")
+    print(
+        f"TOOL_CALL id={tool_call.id!r} name={tool_call.name!r} arguments={tool_call.arguments!r}"
+    )
 
     second = await complete(
         model,

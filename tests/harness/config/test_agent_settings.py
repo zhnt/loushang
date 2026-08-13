@@ -17,7 +17,11 @@ def test_settings_manager_loads_global_and_project_settings_with_project_precede
     global_settings_path.write_text(
         json.dumps(
             {
-                "default_model": {"provider": "faux", "model_id": "alpha"},
+                "default_model": {
+                    "provider": "faux",
+                    "endpoint_id": "messages",
+                    "model_id": "alpha",
+                },
                 "thinking_level": "minimal",
                 "compaction": {
                     "enabled": False,
@@ -58,6 +62,7 @@ def test_settings_manager_loads_global_and_project_settings_with_project_precede
 
     assert settings.default_model is not None
     assert settings.default_model.provider == "faux"
+    assert settings.default_model.endpoint_id == "messages"
     assert settings.default_model.model_id == "alpha"
     assert settings.thinking_level == "minimal"
     assert settings.system_prompt == "Use project rules."
@@ -744,9 +749,7 @@ def test_settings_patch_preserves_omitted_null_and_package_wire_contract() -> No
     }
 
 
-def test_prepare_override_patch_drops_removed_keys_without_rewriting_storage() -> (
-    None
-):
+def test_prepare_override_patch_drops_removed_keys_without_rewriting_storage() -> None:
     from loushang.harness.config.agent._settings_patch import prepare_override_patch
 
     patch, messages = prepare_override_patch(

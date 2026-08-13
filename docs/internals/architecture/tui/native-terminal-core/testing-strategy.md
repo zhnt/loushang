@@ -108,6 +108,43 @@ Examples:
 - extensions receive normalized input events rather than raw terminal bytes
 - v1 prompt_toolkit modules are not on the new public API path
 
+### 5. Native Terminal Transport Tests
+
+Run the same test-only terminal driver contract over a POSIX PTY on Linux and
+ConPTY on Windows. These tests prove structured argv, cwd/environment handling,
+Unicode and VT transport, resize, exit status, large output drain, terminal
+query response, bounded timeout, process-tree termination, and idempotent
+cleanup. They do not claim exact final screen state; FakeTerminal/playback owns
+that evidence.
+
+The Windows backend calls the system ConPTY API through a test-only `ctypes`
+wrapper, explicitly selects ConPTY, and owns its pipes, HPCON, process handle,
+and lifecycle threads. It has no WinPTY fallback or Windows package dependency.
+Pywinpty versions 3.0.5 and
+2.0.15 were both rejected by the Windows lifecycle spike for pending writes,
+lost or corrupted output, and incomplete teardown. Both backends execute the
+shared real CLI `/quit` contract in
+`tests/coding/test_cli_terminal_contract.py`.
+
+tmux is a separate terminal-implementation integration. Its marker only proves
+pane history and scrollback behavior and must not be used as the Windows
+equivalent of ConPTY.
+
+Run the local collections with:
+
+```bash
+make test-tui-render-contract
+make test-tui-terminal-platform
+make test-tui-native
+```
+
+CI runs deterministic and platform jobs on fixed Ubuntu 24.04 and Windows
+Server 2022 runners, runs the shared native contract with
+`LOUSHANG_REQUIRED_TERMINAL_BACKEND=posix-pty|conpty`, and runs tmux in a
+separate fixed-Ubuntu required job. Each required job emits pytest XML and
+fails closed when the report is empty, skipped, failing, or records the wrong
+native backend.
+
 ## Live Terminal Smoke Checklist
 
 Manual testing should focus on terminal behavior that is hard to assert

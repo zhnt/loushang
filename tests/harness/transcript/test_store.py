@@ -14,6 +14,8 @@ from loushang.harness.conversation import (
     ConversationKey,
     ConversationSnapshot,
     MemoryConversationStore,
+    StoreCommitOutcomeUnknown,
+    StoreDataError,
 )
 from loushang.harness.transcript import (
     AGENT_MESSAGE_KIND,
@@ -65,6 +67,94 @@ class FailingMemoryStore(MemoryConversationStore):
             expected_revision=expected_revision,
             operation_id=operation_id,
         )
+
+
+class BlockingAppendMemoryStore(MemoryConversationStore):
+    def __init__(self) -> None:
+        super().__init__(record_id=lambda record: record.record_id)
+        self.committed = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def append(
+        self,
+        key: ConversationKey,
+        record,
+        *,
+        expected_revision: int,
+        operation_id: str,
+    ) -> ConversationCommitResult:
+        result = await super().append(
+            key,
+            record,
+            expected_revision=expected_revision,
+            operation_id=operation_id,
+        )
+        self.committed.set()
+        await self.release.wait()
+        return result
+
+
+class BlockingCreateMemoryStore(MemoryConversationStore):
+    def __init__(self) -> None:
+        super().__init__(record_id=lambda record: record.record_id)
+        self.committed = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def create(self, key, header, records=(), *, operation_id: str):
+        snapshot = await super().create(
+            key,
+            header,
+            records,
+            operation_id=operation_id,
+        )
+        self.committed.set()
+        await self.release.wait()
+        return snapshot
+
+
+class LostAppendResponseMemoryStore(MemoryConversationStore):
+    def __init__(self) -> None:
+        super().__init__(record_id=lambda record: record.record_id)
+        self.append_calls = 0
+
+    async def append(
+        self,
+        key: ConversationKey,
+        record,
+        *,
+        expected_revision: int,
+        operation_id: str,
+    ) -> ConversationCommitResult:
+        self.append_calls += 1
+        result = await super().append(
+            key,
+            record,
+            expected_revision=expected_revision,
+            operation_id=operation_id,
+        )
+        if self.append_calls == 1:
+            raise StoreCommitOutcomeUnknown("append response lost")
+        return result
+
+
+class BlockingFailureMemoryStore(MemoryConversationStore):
+    def __init__(self) -> None:
+        super().__init__(record_id=lambda record: record.record_id)
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def append(
+        self,
+        key: ConversationKey,
+        record,
+        *,
+        expected_revision: int,
+        operation_id: str,
+    ) -> ConversationCommitResult:
+        del key, record, expected_revision, operation_id
+        self.started.set()
+        await self.release.wait()
+        raise StoreDataError("durable commit failed")
 
 
 def _header(conversation_id: str = "conversation-1") -> ConversationHeader:
@@ -165,7 +255,9 @@ def test_provisional_store_materializes_with_staged_records_on_first_user_messag
         assert await backend.scan(_key().namespace) == ()
 
         staged = await store.append_model_selection(
-            ModelSelectionSnapshot(provider="provider", model_id="model")
+            ModelSelectionSnapshot(
+                endpoint_id="test-endpoint", provider="provider", model_id="model"
+            )
         )
         assert staged.receipt is None
         assert staged.durable is False
@@ -186,6 +278,120 @@ def test_provisional_store_materializes_with_staged_records_on_first_user_messag
             MODEL_SELECTION_KIND,
             AGENT_MESSAGE_KIND,
         ]
+
+    asyncio.run(scenario())
+
+
+def test_committed_append_finishes_atomically_after_repeated_cancellation() -> None:
+    async def scenario() -> None:
+        backend = BlockingAppendMemoryStore()
+        store = await _create(backend, ids=_id_factory())
+        committer = TranscriptCommitter(store)
+        message = _application("application-1", "notice")
+
+        task = asyncio.create_task(committer.commit_application_message(message))
+        await backend.committed.wait()
+        task.cancel()
+        await asyncio.sleep(0)
+        task.cancel()
+        await asyncio.sleep(0)
+
+        assert task.done() is False
+        backend.release.set()
+        committed = await task
+
+        assert committed.disposition == "committed"
+        assert task.cancelling() == 0
+        assert store.revision == 1
+        assert len(store.records) == 1
+
+        duplicate = await committer.commit_application_message(message)
+        assert duplicate.disposition == "already_committed"
+        assert duplicate.record_id == committed.record_id
+        assert len(store.records) == 1
+
+        second = await store.append_application_message(
+            _application("application-2", "next")
+        )
+        assert second.receipt is not None
+        assert second.receipt.revision == 2
+
+    asyncio.run(scenario())
+
+
+def test_first_materialization_finishes_atomically_after_cancellation() -> None:
+    async def scenario() -> None:
+        backend = BlockingCreateMemoryStore()
+        store = await AgentTranscriptUnitOfWork.create(
+            backend,
+            _key(),
+            _header(),
+            clock=lambda: datetime(2026, 7, 16, tzinfo=UTC),
+            id_factory=_id_factory(),
+            defer_materialization=True,
+        )
+
+        task = asyncio.create_task(
+            store.append_agent_message(
+                UserMessage(role="user", content="hello", timestamp=1.0)
+            )
+        )
+        await backend.committed.wait()
+        task.cancel()
+        await asyncio.sleep(0)
+
+        assert task.done() is False
+        backend.release.set()
+        committed = await task
+
+        assert committed.receipt is not None
+        assert committed.receipt.revision == 1
+        assert store.is_materialized is True
+        assert store.revision == 1
+        second = await store.append_application_message(
+            _application("application-2", "next")
+        )
+        assert second.receipt is not None
+        assert second.receipt.revision == 2
+
+    asyncio.run(scenario())
+
+
+def test_commit_surfaces_backend_error_when_cancellation_arrives_concurrently() -> None:
+    async def scenario() -> None:
+        backend = BlockingFailureMemoryStore()
+        store = await _create(backend)
+        task = asyncio.create_task(
+            store.append_application_message(_application("application-1", "notice"))
+        )
+        await backend.started.wait()
+        task.cancel()
+        await asyncio.sleep(0)
+        backend.release.set()
+
+        with pytest.raises(StoreDataError, match="durable commit failed"):
+            await task
+        assert task.cancelling() == 0
+        assert store.revision == 0
+        assert store.records == ()
+
+    asyncio.run(scenario())
+
+
+def test_append_retries_a_lost_success_response_once_with_the_same_operation() -> None:
+    async def scenario() -> None:
+        backend = LostAppendResponseMemoryStore()
+        store = await _create(backend, ids=lambda: "record-1")
+
+        committed = await store.append_application_message(
+            _application("application-1", "notice")
+        )
+
+        assert backend.append_calls == 2
+        assert committed.receipt is not None
+        assert committed.receipt.revision == 1
+        assert store.revision == 1
+        assert len(store.records) == 1
 
     asyncio.run(scenario())
 
@@ -334,7 +540,9 @@ def test_store_exposes_all_standard_typed_append_operations() -> None:
         ).record
         await store.append_thinking_selection(ThinkingSelectionSnapshot(level="high"))
         await store.append_model_selection(
-            ModelSelectionSnapshot(provider="test", model_id="model")
+            ModelSelectionSnapshot(
+                endpoint_id="test-endpoint", provider="test", model_id="model"
+            )
         )
         await store.append_command_execution(
             CommandExecutionRecord(command="pwd", output="/tmp", exit_code=0)

@@ -39,7 +39,38 @@ def _assistant_with_tool_call() -> AssistantMessage:
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
+        response_id="resp_1",
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=0.0,
+    )
+
+
+def _assistant_with_signatures(*, endpoint: str = "test-endpoint") -> AssistantMessage:
+    return AssistantMessage(
+        role="assistant",
+        content=[
+            ThinkingPart(
+                type="thinking",
+                thinking="private reasoning",
+                thinking_signature='{"type":"reasoning","id":"rs_1"}',
+            ),
+            TextPart(type="text", text="answer", text_signature='{"v":1,"id":"msg_1"}'),
+            ToolCall(
+                type="toolCall",
+                id="call_1",
+                name="calc",
+                arguments={"x": 1},
+                thought_signature='{"type":"reasoning.encrypted"}',
+            ),
+        ],
+        api="openai-responses",
+        provider="openai",
+        endpoint=endpoint,
+        model="gpt-source",
         response_id="resp_1",
         usage=_usage(),
         stop_reason="toolUse",
@@ -98,38 +129,46 @@ def test_transform_messages_strict_mode_rejects_missing_tool_result() -> None:
 
 
 def test_coerce_cross_provider_assistant_message_requires_same_model_identity() -> None:
-    message = AssistantMessage(
-        role="assistant",
-        content=[
-            ThinkingPart(
-                type="thinking",
-                thinking="private reasoning",
-                thinking_signature='{"type":"reasoning","id":"rs_1"}',
-            ),
-            TextPart(type="text", text="answer", text_signature='{"v":1,"id":"msg_1"}'),
-            ToolCall(
-                type="toolCall",
-                id="call_1",
-                name="calc",
-                arguments={"x": 1},
-                thought_signature='{"type":"reasoning.encrypted"}',
-            ),
-        ],
-        api="openai-responses",
-        provider="openai",
-        model="gpt-source",
-        response_id="resp_1",
-        usage=_usage(),
-        stop_reason="toolUse",
-        error_message=None,
-        timestamp=0.0,
-    )
+    message = _assistant_with_signatures()
 
     transformed = coerce_cross_provider_assistant_message(
         message,
         target_api="openai-responses",
         target_provider="openai",
+        target_endpoint="test-endpoint",
         target_model="gpt-target",
+    )
+
+    assert transformed.content == [
+        TextPart(type="text", text="private reasoning"),
+        TextPart(type="text", text="answer"),
+        ToolCall(type="toolCall", id="call_1", name="calc", arguments={"x": 1}),
+    ]
+
+
+def test_coerce_assistant_message_preserves_signatures_for_same_target() -> None:
+    message = _assistant_with_signatures()
+
+    transformed = coerce_cross_provider_assistant_message(
+        message,
+        target_api="openai-responses",
+        target_provider="openai",
+        target_endpoint="test-endpoint",
+        target_model="gpt-source",
+    )
+
+    assert transformed is message
+
+
+def test_coerce_assistant_message_removes_signatures_for_different_endpoint() -> None:
+    message = _assistant_with_signatures()
+
+    transformed = coerce_cross_provider_assistant_message(
+        message,
+        target_api="openai-responses",
+        target_provider="openai",
+        target_endpoint="other-endpoint",
+        target_model="gpt-source",
     )
 
     assert transformed.content == [
@@ -158,6 +197,7 @@ def test_cross_provider_assistant_message_removes_tool_call_thought_signature() 
         ],
         api="openai-responses",
         provider="custom-openai",
+        endpoint="test-endpoint",
         model="gpt-5",
         response_id=None,
         usage=_usage(),
@@ -193,6 +233,7 @@ def test_transform_messages_normalizes_tool_call_and_matching_result_ids() -> No
         ],
         api="openai-responses",
         provider="custom-openai",
+        endpoint="test-endpoint",
         model="gpt-5",
         response_id=None,
         usage=_usage(),
@@ -246,6 +287,7 @@ def test_transform_messages_adds_synthetic_results_only_for_missing_tool_calls()
         ],
         api="openai-responses",
         provider="custom-openai",
+        endpoint="test-endpoint",
         model="gpt-5",
         response_id=None,
         usage=_usage(),
@@ -301,6 +343,7 @@ def test_transform_messages_keeps_aborted_assistant_as_turn_boundary() -> None:
         ],
         api="anthropic-messages",
         provider="moonshot",
+        endpoint="test-endpoint",
         model="kimi-for-coding",
         response_id=None,
         usage=_usage(),
@@ -313,6 +356,7 @@ def test_transform_messages_keeps_aborted_assistant_as_turn_boundary() -> None:
         content=[TextPart(type="text", text="")],
         api="anthropic-messages",
         provider="moonshot",
+        endpoint="test-endpoint",
         model="kimi-for-coding",
         response_id=None,
         usage=_usage(),

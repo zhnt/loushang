@@ -246,7 +246,7 @@ def test_rpc_mode_get_state_and_messages_serialize_current_session() -> None:
     )
     session.model_registry = FakeModelRegistry(
         resolved_models={
-            ("faux", "alpha"): Model(
+            ("faux", "coding", "alpha"): Model(
                 id="alpha",
                 provider="faux",
                 endpoint="coding",
@@ -270,7 +270,11 @@ def test_rpc_mode_get_state_and_messages_serialize_current_session() -> None:
             )
         },
     )
-    asyncio.run(session.set_model(ModelSelection(provider="faux", model_id="alpha")))
+    asyncio.run(
+        session.set_model(
+            ModelSelection(endpoint_id="coding", provider="faux", model_id="alpha")
+        )
+    )
     asyncio.run(session.set_active_tools(["bash", "read"]))
     session.steer("first steer")
     runtime = FakeRuntime(session)
@@ -300,6 +304,7 @@ def test_rpc_mode_get_state_and_messages_serialize_current_session() -> None:
     assert state_response["data"]["isStreaming"] is False
     assert state_response["data"]["model"] == {
         "provider": "faux",
+        "endpointId": "coding",
         "id": "alpha",
         "name": "Faux Alpha",
         "api": "openai-completions",
@@ -838,7 +843,7 @@ def test_rpc_mode_get_state_model_uses_id_as_name_and_omits_unknown_cost() -> No
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     session.model_registry = FakeModelRegistry(
         resolved_models={
-            ("faux", "alpha"): Model(
+            ("faux", "coding", "alpha"): Model(
                 id="alpha",
                 provider="faux",
                 endpoint="coding",
@@ -859,7 +864,11 @@ def test_rpc_mode_get_state_model_uses_id_as_name_and_omits_unknown_cost() -> No
             )
         },
     )
-    asyncio.run(session.set_model(ModelSelection(provider="faux", model_id="alpha")))
+    asyncio.run(
+        session.set_model(
+            ModelSelection(endpoint_id="coding", provider="faux", model_id="alpha")
+        )
+    )
     runtime = FakeRuntime(session)
     stdin = StringIO(json.dumps({"id": "state", "type": "get_state"}) + "\n")
     stdout = StringIO()
@@ -873,6 +882,7 @@ def test_rpc_mode_get_state_model_uses_id_as_name_and_omits_unknown_cost() -> No
     model = _parse_jsonl(stdout)[0]["data"]["model"]
     assert model == {
         "provider": "faux",
+        "endpointId": "coding",
         "id": "alpha",
         "name": "alpha",
         "api": "openai-completions",
@@ -890,7 +900,7 @@ def test_rpc_mode_get_state_model_omits_partial_unknown_cost() -> None:
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     session.model_registry = FakeModelRegistry(
         resolved_models={
-            ("openrouter", "auto"): Model(
+            ("openrouter", "anthropic-messages", "auto"): Model(
                 id="auto",
                 provider="openrouter",
                 endpoint="anthropic-messages",
@@ -907,7 +917,13 @@ def test_rpc_mode_get_state_model_omits_partial_unknown_cost() -> None:
         },
     )
     asyncio.run(
-        session.set_model(ModelSelection(provider="openrouter", model_id="auto"))
+        session.set_model(
+            ModelSelection(
+                endpoint_id="anthropic-messages",
+                provider="openrouter",
+                model_id="auto",
+            )
+        )
     )
     runtime = FakeRuntime(session)
     stdin = StringIO(json.dumps({"id": "state", "type": "get_state"}) + "\n")
@@ -1104,15 +1120,12 @@ def test_rpc_mode_lifecycle_commands_do_not_wait_for_active_prompt(
     next_session = FakeSession(session_id="session-b", cwd="/tmp/project-b")
     runtime = FakeRuntime(current)
     runtime.queue_next_session(next_session)
+
     async def scenario() -> list[dict[str, object]]:
         playback = RpcWirePlayback(runtime=runtime)
-        await playback.dispatch(
-            {"id": "p1", "type": "prompt", "message": "start"}
-        )
+        await playback.dispatch({"id": "p1", "type": "prompt", "message": "start"})
         await current._prompt_started.wait()
-        await playback.dispatch(
-            {"id": "lifecycle", "type": command, **payload}
-        )
+        await playback.dispatch({"id": "lifecycle", "type": command, **payload})
         await playback.dispatch(
             {"id": "p2", "type": "prompt", "message": "after switch"}
         )
@@ -1140,11 +1153,10 @@ def test_rpc_mode_compact_command_does_not_wait_for_active_prompt() -> None:
     session._prompt_started = asyncio.Event()
     session._prompt_release = asyncio.Event()
     runtime = FakeRuntime(session)
+
     async def scenario() -> list[dict[str, object]]:
         playback = RpcWirePlayback(runtime=runtime)
-        await playback.dispatch(
-            {"id": "p1", "type": "prompt", "message": "start"}
-        )
+        await playback.dispatch({"id": "p1", "type": "prompt", "message": "start"})
         await session._prompt_started.wait()
         await playback.dispatch({"id": "compact", "type": "compact"})
         session._prompt_release.set()
@@ -1153,9 +1165,7 @@ def test_rpc_mode_compact_command_does_not_wait_for_active_prompt() -> None:
     records = asyncio.run(scenario())
 
     assert session.compact_calls == [None]
-    compact_response = next(
-        line for line in records if line.get("id") == "compact"
-    )
+    compact_response = next(line for line in records if line.get("id") == "compact")
     assert compact_response["type"] == "response"
     assert compact_response["command"] == "compact"
     assert compact_response["success"] is True
@@ -1167,11 +1177,10 @@ def test_rpc_mode_prompt_streaming_behavior_uses_prompt_pipeline_while_active() 
     session._prompt_started = asyncio.Event()
     session._prompt_release = asyncio.Event()
     runtime = FakeRuntime(session)
+
     async def scenario() -> list[dict[str, object]]:
         playback = RpcWirePlayback(runtime=runtime)
-        await playback.dispatch(
-            {"id": "p1", "type": "prompt", "message": "hello"}
-        )
+        await playback.dispatch({"id": "p1", "type": "prompt", "message": "hello"})
         await session._prompt_started.wait()
         await playback.dispatch(
             {
@@ -1205,11 +1214,10 @@ def test_rpc_mode_prompt_returns_after_preflight_before_prompt_finishes() -> Non
     session._prompt_started = asyncio.Event()
     session._prompt_release = asyncio.Event()
     runtime = FakeRuntime(session)
+
     async def scenario() -> None:
         playback = RpcWirePlayback(runtime=runtime)
-        await playback.dispatch(
-            {"id": "p1", "type": "prompt", "message": "hello"}
-        )
+        await playback.dispatch({"id": "p1", "type": "prompt", "message": "hello"})
         await session._prompt_started.wait()
         await asyncio.sleep(0)
         assert list(playback.snapshot().records) == [

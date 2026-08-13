@@ -22,9 +22,7 @@ def test_delete_confirmation_uses_compact_danger_copy() -> None:
     rendered = strip_control_sequences(
         "\n".join(
             line.text
-            for line in content.render(
-                RenderConstraints(width=80, max_height=10)
-            ).lines
+            for line in content.render(RenderConstraints(width=80, max_height=10)).lines
         )
     )
     assert view.subtitle == "Permanently delete the selected session"

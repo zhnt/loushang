@@ -1003,16 +1003,18 @@ def test_rpc_mode_get_available_models_skips_invalid_model_entries() -> None:
     from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class BrokenModelSession(FakeSession):
-        def get_available_models(self):
-            return [
-                SimpleNamespace(provider="faux", model_id="alpha"),
-                object(),
-            ]
+            def get_available_models(self):
+                return [
+                    SimpleNamespace(
+                        provider="faux", endpoint_id="coding", model_id="alpha"
+                    ),
+                    object(),
+                ]
 
     session = BrokenModelSession(session_id="session-a", cwd="/tmp/project")
     session.model_registry = FakeModelRegistry(
         resolved_models={
-            ("faux", "alpha"): Model(
+            ("faux", "coding", "alpha"): Model(
                 id="alpha",
                 provider="faux",
                 endpoint="coding",
@@ -1061,9 +1063,10 @@ def test_rpc_mode_get_available_models_skips_invalid_model_entries() -> None:
             "success": True,
             "data": {
                 "models": [
-                    {
-                        "provider": "faux",
-                        "id": "alpha",
+                        {
+                            "provider": "faux",
+                            "endpointId": "coding",
+                            "id": "alpha",
                         "name": "Alpha",
                         "api": "openai-completions",
                         "baseUrl": "https://api.faux.test/v1",

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from dataclasses import dataclass
 from io import StringIO
-from typing import Any
+from typing import Any, Literal
 
 from loushang.tui import (
     FakeTerminalPort,
@@ -155,10 +154,11 @@ def test_runner_context_request_render_wakes_input_wait() -> None:
 
         return await TuiRunner(
             tui,
-            stdin=_BlockingAfterFirstInput(first="x", block_seconds=0.03),
+            stdin=StringIO(""),
             stdout=stdout,
             terminal_session_factory=_recording_terminal_session_factory(),
             terminal_size_provider=lambda: TerminalSize(columns=20, rows=5),
+            input_chunk_reader=_AsyncAfterFirstInput(first="x", block_seconds=0.03),
         ).run(on_input=handle)
 
     assert asyncio.run(run()) == 0
@@ -202,10 +202,11 @@ def test_runner_rejects_reentrant_run_calls() -> None:
     tui = Tui()
     runner = TuiRunner(
         tui,
-        stdin=_BlockingAfterFirstInput(first="x", block_seconds=0.03),
+        stdin=StringIO(""),
         stdout=StringIO(),
         terminal_session_factory=_recording_terminal_session_factory(),
         terminal_size_provider=lambda: TerminalSize(columns=20, rows=5),
+        input_chunk_reader=_AsyncAfterFirstInput(first="x", block_seconds=0.03),
     )
     errors: list[str] = []
 
@@ -301,10 +302,11 @@ def test_runner_polls_terminal_runtime_fallback_on_idle_wakeup() -> None:
 
         return await TuiRunner(
             Tui(),
-            stdin=_BlockingAfterFirstInput(first="x", block_seconds=0.03),
+            stdin=StringIO(""),
             stdout=StringIO(),
             terminal_session_factory=lambda _stdin, _stdout: session,
             terminal_size_provider=lambda: TerminalSize(columns=20, rows=5),
+            input_chunk_reader=_AsyncAfterFirstInput(first="x", block_seconds=0.03),
         ).run(on_input=handle)
 
     assert asyncio.run(run()) == 0
@@ -347,7 +349,9 @@ class _RecordingTerminalSession:
         self.entered += 1
         return self
 
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> bool:
+    def __exit__(
+        self, exc_type: object, exc: object, traceback: object
+    ) -> Literal[False]:
         self.exited += 1
         return False
 
@@ -378,18 +382,15 @@ def _recording_terminal_session_factory() -> Any:
     return lambda _stdin, _stdout: _RecordingTerminalSession()
 
 
-class _BlockingAfterFirstInput:
+class _AsyncAfterFirstInput:
     def __init__(self, *, first: str, block_seconds: float) -> None:
         self._first = first
         self._block_seconds = block_seconds
         self._calls = 0
 
-    def read(self, _size: int) -> str:
+    async def __call__(self, _stdin: Any) -> str:
         self._calls += 1
         if self._calls == 1:
             return self._first
-        time.sleep(self._block_seconds)
+        await asyncio.sleep(self._block_seconds)
         return ""
-
-    def isatty(self) -> bool:
-        return False

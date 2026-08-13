@@ -107,11 +107,12 @@ HARNESS_TEST_PATHS := \
 	tests/harness \
 	tests/architecture/test_import_boundaries.py
 
-.PHONY: bootstrap test test-ai check-ai test-tui test-tui-render-contract lint-ai fmt-ai typecheck-ai typecheck-tui build-binary install-binary clean-binary vendor-ai-moonshot-anthropic-stream vendor-ai-moonshot-anthropic-complete vendor-ai-moonshot-anthropic-tools vendor-ai-moonshot-openai-stream vendor-ai-moonshot-openai-complete vendor-ai-moonshot-openai-tools vendor-ai-dashscope-openai-responses-stream vendor-ai-dashscope-openai-responses-tools example-ai-model-lookup example-ai-complete example-ai-stream example-ai-tools example-ai-typed-context example-ai-advanced-faux-stream example-ai-advanced-context-tools example-ai-advanced-tool-result-roundtrip example-ai-kimi-anthropic-stream example-ai-kimi-anthropic-complete example-ai-kimi-anthropic-tools example-ai-kimi-openai-stream example-ai-kimi-openai-complete example-ai-kimi-openai-tools example-ai-dashscope-openai-responses-stream example-ai-dashscope-openai-responses-tools example-ai-custom-base-url-openai-advanced example-ai-faux-stream example-ai-context-tools-minimal example-ai-tool-result-roundtrip
+.PHONY: bootstrap test test-ai check-ai test-tui test-tui-render-contract test-tui-terminal-platform test-tui-native test-tui-tmux lint-ai fmt-ai typecheck-ai typecheck-tui build-binary install-binary clean-binary vendor-ai-moonshot-anthropic-stream vendor-ai-moonshot-anthropic-complete vendor-ai-moonshot-anthropic-tools vendor-ai-moonshot-openai-stream vendor-ai-moonshot-openai-complete vendor-ai-moonshot-openai-tools vendor-ai-dashscope-openai-responses-stream vendor-ai-dashscope-openai-responses-tools example-ai-model-lookup example-ai-complete example-ai-stream example-ai-tools example-ai-typed-context example-ai-advanced-faux-stream example-ai-advanced-context-tools example-ai-advanced-tool-result-roundtrip example-ai-kimi-anthropic-stream example-ai-kimi-anthropic-complete example-ai-kimi-anthropic-tools example-ai-kimi-openai-stream example-ai-kimi-openai-complete example-ai-kimi-openai-tools example-ai-dashscope-openai-responses-stream example-ai-dashscope-openai-responses-tools example-ai-custom-base-url-openai-advanced example-ai-faux-stream example-ai-context-tools-minimal example-ai-tool-result-roundtrip
 .PHONY: check-ai-catalog check-ai-examples check-ai-imports check-ai-coverage
 .PHONY: check-harness lint-harness typecheck-harness test-harness
 .PHONY: check-architecture-docs
 .PHONY: check-harnesstui lint-harnesstui typecheck-harnesstui test-harnesstui
+.PHONY: lane-status
 
 bootstrap:
 	test -d .venv || uv venv .venv
@@ -167,10 +168,22 @@ test-harnesstui:
 	uv --cache-dir .uv-cache run --extra dev pytest $(HARNESSTUI_TEST_PATHS) $(CODING_TUI_PRODUCT_TEST_PATHS) -m "not tui_render_contract" -q
 
 test-tui:
-	. .venv/bin/activate && python -m pytest tests/tui -q
+	uv --cache-dir .uv-cache run --extra dev pytest tests/tui -q
 
 test-tui-render-contract:
 	uv --cache-dir .uv-cache run --extra dev pytest tests/tui tests/harnesstui tests/coding -m tui_render_contract -q
+
+test-tui-terminal-platform:
+	uv --cache-dir .uv-cache run --extra dev pytest tests/tui/test_terminal_platform.py tests/tui/test_terminal_session.py tests/tui/test_terminal_input.py tests/tui/test_terminal_input_posix.py --strict-markers --strict-config -q
+
+test-tui-native:
+	uv --cache-dir .uv-cache run --extra dev pytest tests/tui/test_terminal_query_responder.py tests/tui/test_terminal_process_backend.py tests/coding/test_cli_terminal_contract.py --strict-markers --strict-config -q
+
+test-tui-tmux:
+	LOUSHANG_REQUIRE_TMUX=1 uv --cache-dir .uv-cache run --extra dev pytest tests/coding/test_screen_coding_tui_pty_smoke.py -m tui_tmux_integration --strict-markers --strict-config -q
+
+lane-status:
+	uv run python scripts/dev/lane_status.py
 
 lint-ai:
 	. .venv/bin/activate && uv run ruff check src/loushang/ai examples/ai examples/auth tests/ai tests/protocols tests/examples/test_auth_examples.py scripts/ai

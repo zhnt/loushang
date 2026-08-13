@@ -54,15 +54,11 @@ def test_routing_profile_owns_standard_conversation_state_machine() -> None:
         lifecycle=lifecycle,
         parse_intent=lambda text: _Intent(text) if text.strip() else None,
         is_exit=lambda intent: intent.value == "quit",
-        local_action=lambda intent: (
-            "settings" if intent.value == "settings" else None
-        ),
+        local_action=lambda intent: "settings" if intent.value == "settings" else None,
         deferred_local_action=lambda intent: (
             "debug" if intent.value == "debug" else None
         ),
-        follow_up_text=lambda intent: (
-            "later" if intent.value == "follow" else None
-        ),
+        follow_up_text=lambda intent: "later" if intent.value == "follow" else None,
         command_effect=lambda action, _intent: (
             CommandEffect(CommandEffectKind.LOCAL_UI, command)
             if action == "settings"
@@ -86,10 +82,13 @@ def test_routing_profile_owns_standard_conversation_state_machine() -> None:
         text="later",
         source="command",
     )
-    assert profile.decide(
-        _Intent("prompt"),
-        ConversationTextAction("prompt"),
-    ).route is ConversationHostRoute.STEER
+    assert (
+        profile.decide(
+            _Intent("prompt"),
+            ConversationTextAction("prompt"),
+        ).route
+        is ConversationHostRoute.STEER
+    )
     assert profile.decide(
         _Intent("settings"),
         ConversationTextAction("settings"),
@@ -98,14 +97,20 @@ def test_routing_profile_owns_standard_conversation_state_machine() -> None:
         local="settings",
     )
     lifecycle.mark_abort_requested()
-    assert profile.decide(
-        _Intent("prompt"),
-        ConversationTextAction("prompt"),
-    ).route is ConversationHostRoute.ABORT_SETTLING
-    assert profile.decide(
-        _Intent("quit"),
-        ConversationTextAction("quit"),
-    ).route is ConversationHostRoute.DISPATCH
+    assert (
+        profile.decide(
+            _Intent("prompt"),
+            ConversationTextAction("prompt"),
+        ).route
+        is ConversationHostRoute.ABORT_SETTLING
+    )
+    assert (
+        profile.decide(
+            _Intent("quit"),
+            ConversationTextAction("quit"),
+        ).route
+        is ConversationHostRoute.DISPATCH
+    )
     assert [name for name, _data in traces] == [
         "prompt.start",
         "prompt.ignored",
@@ -175,9 +180,7 @@ def _host(
         intent: _Intent,
         prompt_started: float,
     ) -> int | None:
-        calls.append(
-            ("result", (outcome, action, intent, prompt_started))
-        )
+        calls.append(("result", (outcome, action, intent, prompt_started)))
         return 14
 
     async def abort() -> None:
@@ -215,9 +218,7 @@ def _host(
 def test_routed_host_preserves_order_and_attachments_for_every_route() -> None:
     attachment = _attachment()
     decisions = {
-        "settling": ConversationHostDecision(
-            ConversationHostRoute.ABORT_SETTLING
-        ),
+        "settling": ConversationHostDecision(ConversationHostRoute.ABORT_SETTLING),
         "follow": ConversationHostDecision(
             ConversationHostRoute.FOLLOW_UP,
             text="follow text",
@@ -228,9 +229,7 @@ def test_routed_host_preserves_order_and_attachments_for_every_route() -> None:
             ConversationHostRoute.LOCAL,
             local="settings",
         ),
-        "dispatch": ConversationHostDecision(
-            ConversationHostRoute.DISPATCH
-        ),
+        "dispatch": ConversationHostDecision(ConversationHostRoute.DISPATCH),
     }
     calls: list[tuple[str, object]] = []
     host = _host(decisions=decisions, calls=calls)
@@ -293,14 +292,12 @@ def test_routed_host_preserves_order_and_attachments_for_every_route() -> None:
     assert result_args[3] == 42.5
 
 
-def test_routed_host_skips_decision_for_empty_input_and_dispatch_result_for_other_routes() -> None:
+def test_routed_host_skips_decision_for_empty_input_and_dispatch_result_for_other_routes() -> (
+    None
+):
     calls: list[tuple[str, object]] = []
     host = _host(
-        decisions={
-            "follow": ConversationHostDecision(
-                ConversationHostRoute.FOLLOW_UP
-            )
-        },
+        decisions={"follow": ConversationHostDecision(ConversationHostRoute.FOLLOW_UP)},
         calls=calls,
     )
 
@@ -323,21 +320,22 @@ def test_routed_host_exposes_abort_queue_and_exit_ports() -> None:
 
     assert (
         asyncio.run(
-            host.follow_up(
-                ConversationTextAction("next", attachments=(attachment,))
-            )
+            host.follow_up(ConversationTextAction("next", attachments=(attachment,)))
         )
         == 11
     )
-    assert asyncio.run(
-        host.steer(
-            ConversationTextAction(
-                "change",
-                attachments=(attachment,),
-                source="steer",
+    assert (
+        asyncio.run(
+            host.steer(
+                ConversationTextAction(
+                    "change",
+                    attachments=(attachment,),
+                    source="steer",
+                )
             )
         )
-    ) == 12
+        == 12
+    )
     assert asyncio.run(host.abort()) is None
     assert asyncio.run(host.restore_queue_to_composer("draft")) == "queued\n\ndraft"
     assert host.pending_messages() == ("queued",)

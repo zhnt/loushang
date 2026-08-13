@@ -26,6 +26,26 @@ def test_model_selector_surface_keeps_selected_item_and_style() -> None:
     assert rendered.lines[1].text.startswith("\x1b[1;38;5;33m> 2. model-2")
 
 
+def test_model_selector_surface_preserves_long_endpoint_identity_when_space_allows() -> (
+    None
+):
+    identity = "1. dashscope:openai-completions:cn:qwen3.6-plus"
+    surface = ModelSelectorSurface(
+        (
+            SelectItem(
+                label=identity,
+                value="dashscope:openai-completions:cn:qwen3.6-plus",
+                description="current - Qwen 3.6 Plus",
+            ),
+        )
+    )
+
+    rendered = surface.render(RenderConstraints(width=120, max_height=3))
+    lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
+
+    assert lines == (f"> {identity}  current - Qwen 3.6 Plus",)
+
+
 def test_model_selector_surface_keeps_multidigit_ordinal_selection() -> None:
     surface = ModelSelectorSurface(_items(12))
 

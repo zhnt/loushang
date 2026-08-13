@@ -16,12 +16,20 @@ class _Session:
         ]
 
     def get_model_selection(self) -> ModelSelection:
-        return ModelSelection(provider="moonshot", model_id="kimi-for-coding")
+        return ModelSelection(
+            endpoint_id="test-endpoint", provider="moonshot", model_id="kimi-for-coding"
+        )
 
     def get_available_models(self) -> list[object]:
         return [
-            ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
-            ModelSelection(provider="openai", model_id="gpt-5.4"),
+            ModelSelection(
+                endpoint_id="test-endpoint",
+                provider="moonshot",
+                model_id="kimi-for-coding",
+            ),
+            ModelSelection(
+                endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
+            ),
         ]
 
 
@@ -97,8 +105,8 @@ def test_coding_completion_host_matches_current_input_context() -> None:
     assert provider == CompletionProvider(
         (
             CompletionItem(
-                value="/model moonshot/kimi-for-coding",
-                label="moonshot/kimi-for-coding",
+                value="/model moonshot:test-endpoint:kimi-for-coding",
+                label="moonshot:test-endpoint:kimi-for-coding",
                 description="current",
             ),
         )
@@ -115,8 +123,8 @@ def test_coding_completion_host_completes_model_argument() -> None:
 
     assert completions == (
         CompletionItem(
-            value="/model moonshot/kimi-for-coding",
-            label="moonshot/kimi-for-coding",
+            value="/model moonshot:test-endpoint:kimi-for-coding",
+            label="moonshot:test-endpoint:kimi-for-coding",
             description="current",
         ),
     )
@@ -129,7 +137,10 @@ def test_coding_completion_host_matches_model_argument_by_substring() -> None:
     completions = asyncio.run(coding_completion_host(_Session()).complete("/model gpt"))
 
     assert completions == (
-        CompletionItem(value="/model openai/gpt-5.4", label="openai/gpt-5.4"),
+        CompletionItem(
+            value="/model openai:test-endpoint:gpt-5.4",
+            label="openai:test-endpoint:gpt-5.4",
+        ),
     )
 
 
@@ -158,10 +169,10 @@ def test_coding_inline_completion_provider_uses_slash_command_argument_provider(
         "/permissions",
     ]
     assert [item.value for item in provider.complete("/model o")] == [
-        "/model openai/gpt-5.4"
+        "/model openai:test-endpoint:gpt-5.4"
     ]
     assert [item.value for item in provider.complete("/model gpt")] == [
-        "/model openai/gpt-5.4"
+        "/model openai:test-endpoint:gpt-5.4"
     ]
 
 
@@ -181,7 +192,7 @@ def test_coding_inline_completion_provider_renders_model_argument_group() -> Non
     assert tuple(strip_control_sequences(line.text) for line in result.lines) == (
         "> /model gpt",
         "",
-        "  openai/gpt-5.4",
+        "  openai:test-endpoint:gpt",
     )
 
 
@@ -191,8 +202,8 @@ def test_coding_completion_host_limits_model_argument_context() -> None:
     provider = asyncio.run(coding_completion_host(_Session()).input_provider("/model "))
 
     assert [item.value for item in provider.items] == [
-        "/model moonshot/kimi-for-coding",
-        "/model openai/gpt-5.4",
+        "/model moonshot:test-endpoint:kimi-for-coding",
+        "/model openai:test-endpoint:gpt-5.4",
     ]
 
 

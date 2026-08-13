@@ -41,6 +41,7 @@ def inspect_normalization_diagnostics() -> dict[str, object]:
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="openai-responses",
         model="gpt-test",
         response_id=None,
         usage=Usage(

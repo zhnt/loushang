@@ -117,7 +117,7 @@
    - raw part stream
    - assistant message event stream
 3. raw assembler 负责 partial message / final message / event emission
-4. provider adapter 负责 SDK stream 到 raw parts 的翻译
+4. `APIAdapter` 负责 SDK stream 到 raw parts 的翻译
 5. `AbortSignalLike` 继续采用最小协议设计
 
 ## Issues Found
@@ -153,7 +153,7 @@
 
 虽然当前方向已被验证为可行，但仍有后续问题需要继续设计：
 
-1. `ApiProvider` registry 的 Python 形态
+1. `APIAdapter` registry 的 Python 形态
 2. `stream()` / `complete()` / `stream_simple()` / `complete_simple()` 的正式签名
 3. raw part 的内部类型体系
 4. tool call / thinking / image 在 assembler 中的完整事件矩阵
@@ -165,4 +165,4 @@
 1. streaming 模型可行
 2. cancellation 模型可行
 3. 当前 public contract 在 Python 侧应采用显式 async-start 变体
-4. 可以继续进入 `ApiProvider` registry 与顶层签名设计阶段
+4. 可以继续进入 `APIAdapter` registry 与顶层签名设计阶段

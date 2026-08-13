@@ -30,7 +30,7 @@ class _Session:
         )
         self.settings_manager = None
         self.current_model: object = ModelSelection(
-            provider="unknown", model_id="unknown"
+            endpoint_id="test-endpoint", provider="unknown", model_id="unknown"
         )
         self.model_details = [
             Model(
@@ -64,15 +64,23 @@ class _Session:
 
     def get_available_models(self) -> list[ModelSelection]:
         return [
-            ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
-            ModelSelection(provider="openai", model_id="gpt-5.4"),
+            ModelSelection(
+                endpoint_id="test-endpoint",
+                provider="moonshot",
+                model_id="kimi-for-coding",
+            ),
+            ModelSelection(
+                endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
+            ),
         ]
 
     async def set_model(self, selection: object) -> None:
         self.set_model_calls.append(selection)
         if isinstance(selection, Model):
             self.current_model = ModelSelection(
-                provider=selection.provider_id, model_id=selection.id
+                endpoint_id="test-endpoint",
+                provider=selection.provider_id,
+                model_id=selection.id,
             )
         else:
             self.current_model = selection

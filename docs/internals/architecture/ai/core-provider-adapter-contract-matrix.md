@@ -12,9 +12,9 @@ not belong in the package.
 | `openai-completions` | `loushang.ai.protocols.openai_chat_completions` | `OpenAIChatCompletionsAdapter` | OpenAI-compatible Chat Completions |
 | `openai-responses` | `loushang.ai.protocols.openai_responses` | `OpenAIResponsesAdapter` | OpenAI Responses |
 
-These are the only adapters registered by `register_builtin_ai_providers`.
-All providers must implement `ApiProvider` (`api` plus `invoke_raw(request)`).
-Providers that own non-core adapter config may additionally implement
+These are the only adapters registered by `register_builtin_api_adapters`.
+All registered entries must implement `APIAdapter` (`api` plus `invoke_raw(request)`).
+Adapters that own non-core validation may additionally implement
 `ProviderRequestValidator.validate_request(request)`, which is checked at
 registration and runs before `invoke_raw(request)`.
 
@@ -31,6 +31,6 @@ registration and runs before `invoke_raw(request)`.
 
 | Module | Boundary |
 |---|---|
-| `loushang.ai.protocols.faux` | Test/example-only adapter; not builtin |
+| `loushang.ai.protocols.faux.FauxAdapter` | Test/example-only adapter; not builtin |
 
 Core does not ship Azure OpenAI or Amazon Bedrock adapters in this version.

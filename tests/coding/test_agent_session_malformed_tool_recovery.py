@@ -47,6 +47,7 @@ def _model() -> Model:
 
 def _assistant_text(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -62,6 +63,7 @@ def _assistant_text(text: str) -> AssistantMessage:
 
 def _assistant_tool_calls(*tool_calls: ToolCall) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=list(tool_calls),
         api="anthropic-messages",

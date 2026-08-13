@@ -489,7 +489,7 @@ def run_model_listing_operation(
         stdout.write(format_model_metadata_table(entries))
     else:
         for selection in entries:
-            stdout.write(f"{selection['provider']}/{selection['model_id']}\n")
+            stdout.write(f"{selection['id']}\n")
     return 0
 
 

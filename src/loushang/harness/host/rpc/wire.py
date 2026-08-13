@@ -11,9 +11,7 @@ from loushang.harness.host.json_projection import project_host_value
 from loushang.harness.host.rpc.types import RpcModel, RpcModelCost, RpcSessionState
 
 _MISSING = object()
-_THINKING_LEVELS = frozenset(
-    {"off", "minimal", "low", "medium", "high", "xhigh"}
-)
+_THINKING_LEVELS = frozenset({"off", "minimal", "low", "medium", "high", "xhigh"})
 
 
 def project_session_state(session: Any) -> RpcSessionState:
@@ -102,9 +100,7 @@ def project_state_model(session: Any, state: Any) -> RpcModel | None:
         return None
 
 
-def project_available_models(
-    session: Any, selections: list[Any]
-) -> list[RpcModel]:
+def project_available_models(session: Any, selections: list[Any]) -> list[RpcModel]:
     serialized: list[RpcModel] = []
     for selection in selections:
         try:
@@ -207,13 +203,11 @@ def project_model_selection(
 ) -> dict[str, str] | None:
     if selection is None:
         return None
-    payload = {
+    return {
         "provider": selection.provider,
+        "endpointId": selection.endpoint_id,
         "modelId": selection.model_id,
     }
-    if selection.endpoint_id:
-        payload["endpointId"] = selection.endpoint_id
-    return payload
 
 
 def project_model_cost(pricing: object) -> RpcModelCost | None:
@@ -335,13 +329,19 @@ def _project_model_selection_as_model(selection: Any) -> RpcModel | None:
     if selection is None:
         return None
     provider = _safe_getattr(selection, "provider", None)
+    endpoint_id = _safe_getattr(selection, "endpoint_id", None)
     model_id = _safe_getattr(selection, "model_id", None)
-    if not isinstance(provider, str) or not isinstance(model_id, str):
+    if (
+        not isinstance(provider, str)
+        or not isinstance(endpoint_id, str)
+        or not isinstance(model_id, str)
+    ):
         provider = _safe_string(provider) if provider is not None else None
+        endpoint_id = _safe_string(endpoint_id) if endpoint_id is not None else None
         model_id = _safe_string(model_id) if model_id is not None else None
-        if not provider or not model_id:
+        if not provider or not endpoint_id or not model_id:
             return None
-    return {"provider": provider, "id": model_id}
+    return {"provider": provider, "endpointId": endpoint_id, "id": model_id}
 
 
 def _project_model(session: Any, model: object) -> RpcModel | None:
@@ -349,12 +349,16 @@ def _project_model(session: Any, model: object) -> RpcModel | None:
         model, "provider", None
     )
     model_id = _safe_getattr(model, "id", None)
-    if not provider or not model_id:
+    endpoint_id = _safe_getattr(model, "endpoint_id", None) or _safe_getattr(
+        model, "endpoint", None
+    )
+    if not provider or not endpoint_id or not model_id:
         return None
 
     name = _safe_getattr(model, "name", None)
     data: RpcModel = {
         "provider": str(provider),
+        "endpointId": str(endpoint_id),
         "id": str(model_id),
         "name": name if isinstance(name, str) and name else str(model_id),
     }

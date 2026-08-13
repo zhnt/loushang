@@ -119,7 +119,9 @@ def test_build_plain_coding_tui_app_wires_model_palette_chooser() -> None:
 
         def __init__(self) -> None:
             self.selection = ModelSelection(
-                provider="moonshot", model_id="kimi-for-coding"
+                endpoint_id="test-endpoint",
+                provider="moonshot",
+                model_id="kimi-for-coding",
             )
             self.set_model_calls: list[ModelSelection] = []
 
@@ -128,8 +130,14 @@ def test_build_plain_coding_tui_app_wires_model_palette_chooser() -> None:
 
         def get_available_models(self) -> list[ModelSelection]:
             return [
-                ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
-                ModelSelection(provider="openai", model_id="gpt-5.4"),
+                ModelSelection(
+                    endpoint_id="test-endpoint",
+                    provider="moonshot",
+                    model_id="kimi-for-coding",
+                ),
+                ModelSelection(
+                    endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
+                ),
             ]
 
         async def set_model(self, selection: ModelSelection) -> None:
@@ -155,7 +163,7 @@ def test_build_plain_coding_tui_app_wires_model_palette_chooser() -> None:
 
     async def choose(palette: CommandPalette) -> str:
         seen.append(palette)
-        return "openai/gpt-5.4"
+        return "openai:test-endpoint:gpt-5.4"
 
     session = Session()
     app = build_plain_coding_tui_app(
@@ -177,9 +185,14 @@ def test_build_plain_coding_tui_app_wires_model_palette_chooser() -> None:
     result = asyncio.run(app.handle_prompt("/model"))
 
     assert result is None
-    assert emitted == ["model:select", "status:Model set: openai/gpt-5.4"]
+    assert emitted == [
+        "model:select",
+        "status:Model set: openai:test-endpoint:gpt-5.4",
+    ]
     assert session.set_model_calls == [
-        ModelSelection(provider="openai", model_id="gpt-5.4")
+        ModelSelection(
+            endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
+        )
     ]
     assert seen
 

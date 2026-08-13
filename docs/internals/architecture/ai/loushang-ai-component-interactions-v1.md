@@ -8,7 +8,8 @@ sequenceDiagram
     participant API as Public API
     participant Runtime as Provider Runtime
     participant Auth as Auth Resolver
-    participant Registry as Adapter Registry
+    participant ProviderRegistry as Vendor Adapter Registry
+    participant APIRegistry as Generic API Registry
     participant Adapter as Protocol Adapter
     participant Events as Event Stream
 
@@ -17,14 +18,19 @@ sequenceDiagram
     Runtime->>Runtime: normalize context and validate capabilities
     Runtime->>Auth: resolve static/auth/call headers
     Auth-->>Runtime: immutable resolved headers
-    Runtime->>Registry: get(model.api)
-    Registry-->>Runtime: adapter
+    Runtime->>ProviderRegistry: resolve(model.provider_id, model.api)
+    alt exact vendor adapter exists
+        ProviderRegistry-->>Runtime: vendor APIAdapter
+    else generic fallback
+        ProviderRegistry->>APIRegistry: get(model.api)
+        APIRegistry-->>Runtime: generic APIAdapter
+    end
     Runtime->>Adapter: invoke_raw(request)
     Adapter-->>Events: normalized raw parts
     Events-->>Caller: AssistantMessageEventStream
 ```
 
-The selected `Model` remains unchanged throughout the sequence. Neither runtime nor adapter consults a model registry, chooses a route, or derives product/session state.
+The selected `Model` remains unchanged throughout the sequence. Neither runtime nor adapter consults a model registry, chooses an endpoint, or derives product/session state.
 
 ## Completion
 
@@ -46,13 +52,15 @@ Later ordinary headers win. The primary authentication header is protected from 
 ```mermaid
 sequenceDiagram
     participant Bootstrap
-    participant Registry as Default Adapter Registry
+    participant APIRegistry as Generic API Registry
+    participant ProviderRegistry as Vendor Adapter Registry
     participant Application
     participant API as Public API
 
-    Bootstrap->>Registry: register built-in protocol adapters once
-    Application->>Registry: optional advanced registration before calls
-    API->>Registry: get(selected model.api)
+    Bootstrap->>APIRegistry: register built-in protocol adapters once
+    Application->>APIRegistry: optional generic APIAdapter registration
+    Application->>ProviderRegistry: optional vendor APIAdapter registration
+    API->>ProviderRegistry: resolve(provider_id, api), then generic fallback
 ```
 
 Duplicate registration fails. Public calls do not receive registry objects as parameters.
@@ -63,7 +71,7 @@ The provider runtime checks cancellation before each attempt, applies one overal
 
 ## Tool Round Trip
 
-Context normalization validates assistant tool calls and matching tool results before invocation. Adapters translate the normalized semantic parts to their wire formats. Returned tool-call deltas are assembled by the event stream and retain provider/API provenance needed for a later turn.
+Context normalization validates assistant tool calls and matching tool results before invocation. Adapters translate the normalized semantic parts to their wire formats. Returned tool-call deltas are assembled by the event stream and retain API/provider/endpoint/model provenance needed for a later turn.
 
 ## Trace
 

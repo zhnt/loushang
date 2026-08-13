@@ -247,11 +247,10 @@ class AgentTranscriptSelectionRuntime:
     async def apply_model(
         self,
         model: Model,
-        *,
-        endpoint_id: str | None = None,
     ) -> None:
         validated = validate_model(model)
         provider = str(getattr(validated, "provider_id", None))
+        endpoint_id = str(getattr(validated, "endpoint_id", None))
         await self.session.append_model_change(
             provider,
             validated.id,
@@ -324,11 +323,15 @@ class AgentTranscriptSelectionRuntime:
         endpoint_id = (
             model.get("endpoint_id") or model.get("endpointId") or model.get("endpoint")
         )
-        if isinstance(provider, str) and isinstance(model_id, str):
+        if (
+            isinstance(provider, str)
+            and isinstance(endpoint_id, str)
+            and isinstance(model_id, str)
+        ):
             return ModelSelection(
                 provider=provider,
+                endpoint_id=endpoint_id,
                 model_id=model_id,
-                endpoint_id=endpoint_id if isinstance(endpoint_id, str) else None,
             )
         return None
 
@@ -577,17 +580,27 @@ def assistant_message_text(message: AssistantMessage) -> str | None:
 
 def model_selection_from_model(model: object) -> ModelSelection | None:
     provider = getattr(model, "provider_id", None) or getattr(model, "provider", None)
+    endpoint_id = getattr(model, "endpoint_id", None) or getattr(
+        model, "endpoint", None
+    )
     model_id = getattr(model, "id", None)
-    if not provider or not model_id:
+    if not provider or not endpoint_id or not model_id:
         return None
-    return ModelSelection(provider=str(provider), model_id=str(model_id))
+    return ModelSelection(
+        provider=str(provider),
+        endpoint_id=str(endpoint_id),
+        model_id=str(model_id),
+    )
 
 
 def validate_model(model: object) -> Model:
     provider = getattr(model, "provider_id", None) or getattr(model, "provider", None)
+    endpoint_id = getattr(model, "endpoint_id", None) or getattr(
+        model, "endpoint", None
+    )
     model_id = getattr(model, "id", None)
-    if not provider or not model_id:
-        raise ValueError("Model updates require a provider and model id.")
+    if not provider or not endpoint_id or not model_id:
+        raise ValueError("Model updates require provider, endpoint, and model ids.")
     return model  # type: ignore[return-value]
 
 

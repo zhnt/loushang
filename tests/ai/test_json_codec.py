@@ -40,6 +40,7 @@ def _assistant_message() -> AssistantMessage:
         content=[TextPart(type="text", text="done")],
         api="responses",
         provider="example",
+        endpoint="test-endpoint",
         model="example-1",
         response_id="response-1",
         usage=Usage(
@@ -58,8 +59,15 @@ def _assistant_message() -> AssistantMessage:
 
 def test_message_codec_round_trips_ai_messages() -> None:
     message = _assistant_message()
+    payload = serialize_message(message)
 
-    assert deserialize_message(serialize_message(message)) == message
+    assert payload["endpoint"] == "test-endpoint"
+    restored = deserialize_message(payload)
+    assert restored == message
+    assert isinstance(restored, AssistantMessage)
+    assert f"{restored.provider}:{restored.endpoint}:{restored.model}" == (
+        "example:test-endpoint:example-1"
+    )
 
 
 def test_message_codec_requires_json_details() -> None:
@@ -238,9 +246,10 @@ def test_usage_codec_accepts_snake_case_and_rejects_partial_cost() -> None:
         "cacheWrite": 0.4,
         "total": 1.0,
     }
-    assert serialize_usage(
-        Usage(1, 2, 0, 0, 3, cast(Any, {"input": -1.0}))
-    )["cost"] is None
+    assert (
+        serialize_usage(Usage(1, 2, 0, 0, 3, cast(Any, {"input": -1.0})))["cost"]
+        is None
+    )
 
 
 @pytest.mark.parametrize(
@@ -256,9 +265,7 @@ def test_usage_codec_accepts_snake_case_and_rejects_partial_cost() -> None:
             role="toolResult",
             tool_call_id="call-1",
             tool_name="read",
-            content=[
-                ImagePart(type="image", data="aGVsbG8=", mime_type="image/png")
-            ],
+            content=[ImagePart(type="image", data="aGVsbG8=", mime_type="image/png")],
             is_error=False,
             timestamp=3.0,
             details={"ok": True},
@@ -342,17 +349,19 @@ def test_message_codec_rejects_unknown_message_and_role() -> None:
 def test_assistant_event_codec_serializes_delta_variants(
     event: dict[str, object], expected: dict[str, object]
 ) -> None:
-    assert serialize_assistant_message_event(
-        cast(AssistantMessageEvent, event)
-    ) == expected
+    assert (
+        serialize_assistant_message_event(cast(AssistantMessageEvent, event))
+        == expected
+    )
 
 
 def test_assistant_event_codec_serializes_start_error_and_rejects_unknown() -> None:
     message = _assistant_message()
 
-    assert serialize_assistant_message_event(
-        {"type": "start", "partial": message}
-    ) == {"type": "start", "partial": serialize_message(message)}
+    assert serialize_assistant_message_event({"type": "start", "partial": message}) == {
+        "type": "start",
+        "partial": serialize_message(message),
+    }
     assert serialize_assistant_message_event(
         {"type": "error", "reason": "error", "error": message}
     ) == {

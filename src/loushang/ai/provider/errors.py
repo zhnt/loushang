@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Mapping
 from dataclasses import replace
 from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
@@ -38,6 +40,14 @@ _ERROR_CLASS_BY_CODE: dict[
     AIErrorCode.PROVIDER: AIProviderError,
 }
 
+_PROVIDER_RESPONSE_SUMMARY_MAX_CHARS = 512
+_PROVIDER_DIAGNOSTIC_KEYS = frozenset({"code", "detail", "error", "message", "type"})
+_SENSITIVE_KEY_PATTERN = re.compile(
+    r"(?i)\b(api[_-]?key|authorization|cookie|password|secret|token)\b"
+    r"(\s*[:=]\s*)([^\s,;}]+)"
+)
+_BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[^\s,;}]+")
+
 
 def classify_provider_error(
     error: Exception,
@@ -63,7 +73,25 @@ def provider_error_part(
     source: str = "provider",
 ) -> "RawPart":
     info = classify_provider_error(error, source=source)
-    return cast("RawPart", {"type": "response_error", **info})
+    part: dict[str, object] = {"type": "response_error", **info}
+    response_summary = provider_response_summary(error)
+    if response_summary is not None:
+        part["provider_response_summary"] = response_summary
+    return cast("RawPart", part)
+
+
+def provider_response_summary(error: Exception) -> str | None:
+    """Return a bounded, redacted provider response summary for diagnostics only."""
+    body = getattr(error, "body", None)
+    if body is None:
+        response = getattr(error, "response", None)
+        body = getattr(response, "text", None)
+    if body is None:
+        return None
+    summarized = _summarize_provider_body(body)
+    if not summarized:
+        return None
+    return _truncate_diagnostic(summarized)
 
 
 def provider_error_part_from_raw(
@@ -128,6 +156,7 @@ def provider_error_info_from_raw(
     *,
     source: str,
     provider: str | None = None,
+    endpoint: str | None = None,
     model: str | None = None,
 ) -> AIErrorInfo:
     outer_status_code = _http_status_code(part.get("code"))
@@ -142,6 +171,7 @@ def provider_error_info_from_raw(
             canonical,
             source=source,
             provider=provider if provider is not None else canonical.provider,
+            endpoint=endpoint if endpoint is not None else canonical.endpoint,
             model=model if model is not None else canonical.model,
             details=canonical.details,
         )
@@ -152,6 +182,7 @@ def provider_error_info_from_raw(
         source=source,
         retryable=_is_retryable_provider_error(code),
         provider=provider,
+        endpoint=endpoint,
         model=model,
         status_code=outer_status_code,
         details=_raw_code_details(part.get("code"), code, outer_status_code),
@@ -289,6 +320,78 @@ def _request_id_from_headers(headers: object) -> str | None:
         }:
             return value
     return None
+
+
+def _summarize_provider_body(body: object) -> str | None:
+    if isinstance(body, str):
+        text = body.strip()
+        if not text:
+            return None
+        try:
+            parsed = json.loads(text)
+        except (TypeError, ValueError):
+            return _redact_diagnostic_text(text)
+        return _summarize_provider_body(parsed)
+    if isinstance(body, Mapping):
+        safe = _safe_provider_diagnostic_mapping(body)
+        if not safe:
+            return None
+        return json.dumps(safe, ensure_ascii=False, separators=(",", ":"))
+    if isinstance(body, list):
+        safe_items = [
+            item
+            for value in body[:10]
+            if (item := _safe_provider_diagnostic_value(value)) is not None
+        ]
+        if not safe_items:
+            return None
+        return json.dumps(safe_items, ensure_ascii=False, separators=(",", ":"))
+    return None
+
+
+def _safe_provider_diagnostic_mapping(
+    value: Mapping[object, object],
+) -> dict[str, JSONValue]:
+    safe: dict[str, JSONValue] = {}
+    for raw_key, raw_value in value.items():
+        if not isinstance(raw_key, str):
+            continue
+        key = raw_key.strip()
+        if key.lower() not in _PROVIDER_DIAGNOSTIC_KEYS:
+            continue
+        item = _safe_provider_diagnostic_value(raw_value)
+        if item is not None:
+            safe[key] = item
+    return safe
+
+
+def _safe_provider_diagnostic_value(value: object) -> JSONValue | None:
+    if isinstance(value, str):
+        return _truncate_diagnostic(_redact_diagnostic_text(value))
+    if value is None or isinstance(value, bool | int | float):
+        return cast(JSONValue, value)
+    if isinstance(value, Mapping):
+        safe = _safe_provider_diagnostic_mapping(value)
+        return safe or None
+    if isinstance(value, list):
+        safe_items: list[JSONValue] = []
+        for nested in value[:10]:
+            item = _safe_provider_diagnostic_value(nested)
+            if item is not None:
+                safe_items.append(item)
+        return safe_items or None
+    return None
+
+
+def _redact_diagnostic_text(value: str) -> str:
+    redacted = _BEARER_PATTERN.sub("Bearer [REDACTED]", value)
+    return _SENSITIVE_KEY_PATTERN.sub(r"\1\2[REDACTED]", redacted)
+
+
+def _truncate_diagnostic(value: str) -> str:
+    if len(value) <= _PROVIDER_RESPONSE_SUMMARY_MAX_CHARS:
+        return value
+    return value[: _PROVIDER_RESPONSE_SUMMARY_MAX_CHARS - 1] + "…"
 
 
 def _provider_error_code(error: Exception, status_code: int | None) -> AIErrorCode:

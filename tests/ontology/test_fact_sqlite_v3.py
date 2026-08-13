@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 from uuid import UUID
 
 import pytest
@@ -9,7 +11,9 @@ import pytest
 from loushang.ontology.facts import (
     AssertionKind,
     FactBatch,
+    FactCommit,
     FactRecord,
+    FactWatermarkConflictError,
     ObjectAssertion,
     PropertyAssertion,
 )
@@ -19,6 +23,7 @@ from loushang.ontology.schema import (
     OntologyCompiler,
     OntologyPackageDraft,
     PropertyDefinition,
+    SchemaIdentity,
     StateAuthority,
     ValueType,
 )
@@ -32,6 +37,11 @@ SUBJECT_ID = UUID("00000000-0000-0000-0000-000000000001")
 FACT_ID = UUID("10000000-0000-0000-0000-000000000001")
 DERIVED_FACT_ID = UUID("10000000-0000-0000-0000-000000000002")
 INFERRED_FACT_ID = UUID("10000000-0000-0000-0000-000000000003")
+SCHEMA_IDENTITY = SchemaIdentity(
+    "test.sqlite-facts",
+    "urn:test:sqlite-facts",
+    "1.0.0",
+)
 
 
 def _schema():
@@ -66,7 +76,8 @@ def _batch() -> FactBatch:
             FactRecord(
                 fact_id=FACT_ID,
                 subject_id=SUBJECT_ID,
-                assertion=ObjectAssertion("Asset"),
+                schema_identity=SCHEMA_IDENTITY,
+                assertion=ObjectAssertion("asset"),
                 assertion_kind=AssertionKind.ASSERTED,
                 source_ref="source.erp",
                 source_record_ref="asset:A-1",
@@ -85,7 +96,8 @@ def _classification_batch() -> FactBatch:
             FactRecord(
                 fact_id=DERIVED_FACT_ID,
                 subject_id=SUBJECT_ID,
-                assertion=PropertyAssertion("signal", 0.8),
+                schema_identity=SCHEMA_IDENTITY,
+                assertion=PropertyAssertion("asset.signal", 0.8),
                 assertion_kind=AssertionKind.DERIVED,
                 source_ref="rule:1",
                 source_record_ref="asset:A-1:signal",
@@ -96,7 +108,8 @@ def _classification_batch() -> FactBatch:
             FactRecord(
                 fact_id=INFERRED_FACT_ID,
                 subject_id=SUBJECT_ID,
-                assertion=PropertyAssertion("signal", "likely"),
+                schema_identity=SCHEMA_IDENTITY,
+                assertion=PropertyAssertion("asset.signal", "likely"),
                 assertion_kind=AssertionKind.INFERRED,
                 source_ref="model:1",
                 source_record_ref="asset:A-1:signal",
@@ -109,7 +122,7 @@ def _classification_batch() -> FactBatch:
     )
 
 
-def test_sqlite_fact_adapter_writes_directly_to_phase2_fact_tables(
+def test_sqlite_fact_adapter_writes_directly_to_v3_fact_tables(
     tmp_path: Path,
 ) -> None:
     database = tmp_path / "facts.sqlite3"
@@ -134,7 +147,7 @@ def test_sqlite_fact_adapter_writes_directly_to_phase2_fact_tables(
             1,
         )
 
-    assert SQLITE_STORAGE_FORMAT_VERSION == 2
+    assert SQLITE_STORAGE_FORMAT_VERSION == 3
     assert {"semantic_facts", "fact_batches"} <= tables
     assert metadata["fact_watermark"] == "1"
 
@@ -215,6 +228,42 @@ def test_failed_fact_transaction_leaves_the_journal_unchanged(tmp_path: Path) ->
         connection.execute("DROP TRIGGER reject_fact")
     assert store.commit_fact_batch(_batch()).last_sequence == 1
     store.close()
+
+
+def test_two_sqlite_writers_cannot_both_commit_from_one_watermark(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "guarded.sqlite3"
+    schema = _schema()
+    initializer = SQLiteFactStore(database)
+    initializer.bind_schema(schema)
+    initializer.close()
+    barrier = Barrier(2)
+
+    def commit(batch: FactBatch) -> FactCommit | Exception:
+        store = SQLiteFactStore(database, expected_schema=schema)
+        try:
+            barrier.wait()
+            return store.commit_fact_batch_guarded(batch, expected_watermark=0)
+        except Exception as exc:  # returned for deterministic pair inspection
+            return exc
+        finally:
+            store.close()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = tuple(executor.map(commit, (_batch(), _classification_batch())))
+
+    assert len([item for item in results if isinstance(item, FactCommit)]) == 1
+    assert (
+        len(
+            [
+                item
+                for item in results
+                if isinstance(item, FactWatermarkConflictError)
+            ]
+        )
+        == 1
+    )
 
 
 @pytest.mark.parametrize(

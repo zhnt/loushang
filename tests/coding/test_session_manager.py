@@ -244,6 +244,7 @@ async def test_branch_changes_active_leaf_without_losing_existing_path(
     )
     second_id = await manager.append_message(
         AssistantMessage(
+            endpoint="kimi-code-anthropic",
             role="assistant",
             content=[TextPart(type="text", text="middle")],
             api="anthropic-messages",
@@ -301,6 +302,7 @@ async def test_create_branched_session_persists_only_selected_path(tmp_path) -> 
     )
     second_id = await manager.append_message(
         AssistantMessage(
+            endpoint="kimi-code-anthropic",
             role="assistant",
             content=[TextPart(type="text", text="answer")],
             api="anthropic-messages",
@@ -556,7 +558,9 @@ async def test_session_summary_includes_context_metadata(tmp_path) -> None:
         session_dir=tmp_path, cwd="/tmp/project", persist=True
     )
     await manager.append_session_info("Demo Session")
-    await manager.append_model_change("moonshot", "kimi-k2.5")
+    await manager.append_model_change(
+        "moonshot", "kimi-k2.5", endpoint_id="kimi-code-anthropic"
+    )
     await manager.append_message(
         UserMessage(
             role="user",
@@ -566,6 +570,7 @@ async def test_session_summary_includes_context_metadata(tmp_path) -> None:
     )
     await manager.append_message(
         AssistantMessage(
+            endpoint="kimi-code-anthropic",
             role="assistant",
             content=[TextPart(type="text", text="repository inspection complete")],
             api="anthropic-messages",
@@ -594,7 +599,11 @@ async def test_session_summary_includes_context_metadata(tmp_path) -> None:
         == "please inspect the repository repository inspection complete"
     )
     assert summary.last_message_preview == "repository inspection complete"
-    assert summary.model == {"provider": "moonshot", "model_id": "kimi-k2.5"}
+    assert summary.model == {
+        "provider": "moonshot",
+        "endpoint_id": "kimi-code-anthropic",
+        "model_id": "kimi-k2.5",
+    }
 
 
 @_async_test
@@ -1103,6 +1112,7 @@ async def test_session_summary_searches_all_messages_and_uses_message_modified_t
     )
     await first.append_message(
         AssistantMessage(
+            endpoint="test-endpoint",
             role="assistant",
             content=[TextPart(type="text", text="middle-only searchable needle")],
             api="anthropic-messages",

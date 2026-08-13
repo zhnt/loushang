@@ -49,6 +49,7 @@ def test_prompt_command_renders_stable_transcript_and_worked() -> None:
         async def prompt(self, user_input: str, images=None) -> None:
             del user_input, images
             assistant = AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="done")],
                 api="anthropic-messages",
@@ -149,9 +150,7 @@ def test_prompt_plan_command_preserves_transcript_and_uses_one_work_run() -> Non
             SessionWorkTurn(
                 "inspect", plan_id="plan-1", step_id="step-1", step_index=0
             ),
-            SessionWorkTurn(
-                "verify", plan_id="plan-1", step_id="step-2", step_index=1
-            ),
+            SessionWorkTurn("verify", plan_id="plan-1", step_id="step-2", step_index=1),
         )
         stdout = StringIO()
 
@@ -196,7 +195,9 @@ def test_prompt_command_selects_usable_model_before_prompt() -> None:
 
     class FakeSession:
         def __init__(self) -> None:
-            self.current_model = ModelSelection(provider="unknown", model_id="unknown")
+            self.current_model = ModelSelection(
+                endpoint_id="test-endpoint", provider="unknown", model_id="unknown"
+            )
             self.set_model_calls = []
             self.listeners = []
             self.prompt_calls = []
@@ -210,7 +211,9 @@ def test_prompt_command_selects_usable_model_before_prompt() -> None:
         async def set_model(self, selection):
             self.set_model_calls.append(selection)
             self.current_model = ModelSelection(
-                provider=selection.provider_id, model_id=selection.id
+                endpoint_id="test-endpoint",
+                provider=selection.provider_id,
+                model_id=selection.id,
             )
 
         def subscribe(self, listener):
@@ -240,7 +243,14 @@ def test_prompt_command_selects_usable_model_before_prompt() -> None:
         assert exit_code == 0
         assert session.set_model_calls == [kimi]
         assert session.prompt_calls == [
-            ("hello", ModelSelection(provider="kimi-code", model_id="kimi-for-coding"))
+            (
+                "hello",
+                ModelSelection(
+                    endpoint_id="test-endpoint",
+                    provider="kimi-code",
+                    model_id="kimi-for-coding",
+                ),
+            )
         ]
 
     asyncio.run(scenario())

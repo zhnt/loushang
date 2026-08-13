@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -26,6 +26,7 @@ from loushang.ontology.schema import (
     OntologyCompiler,
     OntologyPackageDraft,
     PropertyDefinition,
+    SchemaIdentity,
     StateAuthority,
     ValueType,
 )
@@ -34,6 +35,11 @@ from loushang.ontology.storage import MemoryFactStore
 ASSET_ID = UUID("00000000-0000-0000-0000-000000000001")
 OWNER_ID = UUID("00000000-0000-0000-0000-000000000002")
 OTHER_ID = UUID("00000000-0000-0000-0000-000000000003")
+DEFAULT_SCHEMA_IDENTITY = SchemaIdentity(
+    "test.fact-projection",
+    "urn:test:fact-projection",
+    "1.0.0",
+)
 
 
 def _schema():
@@ -107,6 +113,7 @@ def _fact(
     return FactRecord(
         fact_id=UUID(f"10000000-0000-0000-0000-{suffix:012d}"),
         subject_id=subject_id,
+        schema_identity=DEFAULT_SCHEMA_IDENTITY,
         assertion=assertion,  # type: ignore[arg-type]
         assertion_kind=AssertionKind.ASSERTED,
         source_ref=source_ref,
@@ -118,25 +125,34 @@ def _fact(
 
 def _complete_facts() -> list[FactRecord]:
     return [
-        _fact(1, ASSET_ID, ObjectAssertion("Asset")),
-        _fact(2, ASSET_ID, PropertyAssertion("code", "A-1")),
-        _fact(3, ASSET_ID, PropertyAssertion("score", 7)),
+        _fact(1, ASSET_ID, ObjectAssertion("asset")),
+        _fact(2, ASSET_ID, PropertyAssertion("asset.code", "A-1")),
+        _fact(3, ASSET_ID, PropertyAssertion("asset.score", 7)),
         _fact(
             4,
             ASSET_ID,
-            PropertyAssertion("observed_at", "2026-08-09T00:00:00+00:00"),
+            PropertyAssertion("asset.observed_at", "2026-08-09T00:00:00+00:00"),
         ),
-        _fact(5, OWNER_ID, ObjectAssertion("Owner")),
-        _fact(6, ASSET_ID, LinkAssertion("owned_by", OWNER_ID, {"source": "erp"})),
+        _fact(5, OWNER_ID, ObjectAssertion("owner")),
+        _fact(
+            6,
+            ASSET_ID,
+            LinkAssertion("asset.owned_by", OWNER_ID, {"source": "erp"}),
+        ),
     ]
 
 
 def _materialize(records: list[FactRecord], *, schema=None):
+    selected_schema = _schema() if schema is None else schema
+    schema_identity = SchemaIdentity.from_schema(selected_schema)
+    selected_records = [
+        replace(record, schema_identity=schema_identity) for record in records
+    ]
     store = MemoryFactStore()
-    store.commit_fact_batch(FactBatch("fixture", records))
+    store.commit_fact_batch(FactBatch("fixture", selected_records))
     return materialize_projection(
         store.select_facts(valid_at=20, recorded_at=20),
-        _schema() if schema is None else schema,
+        selected_schema,
     )
 
 
@@ -166,9 +182,72 @@ def test_materializer_builds_an_immutable_reproducible_snapshot() -> None:
         asset.object_type = "Changed"  # type: ignore[misc]
 
 
+def test_fact_semantic_ids_survive_api_name_changes() -> None:
+    renamed_schema = OntologyCompiler().compile(
+        OntologyPackageDraft(
+            package_id="test.fact-projection",
+            namespace="urn:test:fact-projection",
+            version="1.0.0",
+            object_types=[
+                ObjectTypeDefinition(
+                    "Equipment",
+                    semantic_id="asset",
+                    state_authority=StateAuthority.ONTOLOGY_OWNED,
+                    properties=[
+                        PropertyDefinition(
+                            "serial_number",
+                            ValueType.STRING,
+                            semantic_id="asset.code",
+                            state_authority=StateAuthority.ONTOLOGY_OWNED,
+                        )
+                    ],
+                )
+            ],
+        )
+    )
+
+    snapshot = _materialize(
+        [
+            _fact(1, ASSET_ID, ObjectAssertion("asset")),
+            _fact(2, ASSET_ID, PropertyAssertion("asset.code", "A-1")),
+        ],
+        schema=renamed_schema,
+    )
+
+    asset = snapshot.get(ASSET_ID)
+    assert asset is not None
+    assert asset.object_type == "Equipment"
+    assert asset.get("serial_number") == "A-1"
+
+
+def test_materializer_rejects_facts_for_another_schema_identity() -> None:
+    foreign_fact = replace(
+        _fact(1, ASSET_ID, ObjectAssertion("asset")),
+        schema_identity=SchemaIdentity(
+            "test.other-fact-projection",
+            "urn:test:other-fact-projection",
+            "1.0.0",
+        ),
+    )
+    store = MemoryFactStore()
+    store.commit_fact_batch(FactBatch("foreign", [foreign_fact]))
+
+    with pytest.raises(ProjectionMaterializationError) as exc_info:
+        materialize_projection(
+            store.select_facts(valid_at=20, recorded_at=20),
+            _schema(),
+        )
+
+    assert {item.code for item in exc_info.value.diagnostics} == {
+        "fact_schema_identity_mismatch"
+    }
+
+
 def test_projection_json_values_are_detached_and_deterministic() -> None:
     records = _complete_facts()
-    records.append(_fact(7, ASSET_ID, PropertyAssertion("payload", {"items": [1]})))
+    records.append(
+        _fact(7, ASSET_ID, PropertyAssertion("asset.payload", {"items": [1]}))
+    )
     first = _materialize(records)
     second = _materialize(list(reversed(records)))
 
@@ -188,7 +267,7 @@ def test_projection_rejects_conflicting_or_orphaned_facts() -> None:
         _fact(
             7,
             ASSET_ID,
-            PropertyAssertion("score", 9),
+            PropertyAssertion("asset.score", 9),
             source_ref="source.other",
         )
     )
@@ -199,7 +278,7 @@ def test_projection_rejects_conflicting_or_orphaned_facts() -> None:
     }
 
     with pytest.raises(ProjectionMaterializationError) as orphan:
-        _materialize([_fact(1, ASSET_ID, PropertyAssertion("score", 1))])
+        _materialize([_fact(1, ASSET_ID, PropertyAssertion("asset.score", 1))])
     assert {item.code for item in orphan.value.diagnostics} == {
         "property_subject_missing"
     }
@@ -207,10 +286,10 @@ def test_projection_rejects_conflicting_or_orphaned_facts() -> None:
 
 def test_projection_reports_shape_property_and_endpoint_failures_together() -> None:
     records = [
-        _fact(1, ASSET_ID, ObjectAssertion("Asset")),
-        _fact(2, ASSET_ID, ObjectAssertion("Owner"), source_ref="source.other"),
-        _fact(3, OWNER_ID, ObjectAssertion("Unknown")),
-        _fact(4, OTHER_ID, PropertyAssertion("orphan", 1)),
+        _fact(1, ASSET_ID, ObjectAssertion("asset")),
+        _fact(2, ASSET_ID, ObjectAssertion("owner"), source_ref="source.other"),
+        _fact(3, OWNER_ID, ObjectAssertion("unknown")),
+        _fact(4, OTHER_ID, PropertyAssertion("unknown.orphan", 1)),
         _fact(5, ASSET_ID, LinkAssertion("unknown", OWNER_ID)),
     ]
     with pytest.raises(ProjectionMaterializationError) as exc_info:
@@ -294,7 +373,7 @@ def test_projection_validates_schema_value_types(
         )
     )
     records = [
-        _fact(1, ASSET_ID, ObjectAssertion("Value")),
+        _fact(1, ASSET_ID, ObjectAssertion("value-object")),
         _fact(2, ASSET_ID, PropertyAssertion("value", value)),
     ]
 
@@ -339,11 +418,11 @@ def test_projection_enforces_required_unique_abstract_and_inherited_properties()
         )
     )
     records = [
-        _fact(1, ASSET_ID, ObjectAssertion("Asset")),
-        _fact(2, OWNER_ID, ObjectAssertion("Asset")),
-        _fact(3, ASSET_ID, PropertyAssertion("code", "same")),
-        _fact(4, OWNER_ID, PropertyAssertion("code", "same")),
-        _fact(5, OTHER_ID, ObjectAssertion("Base")),
+        _fact(1, ASSET_ID, ObjectAssertion("asset")),
+        _fact(2, OWNER_ID, ObjectAssertion("asset")),
+        _fact(3, ASSET_ID, PropertyAssertion("base.code", "same")),
+        _fact(4, OWNER_ID, PropertyAssertion("base.code", "same")),
+        _fact(5, OTHER_ID, ObjectAssertion("base")),
     ]
 
     with pytest.raises(ProjectionMaterializationError) as exc_info:
@@ -401,16 +480,20 @@ def test_projection_enforces_link_cardinality(
         )
     )
     records = [
-        _fact(1, ASSET_ID, ObjectAssertion("Source")),
-        _fact(2, OTHER_ID, ObjectAssertion("Source")),
-        _fact(3, OWNER_ID, ObjectAssertion("Target")),
-        _fact(4, target_2, ObjectAssertion("Target")),
-        _fact(5, ASSET_ID, LinkAssertion("relates", OWNER_ID)),
+        _fact(1, ASSET_ID, ObjectAssertion("source")),
+        _fact(2, OTHER_ID, ObjectAssertion("source")),
+        _fact(3, OWNER_ID, ObjectAssertion("target")),
+        _fact(4, target_2, ObjectAssertion("target")),
+        _fact(5, ASSET_ID, LinkAssertion("source.relates", OWNER_ID)),
     ]
     if second_source:
-        records.append(_fact(6, OTHER_ID, LinkAssertion("relates", OWNER_ID)))
+        records.append(
+            _fact(6, OTHER_ID, LinkAssertion("source.relates", OWNER_ID))
+        )
     if second_target:
-        records.append(_fact(7, ASSET_ID, LinkAssertion("relates", target_2)))
+        records.append(
+            _fact(7, ASSET_ID, LinkAssertion("source.relates", target_2))
+        )
 
     if should_fail:
         with pytest.raises(ProjectionMaterializationError) as exc_info:
@@ -453,7 +536,7 @@ def test_projection_enforces_required_links() -> None:
 
     with pytest.raises(ProjectionMaterializationError) as exc_info:
         _materialize(
-            [_fact(1, ASSET_ID, ObjectAssertion("Source"))],
+            [_fact(1, ASSET_ID, ObjectAssertion("source"))],
             schema=schema,
         )
 

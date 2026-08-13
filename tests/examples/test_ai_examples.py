@@ -191,6 +191,7 @@ def test_usage_online_example_prints_unknown_cost(capsys, monkeypatch) -> None:
             content=[TextPart(type="text", text="ok")],
             api="openai-completions",
             provider="moonshot",
+            endpoint="test-endpoint",
             model="kimi-k2.6",
             response_id="resp_1",
             usage=Usage(
@@ -370,6 +371,7 @@ def test_openai_codex_import_example_calls_public_responses_path(
                 content=[TextPart(type="text", text="ok")],
                 api="openai-responses",
                 provider="openai",
+                endpoint="test-endpoint",
                 model="gpt-5.5",
                 response_id="resp_1",
                 usage=None,

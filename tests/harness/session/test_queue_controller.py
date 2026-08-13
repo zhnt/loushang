@@ -9,6 +9,7 @@ from loushang.harness.session import QueueController
 
 def _assistant_message() -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="done")],
         api="anthropic-messages",

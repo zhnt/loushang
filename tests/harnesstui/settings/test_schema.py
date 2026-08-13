@@ -62,7 +62,9 @@ def test_apply_boolean_setting_parses_and_applies_with_product_copy(value: str) 
     assert manager.calls == [True]
 
 
-def test_apply_boolean_setting_preserves_unmatched_invalid_and_unavailable_states() -> None:
+def test_apply_boolean_setting_preserves_unmatched_invalid_and_unavailable_states() -> (
+    None
+):
     manager = _Manager()
 
     unmatched = apply_boolean_setting(

@@ -7,7 +7,6 @@ import pytest
 
 from loushang.ai.model import (
     AmbiguousModelReference,
-    AmbiguousPreferredModelReference,
     Auth,
     Defaults,
     Endpoint,
@@ -62,18 +61,17 @@ def _registry() -> ModelRegistry:
     )
 
 
-def test_registry_resolves_explicit_provider_and_api_refs() -> None:
+def test_registry_resolves_only_unambiguous_shorthand_refs() -> None:
     registry = _registry()
 
     assert (
         format_model_ref(resolve_model_ref(registry, "custom:preferred:shared"))
         == "custom:preferred:shared"
     )
-    assert resolve_model_ref(registry, "custom/shared").endpoint_id == "preferred"
-    assert (
-        resolve_model_ref(registry, "shared", provider="custom").endpoint_id
-        == "preferred"
-    )
+    with pytest.raises(AmbiguousModelReference):
+        resolve_model_ref(registry, "custom/shared")
+    with pytest.raises(AmbiguousModelReference):
+        resolve_model_ref(registry, "shared", provider="custom")
     assert (
         resolve_model_ref(
             registry,
@@ -108,7 +106,7 @@ def test_registry_reports_ambiguous_refs() -> None:
     assert registry.find_model("shared") is None
 
 
-def test_registry_reports_ambiguous_preferred_refs() -> None:
+def test_registry_does_not_use_preferred_metadata_to_break_ambiguity() -> None:
     registry = ModelRegistry.from_providers(
         {
             "custom": Provider(
@@ -121,8 +119,13 @@ def test_registry_reports_ambiguous_preferred_refs() -> None:
         }
     )
 
-    with pytest.raises(AmbiguousPreferredModelReference):
+    with pytest.raises(AmbiguousModelReference) as exc_info:
         resolve_model_ref(registry, "shared", provider="custom")
+
+    assert exc_info.value.candidates == (
+        "custom:a:shared",
+        "custom:b:shared",
+    )
 
 
 def test_registry_is_constructed_once_and_exposes_queries_only() -> None:

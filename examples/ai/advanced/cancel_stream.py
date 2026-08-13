@@ -6,7 +6,7 @@ import asyncio
 import json
 
 from loushang.ai import CallOptions, Model, stream
-from loushang.ai.advanced.registry import clear_api_providers, register_api_provider
+from loushang.ai.advanced.registry import clear_api_adapters, register_api_adapter
 from loushang.ai.model import Auth, Capabilities
 from loushang.ai.provider import ProviderRequest
 
@@ -32,8 +32,8 @@ class _SlowProvider:
 async def inspect_stream_cancellation() -> dict[str, object]:
     provider = _SlowProvider()
     signal = asyncio.Event()
-    clear_api_providers()
-    register_api_provider(provider)
+    clear_api_adapters()
+    register_api_adapter(provider)
     event_stream = await stream(
         _build_model(),
         {"messages": []},

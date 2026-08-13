@@ -102,9 +102,12 @@ def test_context_section_projectors_validate_neutral_payload_shapes() -> None:
     assert project_context_branch_summary_payload(
         SimpleNamespace(summary="branch context")
     ) == ContextCompactionRecord(summary="branch context")
-    assert project_context_compaction_payload(
-        SimpleNamespace(summary="bad", tokens_before="many")
-    ) is None
+    assert (
+        project_context_compaction_payload(
+            SimpleNamespace(summary="bad", tokens_before="many")
+        )
+        is None
+    )
     assert project_context_branch_summary_payload(SimpleNamespace()) is None
 
 

@@ -12,7 +12,7 @@ from loushang.ai import (
     StructuredOutputOptions,
     complete_structured,
 )
-from loushang.ai.api_registry import get_default_api_provider_registry
+from loushang.ai.api_registry import get_default_api_registry
 from loushang.ai.context import NormalizedContext
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model import Capabilities, Endpoint, Model, ModelRegistry, Provider
@@ -32,6 +32,7 @@ def _assistant_json(text: str) -> AssistantMessage:
         content=[TextPart(type="text", text=text)],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id="resp_1",
         usage=Usage(
@@ -153,9 +154,9 @@ def test_complete_structured_returns_raw_and_parsed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     provider = _StructuredProvider()
-    registry = get_default_api_provider_registry()
-    registry.clear_api_providers()
-    registry.register_api_provider(provider)
+    registry = get_default_api_registry()
+    registry.clear_api_adapters()
+    registry.register_api_adapter(provider)
     _patch_resolved_request(monkeypatch, api="openai-responses")
 
     result = asyncio.run(
@@ -176,9 +177,9 @@ def test_complete_structured_uses_provider_declared_mapping_support(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     provider = _StructuredProvider(api="custom-structured")
-    registry = get_default_api_provider_registry()
-    registry.clear_api_providers()
-    registry.register_api_provider(provider)
+    registry = get_default_api_registry()
+    registry.clear_api_adapters()
+    registry.register_api_adapter(provider)
     _patch_resolved_request(monkeypatch, api="custom-structured")
 
     result = asyncio.run(
@@ -198,9 +199,9 @@ def test_complete_structured_rejects_provider_without_mapping_support(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     provider = _StructuredProvider(api="openai-responses", supports_mapping=False)
-    registry = get_default_api_provider_registry()
-    registry.clear_api_providers()
-    registry.register_api_provider(provider)
+    registry = get_default_api_registry()
+    registry.clear_api_adapters()
+    registry.register_api_adapter(provider)
     _patch_resolved_request(monkeypatch, api="openai-responses")
 
     with pytest.raises(

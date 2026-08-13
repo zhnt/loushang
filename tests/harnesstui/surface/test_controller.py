@@ -346,9 +346,7 @@ def test_screen_surface_coordinator_queues_approvals_fifo() -> None:
     assert getattr(current.content, "action_id") == "approval-2"
 
     asyncio.run(
-        coordinator.handle_intent(
-            InputIntent(kind="approval_decision", text="deny")
-        )
+        coordinator.handle_intent(InputIntent(kind="approval_decision", text="deny"))
     )
 
     assert [decision.action_id for decision in decisions] == [

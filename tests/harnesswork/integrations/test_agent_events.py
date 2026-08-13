@@ -77,6 +77,7 @@ def test_project_messages_with_existing_ai_codecs() -> None:
     )
 
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="hello")],
         api="responses",
@@ -125,6 +126,7 @@ def test_project_messages_with_existing_ai_codecs() -> None:
         ],
         "api": "responses",
         "provider": "example",
+        "endpoint": "test-endpoint",
         "model": "example-1",
         "responseId": "response-1",
         "usage": {

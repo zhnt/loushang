@@ -50,6 +50,7 @@ def _assistant_text_message(text: str) -> AssistantMessage:
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
         provider="offline",
+        endpoint="offline",
         model="offline-demo-model",
         response_id=None,
         usage=_usage(),
@@ -59,14 +60,30 @@ def _assistant_text_message(text: str) -> AssistantMessage:
     )
 
 
-def _stream_with_final_message(message: AssistantMessage) -> AssistantMessageEventStream:
+def _stream_with_final_message(
+    message: AssistantMessage,
+) -> AssistantMessageEventStream:
     stream = AssistantMessageEventStream()
 
     async def _feed() -> None:
         stream.push({"type": "start", "partial": message})
         stream.push({"type": "text_start", "content_index": 0, "partial": message})
-        stream.push({"type": "text_delta", "content_index": 0, "delta": message.content[0].text, "partial": message})
-        stream.push({"type": "text_end", "content_index": 0, "content": message.content[0].text, "partial": message})
+        stream.push(
+            {
+                "type": "text_delta",
+                "content_index": 0,
+                "delta": message.content[0].text,
+                "partial": message,
+            }
+        )
+        stream.push(
+            {
+                "type": "text_end",
+                "content_index": 0,
+                "content": message.content[0].text,
+                "partial": message,
+            }
+        )
         stream.push({"type": "done", "reason": message.stop_reason, "message": message})  # type: ignore[typeddict-item]
 
     asyncio.create_task(_feed())
@@ -78,11 +95,15 @@ async def _stream_fn(model, context, options=None):
     last_message = context.messages[-1] if context.messages else None
     if isinstance(last_message, UserMessage):
         user_text = " ".join(
-            part.text for part in last_message.content if getattr(part, "type", None) == "text"
+            part.text
+            for part in last_message.content
+            if getattr(part, "type", None) == "text"
         )
     else:
         user_text = "unknown"
-    return _stream_with_final_message(_assistant_text_message(f"Offline assistant reply to: {user_text}"))
+    return _stream_with_final_message(
+        _assistant_text_message(f"Offline assistant reply to: {user_text}")
+    )
 
 
 def _print_messages(session) -> None:
@@ -126,7 +147,9 @@ async def main() -> None:
         _print_messages(restored)
         print()
 
-        await restored.prompt("第二轮：请继续这个已经恢复的会话，并确认你看到了前一轮消息。")
+        await restored.prompt(
+            "第二轮：请继续这个已经恢复的会话，并确认你看到了前一轮消息。"
+        )
         print("Messages after continuing restored session:")
         _print_messages(restored)
         print()

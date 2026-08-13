@@ -75,6 +75,7 @@ class RawAssembler:
         stream: AssistantMessageEventStream,
         api: str,
         provider: str,
+        endpoint: str,
         model: str,
         pricing=None,
         clock: Callable[[], float] = time,
@@ -82,6 +83,7 @@ class RawAssembler:
         self._stream = stream
         self._api = api
         self._provider = provider
+        self._endpoint = endpoint
         self._model = model
         self._pricing = pricing
         self._clock = clock
@@ -408,6 +410,7 @@ class RawAssembler:
                 response_error_part,
                 source=self._api,
                 provider=self._provider,
+                endpoint=self._endpoint,
                 model=self._model,
             )
             message = self._build_message(
@@ -530,6 +533,7 @@ class RawAssembler:
             content=self._build_content(),
             api=self._api,
             provider=self._provider,
+            endpoint=self._endpoint,
             model=self._model,
             response_id=self._response_id,
             usage=self._usage,

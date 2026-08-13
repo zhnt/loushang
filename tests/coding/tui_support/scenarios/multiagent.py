@@ -817,6 +817,7 @@ class _SharedSession:
             (
                 UserMessage(role="user", content=text, timestamp=0),
                 AssistantMessage(
+                    endpoint="test-endpoint",
                     role="assistant",
                     content=[
                         TextPart(
@@ -1724,6 +1725,7 @@ class _ApprovalPlaybackSession:
             (
                 UserMessage(role="user", content=prompt, timestamp=0),
                 AssistantMessage(
+                    endpoint="test-endpoint",
                     role="assistant",
                     content=[
                         TextPart(

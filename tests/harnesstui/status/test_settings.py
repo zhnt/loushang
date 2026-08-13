@@ -29,12 +29,28 @@ def test_statusline_rows_are_product_neutral_view_data() -> None:
 
 
 def test_next_statusline_value_preserves_existing_cycles() -> None:
-    assert shared_settings.next_statusline_value("statusline.enabled", "true") == "false"
-    assert shared_settings.next_statusline_value("statusline.field.queue", "auto") == "true"
-    assert shared_settings.next_statusline_value("statusline.field.queue", "true") == "false"
-    assert shared_settings.next_statusline_value("statusline.field.queue", "false") == "auto"
-    assert shared_settings.next_statusline_value("statusline.separator", "pipe") == "dot"
-    assert shared_settings.next_statusline_value("statusline.style", "plain") == "codex-like"
+    assert (
+        shared_settings.next_statusline_value("statusline.enabled", "true") == "false"
+    )
+    assert (
+        shared_settings.next_statusline_value("statusline.field.queue", "auto")
+        == "true"
+    )
+    assert (
+        shared_settings.next_statusline_value("statusline.field.queue", "true")
+        == "false"
+    )
+    assert (
+        shared_settings.next_statusline_value("statusline.field.queue", "false")
+        == "auto"
+    )
+    assert (
+        shared_settings.next_statusline_value("statusline.separator", "pipe") == "dot"
+    )
+    assert (
+        shared_settings.next_statusline_value("statusline.style", "plain")
+        == "codex-like"
+    )
 
 
 def test_statusline_page_keeps_preview_layout() -> None:

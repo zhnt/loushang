@@ -61,6 +61,7 @@ class AssistantMessage:
     content: list[TextPart | ThinkingPart | ToolCall | ImagePart]
     api: str
     provider: str
+    endpoint: str
     model: str
     response_id: str | None
     usage: Usage
@@ -68,6 +69,13 @@ class AssistantMessage:
     error_message: str | None
     timestamp: float
     response_model: str | None = None
+
+    def __post_init__(self) -> None:
+        for field_name in ("api", "provider", "endpoint", "model"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"AssistantMessage.{field_name} must be non-empty")
+            object.__setattr__(self, field_name, value.strip())
 
 
 @dataclass(frozen=True)

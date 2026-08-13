@@ -12,6 +12,7 @@ from loushang.ontology.facts.model import FactBatch, FactRecord, FactValidationE
 from loushang.ontology.facts.ports import (
     FactBatchConflictError,
     FactCommit,
+    FactWatermarkConflictError,
     StoredFact,
 )
 
@@ -46,6 +47,11 @@ def prepare_fact_commit(
         raise FactValidationError("commit_fact_batch requires a FactBatch")
     existing_entries = tuple(current_facts)
     validate_fact_journal(existing_entries, committed_batches)
+    existing_identities = {item.fact.schema_identity for item in existing_entries}
+    if existing_identities and batch.schema_identity not in existing_identities:
+        raise FactValidationError(
+            "FactStore cannot mix complete schema identities in one journal"
+        )
     digest = batch.content_digest
     existing_batch = committed_batches.get(batch.batch_id)
     if existing_batch is not None:
@@ -112,6 +118,39 @@ def prepare_fact_commit(
     )
 
 
+def prepare_guarded_fact_commit(
+    batch: FactBatch,
+    *,
+    expected_watermark: int,
+    current_facts: Iterable[StoredFact],
+    committed_batches: Mapping[str, CommittedFactBatch],
+) -> PreparedFactCommit:
+    """Plan one conditional commit with idempotent replay before the guard."""
+
+    expected_watermark = require_sequence(
+        "expected_watermark",
+        expected_watermark,
+    )
+    if not isinstance(batch, FactBatch):
+        raise FactValidationError("commit_fact_batch_guarded requires a FactBatch")
+    existing_entries = tuple(current_facts)
+    validate_fact_journal(existing_entries, committed_batches)
+    if batch.batch_id in committed_batches:
+        return prepare_fact_commit(
+            batch,
+            current_facts=existing_entries,
+            committed_batches=committed_batches,
+        )
+    actual_watermark = len(existing_entries)
+    if expected_watermark != actual_watermark:
+        raise FactWatermarkConflictError(expected_watermark, actual_watermark)
+    return prepare_fact_commit(
+        batch,
+        current_facts=existing_entries,
+        committed_batches=committed_batches,
+    )
+
+
 def select_facts_as_of(
     facts: Iterable[StoredFact],
     *,
@@ -123,6 +162,10 @@ def select_facts_as_of(
     valid_at = require_timestamp("valid_at", valid_at)
     recorded_at = require_timestamp("recorded_at", recorded_at)
     entries = tuple(facts)
+    if len({entry.fact.schema_identity for entry in entries}) > 1:
+        raise FactValidationError(
+            "stored Fact journal mixes complete schema identities"
+        )
     retired = {
         predecessor
         for item in entries
@@ -145,6 +188,10 @@ def validate_fact_journal(
     """Validate persisted journal continuity, lineage, and batch coverage."""
 
     entries = tuple(facts)
+    if len({entry.fact.schema_identity for entry in entries}) > 1:
+        raise FactValidationError(
+            "stored Fact journal mixes complete schema identities"
+        )
     known: dict[UUID, StoredFact] = {}
     successors: dict[UUID, UUID] = {}
     for expected_sequence, entry in enumerate(entries, start=1):
@@ -203,6 +250,8 @@ def validate_fact_journal(
 
 
 def validate_fact_lineage(predecessor: FactRecord, successor: FactRecord) -> None:
+    if predecessor.schema_identity != successor.schema_identity:
+        raise FactValidationError("fact lineage must preserve its schema identity")
     predecessor_coordinate = predecessor.lineage_coordinate
     successor_coordinate = successor.lineage_coordinate
     if predecessor_coordinate[:4] != successor_coordinate[:4]:
@@ -234,6 +283,7 @@ __all__ = [
     "CommittedFactBatch",
     "PreparedFactCommit",
     "prepare_fact_commit",
+    "prepare_guarded_fact_commit",
     "require_sequence",
     "require_timestamp",
     "select_facts_as_of",

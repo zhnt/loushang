@@ -83,11 +83,7 @@ def record_default_model_unavailable(
 ) -> None:
     """Record the standard startup diagnostic for an unavailable model."""
 
-    selection_ref = (
-        f"{selection.provider}:{selection.endpoint_id}:{selection.model_id}"
-        if selection.endpoint_id
-        else f"{selection.provider}:{selection.model_id}"
-    )
+    selection_ref = f"{selection.provider}:{selection.endpoint_id}:{selection.model_id}"
     message = f"Default model unavailable: {selection_ref}; using startup fallback."
     diagnostics_service.record(
         diagnostics_service.normalize_error(
@@ -116,16 +112,10 @@ def classify_model_resolution_failure(
 ) -> str:
     """Return the stable reason used by session diagnostics and hosts."""
 
-    if selection.endpoint_id:
-        endpoint = (
-            endpoint_lookup(selection.provider, selection.endpoint_id)
-            if endpoint_lookup is not None
-            else None
-        )
-        return "missing" if endpoint is not None else "endpoint_unavailable"
-    if isinstance(error, ValueError):
-        return "ambiguous"
-    return "missing"
+    if endpoint_lookup is None:
+        return "missing"
+    endpoint = endpoint_lookup(selection.provider, selection.endpoint_id)
+    return "missing" if endpoint is not None else "endpoint_unavailable"
 
 
 def split_model_thinking_pattern(pattern: str) -> tuple[str, str | None]:
@@ -159,10 +149,9 @@ def scoped_models_from_patterns(
             continue
         model_payload: dict[str, object] = {
             "provider": selection.provider,
+            "endpoint_id": selection.endpoint_id,
             "model_id": selection.model_id,
         }
-        if selection.endpoint_id:
-            model_payload["endpoint_id"] = selection.endpoint_id
         scoped: dict[str, object] = {"model": model_payload}
         if thinking_level is not None:
             scoped[thinking_key] = thinking_level

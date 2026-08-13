@@ -56,11 +56,17 @@ class RecordingTerminalMode:
 class ModelPlaybackSession:
     def __init__(self) -> None:
         self.current_model = ModelSelection(
-            provider="moonshot", model_id="kimi-for-coding"
+            endpoint_id="test-endpoint", provider="moonshot", model_id="kimi-for-coding"
         )
         self.models = [
-            ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
-            ModelSelection(provider="openai", model_id="gpt-5.4"),
+            ModelSelection(
+                endpoint_id="test-endpoint",
+                provider="moonshot",
+                model_id="kimi-for-coding",
+            ),
+            ModelSelection(
+                endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
+            ),
         ]
 
     def get_model_selection(self) -> ModelSelection:

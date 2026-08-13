@@ -40,6 +40,7 @@ def _model(model_id: str = "one", *, reasoning: bool = True) -> Model:
 
 def _assistant(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="responses",
@@ -180,7 +181,11 @@ def test_selection_runtime_uses_product_catalog_but_owns_persisted_state() -> No
 
         def list_models(self) -> list[ModelSelection]:
             return [
-                ModelSelection(provider=model.provider_id, model_id=model.id)
+                ModelSelection(
+                    endpoint_id=model.endpoint_id,
+                    provider=model.provider_id,
+                    model_id=model.id,
+                )
                 for model in self.models
             ]
 
@@ -216,7 +221,9 @@ def test_selection_runtime_uses_product_catalog_but_owns_persisted_state() -> No
             active_thinking = level
 
         selection = runtime.cycle_model_selection()
-        assert selection == ModelSelection(provider="test", model_id="two")
+        assert selection == ModelSelection(
+            endpoint_id="responses", provider="test", model_id="two"
+        )
         assert selection is not None
         await runtime.apply_model(runtime.resolve_model(selection))
         await runtime.set_thinking_level("high")
@@ -224,7 +231,11 @@ def test_selection_runtime_uses_product_catalog_but_owns_persisted_state() -> No
         assert active_model == second
         assert active_thinking == "high"
         context = session.build_context()
-        assert context.model == {"provider": "test", "model_id": "two"}
+        assert context.model == {
+            "provider": "test",
+            "endpoint_id": "responses",
+            "model_id": "two",
+        }
         assert context.thinking_level == "high"
 
     asyncio.run(scenario())

@@ -7,6 +7,7 @@ from typing import TypeAlias
 from uuid import UUID
 
 from loushang.ontology.projection import ProjectionState
+from loushang.ontology.schema import SchemaIdentity
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,16 +90,20 @@ QueryStep: TypeAlias = (
 @dataclass(frozen=True, slots=True)
 class QueryRequest:
     steps: tuple[QueryStep, ...] = field(default_factory=tuple)
-    schema_version: str | None = None
+    schema_identity: SchemaIdentity | None = None
 
     def __init__(
         self,
         *,
         steps: tuple[QueryStep, ...] | list[QueryStep] = (),
-        schema_version: str | None = None,
+        schema_identity: SchemaIdentity | None = None,
     ) -> None:
+        if schema_identity is not None and not isinstance(
+            schema_identity, SchemaIdentity
+        ):
+            raise TypeError("schema_identity must be a SchemaIdentity")
         object.__setattr__(self, "steps", tuple(steps))
-        object.__setattr__(self, "schema_version", schema_version)
+        object.__setattr__(self, "schema_identity", schema_identity)
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,7 +115,7 @@ class QueryDiagnostic:
 @dataclass(frozen=True, slots=True)
 class QueryResult:
     object_ids: tuple[UUID, ...]
-    schema_version: str | None
+    schema_identity: SchemaIdentity
     projection: ProjectionState
     diagnostics: tuple[QueryDiagnostic, ...] = ()
 

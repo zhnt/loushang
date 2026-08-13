@@ -8,83 +8,85 @@ from loushang.ai.provider.protocol import ProviderRequest, ProviderRequestValida
 from loushang.ai.provider.runtime import start_provider_runtime
 
 
-def validate_provider_invoke_raw_contract(provider: Any) -> None:
-    method = getattr(provider, "invoke_raw", None)
+def validate_api_adapter_invoke_raw_contract(adapter: Any) -> None:
+    method = getattr(adapter, "invoke_raw", None)
     if not callable(method):
-        raise TypeError("Provider missing required invoke_raw method")
+        raise TypeError("API adapter missing required invoke_raw method")
     try:
         signature = inspect.signature(method)
     except (TypeError, ValueError):
-        raise TypeError("Provider invoke_raw signature is not inspectable") from None
+        raise TypeError("API adapter invoke_raw signature is not inspectable") from None
 
     parameters = list(signature.parameters.values())
     if len(parameters) != 1:
-        raise TypeError("Provider invoke_raw must accept exactly one ProviderRequest")
+        raise TypeError(
+            "API adapter invoke_raw must accept exactly one ProviderRequest"
+        )
     parameter = parameters[0]
     if parameter.kind not in (
         inspect.Parameter.POSITIONAL_ONLY,
         inspect.Parameter.POSITIONAL_OR_KEYWORD,
     ):
-        raise TypeError("Provider invoke_raw request must be a positional parameter")
+        raise TypeError("API adapter invoke_raw request must be a positional parameter")
 
 
-def validate_provider_request_validator_contract(provider: Any) -> None:
-    method = getattr(provider, "validate_request", None)
+def validate_api_adapter_request_validator_contract(adapter: Any) -> None:
+    method = getattr(adapter, "validate_request", None)
     if method is None:
         return
     if not callable(method):
-        raise TypeError("Provider validate_request must be callable")
+        raise TypeError("API adapter validate_request must be callable")
     try:
         signature = inspect.signature(method)
     except (TypeError, ValueError):
         raise TypeError(
-            "Provider validate_request signature is not inspectable"
+            "API adapter validate_request signature is not inspectable"
         ) from None
 
     parameters = list(signature.parameters.values())
     if len(parameters) != 1:
         raise TypeError(
-            "Provider validate_request must accept exactly one ProviderRequest"
+            "API adapter validate_request must accept exactly one ProviderRequest"
         )
     parameter = parameters[0]
     if parameter.kind not in (
         inspect.Parameter.POSITIONAL_ONLY,
         inspect.Parameter.POSITIONAL_OR_KEYWORD,
     ):
-        raise TypeError("Provider validate_request request must be positional")
+        raise TypeError("API adapter validate_request request must be positional")
 
 
-def validate_provider_request(provider: Any, request: ProviderRequest) -> None:
-    if isinstance(provider, ProviderRequestValidator):
-        provider.validate_request(request)
+def validate_provider_request(adapter: Any, request: ProviderRequest) -> None:
+    if isinstance(adapter, ProviderRequestValidator):
+        adapter.validate_request(request)
 
 
-def _call_provider_raw_parts(
-    provider: Any,
+def _call_adapter_raw_parts(
+    adapter: Any,
     request: ProviderRequest,
 ):
     if not isinstance(request.context, NormalizedContext):
         raise TypeError("ProviderRequest.context must be NormalizedContext")
-    return provider.invoke_raw(request)
+    return adapter.invoke_raw(request)
 
 
-async def call_api_provider_stream(
-    provider: Any,
+async def call_api_adapter_stream(
+    adapter: Any,
     request: ProviderRequest,
 ):
-    invoke_raw_method = getattr(provider, "invoke_raw", None)
-    if request.model.api != provider.api:
+    invoke_raw_method = getattr(adapter, "invoke_raw", None)
+    if request.model.api != adapter.api:
         raise ValueError(
-            f"Mismatched api: provider={provider.api!r} "
+            f"Mismatched api: adapter={adapter.api!r} "
             f"request.model.api={request.model.api!r}"
         )
     if not callable(invoke_raw_method):
-        raise TypeError("Provider missing required invoke_raw method")
+        raise TypeError("API adapter missing required invoke_raw method")
     if not isinstance(request.context, NormalizedContext):
         raise TypeError("ProviderRequest.context must be NormalizedContext")
     return start_provider_runtime(
-        lambda: _call_provider_raw_parts(
-            provider,
+        lambda: _call_adapter_raw_parts(
+            adapter,
             request,
         ),
         options=request.options,

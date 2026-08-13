@@ -110,7 +110,9 @@ def test_apply_model_selection_does_not_persist_when_runtime_switch_fails() -> N
         asyncio.run(
             apply_model_selection(
                 session,
-                ModelSelection(provider="openai", model_id="gpt-5.4"),
+                ModelSelection(
+                    endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
+                ),
             )
         )
 

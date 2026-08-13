@@ -70,7 +70,7 @@ def _tables(database: Path) -> set[str]:
         }
 
 
-def test_new_database_uses_only_the_phase2_v2_layout(tmp_path: Path) -> None:
+def test_new_database_uses_only_the_source_aware_v3_layout(tmp_path: Path) -> None:
     database = tmp_path / "ontology.sqlite3"
     SQLiteFactStore(database).close()
 
@@ -89,6 +89,7 @@ def test_new_database_uses_only_the_phase2_v2_layout(tmp_path: Path) -> None:
         "semantic_facts",
         "fact_batches",
         "projection_metadata",
+        "projection_source_inputs",
         "projection_objects",
         "projection_properties",
         "projection_links",
@@ -131,7 +132,7 @@ def test_unsupported_version_is_rejected_without_upgrade(tmp_path: Path) -> None
     assert exc_info.value.found_version == str(future_version)
 
 
-def test_pre_phase2_v2_store_is_rejected_for_explicit_recreation(
+def test_pre_v3_layout_is_rejected_for_explicit_recreation(
     tmp_path: Path,
 ) -> None:
     database = tmp_path / "old-v2.sqlite3"
@@ -146,6 +147,27 @@ def test_pre_phase2_v2_store_is_rejected_for_explicit_recreation(
     ):
         SQLiteFactStore(database)
 
+    assert database.read_bytes() == before
+
+
+def test_v2_store_is_rejected_without_a_compatibility_reader(tmp_path: Path) -> None:
+    database = tmp_path / "old-v2.sqlite3"
+    SQLiteFactStore(database).close()
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "UPDATE ontology_metadata SET value = '2' "
+            "WHERE key = 'storage_format_version'"
+        )
+        connection.execute(
+            "UPDATE ontology_metadata SET value = 'phase2' "
+            "WHERE key = 'storage_layout'"
+        )
+    before = database.read_bytes()
+
+    with pytest.raises(SQLiteStorageFormatError) as exc_info:
+        SQLiteFactStore(database)
+
+    assert exc_info.value.found_version == "2"
     assert database.read_bytes() == before
 
 

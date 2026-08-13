@@ -32,6 +32,7 @@ def _offline_message() -> AssistantMessage:
         content=[TextPart(type="text", text="mock hello from offline fixture")],
         api=ENDPOINT_ID,
         provider=PROVIDER_ID,
+        endpoint=ENDPOINT_ID,
         model=MODEL_ID,
         response_id="offline-complete-demo",
         usage=None,

@@ -304,6 +304,7 @@ async def _new_transcript(
     )
     await transcript.append_message(
         AssistantMessage(
+            endpoint="test-endpoint",
             role="assistant",
             content=[TextPart(type="text", text=f"{product_id} recent reply")],
             api="test",
