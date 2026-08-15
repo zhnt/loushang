@@ -25,6 +25,7 @@ from loushang.tui.terminal_capabilities import TerminalRuntimeCapabilities
 from loushang.tui.terminal_diagnostics import format_terminal_diagnostics
 from loushang.tui.terminal_input import (
     InputChunkReader,
+    default_pending_input_idle_ms,
     read_input_chunk_or_render_tick,
 )
 from loushang.tui.terminal_session import TerminalSession
@@ -249,7 +250,9 @@ async def run_conversation_screen(
                     active_task=active_task,
                     input_chunk_reader=input_chunk_reader,
                     render_wakeup=render_wakeup,
-                    pending_input_idle_ms=10 if reader.has_pending else None,
+                    pending_input_idle_ms=(
+                        default_pending_input_idle_ms() if reader.has_pending else None
+                    ),
                     idle_wakeup_ms=_terminal_runtime_wakeup_ms(terminal_context),
                 )
                 input_events: tuple[Any, ...]

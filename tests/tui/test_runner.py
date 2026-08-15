@@ -244,6 +244,46 @@ def test_runner_context_stop_returns_exit_code() -> None:
     assert asyncio.run(run()) == 12
 
 
+def test_runner_uses_platform_pending_input_idle_window(monkeypatch: Any) -> None:
+    sentinel = 777
+    monkeypatch.setattr(
+        "loushang.tui.runner.default_pending_input_idle_ms", lambda: sentinel
+    )
+    observed: list[int | None] = []
+
+    async def fake_read_tick(_stdin: object, **kwargs: Any) -> str:
+        observed.append(kwargs["pending_input_idle_ms"])
+        return "\x1b" if len(observed) == 1 else ""
+
+    monkeypatch.setattr(
+        "loushang.tui.runner.read_input_chunk_or_render_tick", fake_read_tick
+    )
+
+    async def run() -> int:
+        return await TuiRunner(
+            Tui(),
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            terminal_session_factory=_recording_terminal_session_factory(),
+            terminal_size_provider=lambda: TerminalSize(columns=20, rows=5),
+        ).run()
+
+    assert asyncio.run(run()) == 0
+    # First read has no pending input; the second observes the pending ESC and
+    # must receive the platform-aware idle window; the third exits on EOF.
+    assert observed == [None, sentinel, None]
+
+
+def test_screen_runner_uses_platform_pending_input_idle_window() -> None:
+    import inspect
+
+    from loushang.harnesstui.conversation import screen_runner
+
+    source = inspect.getsource(screen_runner.run_conversation_screen)
+
+    assert "default_pending_input_idle_ms()" in source
+
+
 def test_runner_passes_streams_to_terminal_session_factory() -> None:
     stdin = StringIO("")
     stdout = StringIO()

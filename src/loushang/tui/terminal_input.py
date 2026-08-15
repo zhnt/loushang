@@ -41,6 +41,13 @@ _WINDOWS_EXTENDED_KEY_SEQUENCES = {
     "E": "\x1b[23~",
     "F": "\x1b[24~",
 }
+PENDING_INPUT_IDLE_MS = 10
+WINDOWS_PENDING_INPUT_IDLE_MS = 50
+# Cap on chars drained into one Windows chunk so flood/paste streams cannot
+# starve the render loop; undrained chars stay in the console input buffer
+# and are returned by the next chunk read.
+_WINDOWS_MAX_CHUNK_CHARS = 4096
+
 _WINDOWS_TTY_READ_FUTURES: weakref.WeakKeyDictionary[
     asyncio.AbstractEventLoop, asyncio.Future[str]
 ] = weakref.WeakKeyDictionary()
@@ -423,11 +430,43 @@ def _set_future_exception(
 
 
 def _read_windows_tty_input_chunk_from_module(msvcrt: Any) -> str:
-    char = msvcrt.getwch()
-    if char in {"\x00", "\xe0"}:
-        extended = msvcrt.getwch()
-        return _WINDOWS_EXTENDED_KEY_SEQUENCES.get(extended, char + extended)
-    return char
+    first = msvcrt.getwch()
+    if first in {"\x00", "\xe0"}:
+        return _read_windows_extended_key_sequence(msvcrt, first)
+    chars = [first]
+    size = len(first)
+    while size < _WINDOWS_MAX_CHUNK_CHARS:
+        try:
+            has_input = bool(msvcrt.kbhit())
+        except (OSError, ValueError):
+            break
+        if not has_input:
+            break
+        char = msvcrt.getwch()
+        if char in {"\x00", "\xe0"}:
+            sequence = _read_windows_extended_key_sequence(msvcrt, char)
+            chars.append(sequence)
+            size += len(sequence)
+            continue
+        chars.append(char)
+        size += 1
+    return "".join(chars)
+
+
+def _read_windows_extended_key_sequence(msvcrt: Any, char: str) -> str:
+    extended = msvcrt.getwch()
+    return _WINDOWS_EXTENDED_KEY_SEQUENCES.get(extended, char + extended)
+
+
+def default_pending_input_idle_ms() -> int:
+    """Idle window before a pending partial escape sequence is force-flushed.
+
+    Windows console reads deliver VT sequences one character per chunk, so a
+    split sequence needs a wider window than the reader's own 10 ms poll.
+    """
+    if _is_windows_console_platform():
+        return WINDOWS_PENDING_INPUT_IDLE_MS
+    return PENDING_INPUT_IDLE_MS
 
 
 def _drain_windows_tty_input(
@@ -484,7 +523,10 @@ def _load_windows_console_module() -> Any | None:
 
 
 __all__ = [
+    "PENDING_INPUT_IDLE_MS",
     "TerminalInputMode",
+    "WINDOWS_PENDING_INPUT_IDLE_MS",
+    "default_pending_input_idle_ms",
     "drain_input",
     "read_input_chunk",
     "read_input_chunk_or_render_tick",

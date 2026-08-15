@@ -17,7 +17,12 @@ from loushang.tui.input import (
     InputReader,
 )
 from loushang.tui.terminal_input import (
+    _WINDOWS_MAX_CHUNK_CHARS,
+    PENDING_INPUT_IDLE_MS,
+    WINDOWS_PENDING_INPUT_IDLE_MS,
     TerminalInputMode,
+    _read_windows_tty_input_chunk_from_module,
+    default_pending_input_idle_ms,
     drain_input,
     read_input_chunk,
     read_input_chunk_or_render_tick,
@@ -76,6 +81,92 @@ def test_read_input_chunk_reads_windows_tty_key(monkeypatch: Any) -> None:
     result = asyncio.run(read_input_chunk(_TtyInput()))
 
     assert result == "x"
+
+
+def test_read_input_chunk_drains_split_windows_vt_sequence_atomically(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+    _install_fake_msvcrt(monkeypatch, chars=["\x1b", "[", "B"])
+
+    result = asyncio.run(read_input_chunk(_TtyInput()))
+
+    assert result == "\x1b[B"
+
+
+def test_windows_chunk_reader_maps_extended_key_first_char(monkeypatch: Any) -> None:
+    fake_msvcrt = _install_fake_msvcrt(monkeypatch, chars=["\xe0", "H"])
+
+    result = _read_windows_tty_input_chunk_from_module(fake_msvcrt)
+
+    assert result == "\x1b[A"
+
+
+def test_windows_chunk_reader_reads_extended_scancode_without_kbhit(
+    monkeypatch: Any,
+) -> None:
+    fake_msvcrt = _install_fake_msvcrt(
+        monkeypatch, chars=["\xe0", "H"], kbhit=lambda: False
+    )
+
+    result = _read_windows_tty_input_chunk_from_module(fake_msvcrt)
+
+    assert result == "\x1b[A"
+
+
+def test_windows_chunk_reader_maps_extended_key_in_drained_tail(
+    monkeypatch: Any,
+) -> None:
+    fake_msvcrt = _install_fake_msvcrt(monkeypatch, chars=["a", "\xe0", "P", "b"])
+
+    result = _read_windows_tty_input_chunk_from_module(fake_msvcrt)
+
+    assert result == "a\x1b[Bb"
+
+
+def test_windows_chunk_reader_caps_drain_and_leaves_rest_for_next_chunk(
+    monkeypatch: Any,
+) -> None:
+    fake_msvcrt = _install_fake_msvcrt(
+        monkeypatch, chars=["x"] * (_WINDOWS_MAX_CHUNK_CHARS + 10)
+    )
+
+    first = _read_windows_tty_input_chunk_from_module(fake_msvcrt)
+    second = _read_windows_tty_input_chunk_from_module(fake_msvcrt)
+
+    assert first == "x" * _WINDOWS_MAX_CHUNK_CHARS
+    assert second == "x" * 10
+
+
+def test_default_pending_input_idle_ms_is_wider_on_windows(monkeypatch: Any) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    assert default_pending_input_idle_ms() == WINDOWS_PENDING_INPUT_IDLE_MS
+    assert WINDOWS_PENDING_INPUT_IDLE_MS > PENDING_INPUT_IDLE_MS
+
+
+def test_default_pending_input_idle_ms_stays_short_off_windows(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+
+    assert default_pending_input_idle_ms() == PENDING_INPUT_IDLE_MS
+    assert PENDING_INPUT_IDLE_MS == 10
+
+
+def test_input_batch_joins_split_arrow_chunks_into_one_key_event() -> None:
+    reader = InputReader()
+
+    first = reader.feed_batch("\x1b")
+    second = reader.feed_batch("[")
+    third = reader.feed_batch("B")
+
+    assert first.app_events == ()
+    assert first.has_pending
+    assert second.app_events == ()
+    assert second.has_pending
+    assert third.app_events == (InputEvent(kind="key", key="down", raw="\x1b[B"),)
+    assert not third.has_pending
 
 
 def test_windows_blocking_key_read_does_not_block_render_wakeup(monkeypatch: Any) -> None:
@@ -150,7 +241,9 @@ def test_windows_canceled_key_read_is_reused_by_next_reader(monkeypatch: Any) ->
 
     assert result == "h"
     assert calls == ["start", "end"]
-    assert kbhit_calls == 1
+    # One gate poll for the canceled read, one drain poll after its char
+    # arrived; the reused read adds no further polls.
+    assert kbhit_calls == 2
 
 
 def test_read_input_chunk_or_render_tick_reads_raw_stringio_escape_without_tail_joining() -> (
@@ -522,7 +615,7 @@ def _install_fake_msvcrt(
     chars: list[str] | None = None,
     kbhit: object | None = None,
     getwch: object | None = None,
-) -> None:
+) -> Any:
     pending = list(chars or ())
     fake_msvcrt = SimpleNamespace(
         kbhit=kbhit or (lambda: bool(pending)),
@@ -532,3 +625,4 @@ def _install_fake_msvcrt(
         "loushang.tui.terminal_input._load_windows_console_module",
         lambda: fake_msvcrt,
     )
+    return fake_msvcrt
