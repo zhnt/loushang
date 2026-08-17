@@ -78,10 +78,27 @@ loushang --command <command-name> --command-result-format json
 Built-in interactive commands include:
 
 ```text
-/settings /model /scoped-models /export /import /share /copy /name
+/settings /model /scoped-models /export /import /share /copy /rename
 /session /terminal /tools /changelog /hotkeys /fork /clone /tree
-/login /logout /new /compact /resume /reload /quit
+/new /compact /resume /delete /reload /quit
 ```
+
+`/new` starts an empty session in the current context and accepts no arguments.
+`/delete` opens a confirmed picker for deleting a previous session; it never deletes the active session.
+
+## Authentication Migration
+
+Coding no longer owns an authentication lifecycle. API key models resolve the
+environment variables declared by their model catalog entries when AI requests
+are executed. The Coding CLI no longer accepts `--api-key`, and the built-in
+command catalog no longer includes `/login` or `/logout`.
+
+SDK callers must remove uses of `loushang.coding.control.AuthManager`,
+`AuthResolution`, the `auth_manager=` service/session argument, and the
+`oauth_provider_registry=` session argument. Coding does not acquire, refresh,
+persist, or select OAuth credentials. Applications that require OAuth must
+provide a current request-ready credential through the AI or Agent API rather
+than through Coding.
 
 ## TUI
 

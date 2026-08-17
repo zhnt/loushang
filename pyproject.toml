@@ -10,6 +10,8 @@ license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"]
 requires-python = ">=3.11"
 dependencies = [
   "anthropic>=0.89.0",
+  "authlib>=1.6,<2",
+  "cryptography<49; sys_platform == 'darwin' and platform_machine == 'x86_64'",
   "httpx>=0.28,<1",
   "markdown-it-py>=4.2,<5",
   "openai>=2.30.0",
@@ -20,7 +22,6 @@ dependencies = [
 
 [project.scripts]
 loushang = "loushang.coding.cli.__main__:main"
-loushang-ai = "loushang.ai.cli.__main__:main"
 loushang-tui = "loushang.coding.ui.cli:main"
 
 [project.optional-dependencies]
@@ -29,6 +30,7 @@ dev = [
   "pytest-cov>=7,<8",
   "ruff>=0.11,<1",
   "mypy>=1.15,<2",
+  "types-Pygments>=2.19,<3",
 ]
 
 [tool.pytest.ini_options]
@@ -37,6 +39,11 @@ testpaths = ["tests"]
 addopts = ["--import-mode=importlib"]
 markers = [
   "live: real provider verification that may require network access and credentials",
+  "requires_host_runtime: requires host loopback, process, or file-index capabilities unavailable in a restricted sandbox",
+  "tui_render_contract: deterministic TUI render correctness, structural performance, and terminal-operation contract",
+  "tui_terminal_backend: native POSIX PTY or Windows ConPTY driver conformance",
+  "tui_terminal_contract: shared real CLI contract over the native terminal backend",
+  "tui_tmux_integration: tmux pane, history, and scrollback integration contract",
   "vendor_verification: vendor or endpoint compatibility verification cases",
 ]
 
@@ -80,6 +87,5 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "loushang" = ["py.typed"]
-"loushang.ai.contrib.openai_codex" = ["models.json"]
 "loushang.ai.model" = ["models.json"]
-"loushang.coding.session.export_html" = ["*.html", "*.css", "*.js"]
+"loushang.harness.transcript.export" = ["*.html", "*.css", "*.js"]

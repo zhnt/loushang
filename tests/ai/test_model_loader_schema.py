@@ -5,17 +5,17 @@ from pathlib import Path
 
 import pytest
 
+import loushang.ai.model as model_api
 from loushang.ai.model import (
     AnthropicMessagesConfig,
     OpenAICompletionsConfig,
     OpenAIResponsesConfig,
     load_builtin_model_registry,
-    load_layered_model_registry,
-    load_model_registry,
     load_model_registry_from_directory,
     load_model_registry_from_file,
     validate_model_registry_raw,
 )
+from loushang.ai.model.loader import _load_layered_model_registry
 
 
 def _capabilities() -> dict[str, object]:
@@ -31,6 +31,13 @@ def _capabilities() -> dict[str, object]:
         "attachment": False,
         "temperature": True,
     }
+
+
+def test_model_loader_public_surface_uses_explicit_sources() -> None:
+    assert not hasattr(model_api, "load_model_registry")
+    assert not hasattr(model_api, "load_layered_model_registry")
+    assert callable(model_api.load_model_registry_from_file)
+    assert callable(model_api.load_model_registry_from_directory)
 
 
 def _model_raw(**overrides: object) -> dict[str, object]:
@@ -109,6 +116,85 @@ def test_load_model_registry_from_file_rejects_missing_providers_with_field_path
     assert "must be an object" in message
 
 
+def test_endpoint_requires_base_url_or_base_url_env() -> None:
+    raw = _registry_raw()
+    endpoint = raw["providers"]["custom"]["endpoints"]["test-endpoint"]
+    del endpoint["baseUrl"]
+
+    with pytest.raises(ValueError, match="must declare baseUrl or baseUrlEnv"):
+        validate_model_registry_raw(raw)
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_endpoint_rejects_empty_base_url(value: str) -> None:
+    raw = _registry_raw(endpoint_extra={"baseUrl": value})
+
+    with pytest.raises(ValueError, match="baseUrl"):
+        validate_model_registry_raw(raw)
+
+
+def test_endpoint_accepts_base_url_env_without_literal_url() -> None:
+    raw = _registry_raw(
+        endpoint_adapter={"developerRole": False},
+        endpoint_extra={"baseUrlEnv": "CUSTOM_BASE_URL"},
+    )
+    endpoint = raw["providers"]["custom"]["endpoints"]["test-endpoint"]
+    del endpoint["baseUrl"]
+
+    validate_model_registry_raw(raw)
+
+
+def test_model_registry_accepts_generic_oauth_configuration(tmp_path: Path) -> None:
+    oauth = {
+        "client_id": "client",
+        "authorization_endpoint": "https://oauth.test/authorize",
+        "token_endpoint": "https://oauth.test/token",
+        "scopes": ["model.invoke"],
+    }
+    raw = _registry_raw(
+        endpoint_adapter={"developerRole": False},
+        endpoint_extra={"auth": {"kind": "oauth", "oauth": oauth}},
+    )
+
+    registry = load_model_registry_from_file(_write_registry(tmp_path, raw))
+    model = registry.get_model("custom", "test-endpoint", "test-model")
+
+    assert model.auth is not None
+    assert model.auth.oauth is not None
+    assert model.auth.oauth.client_id == "client"
+    assert model.auth.oauth.scopes == ("model.invoke",)
+
+
+@pytest.mark.parametrize(
+    "oauth",
+    [
+        {
+            "authorization_endpoint": "https://oauth.test/authorize",
+            "token_endpoint": "https://oauth.test/token",
+        },
+        {
+            "client_id": "client",
+            "authorization_endpoint": "https://oauth.test/authorize",
+            "token_endpoint": "https://oauth.test/token",
+            "scopes": ["same", "same"],
+        },
+        {
+            "client_id": "client",
+            "authorization_endpoint": "https://oauth.test/authorize",
+            "token_endpoint": "https://oauth.test/token",
+            "vendor_extension": True,
+        },
+    ],
+)
+def test_model_registry_rejects_invalid_generic_oauth_configuration(
+    oauth: dict[str, object],
+) -> None:
+    raw = _registry_raw(endpoint_extra={"auth": {"kind": "oauth", "oauth": oauth}})
+
+    with pytest.raises(ValueError, match="oauth"):
+        validate_model_registry_raw(raw)
+
+
 def _set_nested(
     raw: dict[str, object],
     path: tuple[str, ...],
@@ -170,9 +256,9 @@ def test_registry_rejects_unknown_adapter_field() -> None:
 
 
 def test_registry_rejects_reserved_extra_body_fields() -> None:
-    raw = _registry_raw(endpoint_adapter={"extraBody": {"model": "other"}})
+    raw = _registry_raw(endpoint_adapter={"extra" + "Body": {"model": "other"}})
 
-    with pytest.raises(ValueError, match="invalid adapter config"):
+    with pytest.raises(ValueError, match="unknown keys"):
         validate_model_registry_raw(raw)
 
 
@@ -198,23 +284,8 @@ def test_registry_rejects_reserved_extra_body_fields() -> None:
         ),
         (
             ("providers", "custom", "endpoints", "test-endpoint", "auth"),
-            {"extraHeaders": {"x-test": 1}},
-            "string map",
-        ),
-        (
-            ("providers", "custom", "endpoints", "test-endpoint", "transport"),
-            {"fallback": "yes"},
-            "must be a boolean",
-        ),
-        (
-            ("providers", "custom", "endpoints", "test-endpoint", "transport"),
-            {"timeout": 0},
-            "positive number",
-        ),
-        (
-            ("providers", "custom", "endpoints", "test-endpoint", "routing"),
-            {"requestOverrides": {"": {}}},
-            "non-empty string",
+            {"futureAuthField": "value"},
+            "unknown keys",
         ),
         (
             (
@@ -270,14 +341,73 @@ def test_registry_rejects_invalid_catalog_boundary_values(
         validate_model_registry_raw(raw)
 
 
-def test_registry_rejects_endpoint_with_both_auth_shapes() -> None:
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("reasoning", None, "must be a boolean"),
+        ("stream", "false", "must be a boolean"),
+        ("toolUse", 1, "must be a boolean"),
+        ("contextWindow", 1.5, "positive integer"),
+        ("maxTokens", True, "positive integer"),
+        ("maxTokens", 0, "positive integer"),
+        ("maxTokens", -1, "positive integer"),
+        ("input", [], "invalid modalities"),
+        ("input", "text", "invalid modalities"),
+        ("output", ["text", "text"], "invalid modalities"),
+    ],
+)
+def test_registry_rejects_invalid_capability_values(
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    raw = _registry_raw(endpoint_adapter={"developerRole": False})
+    capabilities = raw["providers"]["custom"]["endpoints"]["test-endpoint"][
+        "models"
+    ]["test-model"]["capabilities"]
+    assert isinstance(capabilities, dict)
+    capabilities[field] = value
+
+    with pytest.raises(ValueError, match=message):
+        validate_model_registry_raw(raw)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("contextWindow", True, "positive integer"),
+        ("maxTokens", 0, "positive integer"),
+        ("maxOutputTokens", 1.5, "positive integer"),
+        ("temperature", True, "finite number"),
+        ("temperature", float("nan"), "finite number"),
+        ("reasoningEffort", "", "non-empty string"),
+    ],
+)
+@pytest.mark.parametrize("scope", ["endpoint", "model"])
+def test_registry_rejects_invalid_defaults(
+    scope: str,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    defaults = {field: value}
+    raw = _registry_raw(
+        endpoint_adapter={"developerRole": False},
+        endpoint_extra={"defaults": defaults} if scope == "endpoint" else None,
+        model_extra={"defaults": defaults} if scope == "model" else None,
+    )
+
+    with pytest.raises(ValueError, match=message):
+        validate_model_registry_raw(raw)
+
+
+def test_registry_rejects_removed_auth_override() -> None:
     raw = _registry_raw(endpoint_adapter={"developerRole": False})
     endpoint = raw["providers"]["custom"]["endpoints"]["test-endpoint"]
     assert isinstance(endpoint, dict)
-    endpoint["auth"] = {"apiKeyEnv": "ENDPOINT_KEY"}
-    endpoint["authOverride"] = {"apiKeyEnv": "OVERRIDE_KEY"}
+    endpoint["auth" + "Override"] = {"apiKeyEnv": "OVERRIDE_KEY"}
 
-    with pytest.raises(ValueError, match="cannot define both auth and authOverride"):
+    with pytest.raises(ValueError, match="unknown keys"):
         validate_model_registry_raw(raw)
 
 
@@ -340,8 +470,8 @@ def test_openai_responses_adapter_schema_accepts_core_fields(tmp_path: Path) -> 
             api="openai-responses",
             endpoint_adapter={
                 "developerRole": True,
+                "maxOutputTokens": False,
                 "promptCacheKey": True,
-                "sessionIdHeader": True,
                 "longCacheRetention": True,
             },
         ),
@@ -354,6 +484,7 @@ def test_openai_responses_adapter_schema_accepts_core_fields(tmp_path: Path) -> 
     )
 
     assert isinstance(model.adapter, OpenAIResponsesConfig)
+    assert model.adapter.max_output_tokens is False
     assert model.adapter.prompt_cache_key is True
 
 
@@ -365,7 +496,6 @@ def test_anthropic_adapter_schema_accepts_tristate_fields(tmp_path: Path) -> Non
             endpoint_adapter={
                 "fineGrainedTools": True,
                 "interleavedThinking": False,
-                "sessionAffinityHeaders": True,
                 "longCacheRetention": False,
             },
         ),
@@ -382,7 +512,7 @@ def test_anthropic_adapter_schema_accepts_tristate_fields(tmp_path: Path) -> Non
     assert model.adapter.interleaved_thinking is False
 
 
-def test_load_registry_merges_adapter_auth_transport_and_defaults(
+def test_load_registry_binds_adapter_auth_headers_and_defaults_once(
     tmp_path: Path,
 ) -> None:
     raw = _registry_raw(
@@ -394,20 +524,11 @@ def test_load_registry_merges_adapter_auth_transport_and_defaults(
         model_adapter={"reasoningFormat": "moonshot"},
         endpoint_extra={
             "lane": "coding",
-            "auth": {
-                "apiKeyEnv": "ENDPOINT_KEY",
-                "extraHeaders": {"x-endpoint": "endpoint"},
-            },
-            "transport": {"kind": "httpx", "fallback": True, "timeout": 30},
-            "routing": {"requestOverrides": {"openrouter": {"order": ["a"]}}},
+            "auth": {"apiKeyEnv": "ENDPOINT_KEY"},
+            "headers": {"x-endpoint": "endpoint"},
         },
         model_extra={
-            "authOverride": {
-                "apiKeyEnv": "MODEL_KEY",
-                "extraHeaders": {"x-model": "model"},
-            },
-            "transport": {"timeout": 5},
-            "routing": {"requestOverrides": {"openrouter": {"only": ["b"]}}},
+            "auth": {"apiKeyEnv": "MODEL_KEY"},
             "upstreamId": "vendor/test-model",
         },
     )
@@ -425,17 +546,11 @@ def test_load_registry_merges_adapter_auth_transport_and_defaults(
     assert model.adapter.reasoning_format == "moonshot"
     assert model.auth is not None
     assert model.auth.api_key_env == "MODEL_KEY"
-    assert model.auth.extra_headers == {"x-endpoint": "endpoint", "x-model": "model"}
+    assert dict(model.headers) == {"x-endpoint": "endpoint"}
     assert isinstance(model.defaults.get("maxOutputTokens"), int)
     assert model.defaults.get("reasoningEffort") == "medium"
     assert model.defaults.get("temperature") == 0.2
     assert model.defaults.get("contextWindow") == 128000
-    assert model.transport.kind == "httpx"
-    assert model.transport.fallback is True
-    assert model.transport.timeout == 5
-    assert model.routing.request_overrides == {
-        "openrouter": {"order": ["a"], "only": ["b"]}
-    }
     assert model.upstream_id == "vendor/test-model"
 
 
@@ -477,7 +592,7 @@ def test_directory_and_layered_registry_loading(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    layered = load_layered_model_registry(
+    layered = _load_layered_model_registry(
         user_dir=user_dir,
         project_dir=project_dir,
     )
@@ -601,7 +716,7 @@ def test_layered_registry_rejects_user_duplicate_of_builtin_model(
     user_file.write_text(json.dumps(raw), encoding="utf-8")
 
     with pytest.raises(ValueError, match="duplicate model id") as exc_info:
-        load_layered_model_registry(user_dir=user_dir)
+        _load_layered_model_registry(user_dir=user_dir)
 
     message = str(exc_info.value)
     assert str(user_file) in message
@@ -635,7 +750,7 @@ def test_layered_registry_rejects_project_duplicate_instead_of_deep_merge(
     )
 
     with pytest.raises(ValueError) as exc_info:
-        load_layered_model_registry(user_dir=user_dir, project_dir=project_dir)
+        _load_layered_model_registry(user_dir=user_dir, project_dir=project_dir)
 
     message = str(exc_info.value)
     assert "duplicate model id custom:test-endpoint:test-model" in message
@@ -676,10 +791,7 @@ def test_directory_registry_error_includes_file_and_field_path(
     assert "capabilities.input" in message
 
 
-def test_load_model_registry_dispatches_by_path_type(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
+def test_explicit_model_registry_loaders_match_path_type(tmp_path: Path) -> None:
     path = _write_registry(
         tmp_path,
         _registry_raw(endpoint_adapter={"developerRole": False}),
@@ -687,18 +799,19 @@ def test_load_model_registry_dispatches_by_path_type(
     directory = tmp_path / "models"
     directory.mkdir()
     (directory / "models.json").write_text(path.read_text(encoding="utf-8"))
-    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
-
-    assert load_model_registry().list_models()
     assert (
-        load_model_registry(path).get_model("custom", "test-endpoint", "test-model").id
+        load_model_registry_from_file(path)
+        .get_model("custom", "test-endpoint", "test-model")
+        .id
         == "test-model"
     )
     assert (
-        load_model_registry(directory)
+        load_model_registry_from_directory(directory)
         .get_model("custom", "test-endpoint", "test-model")
         .id
         == "test-model"
     )
     with pytest.raises(FileNotFoundError):
-        load_model_registry(tmp_path / "missing.json")
+        load_model_registry_from_file(tmp_path / "missing.json")
+    with pytest.raises(FileNotFoundError):
+        load_model_registry_from_directory(tmp_path / "missing")

@@ -14,7 +14,8 @@ public import paths, loader policy, or diagnostic behavior.
 - [x] Keep descriptor projection and executable identity in coding.
 - [x] Add harness resource-diagnostic behavior tests.
 - [x] Add compatibility tests for coding loader diagnostic imports.
-- [x] Move `ResourceDiagnostic` to harness resources.
+- [x] Move resource diagnostics to Harness; this historical class was later
+  replaced by the canonical `DiagnosticDraft` plus a resource factory.
 - [x] Redirect coding internal consumers to the harness owners.
 - [x] Add architecture ownership and documentation tests.
 - [x] Update the harness architecture index and migration inventory.

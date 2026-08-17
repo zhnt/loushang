@@ -27,10 +27,10 @@ def test_generic_and_extension_names_share_identity() -> None:
 
 def test_contribution_descriptor_preserves_values() -> None:
     from loushang.harness.contributions import ContributionDescriptor
-    from loushang.harness.resources.diagnostics import ResourceDiagnostic
+    from loushang.harness.diagnostics.types import DiagnosticDraft
 
     source_path = Path("/tmp/extensions/review/extension.py")
-    diagnostic = ResourceDiagnostic(
+    diagnostic = DiagnosticDraft(
         code="inactive_surface", message="Surface is inactive."
     )
     descriptor = ContributionDescriptor(
@@ -55,10 +55,10 @@ def test_contribution_descriptor_preserves_values() -> None:
 
 def test_contribution_descriptor_preserves_legacy_positional_field_order() -> None:
     from loushang.harness.contributions import ExtensionSurfaceDescriptor
-    from loushang.harness.resources.diagnostics import ResourceDiagnostic
+    from loushang.harness.diagnostics.types import DiagnosticDraft
 
     source_path = Path("/tmp/legacy.py")
-    diagnostic = ResourceDiagnostic(code="legacy", message="legacy")
+    diagnostic = DiagnosticDraft(code="legacy", message="legacy")
     descriptor = ExtensionSurfaceDescriptor(
         "tool",
         "lookup",

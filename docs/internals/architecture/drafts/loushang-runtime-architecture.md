@@ -743,16 +743,16 @@ P0 projection should start with the current `loushang.agent.AgentEvent` family:
 
 ```text
 agent_start
-  -> WorkRunStarted
+  -> AgentInvocationStarted (non-terminal fact)
 
 agent_end
-  -> WorkRunCompleted
+  -> AgentInvocationCompleted (non-terminal fact)
 
 turn_start
   -> TaskStarted or TurnStarted-compatible work payload
 
 turn_end
-  -> TaskCompleted or WorkRunCompleted, depending on active run mode
+  -> TaskCompleted or TurnCompleted-compatible work payload
 
 message_start
   -> ContentDelta with start marker, coalesce

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from dataclasses import dataclass
 from io import StringIO
-from typing import Any
+from typing import Any, Literal
 
 from loushang.tui import (
     FakeTerminalPort,
@@ -105,7 +104,13 @@ def test_runner_consumes_terminal_control_events_without_dispatching_them() -> N
 
     assert asyncio.run(run()) == 0
     assert seen == []
-    assert session.control_events == [(InputEvent(kind="signal", signal="cell_size", text="18;9", raw="\x1b[6;18;9t"),)]
+    assert session.control_events == [
+        (
+            InputEvent(
+                kind="signal", signal="cell_size", text="18;9", raw="\x1b[6;18;9t"
+            ),
+        )
+    ]
 
 
 def test_runner_keeps_split_bracketed_paste_atomic() -> None:
@@ -149,10 +154,11 @@ def test_runner_context_request_render_wakes_input_wait() -> None:
 
         return await TuiRunner(
             tui,
-            stdin=_BlockingAfterFirstInput(first="x", block_seconds=0.03),
+            stdin=StringIO(""),
             stdout=stdout,
             terminal_session_factory=_recording_terminal_session_factory(),
             terminal_size_provider=lambda: TerminalSize(columns=20, rows=5),
+            input_chunk_reader=_AsyncAfterFirstInput(first="x", block_seconds=0.03),
         ).run(on_input=handle)
 
     assert asyncio.run(run()) == 0
@@ -196,10 +202,11 @@ def test_runner_rejects_reentrant_run_calls() -> None:
     tui = Tui()
     runner = TuiRunner(
         tui,
-        stdin=_BlockingAfterFirstInput(first="x", block_seconds=0.03),
+        stdin=StringIO(""),
         stdout=StringIO(),
         terminal_session_factory=_recording_terminal_session_factory(),
         terminal_size_provider=lambda: TerminalSize(columns=20, rows=5),
+        input_chunk_reader=_AsyncAfterFirstInput(first="x", block_seconds=0.03),
     )
     errors: list[str] = []
 
@@ -214,7 +221,9 @@ def test_runner_rejects_reentrant_run_calls() -> None:
         return await runner.run(on_input=handle)
 
     assert asyncio.run(run()) == 0
-    assert errors == ["TuiRunner.run() cannot be called while the runner is already running"]
+    assert errors == [
+        "TuiRunner.run() cannot be called while the runner is already running"
+    ]
 
 
 def test_runner_context_stop_returns_exit_code() -> None:
@@ -240,7 +249,9 @@ def test_runner_passes_streams_to_terminal_session_factory() -> None:
     stdout = StringIO()
     seen: list[tuple[object, object]] = []
 
-    def factory(input_stream: object, output_stream: object) -> _RecordingTerminalSession:
+    def factory(
+        input_stream: object, output_stream: object
+    ) -> _RecordingTerminalSession:
         seen.append((input_stream, output_stream))
         return _RecordingTerminalSession()
 
@@ -257,6 +268,31 @@ def test_runner_passes_streams_to_terminal_session_factory() -> None:
     assert seen == [(stdin, stdout)]
 
 
+def test_runner_invokes_start_hook_after_runtime_is_available() -> None:
+    root = _MutableRenderable(("before",))
+    tui = Tui()
+    tui.add_child(root)
+    stdout = StringIO()
+    contexts: list[object] = []
+
+    async def run() -> int:
+        def start(context: object) -> None:
+            contexts.append(context)
+            root.lines = ("started",)
+
+        return await TuiRunner(
+            tui,
+            stdin=StringIO(""),
+            stdout=stdout,
+            terminal_session_factory=_recording_terminal_session_factory(),
+            terminal_size_provider=lambda: TerminalSize(columns=20, rows=5),
+        ).run(on_start=start)
+
+    assert asyncio.run(run()) == 0
+    assert len(contexts) == 1
+    assert "started" in stdout.getvalue()
+
+
 def test_runner_polls_terminal_runtime_fallback_on_idle_wakeup() -> None:
     session = _PollingTerminalSession()
 
@@ -266,10 +302,11 @@ def test_runner_polls_terminal_runtime_fallback_on_idle_wakeup() -> None:
 
         return await TuiRunner(
             Tui(),
-            stdin=_BlockingAfterFirstInput(first="x", block_seconds=0.03),
+            stdin=StringIO(""),
             stdout=StringIO(),
             terminal_session_factory=lambda _stdin, _stdout: session,
             terminal_size_provider=lambda: TerminalSize(columns=20, rows=5),
+            input_chunk_reader=_AsyncAfterFirstInput(first="x", block_seconds=0.03),
         ).run(on_input=handle)
 
     assert asyncio.run(run()) == 0
@@ -281,7 +318,9 @@ class _MutableRenderable:
     lines: tuple[str, ...]
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
-        return RenderResult.from_lines([RenderLine(line) for line in self.lines], constraints=constraints)
+        return RenderResult.from_lines(
+            [RenderLine(line) for line in self.lines], constraints=constraints
+        )
 
 
 class _FocusableRenderable(FocusableMixin):
@@ -291,7 +330,9 @@ class _FocusableRenderable(FocusableMixin):
         self.events: list[InputEvent] = []
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
-        return RenderResult.from_lines([RenderLine(line) for line in self.lines], constraints=constraints)
+        return RenderResult.from_lines(
+            [RenderLine(line) for line in self.lines], constraints=constraints
+        )
 
     def handle_input(self, event: Any) -> object:
         self.events.append(event)
@@ -308,7 +349,9 @@ class _RecordingTerminalSession:
         self.entered += 1
         return self
 
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> bool:
+    def __exit__(
+        self, exc_type: object, exc: object, traceback: object
+    ) -> Literal[False]:
         self.exited += 1
         return False
 
@@ -339,18 +382,15 @@ def _recording_terminal_session_factory() -> Any:
     return lambda _stdin, _stdout: _RecordingTerminalSession()
 
 
-class _BlockingAfterFirstInput:
+class _AsyncAfterFirstInput:
     def __init__(self, *, first: str, block_seconds: float) -> None:
         self._first = first
         self._block_seconds = block_seconds
         self._calls = 0
 
-    def read(self, _size: int) -> str:
+    async def __call__(self, _stdin: Any) -> str:
         self._calls += 1
         if self._calls == 1:
             return self._first
-        time.sleep(self._block_seconds)
+        await asyncio.sleep(self._block_seconds)
         return ""
-
-    def isatty(self) -> bool:
-        return False

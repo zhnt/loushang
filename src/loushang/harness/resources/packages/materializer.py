@@ -14,7 +14,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Literal, Protocol, TypedDict, cast
 
 from loushang.harness.policy import PolicyDecision
 from loushang.harness.resources.packages.source import (
@@ -39,6 +39,13 @@ PackageMaterializationLifecycle = Literal[
 ]
 PackageProgressEventType = Literal["start", "progress", "complete", "error"]
 PackageProgressAction = Literal["install", "update", "remove", "check", "resolve"]
+PackageSourceType = Literal["git", "python", "local"]
+
+
+class _PythonDistributionMetadata(TypedDict):
+    name: str | None
+    version: str | None
+    distributions: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -853,10 +860,18 @@ class PackageMaterializer:
                 "failed",
             }:
                 lifecycle = "remote_registered"
+            normalized_lifecycle = cast(PackageMaterializationLifecycle, lifecycle)
+            raw_source_type = item.get("sourceType")
+            source_type = cast(
+                PackageSourceType,
+                raw_source_type
+                if raw_source_type in {"git", "python", "local"}
+                else "git",
+            )
             self._records[_record_key(source)] = PackageMaterializationRecord(
                 source=source,
                 name=str(item.get("name") or remote_package_name(source)),
-                lifecycle=lifecycle,
+                lifecycle=normalized_lifecycle,
                 target_path=Path(target_path),
                 error_message=item.get("errorMessage")
                 if isinstance(item.get("errorMessage"), str)
@@ -876,9 +891,7 @@ class PackageMaterializer:
                 last_updated_at=item.get("lastUpdatedAt")
                 if isinstance(item.get("lastUpdatedAt"), str)
                 else None,
-                source_type=item.get("sourceType")
-                if item.get("sourceType") in {"git", "python", "local"}
-                else "git",
+                source_type=source_type,
                 requirement=item.get("requirement")
                 if isinstance(item.get("requirement"), str)
                 else None,
@@ -989,13 +1002,13 @@ def _record_with_local_git_state(
 
 def _python_distribution_metadata(
     target: Path, preferred_name: str
-) -> dict[str, object]:
+) -> _PythonDistributionMetadata:
     distributions: list[str] = []
     resolved_name: str | None = None
     resolved_version: str | None = None
     preferred_key = _normalize_dist_name(preferred_name)
     for distribution in importlib.metadata.distributions(path=[str(target)]):
-        name = distribution.metadata.get("Name") or distribution.name
+        name = distribution.metadata["Name"] or distribution.name
         version = distribution.version
         if name and version:
             distributions.append(f"{name}=={version}")
@@ -1174,8 +1187,31 @@ async def _run_with_concurrency(tasks, *, limit: int):
 
 
 def _package_offline_enabled() -> bool:
+    return package_offline_enabled()
+
+
+def package_offline_enabled() -> bool:
+    """Return whether package materialization must avoid network access."""
+
     for name in ("LOUSHANG_OFFLINE", "PI_OFFLINE"):
         value = os.environ.get(name)
         if value and value.lower() in {"1", "true", "yes"}:
             return True
     return False
+
+
+def resolve_session_package_install_root(
+    *,
+    session_dir: str | Path,
+    cwd: str | Path,
+    session_container_name: str = "sessions",
+    platform_directory: str = ".loushang",
+) -> Path:
+    """Resolve the package cache associated with a Product session layout."""
+
+    resolved_session_dir = Path(session_dir)
+    if resolved_session_dir.name == session_container_name:
+        return resolved_session_dir.parent / "packages"
+    if str(resolved_session_dir):
+        return resolved_session_dir / "packages"
+    return Path(cwd) / platform_directory / "packages"

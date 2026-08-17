@@ -4,28 +4,20 @@ import asyncio
 
 
 def test_compaction_coordinator_compacts_session_and_tracks_status() -> None:
-    from loushang.coding.compaction import CompactionCoordinator, CompactionResult
-
-    class FakeSession:
-        def __init__(self) -> None:
-            self.compact_calls: list[str | None] = []
-
-        async def compact_session(self, custom_instructions: str | None = None) -> CompactionResult:
-            self.compact_calls.append(custom_instructions)
-            return CompactionResult(
-                summary="summary",
-                first_kept_entry_id="entry-1",
-                tokens_before=42,
-            )
+    from loushang.harness.context import CompactionCoordinator
 
     async def scenario() -> None:
         coordinator = CompactionCoordinator()
-        session = FakeSession()
+        calls: list[str] = []
 
-        result = await coordinator.compact_session(session, custom_instructions="keep decisions")
+        async def compact() -> str:
+            calls.append("compact")
+            return "summary"
 
-        assert result.summary == "summary"
-        assert session.compact_calls == ["keep decisions"]
+        result = await coordinator.run(compact, reason="manual")
+
+        assert result == "summary"
+        assert calls == ["compact"]
         status = coordinator.get_status()
         assert status.is_compacting is False
         assert status.last_reason == "manual"
@@ -36,30 +28,20 @@ def test_compaction_coordinator_compacts_session_and_tracks_status() -> None:
 
 
 def test_compaction_coordinator_maybe_compacts_after_turn() -> None:
-    from loushang.coding.compaction import CompactionCoordinator, CompactionResult
-
-    class FakeSession:
-        def __init__(self) -> None:
-            self.messages: list[object] = []
-
-        async def maybe_compact_after_turn(self, assistant_message: object) -> CompactionResult | None:
-            self.messages.append(assistant_message)
-            return CompactionResult(
-                summary="threshold summary",
-                first_kept_entry_id="entry-2",
-                tokens_before=99,
-            )
+    from loushang.harness.context import CompactionCoordinator
 
     async def scenario() -> None:
         coordinator = CompactionCoordinator()
-        session = FakeSession()
-        message = object()
+        calls: list[str] = []
 
-        result = await coordinator.maybe_compact_after_turn(session, message)
+        async def compact() -> str:
+            calls.append("threshold")
+            return "threshold summary"
 
-        assert result is not None
-        assert result.summary == "threshold summary"
-        assert session.messages == [message]
+        result = await coordinator.run(compact, reason="threshold")
+
+        assert result == "threshold summary"
+        assert calls == ["threshold"]
         status = coordinator.get_status()
         assert status.is_compacting is False
         assert status.last_reason == "threshold"
@@ -71,18 +53,16 @@ def test_compaction_coordinator_maybe_compacts_after_turn() -> None:
 def test_compaction_coordinator_records_errors() -> None:
     import pytest
 
-    from loushang.coding.compaction import CompactionCoordinator
-
-    class FakeSession:
-        async def compact_session(self, custom_instructions: str | None = None):
-            del custom_instructions
-            raise RuntimeError("boom")
+    from loushang.harness.context import CompactionCoordinator
 
     async def scenario() -> None:
         coordinator = CompactionCoordinator()
 
+        async def compact() -> None:
+            raise RuntimeError("boom")
+
         with pytest.raises(RuntimeError, match="boom"):
-            await coordinator.compact_session(FakeSession())
+            await coordinator.run(compact, reason="manual")
 
         status = coordinator.get_status()
         assert status.is_compacting is False

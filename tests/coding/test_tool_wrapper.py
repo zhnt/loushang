@@ -1,20 +1,24 @@
 from __future__ import annotations
 
+from loushang.harness.tools.execution import direct_execution
+
 
 def test_wrap_tool_definition_exposes_agent_tool_contract() -> None:
     import asyncio
 
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.tools.types import ToolDefinition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.core import ToolDefinition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     calls: list[dict[str, object]] = []
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del signal, on_update
         calls.append({"tool_call_id": tool_call_id, "params": params})
-        return AgentToolResult(content=[TextPart(type="text", text="ok")], details={"seen": True})
+        return AgentToolResult(
+            content=[TextPart(type="text", text="ok")], details={"seen": True}
+        )
 
     definition = ToolDefinition(
         name="demo",
@@ -22,7 +26,7 @@ def test_wrap_tool_definition_exposes_agent_tool_contract() -> None:
         description="Demo tool",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
         prepare_arguments=lambda raw: {"normalized": raw},
-        execute=execute,
+        execution=direct_execution(execute),
     )
 
     tool = wrap_tool_definition(definition)
@@ -39,8 +43,8 @@ def test_wrap_tool_definition_exposes_agent_tool_contract() -> None:
 def test_wrap_tool_definition_exposes_custom_execution_mode() -> None:
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.tools.types import ToolDefinition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.core import ToolDefinition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del tool_call_id, params, signal, on_update
@@ -51,7 +55,7 @@ def test_wrap_tool_definition_exposes_custom_execution_mode() -> None:
         label="Sequential Demo",
         description="Sequential demo tool",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execute=execute,
+        execution=direct_execution(execute),
         execution_mode="sequential",
     )
 
@@ -61,12 +65,12 @@ def test_wrap_tool_definition_exposes_custom_execution_mode() -> None:
 def test_wrap_tool_definition_preserves_tool_renderers() -> None:
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.tools.types import (
+    from loushang.harness.tools.core import (
         ToolDefinition,
         ToolRenderContext,
         ToolRenderResultOptions,
     )
-    from loushang.coding.tools.wrapper import (
+    from loushang.harness.tools.workspace.wrapper import (
         create_tool_definition_from_tool,
         wrap_tool_definition,
     )
@@ -76,18 +80,22 @@ def test_wrap_tool_definition_preserves_tool_renderers() -> None:
         return AgentToolResult(content=[TextPart(type="text", text="ok")], details={})
 
     def render_call(args, theme, context: ToolRenderContext):
-        return {"text": f"call {args['path']} {theme['accent']} {context.toolCallId}"}
+        return {"text": f"call {args['path']} {theme['accent']} {context.tool_call_id}"}
 
-    def render_result(result, options: ToolRenderResultOptions, theme, context: ToolRenderContext):
+    def render_result(
+        result, options: ToolRenderResultOptions, theme, context: ToolRenderContext
+    ):
         del result, theme
-        return {"text": f"result expanded={options.expanded} partial={context.isPartial}"}
+        return {
+            "text": f"result expanded={options.expanded} partial={context.is_partial}"
+        }
 
     definition = ToolDefinition(
         name="read",
         label="Read",
         description="Read files",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execute=execute,
+        execution=direct_execution(execute),
         render_call=render_call,
         render_result=render_result,
     )
@@ -101,38 +109,3 @@ def test_wrap_tool_definition_preserves_tool_renderers() -> None:
     assert wrapped.renderResult is render_result
     assert round_tripped.render_call is render_call
     assert round_tripped.render_result is render_result
-
-
-def test_pi_style_wrapper_aliases_delegate_to_python_helpers() -> None:
-    import asyncio
-
-    from loushang.agent.types import AgentToolResult
-    from loushang.ai.types import TextPart
-    from loushang.coding.tools.types import ToolDefinition
-    from loushang.coding.tools.wrapper import (
-        createToolDefinitionFromAgentTool,
-        wrapToolDefinition,
-        wrapToolDefinitions,
-    )
-
-    async def execute(tool_call_id, params, signal=None, on_update=None):
-        del tool_call_id, params, signal, on_update
-        return AgentToolResult(content=[TextPart(type="text", text="ok")], details={})
-
-    definition = ToolDefinition(
-        name="demo",
-        label="Demo",
-        description="Demo tool",
-        parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execute=execute,
-    )
-
-    wrapped = wrapToolDefinition(definition)
-    wrapped_many = wrapToolDefinitions([definition])
-    round_tripped = createToolDefinitionFromAgentTool(wrapped)
-    result = asyncio.run(wrapped.execute("call-alias", {}))
-
-    assert wrapped.name == "demo"
-    assert wrapped_many[0].name == "demo"
-    assert round_tripped.name == "demo"
-    assert result.content[0].text == "ok"

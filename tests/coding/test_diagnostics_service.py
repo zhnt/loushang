@@ -4,12 +4,12 @@ from pathlib import Path
 
 
 def test_diagnostics_service_normalizes_and_queries_records() -> None:
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
-    from loushang.coding.loader import ResourceDiagnostic
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
+    from loushang.harness.diagnostics.types import DiagnosticDraft
 
     service = DiagnosticsService()
-    record = service.normalize_resource_diagnostic(
-        ResourceDiagnostic(
+    record = service.normalize_diagnostic(
+        DiagnosticDraft(
             code="duplicate_skill",
             message="Duplicate skill 'review' ignored.",
             source_path=Path("/tmp/review/SKILL.md"),
@@ -29,7 +29,7 @@ def test_diagnostics_service_normalizes_and_queries_records() -> None:
 
 
 def test_diagnostics_service_filters_tool_correlated_records() -> None:
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
 
     service = DiagnosticsService()
     matching = service.capture_failure(
@@ -53,12 +53,12 @@ def test_diagnostics_service_filters_tool_correlated_records() -> None:
 
 
 def test_diagnostics_service_preserves_resource_diagnostic_details() -> None:
-    from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.coding.loader import ResourceDiagnostic
+    from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.resources.diagnostics import resource_diagnostic
 
     service = DiagnosticsService()
-    record = service.normalize_resource_diagnostic(
-        ResourceDiagnostic(
+    record = service.normalize_diagnostic(
+        resource_diagnostic(
             code="extension_runtime_failed",
             message="Extension hook failed.",
             resource_id="deploy",
@@ -81,7 +81,7 @@ def test_diagnostics_service_preserves_resource_diagnostic_details() -> None:
 
 
 def test_diagnostics_service_builds_error_report_and_clears_runtime_records() -> None:
-    from loushang.coding.diagnostics import DiagnosticsService
+    from loushang.harness.diagnostics import DiagnosticsService
 
     service = DiagnosticsService()
     warning = service.normalize_exception(
@@ -114,7 +114,7 @@ def test_diagnostics_service_builds_error_report_and_clears_runtime_records() ->
 
 
 def test_diagnostics_service_captures_failures() -> None:
-    from loushang.coding.diagnostics import DiagnosticsService
+    from loushang.harness.diagnostics import DiagnosticsService
 
     service = DiagnosticsService()
 
@@ -136,7 +136,7 @@ def test_diagnostics_service_captures_failures() -> None:
 
 
 def test_diagnostics_service_deduplicates_repeated_records() -> None:
-    from loushang.coding.diagnostics import DiagnosticsService
+    from loushang.harness.diagnostics import DiagnosticsService
 
     service = DiagnosticsService()
 
@@ -169,7 +169,7 @@ def test_diagnostics_service_deduplicates_repeated_records() -> None:
 
 
 def test_diagnostics_service_error_report_related_records_are_deduplicated() -> None:
-    from loushang.coding.diagnostics import DiagnosticsService
+    from loushang.harness.diagnostics import DiagnosticsService
 
     service = DiagnosticsService()
 
@@ -204,7 +204,7 @@ def test_diagnostics_service_error_report_related_records_are_deduplicated() -> 
 
 
 def test_diagnostics_service_summarizes_records_with_occurrences() -> None:
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
 
     service = DiagnosticsService()
     service.capture_failure(
@@ -246,7 +246,7 @@ def test_diagnostics_service_summarizes_records_with_occurrences() -> None:
 
 
 def test_diagnostics_serialization_projects_stable_json_shape() -> None:
-    from loushang.coding.diagnostics import (
+    from loushang.harness.diagnostics import (
         DiagnosticRecord,
         DiagnosticSummary,
         ErrorReport,
@@ -312,7 +312,7 @@ def test_diagnostics_serialization_projects_stable_json_shape() -> None:
 
 
 def test_diagnostics_service_runs_startup_checks() -> None:
-    from loushang.coding.diagnostics import DiagnosticsService, StartupCheckResult
+    from loushang.harness.diagnostics import DiagnosticsService, StartupCheckResult
 
     service = DiagnosticsService()
 
@@ -339,7 +339,7 @@ def test_diagnostics_service_runs_startup_checks() -> None:
 
 
 def test_diagnostics_service_records_startup_check_exceptions() -> None:
-    from loushang.coding.diagnostics import DiagnosticsService
+    from loushang.harness.diagnostics import DiagnosticsService
 
     service = DiagnosticsService()
 

@@ -39,6 +39,8 @@
 - 运行控制项
 - `compaction_settings`
 - `branch_summary_settings`
+- `capabilities: {ProductCapabilityId: disabled | on_demand | always}`，表达 Product capability 的默认挂载策略；
+  具体 capability id、默认值和 capability-to-pack 映射仍由 Coding Product 解释，配置层只校验通用挂载值。
 
 ### `CompactionSettings`
 

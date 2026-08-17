@@ -151,7 +151,7 @@ def _validate_limits(*, max_lines: int, max_bytes: int) -> None:
 
 
 def _truncate_utf8_suffix(content: str, *, max_bytes: int) -> tuple[str, bool]:
-    encoded = content.encode("utf-8")
+    encoded = content.encode("utf-8", errors="surrogateescape")
     if len(encoded) <= max_bytes:
         return content, False
 
@@ -159,7 +159,7 @@ def _truncate_utf8_suffix(content: str, *, max_bytes: int) -> tuple[str, bool]:
     clipped = encoded[start:]
     while clipped:
         try:
-            return clipped.decode("utf-8"), True
+            return clipped.decode("utf-8", errors="surrogateescape"), True
         except UnicodeDecodeError:
             clipped = clipped[1:]
     return "", True
@@ -196,7 +196,7 @@ def _count_lines(content: str) -> int:
 
 
 def _count_bytes(content: str) -> int:
-    return len(content.encode("utf-8"))
+    return len(content.encode("utf-8", errors="surrogateescape"))
 
 
 def _strip_line_ending(line: str) -> str:

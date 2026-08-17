@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -235,9 +237,30 @@ def test_command_normalization_exposes_shell_stdin_payload(
         (("bash", "../proc/thread-self/fd/0"), "/tmp"),
         (("bash", "/proc/self/root/dev/stdin"), "/tmp"),
         (("bash", "/proc/thread-self/root/dev/stdin"), "/tmp"),
-        (("bash", "/proc/self/root/../dev/stdin"), "/tmp"),
-        (("bash", "/proc/thread-self/root/../dev/stdin"), "/tmp"),
-        (("bash", "/proc/self/root/../../dev/stdin"), "/tmp"),
+        pytest.param(
+            ("bash", "/proc/self/root/../dev/stdin"),
+            "/tmp",
+            marks=pytest.mark.skipif(
+                Path("/tmp").is_symlink(),
+                reason="macOS /tmp is a symlink to /private/tmp; lexical /tmp path equivalence does not hold",
+            ),
+        ),
+        pytest.param(
+            ("bash", "/proc/thread-self/root/../dev/stdin"),
+            "/tmp",
+            marks=pytest.mark.skipif(
+                Path("/tmp").is_symlink(),
+                reason="macOS /tmp is a symlink to /private/tmp; lexical /tmp path equivalence does not hold",
+            ),
+        ),
+        pytest.param(
+            ("bash", "/proc/self/root/../../dev/stdin"),
+            "/tmp",
+            marks=pytest.mark.skipif(
+                Path("/tmp").is_symlink(),
+                reason="macOS /tmp is a symlink to /private/tmp; lexical /tmp path equivalence does not hold",
+            ),
+        ),
         (("fish", "stdin"), "/dev"),
         (("fish", "--", "../proc/self/fd/0"), "/tmp"),
     ],
@@ -449,6 +472,10 @@ def test_command_normalization_marks_wrapper_with_arbitrary_basename_incomplete(
     assert subject.normalization_complete is False
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="macOS sandbox denies copying /bin/bash (Operation not permitted)",
+)
 def test_command_normalization_fails_safe_for_independent_shell_copies(
     tmp_path,
 ) -> None:
@@ -560,7 +587,7 @@ def test_command_normalization_classifies_busybox_inode_by_invocation_name(
     tmp_path,
     monkeypatch,
 ) -> None:
-    import loushang.harness.policy as policy_module
+    import loushang.harness.policy.subjects as policy_module
     from loushang.harness.policy import normalize_command_subject
 
     multicall = tmp_path / "busybox"
@@ -838,15 +865,15 @@ def test_workspace_policy_wraps_protocol_and_decision_property_failures() -> Non
         def disposition(self):
             raise RuntimeError("decision exploded")
 
-    class LegacyEvaluator:
-        def evaluate_tool_call(self, **kwargs):
-            del kwargs
+    class InvalidEvaluator:
+        def evaluate(self, subject):
+            del subject
             return ExplosiveDecision()
 
-    with pytest.raises(PolicyEvaluationError, match="decision exploded"):
+    with pytest.raises(PolicyEvaluationError, match="expected PolicyDecision"):
         asyncio.run(
             enforce_tool_policy(
-                LegacyEvaluator(),
+                InvalidEvaluator(),
                 tool_name="read",
                 arguments={},
             )
@@ -856,10 +883,6 @@ def test_workspace_policy_wraps_protocol_and_decision_property_failures() -> Non
         def evaluate(self, subject):
             del subject
             return PolicyDecision.allow()
-
-        @property
-        def evaluate_tool_call(self):
-            raise AssertionError("legacy getter must not be inspected")
 
     asyncio.run(
         enforce_tool_policy(
@@ -921,6 +944,10 @@ def test_evaluate_policy_propagates_cancellation() -> None:
         asyncio.run(evaluate_policy(CancelledEvaluator(), CustomPolicySubject("demo")))
 
 
+@pytest.mark.skipif(
+    Path("/tmp").is_symlink(),
+    reason="asserts resolved paths under /tmp; macOS /tmp is a symlink to /private/tmp",
+)
 def test_workspace_policy_adapter_accepts_async_subject_evaluator() -> None:
     from loushang.harness.policy import PolicyDecision, ToolPolicySubject
     from loushang.harness.tools.workspace.policy import (
@@ -1007,16 +1034,15 @@ def test_workspace_policy_uses_one_snapshot_across_async_evaluation() -> None:
     assert requests[0].arguments["path"] == "before.txt"
     assert requests[0].arguments["nested"]["value"] == "before"  # type: ignore[index]
     assert error.tool_result_details["path"] == "before.txt"
-    assert {event["path"] for event in audit_events if "path" in event} == {
-        "before.txt"
-    }
+    assert all("path" not in event for event in audit_events)
+    assert all("before.txt" not in repr(event) for event in audit_events)
 
 
 def test_workspace_policy_adapter_rejects_unknown_evaluator() -> None:
     from loushang.harness.policy import PolicyEvaluationError
     from loushang.harness.tools.workspace.policy import enforce_tool_policy
 
-    with pytest.raises(PolicyEvaluationError, match="no supported evaluate method"):
+    with pytest.raises(PolicyEvaluationError, match="no callable evaluate method"):
         asyncio.run(
             enforce_tool_policy(
                 object(),
@@ -1167,12 +1193,9 @@ def test_workspace_policy_rejects_bash_argument_cwd_mismatch() -> None:
         )
 
 
-def test_dual_protocol_policy_falls_back_to_legacy_when_new_contract_abstains() -> None:
+def test_workspace_policy_does_not_fall_back_after_canonical_abstention() -> None:
     from loushang.harness.policy import PolicyDecision
-    from loushang.harness.tools.workspace.policy import (
-        PolicyEnforcementError,
-        enforce_tool_policy,
-    )
+    from loushang.harness.tools.workspace.policy import enforce_tool_policy
 
     class TransitionalEvaluator:
         def evaluate(self, subject):
@@ -1183,32 +1206,31 @@ def test_dual_protocol_policy_falls_back_to_legacy_when_new_contract_abstains() 
             del arguments, cwd
             return PolicyDecision.deny(f"legacy denied {tool_name}")
 
-    with pytest.raises(PolicyEnforcementError, match="legacy denied write"):
-        asyncio.run(
-            enforce_tool_policy(
-                TransitionalEvaluator(),
-                tool_name="write",
-                arguments={"path": "notes.txt", "content": "text"},
-            )
+    asyncio.run(
+        enforce_tool_policy(
+            TransitionalEvaluator(),
+            tool_name="write",
+            arguments={"path": "notes.txt", "content": "text"},
         )
+    )
 
 
-def test_legacy_tool_policy_revalidates_policy_decision_instances() -> None:
+def test_workspace_policy_revalidates_policy_decision_instances() -> None:
     from loushang.harness.policy import PolicyDecision, PolicyEvaluationError
     from loushang.harness.tools.workspace.policy import enforce_tool_policy
 
     malformed = PolicyDecision.allow()
     object.__setattr__(malformed, "disposition", "prompt")
 
-    class MalformedLegacyEvaluator:
-        def evaluate_tool_call(self, *, tool_name, arguments, cwd=None):
-            del tool_name, arguments, cwd
+    class MalformedEvaluator:
+        def evaluate(self, subject):
+            del subject
             return malformed
 
     with pytest.raises(PolicyEvaluationError, match="invalid PolicyDecision"):
         asyncio.run(
             enforce_tool_policy(
-                MalformedLegacyEvaluator(),
+                MalformedEvaluator(),
                 tool_name="write",
                 arguments={"path": "notes.txt", "content": "text"},
             )

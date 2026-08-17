@@ -132,9 +132,9 @@ Run playback before changing composer input, selection, paste marker,
 completion, keybinding, or render-highlight behavior:
 
 ```bash
-uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner --list
-uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner composer-selection-stress --artifacts /tmp/loushang-selection-playback --include-frames
-uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner --tag composer --json
+uv --cache-dir .uv-cache run --extra dev python scripts/run_tui_playback.py --list
+uv --cache-dir .uv-cache run --extra dev python scripts/run_tui_playback.py composer-selection-stress --artifacts /tmp/loushang-selection-playback --include-frames
+uv --cache-dir .uv-cache run --extra dev python scripts/run_tui_playback.py --tag composer --json
 ```
 
 Use `--include-frames` when diagnosing transient selection rendering. The final

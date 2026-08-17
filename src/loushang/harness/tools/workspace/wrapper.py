@@ -1,126 +1,97 @@
+"""Workspace compatibility imports for the common hosted tool wrapper."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
 from typing import Any
 
-from loushang.agent.types import AgentTool, AgentToolResult, ToolExecutionMode
+from loushang.agent.types import AgentTool
+from loushang.harness.approval import ApprovalResolver
+from loushang.harness.policy_engine import PolicyEngine
+from loushang.harness.tools.core import (
+    ToolDefinition,
+    WrappedToolDefinition,
+)
+from loushang.harness.tools.core import (
+    wrap_tool_definition as _wrap_tool_definition,
+)
+from loushang.harness.tools.core import (
+    wrap_tool_definitions as _wrap_tool_definitions,
+)
+from loushang.harness.tools.execution import ToolExecutionHost
 
-from .context import ToolContextProvider
-from .runtime import raise_if_tool_aborted
-from .types import ToolDefinition, ToolRenderCall, ToolRenderResult
+from .authorization import (
+    create_workspace_tool_execution_host as _create_workspace_tool_execution_host,
+)
+from .policy import ToolPolicyEvaluator
 
 
-@dataclass
-class WrappedToolDefinition:
-    definition: ToolDefinition
+def create_workspace_tool_execution_host(
+    *,
+    policy_evaluator: ToolPolicyEvaluator | None = None,
+    approval_resolver: ApprovalResolver | None = None,
+) -> ToolExecutionHost:
+    """Compose the Workspace gateway for one standalone or session host."""
 
-    @property
-    def name(self) -> str:
-        return self.definition.name
+    return _create_workspace_tool_execution_host(
+        policy_evaluator=policy_evaluator or PolicyEngine(),
+        approval_resolver=approval_resolver,
+    )
 
-    @property
-    def label(self) -> str:
-        return self.definition.label
 
-    @property
-    def description(self) -> str:
-        return self.definition.description
+def create_tool_definition_from_tool(tool: AgentTool[Any]) -> ToolDefinition:
+    """Recover only a definition materialized by the common hosted wrapper."""
 
-    @property
-    def parameters(self) -> dict[str, Any]:
-        return self.definition.provider_parameters or self.definition.parameters
-
-    @property
-    def prepare_arguments(self):
-        return self.definition.prepare_arguments
-
-    @property
-    def execution_mode(self) -> ToolExecutionMode:
-        return self.definition.execution_mode
-
-    @property
-    def render_call(self) -> ToolRenderCall | None:
-        return self.definition.render_call
-
-    @property
-    def renderCall(self) -> ToolRenderCall | None:
-        return self.definition.renderCall
-
-    @property
-    def render_result(self) -> ToolRenderResult | None:
-        return self.definition.render_result
-
-    @property
-    def renderResult(self) -> ToolRenderResult | None:
-        return self.definition.renderResult
-
-    async def execute(
-        self,
-        tool_call_id: str,
-        params: dict[str, Any],
-        signal: object | None = None,
-        on_update: object | None = None,
-    ) -> AgentToolResult[Any]:
-        raise_if_tool_aborted(signal)
-        return await self.definition.execute(tool_call_id, params, signal, on_update)
+    definition = getattr(tool, "definition", None)
+    if not isinstance(definition, ToolDefinition):
+        raise TypeError(
+            "raw AgentTool values have no execution binding; register an "
+            "explicit ToolDefinition"
+        )
+    return definition
 
 
 def wrap_tool_definition(
     definition: ToolDefinition,
     *,
-    context_provider: ToolContextProvider | None = None,
+    context_provider: object | None = None,
+    execution_host: ToolExecutionHost | None = None,
+    policy_evaluator: ToolPolicyEvaluator | None = None,
+    approval_resolver: ApprovalResolver | None = None,
 ) -> AgentTool[Any]:
-    execute = definition.execute
-    bind_context_provider = getattr(execute, "bind_context_provider", None)
-    if callable(bind_context_provider):
-        definition = replace(
-            definition, execute=bind_context_provider(context_provider)
-        )
-    return WrappedToolDefinition(definition=definition)
-
-
-def create_tool_definition_from_tool(tool: AgentTool[Any]) -> ToolDefinition:
-    definition = getattr(tool, "definition", None)
-    if isinstance(definition, ToolDefinition):
-        return definition
-    return ToolDefinition(
-        name=tool.name,
-        label=tool.label,
-        description=tool.description,
-        parameters=tool.parameters,
-        prepare_arguments=tool.prepare_arguments,
-        execution_mode=tool.execution_mode,
-        render_call=getattr(tool, "render_call", getattr(tool, "renderCall", None)),
-        render_result=getattr(
-            tool, "render_result", getattr(tool, "renderResult", None)
+    return _wrap_tool_definition(
+        definition,
+        execution_host=execution_host
+        or create_workspace_tool_execution_host(
+            policy_evaluator=policy_evaluator,
+            approval_resolver=approval_resolver,
         ),
-        execute=tool.execute,
+        context_provider=context_provider if callable(context_provider) else None,
     )
 
 
 def wrap_tool_definitions(
     definitions: list[ToolDefinition],
     *,
-    context_provider: ToolContextProvider | None = None,
+    context_provider: object | None = None,
+    execution_host: ToolExecutionHost | None = None,
+    policy_evaluator: ToolPolicyEvaluator | None = None,
+    approval_resolver: ApprovalResolver | None = None,
 ) -> list[AgentTool[Any]]:
-    return [
-        wrap_tool_definition(definition, context_provider=context_provider)
-        for definition in definitions
-    ]
+    host = execution_host or create_workspace_tool_execution_host(
+        policy_evaluator=policy_evaluator,
+        approval_resolver=approval_resolver,
+    )
+    return _wrap_tool_definitions(
+        definitions,
+        execution_host=host,
+        context_provider=context_provider if callable(context_provider) else None,
+    )
 
 
-def wrapToolDefinition(
-    definition: ToolDefinition,
-    context_provider: ToolContextProvider | None = None,
-) -> AgentTool[Any]:
-    return wrap_tool_definition(definition, context_provider=context_provider)
-
-
-def wrapToolDefinitions(
-    definitions: list[ToolDefinition],
-    context_provider: ToolContextProvider | None = None,
-) -> list[AgentTool[Any]]:
-    return wrap_tool_definitions(definitions, context_provider=context_provider)
-
-
-createToolDefinitionFromAgentTool = create_tool_definition_from_tool
+__all__ = [
+    "WrappedToolDefinition",
+    "create_workspace_tool_execution_host",
+    "create_tool_definition_from_tool",
+    "wrap_tool_definition",
+    "wrap_tool_definitions",
+]

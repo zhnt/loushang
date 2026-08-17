@@ -11,14 +11,11 @@ The quality hardening charter requires:
 - AI core statement coverage >= 90%.
 - Provider adapter aggregate coverage >= 85%.
 
-The package-level `pytest-cov` run also includes CLI entrypoints, contrib
-integrations, credential browser flows, live-provider helpers, and optional auth
-storage paths. Those paths are important, but they do not have the same release
-meaning as the runtime core and retained provider adapters:
+The package-level `pytest-cov` run also includes protocol adapters and auth
+resolution. Those paths do not have the same release meaning as the runtime core:
 
-- CLI and contrib paths have separate smoke and import-boundary checks.
-- Browser/OAuth flows require platform and credential conditions that are not
-  stable in the offline release gate.
+- Real OAuth credentials and live-provider calls require external conditions
+  that are not stable in the offline release gate.
 - Provider adapters have their own aggregate threshold because their SDK event
   mapping risk differs from core model/runtime code.
 
@@ -27,34 +24,32 @@ Without a written scope, the numeric target can drift between "all files under
 
 ## Decision
 
-`make check-ai` keeps the package-level coverage floor at 80% and adds explicit
+`make check-ai` keeps the package-level coverage floor at 90% and adds explicit
 target checks from `.artifacts/ai/coverage.xml`:
 
 1. `ai-runtime-core >= 90%`
    - Includes the AI runtime, public API, model/catalog domain, context,
      messages, events, provider runtime/resolution, tools, structured output,
      usage, pricing, trace, and utility modules.
-   - Excludes `auth/`, `cli/`, `contrib/`, and `providers/`.
+   - Excludes only `protocols/`.
 2. `provider-adapters >= 85%`
    - Includes the retained production adapters and their shared helper modules:
-     `providers/anthropic.py`, `providers/anthropic_base.py`,
-     `providers/openai_completions.py`, `providers/openai_responses.py`,
-     `providers/openai_responses_shared.py`, and
-     `providers/provider_helpers.py`.
+     `protocols/anthropic_messages.py`, `protocols/_anthropic.py`,
+     `protocols/openai_chat_completions.py`, `protocols/openai_responses.py`,
+     `protocols/_openai_responses.py`, and `protocols/_helpers.py`.
 3. `production-adapter-modules >= 85%`
    - Includes only the three retained production adapter modules:
-     `providers/anthropic.py`, `providers/openai_completions.py`, and
-     `providers/openai_responses.py`.
+     `protocols/anthropic_messages.py`,
+     `protocols/openai_chat_completions.py`, and
+     `protocols/openai_responses.py`.
 
-The package-level 80% floor remains in place to prevent broad regression outside
+The package-level 90% floor remains in place to prevent broad regression outside
 the scoped targets.
 
 ## Rationale
 
-This makes the charter's coverage requirements executable without pretending
-that interactive auth, CLI, and contrib code have the same offline test shape as
-the runtime core. It also prevents adapter coverage from being hidden inside a
-single package-wide percentage.
+This makes the charter's coverage requirements executable while keeping provider
+coverage visible instead of hiding it inside a single package-wide percentage.
 
 The coverage gate complements, but does not replace, behavior tests, contract
 tests, offline examples, catalog checks, live smoke when credentials are
@@ -70,10 +65,8 @@ Positive:
 
 Negative:
 
-- Auth, CLI, and contrib coverage are not treated as part of the 90% runtime
-  core target.
-- Final release review still needs to inspect auth/CLI/contrib risk instead of
-  relying on the scoped coverage target alone.
+- Adapter coverage has a separate aggregate threshold in addition to the
+  package-level gate.
 
 ## Implementation
 

@@ -2,27 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from typing import Any
 
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart
-from loushang.coding.tools import (
-    ToolContext,
-    ToolDefinition,
-    tool,
-    tool_to_definition,
-    wrap_tool_definition,
-)
-
-
-async def _dummy_execute(
-    tool_call_id: str,
-    params: dict[str, Any],
-    signal: object | None = None,
-    on_update: object | None = None,
-) -> AgentToolResult[dict[str, Any]]:
-    del tool_call_id, params, signal, on_update
-    return AgentToolResult(content=[], details={})
+from loushang.harness.tools import ToolContext, direct_tool, tool
+from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
 
 def _provider(*, tool_call_id: str) -> ToolContext:
@@ -55,7 +39,9 @@ async def show_context(path: str, ctx: ToolContext) -> str:
 
 @tool()
 async def explicit_result(name: str) -> AgentToolResult[dict[str, str]]:
-    return AgentToolResult(content=[TextPart(type="text", text=name)], details={"name": name})
+    return AgentToolResult(
+        content=[TextPart(type="text", text=name)], details={"name": name}
+    )
 
 
 @tool()
@@ -73,31 +59,15 @@ async def fail_loudly(name: str) -> str:
     raise ValueError(f"boom: {name}")
 
 
-def test_tool_to_definition_accepts_tool_definition_passthrough() -> None:
-    definition = ToolDefinition(
-        name="demo",
-        label="Demo",
-        description="demo",
-        parameters={
-            "type": "object",
-            "properties": {},
-            "required": [],
-            "additionalProperties": False,
-        },
-        execute=_dummy_execute,
-    )
-    assert tool_to_definition(definition) is definition
-
-
-def test_tool_to_definition_compiles_decorated_tool_metadata() -> None:
-    definition = tool_to_definition(greet)
+def test_direct_tool_compiles_decorated_tool_metadata() -> None:
+    definition = direct_tool(greet)
     assert definition.name == "greet"
     assert definition.description == "Say hello."
     assert definition.label == "Greet"
 
 
-def test_tool_to_definition_preserves_explicit_decorated_metadata() -> None:
-    definition = tool_to_definition(salute)
+def test_direct_tool_preserves_explicit_decorated_metadata() -> None:
+    definition = direct_tool(salute)
     spec = getattr(salute, "__loushang_tool_spec__")
     assert definition.name == "salute"
     assert definition.label == "Salute"
@@ -109,31 +79,13 @@ def test_tool_to_definition_preserves_explicit_decorated_metadata() -> None:
 
 
 def test_authoring_private_spec_attr_is_direct_import_only() -> None:
-    from loushang.coding.tools import authoring
-    from loushang.coding.tools.authoring import _TOOL_SPEC_ATTR
+    import loushang.harness.tools.core as authoring
+    from loushang.harness.tools.core import _TOOL_SPEC_ATTR
 
     assert _TOOL_SPEC_ATTR == "__loushang_tool_spec__"
-    assert "_TOOL_SPEC_ATTR" not in authoring.__all__
-
-
-def test_tool_to_definition_rejects_duck_typed_tool_like_objects() -> None:
-    class DuckTypedTool:
-        name = "duck"
-        label = "Duck"
-        description = "duck typed tool"
-        parameters: dict[str, object] = {}
-        prepare_arguments = None
-
-        async def execute(self, tool_call_id: str, params: dict[str, object], signal=None, on_update=None):
-            del tool_call_id, params, signal, on_update
-            return AgentToolResult(content=[], details={})
-
-    try:
-        tool_to_definition(DuckTypedTool())
-    except TypeError as exc:
-        assert "decorated tool" in str(exc)
-    else:
-        raise AssertionError("expected duck-typed object to be rejected")
+    assert (
+        not hasattr(authoring, "__all__") or "_TOOL_SPEC_ATTR" not in authoring.__all__
+    )
 
 
 def test_decorated_tool_spec_remains_callable() -> None:
@@ -141,7 +93,7 @@ def test_decorated_tool_spec_remains_callable() -> None:
 
 
 def test_decorated_tool_receives_tool_context_from_provider() -> None:
-    definition = tool_to_definition(show_context)
+    definition = direct_tool(show_context)
     tool = wrap_tool_definition(definition, context_provider=_provider)
 
     result = asyncio.run(tool.execute("call-1", {"path": "README.md"}))
@@ -152,7 +104,7 @@ def test_decorated_tool_receives_tool_context_from_provider() -> None:
 
 
 def test_decorated_tool_passes_through_explicit_agent_tool_result() -> None:
-    definition = tool_to_definition(explicit_result)
+    definition = direct_tool(explicit_result)
     tool = wrap_tool_definition(definition, context_provider=_provider)
 
     result = asyncio.run(tool.execute("call-2", {"name": "Ada"}))
@@ -162,7 +114,7 @@ def test_decorated_tool_passes_through_explicit_agent_tool_result() -> None:
 
 
 def test_decorated_tool_normalizes_plain_return_values() -> None:
-    definition = tool_to_definition(plain_value)
+    definition = direct_tool(plain_value)
     tool = wrap_tool_definition(definition, context_provider=_provider)
 
     result = asyncio.run(tool.execute("call-3", {"name": "Ada"}))
@@ -172,7 +124,7 @@ def test_decorated_tool_normalizes_plain_return_values() -> None:
 
 
 def test_decorated_tool_rejects_unsupported_plain_return_values() -> None:
-    definition = tool_to_definition(unsupported_value)
+    definition = direct_tool(unsupported_value)
     tool = wrap_tool_definition(definition, context_provider=_provider)
 
     try:
@@ -180,11 +132,13 @@ def test_decorated_tool_rejects_unsupported_plain_return_values() -> None:
     except TypeError as exc:
         assert "unsupported plain return type" in str(exc)
     else:
-        raise AssertionError("expected unsupported plain return type to raise TypeError")
+        raise AssertionError(
+            "expected unsupported plain return type to raise TypeError"
+        )
 
 
 def test_decorated_tool_exceptions_propagate_to_agent_loop_boundary() -> None:
-    definition = tool_to_definition(fail_loudly)
+    definition = direct_tool(fail_loudly)
     tool = wrap_tool_definition(definition, context_provider=_provider)
 
     try:

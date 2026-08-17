@@ -94,7 +94,7 @@ Tool argument payloads are summarized instead of emitted verbatim:
 - `command` is represented by `command_chars`
 - object keys are listed for debugging
 
-## Contrib / Provider-Owned Events
+## Provider-Owned Extension Events
 
 Core runtime does not define transport, WebSocket pool, fallback, reconnect, span, or
 tracer frameworks. Provider-owned integrations may emit additional `sdk:*` or

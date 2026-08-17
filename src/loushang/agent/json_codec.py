@@ -11,7 +11,7 @@ from loushang.ai.json_codec import (
     serialize_message,
 )
 from loushang.ai.types import AssistantMessage, ToolResultMessage, UserMessage
-from loushang.protocol import require_json_value
+from loushang.foundation.json import require_json_value
 
 CustomMessageSerializer = Callable[[CustomAgentMessage], dict[str, Any]]
 CustomMessageDeserializer = Callable[[dict[str, Any]], CustomAgentMessage]

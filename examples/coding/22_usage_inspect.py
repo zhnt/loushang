@@ -159,7 +159,7 @@ async def main() -> int:
     print("cost:", cost_payload)
 
     print("=== offline expected sample ===")
-    print("resolved catalog: .../examples/coding/models/models.kimi-code.json")
+    print("resolved catalog: <unset>; using built-in catalog")
     print("Model route:")
     print("usage: {'input': 0, 'output': 0, 'cache_read': 0, 'cache_write': 0, 'total_tokens': 0}")
     print("cost: {'known': False}")

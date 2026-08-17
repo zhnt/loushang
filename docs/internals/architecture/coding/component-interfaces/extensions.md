@@ -1,5 +1,13 @@
 # `extensions`
 
+## Status
+
+Superseded as a Coding-owned shared runtime. Product-neutral Extension loading,
+routing, and lifecycle composition now belong to the
+[Harness Extension Runtime Core](../../harness/extension-runtime-core-boundary.md).
+The Product-specific semantics described below are retained as historical
+adapter requirements.
+
 ## Role
 
 - coding 扩展执行侧协调组件，以及可选的扩展发现/装载边界
@@ -130,7 +138,8 @@
 - `resources_discover` 支持 reference-style path result：handler 可返回
   `{"promptPaths": [...], "skillPaths": [...], "themePaths": [...]}`，runner 会转换为现有
   `PromptFragmentDescriptor` / `SkillDescriptor` / `ThemeDescriptor`
-  并把显式 path 缺失或读取失败收敛为 `ResourceDiagnostic`，避免 extension resource gap 静默丢失
+  并通过 `resource_diagnostic(...)` 把显式 path 缺失或读取失败收敛为
+  `DiagnosticDraft`，避免 extension resource gap 静默丢失
 - provider registration 只对齐生命周期语义，不采用 `reference CLI` 的 flat provider config shape：
   `register_provider(name, config)` 支持 load-time pending 与 bound runtime immediate apply；
   `unregister_provider(name)` 会清理扩展注册的 model/API/OAuth provider；

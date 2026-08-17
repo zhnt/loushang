@@ -11,16 +11,20 @@ home for product semantics.
 
 ## Core Rule
 
-Harness owns reusable mechanisms and reusable concrete implementations.
-Products own their irreducible policy and domain semantics.
+Harness owns reusable mechanisms, cross-product conventions, and reusable
+concrete defaults. Products own only behavior that is irreducibly exclusive to
+their product identity or domain.
 
 The default destination is Harness. Code remains in a product only when the
-product boundary is explicit and testable. A Product exception must show at
-least one of these properties:
+product boundary is explicit and testable. The fact that code currently has
+one Product consumer, contains user-facing wording, or chooses a default is not
+enough to keep it in that Product. A Product exception must show at least one
+of these properties:
 
-- it defines product goals, domain language, completion criteria, prompts,
-  skills, or artifact semantics;
-- it chooses product defaults, tool-pack activation, context salience,
+- it defines product-exclusive goals, domain language, completion criteria,
+  prompts, skills, or artifact semantics that are not useful as a standard
+  Harness convention;
+- it chooses product-exclusive defaults, tool-pack activation, context salience,
   risk/approval behavior, permissions, storage, commands, or presentation;
 - it integrates product UI, product-exclusive compatibility/resource formats,
   or a domain-specific external system;
@@ -34,12 +38,15 @@ Put code in Harness when all of these are true:
   work, or AI provider semantics;
 - it describes a contract, helper engine, registry, resolver, lifecycle shape,
   neutral record, or reusable concrete capability;
-- product adapters can choose defaults, policy, activation, storage, and UI
-  behavior outside harness.
+- products can override the standard defaults and inject product-exclusive
+  policy, activation, storage, and UI behavior outside Harness.
 
-Keep code out of Harness when it decides what a specific product should do,
-which tools should be enabled by default, how a product prompt is assembled,
-how product artifacts are materialized, or how a product UI should behave.
+Keep code out of Harness only when it decides what one specific Product should
+do in terms that cannot be generalized without importing or encoding that
+Product. A useful overridable default, standard resource convention, or
+resource-aware prompt workflow belongs in Harness even though it necessarily
+makes choices. Product adapters replace or extend those choices where their
+domain genuinely differs.
 
 ## Neutrality Evidence Gate
 
@@ -49,8 +56,9 @@ is present:
 
 - a boundary decision names the product-neutral mechanism, the product policy
   left behind, and explicit non-goals;
-- the Harness API uses product-neutral vocabulary and carries no product
-  imports, product defaults, or product-specific storage and UI semantics;
+- the Harness API uses product-neutral vocabulary and carries no Product
+  imports, Product-exclusive defaults, or product-specific storage and UI
+  semantics;
 - the existing product adapter proves compatibility with current behavior;
 - an independent contract probe exercises the proposed API without Coding
   runtime objects or Coding vocabulary;
@@ -88,10 +96,11 @@ Apply that rule with these constraints:
   Harness owners.
 
 Dependency count is evidence about leverage, not evidence about ownership. For
-example, a product transcript schema can remain product-owned even when many
-modules import it. Conversely, a small package-source identity module should
-move early when it is a neutral foundation for discovery, materialization, and
-extension loading.
+example, a domain-specific transcript payload can remain product-owned even
+when many Product modules import it, while a common Agent transcript profile
+belongs in Harness despite initially having one Product adapter. Conversely, a
+small package-source identity module should move early when it is a neutral
+foundation for discovery, materialization, and extension loading.
 
 The preferred dependency flow is:
 
@@ -160,7 +169,11 @@ resource substrate becomes harness-owned, prefer a planned migration into
 
 ## Import Rules
 
-Harness may import stable `loushang.agent` primitives.
+Neutral Harness core packages may remain independent of Agent and AI. Declared
+Agent integration packages may import stable public `loushang.agent` and
+`loushang.ai` capabilities when their contract requires it. Such modules do
+not own provider registration, credential resolution, or Product model policy;
+Agent and AI packages must not reverse-depend on Harness.
 
 Harness must not import:
 
@@ -168,7 +181,6 @@ Harness must not import:
 - `loushang.method`;
 - `loushang.work`;
 - `loushang.tui`;
-- `loushang.ai`;
 - channel implementations.
 
 If a contract needs to reference work, method, channel, UI, or product facts, it
@@ -264,7 +276,7 @@ product adapters. Four contracts define this boundary:
 | **Protocol contract** | Public protocols (`PolicyEvaluator`, `ApprovalResolver`, `ExtensionPolicyResolver`, tool-definition protocols, etc.) follow additive evolution: new methods receive default implementations; existing signatures are preserved; deprecation uses warnings, not removal | Implement protocols with explicit parameter names; avoid `*args` / `**kwargs` that silently absorb new required parameters |
 | **Data contract** | Frozen dataclasses gain new fields only with default values; existing field semantics, order, and identity remain stable | Do not depend on field ordering, `__repr__` output, or pickled representation; read fields by name only |
 | **Resource contract** | Resource layout conventions (`skills/*/SKILL.md`, `methods/*/METHOD.md`, `themes/*.json`, `prompts/*.md`) and the loader merge algorithm are stable; discovery mechanics may improve (faster scan, richer diagnostics) but do not change precedence or key identity | Place OEM resources in dedicated directories; do not modify built-in or product-shipped resource files; use the loader API rather than filesystem hacks |
-| **Channel contract** | `WorkOperation` and `WorkEvent` schemas follow additive evolution; unknown `kind` values or new payload fields must not break existing consumers; `delivery_hint` semantics are preserved | Ignore unknown fields rather than rejecting them; treat unknown `kind` values as opaque pass-through |
+| **Channel contract** | `WorkOperation`, `WorkEvent`, and the separate `RuntimeEventView` family follow additive evolution; unknown `kind` values or new payload fields must not break existing consumers; `delivery_hint` semantics are preserved | Ignore unknown fields rather than rejecting them; treat unknown `kind` values as opaque pass-through |
 
 ### OEM Contract Tests
 

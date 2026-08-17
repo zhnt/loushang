@@ -28,9 +28,9 @@ class ConversationReplayPorts(Generic[RecordT, ItemT, StateT]):
     project_visible_item: Callable[[RecordT], ItemT | None]
     initialize_state: Callable[[], StateT]
     reduce_state: Callable[[StateT, RecordT], StateT]
-    resolve_checkpoint: Callable[[RecordT], ConversationCheckpoint[ItemT] | None] | None = (
-        None
-    )
+    resolve_checkpoint: (
+        Callable[[RecordT], ConversationCheckpoint[ItemT] | None] | None
+    ) = None
 
 
 @dataclass(frozen=True)

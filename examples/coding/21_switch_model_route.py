@@ -171,7 +171,7 @@ async def main() -> int:
                 results.append(
                     RouteResult(
                         endpoint=endpoint_id,
-                        provider="moonshot",
+                        provider="kimi-code",
                         model_id="unknown",
                         api=None,
                         base_url=None,
@@ -200,7 +200,7 @@ async def main() -> int:
     print_event("message.end", {"result": "pass" if fail_count == 0 else "partial", "ok": success_count, "total": len(results)})
 
     print("=== offline expected sample ===")
-    print("resolved catalog: .../examples/coding/models/models.kimi-code.json")
+    print("resolved catalog: <unset>; using built-in catalog")
     print("message.start")
     print(f"total_checked={len(results)} ok={success_count} failed={fail_count}")
 

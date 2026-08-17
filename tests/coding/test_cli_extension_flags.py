@@ -4,6 +4,8 @@ import asyncio
 from io import StringIO
 from pathlib import Path
 
+from loushang.harness.runtime import SessionOperationResult
+
 
 class FakeExtensionRunner:
     def __init__(self, flags) -> None:
@@ -44,6 +46,23 @@ class FakeRuntime:
         self.new_session_calls.append(cwd)
         return self._current_session
 
+    async def new_session_operation(
+        self,
+        *,
+        cwd: str | None = None,
+        parent_session: str | None = None,
+    ) -> SessionOperationResult[FakeSession, None]:
+        del parent_session
+        if cwd is None:
+            raise ValueError("Fake runtime requires cwd")
+        session = await self.new_session(cwd=cwd)
+        return SessionOperationResult(
+            previous=session,
+            current=session,
+            payload=None,
+            cancelled=False,
+        )
+
 
 class FakeRunner:
     def __init__(self, *, exit_code: int = 0) -> None:
@@ -60,13 +79,17 @@ def _fake_services():
 
     settings = SimpleNamespace(session_dir=None)
     settings_manager = SimpleNamespace(get_settings=lambda: settings)
-    return SimpleNamespace(settings_manager=settings_manager, diagnostics_service=object())
+    return SimpleNamespace(
+        settings_manager=settings_manager, diagnostics_service=object()
+    )
 
 
 def test_parse_args_preserves_unknown_extension_flags_for_second_pass() -> None:
     from loushang.coding.cli.args import parse_args
 
-    args = parse_args(["--mode", "rpc", "--plan", "--request-id", "abc"], allow_unknown=True)
+    args = parse_args(
+        ["--mode", "rpc", "--plan", "--request-id", "abc"], allow_unknown=True
+    )
 
     assert args.extension_flag_values == {}
     assert args.unknown_flags == {"plan": True, "request-id": "abc"}
@@ -74,7 +97,7 @@ def test_parse_args_preserves_unknown_extension_flags_for_second_pass() -> None:
 
 def test_parse_args_applies_extension_flags_on_second_pass() -> None:
     from loushang.coding.cli.args import parse_args
-    from loushang.coding.extensions import ResolvedFlag, SourceInfo
+    from loushang.harness.extensions.agent import ResolvedFlag, SourceInfo
 
     args = parse_args(
         ["--mode", "rpc", "--plan", "--request-id", "abc"],
@@ -98,9 +121,11 @@ def test_parse_args_applies_extension_flags_on_second_pass() -> None:
     assert args.extension_flag_values == {"plan": True, "request-id": "abc"}
 
 
-def test_run_cli_applies_extension_flag_values_after_extension_discovery(tmp_path) -> None:
+def test_run_cli_applies_extension_flag_values_after_extension_discovery(
+    tmp_path,
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.extensions import ResolvedFlag, SourceInfo
+    from loushang.harness.extensions.agent import ResolvedFlag, SourceInfo
 
     extension_runner = FakeExtensionRunner(
         [
@@ -131,13 +156,15 @@ def test_run_cli_applies_extension_flag_values_after_extension_discovery(tmp_pat
     asyncio.run(scenario())
 
     assert runtime.new_session_calls == [str(tmp_path.resolve())]
-    assert runtime.get_current_session().extension_runner.get_flag_values()["plan"] is True
+    assert (
+        runtime.get_current_session().extension_runner.get_flag_values()["plan"] is True
+    )
     assert rpc_runner.calls[0]["runtime"] is runtime
 
 
 def test_run_cli_prints_discovered_extension_flags_in_help(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.extensions import ResolvedFlag, SourceInfo
+    from loushang.harness.extensions.agent import ResolvedFlag, SourceInfo
 
     extension_runner = FakeExtensionRunner(
         [
@@ -171,7 +198,9 @@ def test_run_cli_prints_discovered_extension_flags_in_help(tmp_path) -> None:
             stderr=stderr,
             cwd=tmp_path,
             services=_fake_services(),
-            runtime_builder=lambda **kwargs: runtime_args.append(kwargs["args"]) or runtime,
+            runtime_builder=lambda **kwargs: (
+                runtime_args.append(kwargs["args"]) or runtime
+            ),
         )
         assert exit_code == 0
         value = stdout.getvalue()

@@ -394,7 +394,7 @@ class ProtectedAppendStrategy:
         if context.first_changed is None:
             return False
         return (
-            _protected_append_plan(
+            _protected_append_candidate(
                 current_lines=context.current_lines,
                 previous_lines=context.previous_lines,
                 first_changed=context.first_changed,
@@ -417,30 +417,31 @@ class ProtectedAppendStrategy:
             size=context.size,
         )
         if protected_append is None:
-            raise AssertionError("protected append strategy planned without an admissible append")
-        inserted_start, inserted_end, protected_start = protected_append
-        return runtime.diagnostics(
+            return runtime.managed_viewport_repaint_diagnostics(
+                current_lines=context.current_lines,
+                previous_lines=context.previous_lines,
+                size=context.size,
+                changed_range=context.changed_range,
+                cursor=context.cursor,
+                declared_cursor=context.declared_cursor,
+                repaint_reason="non_pure_protected_append",
+                delete_kitty_image_sequences=context.previous_kitty_delete_sequences,
+            )
+        inserted_start, _inserted_end, _protected_start = protected_append
+        return runtime.managed_viewport_repaint_diagnostics(
             current_lines=context.current_lines,
             previous_lines=context.previous_lines,
             size=context.size,
-            operation_class="protected_append_update",
-            operations=_protected_append_operations(
-                current_lines=context.current_lines,
-                inserted_range=(inserted_start, inserted_end),
-                protected_start=protected_start,
-                cursor=context.declared_cursor,
-                viewport_top=context.viewport_top,
-                size=context.size,
-                delete_kitty_image_sequences=_kitty_delete_sequences(context.previous_lines[inserted_start:]),
-            ),
             changed_range=context.changed_range,
-            viewport_top=context.viewport_top,
-            append_start=inserted_start,
-            appended_lines=context.appended_lines,
-            render_end=len(context.current_lines) - 1,
             cursor=context.cursor,
-            hardware_cursor_row=context.cursor.row,
-            hardware_cursor_column=context.cursor.column,
+            declared_cursor=context.declared_cursor,
+            repaint_reason=None,
+            operation_class="protected_append_update",
+            repaint_kind=None,
+            append_start=inserted_start,
+            delete_kitty_image_sequences=_kitty_delete_sequences(
+                context.previous_lines[inserted_start:]
+            ),
         )
 
 
@@ -515,7 +516,11 @@ class ChangedAboveViewportStrategy:
     name: ClassVar[str] = "changed_above_viewport"
 
     def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool:
-        return bool(context.first_changed is not None and context.first_changed < runtime.previous_viewport_top)
+        return bool(
+            context.first_changed is not None
+            and context.first_changed
+            < max(runtime.previous_viewport_top, context.viewport_top)
+        )
 
     def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics:
         return runtime.managed_viewport_repaint_diagnostics(
@@ -602,6 +607,7 @@ class RenderLoop:
     previous_raw_lines: Sequence[str] = ()
     previous_size: TerminalSize | None = None
     previous_viewport_top: int = 0
+    scrollback_viewport_top: int = 0
     hardware_cursor_row: int = 0
     hardware_cursor_column: int = 0
     working_area_high_water_mark: int = 0
@@ -762,7 +768,10 @@ class RenderLoop:
         changed_range: tuple[int, int] | None,
         cursor: CursorDeclaration,
         declared_cursor: CursorDeclaration | None,
-        repaint_reason: str,
+        repaint_reason: str | None,
+        operation_class: str = "managed_viewport_repaint",
+        repaint_kind: str | None = "recovery",
+        append_start: int | None = None,
         delete_kitty_image_sequences: tuple[str, ...] = (),
     ) -> RenderDiagnostics:
         viewport_top = _viewport_top(current_lines, size)
@@ -770,18 +779,23 @@ class RenderLoop:
             current_lines=current_lines,
             previous_lines=previous_lines,
             size=size,
-            operation_class="managed_viewport_repaint",
+            operation_class=operation_class,
             operations=_managed_viewport_repaint_operations(
                 current_lines,
+                previous_lines=previous_lines,
                 cursor=declared_cursor,
                 viewport_top=viewport_top,
+                previous_viewport_top=self.previous_viewport_top,
+                scrollback_viewport_top=self.scrollback_viewport_top,
                 size=size,
                 hardware_cursor_row=self.hardware_cursor_row,
                 delete_kitty_image_sequences=delete_kitty_image_sequences,
             ),
             changed_range=changed_range,
             viewport_top=viewport_top,
-            repaint_kind="recovery",
+            append_start=append_start,
+            appended_lines=max(0, len(current_lines) - len(previous_lines)),
+            repaint_kind=repaint_kind,
             repaint_reason=repaint_reason,
             cursor=cursor,
             hardware_cursor_row=_hardware_row_after_write(current_lines, cursor=declared_cursor),
@@ -795,6 +809,13 @@ class RenderLoop:
         self.previous_raw_lines = diagnostics.raw_logical_lines
         self.previous_size = size
         self.previous_viewport_top = diagnostics.viewport_top
+        if diagnostics.clear_scrollback_emitted:
+            self.scrollback_viewport_top = diagnostics.viewport_top
+        else:
+            self.scrollback_viewport_top = max(
+                self.scrollback_viewport_top,
+                diagnostics.viewport_top,
+            )
         self.hardware_cursor_row = diagnostics.hardware_cursor_row
         self.hardware_cursor_column = diagnostics.hardware_cursor_column
         self.previous_cursor_row = diagnostics.logical_cursor_row
@@ -1104,48 +1125,104 @@ def _repaint_operations(
     viewport_top: int,
     delete_kitty_image_sequences: tuple[str, ...] = (),
 ) -> tuple[TerminalOperation, ...]:
+    render_lines = lines if clear_scrollback else lines[viewport_top:]
     operations: list[TerminalOperation] = [
         *_kitty_delete_operations(delete_kitty_image_sequences),
         TerminalOperation.clear_screen(),
     ]
     if clear_scrollback:
         operations.append(TerminalOperation.clear_scrollback())
-    operations.extend(_write_lines(lines))
+    operations.extend(_write_lines(render_lines))
     return _render_then_position_cursor(
         tuple(operations),
         cursor=cursor,
         viewport_top=viewport_top,
-        current_row=max(0, len(lines) - 1),
+        current_row=viewport_top + max(0, len(render_lines) - 1),
     )
 
 
 def _managed_viewport_repaint_operations(
     lines: tuple[str, ...],
     *,
+    previous_lines: tuple[str, ...],
     cursor: CursorDeclaration | None,
     viewport_top: int,
+    previous_viewport_top: int,
+    scrollback_viewport_top: int,
     size: TerminalSize,
     hardware_cursor_row: int,
     delete_kitty_image_sequences: tuple[str, ...] = (),
 ) -> tuple[TerminalOperation, ...]:
     visible_lines = lines[viewport_top : viewport_top + size.rows]
-    operations: list[TerminalOperation] = list(_kitty_delete_operations(delete_kitty_image_sequences))
-    line_delta = viewport_top - hardware_cursor_row
-    if line_delta != 0:
-        operations.append(TerminalOperation.move_relative(lines=line_delta))
-    operations.append(TerminalOperation.carriage_return())
-    for index in range(size.rows):
-        if index > 0:
-            operations.append(TerminalOperation.newline())
-        operations.append(TerminalOperation.clear_line())
-        if index < len(visible_lines):
-            operations.append(TerminalOperation.write(visible_lines[index]))
-    return _render_then_position_cursor(
-        tuple(operations),
-        cursor=cursor,
-        viewport_top=viewport_top,
-        current_row=viewport_top + max(0, len(visible_lines) - 1),
+    full_viewport = (
+        len(lines) >= size.rows
+        or len(previous_lines) >= size.rows
     )
+    scroll_start = min(
+        viewport_top,
+        max(previous_viewport_top, scrollback_viewport_top),
+    )
+    scroll_count = viewport_top - scroll_start
+    operations: list[TerminalOperation] = [
+        TerminalOperation.hide_cursor(),
+        TerminalOperation.begin_synchronized_update(),
+        *_kitty_delete_operations(delete_kitty_image_sequences),
+    ]
+
+    current_physical_row = max(0, hardware_cursor_row - previous_viewport_top)
+
+    def move_to(row: int) -> None:
+        nonlocal current_physical_row
+        if full_viewport:
+            operations.append(TerminalOperation.move_cursor(row=row, column=0))
+        else:
+            line_delta = row - current_physical_row
+            if line_delta:
+                operations.append(TerminalOperation.move_relative(lines=line_delta))
+            operations.append(TerminalOperation.carriage_return())
+        current_physical_row = row
+
+    # A terminal cannot edit a line after it enters scrollback. Refresh the
+    # logical rows that are about to leave the viewport before scrolling them.
+    for offset in range(scroll_count):
+        move_to(offset)
+        operations.append(TerminalOperation.clear_line())
+        line_index = scroll_start + offset
+        if line_index < len(lines):
+            operations.append(TerminalOperation.write(lines[line_index]))
+
+    if scroll_count:
+        move_to(size.rows - 1)
+        operations.extend(
+            TerminalOperation.newline()
+            for _ in range(scroll_count)
+        )
+        current_physical_row = size.rows - 1
+
+    # Clear once, then paint at most one screen. The final visible line does
+    # not emit a newline, so this phase cannot submit anything to scrollback.
+    move_to(0)
+    operations.append(TerminalOperation.clear_from_cursor())
+    operations.extend(_write_lines(visible_lines))
+    current_physical_row = max(0, len(visible_lines) - 1)
+
+    operations.append(TerminalOperation.end_synchronized_update())
+    if cursor is not None:
+        cursor_row = max(0, min(cursor.row - viewport_top, size.rows - 1))
+        if full_viewport:
+            operations.append(
+                TerminalOperation.move_cursor(
+                    row=cursor_row,
+                    column=cursor.column,
+                )
+            )
+        else:
+            line_delta = cursor_row - current_physical_row
+            if line_delta:
+                operations.append(TerminalOperation.move_relative(lines=line_delta))
+            operations.append(TerminalOperation.move_column(column=cursor.column))
+    operations.append(TerminalOperation.show_cursor())
+    return tuple(operations)
 
 
 def _append_operations(
@@ -1183,6 +1260,31 @@ def _protected_append_plan(
     cursor: CursorDeclaration | None,
     size: TerminalSize,
 ) -> tuple[int, int, int] | None:
+    candidate = _protected_append_candidate(
+        current_lines=current_lines,
+        previous_lines=previous_lines,
+        first_changed=first_changed,
+        appended_lines=appended_lines,
+        cursor=cursor,
+        size=size,
+    )
+    if candidate is None:
+        return None
+    inserted_start, inserted_end, protected_start = candidate
+    if previous_lines[inserted_start:] != current_lines[inserted_end:]:
+        return None
+    return inserted_start, inserted_end, protected_start
+
+
+def _protected_append_candidate(
+    *,
+    current_lines: tuple[str, ...],
+    previous_lines: tuple[str, ...],
+    first_changed: int,
+    appended_lines: int,
+    cursor: CursorDeclaration | None,
+    size: TerminalSize,
+) -> tuple[int, int, int] | None:
     if cursor is None or appended_lines <= 0:
         return None
     if len(current_lines) < size.rows:
@@ -1199,53 +1301,7 @@ def _protected_append_plan(
         return None
     if cursor.row < protected_start:
         return None
-    if not (
-        isinstance(previous_lines, _SegmentedTextLines)
-        and isinstance(current_lines, _SegmentedTextLines)
-    ) and previous_lines[:inserted_start] != current_lines[:inserted_start]:
-        return None
     return inserted_start, inserted_end, protected_start
-
-
-def _protected_append_operations(
-    *,
-    current_lines: tuple[str, ...],
-    inserted_range: tuple[int, int],
-    protected_start: int,
-    cursor: CursorDeclaration | None,
-    viewport_top: int,
-    size: TerminalSize,
-    delete_kitty_image_sequences: tuple[str, ...] = (),
-) -> tuple[TerminalOperation, ...]:
-    inserted_start, inserted_end = inserted_range
-    inserted_lines = current_lines[inserted_start:inserted_end]
-    protected_lines = current_lines[protected_start:]
-    protected_height = len(protected_lines)
-    scroll_bottom = max(0, size.rows - protected_height - 1)
-    protected_screen_start = scroll_bottom + 1
-
-    operations: list[TerminalOperation] = [
-        TerminalOperation.hide_cursor(),
-        TerminalOperation.begin_synchronized_update(),
-        *_kitty_delete_operations(delete_kitty_image_sequences),
-        TerminalOperation.set_scroll_region(top=0, bottom=scroll_bottom),
-        TerminalOperation.move_cursor(row=scroll_bottom, column=0),
-    ]
-    for line in inserted_lines:
-        operations.append(TerminalOperation.newline())
-        operations.append(TerminalOperation.carriage_return())
-        operations.append(TerminalOperation.clear_line())
-        operations.append(TerminalOperation.write(line))
-    operations.append(TerminalOperation.reset_scroll_region())
-    for offset, line in enumerate(protected_lines):
-        operations.append(TerminalOperation.move_cursor(row=protected_screen_start + offset, column=0))
-        operations.append(TerminalOperation.clear_line())
-        operations.append(TerminalOperation.write(line))
-    operations.append(TerminalOperation.end_synchronized_update())
-    if cursor is not None:
-        operations.append(TerminalOperation.move_cursor(row=max(0, cursor.row - viewport_top), column=cursor.column))
-        operations.append(TerminalOperation.show_cursor())
-    return tuple(operations)
 
 
 def _cursor_update_operations(

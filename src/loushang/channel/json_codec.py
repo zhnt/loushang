@@ -5,8 +5,9 @@ from datetime import datetime
 from typing import Literal, cast
 
 from loushang.channel.types import ChannelEndpoint, ChannelEnvelope
-from loushang.protocol import JSONValue, require_json_mapping
-from loushang.work import WorkEvent, WorkOperation
+from loushang.foundation.json import JSONValue, require_json_mapping
+from loushang.harness.events.projection import RuntimeEventView
+from loushang.harnesswork.types import WorkEvent, WorkOperation
 
 
 def channel_envelope_to_json(envelope: ChannelEnvelope) -> dict[str, JSONValue]:
@@ -37,7 +38,9 @@ def channel_envelope_from_json(data: Mapping[str, object]) -> ChannelEnvelope:
     )
 
 
-def _payload_to_json(payload: WorkOperation | WorkEvent) -> dict[str, object]:
+def _payload_to_json(
+    payload: WorkOperation | WorkEvent | RuntimeEventView,
+) -> dict[str, object]:
     if isinstance(payload, WorkOperation):
         return {
             "operation_id": _require_string(payload.operation_id, "operation_id"),
@@ -49,28 +52,54 @@ def _payload_to_json(payload: WorkOperation | WorkEvent) -> dict[str, object]:
             "payload": _to_json_mapping(payload.payload),
             "source": _to_json_mapping(payload.source),
         }
+    if isinstance(payload, WorkEvent):
+        return {
+            "event_id": _require_string(payload.event_id, "event_id"),
+            "kind": _require_string(payload.kind, "payload.kind"),
+            "run_id": _require_string(payload.run_id, "run_id"),
+            "session_id": _require_string(payload.session_id, "payload.session_id"),
+            "domain": _require_string(payload.domain, "payload.domain"),
+            "operation_id": _require_string(payload.operation_id, "operation_id"),
+            "sequence": _require_integer(payload.sequence, "sequence"),
+            "created_at": _required_datetime_to_json(
+                payload.created_at, "payload.created_at"
+            ),
+            "delivery_hint": _require_delivery_hint(payload.delivery_hint),
+            "payload": _to_json_mapping(payload.payload),
+            "source_event_ref": _require_optional_string(
+                payload.source_event_ref, "source_event_ref"
+            ),
+        }
     return {
+        "event_family": "runtime",
         "event_id": _require_string(payload.event_id, "event_id"),
         "kind": _require_string(payload.kind, "payload.kind"),
-        "run_id": _require_string(payload.run_id, "run_id"),
-        "session_id": _require_string(payload.session_id, "payload.session_id"),
-        "domain": _require_string(payload.domain, "payload.domain"),
-        "operation_id": _require_string(payload.operation_id, "operation_id"),
+        "stream_id": _require_string(payload.stream_id, "stream_id"),
         "sequence": _require_integer(payload.sequence, "sequence"),
-        "created_at": _required_datetime_to_json(
-            payload.created_at, "payload.created_at"
+        "occurred_at": _required_datetime_to_json(
+            payload.occurred_at, "payload.occurred_at"
         ),
+        "event_type": _require_string(payload.event_type, "event_type"),
+        "view": _require_string(payload.view, "view"),
         "delivery_hint": _require_delivery_hint(payload.delivery_hint),
         "payload": _to_json_mapping(payload.payload),
+        "session_id": _require_optional_string(payload.session_id, "session_id"),
+        "run_id": _require_optional_string(payload.run_id, "run_id"),
         "source_event_ref": _require_optional_string(
             payload.source_event_ref, "source_event_ref"
+        ),
+        "source_record_id": _require_optional_string(
+            payload.source_record_id, "source_record_id"
+        ),
+        "correlation_id": _require_optional_string(
+            payload.correlation_id, "correlation_id"
         ),
     }
 
 
 def _payload_from_json(
     kind: Literal["operation", "event"], data: Mapping[str, object]
-) -> WorkOperation | WorkEvent:
+) -> WorkOperation | WorkEvent | RuntimeEventView:
     if kind == "operation":
         return WorkOperation(
             operation_id=_require_string(data["operation_id"], "operation_id"),
@@ -81,6 +110,31 @@ def _payload_from_json(
             domain=_require_string(data["domain"], "payload.domain"),
             payload=_mapping_or_empty(data.get("payload")),
             source=_mapping_or_empty(data.get("source")),
+        )
+    if data.get("event_family") == "runtime":
+        return RuntimeEventView(
+            event_id=_require_string(data["event_id"], "event_id"),
+            kind=_require_string(data["kind"], "payload.kind"),
+            stream_id=_require_string(data["stream_id"], "stream_id"),
+            sequence=_require_integer(data["sequence"], "sequence"),
+            occurred_at=_required_datetime_from_json(
+                data["occurred_at"], "occurred_at"
+            ),
+            event_type=_require_string(data["event_type"], "event_type"),
+            view=_require_string(data["view"], "view"),
+            delivery_hint=_require_delivery_hint(data["delivery_hint"]),
+            payload=_mapping_or_empty(data.get("payload")),
+            session_id=_require_optional_string(data.get("session_id"), "session_id"),
+            run_id=_require_optional_string(data.get("run_id"), "run_id"),
+            source_event_ref=_require_optional_string(
+                data.get("source_event_ref"), "source_event_ref"
+            ),
+            source_record_id=_require_optional_string(
+                data.get("source_record_id"), "source_record_id"
+            ),
+            correlation_id=_require_optional_string(
+                data.get("correlation_id"), "correlation_id"
+            ),
         )
     return WorkEvent(
         event_id=_require_string(data["event_id"], "event_id"),
@@ -132,12 +186,14 @@ def _datetime_from_json(value: object) -> datetime | None:
     return _required_datetime_from_json(value)
 
 
-def _required_datetime_from_json(value: object) -> datetime:
-    value = _require_string(value, "created_at")
+def _required_datetime_from_json(
+    value: object, field_name: str = "created_at"
+) -> datetime:
+    value = _require_string(value, field_name)
     try:
         return datetime.fromisoformat(value)
     except ValueError as exc:
-        raise ValueError("created_at must be an ISO 8601 datetime") from exc
+        raise ValueError(f"{field_name} must be an ISO 8601 datetime") from exc
 
 
 def _datetime_to_json(value: object, field_name: str) -> str | None:

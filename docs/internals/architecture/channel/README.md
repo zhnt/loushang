@@ -5,9 +5,10 @@
 `loushang.channel` owns boundary protocol primitives for clients, hosts, SDKs,
 RPC surfaces, and future WebUI/AppUI adapters.
 
-The current implementation is intentionally small. It defines endpoint and
-envelope types that can carry `loushang.work.WorkOperation` and
-`loushang.work.WorkEvent` across a boundary.
+The implementation defines endpoint and envelope types that carry
+`loushang.harnesswork.WorkOperation`, `loushang.harnesswork.WorkEvent`, and a projected
+`loushang.harness.events.RuntimeEventView` across a boundary, plus a
+deliberately narrow JSONL framing adapter for headless clients.
 
 ## Current Package Surface
 
@@ -16,7 +17,12 @@ Current code package:
 ```text
 src/loushang/channel/
   __init__.py
+  adapters/
+    harnesswork.py
+    runtime_events.py
+  host.py
   json_codec.py
+  rpc_jsonl.py
   types.py
 ```
 
@@ -32,41 +38,102 @@ Current public codec helpers:
 - `channel_envelope_to_json`
 - `channel_envelope_from_json`
 
-`ChannelEnvelope` accepts only two payload families:
+The `rpc_jsonl` surface provides:
+
+- `ChannelOperationRequest` for a correlated operation submission;
+- `ChannelOperationAccepted` for a minimal accepted ACK;
+- `ChannelEventDelivery` for a correlated `WorkEvent` or `RuntimeEventView`
+  delivery;
+- `ChannelError` for transport or acceptance failure;
+- strict `encode_rpc_jsonl_frame` / `decode_rpc_jsonl_frame` helpers that own
+  one-frame JSONL encoding only.
+
+Reusable Product-host lifecycle, strict JSON projection, Product-owned JSONL
+command input, stdout protection, and remote UI correlation live in
+`loushang.harness.host`. Channel uses those lower-level mechanics where needed
+but does not own or re-export them.
+
+`ChannelEnvelope` accepts two envelope kinds and three payload families:
 
 - `kind="operation"` with a `WorkOperation`
-- `kind="event"` with a `WorkEvent`
+- `kind="event"` with a `WorkEvent` or `RuntimeEventView`
 
-`json_codec.py` converts those envelopes to and from JSON-compatible Python
-dicts. This is still a protocol skeleton, not a transport implementation.
+`WorkEvent` remains the normalized work/audit event contract. A
+`RuntimeEventView` is a Product-selected, transport-safe view of a transient
+Host/Session fact. It preserves the source event id, stream, sequence,
+timestamp, and source references, while carrying only an event type, view
+name, delivery hint, correlation id, and strict JSON payload.
+
+The two event families intentionally remain distinct. Work event JSON keeps
+its current wire shape. Runtime views use `event_family: "runtime"` inside the
+event payload, so decoders can reconstruct the view without interpreting it as
+a Work event. This is additive to existing Work channels.
+
+`json_codec.py` converts envelopes to and from JSON-compatible Python dicts.
+`rpc_jsonl.py` maps those envelopes onto one JSONL frame at a time. It has no
+socket, HTTP server, or Product command table. `host.py` supplies the standard
+stdio JSONL loop over an injected `ChannelHostPort`: a Product port accepts a
+`WorkOperation`, emits the accepted ACK, and later delivers `WorkEvent` or
+`RuntimeEventView` frames. `request_id` supplies transport correlation while
+`operation_id` and `run_id` retain Work ownership. See
+[Channel Host Boundary](channel-host-boundary.md).
+
+`adapters/harnesswork.py` owns the HarnessWork-to-Channel operation binding, so HarnessWork
+does not import its transport. `adapters/runtime_events.py` owns the optional
+Harness runtime-view projection. Neither adapter is imported by the Channel
+package root.
+
+[Product Host Runtime Boundary](../harness/product-host-runtime-boundary.md)
+records the lower-level host lifecycle shared by standard Channel and
+Product-specific hosts. [JSONL Command Host Boundary](../harness/jsonl-command-host-boundary.md)
+records the separate Product-owned command input runtime.
 
 ## Ownership
 
-`loushang.channel` may depend on `loushang.work` because the channel boundary
-carries work operations and work events.
+`loushang.channel` depends on `loushang.harnesswork` because the channel boundary
+carries work operations and work events. It depends downward on selected
+Harness Host mechanics and event-view contracts. The optional runtime-event
+adapter may consume Harness session projection functions; Harness never
+imports Channel, and HarnessWork never imports Channel.
+
+This dependency is intentional: Channel is currently the typed Work transport,
+not a universal payload bus. Its core owns the stable Work and runtime-view wire
+codec, while `channel.adapters.harnesswork` owns execution binding. A generic
+codec registry, plugin discovery, or opaque payload protocol must not be added
+until a second concrete non-Work transport requirement demonstrates that need.
+
+The package direction is:
+
+```text
+Channel -> HarnessWork -> Harness
+Channel --------> Harness
+```
 
 `loushang.channel` must not depend on:
 
 - `loushang.agent`
+- `loushang.ai`
 - `loushang.coding`
 - `loushang.method`
 - `loushang.tui`
 
 Product packages remain responsible for turning domain-specific input into
-`WorkOperation` objects and for projecting `WorkEvent` objects into product or UI
-state.
+`WorkOperation` objects, projecting `RuntimeEvent` into `RuntimeEventView`, and
+projecting Work events into product or UI state.
 
 ## Not In Scope
 
 The current channel package does not implement:
 
-- JSONL, HTTP, WebSocket, or in-process transport adapters
-- request/response correlation
+- HTTP, WebSocket, or in-process transport loops
+- operation dispatch or a WorkRun state machine
 - capability negotiation
 - replay or audit storage
-- UI layout, widgets, or rendering
+- UI layout, widgets, rendering, or a universal UI wire protocol
 - direct agent loop or product session control
+- a universal Product RPC command schema
+- a universal payload codec registry or negotiation protocol
 
-The next likely implementation step is a small `rpc_jsonl` adapter design that
-maps JSONL framing onto `ChannelEnvelope` without reusing the legacy
-coding-specific RPC command table.
+Capability negotiation and interaction request/response contracts remain
+future work. They must remain independent of legacy Coding RPC widget and
+editor payloads.

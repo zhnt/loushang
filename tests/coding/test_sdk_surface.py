@@ -41,41 +41,24 @@ def test_coding_top_level_exports_stable_sdk_surface() -> None:
         "CreateAgentSessionResult",
         "CwdBoundServicesAudit",
         "CwdBoundServicesAuditIssue",
-        "DiagnosticRecord",
-        "DiagnosticSummary",
-        "DiagnosticsQuery",
-        "DiagnosticsService",
-        "ErrorReport",
         "ExtensionFlagValues",
         "HeadlessApprovalMode",
-        "HeadlessApprovalResolver",
-        "ResourceBundle",
         "SdkSurfaceCompatibilityReport",
         "SdkSurfaceSnapshot",
         "SessionManager",
-        "SessionQuery",
-        "SummaryEvaluationCase",
-        "SummaryEvaluationResult",
-        "SummaryEvaluationSuiteResult",
-        "SummaryQualityReport",
-        "ToolDefinition",
-        "ToolRegistry",
-        "ToolsOptions",
         "check_sdk_surface_compatibility",
         "create_agent_session",
         "create_agent_session_from_services",
         "create_agent_session_result",
         "create_agent_session_runtime",
         "create_agent_session_services",
-        "create_all_tool_definitions",
+        "CODING_BUILTIN_TOOL_PACK",
+        "CODING_TOOL_NAMES",
+        "create_coding_tool_definition",
         "create_coding_tool_definitions",
-        "create_read_only_tool_definitions",
+        "create_coding_tools",
+        "register_coding_builtin_tools",
         "create_services",
-        "evaluate_summary_case",
-        "evaluate_summary_cases",
-        "evaluate_summary_fixture",
-        "load_summary_evaluation_cases",
-        "validate_summary_contract",
     }
 
     assert expected_names.issubset(set(coding.__all__))
@@ -107,6 +90,11 @@ def test_coding_top_level_exposes_sdk_surface_snapshot() -> None:
         "persist",
         "append_system_prompt",
         "approval_resolver",
+        "tool_policy_evaluator",
+        "enable_multiagent",
+        "lsp_definitions",
+        "lsp_baseline_environment",
+        "lsp_read_text",
     )
     assert snapshot.to_dict()["missing_exports"] == []
 
@@ -121,7 +109,6 @@ def test_coding_sdk_surface_compatibility_report_flags_contract_drift() -> None:
                 "ai_model_registry",
                 "resource_loader",
                 "settings_manager",
-                "auth_manager",
                 "exec_service",
                 "default_model",
                 "thinking_level",
@@ -156,7 +143,6 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
         "ai_model_registry",
         "resource_loader",
         "settings_manager",
-        "auth_manager",
         "exec_service",
         "default_model",
         "thinking_level",
@@ -170,7 +156,6 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
         "ai_model_registry",
         "resource_loader",
         "settings_manager",
-        "auth_manager",
         "exec_service",
         "default_model",
         "thinking_level",
@@ -198,6 +183,11 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
         "append_system_prompt",
         "extension_flag_values",
         "approval_resolver",
+        "tool_policy_evaluator",
+        "enable_multiagent",
+        "lsp_definitions",
+        "lsp_baseline_environment",
+        "lsp_read_text",
     )
     assert tuple(
         inspect.signature(coding.create_agent_session_result).parameters
@@ -221,6 +211,11 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
         "package_materializer",
         "append_system_prompt",
         "approval_resolver",
+        "tool_policy_evaluator",
+        "enable_multiagent",
+        "lsp_definitions",
+        "lsp_baseline_environment",
+        "lsp_read_text",
     )
     assert tuple(inspect.signature(coding.create_agent_session_runtime).parameters) == (
         "session_dir",
@@ -239,6 +234,11 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
         "persist",
         "append_system_prompt",
         "approval_resolver",
+        "tool_policy_evaluator",
+        "enable_multiagent",
+        "lsp_definitions",
+        "lsp_baseline_environment",
+        "lsp_read_text",
     )
 
 
@@ -246,95 +246,133 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
     tmp_path,
 ) -> None:
     import loushang.coding as coding
+    from loushang.harness.diagnostics import DiagnosticsQuery
 
     project_root = tmp_path / "project"
     import_dir = tmp_path / "imports"
     project_root.mkdir()
     import_dir.mkdir()
 
-    services = coding.create_services()
-    session_manager = coding.SessionManager.new(
-        session_dir=tmp_path / "direct-sessions",
-        cwd=str(project_root),
-        persist=True,
-    )
-    result = coding.create_agent_session_result(
-        session_manager=session_manager,
-        model=_model(),
-        services=services,
-    )
+    async def scenario() -> None:
+        services = coding.create_services()
+        session_manager = await coding.SessionManager.new(
+            session_dir=tmp_path / "direct-sessions",
+            cwd=str(project_root),
+            persist=True,
+        )
+        standalone_sessions: list[coding.AgentSession] = []
+        runtime = None
+        imported_manager = None
+        try:
+            result = coding.create_agent_session_result(
+                session_manager=session_manager,
+                model=_model(),
+                services=services,
+            )
+            standalone_sessions.append(result.session)
 
-    assert isinstance(result, coding.CreateAgentSessionResult)
-    assert isinstance(result.cwd_bound_services_audit, coding.CwdBoundServicesAudit)
-    assert result.cwd_bound_services_audit.ok is True
-    assert [record for record in result.diagnostics if record.type == "error"] == []
+            assert isinstance(result, coding.CreateAgentSessionResult)
+            assert isinstance(
+                result.cwd_bound_services_audit,
+                coding.CwdBoundServicesAudit,
+            )
+            assert result.cwd_bound_services_audit.ok is True
+            assert [
+                record for record in result.diagnostics if record.type == "error"
+            ] == []
 
-    direct_session = coding.create_agent_session(
-        session_manager=session_manager,
-        model=_model(),
-        services=services,
-    )
-    assert isinstance(direct_session, coding.AgentSession)
-    assert direct_session.session_manager is session_manager
+            direct_session = coding.create_agent_session(
+                session_manager=session_manager,
+                model=_model(),
+                services=services,
+            )
+            standalone_sessions.append(direct_session)
+            assert isinstance(direct_session, coding.AgentSession)
+            assert direct_session.session_manager is session_manager
+            assert direct_session.get_lsp_status().scope == "session"
+            assert direct_session.get_lsp_status().servers == ()
+            assert "lsp" in {
+                command.name for command in direct_session.list_commands()
+            }
 
-    agent_services = coding.create_agent_session_services(
-        cwd=project_root,
-        global_settings_path=tmp_path / "global-settings.json",
-    )
-    from_services = coding.create_agent_session_from_services(
-        agent_services=agent_services,
-        session_manager=session_manager,
-        model=_model(),
-    )
-    assert from_services.session.settings_manager is agent_services.settings_manager
+            agent_services = coding.create_agent_session_services(
+                cwd=project_root,
+                global_settings_path=tmp_path / "global-settings.json",
+            )
+            from_services = coding.create_agent_session_from_services(
+                agent_services=agent_services,
+                session_manager=session_manager,
+                model=_model(),
+            )
+            standalone_sessions.append(from_services.session)
+            assert (
+                from_services.session.settings_manager
+                is agent_services.settings_manager
+            )
 
-    read_only_defs = coding.create_read_only_tool_definitions()
-    all_defs = coding.create_all_tool_definitions()
-    assert {"read", "grep", "ls", "find"}.issubset(
-        {definition.name for definition in read_only_defs}
-    )
-    assert {"read", "bash", "edit", "write"}.issubset(set(all_defs))
-    assert all(
-        isinstance(definition, coding.ToolDefinition)
-        for definition in all_defs.values()
-    )
+            from loushang.harness.tools.workspace import (
+                ToolDefinition,
+                create_all_tool_definitions,
+                create_read_only_tool_definitions,
+            )
 
-    runtime = coding.create_agent_session_runtime(
-        session_dir=tmp_path / "runtime-sessions",
-        model=_model(),
-        services=services,
-        persist=True,
-    )
-    created = asyncio.run(runtime.create_session(cwd=str(project_root)))
-    created.session_manager.append_message(_user_message("runtime root"))
-    fork_entry = created.session_manager.get_entries()[0].id
-    forked = asyncio.run(runtime.fork_session(fork_entry))
+            read_only_defs = create_read_only_tool_definitions()
+            all_defs = create_all_tool_definitions()
+            assert {"read", "grep", "ls", "find"}.issubset(
+                {definition.name for definition in read_only_defs}
+            )
+            assert {"read", "bash", "edit", "write"}.issubset(set(all_defs))
+            assert all(
+                isinstance(definition, ToolDefinition)
+                for definition in all_defs.values()
+            )
 
-    imported_manager = coding.SessionManager.new(
-        session_dir=import_dir,
-        cwd=str(project_root),
-        persist=True,
-    )
-    imported_manager.append_message(_user_message("imported"))
-    imported_file = imported_manager.session_file
-    assert imported_file is not None
+            runtime = coding.create_agent_session_runtime(
+                session_dir=tmp_path / "runtime-sessions",
+                model=_model(),
+                services=services,
+                persist=True,
+            )
+            created = await runtime.create_session(cwd=str(project_root))
+            await created.session_manager.append_message(_user_message("runtime root"))
+            fork_entry = created.session_manager.get_entries()[0].record_id
+            forked = await runtime.fork_session(fork_entry)
 
-    import_result = asyncio.run(runtime.importFromJsonl(str(imported_file)))
-    imported = runtime.get_current_session()
+            imported_manager = await coding.SessionManager.new(
+                session_dir=import_dir,
+                cwd=str(project_root),
+                persist=True,
+            )
+            await imported_manager.append_message(_user_message("imported"))
+            imported_file = imported_manager.session_file
+            assert imported_file is not None
 
-    assert forked.session_manager.get_header().parent_session == str(
-        created.session_manager.session_file
-    )
-    assert import_result == {"cancelled": False}
-    assert imported is not None
-    assert [
-        message.content[0].text for message in imported.get_session_context().messages
-    ] == ["imported"]
-    assert runtime.get_packages() == []
-    assert (
-        runtime.get_diagnostics_summary(
-            coding.DiagnosticsQuery(level="error")
-        ).total_count
-        == 0
-    )
-    assert runtime.get_diagnostics(coding.DiagnosticsQuery(source="session")) == []
+            import_result = await runtime.import_from_jsonl(str(imported_file))
+            imported = runtime.get_current_session()
+
+            assert forked.session_manager.get_header().metadata.get(
+                "parentSession"
+            ) == str(created.session_manager.session_file)
+            assert import_result == {"cancelled": False}
+            assert imported is not None
+            assert [
+                message.content[0].text
+                for message in imported.get_session_context().messages
+            ] == ["imported"]
+            assert runtime.get_packages() == []
+            assert (
+                runtime.get_diagnostics_summary(
+                    DiagnosticsQuery(level="error")
+                ).total_count
+                == 0
+            )
+            assert runtime.get_diagnostics(DiagnosticsQuery(source="session")) == []
+        finally:
+            if runtime is not None:
+                await runtime.dispose_session_runtime()
+            if imported_manager is not None:
+                await imported_manager.dispose_runtime_profile()
+            for session in reversed(standalone_sessions):
+                await session.dispose()
+
+    asyncio.run(scenario())

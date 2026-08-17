@@ -28,13 +28,13 @@ def resolve_output_token_budget(
     resolved_request: Any,
     options: Any = None,
 ) -> OutputTokenBudget:
-    default_value = _positive_int(getattr(resolved_request, "max_tokens", None))
+    default_value = _positive_int(getattr(resolved_request, "max_output_tokens", None))
     if default_value is not None:
         return OutputTokenBudget(default_value, "request", True)
 
     override_raw = get_max_output_tokens(options)
     if isinstance(override_raw, int):
-        return OutputTokenBudget(max(1, override_raw), "options", True)
+        return OutputTokenBudget(override_raw, "options", True)
 
     capabilities = getattr(resolved_request, "capabilities", None)
     capability_max = _positive_int(getattr(capabilities, "max_tokens", None))
@@ -57,4 +57,8 @@ def resolve_output_token_budget(
 
 
 def _positive_int(value: object) -> int | None:
-    return value if isinstance(value, int) and value > 0 else None
+    return (
+        value
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0
+        else None
+    )

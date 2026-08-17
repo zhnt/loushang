@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from typing import Any, cast
 
 import pytest
 
@@ -11,9 +12,10 @@ from loushang.ai import (
     StructuredOutputOptions,
     complete_structured,
 )
-from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.api_registry import get_default_api_registry
+from loushang.ai.context import NormalizedContext
 from loushang.ai.errors import UnsupportedCapabilityError
-from loushang.ai.model import Capabilities
+from loushang.ai.model import Capabilities, Endpoint, Model, ModelRegistry, Provider
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.structured import (
     openai_chat_response_format,
@@ -21,6 +23,7 @@ from loushang.ai.structured import (
     parse_structured_output,
 )
 from loushang.ai.types import AssistantMessage, TextPart, Usage
+from loushang.foundation.json import JsonValueError
 
 
 def _assistant_json(text: str) -> AssistantMessage:
@@ -29,6 +32,7 @@ def _assistant_json(text: str) -> AssistantMessage:
         content=[TextPart(type="text", text=text)],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id="resp_1",
         usage=Usage(
@@ -93,6 +97,26 @@ def test_structured_output_formats_openai_payloads_from_schema_type() -> None:
     }
 
 
+def test_structured_output_rejects_non_strict_json_schema_values() -> None:
+    schema = cast(
+        Any,
+        {
+            "title": "TupleSchema",
+            "type": "object",
+            "required": ("answer",),
+        },
+    )
+    options = CallOptions(
+        output=StructuredOutputOptions(mode="json_schema", schema=schema)
+    )
+
+    with pytest.raises(JsonValueError) as exc_info:
+        openai_chat_response_format(options)
+
+    assert exc_info.value.path == "schema.required"
+    assert exc_info.value.value_type == "tuple"
+
+
 def test_structured_output_json_object_parses_raw_message() -> None:
     output = StructuredOutputOptions(mode="json_object")
 
@@ -130,8 +154,9 @@ def test_complete_structured_returns_raw_and_parsed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     provider = _StructuredProvider()
-    registry = ApiProviderRegistry()
-    registry.register_api_provider(provider)
+    registry = get_default_api_registry()
+    registry.clear_api_adapters()
+    registry.register_api_adapter(provider)
     _patch_resolved_request(monkeypatch, api="openai-responses")
 
     result = asyncio.run(
@@ -140,7 +165,6 @@ def test_complete_structured_returns_raw_and_parsed(
             {"messages": []},
             StructuredOutputOptions(mode="json_object"),
             options=CallOptions(),
-            provider_registry=registry,
         )
     )
 
@@ -153,8 +177,9 @@ def test_complete_structured_uses_provider_declared_mapping_support(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     provider = _StructuredProvider(api="custom-structured")
-    registry = ApiProviderRegistry()
-    registry.register_api_provider(provider)
+    registry = get_default_api_registry()
+    registry.clear_api_adapters()
+    registry.register_api_adapter(provider)
     _patch_resolved_request(monkeypatch, api="custom-structured")
 
     result = asyncio.run(
@@ -163,7 +188,6 @@ def test_complete_structured_uses_provider_declared_mapping_support(
             {"messages": []},
             StructuredOutputOptions(mode="json_object"),
             options=CallOptions(),
-            provider_registry=registry,
         )
     )
 
@@ -175,8 +199,9 @@ def test_complete_structured_rejects_provider_without_mapping_support(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     provider = _StructuredProvider(api="openai-responses", supports_mapping=False)
-    registry = ApiProviderRegistry()
-    registry.register_api_provider(provider)
+    registry = get_default_api_registry()
+    registry.clear_api_adapters()
+    registry.register_api_adapter(provider)
     _patch_resolved_request(monkeypatch, api="openai-responses")
 
     with pytest.raises(
@@ -189,7 +214,6 @@ def test_complete_structured_rejects_provider_without_mapping_support(
                 {"messages": []},
                 StructuredOutputOptions(mode="json_object"),
                 options=CallOptions(),
-                provider_registry=registry,
             )
         )
 
@@ -217,18 +241,37 @@ class _StructuredProvider:
 
 def _patch_resolved_request(monkeypatch: pytest.MonkeyPatch, *, api: str) -> None:
     def _resolve_request(_model, options=None):
-        del options
-        return ProviderRequest(
-            api=api,
+        endpoint = Endpoint(
+            id=api,
             provider="test-provider",
-            endpoint=api,
-            base_url=None,
-            model=_model,
-            capabilities=Capabilities(
-                input=("text",),
-                stream=True,
-                structured_output=True,
-            ),
+            api=api,
+            base_url="https://provider.test/v1",
+            models={
+                _model.id: Model(
+                    id=_model.id,
+                    provider="test-provider",
+                    endpoint=api,
+                    capabilities=Capabilities(
+                        input=("text",),
+                        stream=True,
+                        structured_output=True,
+                    ),
+                )
+            },
+        )
+        request_model = ModelRegistry.from_providers(
+            {
+                "test-provider": Provider(
+                    id="test-provider",
+                    endpoints={api: endpoint},
+                )
+            }
+        ).get_model("test-provider", api, _model.id)
+        return ProviderRequest(
+            base_url="https://provider.test/v1",
+            model=request_model,
+            context=NormalizedContext(system_prompt=None),
+            options=options,
         )
 
     monkeypatch.setattr(

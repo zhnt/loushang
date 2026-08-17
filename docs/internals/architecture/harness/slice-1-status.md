@@ -168,7 +168,7 @@ Slice 1 closure should be validated with:
 - `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/test_extension_runner.py tests/coding/test_extension_api.py -q`
 - `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/test_presentation_compatibility.py -q`
 - `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/test_tool_policy_integration.py tests/coding/test_tool_presentation.py tests/coding/test_tool_render_runtime.py tests/coding/test_tool_builtin_renderers.py tests/coding/test_tool_transcript_blocks.py tests/coding/test_session_exports.py -q`
-- `uv --cache-dir .uv-cache run --extra dev pytest tests/coding/test_coding_command_catalog.py tests/coding/test_session_command_controller.py tests/coding/test_screen_coding_tui_surfaces.py tests/coding/test_prompt_assembly.py -q`
+- `uv --cache-dir .uv-cache run --extra dev pytest tests/harnesstui/commands/test_catalog.py tests/harness/commands/test_catalog.py tests/coding/test_session_command_controller.py tests/coding/test_screen_coding_tui_surfaces.py tests/coding/test_prompt_assembly.py -q`
 - `uv --cache-dir .uv-cache run --extra dev ruff check <changed files>`
 - `git diff --check`
 

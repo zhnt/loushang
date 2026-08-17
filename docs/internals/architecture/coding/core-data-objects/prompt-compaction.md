@@ -10,7 +10,7 @@
 
 归属组件：
 
-- `prompt`
+- `loushang.harness.capabilities.prompt_assembly`；Coding 保留兼容导入
 
 角色：
 

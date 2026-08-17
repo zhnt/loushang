@@ -31,25 +31,25 @@ def test_check_coverage_targets_accepts_runtime_core_and_adapter_buckets(
           <line number="7" hits="1"/><line number="8" hits="1"/>
           <line number="9" hits="1"/><line number="10" hits="0"/>
         </lines></class>
-        <class filename="auth/storage.py"><lines>
+        <class filename="protocols/unused.py"><lines>
           <line number="1" hits="0"/>
         </lines></class>
-        <class filename="providers/anthropic.py"><lines>
+        <class filename="protocols/anthropic_messages.py"><lines>
           <line number="1" hits="1"/><line number="2" hits="0"/>
         </lines></class>
-        <class filename="providers/openai_completions.py"><lines>
+        <class filename="protocols/openai_chat_completions.py"><lines>
           <line number="1" hits="1"/><line number="2" hits="1"/>
         </lines></class>
-        <class filename="providers/openai_responses.py"><lines>
+        <class filename="protocols/openai_responses.py"><lines>
           <line number="1" hits="1"/><line number="2" hits="1"/>
         </lines></class>
-        <class filename="providers/anthropic_base.py"><lines>
+        <class filename="protocols/_anthropic.py"><lines>
           <line number="1" hits="1"/>
         </lines></class>
-        <class filename="providers/openai_responses_shared.py"><lines>
+        <class filename="protocols/_openai_responses.py"><lines>
           <line number="1" hits="1"/>
         </lines></class>
-        <class filename="providers/provider_helpers.py"><lines>
+        <class filename="protocols/_helpers.py"><lines>
           <line number="1" hits="1"/>
         </lines></class>
       </classes>

@@ -35,15 +35,6 @@ def tool_artifact_paths_for_protocol(details: object | None) -> list[str]:
     return paths
 
 
-def project_bash_result_for_protocol(result: Mapping[str, object]) -> dict[str, object]:
-    projected = dict(result)
-    if "exitCode" not in projected:
-        projected["exitCode"] = result.get("exit_code")
-    if "fullOutputPath" not in projected:
-        projected["fullOutputPath"] = result.get("full_output_path")
-    return projected
-
-
 def normalize_bash_result_from_protocol(
     result: Mapping[str, object],
 ) -> dict[str, object]:
@@ -90,7 +81,6 @@ def _int_or_none(value: object) -> int | None:
 
 __all__ = [
     "normalize_bash_result_from_protocol",
-    "project_bash_result_for_protocol",
     "project_tool_details_for_protocol",
     "tool_artifact_paths_for_protocol",
 ]

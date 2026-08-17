@@ -1,5 +1,13 @@
 # Loushang Coding Component Dependencies
 
+## Status
+
+Superseded as the current dependency topology by the
+[Harness Current Owner Map](../harness/current-owner-map.md) and its import
+boundaries. The diagrams below describe the original Coding decomposition and
+are retained as design history, not as current Package/Plugin/Extension
+ownership.
+
 ## Scope
 
 本文档描述 `loushang-coding` 的组件依赖关系。

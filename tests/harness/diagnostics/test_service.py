@@ -131,11 +131,11 @@ def test_service_builds_occurrence_summary_and_deduplicated_error_report() -> No
 
 def test_service_normalizes_resource_and_exception_details() -> None:
     from loushang.harness.diagnostics.service import DiagnosticsService
-    from loushang.harness.resources.diagnostics import ResourceDiagnostic
+    from loushang.harness.resources.diagnostics import resource_diagnostic
 
     service = DiagnosticsService()
-    resource = service.normalize_resource_diagnostic(
-        ResourceDiagnostic(
+    resource = service.normalize_diagnostic(
+        resource_diagnostic(
             code="invalid_extension",
             message="Extension is invalid.",
             source_path=Path("/tmp/extensions/review.py"),
@@ -147,7 +147,7 @@ def test_service_normalizes_resource_and_exception_details() -> None:
         phase="resource_loading",
         source="loader",
         level="warning",
-        details={"action": "ignored"},
+        details={"action": "ignored", "resource_type": "extension_override"},
     )
     failure = service.capture_failure(
         code="provider_failed",
@@ -159,7 +159,7 @@ def test_service_normalizes_resource_and_exception_details() -> None:
 
     assert resource.details == {
         "resource_id": "review",
-        "resource_type": "extension",
+        "resource_type": "extension_override",
         "source_kind": "project_local",
         "metadata": {"line": 4},
         "action": "ignored",
@@ -168,6 +168,46 @@ def test_service_normalizes_resource_and_exception_details() -> None:
     assert failure.message == "provider unavailable"
     assert failure.details == {"provider": "demo"}
     assert service.get_last_diagnostics() == [failure]
+
+
+def test_service_records_resource_diagnostics_with_shared_scope() -> None:
+    from loushang.harness.diagnostics.service import DiagnosticsService
+    from loushang.harness.diagnostics.types import DiagnosticDraft
+
+    service = DiagnosticsService()
+
+    records = service.record_drafts(
+        [DiagnosticDraft(code="invalid_prompt", message="Prompt is invalid.")],
+        phase="resource_loading",
+        source="loader",
+        session_id="session-1",
+    )
+
+    assert records == service.get_last_diagnostics()
+    assert records[0].code == "invalid_prompt"
+    assert records[0].session_id == "session-1"
+
+
+def test_draft_normalization_preserves_fingerprint_deduplication() -> None:
+    from loushang.harness.diagnostics.service import DiagnosticsService
+    from loushang.harness.diagnostics.types import DiagnosticDraft
+
+    service = DiagnosticsService()
+    draft = DiagnosticDraft(
+        code="extension_failed",
+        message="Extension failed.",
+        details={"metadata": {"extension": "demo"}},
+    )
+
+    first = service.record(
+        service.normalize_diagnostic(draft, phase="runtime", source="extensions")
+    )
+    second = service.record(
+        service.normalize_diagnostic(draft, phase="runtime", source="extensions")
+    )
+
+    assert second.fingerprint == first.fingerprint
+    assert second.occurrence_count == 2
 
 
 def test_service_runs_and_normalizes_startup_checks() -> None:
@@ -206,6 +246,52 @@ def test_service_runs_and_normalizes_startup_checks() -> None:
         "check": "broken_check",
         "exception_type": "ValueError",
     }
+
+
+def test_directory_startup_check_reports_missing_path(tmp_path) -> None:
+    from loushang.harness.diagnostics.types import directory_available_startup_check
+
+    missing = tmp_path / "missing"
+    check = directory_available_startup_check(
+        name="workspace",
+        path=missing,
+        code="workspace_unavailable",
+        message=f"Workspace is unavailable: {missing}",
+        detail_key="workspace",
+    )
+
+    result = check()
+
+    assert result is not None
+    assert result.code == "workspace_unavailable"
+    assert result.details == {"workspace": str(missing)}
+
+
+def test_standard_startup_checks_include_cwd_package_and_product_checks(
+    tmp_path,
+) -> None:
+    from loushang.harness.diagnostics.service import (
+        DiagnosticsService,
+        run_standard_startup_checks,
+    )
+    from loushang.harness.diagnostics.types import StartupCheckResult
+
+    records = run_standard_startup_checks(
+        DiagnosticsService(),
+        cwd=str(tmp_path / "missing-cwd"),
+        package_roots=(str(tmp_path / "missing-package"),),
+        additional_checks=(
+            lambda: StartupCheckResult(name="product", ok=True, code="product_ready"),
+        ),
+        session_id="session-1",
+    )
+
+    assert [record.code for record in records] == [
+        "cwd_unavailable",
+        "package_root_unavailable",
+        "product_ready",
+    ]
+    assert all(record.session_id == "session-1" for record in records)
 
 
 def test_service_clears_only_runtime_diagnostics() -> None:

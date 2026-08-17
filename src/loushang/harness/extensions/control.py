@@ -10,6 +10,7 @@ from loushang.harness.approval import (
     ApprovalResolver,
     resolve_approval,
 )
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.routing import (
     ExtensionRoutePlan,
     RegisteredExtensionHandler,
@@ -28,7 +29,7 @@ from loushang.harness.policy import (
     PolicySubject,
     evaluate_policy,
 )
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.diagnostics import resource_diagnostic
 
 
 @dataclass(frozen=True)
@@ -51,7 +52,7 @@ class _ResolvedControlRecord:
 @dataclass(frozen=True)
 class _ExtensionPolicyEvaluator:
     resolved: _ResolvedControlRecord
-    diagnostics: list[ResourceDiagnostic]
+    diagnostics: list[DiagnosticDraft]
 
     async def evaluate(self, subject: PolicySubject, /) -> PolicyDecision | None:
         try:
@@ -78,7 +79,7 @@ class _ExtensionPolicyEvaluator:
 @dataclass(frozen=True)
 class _ExtensionApprovalResolver:
     resolved: _ResolvedControlRecord
-    diagnostics: list[ResourceDiagnostic]
+    diagnostics: list[DiagnosticDraft]
 
     async def resolve(self, request: ApprovalRequest) -> ApprovalDecision:
         try:
@@ -103,7 +104,7 @@ class _ExtensionApprovalResolver:
 def resolve_control_contributions(
     extensions: Sequence[LoadedExtension],
     *,
-    diagnostics: list[ResourceDiagnostic],
+    diagnostics: list[DiagnosticDraft],
 ) -> ResolvedControlContributions:
     """Resolve policy chains and the exclusive approval replacement.
 
@@ -269,11 +270,11 @@ def _invalid_control_diagnostic(
     *,
     required_method: str | None = None,
     reason: str | None = None,
-) -> ResourceDiagnostic:
+) -> DiagnosticDraft:
     descriptor = record.descriptor
     if reason is None:
         reason = f"value must provide callable {required_method}()"
-    return ResourceDiagnostic(
+    return resource_diagnostic(
         code="invalid_extension_control_contribution",
         message=(
             f"Invalid extension {descriptor.type} contribution "
@@ -297,9 +298,9 @@ def _control_diagnostic(
     code: str,
     message: str,
     metadata: dict[str, object] | None = None,
-) -> ResourceDiagnostic:
+) -> DiagnosticDraft:
     source_info = route.source_info
-    return ResourceDiagnostic(
+    return resource_diagnostic(
         code=code,
         message=message,
         source_path=route.extension.source_path,

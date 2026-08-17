@@ -2,21 +2,30 @@
 
 ## FR-CI-001: Product Adapter Boundary
 
-`loushang.coding.ui` is the only layer that may understand both generic TUI
-primitives and coding product semantics.
+Coding integration is split across three boundaries:
 
-The generic TUI must not import coding session, model, tool, diagnostics, or
-provider modules.
+- `loushang.tui` owns product-agnostic terminal mechanics and widgets;
+- `loushang.harnesstui` owns product-neutral Harness conversation interaction
+  and presentation composition;
+- Coding feature packages interpret raw Coding state, events, policy, and
+  settings, while `loushang.coding.ui` retains only final product UI
+  composition, concrete surfaces, and terminal bindings.
+
+`loushang.tui` must not import Harness or product packages.
+`loushang.harnesstui` may depend on `loushang.harness` and `loushang.tui`, but
+must not import Coding session, model, tool, diagnostics, or provider modules.
 
 Related: NFR-EX-001
 
 ## FR-CI-002: Transcript Display Records
 
-Coding UI must project product events into stable display records before they are
-rendered by the TUI.
+Coding presentation adapters must project product events into stable neutral
+facts before Harnesstui updates generic TUI display records.
 
-The generic TUI core defines the record families and lifecycle rules. The coding
-adapter owns projection from coding events into concrete record instances.
+The generic TUI core defines record families and render lifecycle rules.
+Harnesstui owns neutral conversation projection, and
+`loushang.coding.presentation.tui` owns interpretation of Coding events, tool
+results, and stored transcript history.
 
 Initial record families:
 

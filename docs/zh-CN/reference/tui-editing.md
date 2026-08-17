@@ -115,9 +115,9 @@ completion 列表 selection 和 composer 文本 selection 相互独立。selecti
 修改 composer 输入、selection、paste marker、completion、keybinding 或 render highlight 行为前，运行 playback：
 
 ```bash
-uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner --list
-uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner composer-selection-stress --artifacts /tmp/loushang-selection-playback --include-frames
-uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner --tag composer --json
+uv --cache-dir .uv-cache run --extra dev python scripts/run_tui_playback.py --list
+uv --cache-dir .uv-cache run --extra dev python scripts/run_tui_playback.py composer-selection-stress --artifacts /tmp/loushang-selection-playback --include-frames
+uv --cache-dir .uv-cache run --extra dev python scripts/run_tui_playback.py --tag composer --json
 ```
 
 排查瞬时 selection 渲染时使用 `--include-frames`。replacement、kill、yank 或 undo 后 selection 会被刻意清除，最终屏幕通常看不到先前选中状态。

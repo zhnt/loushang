@@ -4,31 +4,54 @@
 
 Implementation complete for integration into `lane/harness`.
 
-The core lives under `loushang.harness.capabilities` and is adopted by the
-Coding command catalog and controller, prompt assembler and preflight adapter,
-and tool controller. The package is deliberately not re-exported from the
-top-level `loushang.harness` namespace.
+Capability-composition primitives live under `loushang.harness.capabilities`;
+the command descriptor, catalog, parsing, dispatch, and local-catalog
+composition core lives under `loushang.harness.commands`. Coding adopts both
+through its product profile and controllers. Standard prompt assembly and
+resource preflight are canonical Harness implementations. The packages are
+deliberately not re-exported from the top-level `loushang.harness` namespace.
 
 ## Purpose
 
-Products need the same mechanics for composing commands, prompts, and tools,
-but must keep control of their domain content and policy. This core separates
-those concerns:
+Products need the same mechanics and useful defaults for composing commands,
+prompts, and tools. Product adapters should be small and retain only
+irreducibly domain-specific content and policy. This core separates those
+concerns:
 
 ```text
-Harness: describe, resolve, compose, dispatch, diff
-Product: contribute content, choose defaults, apply policy, project results
+Harness: describe, resolve, compose, dispatch, project standard resources, diff
+Product: override defaults and contribute product-exclusive content and policy
 ```
 
 Coding is the compatibility adapter. Product-neutral Harness fixtures using
 research and design vocabulary provide the independent contract probe; a
 second production Product is not required by the neutrality evidence gate.
 
+## Bound Behavior Semantics
+
+The values bound through Capability Slots use the behavioral semantics from the
+[Capability Variation And Replacement Boundary](capability-variation-and-replacement-boundary.md):
+
+- command and tool pack composers use Exclusive Replacement, while the
+  admitted packs passed to the selected composer are Aggregate Contributions;
+- the prompt-section composer uses Exclusive Replacement, while its admitted
+  sections are an ordered aggregate whose ordering is supplied by the Product
+  and recorded in the prepared result;
+- injected prompt parsing, expansion, activation, and callback behavior is
+  Protocol Injection at the Product composition root;
+- same-name resource or tool behavior follows the owning catalog's documented
+  precedence and conflict contract; it is not a general last-write-wins rule.
+
+This core does not publish a universal exclusive-provider registry. A Product
+that exposes Exclusive Replacement behavior must declare its Runtime
+Capability Shape, selection, fallback, lifecycle, and diagnostic behavior
+explicitly.
+
 ## Harness Ownership
 
 ### Commands
 
-`loushang.harness.capabilities.commands` owns:
+`loushang.harness.commands` owns:
 
 - generic command descriptors with opaque source metadata;
 - name normalization and slash-command parsing, including the accepted MCP
@@ -53,9 +76,22 @@ in completion and resolve to the canonical descriptor.
   argument-appending policy;
 - the accepted default positional and sliced placeholder expansion mechanism.
 
-The Product supplies every section and therefore controls selection, content,
-salience, and order. Harness does not discover prompt resources or author
-prompt text.
+`loushang.harness.capabilities.prompt_assembly` and
+`loushang.harness.capabilities.prompt_preflight` own:
+
+- the canonical `PromptAssembly` result;
+- an overridable neutral system-prompt default;
+- standard base, project-context, prompt-fragment, visible-skill, tool, and
+  runtime-footer projection and ordering;
+- standard `/skill:<name>` and `/<prompt>` resource preflight, diagnostics,
+  frontmatter stripping, and argument expansion;
+- injection points for a Product base prompt, resource activation, tool
+  definitions, prompt text, template expander, and section composer.
+
+Harness may author a neutral, broadly useful default and standard resource
+projection. Products override only the parts that differ; they do not copy the
+assembly engine merely because it emits user-facing text or currently has one
+production consumer.
 
 ### Tools
 
@@ -77,8 +113,8 @@ Coding and future Product adapters retain:
 
 - concrete builtin, extension, prompt, and skill command definitions;
 - command source precedence choices, handlers, routing, diagnostics, and UI;
-- system prompt text, prompt-section selection and order, skill XML, resource
-  lookup, resource diagnostics, and runtime footer content;
+- Product-exclusive system prompt text and any domain-only prompt sections,
+  resource conventions, diagnostics, or preflight behavior;
 - default tool packs, allowed/default-active policy, Product-tuned tool
   metadata, and extension activation choices;
 - Agent tool materialization, `ToolContext` construction, prompt rebuilding,
@@ -88,20 +124,27 @@ Coding and future Product adapters retain:
 
 These are Product semantics or integration effects, not composition mechanics.
 
-## Coding Compatibility
+## Coding Adapters
 
-Accepted Coding imports remain available:
+Coding retains product adapters while importing shared mechanics directly:
 
-- `coding.commands.slash` re-exports the neutral parser and completion helper;
-- `coding.commands.types.SessionCommandDescriptor` remains a real Coding
-  adapter class so runtime type checks continue to work;
-- `coding.prompt.templates` and `coding.prompt.types` preserve established
-  imports while delegating shared behavior;
+- slash parsing, completion, descriptors, and catalog composition come from
+  `harness.commands`;
+- standard session command descriptors and result projection come from
+  `harness.session.command_pack`; Coding binds only its session ports and
+  wraps the neutral result mapping;
+- prompt template expansion comes from `harness.capabilities.prompt`;
+- standard assembly and resource preflight come from
+  `harness.capabilities.prompt_assembly` and
+  `harness.capabilities.prompt_preflight`;
+- `coding.prompt` preserves Coding's public imports and injects
+  `DEFAULT_CODING_SYSTEM_PROMPT` while sharing canonical Harness type
+  identities;
 - Coding controllers inject handlers, policy, materialization, diagnostics,
-  and prompt projection into the Harness mechanisms.
+  and Product-only prompt additions into the Harness mechanisms.
 
-The migration must preserve existing command dispatch order, prompt output,
-tool activation behavior, and public Coding import paths.
+The migration preserves command dispatch order, prompt output, and tool
+activation behavior without retaining legacy shared-utility submodule paths.
 
 ## Import And Validation Rules
 

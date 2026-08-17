@@ -5,10 +5,11 @@ import re
 import shutil
 import subprocess
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
-from typing import Any, Sequence
+from typing import Any
 
 from loushang.tui.completion_models import (
     CompletionApplication,

@@ -12,7 +12,7 @@ if __package__ in {None, ""}:
 from _support import assistant_text_message, build_runtime, stream_with_final_message
 
 EXTENSION_SOURCE = """
-from loushang.coding.tools import tool
+from loushang.harness.tools.core import tool
 
 
 @tool(label="Manifest Echo")

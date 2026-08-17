@@ -1,0 +1,32 @@
+[
+  {
+    "plan_id": "plan:method:task:review",
+    "method_id": "method:task:review",
+    "status": "completed",
+    "operation_ids": ["op-1"],
+    "steps": [
+      {
+        "run_id": "run-1",
+        "step_id": "inspect",
+        "status": "completed",
+        "step_index": 0,
+        "title": "Inspect current changes"
+      }
+    ]
+  },
+  {
+    "plan_id": "plan:method:task:review",
+    "method_id": "method:task:review",
+    "status": "completed",
+    "operation_ids": ["op-2"],
+    "steps": [
+      {
+        "run_id": "run-2",
+        "step_id": "verify",
+        "status": "completed",
+        "step_index": 1,
+        "title": "Run focused checks"
+      }
+    ]
+  }
+]

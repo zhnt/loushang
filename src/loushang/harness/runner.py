@@ -38,7 +38,7 @@ async def run_agent(spec: AgentRunSpec) -> AgentRunResult:
                 signal=spec.signal,
                 stream_fn=spec.stream_fn,
             )
-    except Exception as error:  # noqa: BLE001 - harness returns failed run results for product adapters.
+    except Exception as error:
         return AgentRunResult(status="failed", events=tuple(events), error=error)
 
     return AgentRunResult(

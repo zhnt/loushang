@@ -41,6 +41,7 @@ def inspect_normalization_diagnostics() -> dict[str, object]:
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="openai-responses",
         model="gpt-test",
         response_id=None,
         usage=Usage(
@@ -60,7 +61,7 @@ def inspect_normalization_diagnostics() -> dict[str, object]:
         model=load_builtin_model_registry().get_model(
             "anthropic",
             "anthropic-messages",
-            "claude-sonnet-4-6",
+            "claude-sonnet-5",
         ),
         pairing_mode="repair",
     )

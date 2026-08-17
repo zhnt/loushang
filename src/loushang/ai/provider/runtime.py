@@ -12,10 +12,18 @@ from email.utils import parsedate_to_datetime
 from typing import Any, cast
 from uuid import uuid4
 
-from loushang.ai.errors import AIProviderProtocolError
+from loushang.ai.errors import AIProviderProtocolError, AITimeoutError
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
 from loushang.ai.event_stream.raw_parts import RawPart
-from loushang.ai.options import RetryOptions
+from loushang.ai.options import (
+    RetryOptions,
+    get_idle_timeout_seconds,
+    get_timeout_seconds,
+)
+from loushang.ai.prepared_request import (
+    PreparedModelCallOutcome,
+    PreparedModelCallOutcomeRecorder,
+)
 from loushang.ai.provider.cancellation import is_signal_cancelled, wait_signal_cancelled
 from loushang.ai.provider.errors import (
     normalize_provider_error,
@@ -53,23 +61,46 @@ class _RuntimeCancelled(Exception):
     pass
 
 
+class _AttemptDeadline:
+    def __init__(self, timeout_seconds: float | int | None) -> None:
+        self.expired = False
+        self._task = asyncio.current_task()
+        self._handle: asyncio.TimerHandle | None = None
+        if timeout_seconds is not None:
+            self._handle = asyncio.get_running_loop().call_later(
+                float(timeout_seconds),
+                self._expire,
+            )
+
+    def _expire(self) -> None:
+        self.expired = True
+        if self._task is not None:
+            self._task.cancel()
+
+    def cancel(self) -> None:
+        if self._handle is not None:
+            self._handle.cancel()
+
+
 def start_provider_runtime(
     raw_parts: RawPartSource,
     *,
-    model,
     options,
     request: ProviderRequest,
+    invocation_id: str | None = None,
     _sleep: Sleep = asyncio.sleep,
     _jitter: Jitter = random.random,
 ) -> AssistantMessageEventStream:
+    model = request.model
     stream = AssistantMessageEventStream()
-    call_id = uuid4().hex
+    call_id = invocation_id or uuid4().hex
     assembler = RawAssembler(
         stream=stream,
-        api=request.api,
-        provider=getattr(model, "provider_id", request.provider),
-        model=getattr(model, "id", None) or request.upstream_model_id or "",
-        pricing=getattr(model, "pricing", None),
+        api=model.api or "",
+        provider=model.provider_id,
+        endpoint=model.endpoint_id,
+        model=model.id,
+        pricing=model.pricing,
     )
 
     async def _run() -> None:
@@ -79,15 +110,24 @@ def start_provider_runtime(
             _emit_runtime_cancel_trace(
                 options, request=request, model=model, call_id=call_id
             )
-            await assembler.emit({"type": "aborted"})
+            await _emit_terminal_part_and_record_outcome(
+                assembler,
+                cast(RawPart, {"type": "aborted"}),
+                options=options,
+                request=request,
+                model=model,
+                call_id=call_id,
+            )
             return
         try:
             max_attempts = _retry_max_attempts(options)
             attempt = 1
             while attempt <= max_attempts:
+                deadline = _AttemptDeadline(get_timeout_seconds(options))
                 pending: deque[RawPart] = deque()
                 pending_bytes = 0
                 visible_output_started = False
+                raw_part_received = False
                 retry_next_attempt = False
                 source = None
                 try:
@@ -104,9 +144,18 @@ def start_provider_runtime(
                         source = await _await_or_cancel(source, cancellation_task)
                     while True:
                         try:
-                            part = await _next_raw_part(source, cancellation_task)
+                            part = await _next_raw_part(
+                                source,
+                                cancellation_task,
+                                idle_timeout_seconds=(
+                                    get_idle_timeout_seconds(options)
+                                    if raw_part_received
+                                    else None
+                                ),
+                            )
                         except StopAsyncIteration:
                             break
+                        raw_part_received = True
 
                         if _signals_cancelled(signals):
                             raise _RuntimeCancelled
@@ -121,6 +170,9 @@ def start_provider_runtime(
                                 model=model,
                             )
                         ):
+                            deadline.cancel()
+                            await _close_source(source)
+                            source = None
                             await _sleep_before_retry(
                                 options=options,
                                 attempt=attempt,
@@ -160,9 +212,17 @@ def start_provider_runtime(
                                     model=model,
                                     call_id=call_id,
                                 )
-                            await assembler.emit(part)
                             if part["type"] in _TERMINAL_RAW_PART_TYPES:
+                                await _emit_terminal_part_and_record_outcome(
+                                    assembler,
+                                    part,
+                                    options=options,
+                                    request=request,
+                                    model=model,
+                                    call_id=call_id,
+                                )
                                 return
+                            await assembler.emit(part)
                             continue
 
                         pending_bytes = _append_pending_part(
@@ -177,16 +237,60 @@ def start_provider_runtime(
                         attempt += 1
                         continue
                     await _flush_pending(assembler, pending)
-                    await assembler.emit({"type": "response_done"})
+                    error_part = _provider_error_part_for_request(
+                        AIProviderProtocolError(
+                            "provider stream ended before a terminal response event",
+                            source=model.api or "",
+                            provider=model.provider_id,
+                            endpoint=model.endpoint_id,
+                            model=_runtime_model_id(request=request, model=model),
+                        ),
+                        request=request,
+                        model=model,
+                    )
+                    _emit_runtime_error_trace(
+                        options,
+                        part=error_part,
+                        request=request,
+                        model=model,
+                        call_id=call_id,
+                    )
+                    await _emit_terminal_part_and_record_outcome(
+                        assembler,
+                        error_part,
+                        options=options,
+                        request=request,
+                        model=model,
+                        call_id=call_id,
+                    )
                     return
                 except _RuntimeCancelled:
                     await _flush_pending(assembler, pending)
                     _emit_runtime_cancel_trace(
                         options, request=request, model=model, call_id=call_id
                     )
-                    await assembler.emit({"type": "aborted"})
+                    await _emit_terminal_part_and_record_outcome(
+                        assembler,
+                        cast(RawPart, {"type": "aborted"}),
+                        options=options,
+                        request=request,
+                        model=model,
+                        call_id=call_id,
+                    )
                     return
-                except Exception as error:
+                except (Exception, asyncio.CancelledError) as caught:
+                    if isinstance(caught, asyncio.CancelledError):
+                        if not deadline.expired:
+                            raise
+                        error: Exception = AITimeoutError(
+                            "Provider request timed out.",
+                            source=model.api or "",
+                            provider=model.provider_id,
+                            endpoint=model.endpoint_id,
+                            model=_runtime_model_id(request=request, model=model),
+                        )
+                    else:
+                        error = caught
                     if _signals_cancelled(signals):
                         await _flush_pending(assembler, pending)
                         _emit_runtime_cancel_trace(
@@ -195,13 +299,23 @@ def start_provider_runtime(
                             model=model,
                             call_id=call_id,
                         )
-                        await assembler.emit({"type": "aborted"})
+                        await _emit_terminal_part_and_record_outcome(
+                            assembler,
+                            cast(RawPart, {"type": "aborted"}),
+                            options=options,
+                            request=request,
+                            model=model,
+                            call_id=call_id,
+                        )
                         return
                     if (
                         not visible_output_started
                         and attempt < max_attempts
-                        and _retryable_exception(error, source=request.api)
+                        and _retryable_exception(error, source=model.api or "")
                     ):
+                        deadline.cancel()
+                        await _close_source(source)
+                        source = None
                         await _sleep_before_retry(
                             options=options,
                             attempt=attempt,
@@ -209,7 +323,7 @@ def start_provider_runtime(
                             retry_after_seconds=_retry_after_seconds_from_exception(
                                 error
                             ),
-                            reason=_retry_reason_from_exception(error, request.api),
+                            reason=_retry_reason_from_exception(error, model.api or ""),
                             request=request,
                             model=model,
                             call_id=call_id,
@@ -232,9 +346,17 @@ def start_provider_runtime(
                         model=model,
                         call_id=call_id,
                     )
-                    await assembler.emit(error_part)
+                    await _emit_terminal_part_and_record_outcome(
+                        assembler,
+                        error_part,
+                        options=options,
+                        request=request,
+                        model=model,
+                        call_id=call_id,
+                    )
                     return
                 finally:
+                    deadline.cancel()
                     await _close_source(source)
         finally:
             await _cancel_task(cancellation_task)
@@ -243,9 +365,44 @@ def start_provider_runtime(
     return stream
 
 
-async def _flush_pending(
-    assembler: RawAssembler, pending: deque[RawPart]
+async def _emit_terminal_part_and_record_outcome(
+    assembler: RawAssembler,
+    part: RawPart,
+    *,
+    options: object | None,
+    request: ProviderRequest,
+    model: object,
+    call_id: str,
 ) -> None:
+    await assembler.emit(part)
+    committer = getattr(options, "prepared_request_committer", None)
+    if not isinstance(committer, PreparedModelCallOutcomeRecorder):
+        return
+    outcome = PreparedModelCallOutcome.from_assistant_message(
+        call_id,
+        assembler.result_nowait(),
+    )
+    try:
+        await committer.record_model_call_outcome(outcome)
+    except asyncio.CancelledError:
+        raise
+    except Exception as error:
+        emit_trace(
+            options,
+            {
+                "type": "runtime:outcome",
+                **_runtime_trace_base(
+                    request=request,
+                    model=model,
+                    call_id=call_id,
+                ),
+                "reason": "record_failed",
+                "exceptionType": error.__class__.__name__,
+            },
+        )
+
+
+async def _flush_pending(assembler: RawAssembler, pending: deque[RawPart]) -> None:
     while pending:
         await assembler.emit(pending.popleft())
 
@@ -266,9 +423,9 @@ def _append_pending_part(
     ):
         raise AIProviderProtocolError(
             "Pre-visible provider buffer exceeded retry bounds.",
-            source=request.api,
-            provider=request.provider,
-            endpoint=request.endpoint,
+            source=model.api or "",
+            provider=model.provider_id,
+            endpoint=model.endpoint_id,
             model=_runtime_model_id(request=request, model=model),
             details={
                 "maxParts": _PENDING_RETRY_BUFFER_MAX_PARTS,
@@ -311,7 +468,7 @@ def _runtime_model_id(*, request: ProviderRequest, model) -> str | None:
     value = getattr(request.model, "id", None)
     if isinstance(value, str) and value:
         return value
-    return request.upstream_model_id
+    return None
 
 
 def _runtime_trace_base(
@@ -322,9 +479,9 @@ def _runtime_trace_base(
 ) -> dict[str, object]:
     return {
         "callId": call_id,
-        "api": getattr(request, "api", None),
-        "provider": getattr(request, "provider", None),
-        "endpoint": getattr(request, "endpoint", None),
+        "api": request.model.api,
+        "provider": request.model.provider_id,
+        "endpoint": request.model.endpoint_id,
         "model": _runtime_model_id(request=request, model=model),
     }
 
@@ -335,14 +492,14 @@ def _provider_error_part_for_request(
     request: ProviderRequest,
     model,
 ) -> RawPart:
-    part = dict(provider_error_part(error, source=request.api))
+    part = dict(provider_error_part(error, source=request.model.api or ""))
     raw_info = part.get("error_info")
     if isinstance(raw_info, Mapping):
         info = dict(raw_info)
         if info.get("provider") is None:
-            info["provider"] = request.provider
+            info["provider"] = request.model.provider_id
         if info.get("endpoint") is None:
-            info["endpoint"] = request.endpoint
+            info["endpoint"] = request.model.endpoint_id
         if info.get("model") is None:
             info["model"] = _runtime_model_id(request=request, model=model)
         part["error_info"] = info
@@ -364,9 +521,7 @@ def _emit_runtime_request_trace(
         "attempt": attempt,
         "maxAttempts": max_attempts,
     }
-    upstream_model_id = getattr(request, "upstream_model_id", None)
-    if upstream_model_id is not None:
-        event["upstreamModel"] = upstream_model_id
+    event["upstreamModel"] = request.model.upstream_id or request.model.id
     emit_trace(options, event)
 
 
@@ -381,8 +536,9 @@ def _emit_runtime_error_trace(
     try:
         error_info = provider_error_info_from_raw(
             cast(Mapping[str, object], part),
-            source=request.api,
-            provider=getattr(request, "provider", None),
+            source=request.model.api or "",
+            provider=request.model.provider_id,
+            endpoint=request.model.endpoint_id,
             model=getattr(model, "id", None),
         )
     except Exception:
@@ -407,6 +563,15 @@ def _emit_runtime_error_trace(
         event["statusCode"] = error_info.status_code
     if error_info.request_id is not None:
         event["requestId"] = error_info.request_id
+    details = error_info.details
+    exception_type = details.get("exceptionType")
+    if isinstance(exception_type, str) and exception_type:
+        event["exceptionType"] = exception_type
+    response_summary = cast(Mapping[str, object], part).get(
+        "provider_response_summary"
+    )
+    if isinstance(response_summary, str) and response_summary:
+        event["providerResponseSummary"] = response_summary
     emit_trace(options, event)
 
 
@@ -492,9 +657,17 @@ async def _await_or_cancel(awaitable, cancellation_task: asyncio.Task[None] | No
     return await task
 
 
-async def _next_raw_part(source, cancellation_task: asyncio.Task[None] | None):
+async def _next_raw_part(
+    source,
+    cancellation_task: asyncio.Task[None] | None,
+    *,
+    idle_timeout_seconds: float | int | None,
+):
     iterator = source.__aiter__() if hasattr(source, "__aiter__") else source
-    return await _await_or_cancel(iterator.__anext__(), cancellation_task)
+    next_part = _await_or_cancel(iterator.__anext__(), cancellation_task)
+    if idle_timeout_seconds is None:
+        return await next_part
+    return await asyncio.wait_for(next_part, timeout=float(idle_timeout_seconds))
 
 
 async def _close_source(source) -> None:
@@ -523,7 +696,7 @@ def _retry_max_attempts(options: object | None) -> int:
         return 1
     retry = getattr(options, "retry", None)
     if isinstance(retry, RetryOptions):
-        return max(1, retry.max_attempts)
+        return retry.max_attempts
     return 1
 
 
@@ -532,7 +705,7 @@ def _retry_max_delay_seconds(options: object | None) -> float:
         return _DEFAULT_MAX_RETRY_DELAY_SECONDS
     retry = getattr(options, "retry", None)
     if isinstance(retry, RetryOptions):
-        return max(0.0, float(retry.max_delay_seconds))
+        return float(retry.max_delay_seconds)
     return _DEFAULT_MAX_RETRY_DELAY_SECONDS
 
 
@@ -549,8 +722,9 @@ def _retryable_response_error_part(
     try:
         error_info = provider_error_info_from_raw(
             cast(Mapping[str, object], part),
-            source=request.api,
-            provider=request.provider,
+            source=request.model.api or "",
+            provider=request.model.provider_id,
+            endpoint=request.model.endpoint_id,
             model=getattr(model, "id", None),
         )
     except Exception:
@@ -682,8 +856,9 @@ def _retry_reason_from_part(
     try:
         info = provider_error_info_from_raw(
             cast(Mapping[str, object], part),
-            source=request.api,
-            provider=request.provider,
+            source=request.model.api or "",
+            provider=request.model.provider_id,
+            endpoint=request.model.endpoint_id,
             model=getattr(model, "id", None),
         )
     except Exception:

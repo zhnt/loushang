@@ -1,19 +1,28 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import inspect
 import os
 from collections.abc import Iterable, Mapping
-from typing import Any, Literal, Protocol, cast
+from dataclasses import dataclass
+from typing import Any, cast
 
 from loushang.harness.approval import (
     ApprovalDecision,
     ApprovalRequest,
     ApprovalResolver,
+    approval_actor_id,
     ensure_approval_action_id,
+    find_approval_grant,
     resolve_approval,
 )
+from loushang.harness.approval.proposals import (
+    propose_policy_amendments,
+    propose_session_approval_grant,
+)
+from loushang.harness.effects import ToolEffect
 from loushang.harness.policy import (
-    MaybeAwaitable,
     PolicyDecision,
     PolicyEvaluationError,
     PolicyEvaluator,
@@ -24,22 +33,9 @@ from loushang.harness.policy import (
     normalize_command_subject,
 )
 
+from .audit import snapshot_audit_event
 
-class PolicyDecisionLike(Protocol):
-    @property
-    def disposition(self) -> Literal["allow", "deny", "ask"]: ...
-
-    @property
-    def reason(self) -> str | None: ...
-
-    @property
-    def code(self) -> str | None: ...
-
-
-class ToolPolicyEvaluator(Protocol):
-    def evaluate(
-        self, subject: ToolPolicySubject, /
-    ) -> MaybeAwaitable[PolicyDecision | None]: ...
+ToolPolicyEvaluator = PolicyEvaluator
 
 
 class PolicyEnforcementError(PermissionError):
@@ -48,24 +44,49 @@ class PolicyEnforcementError(PermissionError):
         self.tool_result_details = dict(tool_result_details)
 
 
+@dataclass(frozen=True, slots=True)
+class ToolPolicyAuthorization:
+    decision: PolicyDecision
+    approval: ApprovalDecision | None = None
+    approval_action_id: str | None = None
+
+
 async def enforce_tool_policy(
-    policy_engine: ToolPolicyEvaluator | object | None,
+    policy_engine: ToolPolicyEvaluator | None,
     *,
     tool_name: str,
     arguments: Mapping[str, Any],
     cwd: str | None = None,
     policy_subject: ToolPolicySubject | None = None,
+    effects: tuple[ToolEffect, ...] = (),
     approval_resolver: ApprovalResolver | None = None,
     tool_call_id: str | None = None,
     audit_sink: Any = None,
+    audit_context: Mapping[str, object] | None = None,
     execution_environment: object | None = None,
-) -> None:
+) -> ToolPolicyAuthorization:
     if policy_engine is None:
-        return
+        decision = PolicyDecision.allow()
+        if audit_context is not None:
+            await _emit_policy_audit_event(
+                audit_sink,
+                {
+                    "type": "tool_policy_evaluated",
+                    **_policy_audit_details(
+                        tool_name=tool_name,
+                        decision=decision,
+                        approval_required=False,
+                        tool_call_id=tool_call_id,
+                        audit_context=audit_context,
+                    ),
+                },
+            )
+        return ToolPolicyAuthorization(decision)
     execution_subject = build_tool_policy_subject(
         tool_name=tool_name,
         arguments=arguments,
         cwd=cwd,
+        effects=effects,
     )
     environment_snapshot = _snapshot_execution_environment(execution_environment)
     _validate_execution_arguments(execution_subject)
@@ -92,16 +113,15 @@ async def enforce_tool_policy(
             "type": "tool_policy_evaluated",
             **_policy_audit_details(
                 tool_name=tool_name,
-                arguments=arguments,
-                cwd=cwd,
                 decision=decision,
                 approval_required=decision.disposition == "ask",
                 tool_call_id=tool_call_id,
+                audit_context=audit_context,
             ),
         },
     )
     if decision.disposition == "allow":
-        return
+        return ToolPolicyAuthorization(decision)
     if decision.disposition == "deny":
         message = decision.reason or f"Tool {tool_name} denied by policy"
         raise PolicyEnforcementError(
@@ -115,6 +135,11 @@ async def enforce_tool_policy(
             ),
         )
     if decision.disposition == "ask":
+        fingerprint = (
+            audit_context.get("action_fingerprint")
+            if audit_context is not None
+            else None
+        )
         request = ensure_approval_action_id(
             ApprovalRequest(
                 tool_name=tool_name,
@@ -123,21 +148,58 @@ async def enforce_tool_policy(
                 reason=decision.reason,
                 policy_code=decision.code,
                 policy_decision=decision,
+                actor_id=approval_actor_id(approval_resolver),
+                action_fingerprint=(
+                    fingerprint if isinstance(fingerprint, str) else None
+                ),
+                session_grant=propose_session_approval_grant(
+                    subject,
+                    policy_code=decision.code,
+                ),
+                policy_amendments=propose_policy_amendments(
+                    subject,
+                    policy_code=decision.code,
+                ),
             )
         )
         action_id = request.action_id
         assert action_id is not None
+        granted = await find_approval_grant(approval_resolver, request)
+        if granted is not None:
+            await _emit_policy_audit_event(
+                audit_sink,
+                {
+                    "type": "tool_approval_resolved",
+                    **_approval_audit_details(
+                        tool_name=tool_name,
+                        decision=decision,
+                        action_id=action_id,
+                        tool_call_id=tool_call_id,
+                        approval=granted,
+                        approval_source=(
+                            "policy_rule"
+                            if granted.policy_rule_id is not None
+                            else "session_grant"
+                        ),
+                        audit_context=audit_context,
+                    ),
+                },
+            )
+            return ToolPolicyAuthorization(
+                decision,
+                approval=granted,
+                approval_action_id=action_id,
+            )
         await _emit_policy_audit_event(
             audit_sink,
             {
                 "type": "tool_approval_requested",
                 **_approval_audit_details(
                     tool_name=tool_name,
-                    arguments=arguments,
-                    cwd=cwd,
                     decision=decision,
                     action_id=action_id,
                     tool_call_id=tool_call_id,
+                    audit_context=audit_context,
                 ),
             },
         )
@@ -151,17 +213,21 @@ async def enforce_tool_policy(
                 "type": "tool_approval_resolved",
                 **_approval_audit_details(
                     tool_name=tool_name,
-                    arguments=arguments,
-                    cwd=cwd,
                     decision=decision,
                     action_id=action_id,
                     tool_call_id=tool_call_id,
                     approval=approval,
+                    approval_source="reviewer",
+                    audit_context=audit_context,
                 ),
             },
         )
         if approval.disposition == "allow":
-            return
+            return ToolPolicyAuthorization(
+                decision,
+                approval=approval,
+                approval_action_id=action_id,
+            )
         message = (
             approval.reason or decision.reason or f"Tool {tool_name} requires approval"
         )
@@ -181,57 +247,32 @@ async def enforce_tool_policy(
 
 
 async def _evaluate_tool_policy(
-    policy_engine: ToolPolicyEvaluator | object,
+    policy_engine: ToolPolicyEvaluator,
     *,
     tool_name: str,
     arguments: Mapping[str, Any],
     cwd: str | None,
     subject: ToolPolicySubject,
 ) -> PolicyDecision:
-    evaluate = get_policy_method(policy_engine, "evaluate")
-    if callable(evaluate):
-        decision = await evaluate_policy(
-            cast(PolicyEvaluator, policy_engine),
-            subject,
-        )
-        if decision is not None:
-            return decision
-        legacy_evaluate = get_policy_method(policy_engine, "evaluate_tool_call")
-        if not callable(legacy_evaluate):
-            return PolicyDecision.allow()
-    else:
-        legacy_evaluate = get_policy_method(policy_engine, "evaluate_tool_call")
-
-    # Compatibility evaluators keep their established call shape during the
-    # transition. When a dual-protocol adapter abstains through the new
-    # contract, its legacy result remains authoritative.
-    if callable(legacy_evaluate):
-        return await _evaluate_legacy_tool_policy(
-            policy_engine,
-            legacy_evaluate=legacy_evaluate,
-            tool_name=tool_name,
-            arguments=arguments,
-            cwd=cwd,
-        )
-
-    if not callable(evaluate):
-        raise PolicyEvaluationError(
-            f"Policy evaluator {type(policy_engine).__name__} has no supported evaluate method"
-        )
-    return PolicyDecision.allow()
+    del tool_name, arguments, cwd
+    decision = await evaluate_policy(
+        cast(PolicyEvaluator, policy_engine),
+        subject,
+    )
+    return decision if decision is not None else PolicyDecision.allow()
 
 
 def _validate_execution_arguments(execution: ToolPolicySubject) -> None:
-    if execution.tool_name != "bash" or "cwd" not in execution.arguments:
+    if execution.tool_name not in {"bash", "shell"} or "cwd" not in execution.arguments:
         return
     argument_cwd = execution.arguments["cwd"]
     if argument_cwd is not None and not isinstance(argument_cwd, str):
         raise PolicyEvaluationError(
-            "Bash execution argument cwd must be a string or None"
+            "Shell execution argument cwd must be a string or None"
         )
     if argument_cwd != execution.cwd:
         raise PolicyEvaluationError(
-            "Bash execution argument cwd does not match the execution cwd"
+            "Shell execution argument cwd does not match the execution cwd"
         )
 
 
@@ -250,12 +291,19 @@ def _validate_policy_subject_matches_execution(
         mismatches.append("cwd")
     if subject.paths != execution.paths:
         mismatches.append("paths")
+    if subject.effects != execution.effects:
+        mismatches.append("effects")
     argument_command = execution.arguments.get("command")
     if argument_command is None:
         if subject.command is not None:
             mismatches.append("command")
     elif subject.command is None:
         mismatches.append("command")
+    elif subject.capability_id == "workspace.command" and isinstance(
+        execution.arguments.get("resolved_shell"), Mapping
+    ):
+        if not _resolved_shell_subject_matches_execution(subject, execution):
+            mismatches.append("command")
     else:
         stdin = execution.arguments.get("stdin")
         normalized_stdin = stdin if isinstance(stdin, str) else None
@@ -302,6 +350,57 @@ def _validate_policy_subject_matches_execution(
         )
 
 
+def _resolved_shell_subject_matches_execution(
+    subject: ToolPolicySubject,
+    execution: ToolPolicySubject,
+) -> bool:
+    command = subject.command
+    resolved = execution.arguments.get("resolved_shell")
+    script = execution.arguments.get("command")
+    if command is None or not isinstance(resolved, Mapping) or not isinstance(script, str):
+        return False
+    if command.shell_payload != script or not command.command:
+        return False
+    executable = resolved.get("executable")
+    kind = resolved.get("kind")
+    flavor = resolved.get("flavor")
+    transport = resolved.get("transport")
+    if (
+        not isinstance(executable, str)
+        or command.command[0] != executable
+        or command.shell_flavor != flavor
+    ):
+        return False
+    if kind == "powershell":
+        if command.dialect != "powershell" or transport != "encoded-command":
+            return False
+        try:
+            encoded_index = command.command.index("-EncodedCommand") + 1
+            encoded = command.command[encoded_index]
+            decoded = base64.b64decode(encoded, validate=True).decode("utf-16le")
+        except (ValueError, IndexError, UnicodeDecodeError, binascii.Error):
+            return False
+        return (
+            f"& {{\n{script}\n}} "
+            "| Microsoft.PowerShell.Core\\Out-Default\n"
+        ) in decoded
+    if kind == "cmd":
+        return (
+            command.dialect == "cmd"
+            and transport == "command"
+            and command.command[-1] == script
+        )
+    if kind in {"bash", "sh", "zsh"}:
+        return (
+            command.dialect == "posix"
+            and transport == "command"
+            and len(command.command) == 3
+            and command.command[1] in {"-c", "-lc"}
+            and command.command[2] == script
+        )
+    return False
+
+
 def _snapshot_execution_environment(
     environment: object | None,
 ) -> tuple[tuple[str, str], ...] | None:
@@ -321,106 +420,12 @@ def _snapshot_execution_environment(
     return tuple(snapshot)
 
 
-def get_policy_method(policy_engine: object, name: str) -> object:
-    try:
-        return getattr(policy_engine, name, None)
-    except Exception as exc:
-        raise PolicyEvaluationError(
-            f"Policy evaluator {type(policy_engine).__name__} failed while "
-            f"accessing {name}: {exc}"
-        ) from exc
-
-
-async def _evaluate_legacy_tool_policy(
-    policy_engine: object,
-    *,
-    legacy_evaluate: Any,
-    tool_name: str,
-    arguments: Mapping[str, Any],
-    cwd: str | None,
-) -> PolicyDecision:
-    return await evaluate_legacy_policy_method(
-        policy_engine,
-        "evaluate_tool_call",
-        method=legacy_evaluate,
-        tool_name=tool_name,
-        arguments=arguments,
-        cwd=cwd,
-    )
-
-
-async def evaluate_legacy_policy_method(
-    policy_engine: object,
-    method_name: str,
-    *,
-    method: object | None = None,
-    **kwargs: object,
-) -> PolicyDecision:
-    resolved_method = (
-        method if method is not None else get_policy_method(policy_engine, method_name)
-    )
-    if not callable(resolved_method):
-        raise PolicyEvaluationError(
-            f"Policy evaluator {type(policy_engine).__name__} has no callable "
-            f"{method_name} method"
-        )
-    try:
-        result = resolved_method(**kwargs)
-        if inspect.isawaitable(result):
-            result = await result
-    except PolicyEvaluationError:
-        raise
-    except Exception as exc:
-        raise PolicyEvaluationError(
-            f"Policy evaluator {type(policy_engine).__name__} failed: {exc}"
-        ) from exc
-    return _coerce_legacy_decision(result, evaluator=policy_engine)
-
-
-def _coerce_legacy_decision(
-    result: object,
-    *,
-    evaluator: object,
-) -> PolicyDecision:
-    if isinstance(result, PolicyDecision):
-        try:
-            result.__post_init__()
-        except (TypeError, ValueError) as exc:
-            raise PolicyEvaluationError(
-                f"Policy evaluator {type(evaluator).__name__} returned an invalid "
-                f"PolicyDecision: {exc}"
-            ) from exc
-        return result
-    try:
-        disposition = getattr(result, "disposition", None)
-        reason = getattr(result, "reason", None)
-        code = getattr(result, "code", None)
-    except Exception as exc:
-        raise PolicyEvaluationError(
-            f"Policy evaluator {type(evaluator).__name__} returned an invalid "
-            f"decision: {exc}"
-        ) from exc
-    if disposition not in {"allow", "deny", "ask"}:
-        raise PolicyEvaluationError(
-            f"Policy evaluator {type(evaluator).__name__} returned an invalid decision"
-        )
-    if reason is not None and not isinstance(reason, str):
-        raise PolicyEvaluationError(
-            f"Policy evaluator {type(evaluator).__name__} returned a non-string reason"
-        )
-    if code is not None and not isinstance(code, str):
-        raise PolicyEvaluationError(
-            f"Policy evaluator {type(evaluator).__name__} returned a non-string code"
-        )
-    return PolicyDecision(disposition=disposition, reason=reason, code=code)
-
-
 def _policy_error_details(
     *,
     tool_name: str,
     arguments: Mapping[str, Any],
     cwd: str | None,
-    decision: PolicyDecisionLike,
+    decision: PolicyDecision,
     approval_required: bool,
     approval: ApprovalDecision | None = None,
     approval_reason: str | None = None,
@@ -460,19 +465,21 @@ def _policy_error_details(
 def _policy_audit_details(
     *,
     tool_name: str,
-    arguments: Mapping[str, Any],
-    cwd: str | None,
-    decision: PolicyDecisionLike,
+    decision: PolicyDecision,
     approval_required: bool,
     tool_call_id: str | None,
+    audit_context: Mapping[str, object] | None,
 ) -> dict[str, Any]:
-    details = _policy_error_details(
-        tool_name=tool_name,
-        arguments=arguments,
-        cwd=cwd,
-        decision=decision,
-        approval_required=approval_required,
+    details: dict[str, Any] = dict(audit_context or ())
+    details.update(
+        {
+            "tool_name": tool_name,
+            "policy_disposition": decision.disposition,
+            "approval_required": approval_required,
+        }
     )
+    if decision.code is not None:
+        details["policy_code"] = decision.code
     if tool_call_id is not None:
         details["tool_call_id"] = tool_call_id
     return details
@@ -481,46 +488,35 @@ def _policy_audit_details(
 def _approval_audit_details(
     *,
     tool_name: str,
-    arguments: Mapping[str, Any],
-    cwd: str | None,
-    decision: PolicyDecisionLike,
+    decision: PolicyDecision,
     action_id: str,
     tool_call_id: str | None,
     approval: ApprovalDecision | None = None,
+    approval_source: str | None = None,
+    audit_context: Mapping[str, object] | None,
 ) -> dict[str, Any]:
-    details: dict[str, Any] = {
-        "tool_name": tool_name,
-        "action_id": action_id,
-        "argument_keys": sorted(str(key) for key in arguments.keys()),
-    }
+    details: dict[str, Any] = dict(audit_context or ())
+    details.update({"tool_name": tool_name, "action_id": action_id})
     if tool_call_id is not None:
         details["tool_call_id"] = tool_call_id
-    if cwd is not None:
-        details["cwd"] = cwd
     if decision.code is not None:
         details["policy_code"] = decision.code
-    if decision.reason is not None:
-        details["policy_reason"] = decision.reason
     if approval is not None:
         details["approval_decision"] = approval.disposition
-        if approval.reason is not None:
-            details["approval_reason"] = approval.reason
-    for key in ("path", "file_path", "command"):
-        value = arguments.get(key)
-        if isinstance(value, str):
-            details[key] = value
-        elif (
-            key == "command"
-            and isinstance(value, (list, tuple))
-            and all(isinstance(part, str) for part in value)
-        ):
-            details[key] = tuple(value)
+        details["approval_scope"] = approval.scope
+        if approval.grant_id is not None:
+            details["approval_grant_id"] = approval.grant_id
+        if approval.policy_rule_id is not None:
+            details["approval_policy_rule_id"] = approval.policy_rule_id
+            details["approval_policy_scope"] = approval.policy_scope
+    if approval_source is not None:
+        details["approval_source"] = approval_source
     return details
 
 
 async def _emit_policy_audit_event(audit_sink: Any, event: Mapping[str, Any]) -> None:
     if audit_sink is None:
         return
-    result = audit_sink(dict(event))
+    result = audit_sink(snapshot_audit_event(event))
     if inspect.isawaitable(result):
         await result

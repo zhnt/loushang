@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -12,8 +13,10 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from loushang.coding.loader import DefaultResourceLoader
-from loushang.coding.skill import SkillLoader
+from loushang.coding.resource_runtime import (
+    CodingResourceLoader as DefaultResourceLoader,
+)
+from loushang.coding.resource_runtime import CodingSkillLoader as SkillLoader
 
 SKILL_REVIEW_PKG = """\
 ---
@@ -86,10 +89,11 @@ async def main() -> None:
 
         print(f"--- Resource diagnostics ({len(snapshot.diagnostics)}) ---")
         for diagnostic in snapshot.diagnostics:
-            if diagnostic.resource_type == "skill":
+            if diagnostic.details.get("resource_type") == "skill":
                 print(f"  [{diagnostic.code}] {diagnostic.message}")
-                if diagnostic.metadata:
-                    for key, value in sorted(diagnostic.metadata.items()):
+                metadata = diagnostic.details.get("metadata")
+                if isinstance(metadata, Mapping):
+                    for key, value in sorted(metadata.items()):
                         print(f"    {key}={value}")
         print()
 
@@ -120,7 +124,12 @@ async def main() -> None:
                 print(f"  Merge decision: logical_id={decision.logical_id}, winner_id={decision.winner_id}, reason={decision.reason}")
 
         for diagnostic in collision_snapshot.diagnostics:
-            if diagnostic.resource_type == "skill" and diagnostic.resource_id and "audit" in diagnostic.resource_id:
+            resource_id = diagnostic.details.get("resource_id")
+            if (
+                diagnostic.details.get("resource_type") == "skill"
+                and isinstance(resource_id, str)
+                and "audit" in resource_id
+            ):
                 print(f"  Diagnostic: [{diagnostic.code}] {diagnostic.message}")
 
 

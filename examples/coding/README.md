@@ -4,11 +4,11 @@
 
 ### 一键初始化
 
-执行以下命令可一键生成示例运行所需的本地骨架（推荐首次使用先跑一次）：
+执行以下命令可一键生成示例运行所需的本地骨架：
 
 ```bash
 cd /home/dev/workspace/loushang
-python examples/coding/init_examples_env.py --copy-model-catalog
+uv run python examples/coding/init_examples_env.py
 ```
 
 会默认创建（并写入说明）：
@@ -16,7 +16,7 @@ python examples/coding/init_examples_env.py --copy-model-catalog
 - `examples/coding/.loushang/`：运行时根目录
 - `examples/coding/.loushang/sessions/`：会话落盘目录
 - `examples/coding/.loushang/extensions/`：示例扩展文件目录
-- `examples/coding/.loushang/models/`：模型 catalog 目录（含内置 curated catalog 副本和可选覆盖模板）
+- `examples/coding/.loushang/models/`：可选自定义模型 catalog 目录
 
 建议将该目录和你的示例会话一起提交为“本地运行环境脚手架”，从其他机器 `git pull` 后再跑一遍初始化即可重建同结构，脚本输出可直接执行的推荐环境变量和命令。
 
@@ -27,6 +27,9 @@ python examples/coding/init_examples_env.py --help
 python examples/coding/init_examples_env.py --dry-run
 python examples/coding/init_examples_env.py --copy-model-catalog --overwrite
 ```
+
+`--copy-model-catalog` 只用于需要本地定制时复制内置 catalog 快照；常规示例直接使用
+`src/loushang/ai/model/models.json`，无需复制。
 
 ### 统一运行器
 
@@ -59,7 +62,11 @@ uv run python examples/coding/21_switch_model_route.py
 uv run python examples/coding/22_usage_inspect.py --endpoint kimi-code-anthropic --strict
 uv run python examples/coding/25_render_tool_events_contract.py
 uv run python examples/coding/extensions/01_lifecycle.py
+uv run python examples/coding/arch/01_import_graph.py
 ```
+
+架构分析示例直接使用公共 `loushang.coding.arch` API；更多说明见
+[`arch/README.md`](arch/README.md)。仓库自动化使用的 `scripts/arch` 入口不作为用户示例。
 
 如果已经激活本仓库虚拟环境，也可以直接用 `python`：
 
@@ -138,25 +145,27 @@ pi-mono 覆盖跟踪见 [PI_MONO_COVERAGE.toml](/home/dev/workspace/loushang/exa
 
 ```bash
 cd /home/dev/workspace/loushang
-python examples/coding/init_examples_env.py --copy-model-catalog
+uv run python examples/coding/init_examples_env.py
 export LOUSHANG_EXAMPLES_ARTIFACT_ROOT=examples/coding/.loushang
-python examples/coding/run.py list --count
+uv run python examples/coding/run.py list --count
 ```
 默认模型 profile 已调整为：
 
-- `coding_primary` => `provider=moonshot`, `endpoint=anthropic-messages`, `model=kimi-for-coding`
+- `coding_primary` => `provider=kimi-code`, `endpoint=kimi-code-anthropic`, `model=kimi-for-coding`
 
 **3 秒判断：默认/显式**
-- 默认（包括已设置 `KIMI_MODEL_NAME`）：都走 `moonshot/anthropic-messages`（Anthropic 风格，缺省）
-- Kimi Code 路线是 `kimi-for-coding`，只要你显式走 `api.kimi.com/coding/`（Anthropic）或 `api.kimi.com/coding/v1`（OpenAI 兼容），模型名就应为 `kimi-for-coding`。
+- 默认走 `kimi-code/kimi-code-anthropic`（Anthropic 兼容协议）。
+- 显式指定 `kimi-code-openai` 时走 OpenAI 兼容协议。
+- Kimi Code 两条协议都支持 `k3`（当前旗舰）和 `kimi-for-coding`（K2.7）；示例 profile 暂时固定 `kimi-for-coding` 以保持可复现。
 - `KIMI_MODEL_NAME` 仅作为模型名提示变量；在示例缺省路径里不会强制切换 endpoint。
 
-说明：`provider:endpoint:model` 中的 `endpoint` 只接受 registry 中的 endpoint id（如 `anthropic-messages`）。  
-`coding` 专用路径在 catalog 中采用无冒号 ID：`kimi-code-openai` 与 `kimi-code-anthropic`，与文档标识保持一致。
+说明：`provider:endpoint:model` 中的 `endpoint` 只接受 registry 中的 endpoint id。
+Kimi Code 在内置 catalog 中提供 `kimi-code-openai` 与 `kimi-code-anthropic` 两条路由。
 
-若想走 Kimi Code 的 OpenAI 兼容端点（`https://api.kimi.com/coding/v1`）或 Anthropic 兼容端点（`https://api.kimi.com/coding/`），请使用 `kimi-for-coding`（在同一 `models.kimi-code.json` 文件内都已对齐）。若未指定 `--model-catalog`，仍以内置 catalog 为准：`MOONSHOT_ANTHROPIC_MESSAGES_URL` + `moonshot/anthropic-messages` + 该 catalog 中的模型映射。
+未指定 `--model-catalog` 时，示例只读取内置 catalog。仓库不再提供会遮蔽内置配置的
+Kimi Code 示例 catalog。
 
-补充：Kimi Code 文档明确说明：无论 OpenAI 兼容还是 Anthropic 兼容协议，模型字段都使用 `kimi-for-coding`，并非 `kimi-k2.5`。
+补充：Kimi Code 使用自己的模型 ID：当前旗舰写 `k3`，K2.7 coding 路线写 `kimi-for-coding`，不要写 Moonshot 平台的 `kimi-k3` 或旧的 `kimi-k2.5`。
 
 ### Kimi 环境变量模板（按你这个模型名）
 
@@ -169,20 +178,12 @@ source examples/coding/kimicode.env.example
 模板内容（可按需改）：
 
 ```bash
-export KIMI_AUTH_TOKEN="sk-xxx"
-# 兼容旧环境变量名（可选）
-export KIMI_API_KEY="${KIMI_AUTH_TOKEN}"
+export KIMI_CODE_API_KEY="sk-xxx"
 export KIMI_MODEL_NAME="kimi-for-coding"  # 缺省路径下仅作兼容变量，不影响 endpoint 选择
-export KIMI_MODEL_MAX_CONTEXT_SIZE="262144"
-export KIMI_MODEL_CAPABILITIES="thinking,image_in"
-export KIMI_MODEL_TEMPERATURE="0.7"
-export KIMI_MODEL_TOP_P="0.9"
-export KIMI_MODEL_MAX_TOKENS="4096"
-export MOONSHOT_CODING_CHAT_URL="https://api.kimi.com/coding/v1"
 ```
 
-注意：我们在 examples 中保留了 `KIMI_MODEL_NAME` 读取，但缺省入口仍固定走 `moonshot/anthropic-messages`；它不会在不显式指定 endpoint 的情况下触发 `coding` 切换。  
-其它 `KIMI_*` 参数目前在 loushang 示例侧不做强制注入，仅用于保留配置兼容。
+注意：`KIMI_CODE_API_KEY` 与 Moonshot 开放平台的 `MOONSHOT_API_KEY` 分属不同
+provider 配置，示例不再交叉回退到 Anthropic、OpenAI 或 Moonshot 平台 key。
 
 如果你不想每次都手工设置环境变量，也可以在运行时直接指定参数：
 
@@ -190,7 +191,6 @@ export MOONSHOT_CODING_CHAT_URL="https://api.kimi.com/coding/v1"
 python examples/coding/run.py --artifacts-root examples/coding/.loushang \
   --session-dir examples/coding/.loushang/sessions \
   --extensions-dir examples/coding/.loushang/extensions \
-  --model-catalog examples/coding/.loushang/models \
   list --count
 ```
 
@@ -214,8 +214,8 @@ python examples/coding/run.py run legacy-001
 - `~/<repo>/examples/coding/.loushang/`：示例运行时总目录（本仓库默认）。
 - `~/<repo>/examples/coding/.loushang/sessions/`：会话落盘目录（默认值，对应 `persist=True` 的示例）。
 - `~/<repo>/examples/coding/.loushang/extensions/`：示例扩展文件可存放目录（供需要读取本地扩展时使用）。
-- `~/<repo>/examples/coding/.loushang/models/`：可选模型清单目录，放 `models.xx.json`，示例会按 `*.json` 自动加载并合并。
-- `~/<repo>/examples/coding/models/`：用户自建的替代 catalog（不建议与 `.loushang` 混用，便于区分源文件与运行时产物）。
+- `~/<repo>/examples/coding/.loushang/models/`：可选模型清单目录；只有显式选择该目录时才作为覆盖 catalog。
+- `~/<repo>/examples/coding/models/`：自定义 catalog 示例位置；仓库不在这里提供默认 provider 数据。
 - `~/<repo>/.loushang/settings.json`：可选本地配置（如需覆盖模型/提示词/会话目录时）。
 
 `run.py` 的运行时约定会透传如下环境变量给子进程：
@@ -235,7 +235,7 @@ python examples/coding/run.py list --count
 python examples/coding/run.py run legacy-001
 ```
 
-`LOUSHANG_EXAMPLES_MODEL_CATALOG` 不设时，`run.py` 会优先读取：
+`LOUSHANG_EXAMPLES_MODEL_CATALOG` 不设时，示例 helper 会优先读取：
 `<artifacts-root>/models/`（目录）；
 `<artifacts-root>/models.json`（文件）；
 找不到再回退到内置 `src/loushang/ai/model/models.json`。
@@ -249,15 +249,9 @@ python examples/coding/run.py run legacy-014 --model-catalog examples/coding/mod
 
 来使用；默认仍为 `src/loushang/ai/model/models.json`。
 
-仓库内额外提供了 Kimi Code 示例 catalog（默认不内置到内置 catalog）：
-- 文件：`examples/coding/models/models.kimi-code.json`
-- 作用：在走 `https://api.kimi.com/coding/` 时提供 `kimi-for-coding`/`kimi-code` 这类 Kimi Code 专属模型名
-
-`init_examples_env.py --copy-model-catalog` 会把这个模板文件一起拷贝到 `.loushang/models/`，之后可直接用：
-
-```bash
-python examples/coding/run.py run legacy-001
-```
+Kimi Code 的 provider、两条兼容协议路由以及 `k3`、`kimi-for-coding` 模型都由内置
+catalog 维护。`init_examples_env.py --copy-model-catalog` 仅复制该内置文件作为用户
+定制快照，不会再叠加示例目录中的 provider 模板。
 
 若你习惯在 `examples/coding` 目录直接运行，也可直接执行：
 
@@ -293,13 +287,11 @@ python run.py run legacy-007
 - `14_simple_code_writer.py`: simple natural-language coding request that writes files through bash
 - `15_simple_write_tool.py`: minimal natural-language coding request that writes files with the write tool only
 - `16_write_tool_trace.py`: readable assistant/tool trace for a coding request
-- `17_kimi_env_probe.py`: print catalog/key/model endpoint resolution for fast diagnostics
 - `18_kimi_runtime_matrix.py`: offline matrix of endpoint -> base_url -> api -> model
 - `19_session_store_check.py`: verify session persistence and list/index consistency
-- `20_key_rotation.py`: simulated auth-key recovery workflow (401/恢复)
 - `21_switch_model_route.py`: validate route switch across candidate endpoints
 - `22_usage_inspect.py`: model usage/cost extraction and unified print format
-- `23_kimi_weekly_usage_ledger.py`: local weekly ledger with rolling usage aggregation
+- `23_kimi_weekly_usage_ledger.py`: local weekly ledger based on response usage, with rolling aggregation and an optional local budget
 - `24_git_checkpoint.py`: git stash checkpoint as an AgentTool with offline mock + optional live path
 - `25_render_tool_events_contract.py`: offline JSONL example for renderedToolCall/renderedToolResult
 - `26_compaction_summary_evaluation.py`: offline summary quality evaluation for compaction output, with optional `--real` model run

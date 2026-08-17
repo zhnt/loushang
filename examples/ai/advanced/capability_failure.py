@@ -6,7 +6,7 @@ import asyncio
 import json
 
 from loushang.ai import AIError, Model, Tool, UserMessage, stream
-from loushang.ai.model import Capabilities
+from loushang.ai.model import Auth, Capabilities
 
 
 async def inspect_capability_failure() -> dict[str, object]:
@@ -14,7 +14,10 @@ async def inspect_capability_failure() -> dict[str, object]:
         id="capability-demo",
         provider="faux",
         endpoint="anthropic-messages",
+        api="anthropic-messages",
+        base_url="https://example.invalid/v1",
         capabilities=Capabilities(stream=True, tool_use=False),
+        auth=Auth(kind="none"),
     )
     context = {
         "messages": [UserMessage(role="user", content="hello", timestamp=0.0)],

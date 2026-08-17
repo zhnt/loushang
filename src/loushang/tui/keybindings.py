@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Mapping, Sequence
 
 KeyId = str
 KeybindingAction = str
@@ -50,6 +50,9 @@ DEFAULT_KEYBINDINGS: dict[KeybindingAction, tuple[KeyId, ...]] = {
     "tui.select.pageDown": ("pageDown",),
     "tui.select.confirm": ("enter",),
     "tui.select.cancel": ("escape", "ctrl+c"),
+    "tui.continuity.preview": ("space",),
+    "tui.continuity.domain": ("tab",),
+    "tui.continuity.sort": ("ctrl+s",),
 }
 
 _MODIFIER_ORDER = ("ctrl", "shift", "alt", "super")
@@ -127,11 +130,17 @@ class KeybindingManager:
 
         for action, default_keys in self._definitions.items():
             user_keys = self._user_bindings.get(action, None)
-            self._resolved[action] = default_keys if user_keys is None else _normalize_keys(user_keys)
+            self._resolved[action] = (
+                default_keys if user_keys is None else _normalize_keys(user_keys)
+            )
 
 
 def normalize_key_id(key: KeyId) -> KeyId:
-    key = _ALIASES.get(key, key).replace("pageup", "pageUp").replace("pagedown", "pageDown")
+    key = (
+        _ALIASES.get(key, key)
+        .replace("pageup", "pageUp")
+        .replace("pagedown", "pageDown")
+    )
     parts = key.split("+")
     if len(parts) <= 1:
         return key

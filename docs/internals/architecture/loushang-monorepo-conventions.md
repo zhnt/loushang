@@ -73,8 +73,9 @@ loushang/
       method/
       tui/
       work/
-      runtime/
-      observability/
+      foundation/
+        json.py
+        observability/
       ontology/
   tests/
     ai/

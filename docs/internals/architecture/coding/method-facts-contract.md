@@ -107,8 +107,10 @@ Sequence fields are lists. `tags` maps string keys to lists of strings.
 `CodingDomainApp.prepare_turns()` copies facts from `MethodProjection.metadata`
 into `CodingDomainPreparedTurn.metadata`.
 
-The CLI, prompt command, and non-RPC mode bridges pass those mappings to
-`CodingWorkShell.submit_coding_turn()`.
+The prompt/print CLI paths convert those mappings to `SubmitCodingTurn` values.
+Fixed plans use `CodingWorkShell.submit_coding_plan()` so `WorkRuntime` executes
+their steps sequentially under one Work run; the single-turn compatibility path
+continues to use `submit_coding_turn()`.
 
 `CodingWorkShell` persists facts in:
 

@@ -17,13 +17,14 @@ from _support import (
     resolve_api_key,
 )
 
+from loushang.ai import ApiKeyAuth, CallOptions
 from loushang.coding import ToolRegistry, register_builtin_tools
 
 EXTENSION_SOURCE = """
 from pathlib import Path
 
-from loushang.coding.extensions import ExtensionResourceContribution
-from loushang.coding.loader import PromptFragmentDescriptor
+from loushang.harness.extensions.agent import ExtensionResourceContribution
+from loushang.harness.resources.types import PromptFragmentDescriptor
 
 
 def register(api):
@@ -76,7 +77,7 @@ async def main() -> None:
         )
 
         session = await runtime.create_session(cwd=str(project_root))
-        session.agent.get_api_key = lambda provider: resolve_api_key()
+        session.agent.call_options = CallOptions(auth=ApiKeyAuth(resolve_api_key()))
         attach_stream_printer(session)
 
         print("=== Online Extension Example: Resume With Extension ===")
@@ -93,7 +94,7 @@ async def main() -> None:
             raise RuntimeError("Expected a persisted session file for resume example.")
 
         restored = await runtime.restore_session(session_file)
-        restored.agent.get_api_key = lambda provider: resolve_api_key()
+        restored.agent.call_options = CallOptions(auth=ApiKeyAuth(resolve_api_key()))
         attach_stream_printer(restored)
         await restored.prompt(_tool_prompt("继续摘要 README.md 的主要内容。"))
 

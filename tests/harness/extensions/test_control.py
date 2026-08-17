@@ -223,7 +223,7 @@ def test_policy_wrapper_honors_skip_and_fail_chain() -> None:
 
     assert decision is None
     assert diagnostics[0].code == "extension_policy_evaluation_failed"
-    assert diagnostics[0].metadata["route_id"] == "skip/policy/broken"
+    assert diagnostics[0].details["metadata"]["route_id"] == "skip/policy/broken"
 
     fail = resolve_control_contributions(
         [fail_api.build_loaded_extension()],
@@ -280,8 +280,10 @@ def test_approval_uses_first_resolved_valid_active_record_and_reports_conflict()
         "conflicting_extension_approval_contributions",
     ]
     conflict = diagnostics[1]
-    assert conflict.metadata["selected_route_id"] == "high/approval/high"
-    assert conflict.metadata["conflicting_route_ids"] == ("low/approval/low",)
+    assert conflict.details["metadata"]["selected_route_id"] == "high/approval/high"
+    assert conflict.details["metadata"]["conflicting_route_ids"] == (
+        "low/approval/low",
+    )
 
 
 def test_approval_conflict_survives_duplicate_extension_and_contribution_ids() -> None:
@@ -312,7 +314,7 @@ def test_approval_conflict_survives_duplicate_extension_and_contribution_ids() -
         "duplicate_extension_route_id",
         "conflicting_extension_approval_contributions",
     ]
-    assert diagnostics[1].metadata["conflicting_route_ids"] == (
+    assert diagnostics[1].details["metadata"]["conflicting_route_ids"] == (
         "duplicate/approval/interactive#duplicate-2",
     )
 
@@ -358,7 +360,7 @@ def test_approval_wrapper_reports_extension_failures_and_propagates(
     assert [diagnostic.code for diagnostic in diagnostics] == [
         "extension_approval_resolution_failed"
     ]
-    assert diagnostics[0].metadata["route_id"] == (
+    assert diagnostics[0].details["metadata"]["route_id"] == (
         f"approval-{failure_kind}/approval/interactive"
     )
 

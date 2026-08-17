@@ -3,7 +3,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, cast
+
+from loushang.foundation.json import JSONValue, require_json_mapping, require_json_value
 
 T = TypeVar("T")
 R = TypeVar("R")
@@ -14,14 +16,14 @@ def _require_text(value: str, *, name: str) -> None:
         raise ValueError(f"{name} must be a non-empty string")
 
 
-class _FrozenMetadata(Mapping[str, object]):
+class _FrozenMetadata(Mapping[str, JSONValue]):
     __slots__ = ("_data",)
 
     def __init__(self, value: Mapping[str, object]) -> None:
-        self._data = deepcopy(dict(value))
+        self._data = require_json_mapping(dict(value), name="metadata")
 
-    def __getitem__(self, key: str) -> object:
-        return deepcopy(self._data[key])
+    def __getitem__(self, key: str) -> JSONValue:
+        return require_json_value(self._data[key], name=f"metadata[{key!r}]")
 
     def __iter__(self):
         return iter(self._data)
@@ -29,17 +31,42 @@ class _FrozenMetadata(Mapping[str, object]):
     def __len__(self) -> int:
         return len(self._data)
 
-    def __deepcopy__(self, memo: dict[int, object]) -> dict[str, object]:
-        return deepcopy(self._data, memo)
+    def __deepcopy__(self, memo: dict[int, object]) -> dict[str, JSONValue]:
+        return cast(dict[str, JSONValue], deepcopy(self._data, memo))
 
     def __repr__(self) -> str:
         return repr(self._data)
 
 
-def _freeze_metadata(value: Mapping[str, object]) -> Mapping[str, object]:
+def _freeze_metadata(value: Mapping[str, object]) -> Mapping[str, JSONValue]:
     if not isinstance(value, Mapping):
         raise TypeError("metadata must be a mapping")
     return _FrozenMetadata(value)
+
+
+class OpaquePayload:
+    """A strict JSON snapshot for a payload whose codec is not registered."""
+
+    __slots__ = ("_value",)
+
+    def __init__(self, value: object) -> None:
+        self._value = require_json_value(value, name="opaque payload")
+
+    @property
+    def value(self) -> JSONValue:
+        return require_json_value(self._value, name="opaque payload")
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, OpaquePayload):
+            return NotImplemented
+        return self._value == other._value
+
+    def __repr__(self) -> str:
+        return f"OpaquePayload(value={self._value!r})"
+
+    def __deepcopy__(self, memo: dict[int, object]) -> OpaquePayload:
+        del memo
+        return type(self)(self._value)
 
 
 @dataclass(frozen=True)
@@ -50,7 +77,7 @@ class ConversationHeader:
     version: int
     created_at: str
     parent_conversation_id: str | None = None
-    metadata: Mapping[str, object] = field(default_factory=dict, hash=False)
+    metadata: Mapping[str, JSONValue] = field(default_factory=dict, hash=False)
 
     def __post_init__(self) -> None:
         _require_text(self.conversation_id, name="conversation id")
@@ -74,14 +101,21 @@ class ConversationRecord(Generic[T]):
     record_id: str
     parent_id: str | None
     kind: str
+    payload_version: int
     created_at: str
     payload: T
-    metadata: Mapping[str, object] = field(default_factory=dict, hash=False)
+    metadata: Mapping[str, JSONValue] = field(default_factory=dict, hash=False)
 
     def __post_init__(self) -> None:
         _require_text(self.record_id, name="conversation record id")
         _require_text(self.kind, name="conversation record kind")
         _require_text(self.created_at, name="conversation record creation time")
+        if isinstance(self.payload_version, bool) or not isinstance(
+            self.payload_version, int
+        ):
+            raise TypeError("conversation record payload version must be an integer")
+        if self.payload_version < 1:
+            raise ValueError("conversation record payload version must be positive")
         if self.parent_id is not None:
             _require_text(self.parent_id, name="conversation record parent id")
         object.__setattr__(self, "metadata", _freeze_metadata(self.metadata))
@@ -124,7 +158,7 @@ class CommandExecutionRecord:
     truncated: bool = False
     full_output_path: str | None = None
     exclude_from_context: bool = False
-    metadata: Mapping[str, object] = field(default_factory=dict, hash=False)
+    metadata: Mapping[str, JSONValue] = field(default_factory=dict, hash=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.command, str):
@@ -159,4 +193,5 @@ __all__ = [
     "ConversationHeader",
     "ConversationRecord",
     "ConversationTreeNode",
+    "OpaquePayload",
 ]

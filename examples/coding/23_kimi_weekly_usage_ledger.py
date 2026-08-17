@@ -18,11 +18,9 @@ from _support import (
     _resolve_model_catalog,
     build_kimi_model,
     describe_model,
-    resolve_api_key,
 )
 
 from loushang.ai import Context, UserMessage, complete
-from loushang.ai.contrib.moonshot import query_platform_quota
 from loushang.ai.pricing import calculate_cost
 
 LEDGER_FILE_NAME = "usage-ledger.jsonl"
@@ -134,110 +132,6 @@ def _next_reset_hours(ts: datetime) -> int:
     return int((current - ts).total_seconds() // 3600)
 
 
-def _to_iso_datetime(dt: datetime | None) -> str:
-    if dt is None:
-        return "<none>"
-    return dt.astimezone().isoformat()
-
-
-def _parse_iso_datetime(raw: Any) -> datetime | None:
-    if not isinstance(raw, str):
-        return None
-    try:
-        normalized = raw.rstrip("Z") + "+00:00" if raw.endswith("Z") else raw
-        return datetime.fromisoformat(normalized)
-    except Exception:
-        return None
-
-
-def _safe_int(value: Any) -> int:
-    try:
-        return int(value)
-    except Exception:
-        return 0
-
-
-async def _query_platform_usage(endpoint: str, model: str) -> dict[str, Any]:
-    model_obj = build_kimi_model(endpoint_id=endpoint, model_id=model)
-    quota = await query_platform_quota(
-        model_obj,
-        api_key=resolve_api_key(),
-        timeout=12.0,
-    )
-    payload: Any = quota.raw
-    usage = payload.get("usage", {}) if isinstance(payload, dict) else {}
-    limits = payload.get("limits", []) if isinstance(payload, dict) else []
-    total_quota = payload.get("totalQuota", {}) if isinstance(payload, dict) else {}
-    reset = quota.reset_time or usage.get("resetTime")
-    reset_parsed = _parse_iso_datetime(reset)
-
-    window_records: list[dict[str, Any]] = []
-    if isinstance(limits, list):
-        for item in limits:
-            if not isinstance(item, dict):
-                continue
-            window = item.get("window", {})
-            detail = item.get("detail", {})
-            if not isinstance(window, dict) or not isinstance(detail, dict):
-                continue
-            window_records.append(
-                {
-                    "duration": window.get("duration"),
-                    "time_unit": window.get("timeUnit"),
-                    "limit": _safe_int(detail.get("limit")),
-                    "used": _safe_int(detail.get("used")),
-                    "remaining": _safe_int(detail.get("remaining")),
-                    "reset_time": detail.get("resetTime"),
-                }
-            )
-
-    resets_in_hours = None
-    if reset_parsed is not None:
-        resets_in_hours = int(
-            (reset_parsed - datetime.now(timezone.utc)).total_seconds() // 3600
-        )
-
-    return {
-        "usage_limit": _safe_int(quota.limit),
-        "usage_used": _safe_int(quota.used),
-        "usage_remaining": _safe_int(quota.remaining),
-        "reset_time": reset,
-        "reset_time_iso": _to_iso_datetime(reset_parsed),
-        "resets_in_hours": resets_in_hours,
-        "total_limit": _safe_int(total_quota.get("limit")),
-        "total_remaining": _safe_int(total_quota.get("remaining")),
-        "window_records": window_records,
-    }
-
-
-def _print_platform_usage(sample: dict[str, Any], now: datetime) -> None:
-    print("platform_usage:")
-    print(f"  usage_limit: {sample.get('usage_limit', 0)}")
-    print(f"  usage_used: {sample.get('usage_used', 0)}")
-    print(f"  usage_remaining: {sample.get('usage_remaining', 0)}")
-    print(f"  total_limit: {sample.get('total_limit', 0)}")
-    print(f"  total_remaining: {sample.get('total_remaining', 0)}")
-    print(f"  reset_time: {sample.get('reset_time', '<none>')}")
-    resets_in_hours = sample.get("resets_in_hours")
-    if resets_in_hours is None:
-        print(f"  resets_in_hours: {_next_reset_hours(now)} (local week fallback)")
-    else:
-        print(f"  resets_in_hours: {resets_in_hours}")
-    for idx, item in enumerate(sample.get("window_records", []), 1):
-        print(
-            "  window[{idx}] duration={duration} unit={unit} used={used} remaining={remaining} "
-            "limit={limit} reset={reset}".format(
-                idx=idx,
-                duration=item.get("duration"),
-                unit=item.get("time_unit"),
-                used=item.get("used", 0),
-                remaining=item.get("remaining", 0),
-                limit=item.get("limit", 0),
-                reset=item.get("reset_time", "<none>"),
-            )
-        )
-
-
 def _load_records(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
@@ -298,14 +192,6 @@ def _print_offline_sample(ledger_path: Path) -> None:
     print("weekly_output_tokens: 0")
     print("weekly_total_tokens: 0")
     print(f"resets_in_hours: {_next_reset_hours(now)}")
-    print("platform_usage: <offline>")
-    print("  usage_limit: 0")
-    print("  usage_used: 0")
-    print("  usage_remaining: 0")
-    print("  total_limit: 0")
-    print("  total_remaining: 0")
-    print("  reset_time: <none>")
-    print(f"  resets_in_hours: {_next_reset_hours(now)}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -346,11 +232,6 @@ def parse_args() -> argparse.Namespace:
         "--offline",
         action="store_true",
         help="Skip live API call and only print ledger aggregate.",
-    )
-    parser.add_argument(
-        "--skip-platform-usage",
-        action="store_true",
-        help="Skip querying the configured platform quota endpoint.",
     )
     return parser.parse_args()
 
@@ -478,17 +359,6 @@ async def main_async(args: argparse.Namespace) -> int:
         print_event("message.end", {"result": "fail"})
         _render_summary(_now_local(), records, quota_tokens, 0, 0)
         return 1
-
-    if not args.skip_platform_usage:
-        try:
-            platform_usage = await _query_platform_usage(args.endpoint, args.model)
-            _print_platform_usage(platform_usage, _now_local())
-        except Exception as error:
-            print_event(
-                "platform_usage.error",
-                {"error": str(error), "endpoint": args.endpoint, "model": args.model},
-            )
-            print(f"platform_usage_error: {error}")
 
     if not args.no_record:
         _safe_append_record(ledger_path, record)

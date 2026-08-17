@@ -26,7 +26,7 @@
 
 归属组件：
 
-- `loushang.harness.host.types`
+- `loushang.harness.runtime.types`
 
 角色：
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from loushang.coding.loader.types import SkillDescriptor
+from loushang.harness.resources.types import SkillDescriptor
 from loushang.method import method_from_skill
 
 

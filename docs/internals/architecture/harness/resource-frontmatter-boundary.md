@@ -23,25 +23,26 @@ The parser remains intentionally bounded. This migration preserves the current
 YAML subset and error messages; it does not add a general YAML dependency or
 expand accepted syntax.
 
-## Compatibility
+## Canonical Imports
 
-The following import paths remain supported as compatibility shims:
+The Harness owner is the only Coding import path:
 
 ```python
+from loushang.harness.resources.frontmatter import parse_frontmatter
 from loushang.resource.frontmatter import parse_frontmatter
-from loushang.coding.frontmatter import parse_frontmatter
 ```
 
-Both paths re-export the same harness-owned classes and functions. Harness-owned
-classes retain their harness `__module__`. The focused resources symbols are not
-added to top-level `loushang.harness.__all__`.
+`loushang.resource.frontmatter` remains a legacy top-level resource path.
+Coding does not provide a frontmatter import facade. Harness-owned classes
+retain their harness `__module__`; the focused resources symbols are not added
+to top-level `loushang.harness.__all__`.
 
 ## Internal Consumers
 
 In-repository consumers import the owner directly:
 
 ```text
-loushang.coding.loader -> loushang.harness.resources.frontmatter
+loushang.coding.resource_runtime -> loushang.harness.resources.loader -> loushang.harness.resources.frontmatter
 loushang.method        -> loushang.harness.resources.frontmatter
 ```
 
@@ -76,7 +77,8 @@ The migration must prove:
 
 - existing parsing, newline, block scalar, collection, and error behavior is
   unchanged under the harness path;
-- legacy resource and coding paths preserve object identity;
+- the legacy top-level resource path preserves object identity;
+- Coding does not expose a frontmatter facade;
 - coding and method internal imports use the harness owner;
 - architecture import boundaries and top-level export discipline pass;
 - coding loader and method resource suites remain green.

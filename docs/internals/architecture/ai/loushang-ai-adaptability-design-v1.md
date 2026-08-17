@@ -1,560 +1,81 @@
-# Loushang-AI Adaptability Design V1
+# Loushang AI Adaptability Design
 
-## Purpose
+## Status
 
-本文档将 [Loushang-AI Adaptability NFR](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-adaptability-NFR.md) 落到可实现的组件职责、接线点与推进顺序上。
+This document records the implemented adaptability boundary for `loushang.ai`. Product, session, account lifecycle, and endpoint-selection policy remain outside the package.
 
-本文档不重新定义整体白盒结构，而是回答：
+## Stable Core
 
-- `Model Capability` 应包含什么
-- `Model Capability Resolver` 应在何处参与决策
-- `Auth Support` 的边界是什么
-- `Provider Boundary Support` 先承接哪些 shared logic
-- 下一阶段应如何推进代码实现
+The stable core owns:
 
----
+- `Model`, `Endpoint`, `Provider`, capabilities, defaults, compatibility, and pricing domain objects
+- raw catalog loading and one-time registry binding
+- `CallOptions`, `ProviderRequest`, context normalization, capability gates, retries, deadlines, errors, usage, and trace events
+- the public `stream()`, `complete()`, and `complete_structured()` entrypoints
+- process-level adapter registration through the advanced registry API
 
-## Inputs
+The loader validates and preserves the catalog tree. `ModelRegistry` is the only owner of binding and derived effective values. Effective auth uses complete replacement with priority Model > Endpoint > Provider.
 
-- [Reference AI SDK Adaptability NFR](/home/dev/workspace/loushang/docs/architecture/ai/reference/reference-ai-sdk/reference-ai-sdk-adaptability-NFR.md)
-- [Reference AI SDK Abstraction Variation Strategy](/home/dev/workspace/loushang/docs/architecture/ai/reference/reference-ai-sdk/reference-ai-sdk-abstraction-variation-strategy.md)
-- [Loushang-AI Adaptability NFR](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-adaptability-NFR.md)
-- [Loushang-AI Component Structure V1](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-component-structure-v1.md)
-- [Loushang-AI Component Interfaces V1](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-component-interfaces-v1.md)
-- [Loushang AI Gap vs Reference AI SDK Round 1](/home/dev/workspace/loushang/docs/architecture/ai/validation/loushang-ai-gap-vs-reference-ai-sdk-round-1.md)
+## Protocol Adapters
 
----
+Protocol mappings live under `loushang.ai.protocols`:
 
-## Position
+- `OpenAIChatCompletionsAdapter`
+- `OpenAIResponsesAdapter`
+- `AnthropicMessagesAdapter`
+- `FauxAdapter`
 
-`loushang-ai` 当前已经有三条真实协议面：
+Adapters translate the stable request into protocol payloads and normalize protocol output into public parts, events, stop reasons, errors, and usage. They do not select endpoints, read credential stores, implement login, refresh tokens, manage sessions, or encode product entitlement logic.
 
-- `anthropic-messages`
-- `openai-completions`
-- `openai-responses`
+Adapter configuration contains only protocol mapping switches:
 
-因此，下一阶段的重点不应再是继续平铺 provider，而应先把适应性骨架做实。
+- OpenAI Chat Completions: storage, developer role, streaming usage, output-token field, reasoning mapping, schema strictness, and reasoning-content formats
+- OpenAI Responses: developer role, output-token support, prompt-cache key, and long cache retention
+- Anthropic Messages: fine-grained tools, interleaved thinking, and long cache retention
 
-参考 `reference AI SDK`，最值得吸收的不是某个 provider 文件本身，而是三类变化的吸收方式：
+There is no generic request-body escape hatch and no transport/routing configuration layer.
 
-- model family handling
-- auth variation handling
-- transport / carrier variation handling
+## Authentication Boundary
 
----
+Invocation accepts already usable request credentials:
 
-## Design Principles
+- `ApiKeyAuth(value)`
+- `OAuthBearerAuth(access_token, extra_headers={...})`
 
-### 1. 变化解释与变化执行分离
+Endpoint static headers and `CallOptions.headers` are also supported. Header resolution is centralized before adapter invocation, and the primary authentication header cannot be replaced by auxiliary or call-level headers.
 
-`loushang-ai` 需要区分：
+The AI package does not own browser login, callback handling, refresh, credential persistence, account switching, logout, subscription state, or workspace binding. Applications resolve those concerns before calling `loushang.ai`.
 
-- 变化解释
-  - 判断模型支持什么、限制什么、允许什么
-- 变化执行
-  - 具体 provider 如何发请求、走哪条 transport、映射哪种 payload
+For a ChatGPT coding-plan request, the experimental `OpenAICodexCredentialSource` may import an existing Codex credential file, convert it to request auth, and call the ordinary OpenAI Responses adapter using `openai:coding-responses:gpt-5.5`. Upper layers do not parse the token file. This is a credential-source and endpoint distinction, not an OAuth provider or a new protocol family.
 
-前者主要落在：
+## Provider Request
 
-- `Model Component`
+`ProviderRequest` contains only invocation state required by every adapter:
 
-后者主要落在：
+- selected concrete `Model`
+- normalized `Context`
+- resolved `CallOptions`
+- invocation mode
+- resolved auth/header view
 
-- `Provider Adapter`
-- `Provider Boundary Support`
+The selected model already contains its endpoint URL, API family, effective auth, defaults, compatibility, and adapter configuration. Adapters must not replace it or consult a model registry.
 
----
+## Extension Rules
 
-### 2. 稳定骨架与可增殖单元分离
+1. Add catalog data when the difference is provider, endpoint, model, capability, default, pricing, or static header metadata.
+2. Add adapter configuration only for a protocol payload or stream-decoding difference.
+3. Add a protocol adapter only for a genuinely different wire protocol.
+4. Register custom adapters once through `loushang.ai.advanced.registry` before invoking the root API.
+5. Keep product routing, session affinity, quota products, OAuth lifecycle, and account entitlement outside the package.
 
-参考 `reference AI SDK`，不应把具体 provider adapter 吞进稳定骨架。
+## Failure Contract
 
-应保持：
+Unsupported capabilities, invalid options, unresolved base URLs, duplicate adapters, unknown catalog keys, and malformed provider output fail explicitly with typed errors. Streaming must emit one terminal outcome and then close; deadline and cancellation checks cover both request start and stream consumption.
 
-- `Provider Adapter`
-  - 独立、可增殖、持续变化
+## Observability
 
-并让稳定骨架承接：
+Trace output is a sanitized semantic view. It may include model/provider/API identifiers, timing, retry decisions, usage, stop reason, and tool argument keys/character counts. It must not include raw headers, URLs, payload bodies, credentials, or message content.
 
-- `Provider Boundary Support`
-  - protocol shape
-  - transport strategy
-  - carrier invocation
-  - payload transformation
-  - error mapping
+## Verification
 
----
-
-### 3. 认证变化是独立变化轴
-
-`auth` 不应只是边界支撑链里的一个小细节。
-
-它影响：
-
-- env credential resolution
-- explicit api key
-- oauth refresh
-- subscription/token binding
-
-因此它应保持为独立组件：
-
-- `Auth Support`
-
----
-
-## Model Component Design
-
-`Model Component` 由三部分组成：
-
-- `Model Registry`
-- `Model Capability`
-- `Model Capability Resolver`
-
----
-
-### Model Registry
-
-职责保持克制：
-
-- 注册模型定义
-- 按 model id 查找
-- 暴露原始 model metadata
-
-不负责：
-
-- 动态能力判断
-- transport/auth 决策
-
----
-
-### Model Capability
-
-`Model Capability` 是能力事实模型，而不是决策器。
-
-第一阶段建议收敛这些字段：
-
-- `preferred_api`
-- `allowed_apis`
-- `supports_thinking`
-- `supports_tool_use`
-- `supports_image_input`
-- `supports_image_output`
-- `context_window`
-- `max_output_tokens`
-
-第二阶段再考虑：
-
-- `supports_reasoning_levels`
-- `supports_transport_modes`
-- `requires_auth_kind`
-- provider-compatible overrides
-
-这里的重点是：
-
-- `Model Capability` 表达“事实与约束”
-- 不表达“执行动作”
-
----
-
-### Model Capability Resolver
-
-`Model Capability Resolver` 负责把：
-
-- model metadata
-- capability metadata
-- provider/model family knowledge
-
-解释为可执行判断。
-
-它至少应回答：
-
-- 当前模型允许哪些 `api`
-- 当前请求解析出的 `api` 是否允许
-- 当前模型是否支持 thinking/tool/image
-- 当前模型的最大 context window / output 上限是多少
-
-其中 `contextWindow` 在当前设计里应被解释为模型目录中的最大窗口上限；未来真正的会话预算与压缩阈值应由 `session/runtime` 层决定，而不是由 provider endpoint default 决定。
-
-第一阶段它应参与的运行时位置：
-
-- `api/streaming.py`
-
-具体作用：
-
-- 在 provider lookup 之前进行 capability gate
-- 对明显不兼容情况 fail fast
-
-例如：
-
-- model 声明 `openai-responses`，但 capability 只允许 `openai-completions`
-- 模型不支持 image input，但 `Context` 中带有 `ImagePart`
-- 模型不支持 thinking，但调用方要求 reasoning
-
----
-
-## Auth Support Design
-
-`Auth Support` 是独立组件，不收进 `Provider Boundary Support`。
-
-第一阶段职责：
-
-- 接收调用方显式 auth material
-- 解析 env-based auth material
-- 归一为统一 auth view
-
-统一 auth view 第一阶段只需要覆盖：
-
-- api key
-- auth source metadata
-
-第二阶段再扩：
-
-- oauth credential
-- refresh result
-- provider account binding
-- diagnostics
-
-关键原则：
-
-- provider adapter 不自己去猜 env
-- top-level API 不自己拼 header
-- examples 不自己重复 provider auth binding 逻辑
-
-provider adapter 只消费：
-
-- 已解析的 auth view
-
----
-
-### 账号态 Code Plan 接入约束
-
-像 `openai-codex-responses`、future `kimi-code` 这类 `code plan` / `codex-like` 路径，不应再被建模为“显式 API key 调用”。
-
-它们的共同特征是：
-
-- 用户先通过网页登录或账号登录拿到凭证
-- provider 服务端根据账号身份与订阅套餐决定 entitlement
-- 请求时往往需要 provider account binding，而不只是 `Authorization: Bearer <key>`
-
-因此，对 `loushang-ai` 来说，这类接入必须遵守以下约束：
-
-1. 它首先是独立 API family，而不是 `openai-responses` 的普通参数变体
-- 例如：
-  - `openai-completions`
-  - `openai-responses`
-  - `openai-codex-responses`
-- 不应把 `codex` / `code plan` 重新压扁成一个统一 `openai`
-
-2. 它的认证语义首先是账号态认证，不是 key 语义
-- 不应继续用 `OPENAI_API_KEY` 这类命名暗示平台 API key
-- 更不应让 example 或 live test 把账号态 token 伪装成普通 API key
-
-3. `Model/Auth` 只表达认证需求，不表达运行时 credential 细节
-- 模型目录应只声明：
-  - 需要哪种 auth kind
-  - 依赖哪个 oauth provider
-- 不应在 model metadata 中塞入：
-  - account id
-  - plan
-  - subscription entitlement
-  - workspace binding
-
-4. 账号态 credential 应进入 `OAuthCredentials`
-- `access_token`
-- `refresh_token`
-- `expires_at`
-- `extra`
-- 其中 `extra` 可承接：
-  - provider account id
-  - subscription / entitlement metadata
-  - workspace metadata
-
-5. provider 不应自己成为登录产品层
-- provider adapter 不负责：
-  - 登录网页 UI
-  - 套餐购买逻辑
-  - 用户中心逻辑
-- provider adapter 只负责消费已解析的 auth view，并把它绑定到请求
-
----
-
-### Resolved Auth View 约束
-
-为避免 provider 各自重新猜 credential 形状，`Auth Support` 应产出统一的 resolved auth view。
-
-该 view 的目标不是成为一个超大抽象对象，而是成为 provider 可直接绑定的最小运行时材料。
-
-建议至少覆盖：
-
-- `kind`
-- `provider`
-- `access_token`
-- `headers`
-- `account_id`
-- `metadata`
-- `source`
-
-其中：
-
-- `metadata`
-  - 可承接 plan / subscription / workspace 等账号态附加信息
-- `source`
-  - 表示 auth material 来自：
-    - explicit input
-    - env
-    - stored oauth credentials
-    - refreshed oauth credentials
-
-关键约束：
-
-- top-level API 不自己拼认证 header
-- provider 不自己读 env
-- provider 不自己决定 credential source
-- provider 只消费 resolved auth view
-
----
-
-### `loushang-ai` 的边界约束
-
-对 `loushang-ai` 来说，边界应固定在：
-
-- 统一 AI provider SDK
-- 统一模型目录与 provider 选择
-- 统一 auth 解析
-- 统一 request / stream / message / tool 协议
-
-它拥有的职责包括：
-
-- 声明某个 endpoint 需要哪种 auth
-- 提供 oauth provider 注册、登录、刷新、存储能力
-- 将 stored / explicit credential 解析为 resolved auth view
-- 将 resolved auth view 绑定到 provider request
-
-它不拥有的职责包括：
-
-- 登录页面本身的产品交互
-- 用户订阅系统主数据
-- 套餐售卖与购买逻辑
-- 用户中心或工作区产品逻辑
-- agent/session/product orchestration
-
-一句话：
-
-- `loushang-ai` 处理认证能力
-- 不处理认证产品
-
----
-
-### 对 `openai-codex-responses` 的直接约束
-
-在当前与 future 设计中，`openai-codex-responses` 应遵守：
-
-1. 继续作为独立 API family 存在
-2. 认证主路径应迁移到 oauth/account-based auth
-3. provider 主路径不再把账号态 token 当普通 `api_key`
-4. provider 主路径不再通过“从 token 里猜 account id”承担主要 account binding 责任
-5. token 内部解析若保留，也只允许作为 fallback / compatibility path
-
-因此，后续实现顺序应是：
-
-1. 定义 resolved auth view
-2. 让 `Auth Support` 产出它
-3. 让 `openai-codex-responses` 消费它
-4. 再补正式 oauth provider 与 model catalog wiring
-
----
-
-## Provider Boundary Support Design
-
-`Provider Boundary Support` 负责稳定边界骨架，不负责承接具体 provider 变化实例。
-
-其内部组成：
-
-- `ApiProvider Protocol`
-- `Transport Strategy`
-- `Carrier Invocation`
-- `Provider Payload Transformation`
-- `Error Mapping`
-
----
-
-### ApiProvider Protocol
-
-职责：
-
-- 定义 adapter 的最小协议面
-- 约束 registry 与 top-level API 如何调用 provider
-
-不负责：
-
-- family-specific capability 判断
-- auth resolution
-
----
-
-### Transport Strategy
-
-第一阶段不追求复杂实现，只负责：
-
-- 声明当前 provider 走什么 transport
-- 为 future `sse` / `websocket` / `sdk-native stream` 预留统一位置
-
-当前的关键原则是：
-
-- transport 差异不应泄漏到 public event 协议
-
----
-
-### Carrier Invocation
-
-职责：
-
-- 将 provider adapter 的语义请求交给具体 carrier
-- 如：
-  - `httpx-thin`
-  - future SDK client
-
-第一阶段它仍可很薄，但要把“carrier 是边界执行细节”这件事正式固定下来。
-
----
-
-### Provider Payload Transformation
-
-职责：
-
-- 输入消息映射
-- tool result 输入映射
-- provider-specific payload 细节吸收
-
-第一阶段先继续服务：
-
-- `anthropic-messages`
-- `openai-completions`
-- `openai-responses`
-
----
-
-### Error Mapping
-
-职责：
-
-- 把 provider-specific 异常、stop reason、transport failure 收敛为统一 error view
-
-第一阶段重点：
-
-- fail fast
-- 明确错误原因
-
-不追求完整 taxonomy。
-
----
-
-## Provider Adapter Design
-
-`Provider Adapter` 保持独立。
-
-它是：
-
-- 边界变化实例的承接点
-- 可增殖的执行单元族
-
-它不是：
-
-- 稳定边界骨架本身
-
-当前这条判断与 `reference AI SDK` 的结构最接近：
-
-- provider 文件独立增长
-- shared support 另行沉淀
-
----
-
-## Runtime Wiring
-
-下一阶段的最小接线顺序应是：
-
-1. `Top-Level AI API`
-   - 调用 `Model Registry`
-2. `Model Registry`
-   - 返回 model definition
-3. `Model Capability Resolver`
-   - 生成 capability view
-   - 对请求做 fail-fast gate
-4. `ApiProvider Registry`
-   - 取 provider adapter
-5. `Auth Support`
-   - 解析 auth view
-6. `Provider Adapter`
-   - 结合 capability view、auth view、transport strategy
-   - 生成 raw parts
-7. `Event Stream Component`
-   - 收敛为 public event/message
-
-这意味着：
-
-- `Model Capability Resolver` 应先于 provider 执行
-- `Auth Support` 应先于 payload binding
-- `Transport Strategy` 应在 provider boundary 内被消费
-
----
-
-## Implementation Order
-
-建议按下面顺序推进，而不是三块一起做。
-
-### Phase 1
-
-- 让 `Model Capability` / `Model Capability Resolver` 真正进入 `api/streaming.py`
-- 新增 fail-fast tests：
-  - unsupported api
-  - unsupported image input
-  - unsupported thinking
-
-### Phase 2
-
-- 让 `Auth Support` 进入真实 provider binding 主链
-- 停止 provider 直接读 env / 直接拼 auth header
-
-### Phase 3
-
-- 让 `Provider Boundary Support` 承接更多 shared logic：
-  - payload transformation
-  - error mapping
-  - transport declaration
-
-### Phase 4
-
-- 再考虑 provider-specific options family
-
-这个顺序的理由是：
-
-- 先解释约束
-- 再收敛认证
-- 再抽边界共享逻辑
-- 最后才抽更细的 provider options
-
----
-
-## Non-Goals
-
-这版设计不包含：
-
-- 完整 OAuth 设计
-- websocket transport 正式实现
-- `openai-codex-responses` 正式实现
-- `Tool Semantic Component` 的完整代码化
-
-这些都依赖前述骨架先稳定。
-
----
-
-## Summary
-
-这版适应性设计的核心判断是：
-
-- `Model Component` 负责解释服务端已存在的模型约束
-- `Auth Support` 负责集中收敛认证差异
-- `Provider Boundary Support` 负责稳定边界骨架
-- `Provider Adapter` 保持独立、承接变化实例
-
-下一阶段不应再平铺 provider 或 options，而应先把这套适应性骨架接入运行链。
+Offline validation covers core behavior, all protocol adapters, public examples, catalog validation, import boundaries, type checking, lint, and coverage gates. Live tests require explicit `LOUSHANG_AI_LIVE=1` opt-in.

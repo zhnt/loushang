@@ -160,15 +160,17 @@ class SessionOperationCoordinator(Generic[S]):
                     ),
                 )
             except BaseException as exc:
-                if (
-                    self._host.current is not candidate.session
-                    and candidate.rollback is not None
-                ):
+                candidate_is_current = self._host.current is candidate.session
+                if not candidate_is_current and candidate.rollback is not None:
                     await _maybe_await(candidate.rollback())
                 if isinstance(exc, Exception):
                     await self._report_failure(
                         on_failure,
-                        phase=SessionOperationPhase.REPLACE,
+                        phase=(
+                            SessionOperationPhase.AFTER_COMMIT
+                            if candidate_is_current
+                            else SessionOperationPhase.REPLACE
+                        ),
                         error=exc,
                         previous=previous,
                     )

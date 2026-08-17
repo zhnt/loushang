@@ -1,14 +1,63 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from contextlib import redirect_stderr
+from datetime import UTC, datetime
 from io import StringIO
 
 import pytest
 
+from loushang.harness.conversation import (
+    ConversationHeader,
+    ConversationJsonlHeaderCodec,
+)
+from loushang.harness.events import RuntimeEvent
+from loushang.harness.tools.execution import direct_execution
+
+_HEADER_CODEC = ConversationJsonlHeaderCodec()
+
+
+def _runtime_event(payload: dict[str, object], sequence: int) -> RuntimeEvent[object]:
+    return RuntimeEvent(
+        event_id=f"event-{sequence}",
+        kind=f"agent.{payload['type']}",
+        stream_id="session:test",
+        sequence=sequence,
+        occurred_at=datetime(2026, 7, 16, tzinfo=UTC),
+        payload=payload,
+    )
+
+
+def _session_header(
+    *,
+    type: str,
+    version: int,
+    id: str,
+    timestamp: str,
+    cwd: str,
+    parent_session: str | None,
+) -> ConversationHeader:
+    del type, version
+    metadata = {"cwd": cwd}
+    if parent_session is not None:
+        metadata["parentSession"] = parent_session
+    return ConversationHeader(
+        conversation_id=id,
+        version=1,
+        created_at=timestamp,
+        metadata=metadata,
+    )
+
+
+def serialize_session_header(header: ConversationHeader) -> dict[str, object]:
+    return dict(_HEADER_CODEC.encode_header(header))
+
 
 def test_print_mode_run_once_prompts_session_and_waits_for_idle() -> None:
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
@@ -47,14 +96,86 @@ def test_print_mode_run_once_prompts_session_and_waits_for_idle() -> None:
     asyncio.run(scenario())
 
 
-def test_print_mode_work_event_log_records_coding_turn_and_preserves_prompt_behavior() -> None:
+def test_print_mode_json_prefers_common_runtime_event_stream() -> None:
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
+
+    class FakeRuntime:
+        pass
+
+    class FakeSessionManager:
+        def get_header(self) -> ConversationHeader:
+            return ConversationHeader(
+                conversation_id="session-1",
+                version=1,
+                created_at="2026-07-19T00:00:00Z",
+                metadata={},
+            )
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.session_manager = FakeSessionManager()
+            self.runtime_listeners = []
+            self.legacy_subscribe_called = False
+
+        def subscribe(self, listener):
+            del listener
+            self.legacy_subscribe_called = True
+            raise AssertionError("JSON mode must subscribe to runtime events")
+
+        def subscribe_runtime_events(self, listener):
+            self.runtime_listeners.append(listener)
+
+            def unsubscribe() -> None:
+                self.runtime_listeners.remove(listener)
+
+            return unsubscribe
+
+        async def prompt(self, user_input: str, images=None) -> None:
+            del user_input, images
+            for listener in list(self.runtime_listeners):
+                listener(_runtime_event({"type": "agent_start"}, 1))
+
+        async def wait_for_idle(self) -> None:
+            return None
+
+    async def scenario() -> None:
+        stdout = StringIO()
+        session = FakeSession()
+        mode = PrintMode(
+            runtime=FakeRuntime(),
+            session=session,
+            stdout=stdout,
+            output_mode="json",
+        )
+
+        assert await mode.run_once("hello", dispose=False) == 0
+        assert session.legacy_subscribe_called is False
+        assert [
+            json.loads(line) for line in stdout.getvalue().splitlines() if line.strip()
+        ][1] == {"type": "agent_start"}
+
+    asyncio.run(scenario())
+
+
+def test_print_mode_work_event_log_records_coding_turn_and_preserves_prompt_behavior() -> (
+    None
+):
     from loushang.ai.types import AssistantMessage, TextPart, Usage
-    from loushang.coding.mode import PrintMode
+    from loushang.coding.domain.work import create_coding_work_runtime
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
     from loushang.work import InMemoryEventLogBackend
+    from loushang.work.session import SessionWorkHostPort
 
     image = {"type": "image", "mime_type": "image/png", "data": "abc"}
-    usage = Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
+    usage = Usage(
+        input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+    )
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="done")],
         api="anthropic-messages",
@@ -76,6 +197,7 @@ def test_print_mode_work_event_log_records_coding_turn_and_preserves_prompt_beha
         def __init__(self) -> None:
             self.prompt_calls: list[tuple[str, object]] = []
             self.listeners = []
+            self.runtime_listeners = []
 
         def subscribe(self, listener):
             self.listeners.append(listener)
@@ -85,21 +207,33 @@ def test_print_mode_work_event_log_records_coding_turn_and_preserves_prompt_beha
 
             return unsubscribe
 
+        def subscribe_runtime_events(self, listener):
+            self.runtime_listeners.append(listener)
+
+            def unsubscribe() -> None:
+                self.runtime_listeners.remove(listener)
+
+            return unsubscribe
+
         async def prompt(self, user_input: str, images=None) -> None:
             self.prompt_calls.append((user_input, images))
-            for listener in list(self.listeners):
-                result = listener(
-                    {
-                        "type": "message_update",
-                        "message": {"role": "assistant"},
-                        "assistant_message_event": {"type": "text_delta", "text": "done"},
-                    }
-                )
-                if result is not None:
-                    await result
-                result = listener({"type": "message_end", "message": assistant})
-                if result is not None:
-                    await result
+            payloads = [
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistant_message_event": {"type": "text_delta", "text": "done"},
+                },
+                {"type": "message_end", "message": assistant},
+            ]
+            for sequence, payload in enumerate(payloads, start=1):
+                for listener in list(self.listeners):
+                    result = listener(payload)
+                    if result is not None:
+                        await result
+                for listener in list(self.runtime_listeners):
+                    result = listener(_runtime_event(payload, sequence))
+                    if result is not None:
+                        await result
 
         async def wait_for_idle(self) -> None:
             return None
@@ -113,6 +247,13 @@ def test_print_mode_work_event_log_records_coding_turn_and_preserves_prompt_beha
             session=session,
             stdout=stdout,
             work_event_log=event_log,
+            work_port=SessionWorkHostPort(
+                create_coding_work_runtime(
+                    session=session,
+                    event_log=event_log,
+                    session_id=lambda: session.session_id,
+                )
+            ),
             method_id="method:task:review",
         )
 
@@ -142,9 +283,13 @@ def test_print_mode_work_event_log_records_coding_turn_and_preserves_prompt_beha
 
 def test_print_mode_projects_assistant_text_and_tool_events() -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
-    usage = Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
+    usage = Usage(
+        input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+    )
 
     class FakeRuntime:
         pass
@@ -163,6 +308,7 @@ def test_print_mode_projects_assistant_text_and_tool_events() -> None:
 
         async def prompt(self, user_input: str, images=None) -> None:
             assistant = AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="done")],
                 api="anthropic-messages",
@@ -213,7 +359,9 @@ def test_print_mode_projects_assistant_text_and_tool_events() -> None:
 
 
 def test_print_mode_text_distinguishes_multiple_same_tool_calls() -> None:
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
@@ -269,7 +417,9 @@ def test_print_mode_text_distinguishes_multiple_same_tool_calls() -> None:
 
 
 def test_print_mode_returns_nonzero_and_prints_error_on_failure() -> None:
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
@@ -290,7 +440,9 @@ def test_print_mode_returns_nonzero_and_prints_error_on_failure() -> None:
     async def scenario() -> None:
         stdout = StringIO()
         stderr = StringIO()
-        mode = PrintMode(runtime=FakeRuntime(), session=FakeSession(), stdout=stdout, stderr=stderr)
+        mode = PrintMode(
+            runtime=FakeRuntime(), session=FakeSession(), stdout=stdout, stderr=stderr
+        )
 
         exit_code = await mode.run_once("hello")
 
@@ -302,8 +454,9 @@ def test_print_mode_returns_nonzero_and_prints_error_on_failure() -> None:
 
 @pytest.mark.parametrize("output_mode", ["text", "json"])
 def test_print_mode_run_once_disposes_runtime_after_exit(output_mode: str) -> None:
-    from loushang.coding.message import SessionHeader
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         def __init__(self) -> None:
@@ -313,8 +466,8 @@ def test_print_mode_run_once_disposes_runtime_after_exit(output_mode: str) -> No
             self.shutdown_events.append({"type": "session_shutdown", "reason": "quit"})
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -355,13 +508,17 @@ def test_print_mode_run_once_disposes_runtime_after_exit(output_mode: str) -> No
         exit_code = await mode.run_once("hello")
 
         assert exit_code == 0
-        assert runtime.shutdown_events == [{"type": "session_shutdown", "reason": "quit"}]
+        assert runtime.shutdown_events == [
+            {"type": "session_shutdown", "reason": "quit"}
+        ]
 
     asyncio.run(scenario())
 
 
 def test_print_mode_run_once_disposes_runtime_after_prompt_error() -> None:
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         def __init__(self) -> None:
@@ -386,7 +543,9 @@ def test_print_mode_run_once_disposes_runtime_after_prompt_error() -> None:
     async def scenario() -> None:
         runtime = FakeRuntime()
         stderr = StringIO()
-        mode = PrintMode(runtime=runtime, session=FakeSession(), stdout=StringIO(), stderr=stderr)
+        mode = PrintMode(
+            runtime=runtime, session=FakeSession(), stdout=StringIO(), stderr=stderr
+        )
 
         exit_code = await mode.run_once("hello")
 
@@ -401,16 +560,21 @@ def test_print_mode_returns_nonzero_and_disposes_on_assistant_error_message() ->
     from types import SimpleNamespace
 
     from loushang.ai.types import AssistantMessage, Usage
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[],
         api="anthropic-messages",
         provider="faux",
         model="faux-model",
         response_id=None,
-        usage=Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}),
+        usage=Usage(
+            input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+        ),
         stop_reason="error",
         error_message="provider failure",
         timestamp=0.0,
@@ -440,12 +604,14 @@ def test_print_mode_returns_nonzero_and_disposes_on_assistant_error_message() ->
             return None
 
         def get_session_context(self):
-            return SimpleNamespace(messages=list(self._messages))
+            return SimpleNamespace(messages=tuple(self._messages))
 
     async def scenario() -> None:
         runtime = FakeRuntime()
         stderr = StringIO()
-        mode = PrintMode(runtime=runtime, session=FakeSession(), stdout=StringIO(), stderr=stderr)
+        mode = PrintMode(
+            runtime=runtime, session=FakeSession(), stdout=StringIO(), stderr=stderr
+        )
 
         exit_code = await mode.run_once("hello")
 
@@ -459,9 +625,13 @@ def test_print_mode_returns_nonzero_and_disposes_on_assistant_error_message() ->
 def test_print_mode_returns_nonzero_on_aborted_assistant_message() -> None:
     from types import SimpleNamespace
 
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
-    assistant = SimpleNamespace(role="assistant", stop_reason="aborted", error_message=None)
+    assistant = SimpleNamespace(
+        role="assistant", stop_reason="aborted", error_message=None
+    )
 
     class FakeRuntime:
         def __init__(self) -> None:
@@ -489,7 +659,9 @@ def test_print_mode_returns_nonzero_on_aborted_assistant_message() -> None:
     async def scenario() -> None:
         runtime = FakeRuntime()
         stderr = StringIO()
-        mode = PrintMode(runtime=runtime, session=FakeSession(), stdout=StringIO(), stderr=stderr)
+        mode = PrintMode(
+            runtime=runtime, session=FakeSession(), stdout=StringIO(), stderr=stderr
+        )
 
         exit_code = await mode.run_once("hello")
 
@@ -501,7 +673,9 @@ def test_print_mode_returns_nonzero_on_aborted_assistant_message() -> None:
 
 
 def test_run_print_mode_wraps_print_mode() -> None:
-    from loushang.coding.mode import run_print_mode
+    from loushang.harnesstui.conversation.agent_binding import (
+        run_agent_plain_mode as run_print_mode,
+    )
 
     class FakeRuntime:
         pass
@@ -533,7 +707,9 @@ def test_run_print_mode_wraps_print_mode() -> None:
 
 
 def test_run_print_mode_passes_images_to_session_prompt() -> None:
-    from loushang.coding.mode import run_print_mode
+    from loushang.harnesstui.conversation.agent_binding import (
+        run_agent_plain_mode as run_print_mode,
+    )
 
     image = {"type": "image", "mime_type": "image/png", "data": "abc"}
 
@@ -574,7 +750,9 @@ def test_run_print_mode_passes_images_to_session_prompt() -> None:
 
 
 def test_run_print_mode_sends_follow_up_messages_after_initial_prompt() -> None:
-    from loushang.coding.mode import run_print_mode
+    from loushang.harnesstui.conversation.agent_binding import (
+        run_agent_plain_mode as run_print_mode,
+    )
 
     class FakeRuntime:
         pass
@@ -608,21 +786,19 @@ def test_run_print_mode_sends_follow_up_messages_after_initial_prompt() -> None:
         )
 
         assert exit_code == 0
-        assert session.prompt_calls == [("first", None), ("second", None), ("third", None)]
+        assert session.prompt_calls == [
+            ("first", None),
+            ("second", None),
+            ("third", None),
+        ]
         assert session.wait_calls == 3
 
     asyncio.run(scenario())
 
 
-def test_print_mode_is_exported_from_coding_package() -> None:
-    from loushang.coding import PrintMode, run_print_mode
-
-    assert PrintMode is not None
-    assert run_print_mode is not None
-
-
-def test_mode_config_factory_creates_print_and_rpc_adapters() -> None:
-    from loushang.coding.mode import ModeConfig, PrintMode, RpcMode, create_mode_adapter
+def test_shared_agent_hosts_create_print_and_rpc_adapters() -> None:
+    from loushang.harness.host.rpc import RpcHost
+    from loushang.harnesstui.conversation.agent_binding import AgentPlainHost
 
     class FakeRuntime:
         def __init__(self, session) -> None:
@@ -668,26 +844,27 @@ def test_mode_config_factory_creates_print_and_rpc_adapters() -> None:
     session = FakeSession()
     runtime = FakeRuntime(session)
 
-    print_mode = create_mode_adapter(
-        ModeConfig(mode="json"),
+    print_mode = AgentPlainHost(
         runtime=runtime,
         session=session,
-        stdin=StringIO(),
         stdout=StringIO(),
+        output_mode="json",
     )
-    rpc_mode = create_mode_adapter(
-        ModeConfig(mode="rpc"),
+    rpc_mode = RpcHost(
         runtime=runtime,
         stdin=StringIO(),
         stdout=StringIO(),
     )
 
-    assert isinstance(print_mode, PrintMode)
-    assert isinstance(rpc_mode, RpcMode)
+    assert isinstance(print_mode, AgentPlainHost)
+    assert isinstance(rpc_mode, RpcHost)
 
 
 def test_run_mode_routes_through_mode_adapter() -> None:
-    from loushang.coding.mode import ModeConfig, run_mode
+    from loushang.harness.host.mode import ModeConfig
+    from loushang.harnesstui.conversation.agent_binding import (
+        run_agent_mode as run_mode,
+    )
 
     class FakeRuntime:
         pass
@@ -727,8 +904,13 @@ def test_run_mode_routes_through_mode_adapter() -> None:
 
 
 def test_run_mode_passes_work_event_log_to_print_adapter() -> None:
-    from loushang.coding.mode import ModeConfig, run_mode
+    from loushang.coding.domain.work import create_coding_work_runtime
+    from loushang.harness.host.mode import ModeConfig
+    from loushang.harnesstui.conversation.agent_binding import (
+        run_agent_mode as run_mode,
+    )
     from loushang.work import InMemoryEventLogBackend
+    from loushang.work.session import SessionWorkHostPort
 
     class FakeRuntime:
         pass
@@ -738,6 +920,7 @@ def test_run_mode_passes_work_event_log_to_print_adapter() -> None:
 
         def __init__(self) -> None:
             self.listeners = []
+            self.runtime_listeners = []
 
         def subscribe(self, listener):
             self.listeners.append(listener)
@@ -747,16 +930,27 @@ def test_run_mode_passes_work_event_log_to_print_adapter() -> None:
 
             return unsubscribe
 
+        def subscribe_runtime_events(self, listener):
+            self.runtime_listeners.append(listener)
+
+            def unsubscribe() -> None:
+                self.runtime_listeners.remove(listener)
+
+            return unsubscribe
+
         async def prompt(self, user_input: str, images=None) -> None:
             del user_input, images
+            payload = {
+                "type": "message_update",
+                "message": {"role": "assistant"},
+                "assistant_message_event": {"type": "text_delta", "text": "done"},
+            }
             for listener in list(self.listeners):
-                result = listener(
-                    {
-                        "type": "message_update",
-                        "message": {"role": "assistant"},
-                        "assistant_message_event": {"type": "text_delta", "text": "done"},
-                    }
-                )
+                result = listener(payload)
+                if result is not None:
+                    await result
+            for listener in list(self.runtime_listeners):
+                result = listener(_runtime_event(payload, 1))
                 if result is not None:
                     await result
 
@@ -765,18 +959,28 @@ def test_run_mode_passes_work_event_log_to_print_adapter() -> None:
 
     async def scenario() -> None:
         event_log = InMemoryEventLogBackend()
+        session = FakeSession()
         exit_code = await run_mode(
             ModeConfig(mode="text"),
             runtime=FakeRuntime(),
-            session=FakeSession(),
+            session=session,
             user_input="hello",
             stdin=StringIO(),
             stdout=StringIO(),
             work_event_log=event_log,
+            work_port=SessionWorkHostPort(
+                create_coding_work_runtime(
+                    session=session,
+                    event_log=event_log,
+                    session_id=lambda: session.session_id,
+                )
+            ),
         )
 
         assert exit_code == 0
-        assert [entry.payload["kind"] for entry in event_log.query(session_id="session-1")] == [
+        assert [
+            entry.payload["kind"] for entry in event_log.query(session_id="session-1")
+        ] == [
             "SubmitCodingTurn",
             "WorkRunStarted",
             "ContentDelta",
@@ -787,7 +991,7 @@ def test_run_mode_passes_work_event_log_to_print_adapter() -> None:
 
 
 def test_dispatch_mode_action_routes_to_adapter_contract() -> None:
-    from loushang.coding.mode import ModeAction, dispatch_mode_action
+    from loushang.harness.host.mode import ModeAction, dispatch_mode_action
 
     class FakeAdapter:
         def __init__(self) -> None:
@@ -829,11 +1033,27 @@ def test_dispatch_mode_action_routes_to_adapter_contract() -> None:
         adapter = FakeAdapter()
 
         assert await dispatch_mode_action(adapter, ModeAction("start", "hello")) == 10
-        assert await dispatch_mode_action(adapter, ModeAction("submit_input", "next")) == 12
-        assert await dispatch_mode_action(adapter, ModeAction("render_event", {"type": "noop"})) == 0
-        assert await dispatch_mode_action(adapter, ModeAction("get_state")) == {"sessionId": "s1", "messageCount": 0}
+        assert (
+            await dispatch_mode_action(adapter, ModeAction("submit_input", "next"))
+            == 12
+        )
+        assert (
+            await dispatch_mode_action(
+                adapter, ModeAction("render_event", {"type": "noop"})
+            )
+            == 0
+        )
+        assert await dispatch_mode_action(adapter, ModeAction("get_state")) == {
+            "sessionId": "s1",
+            "messageCount": 0,
+        }
         assert await dispatch_mode_action(adapter, ModeAction("wait_for_idle")) == 13
-        assert await dispatch_mode_action(adapter, ModeAction("rebind_session", "next-session")) == 14
+        assert (
+            await dispatch_mode_action(
+                adapter, ModeAction("rebind_session", "next-session")
+            )
+            == 14
+        )
         assert await dispatch_mode_action(adapter, ModeAction("dispose")) == 15
         assert await dispatch_mode_action(adapter, ModeAction("stop")) == 11
         assert adapter.calls == [
@@ -851,10 +1071,12 @@ def test_dispatch_mode_action_routes_to_adapter_contract() -> None:
 
 
 def test_mode_action_normalization_accepts_wire_payload_and_rejects_invalid() -> None:
-    from loushang.coding.mode import ModeAction, normalize_mode_action
+    from loushang.harness.host.mode import ModeAction, normalize_mode_action
 
     assert normalize_mode_action(ModeAction("stop")) == ModeAction("stop")
-    assert normalize_mode_action({"type": "submit_input", "payload": "hello"}) == ModeAction("submit_input", "hello")
+    assert normalize_mode_action(
+        {"type": "submit_input", "payload": "hello"}
+    ) == ModeAction("submit_input", "hello")
     assert normalize_mode_action({"type": "get_state"}) == ModeAction("get_state")
 
     with pytest.raises(ValueError, match="Mode action requires string type"):
@@ -868,7 +1090,7 @@ def test_mode_action_normalization_accepts_wire_payload_and_rejects_invalid() ->
 
 
 def test_dispatch_mode_action_accepts_wire_payload() -> None:
-    from loushang.coding.mode import dispatch_mode_action
+    from loushang.harness.host.mode import dispatch_mode_action
 
     class FakeAdapter:
         def __init__(self) -> None:
@@ -903,14 +1125,22 @@ def test_dispatch_mode_action_accepts_wire_payload() -> None:
 
     async def scenario() -> None:
         adapter = FakeAdapter()
-        assert await dispatch_mode_action(adapter, {"type": "submit_input", "payload": "from-wire"}) == 7
+        assert (
+            await dispatch_mode_action(
+                adapter, {"type": "submit_input", "payload": "from-wire"}
+            )
+            == 7
+        )
         assert adapter.inputs == ["from-wire"]
 
     asyncio.run(scenario())
 
 
 def test_print_mode_lifecycle_actions_delegate_to_runtime_and_session() -> None:
-    from loushang.coding.mode import ModeAction, PrintMode, dispatch_mode_action
+    from loushang.harness.host.mode import ModeAction, dispatch_mode_action
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         def __init__(self, session) -> None:
@@ -952,17 +1182,20 @@ def test_print_mode_json_output_writes_header_before_event_lines() -> None:
     from io import StringIO
 
     from loushang.ai.types import AssistantMessage, TextPart, Usage
-    from loushang.coding.message import SessionHeader
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
-    usage = Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
+    usage = Usage(
+        input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+    )
 
     class FakeRuntime:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -986,6 +1219,7 @@ def test_print_mode_json_output_writes_header_before_event_lines() -> None:
 
         async def prompt(self, user_input: str, images=None) -> None:
             assistant = AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[TextPart(type="text", text="done")],
                 api="anthropic-messages",
@@ -1006,14 +1240,19 @@ def test_print_mode_json_output_writes_header_before_event_lines() -> None:
 
     async def scenario() -> None:
         stdout = StringIO()
-        mode = PrintMode(runtime=FakeRuntime(), session=FakeSession(), stdout=stdout, output_mode="json")
+        mode = PrintMode(
+            runtime=FakeRuntime(),
+            session=FakeSession(),
+            stdout=stdout,
+            output_mode="json",
+        )
 
         exit_code = await mode.run_once("hello")
 
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         assert exit_code == 0
-        assert lines[0]["type"] == "session"
-        assert lines[0]["id"] == "s1"
+        assert lines[0]["type"] == "conversation"
+        assert lines[0]["conversationId"] == "s1"
         assert lines[1]["type"] == "agent_start"
         assert lines[2]["type"] == "message_end"
         assert lines[2]["message"]["role"] == "assistant"
@@ -1026,15 +1265,16 @@ def test_run_print_mode_supports_json_output_mode() -> None:
     import json
     from io import StringIO
 
-    from loushang.coding.message import SessionHeader
-    from loushang.coding.mode import run_print_mode
+    from loushang.harnesstui.conversation.agent_binding import (
+        run_agent_plain_mode as run_print_mode,
+    )
 
     class FakeRuntime:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1075,14 +1315,16 @@ def test_run_print_mode_supports_json_output_mode() -> None:
 
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         assert exit_code == 0
-        assert lines[0]["type"] == "session"
+        assert lines[0]["type"] == "conversation"
         assert lines[1]["type"] == "agent_start"
 
     asyncio.run(scenario())
 
 
 def test_print_mode_rejects_invalid_output_mode() -> None:
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
@@ -1110,7 +1352,9 @@ def test_print_mode_rejects_invalid_output_mode() -> None:
 
 
 def test_print_mode_rejects_rendered_tool_events_for_text_output() -> None:
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
@@ -1118,7 +1362,9 @@ def test_print_mode_rejects_rendered_tool_events_for_text_output() -> None:
     class FakeSession:
         pass
 
-    with pytest.raises(ValueError, match="render_tool_events is only supported for json output mode"):
+    with pytest.raises(
+        ValueError, match="render_tool_events is only supported for json output mode"
+    ):
         PrintMode(
             runtime=FakeRuntime(),
             session=FakeSession(),
@@ -1127,18 +1373,24 @@ def test_print_mode_rejects_rendered_tool_events_for_text_output() -> None:
         )
 
 
-def test_print_mode_json_compact_view_projects_assistant_stream_and_tool_lifecycle() -> None:
+def test_print_mode_json_compact_view_projects_assistant_stream_and_tool_lifecycle() -> (
+    None
+):
     import asyncio
     import json
     from io import StringIO
 
     from loushang.agent import AgentToolResult
     from loushang.ai.types import AssistantMessage, TextPart, Usage
-    from loushang.coding.message import SessionHeader
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
-    usage = Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
+    usage = Usage(
+        input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+    )
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="hello")],
         api="anthropic-messages",
@@ -1155,8 +1407,8 @@ def test_print_mode_json_compact_view_projects_assistant_stream_and_tool_lifecyc
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1192,7 +1444,11 @@ def test_print_mode_json_compact_view_projects_assistant_stream_and_tool_lifecyc
                     {
                         "type": "message_update",
                         "message": assistant,
-                        "assistant_message_event": {"type": "text_delta", "content_index": 0, "delta": "he"},
+                        "assistant_message_event": {
+                            "type": "text_delta",
+                            "content_index": 0,
+                            "delta": "he",
+                        },
                     }
                 )
                 listener({"type": "message_end", "message": assistant})
@@ -1224,14 +1480,14 @@ def test_print_mode_json_compact_view_projects_assistant_stream_and_tool_lifecyc
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         assert exit_code == 0
         assert [line["type"] for line in lines] == [
-            "session",
+            "conversation",
             "tool_execution_start",
             "assistant_delta",
             "assistant_final",
             "tool_execution_end",
         ]
         assert lines[2]["delta"] == "he"
-        assert lines[3]["message"]["responseId"] == "resp-1"
+        assert lines[3]["message"]["response_id"] == "resp-1"
 
     asyncio.run(scenario())
 
@@ -1243,9 +1499,10 @@ def test_print_mode_json_can_include_rendered_tool_event_payloads() -> None:
 
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.message import SessionHeader
-    from loushang.coding.mode import PrintMode
-    from loushang.coding.tools import ToolDefinition
+    from loushang.harness.tools.workspace import ToolDefinition
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del tool_call_id, params, signal, on_update
@@ -1258,14 +1515,16 @@ def test_print_mode_json_can_include_rendered_tool_event_payloads() -> None:
 
     def render_result(result, options, theme, context):
         del theme
-        return {"text": f"{context.state['command']} {result.content[0].text} partial={options.isPartial}"}
+        return {
+            "text": f"{context.state['command']} {result.content[0].text} partial={options.is_partial}"
+        }
 
     definition = ToolDefinition(
         name="bash",
         label="Bash",
         description="Run commands",
         parameters={"type": "object", "properties": {}, "additionalProperties": False},
-        execute=execute,
+        execution=direct_execution(execute),
         render_call=render_call,
         render_result=render_result,
     )
@@ -1274,8 +1533,8 @@ def test_print_mode_json_can_include_rendered_tool_event_payloads() -> None:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1300,7 +1559,7 @@ def test_print_mode_json_can_include_rendered_tool_event_payloads() -> None:
 
             return unsubscribe
 
-        def getToolDefinition(self, name):
+        def get_tool_definition(self, name):
             return definition if name == "bash" else None
 
         async def prompt(self, user_input: str, images=None) -> None:
@@ -1319,7 +1578,9 @@ def test_print_mode_json_can_include_rendered_tool_event_payloads() -> None:
                         "tool_call_id": "tc1",
                         "tool_name": "bash",
                         "args": {"command": "echo hi"},
-                        "partial_result": AgentToolResult(content=[TextPart(type="text", text="running")], details={}),
+                        "partial_result": AgentToolResult(
+                            content=[TextPart(type="text", text="running")], details={}
+                        ),
                     }
                 )
 
@@ -1341,23 +1602,23 @@ def test_print_mode_json_can_include_rendered_tool_event_payloads() -> None:
 
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         assert exit_code == 0
-        assert "renderedToolCall" not in lines[0]
-        assert lines[1]["renderedToolCall"] == {
+        assert "rendered_tool_call" not in lines[0]
+        assert lines[1]["rendered_tool_call"] == {
             "type": "text",
             "text": "call echo hi",
-            "plainText": "call echo hi",
-            "contractVersion": 1,
+            "plain_text": "call echo hi",
+            "contract_version": 1,
             "status": "running",
         }
-        assert lines[2]["renderedToolResult"] == {
+        assert lines[2]["rendered_tool_result"] == {
             "type": "text",
             "text": "echo hi running partial=True",
-            "plainText": "echo hi running partial=True",
-            "isPartial": True,
+            "plain_text": "echo hi running partial=True",
+            "is_partial": True,
             "expanded": False,
-            "contractVersion": 1,
+            "contract_version": 1,
             "status": "partial",
-            "collapsedText": "echo hi running partial=True",
+            "collapsed_text": "echo hi running partial=True",
             "artifacts": [],
         }
 
@@ -1371,11 +1632,15 @@ def test_print_mode_json_event_select_filters_projected_events() -> None:
 
     from loushang.agent import AgentToolResult
     from loushang.ai.types import AssistantMessage, TextPart, Usage
-    from loushang.coding.message import SessionHeader
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
-    usage = Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
+    usage = Usage(
+        input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+    )
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="hello")],
         api="anthropic-messages",
@@ -1392,8 +1657,8 @@ def test_print_mode_json_event_select_filters_projected_events() -> None:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1429,7 +1694,11 @@ def test_print_mode_json_event_select_filters_projected_events() -> None:
                     {
                         "type": "message_update",
                         "message": assistant,
-                        "assistant_message_event": {"type": "text_delta", "content_index": 0, "delta": "he"},
+                        "assistant_message_event": {
+                            "type": "text_delta",
+                            "content_index": 0,
+                            "delta": "he",
+                        },
                     }
                 )
                 listener({"type": "message_end", "message": assistant})
@@ -1454,14 +1723,18 @@ def test_print_mode_json_event_select_filters_projected_events() -> None:
             stdout=stdout,
             output_mode="json",
             event_view="compact",
-            event_select=("assistant.delta", "assistant.final"),
+            event_select=("assistant_delta", "assistant_final"),
         )
 
         exit_code = await mode.run_once("hello")
 
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         assert exit_code == 0
-        assert [line["type"] for line in lines] == ["session", "assistant_delta", "assistant_final"]
+        assert [line["type"] for line in lines] == [
+            "conversation",
+            "assistant_delta",
+            "assistant_final",
+        ]
 
     asyncio.run(scenario())
 
@@ -1472,15 +1745,16 @@ def test_print_mode_json_full_view_event_select_supports_prefix_patterns() -> No
     from io import StringIO
 
     from loushang.agent import AgentToolResult
-    from loushang.coding.message import SessionHeader
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1541,7 +1815,11 @@ def test_print_mode_json_full_view_event_select_supports_prefix_patterns() -> No
 
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         assert exit_code == 0
-        assert [line["type"] for line in lines] == ["session", "tool_execution_start", "tool_execution_end"]
+        assert [line["type"] for line in lines] == [
+            "conversation",
+            "tool_execution_start",
+            "tool_execution_end",
+        ]
 
     asyncio.run(scenario())
 
@@ -1552,15 +1830,16 @@ def test_print_mode_json_event_select_accepts_single_string_pattern() -> None:
     from io import StringIO
 
     from loushang.agent import AgentToolResult
-    from loushang.coding.message import SessionHeader
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1621,7 +1900,11 @@ def test_print_mode_json_event_select_accepts_single_string_pattern() -> None:
 
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         assert exit_code == 0
-        assert [line["type"] for line in lines] == ["session", "tool_execution_start", "tool_execution_end"]
+        assert [line["type"] for line in lines] == [
+            "conversation",
+            "tool_execution_start",
+            "tool_execution_end",
+        ]
 
     asyncio.run(scenario())
 
@@ -1631,16 +1914,16 @@ def test_print_mode_json_default_stderr_routes_errors_off_stdout() -> None:
     import json
     from io import StringIO
 
-    from loushang.coding.message import SessionHeader
-    from loushang.coding.message.json_codec import serialize_session_header
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1669,11 +1952,16 @@ def test_print_mode_json_default_stderr_routes_errors_off_stdout() -> None:
         stdout = StringIO()
         stderr = StringIO()
         with redirect_stderr(stderr):
-            mode = PrintMode(runtime=FakeRuntime(), session=FakeSession(), stdout=stdout, output_mode="json")
+            mode = PrintMode(
+                runtime=FakeRuntime(),
+                session=FakeSession(),
+                stdout=stdout,
+                output_mode="json",
+            )
             exit_code = await mode.run_once("hello")
 
         header = serialize_session_header(
-            SessionHeader(
+            _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1694,16 +1982,16 @@ def test_print_mode_json_failure_keeps_stdout_json_and_writes_error_to_stderr() 
     import json
     from io import StringIO
 
-    from loushang.coding.message import SessionHeader
-    from loushang.coding.message.json_codec import serialize_session_header
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1731,13 +2019,19 @@ def test_print_mode_json_failure_keeps_stdout_json_and_writes_error_to_stderr() 
     async def scenario() -> None:
         stdout = StringIO()
         stderr = StringIO()
-        mode = PrintMode(runtime=FakeRuntime(), session=FakeSession(), stdout=stdout, stderr=stderr, output_mode="json")
+        mode = PrintMode(
+            runtime=FakeRuntime(),
+            session=FakeSession(),
+            stdout=stdout,
+            stderr=stderr,
+            output_mode="json",
+        )
 
         exit_code = await mode.run_once("hello")
 
         lines = stdout.getvalue().splitlines()
         header = serialize_session_header(
-            SessionHeader(
+            _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1757,7 +2051,9 @@ def test_print_mode_json_header_failure_returns_error_without_writing_stdout() -
     import asyncio
     from io import StringIO
 
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
@@ -1786,7 +2082,13 @@ def test_print_mode_json_header_failure_returns_error_without_writing_stdout() -
     async def scenario() -> None:
         stdout = StringIO()
         stderr = StringIO()
-        mode = PrintMode(runtime=FakeRuntime(), session=FakeSession(), stdout=stdout, stderr=stderr, output_mode="json")
+        mode = PrintMode(
+            runtime=FakeRuntime(),
+            session=FakeSession(),
+            stdout=stdout,
+            stderr=stderr,
+            output_mode="json",
+        )
 
         exit_code = await mode.run_once("hello")
 
@@ -1802,16 +2104,16 @@ def test_print_mode_json_writes_header_before_subscription() -> None:
     import json
     from io import StringIO
 
-    from loushang.coding.message import SessionHeader
-    from loushang.coding.message.json_codec import serialize_session_header
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1831,7 +2133,7 @@ def test_print_mode_json_writes_header_before_subscription() -> None:
             def subscribe(self, listener):
                 header = json.dumps(
                     serialize_session_header(
-                        SessionHeader(
+                        _session_header(
                             type="session",
                             version=3,
                             id="s1",
@@ -1856,14 +2158,19 @@ def test_print_mode_json_writes_header_before_subscription() -> None:
             async def wait_for_idle(self) -> None:
                 return None
 
-        mode = PrintMode(runtime=FakeRuntime(), session=FakeSession(), stdout=stdout, output_mode="json")
+        mode = PrintMode(
+            runtime=FakeRuntime(),
+            session=FakeSession(),
+            stdout=stdout,
+            output_mode="json",
+        )
 
         exit_code = await mode.run_once("hello")
 
         assert exit_code == 0
         assert stdout.getvalue().splitlines()[0] == json.dumps(
             serialize_session_header(
-                SessionHeader(
+                _session_header(
                     type="session",
                     version=3,
                     id="s1",
@@ -1884,15 +2191,16 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
 
     from loushang.agent import AgentToolResult
     from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, Usage
-    from loushang.coding.message import SessionHeader
-    from loushang.coding.message.custom_messages import (
-        BranchSummaryMessage,
-        CompactionSummaryMessage,
+    from loushang.harness.transcript import ApplicationMessage
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
     )
-    from loushang.coding.mode import PrintMode
 
-    usage = Usage(input=1, output=2, cache_read=3, cache_write=4, total_tokens=5, cost={})
+    usage = Usage(
+        input=1, output=2, cache_read=3, cache_write=4, total_tokens=5, cost={}
+    )
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="hello")],
         api="anthropic-messages",
@@ -1913,8 +2221,12 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
         timestamp=2.0,
         details={"ok": True},
     )
-    branch_summary = BranchSummaryMessage(role="branchSummary", summary="done", from_id="b1", timestamp=4.0)
-    compaction_summary = CompactionSummaryMessage(role="compactionSummary", summary="compact", tokens_before=10, timestamp=5.0)
+    application_message = ApplicationMessage(
+        application_message_id="application-1",
+        custom_type="notice",
+        content="done",
+        timestamp=4.0,
+    )
 
     def check_agent_start(payload: dict[str, object]) -> None:
         assert payload == {"type": "agent_start"}
@@ -1927,100 +2239,117 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
         assert "messages" in payload
         messages = payload["messages"]
         assert isinstance(messages, list)
-        assert messages[0]["responseId"] == "resp-1"
-        assert messages[1]["role"] == "branchSummary"
-        assert messages[2]["role"] == "compactionSummary"
-        assert "response_id" not in messages[0]
+        assert messages[0]["response_id"] == "resp-1"
+        assert messages[1]["role"] == "application"
+        assert "responseId" not in messages[0]
 
     def check_turn_end(payload: dict[str, object]) -> None:
         assert payload["type"] == "turn_end"
-        assert "toolResults" in payload
-        assert "tool_results" not in payload
-        assert payload["message"]["responseId"] == "resp-1"
-        assert payload["toolResults"][0]["toolCallId"] == "tool-call-1"
+        assert "tool_results" in payload
+        assert "toolResults" not in payload
+        assert payload["message"]["response_id"] == "resp-1"
+        assert payload["tool_results"][0]["tool_call_id"] == "tool-call-1"
 
     def check_message_start(payload: dict[str, object]) -> None:
         assert payload["type"] == "message_start"
-        assert payload["message"]["responseId"] == "resp-1"
-        assert "response_id" not in payload["message"]
+        assert payload["message"]["response_id"] == "resp-1"
+        assert "responseId" not in payload["message"]
 
     def check_message_update(payload: dict[str, object]) -> None:
         assert payload["type"] == "message_update"
-        assert "assistantMessageEvent" in payload
-        assert "assistant_message_event" not in payload
-        assert payload["assistantMessageEvent"]["contentIndex"] == 0
-        assert payload["assistantMessageEvent"]["delta"] == "he"
+        assert "assistant_message_event" in payload
+        assert "assistantMessageEvent" not in payload
+        assert payload["assistant_message_event"]["content_index"] == 0
+        assert payload["assistant_message_event"]["delta"] == "he"
 
     def check_message_end(payload: dict[str, object]) -> None:
         assert payload["type"] == "message_end"
-        assert payload["message"]["responseId"] == "resp-1"
+        assert payload["message"]["response_id"] == "resp-1"
 
     def check_tool_execution_start(payload: dict[str, object]) -> None:
         assert payload["type"] == "tool_execution_start"
-        assert payload["toolCallId"] == "t1"
-        assert payload["toolName"] == "bash"
-        assert "tool_call_id" not in payload
-        assert "tool_name" not in payload
+        assert payload["tool_call_id"] == "t1"
+        assert payload["tool_name"] == "bash"
+        assert "toolCallId" not in payload
+        assert "toolName" not in payload
 
     def check_tool_execution_update(payload: dict[str, object]) -> None:
         assert payload["type"] == "tool_execution_update"
-        assert payload["partialResult"]["content"][0]["text"] == "progress"
-        assert payload["partialResult"]["details"] == {"done": False}
-        assert payload["partialResult"]["terminate"] is False
-        assert "partial_result" not in payload
+        assert payload["partial_result"]["content"][0]["text"] == "progress"
+        assert payload["partial_result"]["details"] == {"done": False}
+        assert payload["partial_result"]["terminate"] is False
+        assert "partialResult" not in payload
 
     def check_tool_execution_end(payload: dict[str, object]) -> None:
         assert payload["type"] == "tool_execution_end"
-        assert payload["toolCallId"] == "t1"
+        assert payload["tool_call_id"] == "t1"
         assert payload["result"]["content"][0]["text"] == "ok"
         assert payload["result"]["details"] == {"ok": True}
         assert payload["result"]["terminate"] is False
-        assert payload["isError"] is False
-        assert "is_error" not in payload
+        assert payload["is_error"] is False
+        assert "isError" not in payload
 
     def check_queue_update(payload: dict[str, object]) -> None:
         assert payload["type"] == "queue_update"
-        assert payload["followUp"] == ["b"]
-        assert "follow_up" not in payload
+        assert payload["follow_up"] == ["b"]
+        assert "followUp" not in payload
 
     def check_compaction_start(payload: dict[str, object]) -> None:
         assert payload == {"type": "compaction_start", "reason": "manual"}
 
     def check_compaction_end(payload: dict[str, object]) -> None:
         assert payload["type"] == "compaction_end"
-        assert payload["willRetry"] is True
-        assert payload["errorMessage"] == "later"
-        assert "will_retry" not in payload
-        assert "error_message" not in payload
+        assert payload["will_retry"] is True
+        assert payload["error_message"] == "later"
+        assert "willRetry" not in payload
+        assert "errorMessage" not in payload
 
     def check_auto_retry_start(payload: dict[str, object]) -> None:
         assert payload["type"] == "auto_retry_start"
-        assert payload["maxAttempts"] == 3
-        assert payload["delayMs"] == 100
-        assert payload["errorMessage"] == "boom"
-        assert "max_attempts" not in payload
+        assert payload["max_attempts"] == 3
+        assert payload["delay_ms"] == 100
+        assert payload["error_message"] == "boom"
+        assert "maxAttempts" not in payload
 
     def check_auto_retry_end(payload: dict[str, object]) -> None:
         assert payload["type"] == "auto_retry_end"
-        assert payload["finalError"] == "ignored"
-        assert "final_error" not in payload
+        assert payload["final_error"] == "ignored"
+        assert "finalError" not in payload
 
     session_events = [
         ({"type": "agent_start"}, check_agent_start),
         ({"type": "turn_start"}, check_turn_start),
-        ({"type": "agent_end", "messages": [assistant, branch_summary, compaction_summary]}, check_agent_end),
-        ({"type": "turn_end", "message": assistant, "tool_results": [tool_result]}, check_turn_end),
+        (
+            {"type": "agent_end", "messages": [assistant, application_message]},
+            check_agent_end,
+        ),
+        (
+            {"type": "turn_end", "message": assistant, "tool_results": [tool_result]},
+            check_turn_end,
+        ),
         ({"type": "message_start", "message": assistant}, check_message_start),
         (
             {
                 "type": "message_update",
                 "message": assistant,
-                "assistant_message_event": {"type": "text_delta", "content_index": 0, "delta": "he"},
+                "assistant_message_event": {
+                    "type": "text_delta",
+                    "content_index": 0,
+                    "delta": "he",
+                },
             },
             check_message_update,
         ),
         ({"type": "message_end", "message": assistant}, check_message_end),
-        ({"type": "tool_execution_start", "tool_call_id": "t1", "tool_name": "bash", "args": {"x": 1}}, check_tool_execution_start),
+        (
+            {
+                "type": "tool_execution_start",
+                "tool_call_id": "t1",
+                "tool_name": "bash",
+                "args": {"x": 1},
+            },
+            check_tool_execution_start,
+        ),
         (
             {
                 "type": "tool_execution_update",
@@ -2047,7 +2376,10 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
             },
             check_tool_execution_end,
         ),
-        ({"type": "queue_update", "steering": ["a"], "follow_up": ["b"]}, check_queue_update),
+        (
+            {"type": "queue_update", "steering": ["a"], "follow_up": ["b"]},
+            check_queue_update,
+        ),
         ({"type": "compaction_start", "reason": "manual"}, check_compaction_start),
         (
             {
@@ -2070,15 +2402,23 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
             },
             check_auto_retry_start,
         ),
-        ({"type": "auto_retry_end", "success": True, "attempt": 2, "final_error": "ignored"}, check_auto_retry_end),
+        (
+            {
+                "type": "auto_retry_end",
+                "success": True,
+                "attempt": 2,
+                "final_error": "ignored",
+            },
+            check_auto_retry_end,
+        ),
     ]
 
     class FakeRuntime:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -2110,14 +2450,19 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
 
     async def scenario() -> None:
         stdout = StringIO()
-        mode = PrintMode(runtime=FakeRuntime(), session=FakeSession(), stdout=stdout, output_mode="json")
+        mode = PrintMode(
+            runtime=FakeRuntime(),
+            session=FakeSession(),
+            stdout=stdout,
+            output_mode="json",
+        )
 
         exit_code = await mode.run_once("hello")
 
         lines = stdout.getvalue().splitlines()
         assert exit_code == 0
         assert len(lines) == 1 + len(session_events)
-        assert json.loads(lines[0])["type"] == "session"
+        assert json.loads(lines[0])["type"] == "conversation"
         for line, (_, checker) in zip(lines[1:], session_events, strict=True):
             payload = json.loads(line)
             checker(payload)
@@ -2132,15 +2477,16 @@ def test_print_mode_json_serializes_tool_results_and_preserves_utf8() -> None:
 
     from loushang.agent import AgentToolResult, FunctionalToolOutputProjector
     from loushang.ai.types import TextPart
-    from loushang.coding.message import SessionHeader
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -2209,11 +2555,15 @@ def test_print_mode_json_serializes_tool_results_and_preserves_utf8() -> None:
 def test_print_mode_json_event_sink_rejects_non_finite_values_without_output() -> None:
     from io import StringIO
 
-    from loushang.coding.mode import PrintMode
-    from loushang.protocol import JsonValueError
+    from loushang.foundation.json import JsonValueError
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     stdout = StringIO()
-    mode = PrintMode(runtime=object(), session=object(), stdout=stdout, output_mode="json")
+    mode = PrintMode(
+        runtime=object(), session=object(), stdout=stdout, output_mode="json"
+    )
 
     with pytest.raises(JsonValueError) as exc_info:
         mode.render_event(
@@ -2226,6 +2576,6 @@ def test_print_mode_json_event_sink_rejects_non_finite_values_without_output() -
             }
         )
 
-    assert exc_info.value.path == "print_json_event.delayMs"
+    assert exc_info.value.path == "print_json_event.delay_ms"
     assert "non-finite float" in str(exc_info.value)
     assert stdout.getvalue() == ""

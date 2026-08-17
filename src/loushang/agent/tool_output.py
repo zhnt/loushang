@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Generic, Protocol, TypeVar, cast, runtime_checkable
 
-from loushang.protocol import JSONValue, dump_json_value, require_json_value
+from loushang.foundation.json import JSONValue, dump_json_value, require_json_value
 
 TDetails = TypeVar("TDetails", contravariant=True)
 

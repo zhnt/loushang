@@ -8,6 +8,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
+from loushang.harness.tools.execution import direct_execution
+
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -15,11 +17,11 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from loushang.agent.types import AgentToolResult  # noqa: E402
-from loushang.ai.types import TextPart  # noqa: E402
-from loushang.coding.message import SessionHeader  # noqa: E402
-from loushang.coding.mode import PrintMode  # noqa: E402
-from loushang.coding.tools import ToolDefinition  # noqa: E402
+from loushang.agent.types import AgentToolResult
+from loushang.ai.types import TextPart
+from loushang.harness.conversation import ConversationHeader
+from loushang.harness.tools.core import ToolDefinition
+from loushang.harnesstui.conversation.agent_binding import AgentPlainHost
 
 
 async def _execute(
@@ -67,7 +69,7 @@ TOOL_DEFINITION = ToolDefinition(
         "required": ["command"],
         "additionalProperties": False,
     },
-    execute=_execute,
+    execution=direct_execution(_execute),
     render_call=_render_call,
     render_result=_render_result,
 )
@@ -81,14 +83,12 @@ class FakeSessionManager:
     def __init__(self, cwd: Path) -> None:
         self._cwd = cwd
 
-    def get_header(self) -> SessionHeader:
-        return SessionHeader(
-            type="session",
-            version=3,
-            id="render-tool-events-contract",
-            timestamp="2026-05-09T00:00:00.000Z",
-            cwd=str(self._cwd),
-            parent_session=None,
+    def get_header(self) -> ConversationHeader:
+        return ConversationHeader(
+            conversation_id="render-tool-events-contract",
+            version=1,
+            created_at="2026-05-09T00:00:00.000Z",
+            metadata={"cwd": str(self._cwd)},
         )
 
     def get_cwd(self) -> str:
@@ -156,7 +156,7 @@ class FakeSession:
 
 async def _render_jsonl(project_root: Path, artifact_path: Path) -> str:
     stdout = StringIO()
-    mode = PrintMode(
+    host = AgentPlainHost(
         runtime=FakeRuntime(),
         session=FakeSession(project_root, artifact_path),
         stdout=stdout,
@@ -164,9 +164,9 @@ async def _render_jsonl(project_root: Path, artifact_path: Path) -> str:
         event_view="tools",
         render_tool_events=True,
     )
-    exit_code = await mode.run_once("show rendered tool events")
+    exit_code = await host.run_once("show rendered tool events")
     if exit_code != 0:
-        raise RuntimeError(f"PrintMode exited with {exit_code}")
+        raise RuntimeError(f"AgentPlainHost exited with {exit_code}")
     return stdout.getvalue()
 
 

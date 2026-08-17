@@ -11,10 +11,14 @@ if __package__ in {None, ""}:
 from _support import build_kimi_model, create_kimi_runtime_session
 
 from loushang.coding import (
-    ToolRegistry,
-    register_builtin_tools,
+    register_coding_builtin_tools as register_builtin_tools,
+)
+from loushang.coding import (
     run_print_mode,
-    select_events,
+)
+from loushang.harness.events import select_events
+from loushang.harness.tools.workspace.registry import (
+    WorkspaceToolRegistry as ToolRegistry,
 )
 
 EXAMPLE_REQUEST = (

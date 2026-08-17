@@ -39,6 +39,7 @@ def _assistant_tool_call(api: str) -> AssistantMessage:
         ],
         api=api,
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id=None,
         usage=Usage(
@@ -122,7 +123,7 @@ def test_tool_provider_payloads_strip_schema_meta_keys_without_mutating_input() 
 
 
 def test_openai_completions_provider_build_tools_strips_schema_meta_keys() -> None:
-    from loushang.ai.providers.openai_completions import _build_tools
+    from loushang.ai.protocols.openai_chat_completions import _build_tools
 
     payload = _build_tools(
         [
@@ -142,7 +143,7 @@ def test_openai_completions_provider_build_tools_strips_schema_meta_keys() -> No
 def test_openai_completions_provider_uses_image_placeholder_when_model_cannot_accept_images() -> (
     None
 ):
-    from loushang.ai.providers.openai_completions import _tool_result_payload
+    from loushang.ai.protocols.openai_chat_completions import _tool_result_payload
 
     message = ToolResultMessage(
         role="toolResult",
@@ -170,7 +171,7 @@ def test_openai_completions_provider_uses_image_placeholder_when_model_cannot_ac
 def test_openai_completions_provider_sanitizes_unpaired_surrogates_in_payload_text() -> (
     None
 ):
-    from loushang.ai.providers.openai_completions import _build_messages
+    from loushang.ai.protocols.openai_chat_completions import _build_messages
 
     payload = _build_messages(
         SimpleNamespace(input=("text",), reasoning=False),
@@ -215,7 +216,7 @@ def test_openai_completions_provider_sanitizes_unpaired_surrogates_in_payload_te
 def test_openai_responses_provider_uses_image_placeholder_when_model_cannot_accept_images() -> (
     None
 ):
-    from loushang.ai.providers.openai_responses_shared import _tool_result_payload
+    from loushang.ai.protocols._openai_responses import _tool_result_payload
 
     message = ToolResultMessage(
         role="toolResult",
@@ -240,7 +241,7 @@ def test_openai_responses_provider_uses_image_placeholder_when_model_cannot_acce
 
 
 def test_openai_responses_provider_preserves_image_only_tool_result() -> None:
-    from loushang.ai.providers.openai_responses_shared import _tool_result_payload
+    from loushang.ai.protocols._openai_responses import _tool_result_payload
 
     message = ToolResultMessage(
         role="toolResult",
@@ -273,7 +274,7 @@ def test_openai_responses_provider_preserves_image_only_tool_result() -> None:
 def test_openai_responses_provider_sanitizes_unpaired_surrogates_in_payload_text() -> (
     None
 ):
-    from loushang.ai.providers.openai_responses_shared import convert_responses_messages
+    from loushang.ai.protocols._openai_responses import convert_responses_messages
 
     payload = convert_responses_messages(
         SimpleNamespace(input=("text",), reasoning=False),
@@ -316,7 +317,9 @@ def test_openai_responses_provider_sanitizes_unpaired_surrogates_in_payload_text
 
 
 def test_anthropic_provider_sanitizes_unpaired_surrogates_in_payload_text() -> None:
-    from loushang.ai.providers.anthropic import _build_anthropic_message_payloads
+    from loushang.ai.protocols.anthropic_messages import (
+        _build_anthropic_message_payloads,
+    )
 
     messages, system = _build_anthropic_message_payloads(
         normalize_context(
@@ -352,6 +355,7 @@ def test_anthropic_provider_sanitizes_unpaired_surrogates_in_payload_text() -> N
                         ],
                         api="anthropic-messages",
                         provider="anthropic",
+                        endpoint="test-endpoint",
                         model="claude",
                         response_id=None,
                         usage=Usage(
@@ -381,8 +385,7 @@ def test_anthropic_provider_sanitizes_unpaired_surrogates_in_payload_text() -> N
                     ),
                 ],
             }
-        ),
-        is_oauth_token=False,
+        )
     )
 
     assert system == [{"type": "text", "text": "system  prompt"}]
@@ -405,24 +408,6 @@ def test_anthropic_provider_sanitizes_unpaired_surrogates_in_payload_text() -> N
             "is_error": False,
         }
     ]
-
-
-def test_openai_codex_responses_provider_sanitizes_instruction_text() -> None:
-    from loushang.ai.contrib.openai_codex.provider import _build_request_body
-
-    body = _build_request_body(
-        SimpleNamespace(id="gpt-5.2-codex", input=("text",)),
-        normalize_context(
-            {
-                "system_prompt": f"system {_UNPAIRED_HIGH_SURROGATE} prompt 🙈",
-                "messages": [],
-                "tools": None,
-            }
-        ),
-        SimpleNamespace(),
-    )
-
-    assert body["instructions"] == "system  prompt 🙈"
 
 
 def test_openai_responses_tool_result_helper_preserves_images_in_function_output() -> (

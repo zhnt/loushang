@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import pytest
+
 from loushang.tui import (
     ApprovalSurface,
     CommandSurface,
@@ -24,6 +26,7 @@ from loushang.tui import (
     TerminalSize,
     TuiRuntime,
     surface_is_bottom_exclusive,
+    surface_is_page_presentation,
 )
 from loushang.tui.cell_width import strip_control_sequences, visible_width
 
@@ -35,7 +38,9 @@ class TextRenderable:
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         self.seen_constraints.append(constraints)
-        return RenderResult.from_lines([RenderLine(line) for line in self.lines], constraints=constraints)
+        return RenderResult.from_lines(
+            [RenderLine(line) for line in self.lines], constraints=constraints
+        )
 
 
 class FocusTarget(FocusableMixin):
@@ -92,7 +97,9 @@ class CursorRenderable(TextRenderable):
         )
 
 
-def test_container_renders_children_in_order_and_propagates_remaining_constraints() -> None:
+def test_container_renders_children_in_order_and_propagates_remaining_constraints() -> (
+    None
+):
     first = TextRenderable(("one", "two"), [])
     second = TextRenderable(("three",), [])
     container = Container([first, second])
@@ -111,8 +118,12 @@ def test_container_propagates_remaining_visible_height_to_children() -> None:
 
     container.render(RenderConstraints(width=10, max_height=1000, visible_height=4))
 
-    assert first.seen_constraints == [RenderConstraints(width=10, max_height=1000, visible_height=4)]
-    assert second.seen_constraints == [RenderConstraints(width=10, max_height=999, visible_height=3)]
+    assert first.seen_constraints == [
+        RenderConstraints(width=10, max_height=1000, visible_height=4)
+    ]
+    assert second.seen_constraints == [
+        RenderConstraints(width=10, max_height=999, visible_height=3)
+    ]
 
 
 def test_container_offsets_child_cursor_by_previous_children() -> None:
@@ -126,7 +137,9 @@ def test_container_offsets_child_cursor_by_previous_children() -> None:
 
 
 def test_screen_root_preserves_base_cursor_when_no_surface_is_visible() -> None:
-    base = CursorRenderable(("› ", "", "status"), [], cursor=CursorDeclaration(row=0, column=2))
+    base = CursorRenderable(
+        ("› ", "", "status"), [], cursor=CursorDeclaration(row=0, column=2)
+    )
     screen_root = ScreenRoot(base=base, surface_host=SurfaceHost())
 
     result = screen_root.render(RenderConstraints(width=20, max_height=5))
@@ -135,6 +148,7 @@ def test_screen_root_preserves_base_cursor_when_no_surface_is_visible() -> None:
     assert result.cursor == CursorDeclaration(row=0, column=2)
 
 
+@pytest.mark.tui_render_contract
 def test_surface_host_preserves_base_result_identity_without_visible_surfaces() -> None:
     composer = FocusTarget("composer")
     hidden_focus = FocusTarget("hidden")
@@ -171,7 +185,9 @@ def test_surface_host_captures_and_restores_focus() -> None:
     composer.focus()
     host = SurfaceHost(base_focus=composer)
 
-    handle = host.open_surface(Surface(renderable=TextRenderable(("dialog",), []), focus_target=dialog_focus))
+    handle = host.open_surface(
+        Surface(renderable=TextRenderable(("dialog",), []), focus_target=dialog_focus)
+    )
 
     assert composer.focused is False
     assert dialog_focus.focused is True
@@ -192,8 +208,12 @@ def test_stacked_surface_close_restores_next_surface_focus() -> None:
     composer.focus()
     host = SurfaceHost(base_focus=composer)
 
-    host.open_surface(Surface(renderable=TextRenderable(("first",), []), focus_target=first_focus))
-    second = host.open_surface(Surface(renderable=TextRenderable(("second",), []), focus_target=second_focus))
+    host.open_surface(
+        Surface(renderable=TextRenderable(("first",), []), focus_target=first_focus)
+    )
+    second = host.open_surface(
+        Surface(renderable=TextRenderable(("second",), []), focus_target=second_focus)
+    )
 
     assert first_focus.focused is False
     assert second_focus.focused is True
@@ -221,7 +241,9 @@ def test_surface_host_routes_close_intent_and_restores_base_focus() -> None:
     assert handle.entry.close_reason == "surface_close"
 
 
-def test_surface_host_route_input_result_preserves_consumption_without_changing_route_input() -> None:
+def test_surface_host_route_input_result_preserves_consumption_without_changing_route_input() -> (
+    None
+):
     cases: tuple[tuple[Any, tuple[Any, ...], bool], ...] = (
         (None, (), False),
         (False, (), False),
@@ -232,7 +254,9 @@ def test_surface_host_route_input_result_preserves_consumption_without_changing_
     for result, expected_intents, expected_consumed in cases:
         target = ReturningFocusTarget(result)
         host = SurfaceHost()
-        host.open_surface(Surface(renderable=TextRenderable(("surface",), []), focus_target=target))
+        host.open_surface(
+            Surface(renderable=TextRenderable(("surface",), []), focus_target=target)
+        )
 
         routed = host.route_input_result("x")
 
@@ -244,7 +268,9 @@ def test_surface_host_route_input_result_preserves_consumption_without_changing_
 def test_surface_host_route_input_result_closes_on_close_intent() -> None:
     target = ReturningFocusTarget(InputIntent(kind="surface_close"))
     host = SurfaceHost()
-    handle = host.open_surface(Surface(renderable=TextRenderable(("surface",), []), focus_target=target))
+    handle = host.open_surface(
+        Surface(renderable=TextRenderable(("surface",), []), focus_target=target)
+    )
 
     routed = host.route_input_result(InputEvent(kind="key", key="escape"))
 
@@ -258,7 +284,9 @@ def test_surface_host_returns_current_visible_surface_editor_target() -> None:
     editor_target = object()
     focus = EditorProviderFocusTarget("editor", editor_target)
     host = SurfaceHost()
-    host.open_surface(Surface(renderable=TextRenderable(("editor",), []), focus_target=focus))
+    host.open_surface(
+        Surface(renderable=TextRenderable(("editor",), []), focus_target=focus)
+    )
 
     assert host.current_editor_target() is editor_target
 
@@ -272,7 +300,9 @@ def test_surface_host_ignores_base_hidden_and_closed_editor_targets() -> None:
 
     assert host.current_editor_target() is None
 
-    handle = host.open_surface(Surface(renderable=TextRenderable(("editor",), []), focus_target=focus))
+    handle = host.open_surface(
+        Surface(renderable=TextRenderable(("editor",), []), focus_target=focus)
+    )
     assert host.current_editor_target() is focus.target
 
     handle.set_hidden(True)
@@ -298,9 +328,22 @@ def test_surface_host_translates_overlay_mouse_coordinates_to_focus_target() -> 
         )
     )
 
-    host.compose(RenderResult.from_lines((RenderLine("base"),), constraints=RenderConstraints(width=12, max_height=6)), RenderConstraints(width=12, max_height=6))
+    host.compose(
+        RenderResult.from_lines(
+            (RenderLine("base"),), constraints=RenderConstraints(width=12, max_height=6)
+        ),
+        RenderConstraints(width=12, max_height=6),
+    )
 
-    host.route_input(InputEvent(kind="mouse", mouse_button=0, mouse_column=5, mouse_row=3, mouse_action="press"))
+    host.route_input(
+        InputEvent(
+            kind="mouse",
+            mouse_button=0,
+            mouse_column=5,
+            mouse_row=3,
+            mouse_action="press",
+        )
+    )
 
     assert isinstance(target.events[-1], InputEvent)
     assert target.events[-1].mouse_row == 1
@@ -314,28 +357,44 @@ def test_surface_host_can_close_on_call_site_intent_policy() -> None:
 
     command = CommandSurface([SelectItem("/model", value="/model")])
     host.open_surface(Surface(renderable=command, focus_target=command))
-    command_intents = host.route_input(InputEvent(kind="key", key="enter"), close_on_intents=("command",))
+    command_intents = host.route_input(
+        InputEvent(kind="key", key="enter"), close_on_intents=("command",)
+    )
 
-    settings_target = ReturningFocusTarget(InputIntent(kind="setting", text="statusline", note="true"))
+    settings_target = ReturningFocusTarget(
+        InputIntent(kind="setting", text="statusline", note="true")
+    )
     host.open_surface(
         Surface(
             renderable=TextRenderable(("statusline",), []),
             focus_target=settings_target,
         )
     )
-    setting_intents = host.route_input(InputEvent(kind="key", key="enter"), close_on_intents=("setting",))
+    setting_intents = host.route_input(
+        InputEvent(kind="key", key="enter"), close_on_intents=("setting",)
+    )
 
     approval = ApprovalSurface(action="Run command")
     host.open_surface(Surface(renderable=approval, focus_target=approval))
-    approval_intents = host.route_input(InputEvent(kind="key", key="y"), close_on_intents=("approve", "reject"))
+    approval_intents = host.route_input(
+        InputEvent(kind="key", key="y"),
+        close_on_intents=("approval_decision",),
+    )
 
     dialog = DialogSurface(title="Confirm")
     host.open_surface(Surface(renderable=dialog, focus_target=dialog))
-    dialog_intents = host.route_input(InputEvent(kind="key", key="enter"), close_on_intents=("dialog_confirm", "dialog_cancel"))
+    dialog_intents = host.route_input(
+        InputEvent(kind="key", key="enter"),
+        close_on_intents=("dialog_confirm", "dialog_cancel"),
+    )
 
     assert command_intents == (InputIntent(kind="command", text="/model"),)
-    assert setting_intents == (InputIntent(kind="setting", text="statusline", note="true"),)
-    assert approval_intents == (InputIntent(kind="approve"),)
+    assert setting_intents == (
+        InputIntent(kind="setting", text="statusline", note="true"),
+    )
+    assert approval_intents == (
+        InputIntent(kind="approval_decision", text="allow_once"),
+    )
     assert dialog_intents == (InputIntent(kind="dialog_confirm"),)
     assert host.entries == []
     assert composer.focused is True
@@ -416,7 +475,14 @@ def test_runtime_reuses_existing_screen_root_surface_host() -> None:
         terminal=FakeTerminalPort(size=TerminalSize(columns=10, rows=3)),
     )
 
-    runtime.open_surface(Surface(renderable=TextRenderable(("OV",), []), row=0, column=0, captures_focus=False))
+    runtime.open_surface(
+        Surface(
+            renderable=TextRenderable(("OV",), []),
+            row=0,
+            column=0,
+            captures_focus=False,
+        )
+    )
 
     assert runtime.overlay_host() is host
     assert len(host.entries) == 1
@@ -433,7 +499,9 @@ def test_runtime_routes_input_to_overlay_surface_host() -> None:
     runtime.overlay_host().base_focus = composer
     runtime.open_surface(Surface(renderable=command, focus_target=command))
 
-    intents = runtime.route_surface_input(InputEvent(kind="key", key="enter"), close_on_intents=("command",))
+    intents = runtime.route_surface_input(
+        InputEvent(kind="key", key="enter"), close_on_intents=("command",)
+    )
 
     assert intents == (InputIntent(kind="command", text="/model"),)
     assert runtime.overlay_host().entries == []
@@ -446,7 +514,14 @@ def test_runtime_overlay_wrapper_preserves_base_baseline_reset_signal() -> None:
         render_loop=RenderLoop(base),
         terminal=FakeTerminalPort(size=TerminalSize(columns=20, rows=4)),
     )
-    runtime.open_surface(Surface(renderable=TextRenderable(("OV",), []), row=0, column=0, captures_focus=False))
+    runtime.open_surface(
+        Surface(
+            renderable=TextRenderable(("OV",), []),
+            row=0,
+            column=0,
+            captures_focus=False,
+        )
+    )
     runtime.render_now()
 
     base.reset_reason = "test_reset"
@@ -484,14 +559,87 @@ def test_surface_bottom_exclusive_presentation_is_a_formal_helper() -> None:
     assert surface_is_bottom_exclusive(surface) is True
 
 
+def test_page_surface_replaces_base_and_receives_the_full_viewport() -> None:
+    base_renders: list[RenderConstraints] = []
+    page_renders: list[RenderConstraints] = []
+    base = TextRenderable(("base",), base_renders)
+    page = TextRenderable(("Resume", "row"), page_renders)
+    host = SurfaceHost()
+    screen_root = ScreenRoot(base=base, surface_host=host)
+    surface = Surface(
+        renderable=page,
+        presentation="page",
+        captures_focus=False,
+    )
+    host.open_surface(surface)
+
+    result = screen_root.render(
+        RenderConstraints(width=20, max_height=5, visible_height=5)
+    )
+
+    assert base_renders == []
+    assert page_renders == [RenderConstraints(width=20, max_height=5, visible_height=5)]
+    assert tuple(line.text for line in result.lines) == (
+        "Resume",
+        "row",
+        "",
+        "",
+        "",
+    )
+    assert surface_is_page_presentation(surface) is True
+
+
+def test_newer_overlay_renders_above_page_but_older_overlay_stays_below() -> None:
+    host = SurfaceHost()
+    host.open_surface(
+        Surface(
+            renderable=TextRenderable(("OLD",), []),
+            presentation="overlay",
+            row=0,
+            column=0,
+            captures_focus=False,
+        )
+    )
+    host.open_surface(
+        Surface(
+            renderable=TextRenderable(("PAGE",), []),
+            presentation="page",
+            captures_focus=False,
+        )
+    )
+    host.open_surface(
+        Surface(
+            renderable=TextRenderable(("NEW",), []),
+            presentation="overlay",
+            row=1,
+            column=0,
+            captures_focus=False,
+        )
+    )
+
+    result = host.compose(
+        RenderResult.from_text(
+            "base",
+            constraints=RenderConstraints(width=10, max_height=3),
+        ),
+        RenderConstraints(width=10, max_height=3),
+    )
+
+    assert tuple(line.text for line in result.lines) == ("PAGE", "NEW", "")
+
+
 def test_surface_handle_can_hide_show_focus_and_unfocus_overlay() -> None:
     composer = FocusTarget("composer")
     first_focus = FocusTarget("first")
     second_focus = FocusTarget("second")
     composer.focus()
     host = SurfaceHost(base_focus=composer)
-    host.open_surface(Surface(renderable=TextRenderable(("first",), []), focus_target=first_focus))
-    second = host.open_surface(Surface(renderable=TextRenderable(("second",), []), focus_target=second_focus))
+    host.open_surface(
+        Surface(renderable=TextRenderable(("first",), []), focus_target=first_focus)
+    )
+    second = host.open_surface(
+        Surface(renderable=TextRenderable(("second",), []), focus_target=second_focus)
+    )
 
     assert second.is_focused() is True
 
@@ -529,13 +677,23 @@ def test_overlay_visibility_callback_controls_render_and_focus() -> None:
         )
     )
 
-    hidden_result = host.compose(RenderResult.from_text("base", constraints=RenderConstraints(width=10, max_height=5)), RenderConstraints(width=10, max_height=5))
+    hidden_result = host.compose(
+        RenderResult.from_text(
+            "base", constraints=RenderConstraints(width=10, max_height=5)
+        ),
+        RenderConstraints(width=10, max_height=5),
+    )
 
     assert tuple(line.text for line in hidden_result.lines) == ("base",)
     assert focus.focused is False
     assert handle.is_focused() is False
 
-    visible_result = host.compose(RenderResult.from_text("base", constraints=RenderConstraints(width=30, max_height=5)), RenderConstraints(width=30, max_height=5))
+    visible_result = host.compose(
+        RenderResult.from_text(
+            "base", constraints=RenderConstraints(width=30, max_height=5)
+        ),
+        RenderConstraints(width=30, max_height=5),
+    )
 
     assert tuple(line.text for line in visible_result.lines)[0] == "dialog"
     assert focus.focused is True
@@ -554,7 +712,12 @@ def test_surface_host_syncs_overlay_visibility_before_routing_input() -> None:
             visible=lambda _size: visible,
         )
     )
-    host.compose(RenderResult.from_text("base", constraints=RenderConstraints(width=30, max_height=5)), RenderConstraints(width=30, max_height=5))
+    host.compose(
+        RenderResult.from_text(
+            "base", constraints=RenderConstraints(width=30, max_height=5)
+        ),
+        RenderConstraints(width=30, max_height=5),
+    )
     handle.focus()
 
     assert overlay_focus.focused is True
@@ -661,13 +824,35 @@ def test_focus_order_controls_overlay_z_order() -> None:
     second_focus = FocusTarget("second")
     host = SurfaceHost()
     first = host.open_surface(
-        Surface(renderable=TextRenderable(("111",), []), focus_target=first_focus, row=0, column=0)
+        Surface(
+            renderable=TextRenderable(("111",), []),
+            focus_target=first_focus,
+            row=0,
+            column=0,
+        )
     )
-    host.open_surface(Surface(renderable=TextRenderable(("222",), []), focus_target=second_focus, row=0, column=0))
+    host.open_surface(
+        Surface(
+            renderable=TextRenderable(("222",), []),
+            focus_target=second_focus,
+            row=0,
+            column=0,
+        )
+    )
 
-    before = host.compose(RenderResult.from_text("base", constraints=RenderConstraints(width=10, max_height=3)), RenderConstraints(width=10, max_height=3))
+    before = host.compose(
+        RenderResult.from_text(
+            "base", constraints=RenderConstraints(width=10, max_height=3)
+        ),
+        RenderConstraints(width=10, max_height=3),
+    )
     first.focus()
-    after = host.compose(RenderResult.from_text("base", constraints=RenderConstraints(width=10, max_height=3)), RenderConstraints(width=10, max_height=3))
+    after = host.compose(
+        RenderResult.from_text(
+            "base", constraints=RenderConstraints(width=10, max_height=3)
+        ),
+        RenderConstraints(width=10, max_height=3),
+    )
 
     assert tuple(line.text for line in before.lines)[0] == "222e"
     assert tuple(line.text for line in after.lines)[0] == "111e"
@@ -698,7 +883,9 @@ def test_inline_surface_renders_after_base_before_overlays() -> None:
     assert tuple(line.text for line in result.lines) == ("base", "OVline", "", "", "")
 
 
-def test_overlay_row_is_relative_to_visible_viewport_when_base_exceeds_screen_height() -> None:
+def test_overlay_row_is_relative_to_visible_viewport_when_base_exceeds_screen_height() -> (
+    None
+):
     base = TextRenderable(("line0", "line1", "line2", "line3", "line4"), [])
     host = SurfaceHost()
     screen_root = ScreenRoot(base=base, surface_host=host)
@@ -711,9 +898,17 @@ def test_overlay_row_is_relative_to_visible_viewport_when_base_exceeds_screen_he
         )
     )
 
-    result = screen_root.render(RenderConstraints(width=10, max_height=10, visible_height=3))
+    result = screen_root.render(
+        RenderConstraints(width=10, max_height=10, visible_height=3)
+    )
 
-    assert tuple(line.text for line in result.lines) == ("line0", "line1", "line2", "OVne3", "line4")
+    assert tuple(line.text for line in result.lines) == (
+        "line0",
+        "line1",
+        "line2",
+        "OVne3",
+        "line4",
+    )
 
 
 def test_overlay_composition_skips_terminal_image_base_lines() -> None:
@@ -721,7 +916,10 @@ def test_overlay_composition_skips_terminal_image_base_lines() -> None:
 
     image_line = "\x1b_Gi=1;AAAA\x1b\\"
 
-    assert _overlay_text(image_line, "OV", column=0, overlay_width=2, total_width=20) == image_line
+    assert (
+        _overlay_text(image_line, "OV", column=0, overlay_width=2, total_width=20)
+        == image_line
+    )
 
 
 def test_overlay_composition_slices_by_terminal_columns_not_python_indexes() -> None:
@@ -745,7 +943,9 @@ def test_overlay_composition_clips_wide_overlay_by_cell_width() -> None:
 def test_overlay_composition_preserves_ansi_suffix_style_after_overlay() -> None:
     from loushang.tui.framework import _overlay_text
 
-    result = _overlay_text("\x1b[31m中ABCD\x1b[39m", "XY", column=2, overlay_width=2, total_width=12)
+    result = _overlay_text(
+        "\x1b[31m中ABCD\x1b[39m", "XY", column=2, overlay_width=2, total_width=12
+    )
 
     assert strip_control_sequences(result) == "中XYCD"
     assert "\x1b[31mCD" in result

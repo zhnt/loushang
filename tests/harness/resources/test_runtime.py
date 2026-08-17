@@ -15,20 +15,61 @@ from loushang.harness.resources.layout import (
     resolve_user_resource_roots,
     resolve_workspace_resource_root,
 )
-from loushang.harness.resources.loader import ResourceLoader
+from loushang.harness.resources.loader import (
+    ProfiledResourceLoader,
+    ResourceLoader,
+    ResourceLoaderProfile,
+)
 from loushang.harness.resources.packages import (
     PackageMaterializationRecord,
     PackageMaterializer,
     PackageSourceConfig,
     package_source_from_raw,
 )
-from loushang.harness.resources.plugins import PluginManager
+from loushang.harness.resources.plugins import (
+    InstalledPlugin,
+    PluginManager,
+    PluginManifest,
+    PluginRegistry,
+    PluginSource,
+)
 
 
 class _AllowPackageSources:
     def evaluate_package_source(self, source: str | Path) -> PolicyDecision:
         del source
         return PolicyDecision.allow()
+
+
+def test_resource_registries_public_key_compatibility_baseline(tmp_path) -> None:
+    built_ins = BuiltInResourceRegistry()
+    first_package = BuiltInResourcePackage(name="shared", package="first.resources")
+    replacement_package = BuiltInResourcePackage(
+        name="shared",
+        package="replacement.resources",
+    )
+
+    assert built_ins.register(first_package) is first_package
+    assert built_ins.register(replacement_package) is replacement_package
+    assert built_ins.list_packages() == (replacement_package,)
+    assert built_ins.unregister("shared") is replacement_package
+    assert built_ins.unregister("shared") is None
+
+    plugins = PluginRegistry()
+    first_plugin = InstalledPlugin(
+        manifest=PluginManifest(name="shared", root=tmp_path / "first"),
+        source=PluginSource(path=tmp_path / "first"),
+    )
+    replacement_plugin = InstalledPlugin(
+        manifest=PluginManifest(name="shared", root=tmp_path / "replacement"),
+        source=PluginSource(path=tmp_path / "replacement"),
+    )
+
+    assert plugins.register(first_plugin) is first_plugin
+    assert plugins.register(replacement_plugin) is replacement_plugin
+    assert plugins.list_plugins() == [replacement_plugin]
+    assert plugins.unregister("shared") is replacement_plugin
+    assert plugins.unregister("shared") is None
 
 
 def test_platform_resource_layout_resolves_standard_roots(tmp_path) -> None:
@@ -142,6 +183,28 @@ def test_resource_loader_uses_standard_workspace_resource_root(tmp_path) -> None
 
     assert [prompt.name for prompt in bundle.prompts] == ["review"]
     assert bundle.prompts[0].source_root == workspace / ".loushang" / "prompts"
+
+
+def test_profiled_resource_loader_injects_product_conventions(tmp_path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "RESEARCH.md").write_text("Cite primary sources.", encoding="utf-8")
+    profile = ResourceLoaderProfile(
+        context_file_names=("RESEARCH.md",),
+        user_resource_roots=(),
+        project_resource_mode="legacy",
+        system_prompt_assembler=lambda base, bundle: "\n".join(
+            item for item in (base, bundle.agents_md) if isinstance(item, str) and item
+        ),
+    )
+    loader = ProfiledResourceLoader(profile=profile)
+
+    bundle = loader.discover_resources(workspace)
+
+    assert bundle.agents_md == "Cite primary sources."
+    assert loader.get_system_prompt(base_prompt="Research carefully.") == (
+        "Research carefully.\nCite primary sources."
+    )
 
 
 def test_package_materializer_requires_product_policy(tmp_path) -> None:

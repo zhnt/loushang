@@ -46,7 +46,7 @@
 
 归属组件：
 
-- `loushang.coding.diagnostics.serialization`
+- `loushang.harness.diagnostics.serialization`
 
 角色：
 

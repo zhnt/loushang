@@ -1,5 +1,13 @@
 # Loushang Coding Candidate Components
 
+## Status
+
+Superseded as the current ownership topology by the
+[Harness Current Owner Map](../harness/current-owner-map.md). This document is
+retained as design history for the original Coding decomposition. Canonical
+Product, Capability, Resource Package, Plugin, and Extension terms come from
+the [Product And OEM Glossary](../../glossary/loushang-product.md).
+
 ## Scope
 
 本文档给出 `loushang-coding` 的候选组件列表，用于设计阶段对齐 `reference coding agent`。
@@ -263,11 +271,12 @@ coding resource descriptors 与加载结果边界。
 备注：
 
 - `extensions` 是 runtime 扩展面
-- `plugin` 是上层 package / distribution 形态，不取代 `extensions`
+- `plugin` 是 manifest-backed 可选贡献源的身份与启停边界，不取代
+  `extensions`，也不是 Package 分发边界
 
 ### `plugin`
 
-plugin bundle 管理与资源展开层。
+plugin identity、source、启停与资源根解析层。
 
 负责：
 
@@ -278,7 +287,8 @@ plugin bundle 管理与资源展开层。
 
 ### `package`
 
-package/plugin lifecycle 与 source 管理层。
+Resource Package lifecycle、source 与物化管理层；Plugin identity 和启停状态
+是独立边界。
 
 负责：
 

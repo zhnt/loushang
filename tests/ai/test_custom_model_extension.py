@@ -7,12 +7,13 @@ from pathlib import Path
 import pytest
 
 from loushang.ai import CallOptions, complete
-from loushang.ai.advanced.registry import ApiProviderRegistry
+from loushang.ai.advanced.registry import get_default_api_registry
+from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.model import (
     load_builtin_model_registry,
-    load_layered_model_registry,
     load_model_registry_from_file,
 )
+from loushang.ai.model.loader import _load_layered_model_registry
 from loushang.ai.provider import ProviderRequest
 
 
@@ -86,7 +87,7 @@ def test_json_only_custom_model_loads_merges_queries_and_completes(
     assert custom_model.supports_stream is True
     assert custom_model.supports_tool_use is True
 
-    layered = load_layered_model_registry(user_dir=user_model_dir)
+    layered = _load_layered_model_registry(user_dir=user_model_dir)
     builtin_model = load_builtin_model_registry().list_models()[0]
     assert (
         layered.get_model(
@@ -101,15 +102,15 @@ def test_json_only_custom_model_loads_merges_queries_and_completes(
     assert model.upstream_id == "vendor/company-chat-2026-06"
 
     provider = RecordingProvider()
-    provider_registry = ApiProviderRegistry()
-    provider_registry.register_api_provider(provider)
+    provider_registry = get_default_api_registry()
+    provider_registry.clear_api_adapters()
+    provider_registry.register_api_adapter(provider)
 
     async def run_complete():
         return await complete(
             model,
             {"messages": [{"role": "user", "content": "hello"}]},
-            CallOptions(api_key="test-key"),
-            provider_registry=provider_registry,
+            CallOptions(auth=ApiKeyAuth("test-key")),
         )
 
     message = asyncio.run(run_complete())
@@ -123,15 +124,16 @@ def test_json_only_custom_model_loads_merges_queries_and_completes(
     assert len(provider.requests) == 1
     request = provider.requests[0]
     assert request.mode == "complete"
-    assert request.provider == "company"
-    assert request.endpoint == "anthropic-messages"
-    assert request.api == "anthropic-messages"
+    assert request.model.provider_id == "company"
+    assert request.model.endpoint_id == "anthropic-messages"
+    assert request.model.api == "anthropic-messages"
     assert request.base_url == "https://models.company.example"
-    assert request.candidate_base_urls == ("https://models.company.example",)
     assert request.model == model
-    assert request.upstream_model_id == "vendor/company-chat-2026-06"
-    assert getattr(request.adapter_config, "fine_grained_tools") is True
-    assert getattr(request.adapter_config, "long_cache_retention") is False
+    assert request.model.capabilities == model.capabilities
+    assert request.model.defaults == model.defaults
+    assert request.model.upstream_id == "vendor/company-chat-2026-06"
+    assert getattr(request.model.adapter, "fine_grained_tools") is True
+    assert getattr(request.model.adapter, "long_cache_retention") is False
 
 
 def test_custom_model_file_rejects_invalid_adapter_field(tmp_path: Path) -> None:
@@ -161,6 +163,7 @@ def test_layered_registry_rejects_duplicate_builtin_full_model_id(
     builtin_model = load_builtin_model_registry().list_models()[0]
     api = builtin_model.api
     assert api is not None
+    assert builtin_model.base_url is not None
     providers = raw["providers"]
     assert isinstance(providers, dict)
     providers.clear()
@@ -168,6 +171,7 @@ def test_layered_registry_rejects_duplicate_builtin_full_model_id(
         "endpoints": {
             builtin_model.endpoint_id: {
                 "api": api,
+                "baseUrl": builtin_model.base_url,
                 "models": {
                     builtin_model.id: {
                         "capabilities": {
@@ -182,7 +186,7 @@ def test_layered_registry_rejects_duplicate_builtin_full_model_id(
     path = _write_model_file(tmp_path, raw)
 
     with pytest.raises(ValueError, match="duplicate model id") as exc_info:
-        load_layered_model_registry(user_dir=tmp_path)
+        _load_layered_model_registry(user_dir=tmp_path)
 
     message = str(exc_info.value)
     assert str(path) in message

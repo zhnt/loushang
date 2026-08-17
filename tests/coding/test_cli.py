@@ -12,6 +12,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from loushang.harness.runtime import SessionOperationResult
+
 
 def _command_descriptor(item: dict[str, object]) -> SimpleNamespace:
     source_info = item.get("source_info")
@@ -215,6 +217,55 @@ class FakeRuntime:
     async def fork_session(self, entry_id: str) -> FakeSession:
         self.fork_session_calls.append(entry_id)
         return self._current_session
+
+    async def new_session_operation(
+        self,
+        *,
+        cwd: str | None = None,
+        parent_session: str | None = None,
+    ) -> SessionOperationResult[FakeSession, None]:
+        del parent_session
+        if cwd is None:
+            raise ValueError("Fake runtime requires cwd")
+        previous = self._current_session
+        session = await self.new_session(cwd=cwd)
+        return SessionOperationResult(
+            previous=previous,
+            current=session,
+            payload=None,
+            cancelled=False,
+        )
+
+    async def restore_session_operation(
+        self,
+        session_id: str,
+    ) -> SessionOperationResult[FakeSession, None]:
+        previous = self._current_session
+        session = await self.restore_session(session_id)
+        return SessionOperationResult(
+            previous=previous,
+            current=session,
+            payload=None,
+            cancelled=False,
+        )
+
+    async def fork_session_operation(
+        self,
+        entry_id: str | None,
+        *,
+        position: str = "at",
+    ) -> SessionOperationResult[FakeSession, None]:
+        del position
+        if entry_id is None:
+            raise ValueError("Fake runtime requires an explicit fork entry")
+        previous = self._current_session
+        session = await self.fork_session(entry_id)
+        return SessionOperationResult(
+            previous=previous,
+            current=session,
+            payload=None,
+            cancelled=False,
+        )
 
     def list_sessions(self) -> list[object]:
         self.list_sessions_calls += 1
@@ -477,6 +528,9 @@ def _fake_services(
     disabled_plugins: tuple[str, ...] = (),
     method_settings: object | None = None,
 ):
+    from loushang.ai.model import Endpoint, Model, Provider
+    from loushang.ai.model.registry import ModelRegistry
+
     settings = SimpleNamespace(
         session_dir=session_dir,
         package_roots=package_roots,
@@ -485,8 +539,33 @@ def _fake_services(
         method=method_settings,
     )
     settings_manager = SimpleNamespace(get_settings=lambda: settings)
+    endpoint = Endpoint(
+        id="test-endpoint",
+        provider="faux",
+        api="test",
+        models={
+            model_id: Model(
+                id=model_id,
+                provider="faux",
+                endpoint="test-endpoint",
+            )
+            for model_id in ("beta", "missing")
+        },
+    )
+    model_registry = SimpleNamespace(
+        ai_registry=ModelRegistry.from_providers(
+            {
+                "faux": Provider(
+                    id="faux",
+                    endpoints={endpoint.id: endpoint},
+                )
+            }
+        )
+    )
     return SimpleNamespace(
-        settings_manager=settings_manager, diagnostics_service=object()
+        settings_manager=settings_manager,
+        diagnostics_service=object(),
+        model_registry=model_registry,
     )
 
 
@@ -605,6 +684,12 @@ def test_parse_args_supports_modes_sessions_and_overrides() -> None:
     assert args.tools == ("bash", "read")
     assert args.render_tool_events is True
     assert args.messages == ("hello", "world")
+
+
+def test_parse_args_accepts_channel_mode() -> None:
+    from loushang.coding.cli.args import parse_args
+
+    assert parse_args(["--mode", "channel"]).mode == "channel"
 
 
 def test_parse_args_accepts_tui_flag() -> None:
@@ -803,8 +888,6 @@ def test_parse_args_supports_pi_style_aliases_and_noop_fields() -> None:
             "--no-themes",
             "--verbose",
             "--offline",
-            "--api-key",
-            "top-secret",
             "--system-prompt",
             "sys",
             "--append-system-prompt",
@@ -845,7 +928,6 @@ def test_parse_args_supports_pi_style_aliases_and_noop_fields() -> None:
     assert args.no_themes is True
     assert args.verbose is True
     assert args.offline is True
-    assert args.api_key == "top-secret"
     assert args.system_prompt == "sys"
     assert args.append_system_prompt == ("A", "B")
     assert args.export == "/tmp/out.html"
@@ -855,6 +937,13 @@ def test_parse_args_supports_pi_style_aliases_and_noop_fields() -> None:
     assert args.prompt == "hi"
     assert args.no_context_files is True
     assert args.messages == ("hello",)
+
+
+def test_parse_args_rejects_removed_api_key_flag() -> None:
+    from loushang.coding.cli.args import parse_args
+
+    with pytest.raises(SystemExit):
+        parse_args(["--api-key", "top-secret"])
 
 
 def test_parse_args_supports_prompt_alias_and_print_mode() -> None:
@@ -906,7 +995,12 @@ def test_default_runtime_builder_maps_tools_to_allowed_and_active_tools(
 ) -> None:
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     registry = ToolRegistry()
     register_builtin_tools(registry)
@@ -925,12 +1019,28 @@ def test_default_runtime_builder_maps_tools_to_allowed_and_active_tools(
         "read",
         "grep",
     ]
+    assert session.multiagent_runtime is not None
+    assert session.multiagent_runtime.control.agent_type("explorer") is not None
+    assert session.multiagent_runtime.control.agent_type("reviewer") is not None
+    assert not {
+        "spawn_agent",
+        "send_message",
+        "wait_agent",
+        "list_agents",
+        "interrupt_agent",
+        "close_agent",
+    }.intersection(session.get_active_tool_names())
 
 
 def test_default_runtime_builder_maps_no_tools_to_empty_allowed_tools(tmp_path) -> None:
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     registry = ToolRegistry()
     register_builtin_tools(registry)
@@ -946,12 +1056,85 @@ def test_default_runtime_builder_maps_no_tools_to_empty_allowed_tools(tmp_path) 
 
     assert session.get_active_tool_names() == []
     assert session.get_all_tools() == []
+    assert session.multiagent_runtime is not None
+
+
+def test_default_runtime_builder_registers_delegate_only_when_explicitly_selected(
+    tmp_path,
+) -> None:
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.cli.__main__ import default_runtime_builder
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.agent_delegate import AGENT_DELEGATE_TOOL_NAME
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
+
+    registry = ToolRegistry()
+    register_builtin_tools(registry)
+    runtime = default_runtime_builder(
+        args=SimpleNamespace(
+            no_tools=False,
+            tools=(AGENT_DELEGATE_TOOL_NAME, "read"),
+            no_builtin_tools=False,
+            no_session=True,
+        ),
+        cwd=tmp_path,
+        session_dir=tmp_path / "sessions",
+        services=create_services(),
+        tool_registry=registry,
+    )
+
+    session = asyncio.run(runtime.create_session(cwd=str(tmp_path)))
+
+    assert session.get_active_tool_names() == [AGENT_DELEGATE_TOOL_NAME, "read"]
+    assert {definition.name for definition in session.get_all_tools()} == {
+        AGENT_DELEGATE_TOOL_NAME,
+        "read",
+    }
+
+
+def test_default_runtime_builder_does_not_restore_delegate_when_builtins_disabled(
+    tmp_path,
+) -> None:
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.cli.__main__ import default_runtime_builder
+    from loushang.harness.tools.agent_delegate import AGENT_DELEGATE_TOOL_NAME
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
+
+    runtime = default_runtime_builder(
+        args=SimpleNamespace(
+            no_tools=False,
+            tools=(),
+            no_builtin_tools=True,
+            no_session=True,
+        ),
+        cwd=tmp_path,
+        session_dir=tmp_path / "sessions",
+        services=create_services(),
+        tool_registry=ToolRegistry(),
+    )
+
+    session = asyncio.run(runtime.create_session(cwd=str(tmp_path)))
+
+    assert AGENT_DELEGATE_TOOL_NAME not in {
+        definition.name for definition in session.get_all_tools()
+    }
 
 
 def test_default_runtime_builder_applies_resource_and_prompt_options(tmp_path) -> None:
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -1008,7 +1191,14 @@ def test_default_runtime_builder_rebuilds_project_bound_services_for_session_cwd
         build_default_services,
         default_runtime_builder,
     )
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.agent_delegate import AGENT_DELEGATE_TOOL_NAME
+    from loushang.harness.tools.multiagent import MULTIAGENT_TOOL_NAMES
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     project_a = tmp_path / "project-a"
     project_b = tmp_path / "project-b"
@@ -1034,6 +1224,20 @@ def test_default_runtime_builder_rebuilds_project_bound_services_for_session_cwd
     assert first.resource_loader is not second.resource_loader
     assert second.cwd_bound_services_audit.ok is True
     assert "Project B guidance" in second.agent.system_prompt
+    assert "## Multi-agent collaboration" in second.agent.system_prompt
+    assert AGENT_DELEGATE_TOOL_NAME not in second.get_active_tool_names()
+    assert set(MULTIAGENT_TOOL_NAMES).issubset(second.get_active_tool_names())
+    assert not set(MULTIAGENT_TOOL_NAMES).intersection(
+        definition.name for definition in registry.list_definitions()
+    )
+    assert AGENT_DELEGATE_TOOL_NAME not in {
+        definition.name for definition in registry.list_definitions()
+    }
+    first_tools = {definition.name: definition for definition in first.get_all_tools()}
+    second_tools = {
+        definition.name: definition for definition in second.get_all_tools()
+    }
+    assert first_tools["spawn_agent"] is not second_tools["spawn_agent"]
 
 
 def test_cwd_bound_services_factory_uses_sdk_services_creation(
@@ -1041,6 +1245,7 @@ def test_cwd_bound_services_factory_uses_sdk_services_creation(
 ) -> None:
     import loushang.coding.cli.__main__ as cli_main
     from loushang.coding.bootstrap import create_services
+    from loushang.harness.cli import cwd_bound_services_factory
 
     project_a = tmp_path / "project-a"
     project_b = tmp_path / "project-b"
@@ -1058,15 +1263,10 @@ def test_cwd_bound_services_factory_uses_sdk_services_creation(
         calls.append(kwargs)
         return SimpleNamespace(services=created_services)
 
-    monkeypatch.setattr(
-        cli_main,
-        "create_agent_session_services",
-        fake_create_agent_session_services,
-        raising=False,
-    )
-
-    factory = cli_main._cwd_bound_services_factory(
-        base_services, resource_loader_options
+    factory = cwd_bound_services_factory(
+        base_services,
+        resource_loader_options,
+        create_services=fake_create_agent_session_services,
     )
 
     assert factory is not None
@@ -1130,14 +1330,18 @@ def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(
     monkeypatch,
 ) -> None:
     from loushang.coding.cli import __main__ as cli_main
-    from loushang.coding.policy import InteractiveApprovalResolver
-    from loushang.coding.tools import ToolRegistry
+    from loushang.harness.approval import InteractiveApprovalResolver
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     captured: dict[str, object] = {}
     runtime = FakeRuntime(FakeSession("unused"))
 
     def build_registry(**kwargs):
         captured["tool_resolver"] = kwargs["approval_resolver"]
+        captured["tool_runtime_settings"] = kwargs["runtime_settings"]
+        captured["settings_manager"] = kwargs["settings_manager"]
         return ToolRegistry()
 
     def runtime_builder(**kwargs):
@@ -1145,6 +1349,7 @@ def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(
         return runtime
 
     monkeypatch.setattr(cli_main, "build_builtin_tool_registry", build_registry)
+    services = _fake_services()
 
     exit_code = asyncio.run(
         cli_main.run_cli(
@@ -1153,7 +1358,7 @@ def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(
             stdout=StringIO(),
             stderr=StringIO(),
             cwd=tmp_path,
-            services=_fake_services(),
+            services=services,
             runtime_builder=runtime_builder,
         )
     )
@@ -1161,6 +1366,8 @@ def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(
     assert exit_code == 0
     assert isinstance(captured["tool_resolver"], InteractiveApprovalResolver)
     assert captured["runtime_resolver"] is captured["tool_resolver"]
+    assert captured["tool_runtime_settings"] is not None
+    assert captured["settings_manager"] is services.settings_manager
 
 
 def test_run_cli_keeps_legacy_fixed_runtime_builder_signature(tmp_path) -> None:
@@ -1203,26 +1410,43 @@ def test_cli_builtin_tool_registry_uses_settings_external_tool_policy(
 
     captured: dict[str, object] = {}
 
-    def fake_register_builtin_tools(registry, **kwargs):
+    def fake_register_coding_builtin_tools(registry, **kwargs):
         captured.update(kwargs)
         return registry
 
-    monkeypatch.setattr(cli_main, "register_builtin_tools", fake_register_builtin_tools)
+    monkeypatch.setattr(
+        cli_main,
+        "register_coding_builtin_tools",
+        fake_register_coding_builtin_tools,
+    )
     manager = SettingsManager(
-        ControlConfig(tools=ToolSettings(external_tool_policy="required"))
+        ControlConfig(
+            shell_path=r"C:\tools\pwsh.exe",
+            shell_command_prefix="$ErrorActionPreference = 'Stop'",
+            tools=ToolSettings(external_tool_policy="required"),
+        )
     )
 
     cli_main.build_builtin_tool_registry(settings_manager=manager)
 
     assert captured["external_tool_policy"] == "required"
+    assert captured["shell_path"] == r"C:\tools\pwsh.exe"
+    assert captured["command_prefix"] == "$ErrorActionPreference = 'Stop'"
 
 
-def test_cli_builtin_tool_registry_binds_headless_policy_from_settings(
+def test_cli_policy_settings_bind_to_an_explicit_execution_scope(
     tmp_path,
 ) -> None:
     from loushang.coding.cli import __main__ as cli_main
     from loushang.coding.control import ControlConfig, SettingsManager, ToolSettings
-    from loushang.coding.tools import ToolContext
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.tools.workspace import ToolContext
+    from loushang.harness.tools.workspace.authorization import (
+        create_workspace_tool_execution_host,
+    )
+    from loushang.harness.tools.workspace.factory import (
+        workspace_tool_runtime_settings,
+    )
 
     def context_provider(*, tool_call_id: str) -> ToolContext:
         return ToolContext(tool_call_id=tool_call_id, cwd=str(tmp_path))
@@ -1237,6 +1461,16 @@ def test_cli_builtin_tool_registry_binds_headless_policy_from_settings(
     )
     allow_registry = cli_main.build_builtin_tool_registry(
         settings_manager=allow_manager
+    )
+    allow_settings = workspace_tool_runtime_settings(
+        allow_manager,
+        policy_factory=PolicyEngine,
+    )
+    allow_registry.bind_execution_host(
+        create_workspace_tool_execution_host(
+            policy_evaluator=allow_settings.policy_engine,
+            approval_resolver=allow_settings.approval_resolver,
+        )
     )
     allow_tool = allow_registry.materialize_tool(
         "write", context_provider=context_provider
@@ -1256,6 +1490,16 @@ def test_cli_builtin_tool_registry_binds_headless_policy_from_settings(
         )
     )
     deny_registry = cli_main.build_builtin_tool_registry(settings_manager=deny_manager)
+    deny_settings = workspace_tool_runtime_settings(
+        deny_manager,
+        policy_factory=PolicyEngine,
+    )
+    deny_registry.bind_execution_host(
+        create_workspace_tool_execution_host(
+            policy_evaluator=deny_settings.policy_engine,
+            approval_resolver=deny_settings.approval_resolver,
+        )
+    )
     deny_tool = deny_registry.materialize_tool(
         "write", context_provider=context_provider
     )
@@ -2247,7 +2491,7 @@ def test_run_cli_lists_all_sessions_when_requested(tmp_path) -> None:
 
 def test_run_cli_list_sessions_supports_query_filters(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     records = [
         SimpleNamespace(
@@ -2311,7 +2555,7 @@ def test_run_cli_list_sessions_supports_query_filters(tmp_path) -> None:
 
 def test_run_cli_list_sessions_supports_no_diagnostics_filter(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     runtime = FakeRuntime(FakeSession("unused"), records=[])
     stdout = StringIO()
@@ -2340,7 +2584,7 @@ def test_run_cli_list_sessions_supports_all_sessions_with_query_filters(
     tmp_path,
 ) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     runtime = FakeRuntime(
         FakeSession("unused"),
@@ -2389,7 +2633,7 @@ def test_run_cli_list_sessions_supports_all_sessions_with_query_filters(
 
 def test_run_cli_list_sessions_can_use_session_index(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     runtime = FakeRuntime(
         FakeSession("unused"),
@@ -2440,7 +2684,7 @@ def test_run_cli_list_sessions_can_use_session_index(tmp_path) -> None:
 
 def test_run_cli_list_sessions_can_refresh_all_session_indexes(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     runtime = FakeRuntime(FakeSession("unused"), records=[])
     stdout = StringIO()
@@ -2661,8 +2905,8 @@ def test_run_cli_reports_list_sessions_invalid_payload(tmp_path) -> None:
 def test_run_cli_skips_session_records_that_fail_normalization(
     tmp_path, monkeypatch
 ) -> None:
-    from loushang.coding.cli import __main__ as cli_main
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.harness.cli import host_operations
 
     valid_record = SimpleNamespace(
         session_id="session-1",
@@ -2677,15 +2921,11 @@ def test_run_cli_skips_session_records_that_fail_normalization(
         ),
     )
 
-    original = cli_main._normalize_session_record
-
-    def _broken_normalize_session_record(record: object) -> dict[str, object]:
-        if record == "broken":
-            raise RuntimeError("broken record")
-        return original(record)
-
+    original = host_operations.try_project_session_record
     monkeypatch.setattr(
-        cli_main, "_normalize_session_record", _broken_normalize_session_record
+        host_operations,
+        "try_project_session_record",
+        lambda record: None if record == "broken" else original(record),
     )
 
     runtime = FakeRuntime(FakeSession("unused"), records=["broken", valid_record])
@@ -2785,8 +3025,8 @@ def test_run_cli_reports_list_sessions_with_unprintable_fields(tmp_path) -> None
 def test_run_cli_dispatches_print_mode_with_restored_session_and_model_override(
     tmp_path,
 ) -> None:
+    from loushang.ai.model import ModelSelection
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.types import ModelSelection
 
     runtime = FakeRuntime(FakeSession("session-1"))
     print_runner = FakeRunner()
@@ -2823,7 +3063,7 @@ def test_run_cli_dispatches_print_mode_with_restored_session_and_model_override(
 
     assert runtime.restore_session_calls == ["session-1"]
     assert runtime.get_current_session().set_model_calls == [
-        ModelSelection(provider="faux", model_id="beta")
+        ModelSelection(endpoint_id="test-endpoint", provider="faux", model_id="beta")
     ]
     assert print_runner.calls[0]["user_input"] == "hello world"
     assert print_runner.calls[0]["follow_up_messages"] == ()
@@ -2832,8 +3072,8 @@ def test_run_cli_dispatches_print_mode_with_restored_session_and_model_override(
 
 
 def test_run_cli_accepts_explicit_endpoint_model_override(tmp_path) -> None:
+    from loushang.ai.model import ModelSelection
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.types import ModelSelection
 
     runtime = FakeRuntime(FakeSession("session-1"))
     print_runner = FakeRunner()
@@ -2866,9 +3106,48 @@ def test_run_cli_accepts_explicit_endpoint_model_override(tmp_path) -> None:
     ]
 
 
+def test_run_cli_completes_unique_provider_model_shorthand(tmp_path) -> None:
+    from loushang.ai.model import ModelSelection
+    from loushang.coding.cli.__main__ import run_cli
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            [
+                "--mode",
+                "json",
+                "--session",
+                "session-1",
+                "--model",
+                "faux:beta",
+                "hello",
+            ],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(str(tmp_path / "sessions")),
+            runtime_builder=lambda **kwargs: runtime,
+            print_runner=FakeRunner(),
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert runtime.get_current_session().set_model_calls == [
+        ModelSelection(
+            provider="faux",
+            endpoint_id="test-endpoint",
+            model_id="beta",
+        )
+    ]
+
+
 def test_apply_model_override_persists_global_default_with_endpoint() -> None:
-    from loushang.coding.cli.__main__ import _apply_model_and_thinking_overrides
-    from loushang.coding.types import ModelSelection
+    from loushang.ai.model import ModelSelection, parse_model_selection_reference
+    from loushang.coding.model_selection import apply_model_selection
+    from loushang.harness.cli import configure_agent_cli_session
 
     session = FakeSession("session-1")
     settings_calls: list[tuple[ModelSelection | None, str]] = []
@@ -2881,11 +3160,23 @@ def test_apply_model_override_persists_global_default_with_endpoint() -> None:
     stderr = StringIO()
 
     result = asyncio.run(
-        _apply_model_and_thinking_overrides(
-            args,
+        configure_agent_cli_session(
             session,
-            stderr,
-            settings_manager=settings_manager,
+            session_name=None,
+            extension_flag_values={},
+            model_selection=None,
+            resolve_model_selection=lambda: parse_model_selection_reference(
+                args.model,
+                provider=args.provider,
+            ),
+            thinking_level=args.thinking,
+            apply_model_selection=lambda current, selection: apply_model_selection(
+                current,
+                selection,
+                settings_manager=settings_manager,
+            ),
+            model_result_warning=lambda _result: None,
+            stderr=stderr,
         )
     )
 
@@ -2903,8 +3194,8 @@ def test_apply_model_override_persists_global_default_with_endpoint() -> None:
 def test_run_cli_accepts_explicit_endpoint_model_override_with_colon_endpoint(
     tmp_path,
 ) -> None:
+    from loushang.ai.model import ModelSelection
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.types import ModelSelection
 
     runtime = FakeRuntime(FakeSession("session-1"))
     print_runner = FakeRunner()
@@ -3039,8 +3330,6 @@ def test_run_cli_dash_p_with_fixed_method_executes_each_step(tmp_path) -> None:
     assert first_call["step_facts"]["step_id"] == "inspect"
     assert first_call["step_facts"]["title"] == "Inspect current changes"
     assert first_call["step_facts"]["step_index"] == 0
-    assert first_call["emit_plan_start"] is True
-    assert first_call["emit_plan_completion"] is False
     assert "Read changed files and summarize intent." in first_call["prompt"]
     assert first_call["prompt"].endswith("User request:\n\ncheck src/app.py")
     assert second_call["method_id"] == "method:task:review"
@@ -3058,8 +3347,6 @@ def test_run_cli_dash_p_with_fixed_method_executes_each_step(tmp_path) -> None:
     assert second_call["step_facts"]["step_id"] == "verify"
     assert second_call["step_facts"]["title"] == "Run focused checks"
     assert second_call["step_facts"]["step_index"] == 1
-    assert second_call["emit_plan_start"] is False
-    assert second_call["emit_plan_completion"] is True
     assert "Run focused tests or explain why they cannot run." in second_call["prompt"]
     assert second_call["prompt"].endswith("User request:\n\ncheck src/app.py")
 
@@ -3685,8 +3972,6 @@ def test_run_cli_mode_print_with_fixed_method_executes_each_step(tmp_path) -> No
     assert first_call["step_facts"]["step_id"] == "inspect"
     assert first_call["step_facts"]["title"] == "Inspect current changes"
     assert first_call["step_facts"]["step_index"] == 0
-    assert first_call["emit_plan_start"] is True
-    assert first_call["emit_plan_completion"] is False
     assert "Read changed files and summarize intent." in first_call["user_input"]
     assert first_call["user_input"].endswith("User request:\n\ncheck src/app.py")
     assert first_call["output_mode"] == "text"
@@ -3705,8 +3990,6 @@ def test_run_cli_mode_print_with_fixed_method_executes_each_step(tmp_path) -> No
     assert second_call["step_facts"]["step_id"] == "verify"
     assert second_call["step_facts"]["title"] == "Run focused checks"
     assert second_call["step_facts"]["step_index"] == 1
-    assert second_call["emit_plan_start"] is False
-    assert second_call["emit_plan_completion"] is True
     assert (
         "Run focused tests or explain why they cannot run." in second_call["user_input"]
     )
@@ -4089,10 +4372,7 @@ def test_run_cli_dispatches_continue_by_restoring_latest_session(tmp_path) -> No
     assert print_runner.calls[0]["user_input"] == "hello"
 
 
-@pytest.mark.parametrize("resume_flag", ["--continue", "--resume"])
-def test_run_cli_dispatches_restore_by_latest_session_for_resume_mode(
-    tmp_path, resume_flag
-) -> None:
+def test_run_cli_rejects_bare_resume_without_interactive_tui(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     latest = Path(tmp_path / ".loushang" / "sessions" / "latest.jsonl")
@@ -4103,30 +4383,30 @@ def test_run_cli_dispatches_restore_by_latest_session_for_resume_mode(
         records=[SimpleNamespace(session_file=latest)],
     )
     print_runner = FakeRunner()
+    stderr = StringIO()
 
     def runtime_builder(**kwargs):
         return runtime
 
     async def scenario() -> None:
         exit_code = await run_cli(
-            [resume_flag, "hello"]
-            if resume_flag == "--continue"
-            else [resume_flag, "--message", "hello"],
+            ["--resume", "--message", "hello"],
             stdin=StringIO(""),
             stdout=StringIO(),
-            stderr=StringIO(),
+            stderr=stderr,
             cwd=tmp_path,
             services=_fake_services(),
             runtime_builder=runtime_builder,
             print_runner=print_runner,
         )
-        assert exit_code == 0
+        assert exit_code == 1
 
     asyncio.run(scenario())
 
-    assert runtime.list_sessions_calls == 1
-    assert runtime.restore_session_calls == [str(latest)]
-    assert print_runner.calls[0]["user_input"] == "hello"
+    assert runtime.list_sessions_calls == 0
+    assert runtime.restore_session_calls == []
+    assert print_runner.calls == []
+    assert "requires an interactive TUI" in stderr.getvalue()
 
 
 def test_run_cli_dispatches_restore_by_resume_session_reference(tmp_path) -> None:
@@ -4180,72 +4460,6 @@ def test_run_cli_reports_continue_without_existing_sessions(tmp_path) -> None:
     asyncio.run(scenario())
 
     assert "No existing session found" in stderr.getvalue()
-
-
-@pytest.mark.parametrize("resume_flag", ["--continue", "--resume"])
-def test_run_cli_reports_restore_errors_when_list_sessions_fails(
-    tmp_path, resume_flag
-) -> None:
-    from loushang.coding.cli.__main__ import run_cli
-
-    class BrokenListSessionsRuntime(FakeRuntime):
-        def list_sessions(self):
-            raise RuntimeError("session listing failed")
-
-    runtime = BrokenListSessionsRuntime(FakeSession("session-1"))
-    stderr = StringIO()
-
-    async def scenario() -> None:
-        exit_code = await run_cli(
-            [resume_flag, "hello"]
-            if resume_flag == "--continue"
-            else [resume_flag, "--message", "hello"],
-            stdin=StringIO(""),
-            stdout=StringIO(),
-            stderr=stderr,
-            cwd=tmp_path,
-            services=_fake_services(),
-            runtime_builder=lambda **kwargs: runtime,
-            print_runner=FakeRunner(),
-        )
-        assert exit_code == 1
-
-    asyncio.run(scenario())
-
-    assert "session listing failed" in stderr.getvalue()
-
-
-@pytest.mark.parametrize("resume_flag", ["--continue", "--resume"])
-def test_run_cli_reports_restore_invalid_list_sessions_payload(
-    tmp_path, resume_flag
-) -> None:
-    from loushang.coding.cli.__main__ import run_cli
-
-    class BrokenListSessionsRuntime(FakeRuntime):
-        def list_sessions(self):
-            return {"sessions": []}
-
-    runtime = BrokenListSessionsRuntime(FakeSession("session-1"))
-    stderr = StringIO()
-
-    async def scenario() -> None:
-        exit_code = await run_cli(
-            [resume_flag, "hello"]
-            if resume_flag == "--continue"
-            else [resume_flag, "--message", "hello"],
-            stdin=StringIO(""),
-            stdout=StringIO(),
-            stderr=stderr,
-            cwd=tmp_path,
-            services=_fake_services(),
-            runtime_builder=lambda **kwargs: runtime,
-            print_runner=FakeRunner(),
-        )
-        assert exit_code == 1
-
-    asyncio.run(scenario())
-
-    assert "session listing returned an invalid response." in stderr.getvalue()
 
 
 def test_run_cli_reports_continue_errors_when_list_sessions_fails(tmp_path) -> None:
@@ -4394,6 +4608,34 @@ def test_run_cli_dispatches_rpc_mode_and_creates_new_session(tmp_path) -> None:
     assert rpc_runner.calls[0]["runtime"] is runtime
 
 
+def test_run_cli_dispatches_standard_channel_mode(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+    channel_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--mode", "channel"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            channel_runner=channel_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert len(channel_runner.calls) == 1
+    assert channel_runner.calls[0]["runtime"] is runtime
+    assert isinstance(channel_runner.calls[0]["stdin"], StringIO)
+    assert isinstance(channel_runner.calls[0]["stdout"], StringIO)
+    assert isinstance(channel_runner.calls[0]["stderr"], StringIO)
+
+
 def test_run_cli_default_path_uses_unified_mode_runner(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
@@ -4482,8 +4724,6 @@ def test_run_cli_default_path_with_fixed_method_executes_each_step(tmp_path) -> 
     assert first_call["plan_id"] == "plan:method:task:review"
     assert first_call["step_id"] == "inspect"
     assert first_call["step_index"] == 0
-    assert first_call["emit_plan_start"] is True
-    assert first_call["emit_plan_completion"] is False
     assert "Read changed files and summarize intent." in first_call["user_input"]
     assert first_call["user_input"].endswith("User request:\n\ncheck src/app.py")
     assert second_call["config"].mode == "json"
@@ -4491,8 +4731,6 @@ def test_run_cli_default_path_with_fixed_method_executes_each_step(tmp_path) -> 
     assert second_call["plan_id"] == "plan:method:task:review"
     assert second_call["step_id"] == "verify"
     assert second_call["step_index"] == 1
-    assert second_call["emit_plan_start"] is False
-    assert second_call["emit_plan_completion"] is True
     assert (
         "Run focused tests or explain why they cannot run." in second_call["user_input"]
     )
@@ -5453,6 +5691,10 @@ def test_run_cli_default_rpc_path_uses_unified_mode_runner(tmp_path) -> None:
             "--work-log is not supported in RPC mode",
         ),
         (
+            ["--mode", "channel", "--work-log", "events.jsonl"],
+            "--work-log is not supported in Channel mode",
+        ),
+        (
             ["--work-log", "events.jsonl", "--prompt-steps", "workflow.json"],
             "--work-log is not supported with --prompt-steps",
         ),
@@ -5482,6 +5724,58 @@ def test_run_cli_rejects_work_log_on_unsupported_paths(tmp_path, argv, message) 
 
     asyncio.run(scenario())
 
+    assert message in stderr.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("argv", "message"),
+    [
+        (
+            ["--mode", "channel", "--tui"],
+            "--tui is not supported in Channel mode",
+        ),
+        (
+            ["--mode", "channel", "--prompt", "inspect"],
+            "--prompt is not supported in Channel mode",
+        ),
+        (
+            ["--mode", "channel", "--prompt-steps", "workflow.json"],
+            "--prompt-steps is not supported in Channel mode",
+        ),
+        (
+            ["--mode", "channel", "inspect"],
+            "positional messages are not supported in Channel mode",
+        ),
+        (
+            ["--mode", "channel", "@notes.txt"],
+            "@file arguments are not supported in Channel mode",
+        ),
+        (
+            ["--mode", "channel", "--render-tool-events"],
+            "--render-tool-events is not supported in Channel mode",
+        ),
+    ],
+)
+def test_run_cli_rejects_non_protocol_channel_inputs(tmp_path, argv, message) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+    stderr = StringIO()
+
+    exit_code = asyncio.run(
+        run_cli(
+            argv,
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            channel_runner=FakeRunner(),
+        )
+    )
+
+    assert exit_code == 2
     assert message in stderr.getvalue()
 
 
@@ -5595,7 +5889,6 @@ def test_run_cli_defaults_to_tui_for_interactive_bare_startup(tmp_path) -> None:
     ("argv", "expected_restore"),
     [
         (["--resume", "abcd1234"], "abcd1234"),
-        (["--resume"], "/tmp/latest-session.jsonl"),
         (["--continue"], "/tmp/latest-session.jsonl"),
     ],
 )
@@ -5627,6 +5920,131 @@ def test_run_cli_defaults_to_tui_for_interactive_resume_flows(
     assert runtime.restore_session_calls == [expected_restore]
     assert len(tui_runner.calls) == 1
     assert print_runner.calls == []
+
+
+def test_run_cli_bare_resume_cancels_before_creating_placeholder_session(
+    tmp_path,
+) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    runtime = FakeRuntime(FakeSession("placeholder"))
+    tui_runner = FakeRunner()
+    picker_calls: list[dict[str, object]] = []
+
+    async def cancel_picker(**kwargs):
+        picker_calls.append(kwargs)
+        return None
+
+    exit_code = asyncio.run(
+        run_cli(
+            ["--resume"],
+            stdin=TtyStringIO(),
+            stdout=TtyStringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            tui_runner=tui_runner,
+            continuity_runner=cancel_picker,
+        )
+    )
+
+    assert exit_code == 0
+    assert len(picker_calls) == 1
+    assert runtime.restore_session_calls == []
+    assert tui_runner.calls == []
+
+
+def test_run_cli_bare_resume_activates_selection_before_starting_main_tui(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.coding.cli import __main__ as cli_main
+    from loushang.harness.continuity import (
+        CallbackPreparedActivationLease,
+        ContinuityTarget,
+    )
+    from loushang.harnesstui.continuity import ContinuityPickerSelection
+
+    runtime = FakeRuntime(FakeSession("selected"))
+    tui_runner = FakeRunner()
+    target = ContinuityTarget(
+        provider_id="coding.sessions",
+        opaque_id="picked-session",
+        revision="7",
+    )
+
+    class _Hub:
+        async def prepare(self, selected_target):
+            assert selected_target == target
+            return CallbackPreparedActivationLease(
+                target=target,
+                disposition="in_place",
+                consume=lambda: runtime.restore_session_operation("picked-session"),
+            )
+
+    class _Composition:
+        hub = _Hub()
+
+        async def dispose(self) -> None:
+            return None
+
+    async def select_and_activate(**kwargs):
+        result = await kwargs["activate"](target)
+        return ContinuityPickerSelection(target=target, activation_result=result)
+
+    monkeypatch.setattr(
+        cli_main,
+        "bind_coding_continuity",
+        lambda _runtime: _Composition(),
+    )
+
+    exit_code = asyncio.run(
+        cli_main.run_cli(
+            ["--resume"],
+            stdin=TtyStringIO(),
+            stdout=TtyStringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            tui_runner=tui_runner,
+            continuity_runner=select_and_activate,
+        )
+    )
+
+    assert exit_code == 0
+    assert runtime.restore_session_calls == ["picked-session"]
+    assert len(tui_runner.calls) == 1
+    assert tui_runner.calls[0]["session"] is runtime.get_current_session()
+
+
+def test_run_cli_bare_resume_rejects_noninteractive_channel_before_resolution(
+    tmp_path,
+) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    runtime = FakeRuntime(FakeSession("unresolved"))
+    stderr = StringIO()
+    tui_runner = FakeRunner()
+
+    exit_code = asyncio.run(
+        run_cli(
+            ["--resume"],
+            stdin=StringIO(),
+            stdout=StringIO(),
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            tui_runner=tui_runner,
+        )
+    )
+
+    assert exit_code == 1
+    assert "requires an interactive TUI" in stderr.getvalue()
+    assert runtime.restore_session_calls == []
+    assert tui_runner.calls == []
 
 
 def test_run_cli_no_tui_keeps_interactive_bare_startup_in_text_mode(tmp_path) -> None:
@@ -5760,7 +6178,8 @@ def test_run_cli_keeps_list_commands_out_of_default_tui(tmp_path) -> None:
 
 def test_run_cli_configures_observability_for_tui_debug_trace(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.observability import get_log, reset_observability
+    from loushang.foundation.observability import get_log
+    from loushang.foundation.observability._router import reset_observability
 
     reset_observability()
     runtime = FakeRuntime(FakeSession("session-1"))
@@ -5870,17 +6289,29 @@ def test_run_cli_lists_models_and_returns_early(tmp_path) -> None:
                 type(
                     "ModelSelection",
                     (),
-                    {"provider": "anthropic", "model_id": "claude-3-opus"},
+                    {
+                        "provider": "anthropic",
+                        "endpoint_id": "anthropic-messages",
+                        "model_id": "claude-3-opus",
+                    },
                 ),
                 type(
                     "ModelSelection",
                     (),
-                    {"provider": "google", "model_id": "gemini-2.0"},
+                    {
+                        "provider": "google",
+                        "endpoint_id": "generate-content",
+                        "model_id": "gemini-2.0",
+                    },
                 ),
                 type(
                     "ModelSelection",
                     (),
-                    {"provider": "anthropic", "model_id": "claude-3-haiku"},
+                    {
+                        "provider": "anthropic",
+                        "endpoint_id": "anthropic-messages",
+                        "model_id": "claude-3-haiku",
+                    },
                 ),
             ]
 
@@ -5908,7 +6339,10 @@ def test_run_cli_lists_models_and_returns_early(tmp_path) -> None:
 
     assert runtime_args[0].no_session is True
     assert runtime.get_current_session().get_available_models_calls == 1
-    assert stdout.getvalue() == "anthropic/claude-3-haiku\nanthropic/claude-3-opus\n"
+    assert stdout.getvalue() == (
+        "anthropic:anthropic-messages:claude-3-haiku\n"
+        "anthropic:anthropic-messages:claude-3-opus\n"
+    )
     assert "prompt is required" not in stderr.getvalue()
 
 
@@ -5922,17 +6356,29 @@ def test_run_cli_lists_models_as_json(tmp_path) -> None:
                 type(
                     "ModelSelection",
                     (),
-                    {"provider": "anthropic", "model_id": "claude-3-opus"},
+                    {
+                        "provider": "anthropic",
+                        "endpoint_id": "anthropic-messages",
+                        "model_id": "claude-3-opus",
+                    },
                 ),
                 type(
                     "ModelSelection",
                     (),
-                    {"provider": "google", "model_id": "gemini-2.0"},
+                    {
+                        "provider": "google",
+                        "endpoint_id": "generate-content",
+                        "model_id": "gemini-2.0",
+                    },
                 ),
                 type(
                     "ModelSelection",
                     (),
-                    {"provider": "anthropic", "model_id": "claude-3-haiku"},
+                    {
+                        "provider": "anthropic",
+                        "endpoint_id": "anthropic-messages",
+                        "model_id": "claude-3-haiku",
+                    },
                 ),
             ]
 
@@ -5958,13 +6404,15 @@ def test_run_cli_lists_models_as_json(tmp_path) -> None:
     assert json.loads(stdout.getvalue()) == [
         {
             "provider": "anthropic",
+            "endpoint_id": "anthropic-messages",
             "model_id": "claude-3-haiku",
-            "id": "anthropic/claude-3-haiku",
+            "id": "anthropic:anthropic-messages:claude-3-haiku",
         },
         {
             "provider": "anthropic",
+            "endpoint_id": "anthropic-messages",
             "model_id": "claude-3-opus",
-            "id": "anthropic/claude-3-opus",
+            "id": "anthropic:anthropic-messages:claude-3-opus",
         },
     ]
     assert stderr.getvalue() == ""
@@ -6020,8 +6468,8 @@ def test_run_cli_lists_model_metadata_when_session_exposes_details(tmp_path) -> 
     asyncio.run(scenario())
 
     assert stdout.getvalue() == (
-        "provider   model          context  max-out  thinking  images\n"
-        "anthropic  claude-3-opus  200K     8192     yes       yes\n"
+        "provider   endpoint            model          context  max-out  thinking  images\n"
+        "anthropic  anthropic-messages  claude-3-opus  200K     8192     yes       yes\n"
     )
     assert stderr.getvalue() == ""
 
@@ -6066,8 +6514,9 @@ def test_run_cli_lists_model_metadata_as_json(tmp_path) -> None:
     assert json.loads(stdout.getvalue()) == [
         {
             "provider": "moonshot",
+            "endpoint_id": "anthropic-messages",
             "model_id": "kimi-k2.5",
-            "id": "moonshot/kimi-k2.5",
+            "id": "moonshot:anthropic-messages:kimi-k2.5",
             "context_window": 256000,
             "max_tokens": 16384,
             "supports_thinking": True,
@@ -6086,14 +6535,30 @@ def test_run_cli_lists_models_deduplicates_provider_model_pairs(tmp_path) -> Non
                 type(
                     "ModelSelection",
                     (),
-                    {"provider": "moonshot", "model_id": "kimi-k2.5"},
+                    {
+                        "provider": "moonshot",
+                        "endpoint_id": "anthropic-messages",
+                        "model_id": "kimi-k2.5",
+                    },
                 ),
                 type(
                     "ModelSelection",
                     (),
-                    {"provider": "moonshot", "model_id": "kimi-k2.5"},
+                    {
+                        "provider": "moonshot",
+                        "endpoint_id": "anthropic-messages",
+                        "model_id": "kimi-k2.5",
+                    },
                 ),
-                type("ModelSelection", (), {"provider": "openai", "model_id": "gpt-5"}),
+                type(
+                    "ModelSelection",
+                    (),
+                    {
+                        "provider": "openai",
+                        "endpoint_id": "responses",
+                        "model_id": "gpt-5",
+                    },
+                ),
             ]
 
     runtime = FakeRuntime(ModelSession("session-1"))
@@ -6115,7 +6580,9 @@ def test_run_cli_lists_models_deduplicates_provider_model_pairs(tmp_path) -> Non
 
     asyncio.run(scenario())
 
-    assert stdout.getvalue() == "moonshot/kimi-k2.5\nopenai/gpt-5\n"
+    assert stdout.getvalue() == (
+        "moonshot:anthropic-messages:kimi-k2.5\nopenai:responses:gpt-5\n"
+    )
     assert stderr.getvalue() == ""
 
 
@@ -6218,7 +6685,9 @@ def test_run_cli_list_models_query_ignores_invalid_model_entries(tmp_path) -> No
         def get_available_models(self):
             return [
                 SimpleNamespace(provider=123, model_id="legacy"),
-                SimpleNamespace(provider="openai", model_id="gpt-5"),
+                SimpleNamespace(
+                    provider="openai", endpoint_id="responses", model_id="gpt-5"
+                ),
                 SimpleNamespace(provider="moonshot", model_id=None),
             ]
 
@@ -6240,7 +6709,7 @@ def test_run_cli_list_models_query_ignores_invalid_model_entries(tmp_path) -> No
 
     asyncio.run(scenario())
 
-    assert stdout.getvalue() == "openai/gpt-5\n"
+    assert stdout.getvalue() == "openai:responses:gpt-5\n"
     assert stderr.getvalue() == ""
 
 
@@ -6262,7 +6731,9 @@ def test_run_cli_list_models_query_ignores_raising_model_attributes(tmp_path) ->
         def get_available_models(self):
             return [
                 BadProvider(),
-                SimpleNamespace(provider="openai", model_id="gpt-5"),
+                SimpleNamespace(
+                    provider="openai", endpoint_id="responses", model_id="gpt-5"
+                ),
             ]
 
     runtime = FakeRuntime(RaisingModelSession("session-1"))
@@ -6283,7 +6754,7 @@ def test_run_cli_list_models_query_ignores_raising_model_attributes(tmp_path) ->
 
     asyncio.run(scenario())
 
-    assert stdout.getvalue() == "openai/gpt-5\n"
+    assert stdout.getvalue() == "openai:responses:gpt-5\n"
     assert stderr.getvalue() == ""
 
 
@@ -6307,11 +6778,19 @@ def test_run_cli_list_models_text_mode_uses_normalized_entries(tmp_path) -> None
         def model_id(self) -> str:
             return "gpt-5"
 
+        @property
+        def endpoint_id(self) -> str:
+            return "responses"
+
     class MixedModelSession(FakeSession):
         def get_available_models(self):
             return [
                 FlakyModel(),
-                SimpleNamespace(provider="anthropic", model_id="claude-3-haiku"),
+                SimpleNamespace(
+                    provider="anthropic",
+                    endpoint_id="anthropic-messages",
+                    model_id="claude-3-haiku",
+                ),
             ]
 
     runtime = FakeRuntime(MixedModelSession("session-1"))
@@ -6332,7 +6811,7 @@ def test_run_cli_list_models_text_mode_uses_normalized_entries(tmp_path) -> None
 
     asyncio.run(scenario())
 
-    assert stdout.getvalue() == "anthropic/claude-3-haiku\n"
+    assert stdout.getvalue() == "anthropic:anthropic-messages:claude-3-haiku\n"
     assert stderr.getvalue() == ""
 
 
@@ -6541,7 +7020,7 @@ def test_run_cli_lists_commands_as_json(tmp_path) -> None:
 
 def test_run_cli_lists_diagnostics_as_json(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.diagnostics import DiagnosticRecord
+    from loushang.harness.diagnostics import DiagnosticRecord
 
     session = FakeSession("session-1")
     session.set_diagnostics(
@@ -6599,7 +7078,7 @@ def test_run_cli_lists_diagnostics_as_json(tmp_path) -> None:
 
 def test_run_cli_lists_diagnostics_as_tsv_and_returns_early(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.diagnostics import DiagnosticRecord
+    from loushang.harness.diagnostics import DiagnosticRecord
 
     session = FakeSession("session-1")
     session.set_diagnostics(
@@ -6646,7 +7125,8 @@ def test_run_cli_lists_diagnostics_as_tsv_and_returns_early(tmp_path) -> None:
 
 def test_run_cli_lists_skills_as_json(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.loader import ResourceDiagnostic, SkillDescriptor
+    from loushang.harness.resources.diagnostics import resource_diagnostic
+    from loushang.harness.resources.types import SkillDescriptor
 
     session = FakeSession("session-1")
     session.resource_bundle.skills = [
@@ -6662,7 +7142,7 @@ def test_run_cli_lists_skills_as_json(tmp_path) -> None:
             canonical_name="debug/SKILL.md",
             source_root=Path("/tmp/project/skills"),
             diagnostics=(
-                ResourceDiagnostic(
+                resource_diagnostic(
                     code="invalid_skill_description",
                     message="Skill frontmatter description is required.",
                     source_path=Path("/tmp/project/skills/debug/SKILL.md"),
@@ -6721,7 +7201,9 @@ def test_run_cli_lists_skills_as_json(tmp_path) -> None:
 
 def test_run_cli_lists_project_skill_provenance_as_json(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     skill_dir = tmp_path / "skills" / "debug"
     skill_dir.mkdir(parents=True)
@@ -7314,6 +7796,7 @@ def test_run_cli_lists_package_roots_and_plugin_packages_as_json(tmp_path) -> No
             "extensions": 0,
             "themes": 0,
             "diagnostics": 0,
+            "description": "",
         },
         {
             "name": "debug-pack",
@@ -7329,6 +7812,7 @@ def test_run_cli_lists_package_roots_and_plugin_packages_as_json(tmp_path) -> No
             "extensions": 0,
             "themes": 1,
             "diagnostics": 0,
+            "description": "",
         },
     ]
     assert stderr.getvalue() == ""
@@ -8377,8 +8861,9 @@ def test_run_cli_reports_list_diagnostics_invalid_limit(tmp_path) -> None:
 
 def test_run_cli_bridges_startup_problem_to_diagnostics(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.observability import get_log, reset_observability
+    from loushang.foundation.observability import get_log
+    from loushang.foundation.observability._router import reset_observability
+    from loushang.harness.diagnostics import DiagnosticsService
 
     class StartupProblemRuntime(FakeRuntime):
         async def new_session(self, *, cwd: str) -> FakeSession:

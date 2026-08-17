@@ -31,6 +31,9 @@ MANIFEST
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+# The loushang build spec is a portable build configuration (relative paths
+# only) and is committed for reproducible `make install-binary` builds.
+!loushang.spec
 
 # Installer logs
 pip-log.txt

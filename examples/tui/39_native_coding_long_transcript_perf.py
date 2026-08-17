@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import sys
 from pathlib import Path
 
-from loushang.coding.ui.native_app import NativeCodingTuiApp
-from loushang.coding.ui.perf_probe import (
+from loushang.coding.presentation.tui.history import (
+    load_persisted_session_history_records,
+)
+from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+from loushang.harnesstui.testing.performance import (
     build_synthetic_long_transcript_records,
     characterize_long_transcript_rendering,
-    load_session_history_records,
 )
 from loushang.tui import RenderLoop
 
@@ -47,7 +50,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
 
     if args.session_file:
-        records = load_session_history_records(Path(args.session_file))
+        records = asyncio.run(
+            load_persisted_session_history_records(Path(args.session_file))
+        )
         source = str(Path(args.session_file).expanduser().resolve())
     else:
         records = build_synthetic_long_transcript_records(
@@ -59,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
             f"tail_tool_output_lines={max(1, args.tail_tool_output_lines)}"
         )
 
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="fake-model",
         cwd="/repo",
         branch="main",

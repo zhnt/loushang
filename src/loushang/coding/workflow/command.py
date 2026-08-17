@@ -1,19 +1,15 @@
+"""Coding model preparation bound to the shared scenario CLI."""
+
 from __future__ import annotations
 
-import asyncio
-import inspect
-import traceback
+from functools import partial
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, TextIO, cast
 
-from loushang.coding.ui.model import ensure_usable_session_model
-from loushang.coding.workflow.fake_runtime import FakeWorkflowAdapter
-from loushang.coding.workflow.loader import load_workflow, resolve_workflow_files
-from loushang.coding.workflow.report import (
-    format_workflow_json_report,
-    format_workflow_report,
-)
-from loushang.coding.workflow.runner import AgentSessionWorkflowAdapter, run_workflow
+from loushang.coding.model_selection import ensure_usable_session_model
+from loushang.harness.scenario.cli import run_workflow_cli
+from loushang.harness.scenario.protocols import CommandRunResult
+from loushang.harness.workspace.exec import ExecRequest, ExecService
 
 
 async def run_prompt_steps_workflow(
@@ -28,89 +24,54 @@ async def run_prompt_steps_workflow(
     default_step_timeout_s: float | None = 300.0,
     output_mode: str = "text",
 ) -> int:
-    exit_code = 0
-    try:
-        root = Path(cwd).resolve()
-        workflow_files = resolve_workflow_files(root, workflow_path)
-        results = []
-        passed = 0
-        failed = 0
-        for workflow_file in workflow_files:
-            workflow = load_workflow(workflow_file)
-            if output_mode != "json":
-                stdout.write(f"workflow: {workflow.name}\n")
-                stdout.flush()
-            adapter = await _adapter_for_workflow(workflow.backend, session)
-            result = await run_workflow(
-                workflow,
-                adapter=adapter,
-                cwd=root,
-                default_step_timeout_s=default_step_timeout_s,
-                on_step_start=(
-                    None
-                    if output_mode == "json"
-                    else lambda index, total, step: _write_step_progress(stdout, index, total, _step_progress_label(step))
-                ),
-            )
-            results.append(result)
-            if output_mode != "json":
-                stdout.write(format_workflow_report(result, include_header=False))
-            if result.ok:
-                passed += 1
-            else:
-                failed += 1
-        if output_mode == "json":
-            stdout.write(format_workflow_json_report(tuple(results)))
-        elif len(workflow_files) > 1:
-            stdout.write(f"workflow summary: {passed} passed, {failed} failed\n")
-        exit_code = 0 if failed == 0 else 1
-    except asyncio.CancelledError:
-        stderr.write("Interrupted.\n")
-        exit_code = 130
-    except Exception as error:
-        stderr.write(f"Error: {error}\n")
-        if verbose:
-            traceback.print_exception(type(error), error, error.__traceback__, file=stderr)
-        exit_code = 1
-    finally:
-        try:
-            await _dispose_runtime_or_session(runtime, session)
-        except Exception as error:
-            stderr.write(f"Error: {error}\n")
-            if verbose:
-                traceback.print_exception(type(error), error, error.__traceback__, file=stderr)
-            exit_code = 1
-    return exit_code
+    return await run_workflow_cli(
+        runtime=runtime,
+        session=session,
+        workflow_path=workflow_path,
+        cwd=cwd,
+        stdout=stdout,
+        stderr=stderr,
+        verbose=verbose,
+        default_step_timeout_s=default_step_timeout_s,
+        output_mode=output_mode,
+        prepare_agent_session=ensure_usable_session_model,
+        command_runner=partial(
+            _run_coding_scenario_command,
+            exec_service=_session_exec_service(session),
+        ),
+    )
 
 
-def _write_step_progress(stdout: TextIO, index: int, total: int, prompt: str) -> None:
-    stdout.write(f"[{index}/{total}] running: {prompt}\n")
-    stdout.flush()
+async def _run_coding_scenario_command(
+    command: str,
+    *,
+    cwd: Path,
+    timeout_s: float | None,
+    exec_service: ExecService | None = None,
+) -> CommandRunResult:
+    result = await (exec_service or ExecService()).execute(
+        ExecRequest(
+            command=("/bin/sh", "-c", command),
+            cwd=str(cwd),
+            timeout_seconds=timeout_s,
+        )
+    )
+    return CommandRunResult(
+        exit_code=result.exit_code,
+        stdout=result.stdout,
+        stderr=result.stderr,
+        error=(
+            f"timed out after {timeout_s}s: {command}" if result.timed_out else None
+        ),
+    )
 
 
-def _step_progress_label(step: object) -> str:
-    for name in ("prompt", "text", "event", "kind"):
-        value = getattr(step, name, None)
-        if isinstance(value, str) and value:
-            return value
-    return step.__class__.__name__
+def _session_exec_service(session: object | None) -> ExecService | None:
+    get_exec_service = getattr(session, "get_exec_service", None)
+    if not callable(get_exec_service):
+        return None
+    service = get_exec_service()
+    return cast(ExecService, service)
 
 
-async def _adapter_for_workflow(backend: str | None, session: Any) -> object:
-    if backend == "fake":
-        return FakeWorkflowAdapter()
-    if backend is None:
-        await ensure_usable_session_model(session)
-        return AgentSessionWorkflowAdapter(session)
-    raise ValueError(f"Unknown workflow backend: {backend}")
-
-
-async def _dispose_runtime_or_session(runtime: Any, session: Any) -> None:
-    disposer = getattr(runtime, "dispose", None)
-    if not callable(disposer):
-        disposer = getattr(session, "dispose", None)
-    if not callable(disposer):
-        return
-    result = disposer()
-    if inspect.isawaitable(result):
-        await result
+__all__ = ["run_prompt_steps_workflow"]

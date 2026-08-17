@@ -16,6 +16,7 @@ def _assistant(
         content=content or [],
         api="test",
         provider="test",
+        endpoint="test-endpoint",
         model="test-model",
         response_id=None,
         usage=usage
@@ -37,6 +38,66 @@ def test_error_message_overflow_detected() -> None:
         ),
     )
     assert is_context_overflow(msg, context_window=128000) is True
+
+
+def test_typed_context_overflow_does_not_depend_on_public_message() -> None:
+    msg = _assistant(
+        stop_reason="error",
+        error_message="Provider request failed.",
+    )
+    object.__setattr__(
+        msg,
+        "error_info",
+        {
+            "code": "context_overflow",
+            "message": "Provider request failed.",
+            "source": "provider",
+            "retryable": False,
+            "details": {},
+        },
+    )
+
+    assert is_context_overflow(msg, context_window=128000) is True
+
+
+def test_typed_request_too_large_triggers_capacity_recovery() -> None:
+    msg = _assistant(
+        stop_reason="error",
+        error_message="Provider request is too large.",
+    )
+    object.__setattr__(
+        msg,
+        "error_info",
+        {
+            "code": "request_too_large",
+            "message": "Provider request is too large.",
+            "source": "provider",
+            "retryable": False,
+            "details": {"canonicalBytes": 900_000},
+        },
+    )
+
+    assert is_context_overflow(msg, context_window=1_048_576) is True
+
+
+def test_typed_capacity_identity_does_not_override_aborted_terminal() -> None:
+    msg = _assistant(
+        stop_reason="aborted",
+        error_message="Request aborted by user",
+    )
+    object.__setattr__(
+        msg,
+        "error_info",
+        {
+            "code": "request_too_large",
+            "message": "Provider request is too large.",
+            "source": "provider",
+            "retryable": False,
+            "details": {},
+        },
+    )
+
+    assert is_context_overflow(msg, context_window=1_048_576) is False
 
 
 def test_error_message_no_overflow() -> None:

@@ -133,11 +133,11 @@
 普通使用方式保持简单函数 API：
 
 ```python
-from loushang.ai import CallOptions, complete, get_model, stream
+from loushang.ai import ApiKeyAuth, CallOptions, complete, get_model, stream
 
 model = get_model("moonshot", "openai-completions", "kimi-k2.6")
-message = await complete(model, context, CallOptions(api_key="..."))
-events = await stream(model, context, CallOptions(api_key="..."))
+message = await complete(model, context, CallOptions(auth=ApiKeyAuth("...")))
+events = await stream(model, context, CallOptions(auth=ApiKeyAuth("...")))
 ```
 
 `Model` 最终保持数据对象，不再承担 `model.complete()`、`model.stream()` 等调用门面。
@@ -1636,7 +1636,7 @@ refactor(ai-auth): unify auth configuration and registry operations
 **验证**：
 
 ```bash
-uv run pytest tests/ai/test_auth_storage.py tests/ai/test_auth_support.py tests/auth -q
+uv run pytest tests/ai/test_auth_storage.py tests/ai/test_auth_support.py tests/ai/auth -q
 ```
 
 **Review**：`ai_reviewer`、`ai_test_reviewer`
@@ -1662,7 +1662,7 @@ refactor(ai-core): move provider-specific services to contrib
 **验证**：
 
 ```bash
-uv run pytest tests/ai/test_usage.py tests/providers/test_openai_codex_responses_provider.py tests/auth/test_openai_codex_oauth.py -q
+uv run pytest tests/ai/test_usage.py tests/ai/auth/test_openai_codex_oauth.py -q
 ```
 
 **Review**：`ai_architect`、`ai_reviewer`

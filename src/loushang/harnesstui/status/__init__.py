@@ -1,0 +1,1 @@
+"""Shared terminal status interaction."""

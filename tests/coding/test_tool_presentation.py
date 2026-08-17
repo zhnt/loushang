@@ -4,7 +4,7 @@ from loushang.ai.types import ImagePart, TextPart
 
 
 def test_tool_presentation_extracts_normalized_text_and_image_fallbacks() -> None:
-    from loushang.coding.tools import get_tool_text_output
+    from loushang.harness.tools.workspace import get_tool_text_output
 
     output = get_tool_text_output(
         [
@@ -18,7 +18,7 @@ def test_tool_presentation_extracts_normalized_text_and_image_fallbacks() -> Non
 
 
 def test_tool_presentation_renders_truncation_and_artifact_notices() -> None:
-    from loushang.coding.tools import render_tool_result_text
+    from loushang.harness.tools.workspace import render_tool_result_text
 
     output = render_tool_result_text(
         [TextPart(type="text", text="line")],
@@ -41,7 +41,7 @@ def test_tool_presentation_renders_truncation_and_artifact_notices() -> None:
 
 
 def test_tool_presentation_collapses_long_result_but_keeps_expanded_text() -> None:
-    from loushang.coding.tools import render_tool_result_presentation
+    from loushang.harness.tools.workspace import render_tool_result_presentation
 
     rendered = render_tool_result_presentation(
         [TextPart(type="text", text="a\nb\nc\nd")],
@@ -52,4 +52,3 @@ def test_tool_presentation_collapses_long_result_but_keeps_expanded_text() -> No
     assert rendered.expanded == "a\nb\nc\nd"
     assert rendered.collapsed == "a\nb\n... (2 more lines)"
     assert rendered.remaining_lines == 2
-

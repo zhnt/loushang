@@ -22,6 +22,7 @@ def _assistant_tool_call_message(
     tool_name: str = "calc", arguments: dict[str, object] | None = None
 ) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[
             ToolCall(
@@ -54,8 +55,8 @@ def _agent_context():
 
 def test_hook_dispatcher_pipelines_tool_call_decisions() -> None:
     from loushang.agent.types import BeforeToolCallContext
-    from loushang.coding.extensions import LoadedExtension, ToolCallDecision
-    from loushang.coding.extensions.hooks import HookDispatcher
+    from loushang.harness.extensions.agent import LoadedExtension, ToolCallDecision
+    from loushang.harness.extensions.agent.hooks import ExtensionToolHookDispatcher
 
     seen: list[tuple[str, object]] = []
 
@@ -73,7 +74,7 @@ def test_hook_dispatcher_pipelines_tool_call_decisions() -> None:
         return ToolCallDecision(block=True, reason="blocked by extension")
 
     runner_diagnostics: list[object] = []
-    dispatcher = HookDispatcher(
+    dispatcher = ExtensionToolHookDispatcher(
         [
             LoadedExtension(
                 name="rewrite",
@@ -113,8 +114,8 @@ def test_hook_dispatcher_pipelines_tool_call_decisions() -> None:
 
 def test_hook_dispatcher_pipelines_tool_result_decisions() -> None:
     from loushang.agent.types import AfterToolCallContext, AgentToolResult
-    from loushang.coding.extensions import LoadedExtension, ToolResultDecision
-    from loushang.coding.extensions.hooks import HookDispatcher
+    from loushang.harness.extensions.agent import LoadedExtension, ToolResultDecision
+    from loushang.harness.extensions.agent.hooks import ExtensionToolHookDispatcher
 
     seen: list[tuple[object, object]] = []
 
@@ -138,7 +139,7 @@ def test_hook_dispatcher_pipelines_tool_result_decisions() -> None:
             )
         )
 
-    dispatcher = HookDispatcher(
+    dispatcher = ExtensionToolHookDispatcher(
         [
             LoadedExtension(
                 name="one",
@@ -184,8 +185,8 @@ def test_hook_dispatcher_pipelines_tool_result_decisions() -> None:
 
 def test_hook_dispatcher_pipelines_explicit_null_tool_result_details() -> None:
     from loushang.agent.types import AfterToolCallContext, AgentToolResult
-    from loushang.coding.extensions import LoadedExtension, ToolResultDecision
-    from loushang.coding.extensions.hooks import HookDispatcher
+    from loushang.harness.extensions.agent import LoadedExtension, ToolResultDecision
+    from loushang.harness.extensions.agent.hooks import ExtensionToolHookDispatcher
 
     seen: list[tuple[object, object]] = []
 
@@ -203,7 +204,7 @@ def test_hook_dispatcher_pipelines_explicit_null_tool_result_details() -> None:
         seen.append((event.result.details, event.hook_details))
         return None
 
-    dispatcher = HookDispatcher(
+    dispatcher = ExtensionToolHookDispatcher(
         [
             LoadedExtension(
                 name="clear",
@@ -249,8 +250,8 @@ def test_hook_dispatcher_pipelines_explicit_null_tool_result_details() -> None:
 
 def test_hook_dispatcher_records_tool_hook_errors_and_continues() -> None:
     from loushang.agent.types import BeforeToolCallContext
-    from loushang.coding.extensions import LoadedExtension, ToolCallDecision
-    from loushang.coding.extensions.hooks import HookDispatcher
+    from loushang.harness.extensions.agent import LoadedExtension, ToolCallDecision
+    from loushang.harness.extensions.agent.hooks import ExtensionToolHookDispatcher
 
     runtime_errors: list[tuple[str, str, str]] = []
 
@@ -263,7 +264,7 @@ def test_hook_dispatcher_records_tool_hook_errors_and_continues() -> None:
         return ToolCallDecision(arguments={"ok": True})
 
     diagnostics: list[object] = []
-    dispatcher = HookDispatcher(
+    dispatcher = ExtensionToolHookDispatcher(
         [
             LoadedExtension(
                 name="broken",

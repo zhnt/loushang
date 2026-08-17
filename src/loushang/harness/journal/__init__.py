@@ -1,23 +1,11 @@
 from __future__ import annotations
 
-from loushang.harness.journal.branch import (
-    BranchGraph,
-    BranchGraphError,
-    BranchMode,
-    ForkPlan,
-)
 from loushang.harness.journal.codec import (
     FunctionalJournalHeaderCodec,
     FunctionalJournalRecordCodec,
     JournalCodecError,
     JournalHeaderCodec,
     JournalRecordCodec,
-)
-from loushang.harness.journal.index import (
-    FunctionalProjectionCodec,
-    JsonProjectionIndex,
-    ProjectionCodec,
-    ProjectionIndexSnapshot,
 )
 from loushang.harness.journal.jsonl import (
     JournalFileError,
@@ -27,12 +15,12 @@ from loushang.harness.journal.jsonl import (
     LockFactory,
     LockMode,
     append_jsonl_record,
+    append_jsonl_records,
     journal_file_lock,
     load_jsonl,
     parse_legacy_jsonl_line,
     write_jsonl,
 )
-from loushang.harness.journal.transcript import TranscriptRepository
 from loushang.harness.journal.types import (
     DEFAULT_JSONL_FORMAT,
     DURABLE_LOCKED_JOURNAL,
@@ -43,6 +31,7 @@ from loushang.harness.journal.types import (
     JournalFormatProfile,
     JournalLoadPolicy,
     JsonlSnapshot,
+    PartialTailBehavior,
 )
 
 __all__ = [
@@ -50,13 +39,8 @@ __all__ = [
     "DURABLE_LOCKED_JOURNAL",
     "PROCESS_LOCAL_JOURNAL",
     "SORTED_UNICODE_JSONL_FORMAT",
-    "BranchGraph",
-    "BranchGraphError",
-    "BranchMode",
-    "ForkPlan",
     "FunctionalJournalHeaderCodec",
     "FunctionalJournalRecordCodec",
-    "FunctionalProjectionCodec",
     "JournalCodecError",
     "JournalDiagnostic",
     "JournalDurabilityProfile",
@@ -67,15 +51,13 @@ __all__ = [
     "JournalRecordCodec",
     "JsonlJournal",
     "JsonlSnapshot",
-    "JsonProjectionIndex",
+    "PartialTailBehavior",
     "LegacyJsonConstant",
     "LegacyJsonlParsedLine",
     "LockFactory",
     "LockMode",
-    "ProjectionCodec",
-    "ProjectionIndexSnapshot",
-    "TranscriptRepository",
     "append_jsonl_record",
+    "append_jsonl_records",
     "journal_file_lock",
     "load_jsonl",
     "parse_legacy_jsonl_line",

@@ -1,5 +1,12 @@
 # `plugin`
 
+## Status
+
+Superseded as a Coding-owned component. Product-neutral Plugin identity,
+manifest, source, registry, resolver, and manager mechanics now belong to
+[Harness Platform Resource Layout](../../harness/platform-resource-layout-boundary.md).
+The definitions below are retained for compatibility history.
+
 ## Role
 
 - manifest-backed plugin source management component
@@ -84,8 +91,8 @@ package lifecycle facade：
 ## Reference Implementation Alignment
 
 - 对齐 `reference CLI` 中 package / package-manager / resource-plane 的总体方向
-- `plugin` 更接近 `reference packages` 的分发与资源声明语义，不等同于 `ExtensionAPI` 本身
-- `ExtensionAPI` 继续承担作者编程面；`plugin` 负责把 bundle 展开为 resources
+- `plugin` 对齐 manifest/source 声明与可选激活语义，但不拥有 Package 分发，也不等同于 `ExtensionAPI`
+- `ExtensionAPI` 继续承担作者编程面；`plugin` 把已解析的 package root 投影为 resources
 - `package` / `plugin` 在 loushang 中不再视为同义词：package 是资源分发单位，plugin 是 manifest-backed source view。
 - Headless MVP 已覆盖本地 plugin source 管理、enabled state、resource 展开与 package list UX；`--list-packages --list-packages-format json` 会标记同名多版本 package/plugin 的 `versionConflict` / `conflictVersions`。
 - Offline catalog projection is covered through CLI `--package-catalog <json>`; catalog entries are read locally and projected alongside installed/local packages without performing network install/update.

@@ -22,7 +22,7 @@ def _write_tar_archive(path: Path, *, member_name: str, payload: bytes) -> None:
 def test_downloading_external_tool_resolver_prefers_existing_tool() -> None:
     import asyncio
 
-    from loushang.coding.tools import DownloadingExternalToolResolver
+    from loushang.harness.tools.workspace import DownloadingExternalToolResolver
 
     class BaseResolver:
         def resolve_tool(self, name: str) -> str | None:
@@ -50,7 +50,7 @@ def test_downloading_external_tool_resolver_prefers_existing_tool() -> None:
 def test_downloading_external_tool_resolver_requires_explicit_download_enable() -> None:
     import asyncio
 
-    from loushang.coding.tools import DownloadingExternalToolResolver
+    from loushang.harness.tools.workspace import DownloadingExternalToolResolver
 
     class MissingResolver:
         def resolve_tool(self, name: str) -> None:
@@ -78,7 +78,7 @@ def test_downloading_external_tool_resolver_requires_explicit_download_enable() 
 def test_downloading_external_tool_resolver_downloads_and_caches_when_enabled() -> None:
     import asyncio
 
-    from loushang.coding.tools import DownloadingExternalToolResolver
+    from loushang.harness.tools.workspace import DownloadingExternalToolResolver
 
     class MissingResolver:
         def resolve_tool(self, name: str) -> None:
@@ -105,10 +105,12 @@ def test_downloading_external_tool_resolver_downloads_and_caches_when_enabled() 
     assert downloader.calls == ["fd"]
 
 
-def test_downloading_external_tool_resolver_treats_download_failure_as_unavailable() -> None:
+def test_downloading_external_tool_resolver_treats_download_failure_as_unavailable() -> (
+    None
+):
     import asyncio
 
-    from loushang.coding.tools import DownloadingExternalToolResolver
+    from loushang.harness.tools.workspace import DownloadingExternalToolResolver
 
     class MissingResolver:
         def resolve_tool(self, name: str) -> None:
@@ -137,7 +139,7 @@ def test_downloading_external_tool_resolver_treats_download_failure_as_unavailab
 def test_ensure_external_tool_uses_downloader_only_when_enabled() -> None:
     import asyncio
 
-    from loushang.coding.tools import ensure_external_tool
+    from loushang.harness.tools.workspace import ensure_external_tool
 
     class MissingResolver:
         def resolve_tool(self, name: str) -> None:
@@ -158,7 +160,9 @@ def test_ensure_external_tool_uses_downloader_only_when_enabled() -> None:
         ensure_external_tool("rg", resolver=MissingResolver(), downloader=downloader)
     )
     with_download = asyncio.run(
-        ensure_external_tool("rg", resolver=MissingResolver(), downloader=downloader, allow_download=True)
+        ensure_external_tool(
+            "rg", resolver=MissingResolver(), downloader=downloader, allow_download=True
+        )
     )
 
     assert without_download is None
@@ -166,10 +170,12 @@ def test_ensure_external_tool_uses_downloader_only_when_enabled() -> None:
     assert downloader.calls == ["rg"]
 
 
-def test_ensure_external_tool_uses_builtin_downloader_when_download_enabled(monkeypatch) -> None:
+def test_ensure_external_tool_uses_builtin_downloader_when_download_enabled(
+    monkeypatch,
+) -> None:
     import asyncio
 
-    import loushang.coding.tools.external_tools as external_tools
+    import loushang.harness.tools.workspace.external_tools as external_tools
 
     class MissingResolver:
         def resolve_tool(self, name: str) -> None:
@@ -186,7 +192,9 @@ def test_ensure_external_tool_uses_builtin_downloader_when_download_enabled(monk
 
     created: list[BuiltinDownloader] = []
     calls: list[str] = []
-    monkeypatch.setattr(external_tools, "GitHubReleaseExternalToolDownloader", BuiltinDownloader)
+    monkeypatch.setattr(
+        external_tools, "GitHubReleaseExternalToolDownloader", BuiltinDownloader
+    )
 
     result = asyncio.run(
         external_tools.ensure_external_tool(
@@ -202,7 +210,7 @@ def test_ensure_external_tool_uses_builtin_downloader_when_download_enabled(monk
 
 
 def test_local_external_tool_resolver_prefers_managed_binary(tmp_path) -> None:
-    from loushang.coding.tools import LocalExternalToolResolver
+    from loushang.harness.tools.workspace import LocalExternalToolResolver
 
     managed_fd = tmp_path / "fd"
     managed_fd.write_text("#!/bin/sh\n", encoding="utf-8")
@@ -213,8 +221,10 @@ def test_local_external_tool_resolver_prefers_managed_binary(tmp_path) -> None:
     assert resolver.resolve_tool("fd") == str(managed_fd)
 
 
-def test_github_release_downloader_downloads_extracts_and_caches_tarball(tmp_path) -> None:
-    from loushang.coding.tools import (
+def test_github_release_downloader_downloads_extracts_and_caches_tarball(
+    tmp_path,
+) -> None:
+    from loushang.harness.tools.workspace import (
         GitHubReleaseExternalToolDownloader,
         get_managed_external_tool_install,
     )
@@ -232,12 +242,16 @@ def test_github_release_downloader_downloads_extracts_and_caches_tarball(tmp_pat
             self.latest_release_repos: list[str] = []
             self.downloads: list[tuple[str, Path]] = []
 
-        def get_latest_release(self, repo: str, *, user_agent: str, timeout_seconds: float):
+        def get_latest_release(
+            self, repo: str, *, user_agent: str, timeout_seconds: float
+        ):
             del user_agent, timeout_seconds
             self.latest_release_repos.append(repo)
             return {"tag_name": "v1.2.3"}
 
-        def download_file(self, url: str, destination: Path, *, timeout_seconds: float) -> None:
+        def download_file(
+            self, url: str, destination: Path, *, timeout_seconds: float
+        ) -> None:
             del timeout_seconds
             self.downloads.append((url, destination))
             destination.write_bytes(archive_path.read_bytes())
@@ -282,7 +296,7 @@ def test_github_release_downloader_downloads_extracts_and_caches_tarball(tmp_pat
 
 
 def test_github_release_downloader_extracts_windows_zip_binary(tmp_path) -> None:
-    from loushang.coding.tools import GitHubReleaseExternalToolDownloader
+    from loushang.harness.tools.workspace import GitHubReleaseExternalToolDownloader
 
     asset_name = "ripgrep-14.0.0-x86_64-pc-windows-msvc.zip"
     archive_path = tmp_path / asset_name
@@ -290,11 +304,15 @@ def test_github_release_downloader_extracts_windows_zip_binary(tmp_path) -> None
         archive.writestr("ripgrep-14.0.0-x86_64-pc-windows-msvc/rg.exe", b"rg-binary")
 
     class Transport:
-        def get_latest_release(self, repo: str, *, user_agent: str, timeout_seconds: float):
+        def get_latest_release(
+            self, repo: str, *, user_agent: str, timeout_seconds: float
+        ):
             del repo, user_agent, timeout_seconds
             return {"tag_name": "14.0.0"}
 
-        def download_file(self, url: str, destination: Path, *, timeout_seconds: float) -> None:
+        def download_file(
+            self, url: str, destination: Path, *, timeout_seconds: float
+        ) -> None:
             del url, timeout_seconds
             destination.write_bytes(archive_path.read_bytes())
 
@@ -313,13 +331,17 @@ def test_github_release_downloader_extracts_windows_zip_binary(tmp_path) -> None
 
 
 def test_github_release_downloader_respects_offline_mode(tmp_path, monkeypatch) -> None:
-    from loushang.coding.tools import GitHubReleaseExternalToolDownloader
+    from loushang.harness.tools.workspace import GitHubReleaseExternalToolDownloader
 
     class FailingTransport:
-        def get_latest_release(self, repo: str, *, user_agent: str, timeout_seconds: float):
+        def get_latest_release(
+            self, repo: str, *, user_agent: str, timeout_seconds: float
+        ):
             raise AssertionError("network should not be used")
 
-        def download_file(self, url: str, destination: Path, *, timeout_seconds: float) -> None:
+        def download_file(
+            self, url: str, destination: Path, *, timeout_seconds: float
+        ) -> None:
             raise AssertionError("network should not be used")
 
     monkeypatch.setenv("LOUSHANG_OFFLINE", "1")
@@ -333,20 +355,26 @@ def test_github_release_downloader_respects_offline_mode(tmp_path, monkeypatch) 
     assert downloader.download_tool("rg") is None
 
 
-def test_github_release_downloader_cleans_partial_install_after_download_failure(tmp_path) -> None:
+def test_github_release_downloader_cleans_partial_install_after_download_failure(
+    tmp_path,
+) -> None:
     import pytest
 
-    from loushang.coding.tools import GitHubReleaseExternalToolDownloader
+    from loushang.harness.tools.workspace import GitHubReleaseExternalToolDownloader
 
     class FailingTransport:
         def __init__(self) -> None:
             self.destinations: list[Path] = []
 
-        def get_latest_release(self, repo: str, *, user_agent: str, timeout_seconds: float):
+        def get_latest_release(
+            self, repo: str, *, user_agent: str, timeout_seconds: float
+        ):
             del repo, user_agent, timeout_seconds
             return {"tag_name": "v1.2.3"}
 
-        def download_file(self, url: str, destination: Path, *, timeout_seconds: float) -> None:
+        def download_file(
+            self, url: str, destination: Path, *, timeout_seconds: float
+        ) -> None:
             del url, timeout_seconds
             self.destinations.append(destination)
             destination.write_bytes(b"partial")
@@ -364,7 +392,9 @@ def test_github_release_downloader_cleans_partial_install_after_download_failure
     with pytest.raises(RuntimeError, match="network dropped"):
         downloader.download_tool("fd")
 
-    assert transport.destinations == [tools_dir / ".fd-v1.2.3-x86_64-unknown-linux-gnu.tar.gz.download"]
+    assert transport.destinations == [
+        tools_dir / ".fd-v1.2.3-x86_64-unknown-linux-gnu.tar.gz.download"
+    ]
     assert not (tools_dir / "fd").exists()
     assert not list(tools_dir.glob("*.download"))
     assert not list(tools_dir.glob("*.lock"))
@@ -374,7 +404,7 @@ def test_github_release_downloader_cleans_partial_install_after_download_failure
 
 
 def test_github_release_downloader_serializes_concurrent_installs(tmp_path) -> None:
-    from loushang.coding.tools import GitHubReleaseExternalToolDownloader
+    from loushang.harness.tools.workspace import GitHubReleaseExternalToolDownloader
 
     archive_path = tmp_path / "fd-release.tar.gz"
     _write_tar_archive(
@@ -389,11 +419,15 @@ def test_github_release_downloader_serializes_concurrent_installs(tmp_path) -> N
             self.first_download_started = threading.Event()
             self.lock = threading.Lock()
 
-        def get_latest_release(self, repo: str, *, user_agent: str, timeout_seconds: float):
+        def get_latest_release(
+            self, repo: str, *, user_agent: str, timeout_seconds: float
+        ):
             del repo, user_agent, timeout_seconds
             return {"tag_name": "v1.2.3"}
 
-        def download_file(self, url: str, destination: Path, *, timeout_seconds: float) -> None:
+        def download_file(
+            self, url: str, destination: Path, *, timeout_seconds: float
+        ) -> None:
             del url, timeout_seconds
             with self.lock:
                 self.download_count += 1
@@ -412,8 +446,12 @@ def test_github_release_downloader_serializes_concurrent_installs(tmp_path) -> N
     )
     results: list[str | None] = []
 
-    first = threading.Thread(target=lambda: results.append(downloader.download_tool("fd")))
-    second = threading.Thread(target=lambda: results.append(downloader.download_tool("fd")))
+    first = threading.Thread(
+        target=lambda: results.append(downloader.download_tool("fd"))
+    )
+    second = threading.Thread(
+        target=lambda: results.append(downloader.download_tool("fd"))
+    )
 
     first.start()
     assert transport.first_download_started.wait(timeout=1)
@@ -421,12 +459,15 @@ def test_github_release_downloader_serializes_concurrent_installs(tmp_path) -> N
     first.join(timeout=2)
     second.join(timeout=2)
 
-    assert sorted(results) == [str(tmp_path / "bin" / "fd"), str(tmp_path / "bin" / "fd")]
+    assert sorted(results) == [
+        str(tmp_path / "bin" / "fd"),
+        str(tmp_path / "bin" / "fd"),
+    ]
     assert transport.download_count == 1
 
 
 def test_github_release_downloader_recovers_from_stale_install_lock(tmp_path) -> None:
-    from loushang.coding.tools import GitHubReleaseExternalToolDownloader
+    from loushang.harness.tools.workspace import GitHubReleaseExternalToolDownloader
 
     archive_path = tmp_path / "fd-release.tar.gz"
     _write_tar_archive(
@@ -439,11 +480,15 @@ def test_github_release_downloader_recovers_from_stale_install_lock(tmp_path) ->
         def __init__(self) -> None:
             self.download_count = 0
 
-        def get_latest_release(self, repo: str, *, user_agent: str, timeout_seconds: float):
+        def get_latest_release(
+            self, repo: str, *, user_agent: str, timeout_seconds: float
+        ):
             del repo, user_agent, timeout_seconds
             return {"tag_name": "v1.2.3"}
 
-        def download_file(self, url: str, destination: Path, *, timeout_seconds: float) -> None:
+        def download_file(
+            self, url: str, destination: Path, *, timeout_seconds: float
+        ) -> None:
             del url, timeout_seconds
             self.download_count += 1
             destination.write_bytes(archive_path.read_bytes())
@@ -474,7 +519,7 @@ def test_github_release_downloader_recovers_from_stale_install_lock(tmp_path) ->
 def test_github_release_downloader_times_out_on_fresh_install_lock(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.tools import GitHubReleaseExternalToolDownloader
+    from loushang.harness.tools.workspace import GitHubReleaseExternalToolDownloader
 
     tools_dir = tmp_path / "bin"
     tools_dir.mkdir()

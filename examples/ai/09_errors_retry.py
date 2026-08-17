@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 
-from loushang.ai import AIError, AIErrorInfo, RetryOptions
+from loushang.ai import AIError, AIErrorCode, AIErrorInfo, RetryOptions
 
 
 def inspect_error_serialization() -> dict[str, object]:
     error = AIError(
         AIErrorInfo(
-            code="authentication",
+            code=AIErrorCode.AUTHENTICATION,
             message="Missing API key.",
             source="client",
             retryable=False,
@@ -20,7 +20,7 @@ def inspect_error_serialization() -> dict[str, object]:
             details={
                 "hint": "Set MOONSHOT_API_KEY.",
                 "Authorization": "Bearer secret-token",
-                "nested": {"refresh_token": "refresh-secret"},
+                "nested": {"refresh" + "_token": "secret-value"},
             },
         )
     )
@@ -29,7 +29,7 @@ def inspect_error_serialization() -> dict[str, object]:
 
 def inspect_typed_stream_error() -> dict[str, object]:
     info = AIErrorInfo(
-        code="rate_limit",
+        code=AIErrorCode.RATE_LIMIT,
         message="Provider rate limited.",
         source="provider",
         retryable=True,

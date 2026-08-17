@@ -197,6 +197,7 @@ class AssistantMessageEventStream(EventStream[AssistantMessageEvent, AssistantMe
                 message.error_message or "Stream aborted",
                 source=message.api,
                 provider=message.provider,
+                endpoint=message.endpoint,
                 model=message.model,
                 details=_response_details(message),
             )
@@ -205,6 +206,7 @@ class AssistantMessageEventStream(EventStream[AssistantMessageEvent, AssistantMe
                 message.error_message or "Stream failed",
                 source=message.api,
                 provider=message.provider,
+                endpoint=message.endpoint,
                 model=message.model,
                 details=_response_details(message),
             )
@@ -262,6 +264,7 @@ def _error_from_terminal_event(event: ErrorEvent) -> AIError:
             message.error_message or "Stream aborted",
             source=message.api,
             provider=message.provider,
+            endpoint=message.endpoint,
             model=message.model,
             details=_response_details(message),
         )
@@ -275,6 +278,7 @@ def _error_from_terminal_event(event: ErrorEvent) -> AIError:
         message.error_message or "Stream failed",
         source=message.api,
         provider=message.provider,
+        endpoint=message.endpoint,
         model=message.model,
         details=_response_details(message),
     )

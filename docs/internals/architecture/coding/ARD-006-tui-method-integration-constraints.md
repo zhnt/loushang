@@ -222,8 +222,8 @@ def _method_runtime_error(args: CliArgs, *, effective_tui: bool) -> str | None:
 ## Impacted Code
 
 - `src/loushang/coding/cli/__main__.py`（互斥检查保留）
-- `src/loushang/coding/ui/screen_events.py`（未来需与 method status projection 明确边界）
-- `src/loushang/coding/ui/controller.py`（未来需支持 step-level 干预）
+- `src/loushang/coding/presentation/tui/screen.py`（未来需与 method status projection 明确边界）
+- `src/loushang/coding/interaction/controller.py`（未来需支持 step-level 干预）
 - `src/loushang/coding/ui/screen_app.py`（未来需支持 method step 状态显示）
 - `src/loushang/coding/domain/app.py`（未来需暴露 method step 运行时状态）
 - `src/loushang/work/types.py`（需保持 WorkStep/WorkPlan lifecycle 与 deviation metadata schema 稳定）

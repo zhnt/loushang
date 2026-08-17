@@ -19,9 +19,17 @@ from loushang.tui.core import (
 from loushang.tui.terminal import TerminalSize
 from loushang.tui.terminal_image import is_terminal_image_line
 
-SurfacePresentation = Literal["inline", "overlay", "modal", "bottom", "bottom-exclusive"]
+SurfacePresentation = Literal[
+    "inline",
+    "overlay",
+    "modal",
+    "bottom",
+    "bottom-exclusive",
+    "page",
+]
 _INLINE_PRESENTATIONS = {"inline", "bottom", "bottom-exclusive"}
 _OVERLAY_PRESENTATIONS = {"overlay", "modal"}
+_PAGE_PRESENTATIONS = {"page"}
 OverlayAnchor = Literal[
     "center",
     "top-left",
@@ -106,10 +114,14 @@ class Container:
                     row=start_row + child_result.cursor.row,
                     column=child_result.cursor.column,
                 )
-        return RenderResult.from_lines(rendered_lines, constraints=constraints, cursor=cursor)
+        return RenderResult.from_lines(
+            rendered_lines, constraints=constraints, cursor=cursor
+        )
 
 
-def _remaining_visible_height(visible_height: int | None, *, consumed_lines: int) -> int | None:
+def _remaining_visible_height(
+    visible_height: int | None, *, consumed_lines: int
+) -> int | None:
     if visible_height is None:
         return None
     remaining = visible_height - consumed_lines
@@ -193,16 +205,27 @@ class SurfaceHost:
     def open_surface(self, surface: Surface) -> SurfaceHandle:
         previous_focus = self.current_focus()
         self._focus_order_counter += 1
-        entry = SurfaceEntry(surface=surface, previous_focus=previous_focus, focus_order=self._focus_order_counter)
+        entry = SurfaceEntry(
+            surface=surface,
+            previous_focus=previous_focus,
+            focus_order=self._focus_order_counter,
+        )
         self.entries.append(entry)
-        if surface.visible is None and _surface_captures_focus(surface) and surface.focus_target is not None:
+        if (
+            surface.visible is None
+            and _surface_captures_focus(surface)
+            and surface.focus_target is not None
+        ):
             self._set_focus(surface.focus_target)
         return SurfaceHandle(host=self, entry=entry)
 
     def close_surface(self, entry: SurfaceEntry, *, reason: str) -> None:
         if entry not in self.entries:
             return
-        was_focused = entry.surface.focus_target is not None and entry.surface.focus_target.focused
+        was_focused = (
+            entry.surface.focus_target is not None
+            and entry.surface.focus_target.focused
+        )
         if entry.surface.focus_target is not None:
             entry.surface.focus_target.blur()
         entry.close_reason = reason
@@ -219,11 +242,18 @@ class SurfaceHost:
             focus_target.blur()
             self._restore_focus(entry.previous_focus)
             return
-        if not hidden and entry.surface.visible is None and _surface_captures_focus(entry.surface) and focus_target is not None:
+        if (
+            not hidden
+            and entry.surface.visible is None
+            and _surface_captures_focus(entry.surface)
+            and focus_target is not None
+        ):
             self.focus_surface(entry)
 
     def focus_surface(self, entry: SurfaceEntry) -> None:
-        if entry not in self.entries or not self._is_entry_visible(entry, self._last_known_size()):
+        if entry not in self.entries or not self._is_entry_visible(
+            entry, self._last_known_size()
+        ):
             return
         focus_target = entry.surface.focus_target
         if not _surface_captures_focus(entry.surface) or focus_target is None:
@@ -237,7 +267,9 @@ class SurfaceHost:
         if focus_target is None or not focus_target.focused:
             return
         focus_target.blur()
-        for candidate in sorted(self.entries, key=lambda item: item.focus_order, reverse=True):
+        for candidate in sorted(
+            self.entries, key=lambda item: item.focus_order, reverse=True
+        ):
             if candidate is entry or not _surface_captures_focus(candidate.surface):
                 continue
             candidate_focus = candidate.surface.focus_target
@@ -249,7 +281,11 @@ class SurfaceHost:
     def current_focus(self) -> Focusable | None:
         for entry in reversed(self.entries):
             focus_target = entry.surface.focus_target
-            if _surface_captures_focus(entry.surface) and focus_target is not None and focus_target.focused:
+            if (
+                _surface_captures_focus(entry.surface)
+                and focus_target is not None
+                and focus_target.focused
+            ):
                 return focus_target
         if self.base_focus is not None and self.base_focus.focused:
             return self.base_focus
@@ -298,9 +334,13 @@ class SurfaceHost:
                 if getattr(intent, "kind", None) in close_on_intents:
                     self.close_surface(entry, reason=getattr(intent, "kind", "closed"))
                     break
-        return SurfaceInputRouteResult(intents=intents, consumed=_surface_input_consumed(result, intents))
+        return SurfaceInputRouteResult(
+            intents=intents, consumed=_surface_input_consumed(result, intents)
+        )
 
-    def compose(self, base: RenderResult, constraints: RenderConstraints) -> RenderResult:
+    def compose(
+        self, base: RenderResult, constraints: RenderConstraints
+    ) -> RenderResult:
         visible_height = constraints.visible_height or constraints.max_height
         size = TerminalSize(columns=constraints.width, rows=visible_height)
         self._last_size = size
@@ -308,21 +348,40 @@ class SurfaceHost:
         for entry in self.entries:
             entry.last_row = None
             entry.last_column = None
+        page_entry = self._top_page_entry(size)
         if not any(
             self._is_entry_visible(entry, size)
             and (
                 surface_is_inline_presentation(entry.surface)
                 or surface_is_overlay_presentation(entry.surface)
+                or surface_is_page_presentation(entry.surface)
             )
             for entry in self.entries
         ):
             return base
-        lines = [line.text for line in base.lines]
-        cursor = base.cursor
-        for entry in self.entries:
-            if not self._is_entry_visible(entry, size) or not surface_is_inline_presentation(entry.surface):
+        first_visible_entry = 0
+        if page_entry is None:
+            lines = [line.text for line in base.lines]
+            cursor = base.cursor
+        else:
+            page = page_entry.surface.renderable.render(
+                _surface_constraints(page_entry.surface, constraints)
+            )
+            visible_height = constraints.visible_height or constraints.max_height
+            lines = [line.text for line in page.lines[:visible_height]]
+            lines.extend("" for _ in range(visible_height - len(lines)))
+            cursor = page.cursor
+            page_entry.last_row = 0
+            page_entry.last_column = 0
+            first_visible_entry = self.entries.index(page_entry) + 1
+        for entry in self.entries[first_visible_entry:]:
+            if not self._is_entry_visible(
+                entry, size
+            ) or not surface_is_inline_presentation(entry.surface):
                 continue
-            inline = entry.surface.renderable.render(_surface_constraints(entry.surface, constraints))
+            inline = entry.surface.renderable.render(
+                _surface_constraints(entry.surface, constraints)
+            )
             entry.last_row = len(lines)
             entry.last_column = 0
             cursor = _merge_surface_cursor(
@@ -332,15 +391,24 @@ class SurfaceHost:
                 column_offset=entry.last_column,
             )
             lines.extend(line.text for line in inline.lines)
-        for entry in sorted(self.entries, key=lambda item: item.focus_order):
-            if not self._is_entry_visible(entry, size) or not surface_is_overlay_presentation(entry.surface):
+        for entry in sorted(
+            self.entries[first_visible_entry:],
+            key=lambda item: item.focus_order,
+        ):
+            if not self._is_entry_visible(
+                entry, size
+            ) or not surface_is_overlay_presentation(entry.surface):
                 continue
             overlay_constraints = _surface_constraints(entry.surface, constraints)
             overlay = entry.surface.renderable.render(overlay_constraints)
             layout = _resolve_overlay_layout(entry.surface, overlay, constraints)
             entry.last_row = layout.row
             entry.last_column = layout.column
-            overlay_lines = overlay.lines[: layout.max_height] if layout.max_height is not None else overlay.lines
+            overlay_lines = (
+                overlay.lines[: layout.max_height]
+                if layout.max_height is not None
+                else overlay.lines
+            )
             lines = _compose_overlay(
                 lines,
                 overlay_lines,
@@ -355,9 +423,22 @@ class SurfaceHost:
                 row_offset=layout.row,
                 column_offset=layout.column,
             )
-        return RenderResult.from_lines([RenderLine(line) for line in lines], constraints=constraints, cursor=cursor)
+        return RenderResult.from_lines(
+            [RenderLine(line) for line in lines], constraints=constraints, cursor=cursor
+        )
 
-    def _restore_focus(self, preferred: Focusable | None, *, size: TerminalSize | None = None) -> None:
+    def has_visible_page(self, constraints: RenderConstraints) -> bool:
+        visible_height = constraints.visible_height or constraints.max_height
+        return (
+            self._top_page_entry(
+                TerminalSize(columns=constraints.width, rows=visible_height)
+            )
+            is not None
+        )
+
+    def _restore_focus(
+        self, preferred: Focusable | None, *, size: TerminalSize | None = None
+    ) -> None:
         for entry in reversed(self.entries):
             focus_target = entry.surface.focus_target
             if (
@@ -406,7 +487,9 @@ class SurfaceHost:
         current = self.current_focus()
         if current is not None:
             for entry in self.entries:
-                if entry.surface.focus_target is current and not self._is_entry_visible(entry, size):
+                if entry.surface.focus_target is current and not self._is_entry_visible(
+                    entry, size
+                ):
                     current.blur()
                     self._restore_focus(entry.previous_focus, size=size)
                     break
@@ -417,7 +500,9 @@ class SurfaceHost:
                 if entry.surface.focus_target is current:
                     current_entry = entry
                     break
-        for entry in sorted(self.entries, key=lambda item: item.focus_order, reverse=True):
+        for entry in sorted(
+            self.entries, key=lambda item: item.focus_order, reverse=True
+        ):
             focus_target = entry.surface.focus_target
             if (
                 self._is_entry_visible(entry, size)
@@ -431,6 +516,17 @@ class SurfaceHost:
     def _last_known_size(self) -> TerminalSize:
         return self._last_size or TerminalSize(columns=1_000_000, rows=1_000_000)
 
+    def _top_page_entry(self, size: TerminalSize) -> SurfaceEntry | None:
+        return next(
+            (
+                entry
+                for entry in reversed(self.entries)
+                if self._is_entry_visible(entry, size)
+                and surface_is_page_presentation(entry.surface)
+            ),
+            None,
+        )
+
 
 @dataclass(slots=True)
 class ScreenRoot:
@@ -438,7 +534,11 @@ class ScreenRoot:
     surface_host: SurfaceHost = field(default_factory=SurfaceHost)
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
-        base_result = self.base.render(constraints)
+        base_result = (
+            RenderResult.from_lines((), constraints=constraints)
+            if self.surface_host.has_visible_page(constraints)
+            else self.base.render(constraints)
+        )
         return self.surface_host.compose(base_result, constraints)
 
     def consume_render_baseline_reset_reason(self) -> str | None:
@@ -498,14 +598,18 @@ def _translate_surface_input_event(entry: SurfaceEntry, event: Any) -> Any:
         return event
 
 
-def _surface_constraints(surface: Surface, constraints: RenderConstraints) -> RenderConstraints:
+def _surface_constraints(
+    surface: Surface, constraints: RenderConstraints
+) -> RenderConstraints:
     visible_height = constraints.visible_height or constraints.max_height
     margins = _parse_margin(surface.margin)
     available_width = max(1, constraints.width - margins.left - margins.right)
     available_height = max(1, visible_height - margins.top - margins.bottom)
     width = _parse_size_value(surface.width, constraints.width)
     if width is None:
-        width = constraints.width if surface.presentation == "inline" else available_width
+        width = (
+            constraints.width if surface.presentation == "inline" else available_width
+        )
     elif surface.presentation == "overlay":
         width = max(width, constraints.width)
     if surface.min_width is not None:
@@ -547,7 +651,9 @@ def _resolve_overlay_layout(
     available_width = max(1, constraints.width - margins.left - margins.right)
     available_height = max(1, visible_height - margins.top - margins.bottom)
     parsed_width = _parse_size_value(surface.width, constraints.width)
-    rendered_width = max((visible_width(line.text) for line in overlay.lines), default=1)
+    rendered_width = max(
+        (visible_width(line.text) for line in overlay.lines), default=1
+    )
     width = parsed_width if parsed_width is not None else rendered_width
     if surface.min_width is not None:
         width = max(width, surface.min_width)
@@ -556,7 +662,9 @@ def _resolve_overlay_layout(
     if max_height is not None:
         max_height = max(1, min(max_height, available_height))
     overlay_height = len(overlay.lines)
-    effective_height = min(overlay_height, max_height) if max_height is not None else overlay_height
+    effective_height = (
+        min(overlay_height, max_height) if max_height is not None else overlay_height
+    )
     effective_height = max(0, effective_height)
     row = _resolve_overlay_axis(
         value=surface.row,
@@ -580,9 +688,17 @@ def _resolve_overlay_layout(
     )
     row += surface.offset_y
     column += surface.offset_x
-    row = max(margins.top, min(row, max(margins.top, visible_height - margins.bottom - effective_height)))
-    column = max(margins.left, min(column, max(margins.left, constraints.width - margins.right - width)))
-    return _ResolvedOverlayLayout(row=row, column=column, width=width, max_height=max_height)
+    row = max(
+        margins.top,
+        min(row, max(margins.top, visible_height - margins.bottom - effective_height)),
+    )
+    column = max(
+        margins.left,
+        min(column, max(margins.left, constraints.width - margins.right - width)),
+    )
+    return _ResolvedOverlayLayout(
+        row=row, column=column, width=width, max_height=max_height
+    )
 
 
 def _resolve_overlay_axis(
@@ -597,7 +713,9 @@ def _resolve_overlay_axis(
     axis: Literal["row", "column"],
 ) -> int:
     if value is not None:
-        parsed = _parse_position_value(value, available=max(0, available - size), margin_start=margin_start)
+        parsed = _parse_position_value(
+            value, available=max(0, available - size), margin_start=margin_start
+        )
         if parsed is not None:
             return parsed
     if axis == "row":
@@ -626,7 +744,9 @@ def _parse_size_value(value: SizeValue | None, reference: int) -> int | None:
     return None
 
 
-def _parse_position_value(value: SizeValue, *, available: int, margin_start: int) -> int | None:
+def _parse_position_value(
+    value: SizeValue, *, available: int, margin_start: int
+) -> int | None:
     if isinstance(value, int):
         return value
     if value.endswith("%"):
@@ -655,9 +775,15 @@ def _surface_captures_focus(surface: Surface) -> bool:
     return surface.captures_focus and not surface.non_capturing
 
 
-def surface_presentation(surface: object, *, default: SurfacePresentation = "inline") -> SurfacePresentation:
+def surface_presentation(
+    surface: object, *, default: SurfacePresentation = "inline"
+) -> SurfacePresentation:
     raw = getattr(surface, "presentation", default)
-    if raw in _INLINE_PRESENTATIONS or raw in _OVERLAY_PRESENTATIONS:
+    if (
+        raw in _INLINE_PRESENTATIONS
+        or raw in _OVERLAY_PRESENTATIONS
+        or raw in _PAGE_PRESENTATIONS
+    ):
         return raw
     return default
 
@@ -668,6 +794,10 @@ def surface_is_inline_presentation(surface: object) -> bool:
 
 def surface_is_overlay_presentation(surface: object) -> bool:
     return surface_presentation(surface) in _OVERLAY_PRESENTATIONS
+
+
+def surface_is_page_presentation(surface: object) -> bool:
+    return surface_presentation(surface) in _PAGE_PRESENTATIONS
 
 
 def surface_is_bottom_exclusive(surface: object) -> bool:
@@ -705,7 +835,9 @@ def _compose_overlay(
     return lines
 
 
-def _overlay_text(base: str, overlay: str, *, column: int, overlay_width: int, total_width: int) -> str:
+def _overlay_text(
+    base: str, overlay: str, *, column: int, overlay_width: int, total_width: int
+) -> str:
     if column < 0:
         raise ValueError("overlay column must be non-negative")
     if is_terminal_image_line(base):
@@ -718,10 +850,16 @@ def _overlay_text(base: str, overlay: str, *, column: int, overlay_width: int, t
     clipped_width = max(0, min(overlay_width, target_width - column))
     prefix_slice = slice_by_column(base, start=0, length=column, strict=True)
     prefix = prefix_slice.text + (" " * max(0, column - prefix_slice.width))
-    clipped_overlay = slice_by_column(overlay, start=0, length=clipped_width, strict=True).text
+    clipped_overlay = slice_by_column(
+        overlay, start=0, length=clipped_width, strict=True
+    ).text
     overlay_cells = visible_width(clipped_overlay)
     suffix_start = column + clipped_width
     suffix_length = max(0, target_width - suffix_start)
-    suffix = slice_by_column(base, start=suffix_start, length=suffix_length, strict=True).text
+    suffix = slice_by_column(
+        base, start=suffix_start, length=suffix_length, strict=True
+    ).text
     padded_overlay = clipped_overlay + (" " * max(0, clipped_width - overlay_cells))
-    return truncate_to_width(f"{prefix}{padded_overlay}{suffix}", max_width=target_width, ellipsis="")
+    return truncate_to_width(
+        f"{prefix}{padded_overlay}{suffix}", max_width=target_width, ellipsis=""
+    )

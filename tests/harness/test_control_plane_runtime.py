@@ -10,6 +10,7 @@ from loushang.harness.approval import (
     ApprovalRequest,
     HeadlessApprovalResolver,
 )
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.api import ExtensionContributionAPI
 from loushang.harness.extensions.control import resolve_control_contributions
 from loushang.harness.extensions.routing import (
@@ -23,7 +24,6 @@ from loushang.harness.policy import (
     PolicyEvaluatorChain,
     ToolPolicySubject,
 )
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.tools.workspace.policy import enforce_tool_policy
 
 
@@ -72,7 +72,7 @@ def test_product_neutral_control_plane_rewrites_approves_and_executes() -> None:
     extension = api.build_loaded_extension()
 
     async def run() -> None:
-        diagnostics: list[ResourceDiagnostic] = []
+        diagnostics: list[DiagnosticDraft] = []
         plan = ExtensionRoutePlan.from_extensions(
             [extension],
             diagnostics=diagnostics,

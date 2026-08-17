@@ -5,6 +5,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import cast
 
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.routing import (
     ExtensionRouteError,
     ExtensionRoutePlan,
@@ -14,7 +15,7 @@ from loushang.harness.extensions.types import (
     ExtensionResourceContribution,
     LoadedExtension,
 )
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.diagnostics import resource_diagnostic
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
@@ -30,7 +31,7 @@ class ExtensionResourceRuntime:
         self,
         extensions: Sequence[LoadedExtension],
         *,
-        diagnostics: list[ResourceDiagnostic],
+        diagnostics: list[DiagnosticDraft],
         route_plan: ExtensionRoutePlan | None = None,
     ) -> None:
         self._extensions = tuple(extensions)
@@ -41,7 +42,7 @@ class ExtensionResourceRuntime:
 
     def discover(self, bundle: ResourceBundle, *, context: object) -> ResourceBundle:
         merged = bundle
-        diagnostics: list[ResourceDiagnostic] = []
+        diagnostics: list[DiagnosticDraft] = []
         for route in self._route_plan.routes_for("resources_discover"):
             merged = self._apply_route(
                 route=route,
@@ -58,7 +59,7 @@ class ExtensionResourceRuntime:
         context: object,
     ) -> ResourceBundle:
         merged = bundle
-        diagnostics: list[ResourceDiagnostic] = []
+        diagnostics: list[DiagnosticDraft] = []
         for route in self._route_plan.routes_for("resources_discover"):
             merged = await self._apply_route_async(
                 route=route,
@@ -74,7 +75,7 @@ class ExtensionResourceRuntime:
         route: ResolvedExtensionRoute,
         bundle: ResourceBundle,
         context: object,
-        diagnostics: list[ResourceDiagnostic],
+        diagnostics: list[DiagnosticDraft],
     ) -> ResourceBundle:
         try:
             contribution = _invoke_resource_handler(
@@ -95,7 +96,7 @@ class ExtensionResourceRuntime:
                 "Async extension hooks are not supported in synchronous discovery."
             )
             diagnostics.append(
-                ResourceDiagnostic(
+                resource_diagnostic(
                     code="unsupported_async_extension_hook",
                     message="Async extension hooks are not supported in P0/v1.",
                     source_path=route.extension.source_path,
@@ -118,7 +119,7 @@ class ExtensionResourceRuntime:
         route: ResolvedExtensionRoute,
         bundle: ResourceBundle,
         context: object,
-        diagnostics: list[ResourceDiagnostic],
+        diagnostics: list[DiagnosticDraft],
     ) -> ResourceBundle:
         try:
             contribution = _invoke_resource_handler(
@@ -144,7 +145,7 @@ class ExtensionResourceRuntime:
     def _finish(
         self,
         bundle: ResourceBundle,
-        diagnostics: list[ResourceDiagnostic],
+        diagnostics: list[DiagnosticDraft],
     ) -> ResourceBundle:
         if not diagnostics:
             return bundle
@@ -166,10 +167,10 @@ def _record_resource_error(
     route: ResolvedExtensionRoute,
     error: Exception,
     *,
-    diagnostics: list[ResourceDiagnostic],
+    diagnostics: list[DiagnosticDraft],
 ) -> None:
     diagnostics.append(
-        ResourceDiagnostic(
+        resource_diagnostic(
             code="extension_resources_discover_failed",
             message=f"Extension resource discovery failed: {error}",
             source_path=route.extension.source_path,
@@ -187,14 +188,14 @@ def _merge_contribution(
     contribution: object,
     *,
     extension: LoadedExtension,
-    diagnostics: list[ResourceDiagnostic],
+    diagnostics: list[DiagnosticDraft],
 ) -> ResourceBundle:
     if contribution is None:
         return bundle
     normalized = coerce_resource_contribution(contribution, extension=extension)
     if not isinstance(normalized, ExtensionResourceContribution):
         diagnostics.append(
-            ResourceDiagnostic(
+            resource_diagnostic(
                 code="invalid_extension_resource_contribution",
                 message=(
                     "resources_discover hooks must return "
@@ -221,7 +222,7 @@ def coerce_resource_contribution(
 ) -> object:
     if not isinstance(contribution, dict):
         return contribution
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
     return ExtensionResourceContribution(
         prompts=_prompt_descriptors_from_paths(
             _as_path_list(contribution.get("promptPaths")),
@@ -252,7 +253,7 @@ def _prompt_descriptors_from_paths(
     paths: Sequence[Path],
     *,
     extension: LoadedExtension,
-    diagnostics: list[ResourceDiagnostic],
+    diagnostics: list[DiagnosticDraft],
 ) -> list[PromptFragmentDescriptor]:
     descriptors: list[PromptFragmentDescriptor] = []
     for path in paths:
@@ -271,9 +272,9 @@ def _prompt_descriptor_from_path(
     path: Path,
     *,
     extension: LoadedExtension,
-) -> tuple[PromptFragmentDescriptor | None, ResourceDiagnostic | None]:
+) -> tuple[PromptFragmentDescriptor | None, DiagnosticDraft | None]:
     if not path.is_file():
-        return None, ResourceDiagnostic(
+        return None, resource_diagnostic(
             code="extension_prompt_path_not_found",
             message=f"Extension prompt path does not exist or is not a file: {path}",
             source_path=path,
@@ -281,7 +282,7 @@ def _prompt_descriptor_from_path(
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
-        return None, ResourceDiagnostic(
+        return None, resource_diagnostic(
             code="extension_prompt_path_read_failed",
             message=f"Failed to read extension prompt path {path}: {exc}",
             source_path=path,
@@ -305,7 +306,7 @@ def _skill_descriptors_from_paths(
     paths: Sequence[Path],
     *,
     extension: LoadedExtension,
-    diagnostics: list[ResourceDiagnostic],
+    diagnostics: list[DiagnosticDraft],
 ) -> list[SkillDescriptor]:
     descriptors: list[SkillDescriptor] = []
     for path in paths:
@@ -324,10 +325,10 @@ def _skill_descriptor_from_path(
     path: Path,
     *,
     extension: LoadedExtension,
-) -> tuple[SkillDescriptor | None, ResourceDiagnostic | None]:
+) -> tuple[SkillDescriptor | None, DiagnosticDraft | None]:
     skill_file = path / "SKILL.md" if path.is_dir() else path
     if not skill_file.is_file():
-        return None, ResourceDiagnostic(
+        return None, resource_diagnostic(
             code="extension_skill_path_not_found",
             message=(
                 f"Extension skill path does not exist or is not a skill file: {path}"
@@ -337,7 +338,7 @@ def _skill_descriptor_from_path(
     try:
         content = skill_file.read_text(encoding="utf-8")
     except OSError as exc:
-        return None, ResourceDiagnostic(
+        return None, resource_diagnostic(
             code="extension_skill_path_read_failed",
             message=f"Failed to read extension skill path {skill_file}: {exc}",
             source_path=skill_file,
@@ -373,7 +374,7 @@ def _theme_descriptors_from_paths(
     paths: Sequence[Path],
     *,
     extension: LoadedExtension,
-    diagnostics: list[ResourceDiagnostic],
+    diagnostics: list[DiagnosticDraft],
 ) -> list[ThemeDescriptor]:
     descriptors: list[ThemeDescriptor] = []
     for path in paths:
@@ -392,9 +393,9 @@ def _theme_descriptor_from_path(
     path: Path,
     *,
     extension: LoadedExtension,
-) -> tuple[ThemeDescriptor | None, ResourceDiagnostic | None]:
+) -> tuple[ThemeDescriptor | None, DiagnosticDraft | None]:
     if not path.exists():
-        return None, ResourceDiagnostic(
+        return None, resource_diagnostic(
             code="extension_theme_path_not_found",
             message=f"Extension theme path does not exist: {path}",
             source_path=path,

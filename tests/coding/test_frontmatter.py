@@ -4,7 +4,7 @@ import pytest
 
 
 def test_parse_frontmatter_normalizes_crlf_and_block_scalars() -> None:
-    from loushang.coding.frontmatter import parse_frontmatter
+    from loushang.harness.resources.frontmatter import parse_frontmatter
 
     result = parse_frontmatter(
         "---\r\n"
@@ -26,7 +26,7 @@ def test_parse_frontmatter_normalizes_crlf_and_block_scalars() -> None:
 
 
 def test_parse_frontmatter_supports_simple_lists_and_maps() -> None:
-    from loushang.coding.frontmatter import parse_frontmatter
+    from loushang.harness.resources.frontmatter import parse_frontmatter
 
     result = parse_frontmatter(
         "---\n"
@@ -51,7 +51,7 @@ def test_parse_frontmatter_supports_simple_lists_and_maps() -> None:
 
 
 def test_parse_frontmatter_supports_nested_maps() -> None:
-    from loushang.coding.frontmatter import parse_frontmatter
+    from loushang.harness.resources.frontmatter import parse_frontmatter
 
     result = parse_frontmatter(
         "---\n"
@@ -81,7 +81,10 @@ def test_parse_frontmatter_supports_nested_maps() -> None:
 
 
 def test_parse_frontmatter_keeps_original_body_without_complete_frontmatter() -> None:
-    from loushang.coding.frontmatter import parse_frontmatter, strip_frontmatter
+    from loushang.harness.resources.frontmatter import (
+        parse_frontmatter,
+        strip_frontmatter,
+    )
 
     unterminated = "---\nname: review\nRun the review."
 
@@ -93,7 +96,10 @@ def test_parse_frontmatter_keeps_original_body_without_complete_frontmatter() ->
 
 
 def test_parse_frontmatter_reports_invalid_yaml_location() -> None:
-    from loushang.coding.frontmatter import FrontmatterParseError, parse_frontmatter
+    from loushang.harness.resources.frontmatter import (
+        FrontmatterParseError,
+        parse_frontmatter,
+    )
 
     with pytest.raises(FrontmatterParseError) as error:
         parse_frontmatter("---\ndescription: [broken\n---\nBody")

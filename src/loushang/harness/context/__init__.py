@@ -36,13 +36,27 @@ from loushang.harness.context.strategies import (
     RollingSummaryStrategy,
 )
 from loushang.harness.context.summary import (
+    STANDARD_SUMMARY_RESOURCE_OPERATION_TAGS,
     SummaryProfile,
     SummaryPrompt,
+    SummaryResourceOperationTag,
     SummarySection,
     SummaryValidationReport,
     build_summary_prompt,
     compose_summary_prompt,
     validate_summary,
+)
+from loushang.harness.context.summary_evaluation import (
+    SummaryEvaluationCase,
+    SummaryEvaluationResult,
+    SummaryEvaluationSuiteResult,
+    SummaryResourceOperation,
+    SummaryResourceOperations,
+    evaluate_summary_case,
+    evaluate_summary_cases,
+    evaluate_summary_fixture,
+    extract_summary_resource_operations,
+    load_summary_evaluation_cases,
 )
 from loushang.harness.context.types import (
     CompactionArtifact,
@@ -56,6 +70,10 @@ from loushang.harness.context.types import (
     PackingRequest,
     PackingResult,
     ReductionRequest,
+)
+from loushang.harness.context.usage import (
+    ContextUsageEstimate,
+    serialize_context_usage_payload,
 )
 
 __all__ = [
@@ -84,6 +102,7 @@ __all__ = [
     "ContextCompactionCoordinator",
     "ContextDiagnostic",
     "ContextItem",
+    "ContextUsageEstimate",
     "ContextPacker",
     "ContextReducer",
     "ContextSalienceRanker",
@@ -96,12 +115,25 @@ __all__ = [
     "SalienceRanking",
     "SalienceScorer",
     "SalienceSignal",
+    "STANDARD_SUMMARY_RESOURCE_OPERATION_TAGS",
+    "SummaryEvaluationCase",
+    "SummaryEvaluationResult",
+    "SummaryEvaluationSuiteResult",
     "SummaryProfile",
     "SummaryPrompt",
+    "SummaryResourceOperation",
+    "SummaryResourceOperations",
+    "SummaryResourceOperationTag",
     "SummarySection",
     "SummaryValidationReport",
     "WeightedSalienceScorer",
     "build_summary_prompt",
     "compose_summary_prompt",
+    "evaluate_summary_case",
+    "evaluate_summary_cases",
+    "evaluate_summary_fixture",
+    "extract_summary_resource_operations",
+    "load_summary_evaluation_cases",
     "validate_summary",
+    "serialize_context_usage_payload",
 ]

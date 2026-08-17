@@ -2,7 +2,14 @@
 
 ## Status
 
-Status: implemented on `harness/control-plane-runtime`; integration pending.
+Status: implemented and integrated. The original implementation branch was
+`harness/control-plane-runtime`.
+
+The extension-routing portions of this document remain current. Its
+tool-shaped Policy and boolean Approval target is superseded by
+[Policy And Approval Redesign](policy-approval-redesign.md). During cutover,
+this document describes the legacy implementation only; it must not be used to
+add new Policy/Approval APIs.
 
 This boundary closes the product-neutral control path from extension
 contribution routing through policy evaluation and asynchronous approval. It
@@ -439,33 +446,29 @@ projected without treating unrelated multicall applets as shells.
 Reusable Bash execution parses string commands through the configured shell.
 For argv commands it selects a shell parser only from executable identity or a
 known shell name; other resolved executables remain direct argv, while an
-unresolved stdin entrypoint is incomplete. Coding compatibility evaluation
-paths consume the same environment projection as the executable Harness
-boundary; they do not recompute commands against the host's unrelated `PATH`.
+unresolved stdin entrypoint is incomplete. The Workspace gateway materializes
+the effective environment before building the canonical subject, so executable
+resolution never falls back to the host's unrelated `PATH`.
 
-Coding's `PolicyEngine` remains the public Product adapter. It constructs
-Harness rules from Coding configuration and supplies Coding's current default
-blocked/ask lists, decision codes, and reason strings. Existing
-`evaluate_action` and `evaluate_tool_call` methods remain compatible. These
-compatibility methods materialize their input for a point-in-time decision, but
-cannot return a replacement request to a caller. A caller that evaluates and
-then executes must materialize first and pass the same `ExecRequest` to both
-the compatibility evaluator and the backend. Coding's production Bash path
-does so; compatibility evaluation alone does not promise binding to a later
-execution of an unmaterialized request.
+`harness.policy_engine.PolicyEngine` is the only default evaluator. Products
+inject configuration, not evaluator subclasses or compatibility wrappers.
+Every evaluator implements only `evaluate(subject)`; the retired
+`evaluate_action` and `evaluate_tool_call` call shapes are rejected.
 
-The workspace policy layer consumes a single subject evaluator adapter defined
-beside the Harness policy runtime. A transition adapter recognizes existing
-duck-typed `evaluate_tool_call` and `evaluate_action` implementations, preserving
-their call order and results; unknown objects are rejected rather than treated
-as no policy. New implementations use only `evaluate(subject)`.
+The reusable workspace enforcement path owns a neutral audit vocabulary from
+action freeze through policy, approval, execution start, and terminal outcome.
+It emits correlation IDs, one stable action fingerprint, capability and
+structurally redacted action/command summaries, Policy code, Approval ID,
+execution-profile summary, and result status. It never emits final command
+argv, cwd/path values, contents, environment data, free-form reasons, or
+exception text into the common event stream.
 
-The reusable workspace enforcement path owns a neutral audit vocabulary for
-policy evaluation and approval request/resolution, including final command argv
-and correlation ids. Products inject the sink and own redaction, projection into
-their session/event schemas, persistence, RPC/UI presentation, and compatibility
-field aliases. This keeps the mechanism observable without making Coding's
-event protocol a Harness contract.
+Products inject the sink and own projection into their session/event schemas,
+persistence, RPC/UI presentation, and compatibility field aliases. A
+deployment that needs complete raw evidence must explicitly bind a separate
+restricted evidence store; Product projection is not permission to copy raw
+arguments into common audit events. This keeps the mechanism observable
+without making Coding's event protocol a Harness contract.
 
 ## Approval Broker
 
@@ -635,10 +638,10 @@ The Coding migration is completed in the same branch:
 | --- | --- |
 | `coding.extensions.hooks.HookDispatcher` | Compatibility facade using `ExtensionRouter`; Product Agent result coercion remains in Coding. |
 | Generic loops in `coding.extensions.runner.ExtensionRunner` | Replaced by router observe/reduce/first operations. Context creation and Product reducers remain in Coding. |
-| `coding.policy.approval.InteractiveApprovalResolver` | Thin payload adapter over Harness `ApprovalBroker`. |
-| Command parsing and generic matching in `coding.policy.engine` | Moved to Harness policy matchers/normalizers. |
-| `coding.policy.engine.PolicyEngine` | Product defaults and compatibility methods backed by Harness rules. |
-| Workspace tool policy protocol | Unified with Harness policy adapters; audit and Product error projection remain stable. |
+| removed `coding.policy.approval.InteractiveApprovalResolver` | Harness owns lifecycle and payload projection. |
+| removed command parsing and generic matching in `coding.policy.engine` | Harness policy matchers/normalizers. |
+| removed `coding.policy.engine.PolicyEngine` | Products inject settings into the Harness evaluator. |
+| Workspace tool policy protocol | One `evaluate(subject)` contract; audit and Product error projection remain stable. |
 
 No compatibility module may retain a parallel routing, pending-request, command
 normalization, or rule-evaluation implementation.
@@ -653,12 +656,9 @@ approval rather than implicit allow:
 - existing `LoadedExtension.hooks` inspection;
 - insertion order when no ordering metadata is supplied;
 - Coding extension hook result types and validation diagnostics;
-- Coding `PolicyEngine` constructor arguments and outcomes for completely
-  normalized commands;
 - Coding approval presenter dictionaries and `handle_result` calls;
 - Coding approval payloads use the detached `approval_request_to_dict()`
   projection rather than dataclass internals;
-- Harness approval and policy value-type identity through Coding re-exports;
 - tool-policy audit event names and detail keys;
 - top-level `loushang.harness.__all__` remains unchanged.
 

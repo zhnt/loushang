@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from loushang.harness.tools.execution import direct_execution
+
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -20,13 +22,14 @@ from _support import (
 
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart
-from loushang.coding import ToolDefinition
+from loushang.harness.tools.core import ToolDefinition
 
 EXTENSION_SOURCE = """
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart
-from loushang.coding.extensions import ToolCallDecision, ToolResultDecision
-from loushang.coding.tools import ToolDefinition
+from loushang.harness.extensions.agent import ToolCallDecision, ToolResultDecision
+from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.execution import direct_execution
 
 
 async def _guarded_execute(tool_call_id, params, signal=None, on_update=None):
@@ -67,7 +70,7 @@ def register(api):
                 "required": ["value"],
                 "additionalProperties": False,
             },
-            execute=_guarded_execute,
+            execution=direct_execution(_guarded_execute),
         )
     )
 """
@@ -112,7 +115,7 @@ async def main() -> None:
                         "required": ["value"],
                         "additionalProperties": False,
                     },
-                    execute=_base_calculate,
+                    execution=direct_execution(_base_calculate),
                 )
             ],
         )

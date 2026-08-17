@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 
 def test_testing_docs_use_screen_tui_playback_name() -> None:
     assert Path("docs/internals/testing/screen-tui-playback.md").exists()
@@ -43,9 +45,7 @@ def test_testing_strategy_documents_composer_selection_manual_smoke() -> None:
     ).read_text(encoding="utf-8")
 
     assert "composer-selection-stress" in text
-    assert (
-        "python -m loushang.coding.ui.playback_runner composer-selection-stress" in text
-    )
+    assert "scripts/run_tui_playback.py composer-selection-stress" in text
     assert "Shift+Left" in text
     assert "Shift+Home" in text
     assert "Shift+End" in text
@@ -84,6 +84,46 @@ def test_testing_strategy_documents_streaming_control_and_live_smoke() -> None:
     assert "Live Terminal Smoke Checklist" in strategy
     assert "IME candidate window" in strategy
     assert "Kitty, iTerm2, WezTerm, Ghostty, VS Code terminal" in strategy
+
+
+def test_testing_strategy_separates_native_terminal_and_tmux_evidence() -> None:
+    strategy = Path(
+        "docs/internals/architecture/tui/native-terminal-core/testing-strategy.md"
+    ).read_text(encoding="utf-8")
+
+    assert "Native Terminal Transport Tests" in strategy
+    assert "test-only `ctypes`" in strategy
+    assert "explicitly selects ConPTY" in strategy
+    assert "test_cli_terminal_contract.py" in strategy
+    assert "tmux is a separate terminal-implementation integration" in strategy
+    assert "make test-tui-native" in strategy
+    assert "fails closed" in strategy
+
+
+@pytest.mark.tui_render_contract
+def test_required_terminal_workflows_fail_fast_and_publish_stable_gate() -> None:
+    strategy = Path(
+        "docs/internals/architecture/tui/native-terminal-core/testing-strategy.md"
+    ).read_text(encoding="utf-8")
+    harnesstui = Path(".github/workflows/harnesstui-quality.yml").read_text(
+        encoding="utf-8"
+    )
+    terminal = Path(".github/workflows/tui-render-contract.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "BlockingPromptController" in strategy
+    assert "`tui-cross-platform-contracts`" in strategy
+
+    for workflow in (harnesstui, terminal):
+        assert "cancel-in-progress: true" in workflow
+        assert "faulthandler_timeout=60" in workflow
+        assert "timeout-minutes:" in workflow
+
+    assert "--junitxml=.artifacts/harnesstui-quality.xml" in harnesstui
+    assert "verify_pytest_xml.py .artifacts/harnesstui-quality.xml" in harnesstui
+    assert "tui-cross-platform-contracts:" in terminal
+    assert "Require every cross-platform terminal contract" in terminal
 
 
 def test_theme_key_design_lists_editor_selection_token() -> None:
@@ -137,9 +177,7 @@ def test_public_tui_reference_documents_editing_foundation() -> None:
 
 
 def test_public_tui_reference_documents_runner_and_playback_examples() -> None:
-    english_runner = Path("docs/en/reference/tui-runner.md").read_text(
-        encoding="utf-8"
-    )
+    english_runner = Path("docs/en/reference/tui-runner.md").read_text(encoding="utf-8")
     chinese_runner = Path("docs/zh-CN/reference/tui-runner.md").read_text(
         encoding="utf-8"
     )

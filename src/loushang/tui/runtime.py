@@ -5,7 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, cast
 
-from loushang.observability import get_log
+from loushang.foundation.observability import get_log
 from loushang.tui.framework import ScreenRoot as OverlayScreenRoot
 from loushang.tui.framework import Surface, SurfaceHandle, SurfaceHost
 from loushang.tui.playback import PlaybackEvent, PlaybackStep

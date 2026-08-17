@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 
-def test_coding_types_exports_model_selection_without_control_config_shim() -> None:
-    import loushang.coding.types as coding_types
+def test_model_selection_is_owned_by_ai() -> None:
+    import loushang.ai.model as ai_model
 
-    assert coding_types.__all__ == ["ModelSelection"]
-    assert coding_types.ModelSelection(provider="faux", model_id="alpha").endpoint_id is None
-    assert not hasattr(coding_types, "ControlConfig")
+    assert (
+        ai_model.ModelSelection(
+            endpoint_id="test-endpoint", provider="faux", model_id="alpha"
+        ).endpoint_id
+        == "test-endpoint"
+    )
+    assert not hasattr(ai_model, "ControlConfig")

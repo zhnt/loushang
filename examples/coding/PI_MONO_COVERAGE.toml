@@ -91,10 +91,10 @@ path = "packages/coding-agent/examples/sdk/09-api-keys-and-oauth.ts"
 kind = "sdk"
 topic = "API key resolution and OAuth config"
 target_prefix = "provider"
-status = "partial"
+status = "planned"
 portability = "portable"
-covered_by = ["legacy-017", "legacy-020"]
-gap = "API key path is covered; OAuth provider flow is still planned."
+covered_by = []
+gap = "API key and OAuth configuration examples are not currently covered."
 
 [[pi_example]]
 path = "packages/coding-agent/examples/sdk/10-settings.ts"

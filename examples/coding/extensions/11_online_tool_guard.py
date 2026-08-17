@@ -21,7 +21,7 @@ from loushang.coding import ToolRegistry, register_builtin_tools
 EXTENSION_SOURCE = """
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart
-from loushang.coding.extensions import ToolCallDecision, ToolResultDecision
+from loushang.harness.extensions.agent import ToolCallDecision, ToolResultDecision
 
 
 def register(api):

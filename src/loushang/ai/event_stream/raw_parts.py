@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal, NotRequired, TypedDict
 
-from loushang.observability.problem import JSONValue
+from loushang.foundation.json import JSONValue
 
 
 class ResponseStartPart(TypedDict):
@@ -19,6 +19,7 @@ class ResponseErrorPart(TypedDict):
     message: str
     code: NotRequired[int]
     error_info: NotRequired[dict[str, JSONValue]]
+    provider_response_summary: NotRequired[str]
 
 
 class TextDeltaPart(TypedDict):

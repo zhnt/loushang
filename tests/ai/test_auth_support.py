@@ -1,298 +1,179 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+from types import MappingProxyType
 
 import pytest
 
-from loushang.ai.auth.env import get_env_oauth_credentials
-from loushang.ai.auth.registry import get_default_oauth_registry
-from loushang.ai.auth.support import AuthConfig, resolve_auth_for_model
-from loushang.ai.auth.types import OAuthCredentials, OAuthProviderInterface
-from loushang.ai.contrib.openai_codex import register_openai_codex_oauth_provider
-from loushang.ai.model import Auth, Endpoint, Model, ModelRegistry, Provider
+from loushang.ai import ApiKeyAuth, CallOptions, OAuthBearerAuth
+from loushang.ai.auth import MissingAuthError
+from loushang.ai.auth.support import AuthResolutionError, resolve_auth_for_model
+from loushang.ai.model import Auth, Model
 
 
-class _FailingRefreshProvider:
-    id = "demo"
-    name = "Demo"
-
-    def uses_callback_server(self) -> bool:
-        return False
-
-    async def login(self, callbacks):
-        raise NotImplementedError
-
-    async def refresh_token(self, credentials: OAuthCredentials) -> OAuthCredentials:
-        raise RuntimeError("refresh failed")
-
-    def get_api_key(self, credentials: OAuthCredentials) -> str:
-        return credentials.access_token
-
-    def modify_models(
-        self, models: list[object], credentials: OAuthCredentials
-    ) -> list[object]:
-        return models
-
-
-class _HeaderOAuthProvider:
-    id = "demo"
-    name = "Demo"
-
-    def uses_callback_server(self) -> bool:
-        return False
-
-    async def login(self, callbacks):
-        raise NotImplementedError
-
-    async def refresh_token(self, credentials: OAuthCredentials) -> OAuthCredentials:
-        return credentials
-
-    def get_api_key(self, credentials: OAuthCredentials) -> str:
-        return credentials.access_token
-
-    def get_auth_headers(self, credentials: OAuthCredentials) -> dict[str, str]:
-        return {
-            "x-demo-account": "account-1",
-            "Authorization": "Bearer override",
-            "x-api-key": "override",
-            "Cookie": "secret",
-        }
-
-    def modify_models(
-        self, models: list[object], credentials: OAuthCredentials
-    ) -> list[object]:
-        return models
-
-
-def test_env_oauth_credentials_use_generic_provider_prefix_only() -> None:
-    env = {
-        "DEMO_ACCESS_TOKEN": "demo-token",
-        "DEMO_ACCOUNT_ID": "demo-account",
-        "DEMO_PLAN": "team",
-        "CHATGPT_ACCESS_TOKEN": "chatgpt-token",
-    }
-
-    credentials = get_env_oauth_credentials("demo", env=env)
-
-    assert credentials is not None
-    assert credentials.access_token == "demo-token"
-    assert credentials.extra == {"account_id": "demo-account", "plan": "team"}
-    assert get_env_oauth_credentials("openai-codex", env=env) is None
-
-
-def test_oauth_provider_contract_declares_auth_header_hook() -> None:
-    assert "get_auth_headers" in OAuthProviderInterface.__dict__
-
-
-def test_oauth_provider_can_add_non_sensitive_auth_headers() -> None:
-    registry = get_default_oauth_registry()
-    registry.clear()
-    registry.register(_HeaderOAuthProvider(), source_id="test")
-    try:
-        model = SimpleNamespace(provider_id="demo", endpoint_id="demo", id="model-a")
-        options = SimpleNamespace(
-            oauth_credentials={
-                "demo": OAuthCredentials(
-                    provider="demo",
-                    access_token="oauth-token",
-                )
-            }
-        )
-
-        view = resolve_auth_for_model(model, options=options)
-    finally:
-        registry.clear()
-
-    assert view.headers == {
-        "Authorization": "Bearer oauth-token",
-        "x-demo-account": "account-1",
-    }
-
-
-def test_openai_codex_env_oauth_account_id_uses_contrib_header_hook() -> None:
-    registry = get_default_oauth_registry()
-    registry.clear()
-    register_openai_codex_oauth_provider(registry=registry)
-    try:
-        model = SimpleNamespace(
-            provider_id="openai-codex",
-            endpoint_id="openai-codex-responses",
-            id="gpt-5.1-codex",
-        )
-
-        view = resolve_auth_for_model(
-            model,
-            env={
-                "OPENAI_CODEX_ACCESS_TOKEN": "opaque-token",
-                "OPENAI_CODEX_ACCOUNT_ID": "acc_env",
-            },
-        )
-    finally:
-        registry.clear()
-
-    assert view.headers == {
-        "Authorization": "Bearer opaque-token",
-        "chatgpt-account-id": "acc_env",
-    }
-
-
-def test_oauth_refresh_failure_does_not_fall_back_to_api_key() -> None:
-    registry = get_default_oauth_registry()
-    registry.clear()
-    registry.register(_FailingRefreshProvider(), source_id="test")
-    try:
-        model = SimpleNamespace(
-            provider_id="demo",
-            endpoint_id="demo",
-            id="model-a",
-            auth=AuthConfig(api_key_env="DEMO_API_KEY"),
-        )
-        options = SimpleNamespace(
-            oauth_credentials={
-                "demo": OAuthCredentials(
-                    provider="demo",
-                    access_token="expired",
-                    refresh_token="refresh",
-                    expires_at=0.0,
-                )
-            },
-            api_key="fallback-key",
-        )
-
-        with pytest.raises(RuntimeError, match="refresh failed"):
-            resolve_auth_for_model(model, options=options)
-    finally:
-        registry.clear()
-
-
-def test_env_oauth_refresh_failure_does_not_fall_back_to_api_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    registry = get_default_oauth_registry()
-    registry.clear()
-    registry.register(_FailingRefreshProvider(), source_id="test")
-    monkeypatch.setattr(
-        "loushang.ai.auth.env.get_env_oauth_credentials",
-        lambda provider, env=None: OAuthCredentials(
-            provider=provider,
-            access_token="expired",
-            refresh_token="refresh",
-            expires_at=0.0,
-        ),
-    )
-    try:
-        model = SimpleNamespace(
-            provider_id="demo",
-            endpoint_id="demo",
-            id="model-a",
-            auth=AuthConfig(api_key_env="DEMO_API_KEY"),
-        )
-
-        with pytest.raises(RuntimeError, match="refresh failed"):
-            resolve_auth_for_model(model, env={"DEMO_API_KEY": "fallback-key"})
-    finally:
-        registry.clear()
-
-
-def test_stored_oauth_refresh_failure_does_not_fall_back_to_api_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    registry = get_default_oauth_registry()
-    registry.clear()
-    registry.register(_FailingRefreshProvider(), source_id="test")
-    monkeypatch.setattr(
-        "loushang.ai.auth.storage.load_credential_store",
-        lambda: {
-            "providers": {
-                "demo": OAuthCredentials(
-                    provider="demo",
-                    access_token="expired",
-                    refresh_token="refresh",
-                    expires_at=0.0,
-                )
-            },
-            "endpoints": {},
-            "models": {},
-        },
-    )
-    try:
-        model = SimpleNamespace(
-            provider_id="demo",
-            endpoint_id="demo",
-            id="model-a",
-            auth=AuthConfig(api_key_env="DEMO_API_KEY"),
-        )
-
-        with pytest.raises(RuntimeError, match="refresh failed"):
-            resolve_auth_for_model(model, env={"DEMO_API_KEY": "fallback-key"})
-    finally:
-        registry.clear()
-
-
-def test_empty_oauth_credentials_do_not_block_api_key_fallback() -> None:
-    model = SimpleNamespace(
-        provider_id="demo",
-        endpoint_id="demo",
+def _model(
+    auth: Auth | None = None,
+    *,
+    headers: dict[str, str] | None = None,
+) -> Model:
+    return Model(
         id="model-a",
-        auth=AuthConfig(api_key_env="DEMO_API_KEY"),
-    )
-    options = SimpleNamespace(
-        oauth_credentials={
-            "demo": OAuthCredentials(provider="demo", access_token="  ")
-        },
-        api_key="fallback-key",
-    )
-
-    view = resolve_auth_for_model(model, options=options)
-
-    assert view.headers["Authorization"] == "Bearer fallback-key"
-
-
-def test_auth_config_is_model_auth_type() -> None:
-    assert AuthConfig is Auth
-
-
-def test_auth_resolution_uses_model_effective_auth_without_registry_lookup() -> None:
-    model = Model(
-        id="ad-hoc",
-        provider="demo",
-        endpoint="responses",
-        auth=Auth(header="X-API-Key", prefix="", api_key_env="DEMO_API_KEY"),
-    )
-
-    view = resolve_auth_for_model(
-        model,
-        options=SimpleNamespace(api_key="secret"),
-    )
-
-    assert view.headers == {"X-API-Key": "secret"}
-
-
-def test_loaded_model_holds_effective_provider_endpoint_auth() -> None:
-    endpoint = Endpoint(
-        id="responses",
-        provider="demo",
+        provider="provider-a",
+        endpoint="endpoint-a",
         api="openai-responses",
-        auth=Auth(extra_headers={"X-Endpoint": "endpoint"}),
-        models={"ad-hoc": Model(id="ad-hoc", provider="demo", endpoint="responses")},
+        base_url="https://provider.test/v1",
+        auth=auth,
+        headers=headers or {},
     )
-    registry = ModelRegistry.from_providers(
-        {
-            "demo": Provider(
-                id="demo",
-                auth=Auth(header="X-Provider", prefix="Token "),
-                endpoints={endpoint.id: endpoint},
-            )
-        }
-    )
-    model = registry.get_model("demo", "responses", "ad-hoc")
 
+
+def test_default_api_key_uses_catalog_declaration_and_endpoint_headers() -> None:
     view = resolve_auth_for_model(
-        model,
-        options=SimpleNamespace(api_key="secret"),
+        _model(
+            Auth(
+                kind="apiKey",
+                api_key_env="DEMO_API_KEY",
+                header="x-api-key",
+                prefix="",
+            ),
+            headers={"x-static": "catalog"},
+        ),
+        env={"DEMO_API_KEY": "secret"},
+    )
+
+    assert view.headers == {"x-static": "catalog", "x-api-key": "secret"}
+
+
+def test_explicit_api_key_uses_catalog_header_and_prefix() -> None:
+    view = resolve_auth_for_model(
+        _model(Auth(header="X-Custom-Auth", prefix="Token ")),
+        options=CallOptions(auth=ApiKeyAuth("secret")),
+        env={},
+    )
+
+    assert view.headers == {"X-Custom-Auth": "Token secret"}
+
+
+def test_oauth_extra_and_call_headers_follow_documented_order() -> None:
+    view = resolve_auth_for_model(
+        _model(
+            Auth(kind="oauth"),
+            headers={"x-layer": "static", "x-static": "yes"},
+        ),
+        options=CallOptions(
+            auth=OAuthBearerAuth(
+                "oauth-token",
+                extra_headers={"x-layer": "credential", "x-account": "acct"},
+            ),
+            headers={"x-layer": "call", "x-call": "yes"},
+        ),
+        env={},
     )
 
     assert view.headers == {
-        "X-Provider": "Token secret",
-        "X-Endpoint": "endpoint",
+        "x-static": "yes",
+        "Authorization": "Bearer oauth-token",
+        "x-account": "acct",
+        "x-layer": "call",
+        "x-call": "yes",
     }
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        CallOptions(
+            auth=OAuthBearerAuth(
+                "token",
+                extra_headers={"authorization": "Bearer replacement"},
+            )
+        ),
+        CallOptions(
+            auth=ApiKeyAuth("token"),
+            headers={"AUTHORIZATION": "Bearer replacement"},
+        ),
+    ],
+)
+def test_later_headers_cannot_override_primary_auth(options: CallOptions) -> None:
+    with pytest.raises(AuthResolutionError, match="cannot override"):
+        resolve_auth_for_model(_model(Auth()), options=options, env={})
+
+
+def test_primary_auth_overrides_same_static_header() -> None:
+    view = resolve_auth_for_model(
+        _model(
+            Auth(),
+            headers={"authorization": "Bearer static", "x-static": "yes"},
+        ),
+        options=CallOptions(auth=ApiKeyAuth("explicit")),
+        env={},
+    )
+
+    assert view.headers == {
+        "x-static": "yes",
+        "Authorization": "Bearer explicit",
+    }
+
+
+def test_model_without_auth_declaration_requires_no_credentials() -> None:
+    view = resolve_auth_for_model(
+        _model(headers={"x-static": "yes"}),
+        options=CallOptions(headers={"x-call": "yes"}),
+        env={},
+    )
+
+    assert view.headers == {"x-static": "yes", "x-call": "yes"}
+
+
+def test_explicit_auth_is_allowed_without_catalog_declaration() -> None:
+    view = resolve_auth_for_model(
+        _model(),
+        options=CallOptions(auth=OAuthBearerAuth("token")),
+        env={},
+    )
+
+    assert view.headers == {"Authorization": "Bearer token"}
+
+
+def test_default_oauth_requires_explicit_credential() -> None:
+    with pytest.raises(MissingAuthError, match="OAuthBearerAuth"):
+        resolve_auth_for_model(_model(Auth(kind="oauth")), env={})
+
+
+def test_missing_default_api_key_reports_expected_env() -> None:
+    with pytest.raises(MissingAuthError) as exc_info:
+        resolve_auth_for_model(
+            _model(Auth(api_key_envs=("PRIMARY_KEY", "SECONDARY_KEY"))),
+            env={},
+        )
+
+    assert exc_info.value.info.details == {
+        "expected_env": ["PRIMARY_KEY", "SECONDARY_KEY"],
+        "recovery": "configure",
+    }
+
+
+@pytest.mark.parametrize(
+    "auth",
+    [ApiKeyAuth(""), ApiKeyAuth("line\nfeed"), OAuthBearerAuth("   ")],
+)
+def test_explicit_secrets_are_strict(auth: object) -> None:
+    with pytest.raises(AuthResolutionError):
+        resolve_auth_for_model(
+            _model(Auth()),
+            options=CallOptions(auth=auth),  # type: ignore[arg-type]
+            env={},
+        )
+
+
+def test_resolved_headers_are_read_only_and_redacted() -> None:
+    auth = OAuthBearerAuth("super-secret", extra_headers={"x-account": "acct"})
+    view = resolve_auth_for_model(
+        _model(Auth(kind="oauth")),
+        options=CallOptions(auth=auth),
+        env={},
+    )
+
+    assert isinstance(view.headers, MappingProxyType)
+    assert "super-secret" not in repr(auth)
+    with pytest.raises(TypeError):
+        view.headers["x-new"] = "value"  # type: ignore[index]

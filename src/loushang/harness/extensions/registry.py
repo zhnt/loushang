@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.types import (
     LoadedExtension,
     ResolvedCommand,
@@ -11,7 +12,7 @@ from loushang.harness.extensions.types import (
     ResolvedShortcut,
     extension_is_active,
 )
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.diagnostics import resource_diagnostic
 from loushang.harness.resources.source import SourceInfo
 from loushang.harness.tools.core import ToolDefinition
 
@@ -30,9 +31,9 @@ class ExtensionRegistrySnapshot:
     shortcuts: tuple[ResolvedShortcut, ...] = ()
     tools: tuple[ExtensionToolRegistration, ...] = ()
     flag_defaults: dict[str, bool | str] = field(default_factory=dict)
-    diagnostics: tuple[ResourceDiagnostic, ...] = ()
-    flag_diagnostics: tuple[ResourceDiagnostic, ...] = ()
-    shortcut_diagnostics: tuple[ResourceDiagnostic, ...] = ()
+    diagnostics: tuple[DiagnosticDraft, ...] = ()
+    flag_diagnostics: tuple[DiagnosticDraft, ...] = ()
+    shortcut_diagnostics: tuple[DiagnosticDraft, ...] = ()
 
     def command_index(self) -> dict[str, ResolvedCommand]:
         return {command.invocation_name: command for command in self.commands}
@@ -116,11 +117,11 @@ def _resolve_flags(
 ) -> tuple[
     tuple[ResolvedFlag, ...],
     dict[str, bool | str],
-    tuple[ResourceDiagnostic, ...],
+    tuple[DiagnosticDraft, ...],
 ]:
     resolved: list[ResolvedFlag] = []
     defaults: dict[str, bool | str] = {}
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
     seen: set[str] = set()
     for extension in extensions:
         for name, flag in extension.flags.items():
@@ -147,9 +148,9 @@ def _resolve_flags(
 
 def _resolve_shortcuts(
     extensions: list[LoadedExtension] | tuple[LoadedExtension, ...],
-) -> tuple[tuple[ResolvedShortcut, ...], tuple[ResourceDiagnostic, ...]]:
+) -> tuple[tuple[ResolvedShortcut, ...], tuple[DiagnosticDraft, ...]]:
     resolved: list[ResolvedShortcut] = []
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
     seen: set[str] = set()
     for extension in extensions:
         for shortcut, definition in extension.shortcuts.items():
@@ -173,9 +174,9 @@ def _resolve_shortcuts(
 
 def _resolve_tools(
     extensions: list[LoadedExtension] | tuple[LoadedExtension, ...],
-) -> tuple[tuple[ExtensionToolRegistration, ...], tuple[ResourceDiagnostic, ...]]:
+) -> tuple[tuple[ExtensionToolRegistration, ...], tuple[DiagnosticDraft, ...]]:
     resolved: list[ExtensionToolRegistration] = []
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
     seen: set[str] = set()
     for extension in extensions:
         for definition in extension.tool_definitions:
@@ -201,8 +202,8 @@ def _duplicate_diagnostic(
     contribution_type: Literal["tool", "flag", "shortcut"],
     name: str,
     source_path: Path,
-) -> ResourceDiagnostic:
-    return ResourceDiagnostic(
+) -> DiagnosticDraft:
+    return resource_diagnostic(
         code=f"duplicate_extension_{contribution_type}",
         message=(f"Duplicate extension {contribution_type} '{name}' was rejected."),
         source_path=source_path,

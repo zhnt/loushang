@@ -107,6 +107,7 @@ PlaybackRender = Callable[
 class PlaybackArtifacts:
     trace: Path
     screen: Path
+    terminal: Path
 
 
 @dataclass(slots=True)
@@ -158,6 +159,23 @@ class PlaybackResult:
     @property
     def visible_text(self) -> str:
         return strip_control_sequences("\n".join(self.port.screen.visible_lines))
+
+    @property
+    def scrollback_text(self) -> str:
+        return strip_control_sequences(
+            "\n".join(self.port.screen.scrollback_lines)
+        )
+
+    @property
+    def terminal_text(self) -> str:
+        return strip_control_sequences(
+            "\n".join(
+                (
+                    *self.port.screen.scrollback_lines,
+                    *self.port.screen.visible_lines,
+                )
+            )
+        )
 
     def assert_all_flush_succeeded(self) -> None:
         failed = [step for step in self.steps if not step.flush_succeeded]
@@ -390,9 +408,15 @@ class PlaybackResult:
         output_dir.mkdir(parents=True, exist_ok=True)
         trace_path = output_dir / f"{basename}.jsonl"
         screen_path = output_dir / f"{basename}-screen.txt"
+        terminal_path = output_dir / f"{basename}-terminal.txt"
         self.write_jsonl(trace_path, include_frames=include_frames)
         screen_path.write_text(self.visible_text, encoding="utf-8")
-        return PlaybackArtifacts(trace=trace_path, screen=screen_path)
+        terminal_path.write_text(self.terminal_text, encoding="utf-8")
+        return PlaybackArtifacts(
+            trace=trace_path,
+            screen=screen_path,
+            terminal=terminal_path,
+        )
 
     @contextmanager
     def write_artifacts_on_failure(
@@ -479,6 +503,11 @@ class PlaybackResult:
                 step.frame.screen_after.visible_lines
                 if step.frame is not None
                 else self.port.screen.visible_lines
+            ),
+            "scrollback_lines": list(
+                step.frame.screen_after.scrollback_lines
+                if step.frame is not None
+                else self.port.screen.scrollback_lines
             ),
         }
         if include_frames:

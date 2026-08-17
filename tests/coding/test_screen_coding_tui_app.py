@@ -19,13 +19,38 @@ from loushang.tui.transcript import (
 
 
 def _lines(value: Any, *, width: int = 80, height: int = 24) -> list[str]:
-    result = value.render(RenderConstraints(width=width, max_height=height, visible_height=height))
+    result = value.render(
+        RenderConstraints(width=width, max_height=height, visible_height=height)
+    )
     return [strip_control_sequences(line.text) for line in result.lines]
 
 
 def _raw_lines(value: Any, *, width: int = 80, height: int = 24) -> list[str]:
-    result = value.render(RenderConstraints(width=width, max_height=height, visible_height=height))
+    result = value.render(
+        RenderConstraints(width=width, max_height=height, visible_height=height)
+    )
     return [line.text for line in result.lines]
+
+
+def _coding_transcript_region(*args: Any, cwd: str = "", **kwargs: Any) -> Any:
+    """Construct a transcript region through the canonical shared owner."""
+
+    from loushang.coding.ui.screen_app import (
+        _CODING_TRANSCRIPT_PRESENTATION_PROFILE,
+    )
+    from loushang.harnesstui.conversation.transcript_presentation import (
+        ProfiledConversationTranscriptPresentation,
+    )
+    from loushang.tui.ui_parts.transcript import TranscriptRegion
+
+    kwargs.setdefault(
+        "presentation",
+        ProfiledConversationTranscriptPresentation(
+            profile=_CODING_TRANSCRIPT_PRESENTATION_PROFILE,
+            context=cwd,
+        ),
+    )
+    return TranscriptRegion(*args, **kwargs)
 
 
 def _fresh_flat_streaming_oracle_lines(
@@ -38,9 +63,7 @@ def _fresh_flat_streaming_oracle_lines(
 ) -> tuple[str, ...]:
     """Render a draft without the streaming segmented cache."""
 
-    from loushang.coding.ui.screen_app import _ScreenTranscriptRegion
-
-    region = _ScreenTranscriptRegion(
+    region = _coding_transcript_region(
         records=list(records),
         records_revision=1 if records else 0,
         draft=AssistantMessageRecord(source, stable=False),
@@ -135,7 +158,9 @@ def test_screen_coding_tui_status_message_is_not_rendered_as_thinking() -> None:
 
     app.add_status("Active tools: read, ls, find, grep, bash, edit, write")
 
-    assert app.state.records == [StatusRecord("Active tools: read, ls, find, grep, bash, edit, write")]
+    assert app.state.records == [
+        StatusRecord("Active tools: read, ls, find, grep, bash, edit, write")
+    ]
     rendered = "\n".join(_lines(app, width=100, height=24))
     assert "Active tools: read, ls, find, grep, bash, edit, write" in rendered
     assert "? thinking:" not in rendered
@@ -162,7 +187,9 @@ def test_screen_coding_tui_styles_tool_heading_marker_verb_and_flags() -> None:
     raw = _raw_lines(app, width=120, height=20)
     line = next(line for line in raw if "git status" in strip_control_sequences(line))
 
-    assert strip_control_sequences(line) == "• Ran git status --short --branch took 0.00s"
+    assert (
+        strip_control_sequences(line) == "• Ran git status --short --branch took 0.00s"
+    )
     assert "\x1b[1;96m•\x1b[22;39m" in line
     assert "\x1b[1mRan\x1b[22m" in line
     assert "\x1b[96m--short\x1b[39m" in line
@@ -188,7 +215,9 @@ def test_screen_coding_tui_compacts_repo_paths_in_tool_heading_only() -> None:
     )
     app.state.records.append(record)
 
-    line = next(line for line in _lines(app, width=120, height=20) if "Ran read" in line)
+    line = next(
+        line for line in _lines(app, width=120, height=20) if "Ran read" in line
+    )
 
     assert line == "• Ran read README.md took 0.00s"
     assert record.name == f"read {cwd}/README.md"
@@ -212,7 +241,9 @@ def test_screen_coding_tui_compacts_home_paths_in_tool_heading_only() -> None:
     )
     app.state.records.append(record)
 
-    line = next(line for line in _lines(app, width=120, height=20) if "Ran read" in line)
+    line = next(
+        line for line in _lines(app, width=120, height=20) if "Ran read" in line
+    )
 
     assert line == "• Ran read ~/.config/loushang/config.toml took 0.00s"
     assert record.name == f"read {home}/.config/loushang/config.toml"
@@ -259,7 +290,9 @@ def test_screen_coding_tui_styles_error_records_red() -> None:
     app.state.records.append(ErrorRecord("provider failed"))
 
     raw = _raw_lines(app, width=120, height=20)
-    line = next(line for line in raw if "provider failed" in strip_control_sequences(line))
+    line = next(
+        line for line in raw if "provider failed" in strip_control_sequences(line)
+    )
 
     assert strip_control_sequences(line) == "■ Error: provider failed"
     assert line.startswith("\x1b[31m■ Error: provider failed\x1b[39m")
@@ -285,8 +318,12 @@ def test_screen_coding_tui_styles_tool_connectors_and_metadata() -> None:
     )
 
     raw = _raw_lines(app, width=120, height=20)
-    connector_line = next(line for line in raw if "(no output)" in strip_control_sequences(line))
-    collapsed_line = next(line for line in raw if "+4 lines" in strip_control_sequences(line))
+    connector_line = next(
+        line for line in raw if "(no output)" in strip_control_sequences(line)
+    )
+    collapsed_line = next(
+        line for line in raw if "+4 lines" in strip_control_sequences(line)
+    )
 
     assert strip_control_sequences(connector_line) == "  └ (no output)"
     assert "\x1b[2;90m└\x1b[22;39m" in connector_line
@@ -315,12 +352,19 @@ def test_screen_coding_tui_styles_tool_activity_actions() -> None:
     )
 
     raw = _raw_lines(app, width=120, height=20)
-    read_line = next(line for line in raw if "Read theme.py" in strip_control_sequences(line))
-    search_line = next(line for line in raw if "Search transcript" in strip_control_sequences(line))
+    read_line = next(
+        line for line in raw if "Read theme.py" in strip_control_sequences(line)
+    )
+    search_line = next(
+        line for line in raw if "Search transcript" in strip_control_sequences(line)
+    )
 
     assert strip_control_sequences(read_line) == "  └ Read theme.py"
     assert "\x1b[96mRead\x1b[39m" in read_line
-    assert strip_control_sequences(search_line) == "    Search transcript in src/loushang/tui"
+    assert (
+        strip_control_sequences(search_line)
+        == "    Search transcript in src/loushang/tui"
+    )
     assert "\x1b[96mSearch\x1b[39m" in search_line
 
 
@@ -356,15 +400,24 @@ def test_screen_coding_tui_structures_tool_command_and_output_body() -> None:
 
     assert "  │ $ bash git status" not in plain
     assert "  └ ... (6 earlier lines)" in plain
-    assert '    nothing added to commit but untracked files present (use "git add" to track)' in plain
+    assert (
+        '    nothing added to commit but untracked files present (use "git add" to track)'
+        in plain
+    )
     assert "    Took 0.6s" not in plain
 
-    collapsed_line = next(line for line in raw if "earlier lines" in strip_control_sequences(line))
-    nothing_line = next(line for line in raw if "nothing added" in strip_control_sequences(line))
+    collapsed_line = next(
+        line for line in raw if "earlier lines" in strip_control_sequences(line)
+    )
+    nothing_line = next(
+        line for line in raw if "nothing added" in strip_control_sequences(line)
+    )
 
     assert "\x1b[2;90m└\x1b[22;39m" in collapsed_line
     assert "\x1b[2;90m... (6 earlier lines)\x1b[22;39m" in collapsed_line
-    assert "\x1b[2;90mnothing added to commit but untracked files present" in nothing_line
+    assert (
+        "\x1b[2;90mnothing added to commit but untracked files present" in nothing_line
+    )
 
 
 def test_screen_coding_tui_summarizes_long_tool_output_with_head_and_tail() -> None:
@@ -399,7 +452,9 @@ def test_screen_coding_tui_summarizes_long_tool_output_with_head_and_tail() -> N
     assert "    line 4" not in plain
     assert "    line 9" not in plain
 
-    collapsed_line = next(line for line in raw if "hidden lines" in strip_control_sequences(line))
+    collapsed_line = next(
+        line for line in raw if "hidden lines" in strip_control_sequences(line)
+    )
     assert "\x1b[2;90m... (6 hidden lines)\x1b[22;39m" in collapsed_line
 
 
@@ -453,7 +508,10 @@ def test_screen_coding_tui_does_not_shred_long_tool_output_paths() -> None:
         )
     )
 
-    plain = tuple(strip_control_sequences(line.text) for line in app.render(RenderConstraints(width=100, max_height=20)).lines)
+    plain = tuple(
+        strip_control_sequences(line.text)
+        for line in app.render(RenderConstraints(width=100, max_height=20)).lines
+    )
 
     assert "    t" not in plain
     assert "    -tool-semantics-design.md" in plain
@@ -480,7 +538,9 @@ def test_screen_coding_tui_keeps_non_duplicate_tool_command_detail() -> None:
     )
 
     raw = _raw_lines(app, width=120, height=20)
-    command_line = next(line for line in raw if "$ git status" in strip_control_sequences(line))
+    command_line = next(
+        line for line in raw if "$ git status" in strip_control_sequences(line)
+    )
 
     assert strip_control_sequences(command_line) == "  │ $ git status"
     assert "\x1b[2;90m│\x1b[22;39m" in command_line
@@ -544,7 +604,11 @@ def test_screen_coding_tui_keeps_unsubmitted_draft_in_composer_only() -> None:
     rendered = _lines(app)
 
     assert sum(1 for line in rendered if line == "› 你") == 1
-    assert [record.text for record in app.state.records if isinstance(record, UserPromptRecord)] == ["你好"]
+    assert [
+        record.text
+        for record in app.state.records
+        if isinstance(record, UserPromptRecord)
+    ] == ["你好"]
 
 
 def test_screen_coding_tui_pending_sections_follow_working_line() -> None:
@@ -562,8 +626,12 @@ def test_screen_coding_tui_pending_sections_follow_working_line() -> None:
     app.queue_followup("你是谁")
 
     rendered = _lines(app, width=140, height=18)
-    working_index = next(index for index, line in enumerate(rendered) if "Working 1.50s" in line)
-    steer_index = rendered.index("• Messages to be submitted after next tool call (press esc to interrupt and send immediately)")
+    working_index = next(
+        index for index, line in enumerate(rendered) if "Working 1.50s" in line
+    )
+    steer_index = rendered.index(
+        "• Messages to be submitted after next tool call (press esc to interrupt and send immediately)"
+    )
     followup_index = rendered.index("• Queued follow-up inputs")
     composer_index = rendered.index("› ")
 
@@ -601,6 +669,7 @@ def test_screen_coding_tui_requests_animation_frames_while_running() -> None:
     assert decision.delay_ms > 0
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_reuses_stable_transcript_render_cache() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -626,6 +695,7 @@ def test_screen_coding_tui_reuses_stable_transcript_render_cache() -> None:
     assert app._transcript_region._stable_line_cache == cached
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_reuses_unchanged_streaming_draft_cache() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -648,6 +718,7 @@ def test_screen_coding_tui_reuses_unchanged_streaming_draft_cache() -> None:
     assert app._transcript_region._draft_segments is first_cached
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_reuses_stable_streaming_markdown_blocks(monkeypatch) -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -662,7 +733,9 @@ def test_screen_coding_tui_reuses_stable_streaming_markdown_blocks(monkeypatch) 
             rendered_code_blocks.append(block.lines)
         return original(block, **kwargs)
 
-    monkeypatch.setattr(markdown_renderer_module, "_render_markdown_block", render_markdown_block)
+    monkeypatch.setattr(
+        markdown_renderer_module, "_render_markdown_block", render_markdown_block
+    )
 
     app = ScreenCodingTuiApp(
         model_label="kimi",
@@ -684,6 +757,7 @@ def test_screen_coding_tui_reuses_stable_streaming_markdown_blocks(monkeypatch) 
     ]
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_rerenders_current_streaming_table_block(monkeypatch) -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -699,7 +773,9 @@ def test_screen_coding_tui_rerenders_current_streaming_table_block(monkeypatch) 
             rendered_tables += 1
         return original(block, **kwargs)
 
-    monkeypatch.setattr(markdown_renderer_module, "_render_markdown_block", render_markdown_block)
+    monkeypatch.setattr(
+        markdown_renderer_module, "_render_markdown_block", render_markdown_block
+    )
 
     app = ScreenCodingTuiApp(
         model_label="kimi",
@@ -723,7 +799,94 @@ def test_screen_coding_tui_rerenders_current_streaming_table_block(monkeypatch) 
     assert rendered_tables == 3
 
 
-def test_screen_coding_tui_clears_transient_draft_cache_after_assistant_commit() -> None:
+@pytest.mark.tui_render_contract
+def test_screen_coding_tui_repaints_table_when_late_row_widens_column() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.tui import FakeTerminalPort, RenderLoop, TerminalSize, TuiRuntime
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd1234",
+        now=lambda: 10.0,
+        active_transcript_line_budget=10_000,
+    )
+    app.start_prompt("stream table", started_at=9.0)
+    app.begin_assistant()
+
+    runtime = TuiRuntime(
+        render_loop=RenderLoop(app),
+        terminal=FakeTerminalPort(size=TerminalSize(columns=120, rows=40)),
+    )
+    short_table = (
+        "| 子包 | 文件数 | 行数 |\n"
+        "| --- | --- | --- |\n"
+        + "".join(
+            f"| package_{index:04d} | {index} | {index * 10:,} |\n"
+            for index in range(1, 1_000)
+        )
+    )
+    wide_package_name = "agent_transcript_" + ("x" * 63)
+    late_row = f"| {wide_package_name} | 1,000 | 100,000 |\n"
+
+    app.append_assistant_chunk(short_table)
+    runtime.render_now()
+    app.append_assistant_chunk(late_row)
+    step = runtime.render_now()
+
+    actual = tuple(
+        strip_control_sequences(line).rstrip()
+        for line in step.diagnostics.current_logical_lines
+    )
+    screen = (
+        tuple(
+            strip_control_sequences(line).rstrip()
+            for line in step.frame.screen_after.visible_lines
+        )
+        if step.frame is not None
+        else ()
+    )
+    expected = _fresh_flat_streaming_oracle_lines(
+        short_table + late_row,
+        records=(UserPromptRecord("stream table"),),
+        theme=app.transcript_theme,
+        width=120,
+        max_height=10_000,
+    )
+
+    def table_block(lines: tuple[str, ...]) -> tuple[str, ...]:
+        start = next(index for index, line in enumerate(lines) if "┌" in line)
+        end = start + next(
+            offset
+            for offset, line in enumerate(lines[start:], start=1)
+            if "└" in line
+        )
+        return lines[start:end]
+
+    expected_table = table_block(tuple(line.rstrip() for line in expected))
+    actual_table = table_block(actual)
+
+    assert actual_table == expected_table
+    assert len(actual_table) == 2_003
+    assert wide_package_name in actual_table[-2]
+    assert step.diagnostics.changed_line_range is not None
+    table_start = next(index for index, line in enumerate(actual) if "┌" in line)
+    assert step.diagnostics.changed_line_range[0] == table_start
+    viewport_top = step.diagnostics.viewport_top
+    expected_screen = tuple(
+        actual[viewport_top : viewport_top + len(screen)]
+    )
+    assert screen == expected_screen
+    assert table_start == next(
+        index for index, line in enumerate(actual) if "┌" in line
+    )
+
+
+@pytest.mark.tui_render_contract
+def test_screen_coding_tui_clears_transient_draft_cache_after_assistant_commit() -> (
+    None
+):
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
     app = ScreenCodingTuiApp(
@@ -747,7 +910,10 @@ def test_screen_coding_tui_clears_transient_draft_cache_after_assistant_commit()
     assert app._transcript_region._draft_segments == ()
 
 
-def test_screen_coding_tui_promotes_streaming_draft_cache_after_assistant_commit() -> None:
+@pytest.mark.tui_render_contract
+def test_screen_coding_tui_promotes_streaming_draft_cache_after_assistant_commit() -> (
+    None
+):
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
     app = ScreenCodingTuiApp(
@@ -759,7 +925,9 @@ def test_screen_coding_tui_promotes_streaming_draft_cache_after_assistant_commit
     )
     app.start_prompt("stream", started_at=9.0)
     app.begin_assistant()
-    app.append_assistant_chunk("\n".join(f"- **Line {line}**: `code-{line}`" for line in range(100)))
+    app.append_assistant_chunk(
+        "\n".join(f"- **Line {line}**: `code-{line}`" for line in range(100))
+    )
 
     _lines(app, width=100, height=1_000)
     transient_lines = tuple(
@@ -775,7 +943,10 @@ def test_screen_coding_tui_promotes_streaming_draft_cache_after_assistant_commit
     assert app._transcript_region._transient_line_cache_lines is None
 
 
-def test_screen_coding_tui_uses_canonical_markdown_when_final_text_replaces_draft() -> None:
+@pytest.mark.tui_render_contract
+def test_screen_coding_tui_uses_canonical_markdown_when_final_text_replaces_draft() -> (
+    None
+):
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
     app = ScreenCodingTuiApp(
@@ -797,7 +968,10 @@ def test_screen_coding_tui_uses_canonical_markdown_when_final_text_replaces_draf
     assert "Old" not in rendered
 
 
-def test_screen_coding_tui_complete_run_does_not_trim_active_transcript_line_window() -> None:
+@pytest.mark.tui_render_contract
+def test_screen_coding_tui_complete_run_does_not_trim_active_transcript_line_window() -> (
+    None
+):
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
     app = ScreenCodingTuiApp(
@@ -811,7 +985,9 @@ def test_screen_coding_tui_complete_run_does_not_trim_active_transcript_line_win
     for turn in range(4):
         app.start_prompt(f"turn {turn}", started_at=float(turn))
         app.begin_assistant()
-        app.append_assistant_chunk("\n".join(f"turn {turn} line {line}" for line in range(40)))
+        app.append_assistant_chunk(
+            "\n".join(f"turn {turn} line {line}" for line in range(40))
+        )
         app.end_assistant()
         app.complete_run(elapsed_seconds=1.0)
 
@@ -824,6 +1000,25 @@ def test_screen_coding_tui_complete_run_does_not_trim_active_transcript_line_win
     assert "turn 0 line 0" in rendered
 
 
+def test_screen_coding_tui_keeps_product_compaction_summary_copy() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+
+    app = ScreenCodingTuiApp(
+        model_label="model",
+        cwd="/workspace",
+        branch="main",
+        session_label="session",
+    )
+    app.state.records.append(UserPromptRecord("old"))
+
+    app.compact_transcript_window(summary=" condensed ", max_records=1)
+
+    assert app.state.records == [
+        AssistantMessageRecord("Compacted summary:\n\ncondensed")
+    ]
+
+
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_explicit_active_window_trim_keeps_recent_tail() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -838,7 +1033,9 @@ def test_screen_coding_tui_explicit_active_window_trim_keeps_recent_tail() -> No
     for turn in range(4):
         app.start_prompt(f"turn {turn}", started_at=float(turn))
         app.begin_assistant()
-        app.append_assistant_chunk("\n".join(f"turn {turn} line {line}" for line in range(40)))
+        app.append_assistant_chunk(
+            "\n".join(f"turn {turn} line {line}" for line in range(40))
+        )
         app.end_assistant()
         app.complete_run(elapsed_seconds=1.0)
 
@@ -852,7 +1049,10 @@ def test_screen_coding_tui_explicit_active_window_trim_keeps_recent_tail() -> No
     assert "turn 0 line 0" not in rendered
 
 
-def test_screen_coding_tui_streaming_draft_render_keeps_full_append_stable_lines() -> None:
+@pytest.mark.tui_render_contract
+def test_screen_coding_tui_streaming_draft_render_keeps_full_append_stable_lines() -> (
+    None
+):
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
     app = ScreenCodingTuiApp(
@@ -869,14 +1069,18 @@ def test_screen_coding_tui_streaming_draft_render_keeps_full_append_stable_lines
     rendered_lines = _lines(app, width=100, height=1_000)
     rendered = "\n".join(rendered_lines)
 
-    assert sum(
-        segment.line_count
-        for segment in app._transcript_region._segmented_transient_content_segments
-    ) >= 200
+    assert (
+        sum(
+            segment.line_count
+            for segment in app._transcript_region._segmented_transient_content_segments
+        )
+        >= 200
+    )
     assert "draft line 199" in rendered
     assert "draft line 0" in rendered
 
 
+@pytest.mark.tui_render_contract
 def test_screen_transcript_segment_tail_matches_legacy_record_boundaries() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -925,6 +1129,7 @@ def test_screen_transcript_segment_tail_matches_legacy_record_boundaries() -> No
         assert actual == expected
 
 
+@pytest.mark.tui_render_contract
 def test_screen_app_reuses_committed_segment_for_tick_input_and_chunk() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.tui import RenderLoop, TerminalSize
@@ -981,7 +1186,9 @@ def test_screen_app_reuses_committed_segment_for_tick_input_and_chunk() -> None:
     assert "streaming tail" in "\n".join(chunk.current_logical_lines)
 
 
-def test_screen_coding_tui_streaming_draft_uses_markdown_visuals_for_append_chunks() -> None:
+def test_screen_coding_tui_streaming_draft_uses_markdown_visuals_for_append_chunks() -> (
+    None
+):
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
     app = ScreenCodingTuiApp(
@@ -993,8 +1200,12 @@ def test_screen_coding_tui_streaming_draft_uses_markdown_visuals_for_append_chun
     )
     app.start_prompt("stream", started_at=9.0)
     app.begin_assistant()
-    app.append_assistant_chunk("- **Line 1**: markdown `code-1` with [link 1](https://example.com/1).\n")
-    app.append_assistant_chunk("- **Line 2**: markdown `code-2` with [link 2](https://example.com/2).\n")
+    app.append_assistant_chunk(
+        "- **Line 1**: markdown `code-1` with [link 1](https://example.com/1).\n"
+    )
+    app.append_assistant_chunk(
+        "- **Line 2**: markdown `code-2` with [link 2](https://example.com/2).\n"
+    )
 
     rendered = "\n".join(_lines(app, width=100, height=1_000))
 
@@ -1036,7 +1247,9 @@ def test_screen_coding_tui_assistant_markdown_tables_use_block_renderer() -> Non
     assert "|---|---|" not in rendered
 
 
-def test_screen_coding_tui_code_diagrams_do_not_wrap_right_border_with_default_width() -> None:
+def test_screen_coding_tui_code_diagrams_do_not_wrap_right_border_with_default_width() -> (
+    None
+):
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
     app = ScreenCodingTuiApp(
@@ -1062,6 +1275,7 @@ def test_screen_coding_tui_code_diagrams_do_not_wrap_right_border_with_default_w
     assert all(line.strip() != "│" for line in lines)
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_streaming_draft_buffers_chunks_until_materialized() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -1096,7 +1310,10 @@ def test_screen_coding_tui_streaming_draft_buffers_chunks_until_materialized() -
     assert "- Line 9: chunk" in app.state.records[-1].text
 
 
-def test_screen_coding_tui_render_streaming_draft_without_materializing_full_text() -> None:
+@pytest.mark.tui_render_contract
+def test_screen_coding_tui_render_streaming_draft_without_materializing_full_text() -> (
+    None
+):
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
     app = ScreenCodingTuiApp(
@@ -1121,6 +1338,7 @@ def test_screen_coding_tui_render_streaming_draft_without_materializing_full_tex
     assert buffer.materialize_count == 0
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_stable_render_cache_has_entry_limit() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -1132,13 +1350,16 @@ def test_screen_coding_tui_stable_render_cache_has_entry_limit() -> None:
         now=lambda: 10.0,
         stable_render_cache_entry_limit=2,
     )
-    app.state.records.extend(AssistantMessageRecord(f"stable record {index}") for index in range(5))
+    app.state.records.extend(
+        AssistantMessageRecord(f"stable record {index}") for index in range(5)
+    )
 
     _lines(app, width=100, height=1_000)
 
     assert len(app._transcript_region._stable_line_cache) <= 2
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_long_stream_keeps_latest_tail_visible() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -1159,6 +1380,7 @@ def test_screen_coding_tui_long_stream_keeps_latest_tail_visible() -> None:
     assert not any("line 0" in line for line in rendered)
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_many_records_render_recent_tail_not_prefix() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -1169,7 +1391,9 @@ def test_screen_coding_tui_many_records_render_recent_tail_not_prefix() -> None:
         session_label="abcd1234",
         now=lambda: 10.0,
     )
-    app.state.records.extend(UserPromptRecord(f"old prompt {index}") for index in range(200))
+    app.state.records.extend(
+        UserPromptRecord(f"old prompt {index}") for index in range(200)
+    )
     app.state.records.append(UserPromptRecord("recent prompt"))
     app.state.records.append(AssistantMessageRecord("recent answer"))
 
@@ -1195,8 +1419,12 @@ def test_screen_coding_tui_default_terminal_theme_styles_headings_like_pi() -> N
     app.append_assistant_chunk("### 5. 生命周期阶段\n\n#### Dual Mode")
 
     raw = _raw_lines(app, width=100, height=32)
-    heading = next(line for line in raw if "生命周期阶段" in strip_control_sequences(line))
-    subheading = next(line for line in raw if "Dual Mode" in strip_control_sequences(line))
+    heading = next(
+        line for line in raw if "生命周期阶段" in strip_control_sequences(line)
+    )
+    subheading = next(
+        line for line in raw if "Dual Mode" in strip_control_sequences(line)
+    )
 
     assert strip_control_sequences(heading) == "• ### 5. 生命周期阶段"
     assert strip_control_sequences(subheading) == "  #### Dual Mode"
@@ -1217,19 +1445,28 @@ def test_screen_coding_tui_default_welcome_panel_is_colored() -> None:
         now=lambda: 10.0,
     )
 
-    raw = tuple(line.text for line in app.startup_welcome_panel().render(RenderConstraints(width=96, max_height=28)).lines)
+    raw = tuple(
+        line.text
+        for line in app.startup_welcome_panel()
+        .render(RenderConstraints(width=96, max_height=28))
+        .lines
+    )
     rendered = "\n".join(raw)
 
     assert "\x1b[90m╭──\x1b[39m" in raw[0]
     assert "\x1b[1;36m Loushang \x1b[22;39m" in raw[0]
     assert "\x1b[1;30m欲穷千里目，更上一层楼\x1b[22;39m" in rendered
-    assert "\x1b[94mFrom Loushang's height, farther horizons unfold.\x1b[39m" in rendered
+    assert (
+        "\x1b[94mFrom Loushang's height, farther horizons unfold.\x1b[39m" in rendered
+    )
     assert "\x1b[1;30mWelcome to Loushang CLI\x1b[22;39m" in rendered
     assert "\x1b[1;30m   o\x1b[22;39m" in rendered
     assert "\x1b[36m   ▀██▀" in rendered
 
 
-def test_screen_coding_tui_preserves_markdown_ansi_when_replacing_assistant_prefix() -> None:
+def test_screen_coding_tui_preserves_markdown_ansi_when_replacing_assistant_prefix() -> (
+    None
+):
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.tui.theme import ThemeResolver
 
@@ -1239,7 +1476,9 @@ def test_screen_coding_tui_preserves_markdown_ansi_when_replacing_assistant_pref
         branch="main",
         session_label="abcd1234",
         now=lambda: 10.0,
-        transcript_theme=ThemeResolver(defaults={"markdown.heading.level3": {"bold": True, "color": "cyan"}}),
+        transcript_theme=ThemeResolver(
+            defaults={"markdown.heading.level3": {"bold": True, "color": "cyan"}}
+        ),
     )
     app.start_prompt("headings", started_at=9.0)
     app.begin_assistant()
@@ -1253,7 +1492,10 @@ def test_screen_coding_tui_preserves_markdown_ansi_when_replacing_assistant_pref
     assert "\x1b[1;36m### Heading" in heading
 
 
-def test_screen_coding_tui_installs_active_transcript_window_without_rendering_evicted_prefix() -> None:
+@pytest.mark.tui_render_contract
+def test_screen_coding_tui_installs_active_transcript_window_without_rendering_evicted_prefix() -> (
+    None
+):
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
     app = ScreenCodingTuiApp(
@@ -1265,7 +1507,9 @@ def test_screen_coding_tui_installs_active_transcript_window_without_rendering_e
     )
     evicted_prefix = [UserPromptRecord(f"old prompt {index}") for index in range(200)]
     active_window: list[DisplayRecord] = [
-        AssistantMessageRecord("Compacted summary: older turns are outside the active UI window."),
+        AssistantMessageRecord(
+            "Compacted summary: older turns are outside the active UI window."
+        ),
         UserPromptRecord("recent prompt"),
         AssistantMessageRecord("recent answer"),
     ]
@@ -1285,7 +1529,10 @@ def test_screen_coding_tui_installs_active_transcript_window_without_rendering_e
     assert "old prompt" not in rendered
 
 
-def test_screen_coding_tui_runtime_consumes_transcript_window_reset_as_baseline_repaint() -> None:
+@pytest.mark.tui_render_contract
+def test_screen_coding_tui_runtime_consumes_transcript_window_reset_as_baseline_repaint() -> (
+    None
+):
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.tui import FakeTerminalPort, RenderLoop, TerminalSize, TuiRuntime
 
@@ -1325,9 +1572,11 @@ def test_screen_coding_tui_runtime_consumes_transcript_window_reset_as_baseline_
     assert "summary only" in rendered
 
 
-def test_streaming_draft_semantic_segments_match_fresh_flat_render_at_chunk_boundaries() -> None:
+@pytest.mark.tui_render_contract
+def test_streaming_draft_semantic_segments_match_fresh_flat_render_at_chunk_boundaries() -> (
+    None
+):
     from loushang.coding.ui.screen_app import (
-        _ScreenTranscriptRegion,
         _terminal_transcript_theme,
     )
     from loushang.tui.transcript import StreamingTextBuffer
@@ -1335,7 +1584,7 @@ def test_streaming_draft_semantic_segments_match_fresh_flat_render_at_chunk_boun
     theme = _terminal_transcript_theme()
     records: tuple[DisplayRecord, ...] = (UserPromptRecord("committed prompt"),)
     buffer = StreamingTextBuffer()
-    region = _ScreenTranscriptRegion(
+    region = _coding_transcript_region(
         records=list(records),
         records_revision=1,
         draft_buffer=buffer,
@@ -1381,6 +1630,7 @@ def test_streaming_draft_semantic_segments_match_fresh_flat_render_at_chunk_boun
             assert actual == expected, (checkpoint, max_height)
 
 
+@pytest.mark.tui_render_contract
 @pytest.mark.parametrize(
     "chunks",
     (
@@ -1416,14 +1666,13 @@ def test_streaming_draft_fallback_shapes_match_fresh_flat_render(
     chunks: tuple[str, ...],
 ) -> None:
     from loushang.coding.ui.screen_app import (
-        _ScreenTranscriptRegion,
         _terminal_transcript_theme,
     )
     from loushang.tui.transcript import StreamingTextBuffer
 
     theme = _terminal_transcript_theme()
     buffer = StreamingTextBuffer()
-    region = _ScreenTranscriptRegion(draft_buffer=buffer, theme=theme)
+    region = _coding_transcript_region(draft_buffer=buffer, theme=theme)
     source = ""
 
     for checkpoint, chunk in enumerate(chunks, start=1):
@@ -1445,6 +1694,7 @@ def test_streaming_draft_fallback_shapes_match_fresh_flat_render(
         assert actual == expected, checkpoint
 
 
+@pytest.mark.tui_render_contract
 def test_streaming_draft_reuses_more_than_512_stable_segments_without_reading_source(
     monkeypatch,
 ) -> None:
@@ -1463,8 +1713,7 @@ def test_streaming_draft_reuses_more_than_512_stable_segments_without_reading_so
     app.begin_run(started_at=0.0)
     app.begin_assistant()
     source = "\n\n".join(
-        f"Independent paragraph {index} with `code-{index}`."
-        for index in range(600)
+        f"Independent paragraph {index} with `code-{index}`." for index in range(600)
     )
     app.append_assistant_chunk(source)
 
@@ -1481,7 +1730,9 @@ def test_streaming_draft_reuses_more_than_512_stable_segments_without_reading_so
         raise AssertionError("unchanged draft source was scanned")
 
     with monkeypatch.context() as source_guard:
-        source_guard.setattr(StreamingTextBuffer, "logical_lines", fail_if_old_source_is_read)
+        source_guard.setattr(
+            StreamingTextBuffer, "logical_lines", fail_if_old_source_is_read
+        )
 
         no_op = loop.plan(size)
         assert no_op.reused_render_segment_count > 512

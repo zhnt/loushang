@@ -5,8 +5,8 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Literal, cast
 
-from loushang.agent.types import AgentTool, ensure_agent_tool, is_agent_tool_like
 from loushang.harness.contributions import ExtensionSurfaceDescriptor
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.events import VALID_EXTENSION_EVENTS
 from loushang.harness.extensions.routing import RegisteredExtensionHandler
 from loushang.harness.extensions.types import (
@@ -15,13 +15,15 @@ from loushang.harness.extensions.types import (
     RegisteredCommand,
     RegisteredControlContribution,
     RegisteredFlag,
+    RegisteredRuntimeCapabilityReplacement,
     RegisteredShortcut,
 )
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.source import SourceInfo
-from loushang.harness.tools.core import DecoratedTool, ToolDefinition
-from loushang.harness.tools.workspace.normalize import tool_to_definition
-from loushang.harness.tools.workspace.wrapper import create_tool_definition_from_tool
+from loushang.harness.runtime.registration import (
+    RegistrationLease,
+    RegistrationLeaseCollector,
+)
+from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
 
 
@@ -41,6 +43,9 @@ class ExtensionContributionAPI:
         self._hooks: dict[str, list[object]] = {}
         self._handler_registrations: list[RegisteredExtensionHandler] = []
         self._control_contributions: list[RegisteredControlContribution] = []
+        self._runtime_capability_replacements: list[
+            RegisteredRuntimeCapabilityReplacement
+        ] = []
         self._tool_definitions: list[ToolDefinition] = []
         self._commands: dict[str, RegisteredCommand] = {}
         self._flags: dict[str, RegisteredFlag] = {}
@@ -48,8 +53,10 @@ class ExtensionContributionAPI:
         self._message_renderers: dict[
             str, Callable[[object, object, object], object | None]
         ] = {}
-        self._diagnostics: list[ResourceDiagnostic] = []
+        self._diagnostics: list[DiagnosticDraft] = []
         self._runtime_state: object | None = None
+        self._runtime_generation: int | None = None
+        self._registrations: RegistrationLeaseCollector | None = None
 
     def on(
         self,
@@ -88,17 +95,15 @@ class ExtensionContributionAPI:
 
     def register_tool(
         self,
-        tool_definition: ToolDefinition | DecoratedTool | AgentTool[object],
+        tool_definition: ToolDefinition,
     ) -> None:
-        definition = (
-            tool_definition
-            if isinstance(tool_definition, ToolDefinition)
-            else create_tool_definition_from_tool(ensure_agent_tool(tool_definition))
-            if is_agent_tool_like(tool_definition)
-            else tool_to_definition(tool_definition)
-        )
-        self._tool_definitions.append(definition)
-        self._register_runtime_tool(definition)
+        if not isinstance(tool_definition, ToolDefinition):
+            raise TypeError(
+                "extension tools require direct_tool(...) or "
+                "authorized_tool(...) before registration"
+            )
+        self._tool_definitions.append(tool_definition)
+        self._register_runtime_tool(tool_definition)
 
     def register_policy(
         self,
@@ -138,12 +143,6 @@ class ExtensionContributionAPI:
             before=before,
             on_error="fail_chain",
         )
-
-    def registerTool(
-        self,
-        tool_definition: ToolDefinition | DecoratedTool | AgentTool[object],
-    ) -> None:
-        self.register_tool(tool_definition)
 
     def register_command(
         self,
@@ -203,15 +202,15 @@ class ExtensionContributionAPI:
     ) -> None:
         self._message_renderers[custom_type] = renderer
 
-    def registerMessageRenderer(
+    def bind_runtime_state(
         self,
-        custom_type: str,
-        renderer: Callable[[object, object, object], object | None],
+        runtime_state: object,
+        registrations: RegistrationLeaseCollector | None = None,
     ) -> None:
-        self.register_message_renderer(custom_type, renderer)
-
-    def bind_runtime_state(self, runtime_state: object) -> None:
         self._runtime_state = runtime_state
+        generation = getattr(runtime_state, "generation", None)
+        self._runtime_generation = generation if isinstance(generation, int) else None
+        self._registrations = registrations
 
     def get_active_tools(self) -> list[str]:
         bindings = self._runtime_bindings()
@@ -296,6 +295,7 @@ class ExtensionContributionAPI:
             },
             handler_registrations=list(self._handler_registrations),
             control_contributions=list(self._control_contributions),
+            runtime_capability_replacements=list(self._runtime_capability_replacements),
             tool_definitions=list(self._tool_definitions),
             commands=dict(self._commands),
             flags=dict(self._flags),
@@ -306,12 +306,31 @@ class ExtensionContributionAPI:
         )
 
     def _runtime_bindings(self) -> object | None:
-        return getattr(self._runtime_state, "bindings", None)
+        runtime_state = self._runtime_state
+        if runtime_state is None:
+            return None
+        generation = self._runtime_generation
+        require = getattr(runtime_state, "require", None)
+        if generation is not None and callable(require):
+            return require(generation=generation)
+        return getattr(runtime_state, "bindings", None)
 
     def _register_runtime_tool(self, definition: ToolDefinition) -> None:
-        callback = getattr(self._runtime_bindings(), "register_tool", None)
+        bindings = self._runtime_bindings()
+        binder = getattr(bindings, "bind_tool", None)
+        source_info = SourceInfo(path=self._entry_path or self._source_path)
+        if callable(binder):
+            registrations = self._registrations
+            owner = registrations.owner if registrations is not None else self._name
+            lease = binder(definition, owner, source_info)
+            if not isinstance(lease, RegistrationLease):
+                raise TypeError("live tool binding must return a RegistrationLease")
+            if registrations is not None:
+                registrations.capture(lease)
+            return
+        callback = getattr(bindings, "register_tool", None)
         if callable(callback):
-            callback(definition, SourceInfo(path=self._entry_path or self._source_path))
+            callback(definition, source_info)
 
     def _register_control_contribution(
         self,
@@ -351,6 +370,16 @@ class ExtensionContributionAPI:
                 value=value,
             )
         )
+
+    def _register_runtime_capability_replacement(
+        self,
+        replacement: RegisteredRuntimeCapabilityReplacement,
+    ) -> None:
+        if not isinstance(replacement, RegisteredRuntimeCapabilityReplacement):
+            raise TypeError(
+                "replacement must be a RegisteredRuntimeCapabilityReplacement"
+            )
+        self._runtime_capability_replacements.append(replacement)
 
 
 def _normalize_references(references: Sequence[str]) -> tuple[str, ...]:

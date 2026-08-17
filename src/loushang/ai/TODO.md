@@ -16,11 +16,11 @@
   - use `upstreamId` when the provider-facing model id differs from the local id
   - keep protocol mapping in `adapter`
 
-- Keep non-core integrations outside core:
-  - OpenAI Codex stays in `loushang.ai.contrib.openai_codex`
-  - Moonshot/Kimi quota helpers stay in `loushang.ai.contrib.moonshot`
-  - provider-specific account, quota, and login flows should not enter
-    `loushang.ai.usage`, core provider resolution, or root exports
+- Keep account and product control planes outside the package:
+  - provider-specific login, refresh, credential storage, account, and quota
+    flows should not enter `loushang.ai`
+  - product-backed routes should reuse a protocol adapter and catalog data
+    instead of introducing product-specific provider code
 
 - Validation to run before publishing AI changes:
   - `make check-ai`
@@ -29,9 +29,6 @@
   - live provider checks only when credentials are intentionally supplied
 
 ## Deferred Design Questions
-
-- Whether platform quota should become optional endpoint metadata later.
-  Keep current behavior provider-specific until a real cross-provider need exists.
 
 - Whether long-tail provider catalogs should live in external packages.
   Do not add remote catalog discovery or provider marketplace behavior to core.

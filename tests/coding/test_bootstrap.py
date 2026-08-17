@@ -1,14 +1,48 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import json
 import subprocess
+from dataclasses import replace
 from datetime import date
 
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
-from loushang.ai.model import Capabilities, Model
+from loushang.ai.model import (
+    Capabilities,
+    Endpoint,
+    Model,
+    Provider,
+)
+from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage, UserMessage
+from loushang.harness.tools.execution import direct_execution
+
+
+def _ai_model_registry(
+    *models: Model,
+    endpoints: tuple[Endpoint, ...] = (),
+) -> AiModelRegistry:
+    providers: dict[str, Provider] = {}
+    for endpoint in endpoints:
+        provider = providers.get(
+            endpoint.provider_id, Provider(id=endpoint.provider_id)
+        )
+        provider_endpoints = dict(provider.endpoints)
+        provider_endpoints[endpoint.id] = endpoint
+        providers[provider.id] = replace(provider, endpoints=provider_endpoints)
+    for model in models:
+        provider = providers.get(model.provider_id, Provider(id=model.provider_id))
+        endpoint = provider.endpoints.get(model.endpoint_id) or Endpoint(
+            id=model.endpoint_id,
+            provider=model.provider_id,
+            api=model.api or model.endpoint_id,
+        )
+        endpoint_models = dict(endpoint.models)
+        endpoint_models[model.id] = model
+        provider_endpoints = dict(provider.endpoints)
+        provider_endpoints[endpoint.id] = replace(endpoint, models=endpoint_models)
+        providers[provider.id] = replace(provider, endpoints=provider_endpoints)
+    return AiModelRegistry.from_providers(providers)
 
 
 def _model() -> Model:
@@ -39,6 +73,7 @@ def _usage() -> Usage:
 
 def _assistant_message(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -56,6 +91,7 @@ def _assistant_tool_call_message(
     tool_name: str = "calc", arguments: dict[str, object] | None = None
 ) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[
             ToolCall(
@@ -136,98 +172,12 @@ def _runtime_footer(cwd: str) -> str:
     return f"Current date: {date.today().isoformat()}\nCurrent working directory: {cwd}"
 
 
-_CONFIG_ACTIVATION_STEPS = (
-    "startup_checks",
-    "package_sources",
-    "resource_roots",
-    "resources",
-    "extensions",
-    "cwd_audit",
-    "model_registry",
-)
-
-
-def _patch_config_activation_steps(
-    monkeypatch,
-    bootstrap,
-    calls: list[str],
-    *,
-    failed_step: str | None = None,
-    failure: Exception | None = None,
-) -> None:
-    for step_name in _CONFIG_ACTIVATION_STEPS:
-
-        def activate(selection, state, *, _step_name=step_name):
-            del selection, state
-            calls.append(_step_name)
-            if _step_name == failed_step:
-                assert failure is not None
-                raise failure
-
-        monkeypatch.setattr(bootstrap, f"_activate_{step_name}", activate)
-
-
-def test_session_configuration_activation_preserves_product_effect_order(
-    monkeypatch,
-) -> None:
-    from loushang.coding import bootstrap
-    from loushang.coding.control import ControlConfig
-
-    calls: list[str] = []
-    _patch_config_activation_steps(monkeypatch, bootstrap, calls)
-
-    bootstrap._activate_session_configuration(
-        settings=ControlConfig(),
-        services=object(),  # type: ignore[arg-type]
-        session_manager=object(),  # type: ignore[arg-type]
-        package_materializer=object(),  # type: ignore[arg-type]
-        extension_flag_values=None,
-    )
-
-    assert calls == list(_CONFIG_ACTIVATION_STEPS)
-
-
-def test_session_configuration_activation_stops_and_reraises_original_failure(
-    monkeypatch,
-) -> None:
-    import pytest
-
-    from loushang.coding import bootstrap
-    from loushang.coding.control import ControlConfig
-
-    class _ProductActivationError(RuntimeError):
-        pass
-
-    for failed_index, failed_step in enumerate(_CONFIG_ACTIVATION_STEPS):
-        calls: list[str] = []
-        failure = _ProductActivationError(f"failed at {failed_step}")
-        _patch_config_activation_steps(
-            monkeypatch,
-            bootstrap,
-            calls,
-            failed_step=failed_step,
-            failure=failure,
-        )
-
-        with pytest.raises(_ProductActivationError) as caught:
-            bootstrap._activate_session_configuration(
-                settings=ControlConfig(),
-                services=object(),  # type: ignore[arg-type]
-                session_manager=object(),  # type: ignore[arg-type]
-                package_materializer=object(),  # type: ignore[arg-type]
-                extension_flag_values=None,
-            )
-
-        assert caught.value is failure
-        assert calls == list(_CONFIG_ACTIVATION_STEPS[: failed_index + 1])
-
-
 def test_create_agent_session_uses_manager_header_as_agent_session_id(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
 
     session = create_agent_session(
@@ -236,26 +186,28 @@ def test_create_agent_session_uses_manager_header_as_agent_session_id(tmp_path) 
     )
 
     assert session.session_manager is manager
-    assert session.agent.session_id == manager.get_header().id
+    assert session.agent.session_id == manager.get_header().conversation_id
     assert session.get_model_selection() is not None
     assert session.get_model_selection().model_id == "faux-model"
 
 
 def test_create_agent_session_keeps_runtime_approval_resolver(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session
-    from loushang.coding.policy import (
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.approval import (
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
-    from loushang.coding.store import SessionManager
 
     resolver = InteractiveApprovalResolver(
         fallback=HeadlessApprovalResolver(mode="deny")
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path,
-        cwd="/tmp/project",
-        persist=False,
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path,
+            cwd="/tmp/project",
+            persist=False,
+        )
     )
 
     session = create_agent_session(
@@ -267,11 +219,168 @@ def test_create_agent_session_keeps_runtime_approval_resolver(tmp_path) -> None:
     assert session._approval_resolver is resolver
 
 
+def test_create_agent_session_binds_always_on_lsp_to_sandbox_scope(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.lsp import (
+        INSPECT_SYMBOL_TOOL_NAME,
+        LspServerDefinition,
+    )
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.sandbox import SandboxExecutionRuntime
+
+    class _NeverLauncher:
+        async def start(self, *args, **kwargs):
+            del args, kwargs
+            raise AssertionError("LSP process startup must remain lazy")
+
+    scopes = []
+
+    def bind_process_launcher(self, scope):
+        del self
+        scopes.append(scope)
+        return _NeverLauncher()
+
+    monkeypatch.setattr(
+        SandboxExecutionRuntime,
+        "bind_process_launcher",
+        bind_process_launcher,
+    )
+    project = tmp_path / "project"
+    project.mkdir()
+    services = create_services(
+        settings_manager=SettingsManager(
+            ControlConfig(capabilities={"coding.lsp": "always"})
+        )
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project),
+            persist=False,
+        )
+    )
+
+    session = create_agent_session(
+        session_manager=manager,
+        model=_model(),
+        services=services,
+        lsp_definitions=(
+            LspServerDefinition(
+                id="python-test",
+                command=("python-language-server", "--stdio"),
+                language_extensions={"python": (".py",)},
+            ),
+        ),
+        lsp_baseline_environment={"PATH": "/admitted/bin"},
+    )
+
+    assert INSPECT_SYMBOL_TOOL_NAME in session.get_active_tool_names()
+    assert len(scopes) == 1
+    assert scopes[0].audit_sink is not None
+    assert scopes[0].execution_profile_ceiling is getattr(
+        session._sandbox_runtime.exec_service,
+        "execution_profile",
+        None,
+    )
+    asyncio.run(session.dispose())
+
+
+def test_create_agent_session_projects_default_lsp_environment(tmp_path) -> None:
+    from loushang.coding.bootstrap import create_agent_session
+    from loushang.coding.lsp import INSPECT_SYMBOL_TOOL_NAME, LspServerDefinition
+    from loushang.coding.session_manager import SessionManager
+
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(tmp_path),
+            persist=False,
+        )
+    )
+
+    session = create_agent_session(
+        session_manager=manager,
+        model=_model(),
+        lsp_definitions=(
+            LspServerDefinition(
+                id="python-test",
+                command=("python-language-server", "--stdio"),
+                language_extensions={"python": (".py",)},
+            ),
+        ),
+    )
+
+    assert INSPECT_SYMBOL_TOOL_NAME in {
+        definition.name for definition in session.get_all_tools()
+    }
+    asyncio.run(session.dispose())
+
+
+def test_on_demand_lsp_discovers_installed_product_defaults(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.lsp import LspServerDefinition
+    from loushang.coding.session_manager import SessionManager
+
+    executable_dir = tmp_path / "bin"
+    executable_dir.mkdir()
+    executable = executable_dir / "pyright-langserver"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    executable.chmod(0o755)
+    project = tmp_path / "project"
+    project.mkdir()
+    captured_definitions: list[LspServerDefinition] = []
+    bind_runtime = coding_bootstrap.bind_coding_lsp_runtime
+
+    def capture_definitions(**kwargs):
+        captured_definitions.extend(kwargs["definitions"])
+        return bind_runtime(**kwargs)
+
+    monkeypatch.setattr(
+        coding_bootstrap,
+        "bind_coding_lsp_runtime",
+        capture_definitions,
+    )
+    services = create_services(
+        settings_manager=SettingsManager(
+            ControlConfig(capabilities={"coding.lsp": "on_demand"}),
+            global_settings_path=tmp_path / "config" / "settings.json",
+            project_settings_path=project / ".loushang" / "settings.json",
+        )
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project),
+            persist=False,
+        )
+    )
+
+    session = create_agent_session(
+        session_manager=manager,
+        model=_model(),
+        services=services,
+        lsp_baseline_environment={"PATH": str(executable_dir)},
+    )
+
+    assert [definition.id for definition in captured_definitions] == ["pyright"]
+    assert captured_definitions[0].command == (str(executable.resolve()), "--stdio")
+    asyncio.run(session.dispose())
+
+
 def test_create_agent_session_result_returns_sdk_creation_snapshot(tmp_path) -> None:
     from loushang.coding import CreateAgentSessionResult, create_agent_session_result
     from loushang.coding.bootstrap import create_services
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     missing_package_root = tmp_path / "missing-package"
@@ -281,8 +390,10 @@ def test_create_agent_session_result_returns_sdk_creation_snapshot(tmp_path) -> 
             ControlConfig(package_roots=(str(missing_package_root),))
         )
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
 
     result = create_agent_session_result(
@@ -347,7 +458,7 @@ def test_create_agent_session_from_services_uses_cwd_bound_services(tmp_path) ->
         create_agent_session_from_services,
         create_agent_session_services,
     )
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -355,8 +466,10 @@ def test_create_agent_session_from_services_uses_cwd_bound_services(tmp_path) ->
         cwd=project_root,
         global_settings_path=tmp_path / "global" / "settings.json",
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
 
     result = create_agent_session_from_services(
@@ -414,7 +527,7 @@ def test_create_agent_session_from_services_applies_extension_flag_values(
         create_agent_session_from_services,
         create_agent_session_services,
     )
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     extensions_dir = project_root / "extensions"
@@ -434,8 +547,10 @@ def test_create_agent_session_from_services_applies_extension_flag_values(
         global_settings_path=tmp_path / "global" / "settings.json",
         extension_flag_values={"plan": True, "request-id": "req-123"},
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
 
     result = create_agent_session_from_services(
@@ -486,7 +601,7 @@ def test_audit_cwd_bound_services_reports_project_settings_mismatch(tmp_path) ->
     from loushang.coding.bootstrap import audit_cwd_bound_services, create_services
     from loushang.coding.control import SettingsManager
     from loushang.coding.control.settings_store import default_project_settings_path
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_a = tmp_path / "project-a"
     project_b = tmp_path / "project-b"
@@ -496,8 +611,10 @@ def test_audit_cwd_bound_services_reports_project_settings_mismatch(tmp_path) ->
         project_settings_path=default_project_settings_path(project_a)
     )
     services = create_services(settings_manager=settings_manager)
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_b), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_b), persist=False
+        )
     )
 
     audit = audit_cwd_bound_services(session_manager=manager, services=services)
@@ -510,14 +627,16 @@ def test_audit_cwd_bound_services_reports_project_settings_mismatch(tmp_path) ->
 
 def test_audit_cwd_bound_services_accepts_matching_resource_bundle(tmp_path) -> None:
     from loushang.coding.bootstrap import audit_cwd_bound_services, create_services
-    from loushang.coding.loader import ResourceBundle
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.resources.types import ResourceBundle
 
     project = tmp_path / "project"
     project.mkdir()
     services = create_services()
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project), persist=False
+        )
     )
 
     audit = audit_cwd_bound_services(
@@ -588,7 +707,7 @@ def test_create_agent_session_runtime_builds_working_default_sessions(tmp_path) 
         await session.prompt("hi")
 
         assert runtime.get_current_session() is session
-        assert session.session_manager.get_header().id
+        assert session.session_manager.get_header().conversation_id
         assert session.agent.session_id is None
         assert [
             message.content[0].text
@@ -598,12 +717,80 @@ def test_create_agent_session_runtime_builds_working_default_sessions(tmp_path) 
     asyncio.run(scenario())
 
 
+def test_coding_multiagent_child_uses_the_product_stream_and_read_only_tools(
+    tmp_path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.harness.multiagent import AgentPath
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+
+    calls: list[tuple[str, str]] = []
+
+    async def stream_fn(model, context, options=None):
+        del options
+        calls.append((model.id, context.messages[-1].content[0].text))
+        return _stream_with_final_message(_assistant_message("child complete"))
+
+    async def scenario() -> None:
+        project = tmp_path / "project"
+        project.mkdir()
+        registry = WorkspaceToolRegistry()
+        register_coding_builtin_tools(registry)
+        runtime = create_agent_session_runtime(
+            session_dir=tmp_path / "sessions",
+            model=_model(),
+            stream_fn=stream_fn,
+            tool_registry=registry,
+            persist=False,
+            enable_multiagent=True,
+        )
+
+        session = await runtime.create_session(cwd=str(project))
+        collaboration = session.multiagent_runtime
+        spawn = next(tool for tool in session.agent.tools if tool.name == "spawn_agent")
+        wait = next(tool for tool in session.agent.tools if tool.name == "wait_agent")
+        spawned = await spawn.execute(
+            "spawn-1",
+            {
+                "name": "reviewer-1",
+                "agent_type": "reviewer",
+                "prompt": "Review this change.",
+            },
+            None,
+            None,
+        )
+        waited = await wait.execute(
+            "wait-1",
+            {"timeout_seconds": 2},
+            None,
+            None,
+        )
+        terminal = collaboration.control.registry.current(
+            AgentPath.parse(str(spawned.details["path"]))
+        )
+
+        assert waited.details["wait_expired"] is False
+        assert terminal is not None
+        assert terminal.status == "completed", collaboration.control.notices()
+        assert terminal.progress.summary == "child complete"
+        assert calls == [("faux-model", "Review this change.")]
+        await runtime.dispose_session_runtime()
+
+    asyncio.run(scenario())
+
+
 def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     project_root = tmp_path / "project"
     nested = project_root / "work" / "deep"
@@ -611,8 +798,10 @@ def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
     (project_root / "AGENTS.md").write_text("Use repo conventions.", encoding="utf-8")
 
     services = create_services(system_prompt="Base system prompt.")
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(nested), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(nested), persist=False
+        )
     )
     registry = ToolRegistry()
     register_builtin_tools(registry)
@@ -649,11 +838,16 @@ def test_create_agent_session_applies_allowed_tool_names_to_default_active_tools
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session
-    from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     registry = ToolRegistry()
     register_builtin_tools(registry)
@@ -680,13 +874,20 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
     import asyncio
 
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.loader import (
-        DefaultResourceLoader,
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
+    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.resources.types import (
         ExtensionDescriptor,
         ResourceBundle,
     )
-    from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     extension_file = tmp_path / "extensions" / "dynamic.py"
     extension_file.parent.mkdir(parents=True)
@@ -695,7 +896,8 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
             [
                 "from loushang.agent.types import AgentToolResult",
                 "from loushang.ai.types import TextPart",
-                "from loushang.coding.tools import ToolDefinition",
+                "from loushang.harness.tools.workspace import ToolDefinition",
+                "from loushang.harness.tools.execution import direct_execution",
                 "",
                 "async def _execute(tool_call_id, params, signal=None, on_update=None):",
                 "    return AgentToolResult(content=[TextPart(type='text', text='ok')], details={})",
@@ -708,7 +910,7 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
                 "                label='Dynamic Tool',",
                 "                description='Dynamic extension tool',",
                 "                parameters={'type': 'object', 'properties': {}, 'required': [], 'additionalProperties': False},",
-                "                execute=_execute,",
+                "                execution=direct_execution(_execute),",
                 "                prompt_snippet='Run dynamic behavior',",
                 "            )",
                 "        )",
@@ -736,8 +938,10 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
     registry = ToolRegistry()
     register_builtin_tools(registry)
     session = create_agent_session(
-        session_manager=SessionManager.new(
-            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+            )
         ),
         services=create_services(
             resource_loader=_Loader(), system_prompt="Base system prompt."
@@ -763,13 +967,20 @@ def test_create_agent_session_no_tools_all_hides_dynamic_extension_tools_and_pro
     import asyncio
 
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.loader import (
-        DefaultResourceLoader,
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
+    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.resources.types import (
         ExtensionDescriptor,
         ResourceBundle,
     )
-    from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     extension_file = tmp_path / "extensions" / "dynamic.py"
     extension_file.parent.mkdir(parents=True)
@@ -778,7 +989,8 @@ def test_create_agent_session_no_tools_all_hides_dynamic_extension_tools_and_pro
             [
                 "from loushang.agent.types import AgentToolResult",
                 "from loushang.ai.types import TextPart",
-                "from loushang.coding.tools import ToolDefinition",
+                "from loushang.harness.tools.workspace import ToolDefinition",
+                "from loushang.harness.tools.execution import direct_execution",
                 "",
                 "async def _execute(tool_call_id, params, signal=None, on_update=None):",
                 "    return AgentToolResult(content=[TextPart(type='text', text='ok')], details={})",
@@ -791,7 +1003,7 @@ def test_create_agent_session_no_tools_all_hides_dynamic_extension_tools_and_pro
                 "                label='Dynamic Tool',",
                 "                description='Dynamic extension tool',",
                 "                parameters={'type': 'object', 'properties': {}, 'required': [], 'additionalProperties': False},",
-                "                execute=_execute,",
+                "                execution=direct_execution(_execute),",
                 "                prompt_snippet='Run dynamic behavior',",
                 "            )",
                 "        )",
@@ -819,8 +1031,10 @@ def test_create_agent_session_no_tools_all_hides_dynamic_extension_tools_and_pro
     registry = ToolRegistry()
     register_builtin_tools(registry)
     session = create_agent_session(
-        session_manager=SessionManager.new(
-            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+            )
         ),
         services=create_services(
             resource_loader=_Loader(), system_prompt="Base system prompt."
@@ -842,8 +1056,13 @@ def test_create_agent_session_runtime_applies_allowed_tool_names(tmp_path) -> No
     import asyncio
 
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     project = tmp_path / "project"
     project.mkdir()
@@ -875,7 +1094,7 @@ def test_create_agent_session_uses_settings_package_roots_for_external_package_p
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     package_root = tmp_path / "packages" / "review-pack"
@@ -898,8 +1117,10 @@ def test_create_agent_session_uses_settings_package_roots_for_external_package_p
     services = create_services(
         settings_manager=SettingsManager(global_settings_path=global_settings_path),
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
 
     session = create_agent_session(
@@ -924,7 +1145,7 @@ def test_create_agent_session_uses_settings_package_roots_for_external_package_p
 def test_reload_extension_runtime_reloads_settings_resource_roots(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     first_root = tmp_path / "first-resources"
@@ -953,8 +1174,10 @@ def test_reload_extension_runtime_reloads_settings_resource_roots(tmp_path) -> N
     services = create_services(
         settings_manager=SettingsManager(global_settings_path=global_settings_path)
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
     session = create_agent_session(
         session_manager=manager, services=services, model=_model()
@@ -987,7 +1210,7 @@ def test_create_agent_session_uses_settings_package_sources_with_filters(
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     package_root = tmp_path / "packages" / "review-pack"
@@ -1022,8 +1245,10 @@ def test_create_agent_session_uses_settings_package_sources_with_filters(
     services = create_services(
         settings_manager=SettingsManager(global_settings_path=global_settings_path)
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
 
     session = create_agent_session(
@@ -1044,7 +1269,7 @@ def test_create_agent_session_uses_settings_plugin_sources_for_external_package_
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     plugin_root = tmp_path / "plugins" / "debug-pack"
@@ -1086,8 +1311,10 @@ def test_create_agent_session_uses_settings_plugin_sources_for_external_package_
     services = create_services(
         settings_manager=SettingsManager(project_settings_path=project_settings_path),
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
 
     session = create_agent_session(
@@ -1113,7 +1340,7 @@ def test_create_agent_session_materializes_git_package_sources_by_default(
     import asyncio
 
     from loushang.coding.bootstrap import create_agent_session
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     source_repo = tmp_path / "source"
     source_repo.mkdir()
@@ -1129,10 +1356,12 @@ def test_create_agent_session_materializes_git_package_sources_by_default(
     remote_repo = tmp_path / "review-pack.git"
     _run_git(["clone", "--bare", str(source_repo), str(remote_repo)], cwd=tmp_path)
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / ".loushang" / "sessions",
-        cwd=str(tmp_path),
-        persist=False,
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / ".loushang" / "sessions",
+            cwd=str(tmp_path),
+            persist=False,
+        )
     )
     session = create_agent_session(session_manager=manager, model=_model())
 
@@ -1151,7 +1380,7 @@ def test_create_agent_session_auto_materializes_configured_remote_package_source
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -1186,10 +1415,12 @@ def test_create_agent_session_auto_materializes_configured_remote_package_source
     services = create_services(
         settings_manager=SettingsManager(global_settings_path=global_settings_path)
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / ".loushang" / "sessions",
-        cwd=str(project_root),
-        persist=False,
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / ".loushang" / "sessions",
+            cwd=str(project_root),
+            persist=False,
+        )
     )
 
     session = create_agent_session(
@@ -1206,7 +1437,7 @@ def test_create_agent_session_applies_disabled_plugin_sources(tmp_path) -> None:
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     plugin_root = tmp_path / "plugins" / "debug-pack"
@@ -1232,8 +1463,10 @@ def test_create_agent_session_applies_disabled_plugin_sources(tmp_path) -> None:
     services = create_services(
         settings_manager=SettingsManager(project_settings_path=settings_path)
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
 
     session = create_agent_session(
@@ -1250,7 +1483,7 @@ def test_create_agent_session_marks_disabled_skills(tmp_path) -> None:
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     skill_dir = project_root / "skills" / "debug"
@@ -1266,8 +1499,10 @@ def test_create_agent_session_marks_disabled_skills(tmp_path) -> None:
     services = create_services(
         settings_manager=SettingsManager(project_settings_path=settings_path)
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
 
     session = create_agent_session(
@@ -1282,12 +1517,19 @@ def test_create_agent_session_marks_disabled_skills(tmp_path) -> None:
 
 def test_create_agent_session_includes_tool_prompt_from_registry(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     services = create_services(system_prompt="Base system prompt.")
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     registry = ToolRegistry()
     register_builtin_tools(registry)
@@ -1308,12 +1550,19 @@ def test_create_agent_session_synthesizes_definitions_from_legacy_tools(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     services = create_services(system_prompt="Base system prompt.")
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     registry = ToolRegistry()
     register_builtin_tools(registry)
@@ -1322,7 +1571,7 @@ def test_create_agent_session_synthesizes_definitions_from_legacy_tools(
         session_manager=manager,
         services=services,
         model=_model(),
-        tools=registry.list_enabled_tools(),
+        tools=registry.list_enabled_definitions(),
     )
 
     assert session.get_active_tool_names() == [
@@ -1342,6 +1591,8 @@ def test_create_agent_session_synthesizes_definitions_from_legacy_tools(
         "grep",
         "write",
         "edit",
+        "inspect_symbol",
+        "document_outline",
     ]
     assert "Available tools:" in session.agent.system_prompt
 
@@ -1351,12 +1602,10 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
 ) -> None:
     from loushang.agent.types import AgentToolResult
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.store import SessionManager
-    from loushang.coding.tools import (
-        ToolDefinition,
-        ToolRegistry,
-        register_builtin_tools,
-    )
+    from loushang.coding.session_manager import SessionManager
+    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.harness.tools.workspace import ToolDefinition
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
     async def execute_custom_tool(
         tool_call_id: str, params: dict[str, object], signal=None, on_update=None
@@ -1365,11 +1614,13 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
         return AgentToolResult(content=[], details={})
 
     services = create_services(system_prompt="Base system prompt.")
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
-    registry = ToolRegistry()
-    register_builtin_tools(registry)
+    registry = WorkspaceToolRegistry()
+    register_coding_builtin_tools(registry)
     registry.register_tool(
         ToolDefinition(
             name="custom_tool",
@@ -1381,7 +1632,7 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
                 "required": [],
                 "additionalProperties": False,
             },
-            execute=execute_custom_tool,
+            execution=direct_execution(execute_custom_tool),
         )
     )
 
@@ -1411,6 +1662,8 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
         "write",
         "edit",
         "custom_tool",
+        "inspect_symbol",
+        "document_outline",
     ]
     assert "- custom_tool:" not in session.agent.system_prompt
     assert "- grep:" in session.agent.system_prompt
@@ -1421,8 +1674,14 @@ def test_create_agent_session_marks_failing_builtin_tool_result_as_error(
 ) -> None:
     import asyncio
 
-    from loushang.coding import SessionManager, ToolRegistry, register_builtin_tools
+    from loushang.coding import SessionManager
     from loushang.coding.bootstrap import create_agent_session
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     async def stream_fn(model, context, options=None):
         if any(
@@ -1436,8 +1695,10 @@ def test_create_agent_session_marks_failing_builtin_tool_result_as_error(
             )
         )
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     registry = ToolRegistry()
     register_builtin_tools(registry)
@@ -1467,79 +1728,16 @@ def test_create_agent_session_marks_failing_builtin_tool_result_as_error(
     assert "missing.txt" in tool_results[0].content[0].text
 
 
-def test_create_agent_session_records_auth_resolution_failure_for_default_model(
-    tmp_path,
-) -> None:
-    from loushang.ai.model.domain import Auth, Endpoint
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-    from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.control import AuthManager
-    from loushang.coding.session import ModelSelection
-    from loushang.coding.store import SessionManager
-
-    ai_registry = AiModelRegistry()
-    ai_registry.register_endpoint(
-        "demo",
-        Endpoint(
-            id="responses",
-            api="responses",
-            provider="demo",
-            auth=Auth(api_key_env="LOUSHANG_TEST_DEMO_KEY"),
-        ),
-    )
-    ai_registry.register_model(
-        Model(
-            id="secured",
-            name="Secured",
-            provider="demo",
-            endpoint="responses",
-            capabilities=Capabilities(
-                reasoning=True, input=("text",), context_window=128000, max_tokens=4096
-            ),
-        )
-    )
-    services = create_services(
-        ai_model_registry=ai_registry,
-        auth_manager=AuthManager(ai_registry=ai_registry, env={}),
-    )
-    services.settings_manager.set_default_model(
-        ModelSelection(provider="demo", model_id="secured")
-    )
-
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
-    )
-    session = create_agent_session(session_manager=manager, services=services)
-
-    diagnostics = [
-        record
-        for record in session.get_last_diagnostics()
-        if record.code == "model_auth_unresolved"
-    ]
-
-    assert session.get_model_selection() == ModelSelection(
-        provider="demo", model_id="secured"
-    )
-    assert len(diagnostics) == 1
-    assert diagnostics[0].type == "warning"
-    assert diagnostics[0].source == "model"
-    assert "LOUSHANG_TEST_DEMO_KEY" in diagnostics[0].message
-
-
 def test_create_agent_session_uses_saved_default_model_endpoint_when_valid(
     tmp_path,
 ) -> None:
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.session import ModelSelection
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
-    ai_registry = AiModelRegistry()
-    ai_registry.register_model(
-        Model(id="alpha", name="Alpha", provider="demo", endpoint="responses")
-    )
-    ai_registry.register_model(
-        Model(id="alpha", name="Alpha", provider="demo", endpoint="completions")
+    ai_registry = _ai_model_registry(
+        Model(id="alpha", name="Alpha", provider="demo", endpoint="responses"),
+        Model(id="alpha", name="Alpha", provider="demo", endpoint="completions"),
     )
     services = create_services(ai_model_registry=ai_registry)
     saved_default = ModelSelection(
@@ -1549,10 +1747,12 @@ def test_create_agent_session_uses_saved_default_model_endpoint_when_valid(
     )
     services.settings_manager.set_default_model(saved_default)
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions",
-        cwd=str(tmp_path),
-        persist=False,
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(tmp_path),
+            persist=False,
+        )
     )
     session = create_agent_session(session_manager=manager, services=services)
 
@@ -1571,20 +1771,25 @@ def test_create_agent_session_uses_saved_default_model_endpoint_when_valid(
 def test_create_agent_session_falls_back_when_saved_default_model_is_missing(
     tmp_path,
 ) -> None:
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.session import ModelSelection
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
-    ai_registry = AiModelRegistry()
+    ai_registry = _ai_model_registry(
+        Model(id="present", name="Present", provider="demo", endpoint="test-endpoint")
+    )
     services = create_services(ai_model_registry=ai_registry)
-    saved_default = ModelSelection(provider="demo", model_id="missing")
+    saved_default = ModelSelection(
+        endpoint_id="test-endpoint", provider="demo", model_id="missing"
+    )
     services.settings_manager.set_default_model(saved_default)
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions",
-        cwd=str(tmp_path),
-        persist=False,
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(tmp_path),
+            persist=False,
+        )
     )
     session = create_agent_session(session_manager=manager, services=services)
 
@@ -1595,6 +1800,7 @@ def test_create_agent_session_falls_back_when_saved_default_model_is_missing(
     ]
 
     assert session.get_model_selection() == ModelSelection(
+        endpoint_id="unknown",
         provider="unknown",
         model_id="unknown",
     )
@@ -1607,29 +1813,29 @@ def test_create_agent_session_falls_back_when_saved_default_model_is_missing(
     assert diagnostics[0].details["reason"] == "missing"
 
 
-def test_create_agent_session_falls_back_when_saved_default_model_is_ambiguous(
+def test_create_agent_session_uses_complete_default_when_provider_model_is_repeated(
     tmp_path,
 ) -> None:
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.session import ModelSelection
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
-    ai_registry = AiModelRegistry()
-    ai_registry.register_model(
-        Model(id="alpha", name="Alpha", provider="demo", endpoint="responses")
-    )
-    ai_registry.register_model(
-        Model(id="alpha", name="Alpha", provider="demo", endpoint="completions")
+    ai_registry = _ai_model_registry(
+        Model(id="alpha", name="Alpha", provider="demo", endpoint="responses"),
+        Model(id="alpha", name="Alpha", provider="demo", endpoint="completions"),
     )
     services = create_services(ai_model_registry=ai_registry)
-    saved_default = ModelSelection(provider="demo", model_id="alpha")
+    saved_default = ModelSelection(
+        endpoint_id="responses", provider="demo", model_id="alpha"
+    )
     services.settings_manager.set_default_model(saved_default)
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions",
-        cwd=str(tmp_path),
-        persist=False,
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(tmp_path),
+            persist=False,
+        )
     )
     session = create_agent_session(session_manager=manager, services=services)
 
@@ -1639,27 +1845,20 @@ def test_create_agent_session_falls_back_when_saved_default_model_is_ambiguous(
         if record.code == "default_model_unavailable"
     ]
 
-    assert session.get_model_selection() == ModelSelection(
-        provider="unknown",
-        model_id="unknown",
-    )
+    assert session.get_model_selection() == saved_default
     assert services.settings_manager.get_settings().default_model == saved_default
-    assert len(diagnostics) == 1
-    assert diagnostics[0].details["reason"] == "ambiguous"
-    assert diagnostics[0].details["endpoint_id"] is None
+    assert diagnostics == []
 
 
 def test_create_agent_session_falls_back_when_saved_default_endpoint_is_unavailable(
     tmp_path,
 ) -> None:
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.session import ModelSelection
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
-    ai_registry = AiModelRegistry()
-    ai_registry.register_model(
-        Model(id="alpha", name="Alpha", provider="demo", endpoint="responses")
+    ai_registry = _ai_model_registry(
+        Model(id="alpha", name="Alpha", provider="demo", endpoint="responses"),
     )
     services = create_services(ai_model_registry=ai_registry)
     saved_default = ModelSelection(
@@ -1669,10 +1868,12 @@ def test_create_agent_session_falls_back_when_saved_default_endpoint_is_unavaila
     )
     services.settings_manager.set_default_model(saved_default)
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions",
-        cwd=str(tmp_path),
-        persist=False,
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(tmp_path),
+            persist=False,
+        )
     )
     session = create_agent_session(session_manager=manager, services=services)
 
@@ -1683,6 +1884,7 @@ def test_create_agent_session_falls_back_when_saved_default_endpoint_is_unavaila
     ]
 
     assert session.get_model_selection() == ModelSelection(
+        endpoint_id="unknown",
         provider="unknown",
         model_id="unknown",
     )
@@ -1692,96 +1894,19 @@ def test_create_agent_session_falls_back_when_saved_default_endpoint_is_unavaila
     assert diagnostics[0].details["endpoint_id"] == "retired"
 
 
-def test_create_agent_session_uses_stored_oauth_credentials_for_auth_bridge(
-    tmp_path, monkeypatch
-) -> None:
-    import asyncio
-
-    from loushang.ai.auth.types import OAuthCredentials
-    from loushang.ai.model.domain import Auth, Endpoint
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-    from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.control import AuthManager
-    from loushang.coding.session import ModelSelection
-    from loushang.coding.store import SessionManager
-
-    ai_registry = AiModelRegistry()
-    ai_registry.register_endpoint(
-        "demo",
-        Endpoint(
-            id="responses",
-            api="responses",
-            provider="demo",
-            auth=Auth(kind="oauth"),
-        ),
-    )
-    ai_registry.register_model(
-        Model(
-            id="secured",
-            name="Secured",
-            provider="demo",
-            endpoint="responses",
-            capabilities=Capabilities(
-                reasoning=True, input=("text",), context_window=128000, max_tokens=4096
-            ),
-        )
-    )
-
-    credential_store = {
-        "providers": {
-            "demo": OAuthCredentials(provider="demo", access_token="oauth-token")
-        },
-        "endpoints": {},
-        "models": {},
-    }
-    monkeypatch.setattr(
-        "loushang.ai.auth.storage.load_credential_store", lambda: credential_store
-    )
-    monkeypatch.setattr(
-        "loushang.ai.auth.facade.load_credential_store", lambda: credential_store
-    )
-    monkeypatch.setattr(
-        "loushang.ai.auth.oauth.get_oauth_api_key",
-        lambda provider, credentials: {
-            "apiKey": f"{provider}-oauth-key",
-            "newCredentials": credentials[provider],
-        },
-    )
-
-    services = create_services(
-        ai_model_registry=ai_registry,
-        auth_manager=AuthManager(ai_registry=ai_registry, env={}),
-    )
-    services.settings_manager.set_default_model(
-        ModelSelection(provider="demo", model_id="secured")
-    )
-
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
-    )
-    session = create_agent_session(session_manager=manager, services=services)
-
-    api_key = session.agent.get_api_key("demo")
-    if inspect.isawaitable(api_key):
-        api_key = asyncio.run(api_key)
-
-    diagnostics = [
-        record
-        for record in session.get_last_diagnostics()
-        if record.code == "model_auth_unresolved"
-    ]
-
-    assert api_key == "demo-oauth-key"
-    assert diagnostics == []
-
-
 def test_create_agent_session_marks_failing_mutation_builtin_tool_result_as_error(
     tmp_path,
 ) -> None:
     import asyncio
 
-    from loushang.coding import SessionManager, ToolRegistry, register_builtin_tools
+    from loushang.coding import SessionManager
     from loushang.coding.bootstrap import create_agent_session
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     (tmp_path / "main.py").write_text("alpha\n", encoding="utf-8")
 
@@ -1801,8 +1926,10 @@ def test_create_agent_session_marks_failing_mutation_builtin_tool_result_as_erro
             )
         )
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     registry = ToolRegistry()
     register_builtin_tools(registry)
@@ -1835,9 +1962,13 @@ def test_create_agent_session_marks_failing_mutation_builtin_tool_result_as_erro
 def test_create_agent_session_passes_resource_loader_into_agent_session(
     tmp_path,
 ) -> None:
+    from pathlib import Path
+
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.loader import DefaultResourceLoader
-    from loushang.coding.store import SessionManager
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
+    from loushang.coding.session_manager import SessionManager
 
     class _RecordingLoader(DefaultResourceLoader):
         def __init__(self) -> None:
@@ -1850,8 +1981,8 @@ def test_create_agent_session_passes_resource_loader_into_agent_session(
 
     loader = _RecordingLoader()
     services = create_services(resource_loader=loader)
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
 
     session = create_agent_session(
@@ -1860,36 +1991,38 @@ def test_create_agent_session_passes_resource_loader_into_agent_session(
     )
 
     assert session._resource_loader is loader
-    assert loader.discover_calls == ["/tmp/project"]
+    # /tmp is a symlink to /private/tmp on macOS; assert the resolved form.
+    assert loader.discover_calls == [str(Path("/tmp/project").resolve())]
 
 
 def test_runtime_tool_failures_still_surface_as_tool_result_errors(tmp_path) -> None:
     import asyncio
 
     from loushang.coding.bootstrap import create_agent_session
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.tools.core import ToolDefinition
 
-    class RuntimeTool:
-        name = "runtime_tool"
-        label = "Runtime Tool"
-        description = "runtime tool"
-        parameters = {
+    async def execute_runtime_tool(
+        tool_call_id: str,
+        params: dict[str, object],
+        signal=None,
+        on_update=None,
+    ):
+        del tool_call_id, params, signal, on_update
+        raise RuntimeError("runtime tool exploded")
+
+    runtime_tool = ToolDefinition(
+        name="runtime_tool",
+        label="Runtime Tool",
+        description="runtime tool",
+        parameters={
             "type": "object",
             "properties": {"value": {"type": "integer"}},
             "required": ["value"],
             "additionalProperties": False,
-        }
-        prepare_arguments = None
-
-        async def execute(
-            self,
-            tool_call_id: str,
-            params: dict[str, object],
-            signal=None,
-            on_update=None,
-        ):
-            del tool_call_id, params, signal, on_update
-            raise RuntimeError("runtime tool exploded")
+        },
+        execution=direct_execution(execute_runtime_tool),
+    )
 
     async def stream_fn(model, context, options=None):
         if any(
@@ -1903,14 +2036,16 @@ def test_runtime_tool_failures_still_surface_as_tool_result_errors(tmp_path) -> 
             )
         )
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     session = create_agent_session(
         session_manager=manager,
         model=_model(),
         stream_fn=stream_fn,
-        tools=[RuntimeTool()],
+        tools=[runtime_tool],
     )
 
     async def scenario() -> None:
@@ -1939,13 +2074,15 @@ def test_runtime_tool_failures_still_surface_as_tool_result_errors(tmp_path) -> 
     assert diagnostics[0].details["tool_name"] == "runtime_tool"
 
 
-def test_create_agent_session_wires_coding_convert_to_llm(tmp_path) -> None:
+def test_create_agent_session_projects_application_messages_to_model_input(
+    tmp_path,
+) -> None:
     from loushang.coding.bootstrap import create_agent_session
-    from loushang.coding.message import BranchSummaryMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.transcript import ApplicationMessage
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     session = create_agent_session(
         session_manager=manager,
@@ -1954,8 +2091,11 @@ def test_create_agent_session_wires_coding_convert_to_llm(tmp_path) -> None:
 
     converted = session.agent.convert_to_llm(
         [
-            BranchSummaryMessage(
-                role="branchSummary", summary="done", from_id="b1", timestamp=0.0
+            ApplicationMessage(
+                application_message_id="application-1",
+                custom_type="notice",
+                content="done",
+                timestamp=0.0,
             )
         ]
     )
@@ -1970,15 +2110,15 @@ def test_create_agent_session_convert_to_llm_blocks_images_when_configured(
     from loushang.ai.types import ImagePart, TextPart, ToolResultMessage, UserMessage
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, ImageSettings, SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     services = create_services(
         settings_manager=SettingsManager(
             ControlConfig(images=ImageSettings(block_images=True))
         ),
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     session = create_agent_session(
         session_manager=manager,
@@ -2024,14 +2164,16 @@ def test_create_agent_session_merges_extension_resources_and_tools(tmp_path) -> 
     from pathlib import Path
 
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.loader import (
-        DefaultResourceLoader,
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.resources.types import (
         ExtensionDescriptor,
         PromptFragmentDescriptor,
         ResourceBundle,
     )
-    from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolDefinition
+    from loushang.harness.tools.workspace import ToolDefinition
 
     async def _execute_tool(
         tool_name: str, arguments: dict[str, object], context, signal
@@ -2040,7 +2182,7 @@ def test_create_agent_session_merges_extension_resources_and_tools(tmp_path) -> 
 
     class _Extension:
         def resources_discover(self, bundle):
-            from loushang.coding.extensions import ExtensionResourceContribution
+            from loushang.harness.extensions.agent import ExtensionResourceContribution
 
             return ExtensionResourceContribution(
                 prompt_descriptors=[
@@ -2059,7 +2201,7 @@ def test_create_agent_session_merges_extension_resources_and_tools(tmp_path) -> 
                     label="Extension Tool",
                     description="Tool from extension",
                     parameters={},
-                    execute=_execute_tool,
+                    execution=direct_execution(_execute_tool),
                 )
             ]
 
@@ -2089,8 +2231,10 @@ def test_create_agent_session_merges_extension_resources_and_tools(tmp_path) -> 
     services = create_services(
         resource_loader=_Loader(), system_prompt="Base system prompt."
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
 
     session = create_agent_session(
@@ -2104,8 +2248,15 @@ def test_create_agent_session_merges_extension_resources_and_tools(tmp_path) -> 
         in session.agent.system_prompt
     )
     assert session.get_active_tool_names() == ["ext_tool"]
-    assert [definition.name for definition in session.get_all_tools()] == ["ext_tool"]
-    assert session.getAllTools()[0]["sourceInfo"] == {
+    assert [definition.name for definition in session.get_all_tools()] == [
+        "inspect_symbol",
+        "document_outline",
+        "ext_tool",
+    ]
+    extension_info = next(
+        info for info in session.get_all_tool_infos() if info["name"] == "ext_tool"
+    )
+    assert extension_info["sourceInfo"] == {
         "path": "/tmp/extensions/demo",
         "source": "filesystem",
         "scope": "project",
@@ -2121,13 +2272,15 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
     import asyncio
 
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.loader import (
-        DefaultResourceLoader,
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.resources.types import (
         ExtensionDescriptor,
         ResourceBundle,
     )
-    from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolDefinition
+    from loushang.harness.tools.workspace import ToolDefinition
 
     extension_file = tmp_path / "extensions" / "guard.py"
     extension_file.parent.mkdir(parents=True)
@@ -2136,8 +2289,9 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
             [
                 "from loushang.agent.types import AgentToolResult",
                 "from loushang.ai.types import TextPart",
-                "from loushang.coding.extensions import ToolCallDecision, ToolResultDecision",
-                "from loushang.coding.tools import ToolDefinition",
+                "from loushang.harness.extensions.agent import ToolCallDecision, ToolResultDecision",
+                "from loushang.harness.tools.workspace import ToolDefinition",
+                "from loushang.harness.tools.execution import direct_execution",
                 "",
                 "async def _ext_execute(tool_name, arguments, context, signal):",
                 "    return AgentToolResult(",
@@ -2170,7 +2324,7 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
                 "                'required': ['y'],",
                 "                'additionalProperties': False,",
                 "            },",
-                "            execute=_ext_execute,",
+                "            execution=direct_execution(_ext_execute),",
                 "        )",
                 "    )",
             ]
@@ -2212,8 +2366,10 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
             return _stream_with_final_message(_assistant_message("done"))
         return _stream_with_final_message(_assistant_tool_call_message())
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     services = create_services(
         resource_loader=_Loader(), system_prompt="Base system prompt."
@@ -2228,7 +2384,7 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
             "required": ["x"],
             "additionalProperties": False,
         },
-        execute=_execute_tool,
+        execution=direct_execution(_execute_tool),
     )
 
     session = create_agent_session(
@@ -2260,13 +2416,15 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.loader import (
-        DefaultResourceLoader,
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.resources.types import (
         ExtensionDescriptor,
         ResourceBundle,
     )
-    from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolDefinition
+    from loushang.harness.tools.workspace import ToolDefinition
 
     extension_file = tmp_path / "extensions" / "conflict.py"
     extension_file.parent.mkdir(parents=True)
@@ -2275,7 +2433,8 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
             [
                 "from loushang.agent.types import AgentToolResult",
                 "from loushang.ai.types import TextPart",
-                "from loushang.coding.tools import ToolDefinition",
+                "from loushang.harness.tools.workspace import ToolDefinition",
+                "from loushang.harness.tools.execution import direct_execution",
                 "",
                 "async def _ext_execute(tool_name, arguments, context, signal):",
                 "    return AgentToolResult(",
@@ -2295,7 +2454,7 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
                 "                'required': ['x'],",
                 "                'additionalProperties': False,",
                 "            },",
-                "            execute=_ext_execute,",
+                "            execution=direct_execution(_ext_execute),",
                 "        )",
                 "    )",
             ]
@@ -2329,8 +2488,10 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
             self._bundle = bundle
             return bundle
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     services = create_services(
         resource_loader=_Loader(), system_prompt="Base system prompt."
@@ -2345,7 +2506,7 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
             "required": ["x"],
             "additionalProperties": False,
         },
-        execute=_execute_tool,
+        execution=direct_execution(_execute_tool),
     )
 
     session = create_agent_session(
@@ -2361,9 +2522,9 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
 
 
 def test_extension_tool_contribution_projection_preserves_source_info(tmp_path) -> None:
-    from loushang.coding.bootstrap import _extension_tool_contributions
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.tools import ToolDefinition
+    from loushang.harness.bootstrap import project_extension_tool_contributions
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
+    from loushang.harness.tools.workspace import ToolDefinition
 
     async def _execute_tool(
         tool_name: str, arguments: dict[str, object], context, signal
@@ -2376,7 +2537,7 @@ def test_extension_tool_contribution_projection_preserves_source_info(tmp_path) 
         label="Review",
         description="Extension review tool",
         parameters={"type": "object", "properties": {}, "required": []},
-        execute=_execute_tool,
+        execution=direct_execution(_execute_tool),
     )
     extension = LoadedExtension(
         name="review-pack",
@@ -2386,7 +2547,11 @@ def test_extension_tool_contribution_projection_preserves_source_info(tmp_path) 
     )
     runner = ExtensionRunner([extension])
 
-    contributions = _extension_tool_contributions(runner)
+    contributions = project_extension_tool_contributions(
+        runner,
+        list_tool_definitions=lambda runtime: runtime.list_tool_definitions(),
+        get_tool_source_info=lambda runtime, name: runtime.get_tool_source_info(name),
+    )
 
     assert [contribution.definition.name for contribution in contributions] == [
         "ext_review"
@@ -2401,12 +2566,14 @@ def test_extension_tool_contribution_projection_preserves_source_info(tmp_path) 
 
 def test_register_extension_tools_uses_harness_resolver_for_dry_run_conflicts(
     tmp_path,
-    monkeypatch,
 ) -> None:
-    import loushang.coding.bootstrap as bootstrap
-    from loushang.coding.loader import ResourceBundle
-    from loushang.coding.tools import ToolDefinition, ToolRegistry
+    from loushang.harness.bootstrap import register_resource_extension_tools
+    from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.contribution import resolve_tool_contributions
+    from loushang.harness.tools.workspace import ToolDefinition
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     async def _execute_tool(
         tool_name: str, arguments: dict[str, object], context, signal
@@ -2419,14 +2586,14 @@ def test_register_extension_tools_uses_harness_resolver_for_dry_run_conflicts(
         label="Calc",
         description="Base calc",
         parameters={"type": "object", "properties": {}, "required": []},
-        execute=_execute_tool,
+        execution=direct_execution(_execute_tool),
     )
     extension_tool = ToolDefinition(
         name="calc",
         label="Extension Calc",
         description="Extension calc",
         parameters={"type": "object", "properties": {}, "required": []},
-        execute=_execute_tool,
+        execution=direct_execution(_execute_tool),
     )
     registry = ToolRegistry()
     registry.register_tool(base_tool, source_info={"source": "base"})
@@ -2447,12 +2614,14 @@ def test_register_extension_tools_uses_harness_resolver_for_dry_run_conflicts(
         )
         return resolve_tool_contributions(contribution_tuple, **kwargs)
 
-    monkeypatch.setattr(bootstrap, "resolve_tool_contributions", spy_resolver)
-
-    bundle, resolved_registry, diagnostics = bootstrap._register_extension_tools(
-        extension_runner=ExtensionRunner(),
+    runner = ExtensionRunner()
+    bundle, resolved_registry, diagnostics = register_resource_extension_tools(
+        extension_runtime=runner,
         resource_bundle=ResourceBundle(cwd=tmp_path),
         tool_registry=registry,
+        list_tool_definitions=lambda runtime: runtime.list_tool_definitions(),
+        get_tool_source_info=lambda runtime, name: runtime.get_tool_source_info(name),
+        resolve_contributions=spy_resolver,
     )
 
     assert calls == [("calc", "calc")]
@@ -2468,12 +2637,14 @@ def test_register_extension_tools_uses_harness_resolver_for_dry_run_conflicts(
 
 def test_register_extension_tools_registers_resolver_output_only(
     tmp_path,
-    monkeypatch,
 ) -> None:
-    import loushang.coding.bootstrap as bootstrap
-    from loushang.coding.loader import ResourceBundle
-    from loushang.coding.tools import ToolDefinition, ToolRegistry
+    from loushang.harness.bootstrap import register_resource_extension_tools
+    from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.contribution import ToolResolutionResult
+    from loushang.harness.tools.workspace import ToolDefinition
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     async def _execute_tool(
         tool_name: str, arguments: dict[str, object], context, signal
@@ -2486,7 +2657,7 @@ def test_register_extension_tools_registers_resolver_output_only(
         label="Extension Calc",
         description="Extension calc",
         parameters={"type": "object", "properties": {}, "required": []},
-        execute=_execute_tool,
+        execution=direct_execution(_execute_tool),
     )
     registry = ToolRegistry()
 
@@ -2501,12 +2672,14 @@ def test_register_extension_tools_registers_resolver_output_only(
         del contributions, kwargs
         return ToolResolutionResult(contributions=(), definitions=())
 
-    monkeypatch.setattr(bootstrap, "resolve_tool_contributions", empty_resolver)
-
-    _bundle, resolved_registry, diagnostics = bootstrap._register_extension_tools(
-        extension_runner=ExtensionRunner(),
+    runner = ExtensionRunner()
+    _bundle, resolved_registry, diagnostics = register_resource_extension_tools(
+        extension_runtime=runner,
         resource_bundle=ResourceBundle(cwd=tmp_path),
         tool_registry=registry,
+        list_tool_definitions=lambda runtime: runtime.list_tool_definitions(),
+        get_tool_source_info=lambda runtime, name: runtime.get_tool_source_info(name),
+        resolve_contributions=empty_resolver,
     )
 
     assert diagnostics == []
@@ -2515,9 +2688,12 @@ def test_register_extension_tools_registers_resolver_output_only(
 
 
 def test_register_extension_tools_preserves_resolver_source_info(tmp_path) -> None:
-    import loushang.coding.bootstrap as bootstrap
-    from loushang.coding.loader import ResourceBundle
-    from loushang.coding.tools import ToolDefinition, ToolRegistry
+    from loushang.harness.bootstrap import register_resource_extension_tools
+    from loushang.harness.resources.types import ResourceBundle
+    from loushang.harness.tools.workspace import ToolDefinition
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     async def _execute_tool(
         tool_name: str, arguments: dict[str, object], context, signal
@@ -2530,7 +2706,7 @@ def test_register_extension_tools_preserves_resolver_source_info(tmp_path) -> No
         label="Extension Calc",
         description="Extension calc",
         parameters={"type": "object", "properties": {}, "required": []},
-        execute=_execute_tool,
+        execution=direct_execution(_execute_tool),
     )
     source_info = {"source": "extension", "path": str(tmp_path / "extension.py")}
 
@@ -2542,10 +2718,13 @@ def test_register_extension_tools_preserves_resolver_source_info(tmp_path) -> No
             del name
             return source_info
 
-    _bundle, registry, diagnostics = bootstrap._register_extension_tools(
-        extension_runner=ExtensionRunner(),
+    runner = ExtensionRunner()
+    _bundle, registry, diagnostics = register_resource_extension_tools(
+        extension_runtime=runner,
         resource_bundle=ResourceBundle(cwd=tmp_path),
         tool_registry=ToolRegistry(),
+        list_tool_definitions=lambda runtime: runtime.list_tool_definitions(),
+        get_tool_source_info=lambda runtime, name: runtime.get_tool_source_info(name),
     )
 
     assert diagnostics == []
@@ -2562,9 +2741,9 @@ def test_create_agent_session_passes_compaction_settings_to_session(
     import asyncio
 
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import CompactionSettings
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.transcript import CompactionResult
 
     services = create_services()
     services.settings_manager.update_settings(
@@ -2573,19 +2752,23 @@ def test_create_agent_session_passes_compaction_settings_to_session(
         )
     )
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
-    manager.append_message(
-        UserMessage(
-            role="user",
-            content=[
-                TextPart(type="text", text="older context that should be compacted")
-            ],
-            timestamp=0.0,
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[
+                    TextPart(type="text", text="older context that should be compacted")
+                ],
+                timestamp=0.0,
+            )
         )
     )
-    assistant_id = manager.append_message(_assistant_message("recent reply"))
+    assistant_id = asyncio.run(
+        manager.append_message(_assistant_message("recent reply"))
+    )
 
     session = create_agent_session(
         session_manager=manager,
@@ -2602,7 +2785,10 @@ def test_create_agent_session_passes_compaction_settings_to_session(
             tokens_before=preparation.tokens_before,
         )
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
 
     result = asyncio.run(session.compact())
 
@@ -2612,7 +2798,7 @@ def test_create_agent_session_passes_compaction_settings_to_session(
 def test_create_agent_session_passes_control_thinking_settings(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, RetrySettings, SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     services = create_services(
         settings_manager=SettingsManager(
@@ -2622,7 +2808,9 @@ def test_create_agent_session_passes_control_thinking_settings(tmp_path) -> None
             )
         )
     )
-    manager = SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
+    )
 
     session = create_agent_session(
         session_manager=manager, model=_model(), services=services
@@ -2633,10 +2821,9 @@ def test_create_agent_session_passes_control_thinking_settings(tmp_path) -> None
 
 
 def test_create_agent_session_applies_enabled_models_as_scoped_models(tmp_path) -> None:
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     first = _model()
     second = Model(
@@ -2651,9 +2838,7 @@ def test_create_agent_session_applies_enabled_models_as_scoped_models(tmp_path) 
             max_tokens=2048,
         ),
     )
-    ai_registry = AiModelRegistry()
-    ai_registry.register_model(first)
-    ai_registry.register_model(second)
+    ai_registry = _ai_model_registry(first, second)
     services = create_services(
         ai_model_registry=ai_registry,
         settings_manager=SettingsManager(
@@ -2662,19 +2847,29 @@ def test_create_agent_session_applies_enabled_models_as_scoped_models(tmp_path) 
             )
         ),
     )
-    manager = SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
+    )
 
     session = create_agent_session(
         session_manager=manager, model=first, services=services
     )
 
-    assert session.scopedModels == [
+    assert session.scoped_models == [
         {
-            "model": {"provider": "faux", "model_id": "faux-model"},
+            "model": {
+                "provider": "faux",
+                "endpoint_id": "anthropic-messages",
+                "model_id": "faux-model",
+            },
             "thinkingLevel": "low",
         },
         {
-            "model": {"provider": "alt", "model_id": "alt-model"},
+            "model": {
+                "provider": "alt",
+                "endpoint_id": "responses",
+                "model_id": "alt-model",
+            },
             "thinkingLevel": "high",
         },
     ]
@@ -2684,19 +2879,19 @@ def test_create_agent_session_records_resource_loading_diagnostics(tmp_path) -> 
     from pathlib import Path
 
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.loader import (
-        DefaultResourceLoader,
-        ResourceBundle,
-        ResourceDiagnostic,
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
     )
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.diagnostics.types import DiagnosticDraft
+    from loushang.harness.resources.types import ResourceBundle
 
     class _Loader(DefaultResourceLoader):
         def discover_resources(self, cwd):
             bundle = ResourceBundle(
                 cwd=Path(cwd),
                 diagnostics=[
-                    ResourceDiagnostic(
+                    DiagnosticDraft(
                         code="duplicate_prompt",
                         message="Duplicate prompt ignored.",
                         source_path=Path("/tmp/project/prompts/review.md"),
@@ -2707,8 +2902,10 @@ def test_create_agent_session_records_resource_loading_diagnostics(tmp_path) -> 
             return bundle
 
     services = create_services(resource_loader=_Loader())
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
 
     create_agent_session(
@@ -2723,7 +2920,7 @@ def test_create_agent_session_records_resource_loading_diagnostics(tmp_path) -> 
 
     assert len(diagnostics) == 1
     assert diagnostics[0].code == "duplicate_prompt"
-    assert diagnostics[0].session_id == manager.get_header().id
+    assert diagnostics[0].session_id == manager.get_header().conversation_id
 
 
 def test_create_agent_session_records_startup_package_root_diagnostics(
@@ -2731,7 +2928,7 @@ def test_create_agent_session_records_startup_package_root_diagnostics(
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     missing_package_root = tmp_path / "missing-package"
@@ -2745,8 +2942,10 @@ def test_create_agent_session_records_startup_package_root_diagnostics(
     services = create_services(
         settings_manager=SettingsManager(global_settings_path=settings_path)
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
 
     create_agent_session(
@@ -2763,7 +2962,7 @@ def test_create_agent_session_records_startup_package_root_diagnostics(
 
     assert [record.code for record in diagnostics] == ["package_root_unavailable"]
     assert diagnostics[0].type == "warning"
-    assert diagnostics[0].session_id == manager.get_header().id
+    assert diagnostics[0].session_id == manager.get_header().conversation_id
     assert diagnostics[0].details == {
         "check": "package_root",
         "ok": False,
@@ -2775,10 +2974,12 @@ def test_create_agent_session_records_executable_source_identity_diagnostic(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     services = create_services()
 
@@ -2796,7 +2997,7 @@ def test_create_agent_session_records_executable_source_identity_diagnostic(
 
     assert len(diagnostics) == 1
     assert diagnostics[0].type == "info"
-    assert diagnostics[0].session_id == manager.get_header().id
+    assert diagnostics[0].session_id == manager.get_header().conversation_id
     assert diagnostics[0].source_path is not None
     assert diagnostics[0].details["check"] == "executable_source_identity"
     assert diagnostics[0].details["ok"] is True
@@ -2808,16 +3009,20 @@ def test_create_agent_session_records_executable_source_identity_diagnostic(
 
 def test_create_agent_session_records_package_lockfile_diagnostics(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.package import PackageMaterializer
-    from loushang.coding.store import SessionManager
+    from loushang.coding.resource_runtime import (
+        CodingPackageMaterializer as PackageMaterializer,
+    )
+    from loushang.coding.session_manager import SessionManager
 
     lockfile = tmp_path / "package-lock.json"
     lockfile.write_text("not json", encoding="utf-8")
     materializer = PackageMaterializer(
         install_root=tmp_path / "packages", lockfile_path=lockfile
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     services = create_services()
 
@@ -2844,7 +3049,7 @@ def test_create_agent_session_records_invalid_plugin_source_and_continues(
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     invalid_plugin = tmp_path / "invalid-plugin"
@@ -2867,8 +3072,10 @@ def test_create_agent_session_records_invalid_plugin_source_and_continues(
     services = create_services(
         settings_manager=SettingsManager(global_settings_path=settings_path)
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
 
     session = create_agent_session(

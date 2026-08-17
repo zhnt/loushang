@@ -52,3 +52,27 @@ def test_config_value_resolver_caches_empty_and_failed_results() -> None:
     assert resolver.resolve("!empty") is None
     assert resolver.resolve("!empty") is None
     assert calls == ["fail", "empty"]
+
+
+def test_subprocess_resolver_uses_shared_explicit_runner() -> None:
+    from loushang.harness.config import (
+        ConfigCommandResult,
+        SubprocessConfigValueResolver,
+    )
+
+    calls: list[str] = []
+
+    def runner(command: str, *, timeout_seconds: float) -> ConfigCommandResult:
+        calls.append(f"{command}:{timeout_seconds:g}")
+        return ConfigCommandResult(ok=True, stdout=" token-from-command \n")
+
+    resolver = SubprocessConfigValueResolver(
+        env={"API_KEY": "env-token"},
+        runner=runner,
+    )
+
+    assert resolver.resolve("API_KEY") == "env-token"
+    assert resolver.resolve("literal-token") == "literal-token"
+    assert resolver.resolve("!printf token") == "token-from-command"
+    assert resolver.resolve("!printf token") == "token-from-command"
+    assert calls == ["printf token:10"]

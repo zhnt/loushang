@@ -1,4 +1,4 @@
-from loushang.coding.tools.truncate import (
+from loushang.harness.tools.workspace.truncate import (
     TruncationResult,
     format_size,
     formatSize,
@@ -52,7 +52,9 @@ def test_truncate_tail_keeps_suffix_and_sets_metadata() -> None:
     assert result.max_bytes == 1024
 
 
-def test_truncate_head_reports_first_line_exceeds_limit_without_partial_payload() -> None:
+def test_truncate_head_reports_first_line_exceeds_limit_without_partial_payload() -> (
+    None
+):
     text = "abcdef\n"
     result = truncate_head(text, max_lines=2000, max_bytes=3)
     assert result.content == ""
@@ -72,7 +74,9 @@ def test_truncate_tail_enforces_byte_limit() -> None:
     assert result.last_line_partial is True
 
 
-def test_truncate_head_prefers_byte_metadata_when_kept_prefix_is_further_clipped() -> None:
+def test_truncate_head_prefers_byte_metadata_when_kept_prefix_is_further_clipped() -> (
+    None
+):
     text = "ab\ncd\nef\n"
     result = truncate_head(text, max_lines=2, max_bytes=1)
     assert result.content == ""
@@ -81,7 +85,9 @@ def test_truncate_head_prefers_byte_metadata_when_kept_prefix_is_further_clipped
     assert result.first_line_exceeds_limit is True
 
 
-def test_truncate_tail_prefers_byte_metadata_when_kept_suffix_is_further_clipped() -> None:
+def test_truncate_tail_prefers_byte_metadata_when_kept_suffix_is_further_clipped() -> (
+    None
+):
     text = "ab\ncd\nef\n"
     result = truncate_tail(text, max_lines=2, max_bytes=1)
     assert result.content == "\n"
@@ -119,9 +125,18 @@ def test_truncate_line_returns_pi_style_suffix() -> None:
 
 
 def test_pi_style_truncation_aliases_delegate_to_python_helpers() -> None:
-    assert truncateHead("a\nb\n", max_lines=1).content == truncate_head("a\nb\n", max_lines=1).content
-    assert truncateTail("a\nb\n", max_lines=1).content == truncate_tail("a\nb\n", max_lines=1).content
-    assert truncateLine("abcdef", max_chars=3).text == truncate_line("abcdef", max_chars=3).text
+    assert (
+        truncateHead("a\nb\n", max_lines=1).content
+        == truncate_head("a\nb\n", max_lines=1).content
+    )
+    assert (
+        truncateTail("a\nb\n", max_lines=1).content
+        == truncate_tail("a\nb\n", max_lines=1).content
+    )
+    assert (
+        truncateLine("abcdef", max_chars=3).text
+        == truncate_line("abcdef", max_chars=3).text
+    )
 
 
 def test_coding_truncation_exports_preserve_harness_owner_identity() -> None:

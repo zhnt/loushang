@@ -97,8 +97,8 @@ def resolve_tool_contributions(
                 diagnostics=diagnostics,
             )
     else:
-        for contribution in contribution_list:
-            _append_unique(selected_names, contribution.definition.name)
+        for candidate in contribution_list:
+            _append_unique(selected_names, candidate.definition.name)
 
     selected_contributions: list[ToolContribution] = []
     for name in selected_names:

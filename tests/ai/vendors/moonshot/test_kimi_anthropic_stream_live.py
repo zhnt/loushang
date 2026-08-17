@@ -19,6 +19,7 @@ from loushang.ai import (
     get_model,
     stream,
 )
+from loushang.ai.auth import ApiKeyAuth
 
 # 用户可直接修改的配置。
 # `API_KEY` 是显式认证入口；环境变量只是可选读取来源。
@@ -64,7 +65,7 @@ def _build_context() -> dict:
 
 def _build_options(api_key: str) -> CallOptions:
     # 这里保留最小必要选项，方便观察 stream 本身而不是 options 细节。
-    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
+    return CallOptions(auth=ApiKeyAuth(api_key), max_output_tokens=MAX_TOKENS)
 
 
 def _iter_text(parts: Iterable[object]) -> str:

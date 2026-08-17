@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from dataclasses import dataclass
 from io import StringIO
-from typing import Any
+from typing import Any, Literal
 
 from loushang.tui import (
     InputEvent,
@@ -19,13 +18,15 @@ from loushang.tui import (
 )
 
 
-def test_runner_smoke_drives_input_async_render_control_event_and_exit_cleanup() -> None:
+def test_runner_smoke_drives_input_async_render_control_event_and_exit_cleanup() -> (
+    None
+):
     view = _SmokeView()
     tui = Tui()
     tui.add_child(view)
     stdout = StringIO()
     session = _RecordingTerminalSession()
-    stdin = _ScriptedInput(
+    input_chunk_reader = _ScriptedInput(
         (
             "a",
             "\x1b[6;18;9t",
@@ -58,10 +59,11 @@ def test_runner_smoke_drives_input_async_render_control_event_and_exit_cleanup()
 
         return await TuiRunner(
             tui,
-            stdin=stdin,
+            stdin=StringIO(""),
             stdout=stdout,
             terminal_session_factory=lambda _stdin, _stdout: session,
             terminal_size_provider=lambda: TerminalSize(columns=32, rows=8),
+            input_chunk_reader=input_chunk_reader,
         ).run(on_input=handle)
 
     assert asyncio.run(run()) == 0
@@ -82,7 +84,11 @@ def test_runner_smoke_drives_input_async_render_control_event_and_exit_cleanup()
         InputEvent(kind="text", text="q"),
     )
     assert session.control_events == [
-        (InputEvent(kind="signal", signal="cell_size", text="18;9", raw="\x1b[6;18;9t"),)
+        (
+            InputEvent(
+                kind="signal", signal="cell_size", text="18;9", raw="\x1b[6;18;9t"
+            ),
+        )
     ]
     assert session.entered == 1
     assert session.exited == 1
@@ -99,7 +105,10 @@ class _SmokeView:
             f"Count: {self.count}",
             f"Status: {self.status}",
         )
-        return RenderResult.from_lines([RenderLine(row[: constraints.width]) for row in rows], constraints=constraints)
+        return RenderResult.from_lines(
+            [RenderLine(row[: constraints.width]) for row in rows],
+            constraints=constraints,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,17 +121,14 @@ class _ScriptedInput:
     def __init__(self, chunks: tuple[str | _SleepThen, ...]) -> None:
         self._chunks = list(chunks)
 
-    def read(self, _size: int) -> str:
+    async def __call__(self, _stdin: Any) -> str:
         if not self._chunks:
             return ""
         chunk = self._chunks.pop(0)
         if isinstance(chunk, _SleepThen):
-            time.sleep(chunk.seconds)
+            await asyncio.sleep(chunk.seconds)
             return chunk.value
         return chunk
-
-    def isatty(self) -> bool:
-        return False
 
 
 class _RecordingTerminalSession:
@@ -135,7 +141,9 @@ class _RecordingTerminalSession:
         self.entered += 1
         return self
 
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> bool:
+    def __exit__(
+        self, exc_type: object, exc: object, traceback: object
+    ) -> Literal[False]:
         self.exited += 1
         return False
 

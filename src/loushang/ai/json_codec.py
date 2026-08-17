@@ -18,7 +18,7 @@ from loushang.ai.types import (
     UsageCost,
     UserMessage,
 )
-from loushang.protocol import JSONValue, require_json_value
+from loushang.foundation.json import JSONValue, require_json_value
 
 
 def _get_key(payload: dict[str, Any], camel_key: str, snake_key: str) -> Any:
@@ -191,11 +191,12 @@ def serialize_message(message: Message) -> dict[str, Any]:
             "timestamp": message.timestamp,
         }
     if isinstance(message, AssistantMessage):
-        payload = {
+        payload: dict[str, Any] = {
             "role": "assistant",
             "content": [serialize_content_part(part) for part in message.content],
             "api": message.api,
             "provider": message.provider,
+            "endpoint": message.endpoint,
             "model": message.model,
             "responseId": message.response_id,
             "usage": serialize_usage(message.usage),
@@ -205,6 +206,8 @@ def serialize_message(message: Message) -> dict[str, Any]:
         }
         if message.response_model is not None:
             payload["responseModel"] = message.response_model
+        if message.error_info is not None:
+            payload["errorInfo"] = serialize_json_value(message.error_info)
         return payload
     if isinstance(message, ToolResultMessage):
         if type(message.terminate) is not bool:
@@ -229,6 +232,18 @@ def serialize_message(message: Message) -> dict[str, Any]:
     raise ValueError(f"Unsupported AI message type: {type(message)!r}")
 
 
+def _deserialize_error_info(
+    payload: Mapping[str, Any],
+) -> dict[str, JSONValue] | None:
+    raw = payload.get("errorInfo", payload.get("error_info"))
+    if raw is None:
+        return None
+    normalized = require_json_value(raw, name="assistant.errorInfo")
+    if not isinstance(normalized, dict):
+        raise ValueError("assistant.errorInfo must be an object")
+    return normalized
+
+
 def deserialize_message(payload: dict[str, Any]) -> Message:
     role = payload["role"]
     if role == "user":
@@ -248,6 +263,7 @@ def deserialize_message(payload: dict[str, Any]) -> Message:
             content=[deserialize_content_part(part) for part in payload["content"]],
             api=payload["api"],
             provider=payload["provider"],
+            endpoint=payload["endpoint"],
             model=payload["model"],
             response_id=payload.get("responseId", payload.get("response_id")),
             usage=deserialize_usage(payload["usage"]),
@@ -258,6 +274,7 @@ def deserialize_message(payload: dict[str, Any]) -> Message:
             error_message=payload.get("errorMessage", payload.get("error_message")),
             timestamp=payload["timestamp"],
             response_model=payload.get("responseModel", payload.get("response_model")),
+            error_info=_deserialize_error_info(payload),
         )
     if role == "toolResult":
         terminate = payload.get("terminate", False)

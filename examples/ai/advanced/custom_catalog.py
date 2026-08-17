@@ -21,6 +21,7 @@ CUSTOM_CATALOG: dict[str, Any] = {
                 "openai-completions": {
                     "api": "openai-completions",
                     "baseUrl": "https://api.example.invalid/v1",
+                    "auth": {"kind": "none"},
                     "adapter": {
                         "maxOutputTokensField": "max_completion_tokens",
                         "reasoningFormat": "openai",
@@ -52,12 +53,12 @@ def inspect_custom_catalog() -> dict[str, object]:
             "openai-completions",
             "public-model",
         )
-        resolved = resolve_request_for_model(model, registry=registry, env={})
+        resolved = resolve_request_for_model(model, env={})
 
     return {
         "model": f"{model.provider_id}:{model.endpoint_id}:{model.id}",
         "upstreamId": model.upstream_id,
-        "resolvedUpstreamModelId": resolved.upstream_model_id,
+        "requestModelUpstreamId": resolved.model.upstream_id,
         "baseUrl": resolved.base_url,
     }
 

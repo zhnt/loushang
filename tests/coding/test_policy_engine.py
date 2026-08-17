@@ -1,8 +1,107 @@
 from __future__ import annotations
 
+import sys
+
+
+def _bash_tool(
+    *,
+    policy_engine=None,
+    approval_resolver=None,
+    **definition_options,
+):
+    from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+
+    return wrap_tool_definition(
+        create_bash_tool_definition(**definition_options),
+        policy_evaluator=policy_engine,
+        approval_resolver=approval_resolver,
+    )
+
+
+def _evaluate_action(engine, *, tool_name, exec_request):
+    import os
+
+    from loushang.harness.policy import (
+        build_tool_policy_subject,
+        executable_search_path_from_env,
+        normalize_command_subject,
+    )
+    from loushang.harness.workspace.exec import materialize_exec_request
+
+    request = materialize_exec_request(exec_request)
+    environment = request.effective_environment
+    assert environment is not None
+    command = normalize_command_subject(
+        request.command,
+        cwd=request.cwd,
+        stdin=request.stdin,
+        executable_search_path=executable_search_path_from_env(
+            environment,
+            default=os.defpath,
+        ),
+        environment_overrides=environment,
+        environment_is_complete=True,
+    )
+    arguments = {"command": request.command, "cwd": request.cwd}
+    if request.env:
+        arguments["env"] = request.env
+    if request.stdin is not None:
+        arguments["stdin"] = request.stdin
+    return engine.evaluate(
+        build_tool_policy_subject(
+            tool_name=tool_name,
+            arguments=arguments,
+            cwd=request.cwd,
+            command=command,
+        )
+    )
+
+
+def _evaluate_tool_call(engine, *, tool_name, arguments, cwd=None):
+    from loushang.harness.policy import build_tool_policy_subject
+    from loushang.harness.workspace.exec import ExecRequest
+
+    raw_command = arguments.get("command")
+    if tool_name == "bash" and isinstance(raw_command, (str, list, tuple)):
+        command = (
+            ("/bin/sh", "-lc", raw_command)
+            if isinstance(raw_command, str)
+            else tuple(raw_command)
+        )
+        raw_env = arguments.get("env", ())
+        env = (
+            tuple(tuple(pair) for pair in raw_env)
+            if isinstance(raw_env, (list, tuple))
+            else ()
+        )
+        return _evaluate_action(
+            engine,
+            tool_name=tool_name,
+            exec_request=ExecRequest(
+                command=command,
+                cwd=(
+                    arguments["cwd"] if isinstance(arguments.get("cwd"), str) else cwd
+                ),
+                env=env,
+                stdin=(
+                    arguments["stdin"]
+                    if isinstance(arguments.get("stdin"), str)
+                    else None
+                ),
+            ),
+        )
+    return engine.evaluate(
+        build_tool_policy_subject(
+            tool_name=tool_name,
+            arguments=arguments,
+            cwd=cwd,
+        )
+    )
+
 
 def test_policy_decision_helpers_cover_allow_deny_and_ask() -> None:
-    from loushang.coding.policy.types import PolicyDecision
+    from loushang.harness.policy import PolicyDecision
 
     assert PolicyDecision.allow() == PolicyDecision(disposition="allow", reason=None)
     assert PolicyDecision.deny("blocked") == PolicyDecision(
@@ -14,11 +113,12 @@ def test_policy_decision_helpers_cover_allow_deny_and_ask() -> None:
 
 
 def test_policy_engine_denies_blocked_commands() -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine(blocked_substrings=["rm -rf", "git reset --hard"])
-    decision = engine.evaluate_action(
+    decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=["/bin/sh", "-lc", "rm -rf /tmp/demo"], cwd="/tmp"
@@ -29,42 +129,45 @@ def test_policy_engine_denies_blocked_commands() -> None:
     assert "rm -rf" in decision.reason
 
 
-def test_policy_engine_denies_destructive_commands_by_default() -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+def test_policy_engine_asks_before_destructive_commands_by_default() -> None:
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine()
-    decision = engine.evaluate_action(
+    decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=["/bin/sh", "-lc", "git reset --hard HEAD~1"], cwd="/tmp"
         ),
     )
 
-    assert decision.disposition == "deny"
-    assert "git reset --hard" in decision.reason
+    assert decision.disposition == "ask"
+    assert decision.code == "repository_history_rewrite"
 
 
-def test_policy_engine_denies_absolute_path_executables() -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+def test_policy_engine_asks_before_absolute_path_destructive_executables() -> None:
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine()
-    decision = engine.evaluate_action(
+    decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(command=["/bin/rm", "-rf", "/tmp"], cwd="/tmp"),
     )
 
-    assert decision.disposition == "deny"
-    assert "rm -rf" in decision.reason
+    assert decision.disposition == "ask"
+    assert decision.code == "filesystem_deletion"
 
 
 def test_policy_engine_allows_safe_readonly_command() -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine()
-    decision = engine.evaluate_action(
+    decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(command=["/bin/sh", "-lc", "pwd"], cwd="/tmp"),
     )
@@ -73,11 +176,12 @@ def test_policy_engine_allows_safe_readonly_command() -> None:
 
 
 def test_policy_engine_asks_for_risky_default_heuristics() -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine()
-    decision = engine.evaluate_action(
+    decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=["/bin/sh", "-lc", "git push origin main"], cwd="/tmp"
@@ -88,11 +192,12 @@ def test_policy_engine_asks_for_risky_default_heuristics() -> None:
 
 
 def test_policy_engine_asks_for_env_wrapped_shell_payload() -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine()
-    decision = engine.evaluate_action(
+    decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=["/usr/bin/env", "bash", "-lc", "git push origin main"],
@@ -104,11 +209,12 @@ def test_policy_engine_asks_for_env_wrapped_shell_payload() -> None:
 
 
 def test_policy_engine_asks_for_env_wrapped_shell_payload_with_assignments() -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine()
-    decision = engine.evaluate_action(
+    decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=["env", "FOO=1", "bash", "-lc", "git push origin main"],
@@ -120,11 +226,12 @@ def test_policy_engine_asks_for_env_wrapped_shell_payload_with_assignments() -> 
 
 
 def test_policy_engine_asks_for_env_wrapped_shell_payload_with_option_flags() -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine()
-    decision = engine.evaluate_action(
+    decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=["env", "-i", "bash", "-lc", "git push origin main"],
@@ -138,11 +245,12 @@ def test_policy_engine_asks_for_env_wrapped_shell_payload_with_option_flags() ->
 def test_policy_engine_asks_for_env_wrapped_shell_payload_with_split_string_flag() -> (
     None
 ):
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine()
-    decision = engine.evaluate_action(
+    decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=["env", "-S", "bash -lc 'git push origin main'"],
@@ -154,11 +262,12 @@ def test_policy_engine_asks_for_env_wrapped_shell_payload_with_split_string_flag
 
 
 def test_policy_engine_asks_for_env_wrapped_shell_payload_with_unset_option() -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine()
-    decision = engine.evaluate_action(
+    decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=["env", "-u", "DEBUG", "bash", "-lc", "git push origin main"],
@@ -169,12 +278,13 @@ def test_policy_engine_asks_for_env_wrapped_shell_payload_with_unset_option() ->
     assert decision.disposition == "ask"
 
 
-def test_policy_engine_requires_approval_for_incomplete_env_split_string() -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+def test_policy_engine_allows_incomplete_env_split_without_a_gated_effect() -> None:
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine()
-    decision = engine.evaluate_action(
+    decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=["env", "-S", "'"],
@@ -182,18 +292,19 @@ def test_policy_engine_requires_approval_for_incomplete_env_split_string() -> No
         ),
     )
 
-    assert decision.disposition == "ask"
-    assert decision.code == "command_normalization_incomplete"
+    assert decision.disposition == "allow"
+    assert decision.code is None
 
 
-def test_policy_engine_denies_env_wrapped_malformed_split_string_with_destructive_payload() -> (
+def test_policy_engine_asks_for_malformed_split_string_with_destructive_payload() -> (
     None
 ):
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine()
-    decision = engine.evaluate_action(
+    decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=["env", "-S", "bash -lc 'rm -rf /tmp"],
@@ -201,12 +312,13 @@ def test_policy_engine_denies_env_wrapped_malformed_split_string_with_destructiv
         ),
     )
 
-    assert decision.disposition == "deny"
+    assert decision.disposition == "ask"
+    assert decision.code == "filesystem_deletion"
 
 
-def test_policy_engine_denies_destructive_payloads_after_wrapper_options() -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+def test_policy_engine_asks_for_destructive_payloads_after_wrapper_options() -> None:
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     commands = (
         ["sudo", "-nu", "root", "FOO=bar", "bash", "-c", "rm -rf /tmp"],
@@ -234,19 +346,23 @@ def test_policy_engine_denies_destructive_payloads_after_wrapper_options() -> No
     engine = PolicyEngine()
 
     for command in commands:
-        decision = engine.evaluate_action(
+        decision = _evaluate_action(
+            engine,
             tool_name="bash",
             exec_request=ExecRequest(command=command, cwd="/tmp"),
         )
-        assert decision.disposition == "deny", command
+        assert decision.disposition == "ask", command
 
 
-def test_policy_engine_denies_literal_block_in_nonportable_env_split_syntax() -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+def test_policy_engine_asks_for_literal_effect_in_nonportable_env_split_syntax() -> (
+    None
+):
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine()
-    decision = engine.evaluate_action(
+    decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=["env", "-S", r'bash\_-c\_"rm -rf /tmp"'],
@@ -254,15 +370,16 @@ def test_policy_engine_denies_literal_block_in_nonportable_env_split_syntax() ->
         ),
     )
 
-    assert decision.disposition == "deny"
-    assert decision.code == "command_blocked"
+    assert decision.disposition == "ask"
+    assert decision.code == "filesystem_deletion"
 
 
-def test_policy_engine_requires_approval_for_dynamic_env_split_syntax() -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+def test_policy_engine_allows_dynamic_env_split_without_a_gated_effect() -> None:
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
-    decision = PolicyEngine().evaluate_action(
+    decision = _evaluate_action(
+        PolicyEngine(),
         tool_name="bash",
         exec_request=ExecRequest(
             command=["env", "-S", "${RUNNER} -c 'printf ok'"],
@@ -270,47 +387,52 @@ def test_policy_engine_requires_approval_for_dynamic_env_split_syntax() -> None:
         ),
     )
 
-    assert decision.disposition == "ask"
-    assert decision.code == "command_normalization_incomplete"
+    assert decision.disposition == "allow"
+    assert decision.code is None
 
 
 def test_policy_engine_compatibility_method_normalizes_list_commands() -> None:
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
 
     engine = PolicyEngine()
 
-    direct = engine.evaluate_tool_call(
+    direct = _evaluate_tool_call(
+        engine,
         tool_name="bash",
         arguments={"command": ["rm", "-rf", "/tmp"]},
     )
-    shell = engine.evaluate_tool_call(
+    shell = _evaluate_tool_call(
+        engine,
         tool_name="bash",
         arguments={"command": ["bash", "-c", "rm -rf /tmp"]},
     )
-    literal = engine.evaluate_tool_call(
+    literal = _evaluate_tool_call(
+        engine,
         tool_name="bash",
         arguments={"command": ["python", "-c", 'print("rm -rf")']},
     )
 
-    assert direct.disposition == "deny"
-    assert shell.disposition == "deny"
+    assert direct.disposition == "ask"
+    assert shell.disposition == "ask"
     assert literal.disposition == "allow"
 
 
 def test_policy_engine_evaluates_shell_stdin_without_treating_data_as_script() -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine()
 
-    destructive_script = engine.evaluate_action(
+    destructive_script = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=["bash", "-s"],
             stdin="rm -rf /tmp/policy-stdin\n",
         ),
     )
-    command_data = engine.evaluate_action(
+    command_data = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=["bash", "-c", "cat"],
@@ -318,21 +440,24 @@ def test_policy_engine_evaluates_shell_stdin_without_treating_data_as_script() -
         ),
     )
 
-    assert destructive_script.disposition == "deny"
-    assert destructive_script.code == "command_blocked"
+    assert destructive_script.disposition == "ask"
+    assert destructive_script.code == "filesystem_deletion"
     assert command_data.disposition == "allow"
 
 
 def test_policy_engine_compatibility_paths_use_last_execution_path(tmp_path) -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     (tmp_path / "cat").symlink_to("/bin/bash")
     engine = PolicyEngine()
     dangerous_env = (("PATH", "/usr/bin"), ("PATH", str(tmp_path)))
-    safe_env = tuple(reversed(dangerous_env))
+    # /usr/bin/cat does not exist on macOS (cat lives in /bin); include /bin so
+    # the "safe" PATH resolves a real cat on every platform.
+    safe_env = (("PATH", str(tmp_path)), ("PATH", "/usr/bin:/bin"))
 
-    action = engine.evaluate_action(
+    action = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=("cat", "+x"),
@@ -341,7 +466,8 @@ def test_policy_engine_compatibility_paths_use_last_execution_path(tmp_path) -> 
             stdin="rm -rf /tmp/policy-stdin\n",
         ),
     )
-    tool_call = engine.evaluate_tool_call(
+    tool_call = _evaluate_tool_call(
+        engine,
         tool_name="bash",
         arguments={
             "command": ["cat", "+x"],
@@ -350,7 +476,8 @@ def test_policy_engine_compatibility_paths_use_last_execution_path(tmp_path) -> 
             "stdin": "rm -rf /tmp/policy-stdin\n",
         },
     )
-    safe_action = engine.evaluate_action(
+    safe_action = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=("cat", "+x"),
@@ -360,17 +487,18 @@ def test_policy_engine_compatibility_paths_use_last_execution_path(tmp_path) -> 
         ),
     )
 
-    assert action.disposition == "deny"
-    assert tool_call.disposition == "deny"
+    assert action.disposition == "ask"
+    assert tool_call.disposition == "ask"
     assert safe_action.disposition == "allow"
 
 
 def test_policy_engine_asks_for_absolute_path_git_push() -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine()
-    decision = engine.evaluate_action(
+    decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=["/usr/bin/git", "push", "origin", "main"], cwd="/tmp"
@@ -380,27 +508,29 @@ def test_policy_engine_asks_for_absolute_path_git_push() -> None:
     assert decision.disposition == "ask"
 
 
-def test_policy_engine_denies_sudo_wrapped_destructive_command() -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+def test_policy_engine_asks_for_sudo_wrapped_destructive_command() -> None:
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine()
-    decision = engine.evaluate_action(
+    decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=["sudo", "/bin/rm", "-rf", "/tmp"], cwd="/tmp"
         ),
     )
 
-    assert decision.disposition == "deny"
+    assert decision.disposition == "ask"
 
 
-def test_policy_engine_denies_sudo_wrapped_destructive_command_with_options() -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+def test_policy_engine_asks_for_sudo_wrapped_destructive_command_with_options() -> None:
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine()
-    decision = engine.evaluate_action(
+    decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=["sudo", "-u", "root", "/bin/rm", "-rf", "/tmp"],
@@ -408,17 +538,18 @@ def test_policy_engine_denies_sudo_wrapped_destructive_command_with_options() ->
         ),
     )
 
-    assert decision.disposition == "deny"
+    assert decision.disposition == "ask"
 
 
-def test_policy_engine_denies_sudo_wrapped_destructive_command_with_prompt_option() -> (
+def test_policy_engine_asks_for_sudo_wrapped_destructive_command_with_prompt_option() -> (
     None
 ):
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine()
-    decision = engine.evaluate_action(
+    decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=["sudo", "-p", "prompt", "/bin/rm", "-rf", "/tmp"],
@@ -426,17 +557,18 @@ def test_policy_engine_denies_sudo_wrapped_destructive_command_with_prompt_optio
         ),
     )
 
-    assert decision.disposition == "deny"
+    assert decision.disposition == "ask"
 
 
-def test_policy_engine_denies_sudo_wrapped_destructive_command_with_chroot_option() -> (
+def test_policy_engine_asks_for_sudo_wrapped_destructive_command_with_chroot_option() -> (
     None
 ):
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine()
-    decision = engine.evaluate_action(
+    decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=["sudo", "-R", "/chroot", "/bin/rm", "-rf", "/tmp"],
@@ -444,15 +576,16 @@ def test_policy_engine_denies_sudo_wrapped_destructive_command_with_chroot_optio
         ),
     )
 
-    assert decision.disposition == "deny"
+    assert decision.disposition == "ask"
 
 
 def test_policy_engine_preserves_default_ask_rules_when_customized() -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine(ask_substrings=["curl | sh"])
-    decision = engine.evaluate_action(
+    decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=["/bin/sh", "-lc", "git push origin main"], cwd="/tmp"
@@ -463,19 +596,21 @@ def test_policy_engine_preserves_default_ask_rules_when_customized() -> None:
 
 
 def test_policy_engine_uses_shell_payload_with_trailing_args() -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine()
 
-    deny_decision = engine.evaluate_action(
+    destructive_decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=["/bin/sh", "-lc", "rm -rf /tmp/demo", "ignored", "still-ignored"],
             cwd="/tmp",
         ),
     )
-    ask_decision = engine.evaluate_action(
+    ask_decision = _evaluate_action(
+        engine,
         tool_name="bash",
         exec_request=ExecRequest(
             command=[
@@ -489,16 +624,17 @@ def test_policy_engine_uses_shell_payload_with_trailing_args() -> None:
         ),
     )
 
-    assert deny_decision.disposition == "deny"
+    assert destructive_decision.disposition == "ask"
     assert ask_decision.disposition == "ask"
 
 
 def test_policy_engine_ignores_literal_substrings_in_direct_argv_commands() -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest
 
     engine = PolicyEngine()
-    decision = engine.evaluate_action(
+    decision = _evaluate_action(
+        engine,
         tool_name="python",
         exec_request=ExecRequest(
             command=["python", "-c", 'print("rm -rf")'], cwd="/tmp"
@@ -509,7 +645,7 @@ def test_policy_engine_ignores_literal_substrings_in_direct_argv_commands() -> N
 
 
 def test_policy_engine_rejects_bare_string_constructor_inputs() -> None:
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
 
     try:
         PolicyEngine(blocked_substrings="rm -rf")  # type: ignore[arg-type]
@@ -520,21 +656,24 @@ def test_policy_engine_rejects_bare_string_constructor_inputs() -> None:
 
 
 def test_policy_engine_evaluates_generic_tool_name_rules() -> None:
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
 
     engine = PolicyEngine(blocked_tools=["write"], ask_tools=["edit"])
 
-    deny_decision = engine.evaluate_tool_call(
+    deny_decision = _evaluate_tool_call(
+        engine,
         tool_name="write",
         arguments={"path": "notes.txt", "content": "hello"},
         cwd="/tmp/project",
     )
-    ask_decision = engine.evaluate_tool_call(
+    ask_decision = _evaluate_tool_call(
+        engine,
         tool_name="edit",
         arguments={"path": "notes.txt", "edits": [{"oldText": "a", "newText": "b"}]},
         cwd="/tmp/project",
     )
-    allow_decision = engine.evaluate_tool_call(
+    allow_decision = _evaluate_tool_call(
+        engine,
         tool_name="read",
         arguments={"path": "notes.txt"},
         cwd="/tmp/project",
@@ -550,32 +689,35 @@ def test_policy_engine_evaluates_generic_tool_name_rules() -> None:
 
 
 def test_policy_engine_reuses_bash_heuristics_for_tool_call_arguments() -> None:
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
 
     engine = PolicyEngine()
-    ask_decision = engine.evaluate_tool_call(
+    ask_decision = _evaluate_tool_call(
+        engine,
         tool_name="bash",
         arguments={"command": "git push origin main"},
         cwd="/tmp/project",
     )
-    deny_decision = engine.evaluate_tool_call(
+    destructive_decision = _evaluate_tool_call(
+        engine,
         tool_name="bash",
         arguments={"command": "rm -rf /tmp/demo"},
         cwd="/tmp/project",
     )
 
     assert ask_decision.disposition == "ask"
-    assert "git push" in (ask_decision.reason or "")
-    assert deny_decision.disposition == "deny"
-    assert "rm -rf" in (deny_decision.reason or "")
+    assert ask_decision.code == "external_publication"
+    assert destructive_decision.disposition == "ask"
+    assert destructive_decision.code == "filesystem_deletion"
 
 
 def test_policy_engine_evaluates_resolved_path_substring_rules() -> None:
-    from loushang.coding.policy import PolicyEngine
+    from loushang.harness.policy_engine import PolicyEngine
 
     engine = PolicyEngine(blocked_path_substrings=["/tmp/project/secrets"])
 
-    decision = engine.evaluate_tool_call(
+    decision = _evaluate_tool_call(
+        engine,
         tool_name="read",
         arguments={"path": "secrets/token.txt"},
         cwd="/tmp/project",
@@ -591,21 +733,20 @@ def test_bash_policy_evaluates_effective_command_after_prefix(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.policy_engine import PolicyEngine
 
     class UnexpectedExecService:
         async def execute(self, request, **kwargs):
             del request, kwargs
             raise AssertionError("blocked effective command must not execute")
 
-    bash = create_bash_tool_definition(
+    bash = _bash_tool(
         policy_engine=PolicyEngine(),
         exec_service=UnexpectedExecService(),
         command_prefix="rm -rf /tmp/policy-prefix",
     )
 
-    with pytest.raises(PermissionError, match="rm -rf"):
+    with pytest.raises(PermissionError, match="Filesystem content"):
         asyncio.run(
             bash.execute(
                 "call-effective-prefix",
@@ -619,21 +760,20 @@ def test_bash_policy_evaluates_configured_shell_path(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.policy_engine import PolicyEngine
 
     class UnexpectedExecService:
         async def execute(self, request, **kwargs):
             del request, kwargs
             raise AssertionError("blocked configured shell command must not execute")
 
-    bash = create_bash_tool_definition(
+    bash = _bash_tool(
         policy_engine=PolicyEngine(),
         exec_service=UnexpectedExecService(),
         shell_path="/opt/product-shell",
     )
 
-    with pytest.raises(PermissionError, match="rm -rf"):
+    with pytest.raises(PermissionError, match="Filesystem content"):
         asyncio.run(
             bash.execute(
                 "call-configured-shell",
@@ -644,19 +784,18 @@ def test_bash_policy_evaluates_configured_shell_path(tmp_path) -> None:
 
 def test_bash_policy_blocks_destructive_shell_stdin_before_execution(tmp_path) -> None:
     import asyncio
-    from shutil import copy2
+    from shutil import copyfile
 
     import pytest
 
-    from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.policy_engine import PolicyEngine
 
     class UnexpectedExecService:
         async def execute(self, request, **kwargs):
             del request, kwargs
             raise AssertionError("blocked stdin script must not execute")
 
-    bash = create_bash_tool_definition(
+    bash = _bash_tool(
         policy_engine=PolicyEngine(),
         exec_service=UnexpectedExecService(),
     )
@@ -669,7 +808,9 @@ def test_bash_policy_blocks_destructive_shell_stdin_before_execution(tmp_path) -
     (tmp_path / "runner").symlink_to("/usr/bin/env")
     copied_shell_dir = tmp_path / "copied-shell"
     copied_shell_dir.mkdir()
-    copy2("/bin/bash", copied_shell_dir / "bash")
+    # copyfile (not copy2) avoids copying platform file flags; on macOS copy2
+    # triggers chflags PermissionError when reproducing /bin/bash attributes.
+    copyfile("/bin/bash", copied_shell_dir / "bash")
 
     for index, (command, cwd) in enumerate(
         (
@@ -681,9 +822,6 @@ def test_bash_policy_blocks_destructive_shell_stdin_before_execution(tmp_path) -
             (["bash", "/proc/thread-self/fd/0"], str(tmp_path)),
             (["bash", "/proc/self/root/dev/stdin"], str(tmp_path)),
             (["bash", "/proc/thread-self/root/dev/stdin"], str(tmp_path)),
-            (["bash", "/proc/self/root/../dev/stdin"], str(tmp_path)),
-            (["bash", "/proc/thread-self/root/../dev/stdin"], str(tmp_path)),
-            (["bash", "/proc/self/root/../../dev/stdin"], str(tmp_path)),
             (["bash", "../dev/stdin"], "/tmp"),
             (["bash", "../dev/fd/0"], "/tmp"),
             (["bash", "../proc/self/fd/0"], "/tmp"),
@@ -719,8 +857,19 @@ def test_bash_policy_blocks_destructive_shell_stdin_before_execution(tmp_path) -
                 str(tmp_path),
             ),
         )
+        + (
+            # /proc/self/root/.. paths only exist on Linux; on macOS /proc does
+            # not exist, so these resolve to a missing path and are not stdin.
+            (
+                (["bash", "/proc/self/root/../dev/stdin"], str(tmp_path)),
+                (["bash", "/proc/thread-self/root/../dev/stdin"], str(tmp_path)),
+                (["bash", "/proc/self/root/../../dev/stdin"], str(tmp_path)),
+            )
+            if sys.platform.startswith("linux")
+            else ()
+        )
     ):
-        with pytest.raises(PermissionError, match="rm -rf"):
+        with pytest.raises(PermissionError):
             asyncio.run(
                 bash.execute(
                     f"call-stdin-policy-{index}",
@@ -738,7 +887,7 @@ def test_bash_policy_blocks_destructive_shell_stdin_before_execution(tmp_path) -
         ("bash", str(copied_shell_dir)),
     )
     for executable, search_path in path_commands:
-        with pytest.raises(PermissionError, match="rm -rf"):
+        with pytest.raises(PermissionError):
             asyncio.run(
                 bash.execute(
                     f"call-path-{executable}",
@@ -760,8 +909,7 @@ def test_bash_policy_resolves_relative_path_from_execution_cwd(
 
     import pytest
 
-    from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.policy_engine import PolicyEngine
 
     class UnexpectedExecService:
         async def execute(self, request, **kwargs):
@@ -775,12 +923,12 @@ def test_bash_policy_resolves_relative_path_from_execution_cwd(
     (process_cwd / "cat").symlink_to("/bin/cat")
     (execution_cwd / "cat").symlink_to("/bin/bash")
     monkeypatch.chdir(process_cwd)
-    bash = create_bash_tool_definition(
+    bash = _bash_tool(
         policy_engine=PolicyEngine(),
         exec_service=UnexpectedExecService(),
     )
 
-    with pytest.raises(PermissionError, match="rm -rf"):
+    with pytest.raises(PermissionError, match="Filesystem content"):
         asyncio.run(
             bash.execute(
                 "call-relative-path-shell",
@@ -802,8 +950,7 @@ def test_bash_policy_blocks_relative_stdin_symlink_without_explicit_cwd(
 
     import pytest
 
-    from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.policy_engine import PolicyEngine
 
     class UnexpectedExecService:
         async def execute(self, request, **kwargs):
@@ -812,12 +959,12 @@ def test_bash_policy_blocks_relative_stdin_symlink_without_explicit_cwd(
 
     (tmp_path / "stdin-script").symlink_to("/dev/stdin")
     monkeypatch.chdir(tmp_path)
-    bash = create_bash_tool_definition(
+    bash = _bash_tool(
         policy_engine=PolicyEngine(),
         exec_service=UnexpectedExecService(),
     )
 
-    with pytest.raises(PermissionError, match="rm -rf"):
+    with pytest.raises(PermissionError, match="Filesystem content"):
         asyncio.run(
             bash.execute(
                 "call-relative-stdin-policy",
@@ -834,8 +981,7 @@ def test_bash_policy_fails_safe_when_env_wrapper_changes_cwd(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.policy_engine import PolicyEngine
 
     class UnexpectedExecService:
         async def execute(self, request, **kwargs):
@@ -843,12 +989,12 @@ def test_bash_policy_fails_safe_when_env_wrapper_changes_cwd(tmp_path) -> None:
             raise AssertionError("incomplete wrapper command must not execute")
 
     (tmp_path / "stdin-script").symlink_to("/dev/stdin")
-    bash = create_bash_tool_definition(
+    bash = _bash_tool(
         policy_engine=PolicyEngine(),
         exec_service=UnexpectedExecService(),
     )
 
-    with pytest.raises(PermissionError, match="requires approval"):
+    with pytest.raises(PermissionError, match="Filesystem content"):
         asyncio.run(
             bash.execute(
                 "call-env-chdir-stdin-policy",
@@ -874,8 +1020,7 @@ def test_bash_policy_fails_safe_when_env_wrapper_changes_executable_path(
 
     import pytest
 
-    from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.policy_engine import PolicyEngine
 
     class UnexpectedExecService:
         async def execute(self, request, **kwargs):
@@ -883,7 +1028,7 @@ def test_bash_policy_fails_safe_when_env_wrapper_changes_executable_path(
             raise AssertionError("incomplete PATH wrapper command must not execute")
 
     (tmp_path / "cat").symlink_to("/bin/bash")
-    bash = create_bash_tool_definition(
+    bash = _bash_tool(
         policy_engine=PolicyEngine(),
         exec_service=UnexpectedExecService(),
     )
@@ -893,7 +1038,7 @@ def test_bash_policy_fails_safe_when_env_wrapper_changes_executable_path(
         ["env", "--argv0=sh", "/bin/busybox"],
     )
     for index, command in enumerate(commands):
-        with pytest.raises(PermissionError, match="requires approval"):
+        with pytest.raises(PermissionError, match="Filesystem content"):
             asyncio.run(
                 bash.execute(
                     f"call-env-mutation-stdin-policy-{index}",
@@ -910,15 +1055,14 @@ def test_bash_policy_blocks_shell_startup_stdin_before_execution(tmp_path) -> No
 
     import pytest
 
-    from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.policy_engine import PolicyEngine
 
     class UnexpectedExecService:
         async def execute(self, request, **kwargs):
             del request, kwargs
             raise AssertionError("shell startup stdin must not execute")
 
-    bash = create_bash_tool_definition(
+    bash = _bash_tool(
         policy_engine=PolicyEngine(),
         exec_service=UnexpectedExecService(),
     )
@@ -960,9 +1104,8 @@ def test_bash_policy_keeps_direct_argv_out_of_shell_payload_matching(
 ) -> None:
     import asyncio
 
-    from loushang.coding.exec import ExecResult
-    from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecResult
 
     requests = []
 
@@ -972,7 +1115,7 @@ def test_bash_policy_keeps_direct_argv_out_of_shell_payload_matching(
             requests.append(request)
             return ExecResult(exit_code=0, stdout="ok", stderr="")
 
-    bash = create_bash_tool_definition(
+    bash = _bash_tool(
         policy_engine=PolicyEngine(),
         exec_service=CapturingExecService(),
     )
@@ -990,7 +1133,7 @@ def test_bash_policy_keeps_direct_argv_out_of_shell_payload_matching(
     assert requests[0].command == ("python", "-c", 'print("rm -rf")')
 
 
-def test_bash_legacy_policy_wraps_getter_failure_and_invalid_decision(
+def test_bash_policy_wraps_getter_failure_and_invalid_decision(
     tmp_path,
 ) -> None:
     import asyncio
@@ -998,7 +1141,6 @@ def test_bash_legacy_policy_wraps_getter_failure_and_invalid_decision(
 
     import pytest
 
-    from loushang.coding.tools import create_bash_tool_definition
     from loushang.harness.policy import PolicyEvaluationError
 
     class UnexpectedExecService:
@@ -1011,7 +1153,7 @@ def test_bash_legacy_policy_wraps_getter_failure_and_invalid_decision(
         def evaluate(self):
             raise RuntimeError("evaluate getter exploded")
 
-    explosive = create_bash_tool_definition(
+    explosive = _bash_tool(
         policy_engine=ExplosivePolicy(),
         exec_service=UnexpectedExecService(),
     )
@@ -1023,20 +1165,20 @@ def test_bash_legacy_policy_wraps_getter_failure_and_invalid_decision(
             )
         )
 
-    class InvalidLegacyPolicy:
-        def evaluate_action(self, **kwargs):
-            del kwargs
+    class InvalidPolicy:
+        def evaluate(self, subject):
+            del subject
             return SimpleNamespace(
                 disposition="allow",
                 reason=123,
                 code=object(),
             )
 
-    invalid = create_bash_tool_definition(
-        policy_engine=InvalidLegacyPolicy(),
+    invalid = _bash_tool(
+        policy_engine=InvalidPolicy(),
         exec_service=UnexpectedExecService(),
     )
-    with pytest.raises(PolicyEvaluationError, match="non-string reason"):
+    with pytest.raises(PolicyEvaluationError, match="expected PolicyDecision"):
         asyncio.run(
             invalid.execute(
                 "call-invalid-policy",
@@ -1049,13 +1191,13 @@ def test_bash_legacy_policy_wraps_getter_failure_and_invalid_decision(
     malformed_decision = PolicyDecision.allow()
     object.__setattr__(malformed_decision, "disposition", "prompt")
 
-    class MalformedLegacyPolicy:
-        def evaluate_action(self, **kwargs):
-            del kwargs
+    class MalformedPolicy:
+        def evaluate(self, subject):
+            del subject
             return malformed_decision
 
-    malformed = create_bash_tool_definition(
-        policy_engine=MalformedLegacyPolicy(),
+    malformed = _bash_tool(
+        policy_engine=MalformedPolicy(),
         exec_service=UnexpectedExecService(),
     )
     with pytest.raises(PolicyEvaluationError, match="invalid PolicyDecision"):
@@ -1070,14 +1212,15 @@ def test_bash_legacy_policy_wraps_getter_failure_and_invalid_decision(
 def test_bash_approval_and_audit_use_effective_spawned_command(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec import ExecResult
-    from loushang.coding.policy import ApprovalDecision, PolicyEngine
-    from loushang.coding.tools import (
+    from loushang.harness.approval import ApprovalDecision
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.tools.workspace import (
         BashSpawnContext,
         ToolContext,
         create_bash_tool_definition,
     )
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+    from loushang.harness.workspace.exec import ExecResult
 
     approval_requests = []
     exec_requests = []
@@ -1115,13 +1258,13 @@ def test_bash_approval_and_audit_use_effective_spawned_command(tmp_path) -> None
 
     bash = wrap_tool_definition(
         create_bash_tool_definition(
-            policy_engine=PolicyEngine(),
-            approval_resolver=CapturingApprovalResolver(),
             exec_service=CapturingExecService(),
             command_prefix="echo prefixed",
             spawn_hook=rewrite_spawn,
         ),
         context_provider=provide_context,
+        policy_evaluator=PolicyEngine(),
+        approval_resolver=CapturingApprovalResolver(),
     )
 
     asyncio.run(
@@ -1145,21 +1288,32 @@ def test_bash_approval_and_audit_use_effective_spawned_command(tmp_path) -> None
     )
     assert approval_requests[0].arguments["timeout"] == 3
     assert [event["type"] for event in events] == [
+        "tool_action_frozen",
         "tool_policy_evaluated",
         "tool_approval_requested",
         "tool_approval_resolved",
+        "tool_execution_started",
+        "tool_execution_completed",
     ]
-    assert all(event["command"] == effective_command for event in events)
-    assert all(event["cwd"] == str(effective_cwd) for event in events)
+    assert all("command" not in event for event in events)
+    assert all("cwd" not in event for event in events)
+    assert all(effective_command not in repr(event) for event in events)
+    assert all(str(effective_cwd) not in repr(event) for event in events)
+    assert all("/tmp/injected.so" not in repr(event) for event in events)
+    assert all(event["capability"] == "git.remote_write" for event in events)
 
 
 def test_bash_approval_and_audit_preserve_direct_wrapper_argv(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec import ExecResult
-    from loushang.coding.policy import ApprovalDecision, PolicyEngine
-    from loushang.coding.tools import ToolContext, create_bash_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.approval import ApprovalDecision
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.tools.workspace import (
+        ToolContext,
+        create_bash_tool_definition,
+    )
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+    from loushang.harness.workspace.exec import ExecResult
 
     approval_requests = []
     exec_requests = []
@@ -1188,11 +1342,11 @@ def test_bash_approval_and_audit_preserve_direct_wrapper_argv(tmp_path) -> None:
 
     bash = wrap_tool_definition(
         create_bash_tool_definition(
-            policy_engine=PolicyEngine(),
-            approval_resolver=CapturingApprovalResolver(),
             exec_service=CapturingExecService(),
         ),
         context_provider=provide_context,
+        policy_evaluator=PolicyEngine(),
+        approval_resolver=CapturingApprovalResolver(),
     )
     command = (
         "env",
@@ -1212,7 +1366,10 @@ def test_bash_approval_and_audit_preserve_direct_wrapper_argv(tmp_path) -> None:
     assert exec_requests[0].command == command
     assert approval_requests[0].arguments["command"] == command
     assert approval_requests[0].arguments["shell_payload"] == "git push origin review"
-    assert all(event["command"] == command for event in events)
+    assert all("command" not in event for event in events)
+    assert all("LD_PRELOAD" not in repr(event) for event in events)
+    assert all("/tmp/injected.so" not in repr(event) for event in events)
+    assert all(event["capability"] == "git.remote_write" for event in events)
 
 
 def test_bash_policy_and_execution_share_frozen_path_and_cwd(
@@ -1220,7 +1377,6 @@ def test_bash_policy_and_execution_share_frozen_path_and_cwd(
 ) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_bash_tool_definition
     from loushang.harness.policy import PolicyDecision
 
     original_cwd = tmp_path / "original"
@@ -1241,7 +1397,7 @@ def test_bash_policy_and_execution_share_frozen_path_and_cwd(
             await asyncio.sleep(0)
             return PolicyDecision.allow()
 
-    bash = create_bash_tool_definition(policy_engine=MutatingEvaluator())
+    bash = _bash_tool(policy_engine=MutatingEvaluator())
     asyncio.run(
         bash.execute(
             "call-frozen-execution",
@@ -1260,7 +1416,6 @@ def test_bash_without_policy_freezes_path_and_cwd_before_async_update(
 ) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_bash_tool_definition
 
     original_cwd = tmp_path / "original"
     changed_cwd = tmp_path / "changed"
@@ -1278,7 +1433,7 @@ def test_bash_without_policy_freezes_path_and_cwd_before_async_update(
         monkeypatch.setenv("PATH", ".")
         await asyncio.sleep(0)
 
-    bash = create_bash_tool_definition()
+    bash = _bash_tool()
     asyncio.run(
         bash.execute(
             "call-frozen-no-policy",
@@ -1298,10 +1453,13 @@ def test_bash_approval_wait_cannot_change_startup_environment_or_leak_secrets(
 ) -> None:
     import asyncio
 
-    from loushang.coding.tools import ToolContext, create_bash_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
     from loushang.harness.approval import ApprovalDecision
     from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace import (
+        ToolContext,
+        create_bash_tool_definition,
+    )
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     marker = tmp_path / "approval-race"
     inherited_secret = "must-not-appear-in-control-plane-projections"
@@ -1330,11 +1488,10 @@ def test_bash_approval_wait_cannot_change_startup_environment_or_leak_secrets(
         return ToolContext(tool_call_id=tool_call_id, event_sink=emit_event)
 
     bash = wrap_tool_definition(
-        create_bash_tool_definition(
-            policy_engine=AskingEvaluator(),
-            approval_resolver=MutatingApprovalResolver(),
-        ),
+        create_bash_tool_definition(),
         context_provider=provide_context,
+        policy_evaluator=AskingEvaluator(),
+        approval_resolver=MutatingApprovalResolver(),
     )
     asyncio.run(
         bash.execute(
@@ -1355,9 +1512,8 @@ def test_bash_approval_wait_cannot_change_startup_environment_or_leak_secrets(
 def test_policy_engine_evaluate_action_uses_materialized_environment(
     tmp_path, monkeypatch
 ) -> None:
-    from loushang.coding.exec import ExecRequest
-    from loushang.coding.policy import PolicyEngine
-    from loushang.harness.workspace.exec import materialize_exec_request
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.workspace.exec import ExecRequest, materialize_exec_request
 
     original_cwd = tmp_path / "original"
     changed_cwd = tmp_path / "changed"
@@ -1375,7 +1531,8 @@ def test_policy_engine_evaluate_action_uses_materialized_environment(
     )
 
     monkeypatch.chdir(changed_cwd)
-    decision = PolicyEngine().evaluate_action(
+    decision = _evaluate_action(
+        PolicyEngine(),
         tool_name="bash",
         exec_request=request,
     )

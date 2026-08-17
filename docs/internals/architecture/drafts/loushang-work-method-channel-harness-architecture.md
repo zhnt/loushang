@@ -198,16 +198,16 @@ P0 投影规则：
 
 ```text
 agent_start
-  -> WorkRunStarted
+  -> AgentInvocationStarted（非终态 fact）
 
 agent_end
-  -> WorkRunCompleted
+  -> AgentInvocationCompleted（非终态 fact）
 
 turn_start
   -> TaskStarted 或 turn-compatible work payload
 
 turn_end
-  -> TaskCompleted 或 WorkRunCompleted
+  -> TaskCompleted 或 turn-compatible work payload
 
 message_start
   -> ContentDelta(start), delivery_hint=coalesce

@@ -10,7 +10,7 @@
 
 归属组件：
 
-- `loushang.harness.resources`；`coding.skill` 保留兼容和产品投影
+- `loushang.harness.resources`；Coding 的产品 runtime 直接消费该类型
 
 角色：
 
@@ -27,7 +27,7 @@
 
 归属组件：
 
-- `loushang.harness.resources`；`coding.loader` 保留兼容 facade
+- `loushang.harness.resources`；Coding 的产品 runtime 直接消费该类型
 
 角色：
 

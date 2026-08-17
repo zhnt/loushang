@@ -114,6 +114,22 @@ def surfaces_from_loaded_extension(
         )
         for contribution in getattr(extension, "control_contributions", ())
     )
+    surfaces.extend(
+        ExtensionSurfaceDescriptor(
+            type="runtime_capability",
+            name=replacement.name,
+            extension_id=extension_id,
+            source_path=source_path,
+            priority=replacement.priority,
+            permission_requirements=(replacement.slot,),
+            metadata={
+                "source": "runtime",
+                "slot": replacement.slot,
+                "implementationVersion": replacement.implementation_version,
+            },
+        )
+        for replacement in getattr(extension, "runtime_capability_replacements", ())
+    )
     return tuple(surfaces)
 
 

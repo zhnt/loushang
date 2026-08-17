@@ -3,19 +3,20 @@ from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
 from loushang.agent.types import AgentToolResult, TextPart
-from loushang.harness.approval import ApprovalResolver
+from loushang.harness.tools.authoring import (
+    FilesystemActionAdapter,
+    ToolContext,
+    authorized_tool,
+    tool,
+)
 from loushang.harness.workspace.operations import LsOperations, resolve_operation
 
-from .authoring import tool
 from .builtin_renderers import render_find_or_ls_result, render_ls_call
-from .context import ToolContext
-from .normalize import tool_to_definition
 from .operations import (
     normalize_ls_operations,
     raise_if_operation_aborted,
 )
 from .path_utils import resolve_tool_path
-from .policy import ToolPolicyEvaluator, enforce_tool_policy
 from .runtime import coerce_int_parameter, pi_truncation_details, prepare_tool_arguments
 from .truncate import truncate_head, truncation_details
 from .types import PiTruncationDetails, ToolDefinition
@@ -49,25 +50,15 @@ class LsToolDetails(TypedDict, total=False):
 @dataclass(frozen=True)
 class LsToolOptions:
     operations: LsOperations | None = None
-    policy_engine: ToolPolicyEvaluator | None = None
-    approval_resolver: ApprovalResolver | None = None
 
 
 def create_ls_tool_definition(
     *,
     operations: LsOperations | None = None,
-    policy_engine: ToolPolicyEvaluator | None = None,
-    approval_resolver: ApprovalResolver | None = None,
     options: LsToolOptions | None = None,
 ) -> ToolDefinition:
     ops = normalize_ls_operations(
         operations or (options.operations if options is not None else None)
-    )
-    resolved_policy_engine = policy_engine or (
-        options.policy_engine if options is not None else None
-    )
-    resolved_approval_resolver = approval_resolver or (
-        options.approval_resolver if options is not None else None
     )
 
     @tool(
@@ -83,47 +74,50 @@ def create_ls_tool_definition(
         ctx: ToolContext,
     ) -> AgentToolResult[dict[str, Any]]:
         raise_if_operation_aborted(ctx.signal)
-        resolved = await _resolve_directory(path or ".", ctx, operations=ops)
-        await enforce_tool_policy(
-            resolved_policy_engine,
-            tool_name="ls",
-            arguments={"path": str(resolved)},
-            cwd=ctx.cwd,
-            approval_resolver=resolved_approval_resolver,
-            tool_call_id=ctx.tool_call_id,
-            audit_sink=ctx.event_sink,
-        )
-        effective_limit = _effective_limit(limit)
-        lines, entry_limit_reached = await _list_entries(
-            resolved, limit=effective_limit, operations=ops
-        )
-        raise_if_operation_aborted(ctx.signal)
-        raw_content = "\n".join(lines)
-        truncation = truncate_head(raw_content)
-        content = truncation.content if lines else "(empty directory)"
-        if lines:
-            content = _append_ls_notices(
-                content,
-                entry_limit=effective_limit,
-                entry_limit_reached=entry_limit_reached,
-                byte_truncated=truncation.truncated_by == "bytes",
+        resolved = resolve_tool_path(path or ".", cwd=ctx.cwd)
+
+        async def execute() -> AgentToolResult[dict[str, Any]]:
+            directory = await _require_directory(resolved, operations=ops)
+            effective_limit = _effective_limit(limit)
+            lines, entry_limit_reached = await _list_entries(
+                directory, limit=effective_limit, operations=ops
             )
-        return AgentToolResult(
-            content=[TextPart(type="text", text=content)],
-            details={
-                "path": str(resolved),
-                **truncation_details(truncation),
-                "truncated": entry_limit_reached or truncation.truncated,
-                "entry_limit_reached": entry_limit_reached,
-                "entry_limit": effective_limit if entry_limit_reached else None,
-                "truncation": pi_truncation_details(truncation)
-                if truncation.truncated
-                else None,
-            },
-        )
+            raise_if_operation_aborted(ctx.signal)
+            raw_content = "\n".join(lines)
+            truncation = truncate_head(raw_content)
+            content = truncation.content if lines else "(empty directory)"
+            if lines:
+                content = _append_ls_notices(
+                    content,
+                    entry_limit=effective_limit,
+                    entry_limit_reached=entry_limit_reached,
+                    byte_truncated=truncation.truncated_by == "bytes",
+                )
+            return AgentToolResult(
+                content=[TextPart(type="text", text=content)],
+                details={
+                    "path": str(directory),
+                    **truncation_details(truncation),
+                    "truncated": entry_limit_reached or truncation.truncated,
+                    "entry_limit_reached": entry_limit_reached,
+                    "entry_limit": (
+                        effective_limit if entry_limit_reached else None
+                    ),
+                    "truncation": (
+                        pi_truncation_details(truncation)
+                        if truncation.truncated
+                        else None
+                    ),
+                },
+            )
+
+        return await execute()
 
     return replace(
-        tool_to_definition(ls),
+        authorized_tool(
+            ls,
+            action=FilesystemActionAdapter("read", default_path="."),
+        ),
         prepare_arguments=lambda value: prepare_tool_arguments(
             value, aliases=(("file_path", "path"),)
         ),
@@ -132,10 +126,8 @@ def create_ls_tool_definition(
     )
 
 
-async def _resolve_directory(
-    path: str, ctx: ToolContext, *, operations: LsOperations
-) -> Path:
-    resolved = resolve_tool_path(path, cwd=ctx.cwd)
+async def _require_directory(path: Path, *, operations: LsOperations) -> Path:
+    resolved = path
     if not await resolve_operation(operations.exists(resolved)):
         raise FileNotFoundError(str(resolved))
     if not await resolve_operation(operations.is_dir(resolved)):

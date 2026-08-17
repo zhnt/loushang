@@ -1,37 +1,35 @@
+"""Coding model-policy adapter over AI values and Harness session operations."""
+
 from __future__ import annotations
 
-import inspect
-from collections.abc import Mapping
-from dataclasses import dataclass
-from typing import Any
+from collections.abc import Iterable
 
-from loushang.coding.types import ModelSelection
+from loushang.ai.model import ModelSelection
+from loushang.harness.session.model_preferences import (
+    PreferredModel,
+    persistence_warning_message,
+    preferred_model_candidates,
+)
+from loushang.harness.session.model_selection import (
+    ModelSelectionApplyResult,
+    apply_session_model_selection,
+)
+from loushang.harness.session.model_selection import (
+    ensure_usable_session_model as _ensure_usable_session_model,
+)
 
-
-@dataclass(frozen=True)
-class ModelSelectionApplyResult:
-    selection: ModelSelection
-    persisted: bool = False
-    persistence_error: Exception | None = None
+PREFERRED_CODING_MODELS = (
+    PreferredModel("kimi-code", "kimi-code-anthropic", "kimi-for-coding"),
+)
 
 
 async def apply_model_selection(
-    session: Any,
+    session: object,
     selection: object,
     *,
     settings_manager: object | None = None,
     scope: str = "global",
 ) -> ModelSelectionApplyResult:
-    normalized = normalize_model_selection(selection)
-    if normalized is None:
-        raise ValueError("Model selection requires provider and model id.")
-
-    setter = getattr(session, "set_model", None)
-    if not callable(setter):
-        raise RuntimeError("Model selection is not available.")
-
-    await _maybe_await(setter(normalized))
-
     resolved_settings_manager = (
         settings_manager
         if settings_manager is not None
@@ -39,63 +37,31 @@ async def apply_model_selection(
     )
     persist = getattr(resolved_settings_manager, "set_default_model", None)
     if not callable(persist):
-        return ModelSelectionApplyResult(selection=normalized)
+        return await apply_session_model_selection(session, selection)
 
-    try:
-        persist(normalized, scope=scope)
-    except Exception as error:
-        return ModelSelectionApplyResult(selection=normalized, persistence_error=error)
-    return ModelSelectionApplyResult(selection=normalized, persisted=True)
+    def persist_default(model: ModelSelection) -> object:
+        return persist(model, scope=scope)
 
-
-def normalize_model_selection(selection: object | None) -> ModelSelection | None:
-    if selection is None:
-        return None
-    provider = _string_attr(selection, "provider", "provider_id", "providerId")
-    model_id = _string_attr(selection, "model_id", "modelId", "id")
-    endpoint_id = _string_attr(selection, "endpoint_id", "endpoint", "endpointId")
-    if provider is None or model_id is None:
-        return None
-    return ModelSelection(provider=provider, model_id=model_id, endpoint_id=endpoint_id)
-
-
-def model_selection_ref(selection: ModelSelection) -> str:
-    if selection.endpoint_id:
-        return f"{selection.provider}:{selection.endpoint_id}:{selection.model_id}"
-    return f"{selection.provider}/{selection.model_id}"
-
-
-def persistence_warning_message(result: ModelSelectionApplyResult) -> str | None:
-    if result.persistence_error is None:
-        return None
-    message = (
-        str(result.persistence_error).strip()
-        or result.persistence_error.__class__.__name__
+    return await apply_session_model_selection(
+        session,
+        selection,
+        persist=persist_default,
     )
-    return f"saving the default failed: {message}"
 
 
-def _string_attr(value: object, *names: str) -> str | None:
-    for name in names:
-        if isinstance(value, Mapping):
-            raw_value = value.get(name)
-        else:
-            raw_value = getattr(value, name, None)
-        if isinstance(raw_value, str) and raw_value.strip():
-            return raw_value.strip()
-    return None
+async def ensure_usable_session_model(session: object) -> ModelSelection | None:
+    return await _ensure_usable_session_model(session, candidates=_model_candidates)
 
 
-async def _maybe_await(value: Any) -> Any:
-    if inspect.isawaitable(value):
-        return await value
-    return value
+async def _model_candidates(session: object) -> Iterable[object]:
+    return await preferred_model_candidates(session, PREFERRED_CODING_MODELS)
 
 
 __all__ = [
     "ModelSelectionApplyResult",
+    "PREFERRED_CODING_MODELS",
+    "PreferredModel",
     "apply_model_selection",
-    "model_selection_ref",
-    "normalize_model_selection",
+    "ensure_usable_session_model",
     "persistence_warning_message",
 ]

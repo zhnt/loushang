@@ -39,8 +39,9 @@ def test_check_catalog_rejects_duplicate_preferred_endpoints(
                 "providers": {
                     "custom": {
                         "endpoints": {
-                            "first": {
-                                "api": "openai-completions",
+                                "first": {
+                                    "api": "faux",
+                                    "baseUrl": "https://first.example.test/v1",
                                 "preferred": True,
                                 "models": {
                                     "model-a": {
@@ -51,8 +52,9 @@ def test_check_catalog_rejects_duplicate_preferred_endpoints(
                                     }
                                 },
                             },
-                            "second": {
-                                "api": "openai-completions",
+                                "second": {
+                                    "api": "faux",
+                                    "baseUrl": "https://second.example.test/v1",
                                 "preferred": True,
                                 "models": {
                                     "model-a": {

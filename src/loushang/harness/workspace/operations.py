@@ -4,10 +4,10 @@ import inspect
 from collections.abc import Awaitable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, TypeVar
+from typing import Protocol, TypeAlias, TypeVar
 
 T = TypeVar("T")
-OperationResult = T | Awaitable[T]
+OperationResult: TypeAlias = T | Awaitable[T]
 
 
 async def resolve_operation(value: OperationResult[T]) -> T:

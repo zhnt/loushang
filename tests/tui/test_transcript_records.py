@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 import loushang.tui.transcript as transcript_module
 from loushang.tui import (
     AssistantMessageRecord,
@@ -19,6 +21,8 @@ from loushang.tui import (
     render_transcript_records,
     strip_control_sequences,
 )
+
+pytestmark = pytest.mark.tui_render_contract
 
 
 def rendered_text(view: TranscriptView, *, width: int = 60, height: int = 20) -> tuple[str, ...]:
@@ -84,9 +88,19 @@ def test_worked_divider_commits_as_stable_transcript_record() -> None:
 
 
 def test_context_compaction_record_renders_as_single_stable_transcript_line() -> None:
-    view = TranscriptView([ContextCompactionRecord(summary="older context summarized", tokens_before=500_000)])
+    view = TranscriptView(
+        [
+            ContextCompactionRecord(
+                summary="older context\nsummarized",
+                tokens_before=500_000,
+            )
+        ]
+    )
 
-    assert rendered_text(view, width=80) == ("* Context compacted: older context summarized (500000 tokens before)",)
+    lines = rendered_text(view, width=80)
+
+    assert lines == ("* Context compacted (500000 tokens before)",)
+    assert all("\n" not in line and "\r" not in line for line in lines)
 
 
 def test_status_record_renders_message_without_thinking_prefix() -> None:

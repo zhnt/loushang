@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import inspect
 import json
+import tomllib
 from pathlib import Path
 
 import pytest
 
 import loushang.ai as ai
-from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.api_registry import (
+    APIRegistry,
+    get_default_api_registry,
+)
+from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.model import (
     clear_default_model_registry,
     get_default_model_registry,
@@ -123,6 +129,19 @@ def test_builtin_model_file_is_models_json_without_schema_version() -> None:
     assert "schemaVersion" not in raw
 
 
+def test_cryptography_compatibility_constraint_is_scoped_to_intel_macos() -> None:
+    pyproject = tomllib.loads(
+        (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    dependencies = pyproject["project"]["dependencies"]
+
+    assert [
+        dependency
+        for dependency in dependencies
+        if dependency.lower().startswith("cryptography")
+    ] == ["cryptography<49; sys_platform == 'darwin' and platform_machine == 'x86_64'"]
+
+
 def test_simple_api_is_not_part_of_root_or_api_contract() -> None:
     forbidden = {
         "SimpleCallOptions",
@@ -153,6 +172,55 @@ def test_model_instances_do_not_expose_call_facades() -> None:
 
     for name in ("complete", "stream", "complete_simple", "stream_simple"):
         assert not hasattr(model, name)
+
+
+def test_auth_is_owned_by_ai_package_without_top_level_auth_package() -> None:
+    auth_files = {
+        path.name
+        for path in (AI_SRC / "auth").glob("*.py")
+        if path.name != "__pycache__"
+    }
+
+    assert auth_files == {
+        "__init__.py",
+        "core.py",
+        "credentials.py",
+        "errors.py",
+        "registry.py",
+        "resolver.py",
+        "store.py",
+        "support.py",
+    }
+
+    import loushang.ai.auth as auth_module
+
+    assert not (REPO_ROOT / "src/loushang/auth").exists()
+    assert (AI_SRC / "auth" / "sources" / "openai_codex.py").is_file()
+    assert not (AI_SRC / "auth" / "oauth" / "providers" / "openai_codex.py").exists()
+
+    for name in (
+        "OAuthCredential",
+        "CredentialSource",
+        "FileCredentialStore",
+        "OpenAICodexCredentialSource",
+        "resolve_auth",
+        "login",
+        "logout",
+        "credential_status",
+    ):
+        assert hasattr(auth_module, name)
+
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("loushang.auth")
+
+
+@pytest.mark.parametrize(
+    "module_name",
+    ("loushang.ai.cli", "loushang.ai." + "contrib.openai_codex"),
+)
+def test_removed_ai_package_surfaces_are_not_importable(module_name: str) -> None:
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module(module_name)
 
 
 def test_default_registry_loads_builtin_and_user_model_directory(
@@ -221,17 +289,17 @@ def test_reload_default_registry_keeps_existing_registry_when_user_file_fails(
 
 
 def test_provider_registry_accepts_invoke_raw_and_rejects_stream_raw() -> None:
-    registry = ApiProviderRegistry()
+    registry = APIRegistry()
 
-    registry.register_api_provider(_InvokeRawOnlyProvider())
+    registry.register_api_adapter(_InvokeRawOnlyProvider())
     with pytest.raises(TypeError):
-        registry.register_api_provider(_StreamRawOnlyProvider())
+        registry.register_api_adapter(_StreamRawOnlyProvider())
 
 
-def test_public_invocation_uses_explicit_provider_registry_keyword() -> None:
+def test_public_invocation_does_not_expose_registry_injection() -> None:
     for function in (ai.complete, ai.stream, ai.complete_structured):
         parameters = inspect.signature(function).parameters
-        assert "provider_registry" in parameters
+        assert "provider_registry" not in parameters
         assert "registry" not in parameters
 
 
@@ -245,14 +313,14 @@ def test_complete_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
             "company-chat",
         )
         provider = _InvokeRawOnlyProvider()
-        provider_registry = ApiProviderRegistry()
-        provider_registry.register_api_provider(provider)
+        provider_registry = get_default_api_registry()
+        provider_registry.clear_api_adapters()
+        provider_registry.register_api_adapter(provider)
 
         message = await ai.complete(
             model,
             {"messages": [{"role": "user", "content": "hello"}]},
-            CallOptions(api_key="test-key"),
-            provider_registry=provider_registry,
+            CallOptions(auth=ApiKeyAuth("test-key")),
         )
 
         assert message.content[0].text == "ok"
@@ -271,14 +339,14 @@ def test_stream_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
             "company-chat",
         )
         provider = _InvokeRawOnlyProvider()
-        provider_registry = ApiProviderRegistry()
-        provider_registry.register_api_provider(provider)
+        provider_registry = get_default_api_registry()
+        provider_registry.clear_api_adapters()
+        provider_registry.register_api_adapter(provider)
 
         event_stream = await ai.stream(
             model,
             {"messages": [{"role": "user", "content": "hello"}]},
-            CallOptions(api_key="test-key"),
-            provider_registry=provider_registry,
+            CallOptions(auth=ApiKeyAuth("test-key")),
         )
         async for _event in event_stream:
             pass
@@ -298,21 +366,20 @@ def test_complete_and_stream_pass_distinct_provider_modes(tmp_path: Path) -> Non
             "company-chat",
         )
         provider = _RecordingProvider()
-        provider_registry = ApiProviderRegistry()
-        provider_registry.register_api_provider(provider)
+        provider_registry = get_default_api_registry()
+        provider_registry.clear_api_adapters()
+        provider_registry.register_api_adapter(provider)
         context = {"messages": [{"role": "user", "content": "hello"}]}
 
         await ai.complete(
             model,
             context,
-            CallOptions(api_key="test-key"),
-            provider_registry=provider_registry,
+            CallOptions(auth=ApiKeyAuth("test-key")),
         )
         event_stream = await ai.stream(
             model,
             context,
-            CallOptions(api_key="test-key"),
-            provider_registry=provider_registry,
+            CallOptions(auth=ApiKeyAuth("test-key")),
         )
         async for _event in event_stream:
             pass
@@ -367,17 +434,17 @@ def test_bound_model_resolves_without_default_registry_lookup(
         raise AssertionError("default registry lookup should not be needed")
 
     monkeypatch.setattr(
-        "loushang.ai.provider.resolution.get_default_model_registry",
+        "loushang.ai.model.registry.get_default_model_registry",
         fail_default_registry_lookup,
     )
 
     request = resolve_request_for_model(
         model,
-        options=CallOptions(api_key="test-key"),
+        options=CallOptions(auth=ApiKeyAuth("test-key")),
         env={},
     )
 
-    assert request.provider == "company-aif002"
-    assert request.endpoint == "anthropic-messages"
-    assert request.api == "anthropic-messages"
+    assert request.model.provider_id == "company-aif002"
+    assert request.model.endpoint_id == "anthropic-messages"
+    assert request.model.api == "anthropic-messages"
     assert request.base_url == "https://ai.company.example/v1"

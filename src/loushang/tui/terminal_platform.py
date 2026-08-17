@@ -61,7 +61,7 @@ class DefaultTerminalPlatformAdapter:
                 fallback = ctypes.c_uint32(_windows_console_input_mode(original_mode, vt_input=False))
                 if not kernel32.SetConsoleMode(handle, fallback):
                     return False
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
         self._windows_handle = handle.value
         self._windows_original_mode = original_mode
@@ -74,7 +74,7 @@ class DefaultTerminalPlatformAdapter:
         try:
             kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
             kernel32.SetConsoleMode(ctypes.c_void_p(self._windows_handle), ctypes.c_uint32(self._windows_original_mode))
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
         finally:
             self._windows_handle = None
@@ -102,7 +102,7 @@ class DefaultTerminalPlatformAdapter:
             requested = ctypes.c_uint32(_windows_console_output_mode(original_mode))
             if not kernel32.SetConsoleMode(handle, requested):
                 return False
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
         self._windows_output_handle = handle.value
         self._windows_output_original_mode = original_mode
@@ -118,7 +118,7 @@ class DefaultTerminalPlatformAdapter:
                 ctypes.c_void_p(self._windows_output_handle),
                 ctypes.c_uint32(self._windows_output_original_mode),
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
         finally:
             self._windows_output_handle = None
@@ -135,11 +135,11 @@ class DefaultTerminalPlatformAdapter:
             return True
         try:
             from loushang.tui.native_modifiers import is_shift_pressed
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
         try:
             return bool(is_shift_pressed())
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
 
 
@@ -158,7 +158,7 @@ def _windows_stream_handle(stream: object, kernel32: object, std_handle: int) ->
             import msvcrt
 
             return int(msvcrt.get_osfhandle(fileno()))
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
     return int(kernel32.GetStdHandle(std_handle))
 
@@ -183,7 +183,7 @@ def _apple_shift_pressed_via_quartz() -> bool:
         flags_state.argtypes = [ctypes.c_uint32]
         flags_state.restype = ctypes.c_uint64
         flags = int(flags_state(_APPLE_EVENT_SOURCE_STATE_COMBINED_SESSION))
-    except Exception:  # noqa: BLE001
+    except Exception:
         return False
     return bool(flags & _APPLE_EVENT_FLAG_MASK_SHIFT)
 

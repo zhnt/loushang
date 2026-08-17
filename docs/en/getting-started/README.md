@@ -44,7 +44,7 @@ loushang --list-commands
 loushang -p "Inspect this repository and summarize what it does."
 ```
 
-Use `--model` or provider-specific environment variables when you need to select a concrete model route. `--model provider/model` is a short form: it works when the model has one matching endpoint, or when the catalog documents one matching endpoint as preferred. If the same provider/model exists under multiple endpoints and no single preferred endpoint applies, the CLI reports an ambiguity and lists explicit `provider:endpoint:model` alternatives. Use `--model provider:endpoint:model` when you need to choose a specific endpoint, region, lane, or protocol. In catalog keys, `provider` and `model` ids cannot contain `:`, while endpoint ids may contain `:`. Project and example model catalog files can be placed under `.loushang/models/` or passed explicitly where supported.
+Use `--model` or provider-specific environment variables when you need to select a concrete model route. `--model provider:model` is a short form (`provider/model` is also accepted): it works only when that provider/model pair matches exactly one endpoint. If the same provider/model exists under multiple endpoints, the CLI reports an ambiguity and lists explicit `provider:endpoint:model` alternatives. Use `--model provider:endpoint:model` when you need to choose a specific endpoint, region, lane, or protocol. In catalog keys, `provider` and `model` ids cannot contain `:`, while endpoint ids may contain `:`. Project and example model catalog files can be placed under `.loushang/models/` or passed explicitly where supported.
 
 ## Next Steps
 

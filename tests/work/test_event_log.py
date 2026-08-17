@@ -140,7 +140,7 @@ def test_jsonl_event_log_rejects_implicit_object_projection(tmp_path) -> None:
 
     import pytest
 
-    from loushang.protocol import JsonValueError
+    from loushang.foundation.json import JsonValueError
     from loushang.work import JsonlEventLogBackend
 
     @dataclass(frozen=True)
@@ -190,7 +190,7 @@ def test_event_log_backends_share_strict_snapshot_semantics(tmp_path) -> None:
 
     import pytest
 
-    from loushang.protocol import JsonValueError
+    from loushang.foundation.json import JsonValueError
     from loushang.work import InMemoryEventLogBackend, JsonlEventLogBackend
 
     backends = (
@@ -349,3 +349,29 @@ def _wire_entry_data() -> dict[str, object]:
         "payload": {"kind": "WorkRunStarted"},
         "created_at": "2026-06-01T10:30:00+00:00",
     }
+
+
+def test_event_log_operation_index_and_checkpoint_are_consistent(tmp_path) -> None:
+    from loushang.work import InMemoryEventLogBackend, JsonlEventLogBackend
+
+    for backend in (
+        InMemoryEventLogBackend(),
+        JsonlEventLogBackend(tmp_path / "indexed-events.jsonl"),
+    ):
+        assert backend.checkpoint().offset == 0
+        first = _entry("entry-1", operation_id="op-1", run_id="run-1")
+        second = _entry("entry-2", operation_id="op-2", run_id="run-2")
+        backend.append(first)
+        checkpoint = backend.checkpoint()
+        backend.append(second)
+
+        assert checkpoint.offset == 1
+        assert backend.query(operation_id="op-1") == [first]
+        assert backend.query(operation_id="op-2", after=checkpoint) == [second]
+        assert backend.query(operation_id="missing") == []
+
+    reopened = JsonlEventLogBackend(tmp_path / "indexed-events.jsonl")
+    assert reopened.checkpoint().offset == 2
+    assert [entry.operation_id for entry in reopened.query(operation_id="op-2")] == [
+        "op-2"
+    ]

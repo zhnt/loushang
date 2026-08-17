@@ -10,6 +10,11 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+from loushang.coding.policy import HeadlessApprovalResolver, PolicyEngine
+from loushang.coding.store import SessionManager
+from loushang.coding.tools import ToolRegistry, register_builtin_tools
+from loushang.coding.types import ModelSelection
+
 from loushang.ai.api import stream_simple
 from loushang.ai.model.registry import get_default_model_registry
 from loushang.ai.options import SimpleStreamOptions
@@ -20,17 +25,13 @@ from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
 )
-from loushang.coding.policy import HeadlessApprovalResolver, PolicyEngine
-from loushang.coding.store import SessionManager
-from loushang.coding.tools import ToolRegistry, register_builtin_tools
-from loushang.coding.types import ModelSelection
-from loushang.observability import (
-    TraceJSONLSink,
+from loushang.foundation.observability import log_context
+from loushang.foundation.observability._router import (
     capture_observability,
     configure_observability,
-    log_context,
     restore_observability,
 )
+from loushang.foundation.observability.trace_sink import TraceJSONLSink
 
 DEFAULT_MODEL = ModelSelection(provider="moonshot", model_id="kimi-for-coding")
 DEFAULT_ENDPOINT = "kimi-code-anthropic"

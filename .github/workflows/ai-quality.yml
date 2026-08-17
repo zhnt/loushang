@@ -7,6 +7,34 @@ on:
   pull_request:
 
 jobs:
+  install-compatibility:
+    name: Install (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15-intel
+            architecture: x86_64
+          - os: macos-15
+            architecture: arm64
+          - os: ubuntu-latest
+            architecture: x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Verify runner architecture
+        run: test "$(uname -m)" = "${{ matrix.architecture }}"
+
+      - name: Install
+        run: uv sync --locked --no-build-package cryptography
+
   ai-quality:
     runs-on: ubuntu-latest
     steps:

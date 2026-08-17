@@ -3,22 +3,8 @@ from __future__ import annotations
 import json
 import sys
 
-from loushang.coding.ui import playback_runner
-from loushang.coding.ui.playback_fakes import SessionCommandPlaybackSession
-from loushang.coding.ui.playback_runner import (
-    ScreenPlaybackScenarioSpec,
-    ScreenPlaybackSuite,
-    run_playback_cli,
-    run_playback_scenarios,
-)
-from loushang.coding.ui.playback_scenarios.command import COMMAND_ROUTING_SCENARIOS
-from loushang.coding.ui.playback_scenarios.composer import COMPOSER_SCENARIOS
-from loushang.coding.ui.playback_scenarios.lifecycle import LIFECYCLE_SCENARIOS
-from loushang.coding.ui.playback_scenarios.product import PRODUCT_SCENARIOS
-from loushang.coding.ui.playback_scenarios.surface import SURFACE_SCENARIOS
-from loushang.coding.ui.playback_scenarios.terminal import TERMINAL_SCENARIOS
-from loushang.coding.ui.playback_scenarios.transcript import TRANSCRIPT_SCENARIOS
-from loushang.coding.ui.playback_suite import ScreenPlaybackSuite as SuiteFromModule
+import pytest
+
 from loushang.tui import (
     FakeTerminalPort,
     PlaybackEvent,
@@ -28,6 +14,24 @@ from loushang.tui import (
     TerminalOperation,
     TerminalSize,
 )
+from loushang.tui.playback_suite import PlaybackSuite as SuiteFromModule
+from tests.coding.tui_support import runner as playback_runner
+from tests.coding.tui_support.fakes import SessionCommandPlaybackSession
+from tests.coding.tui_support.runner import (
+    ScreenPlaybackScenarioSpec,
+    ScreenPlaybackSuite,
+    run_playback_cli,
+    run_playback_scenarios,
+)
+from tests.coding.tui_support.scenarios.command import COMMAND_ROUTING_SCENARIOS
+from tests.coding.tui_support.scenarios.composer import COMPOSER_SCENARIOS
+from tests.coding.tui_support.scenarios.lifecycle import LIFECYCLE_SCENARIOS
+from tests.coding.tui_support.scenarios.multiagent import MULTIAGENT_SCENARIOS
+from tests.coding.tui_support.scenarios.permissions import PERMISSION_SCENARIOS
+from tests.coding.tui_support.scenarios.product import PRODUCT_SCENARIOS
+from tests.coding.tui_support.scenarios.surface import SURFACE_SCENARIOS
+from tests.coding.tui_support.scenarios.terminal import TERMINAL_SCENARIOS
+from tests.coding.tui_support.scenarios.transcript import TRANSCRIPT_SCENARIOS
 
 
 def test_screen_tui_playback_runner_reexports_suite_types_from_playback_suite_module() -> (
@@ -36,13 +40,21 @@ def test_screen_tui_playback_runner_reexports_suite_types_from_playback_suite_mo
     assert ScreenPlaybackSuite is SuiteFromModule
 
 
+def test_screen_tui_playback_runner_help_names_canonical_module(capsys) -> None:
+    with pytest.raises(SystemExit, match="0"):
+        run_playback_cli(["--help"])
+
+    captured = capsys.readouterr()
+    assert "scripts/run_tui_playback.py" in captured.out
+
+
 def test_screen_tui_playback_fake_session_lists_command_sources() -> None:
     session = SessionCommandPlaybackSession()
 
     commands = session.list_commands()
 
     assert [(command.name, command.source) for command in commands] == [
-        ("name", "builtin"),
+        ("rename", "builtin"),
         ("export", "builtin"),
         ("review", "prompt"),
         ("debugging", "skill"),
@@ -52,7 +64,7 @@ def test_screen_tui_playback_fake_session_lists_command_sources() -> None:
 def test_screen_tui_playback_command_scenarios_live_in_command_module() -> None:
     assert [scenario.name for scenario in COMMAND_ROUTING_SCENARIOS] == [
         "local-command",
-        "session-name-command",
+        "session-rename-command",
         "session-command-error",
         "unknown-slash-prompt",
         "non-executable-session-command",
@@ -91,7 +103,13 @@ def test_screen_tui_playback_surface_scenarios_live_in_surface_module() -> None:
         "model-select",
         "model-select-search",
         "approval-surface",
+        "approval-session-surface",
         "approval-reject-surface",
+        "approval-abort-surface",
+        "approval-persistent-surface",
+        "permissions-reopen-revoke-surface",
+        "permissions-mode-surface",
+        "permissions-full-access-confirmation",
         "dialog-surface",
         "mouse-select-active-surface",
     ]
@@ -110,6 +128,153 @@ def test_screen_tui_playback_lifecycle_scenarios_live_in_lifecycle_module() -> N
         "running-follow-up-queued",
         "keyboard-alt-enter-follow-up",
     ]
+
+
+def test_screen_tui_playback_multiagent_scenarios_are_layered() -> None:
+    assert [scenario.name for scenario in MULTIAGENT_SCENARIOS] == [
+        "multiagent-tools",
+        "multiagent-messaging",
+        "multiagent-followup",
+        "multiagent-nested-tree",
+        "multiagent-lifecycle",
+        "multiagent-quota-recovery",
+        "multiagent-parallel-review",
+        "multiagent-debate",
+        "multiagent-shared-workspace",
+        "multiagent-isolated-artifact",
+        "multiagent-shared-parallel-writers",
+        "multiagent-child-approval",
+        "multiagent-concurrent-child-approval",
+        "multiagent-render",
+    ]
+
+
+def test_screen_tui_playback_permission_scenarios_are_layered() -> None:
+    assert [scenario.name for scenario in PERMISSION_SCENARIOS] == [
+        "permission-behavior-matrix",
+    ]
+
+
+def test_screen_tui_playback_runs_permission_behavior_matrix(tmp_path) -> None:
+    results = run_playback_scenarios(
+        ["permission-behavior-matrix"],
+        artifacts_dir=tmp_path,
+    )
+
+    assert [result.ok for result in results] == [True]
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "permission-behavior-matrix-events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert any(
+        row["layer"] == "behavior"
+        and row["data"]["name"] == "child-delegated-ceiling"
+        and row["data"]["outcome"] == "contained"
+        for row in rows
+    )
+    assert any(
+        row["layer"] == "gateway"
+        and row["event"] == "tool_execution_failed"
+        and row["data"]["phase"] == "pre_execution"
+        for row in rows
+    )
+
+
+def test_screen_tui_playback_runs_multiagent_topology_matrix(tmp_path) -> None:
+    names = [
+        "multiagent-followup",
+        "multiagent-nested-tree",
+        "multiagent-lifecycle",
+        "multiagent-quota-recovery",
+        "multiagent-parallel-review",
+        "multiagent-debate",
+        "multiagent-shared-workspace",
+        "multiagent-isolated-artifact",
+        "multiagent-shared-parallel-writers",
+    ]
+
+    results = run_playback_scenarios(
+        names,
+        artifacts_dir=tmp_path,
+    )
+
+    assert [result.ok for result in results] == [True] * len(names)
+    for name in names:
+        rows = [
+            json.loads(line)
+            for line in (tmp_path / f"{name}-events.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        assert any(row["layer"] == "topology" for row in rows)
+
+
+def test_screen_tui_playback_runner_writes_layered_multiagent_diagnostics(
+    tmp_path,
+) -> None:
+    results = run_playback_scenarios(
+        [
+            "multiagent-tools",
+            "multiagent-messaging",
+            "multiagent-render",
+        ],
+        artifacts_dir=tmp_path,
+        include_frames=True,
+    )
+
+    assert [result.ok for result in results] == [True, True, True]
+    messaging_rows = [
+        json.loads(line)
+        for line in (tmp_path / "multiagent-messaging-events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    classifications = [
+        row
+        for row in messaging_rows
+        if row["event"] == "completion.classified"
+    ]
+    assert classifications == [
+        {
+            "sequence": 29,
+            "layer": "projection",
+            "event": "completion.classified",
+            "data": {
+                "expected_channel": "system_mailbox",
+                "actual_channel": "system_mailbox",
+                "editable": False,
+                "triggers_queue_preview": False,
+                "verdict": "correct_input_boundary",
+            },
+        }
+    ]
+    render_rows = [
+        json.loads(line)
+        for line in (tmp_path / "multiagent-render-render.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert render_rows
+    render_events = [
+        json.loads(line)
+        for line in (tmp_path / "multiagent-render-events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    queue_syncs = [row for row in render_events if row["event"] == "queue.synced"]
+    assert len(queue_syncs) == 3
+    assert all(row["data"]["pending_followups"] == [] for row in queue_syncs)
+    assert all(row["data"]["pending_steers"] == [] for row in queue_syncs)
+    final_screen = (tmp_path / "multiagent-render-screen.txt").read_text(
+        encoding="utf-8"
+    )
+    assert "Queued follow-up inputs" not in final_screen
+    assert "queued=" not in final_screen
+    assert "/root/random-1 completed (round 1)." not in final_screen
+    assert "/root/random-2 completed (round 1)." not in final_screen
+    assert "/root/random-3 completed (round 1)." not in final_screen
 
 
 def test_screen_tui_playback_product_scenarios_live_in_product_module() -> None:
@@ -165,7 +330,7 @@ def test_screen_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "idle-escape-pops-pending-steer" in captured.out
     assert "escape-pending-steer-fifo" in captured.out
     assert "escape-pending-steer-preserves-draft" in captured.out
-    assert "session-name-command" in captured.out
+    assert "session-rename-command" in captured.out
     assert "session-command-error" in captured.out
     assert "unknown-slash-prompt" in captured.out
     assert "non-executable-session-command" in captured.out
@@ -178,7 +343,10 @@ def test_screen_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "model-select" in captured.out
     assert "model-select-search" in captured.out
     assert "approval-surface" in captured.out
+    assert "approval-session-surface" in captured.out
     assert "approval-reject-surface" in captured.out
+    assert "approval-abort-surface" in captured.out
+    assert "approval-persistent-surface" in captured.out
     assert "dialog-surface" in captured.out
     assert "bracketed-paste-large-marker" in captured.out
     assert "tool-output-preview" in captured.out
@@ -194,6 +362,9 @@ def test_screen_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "screen-loop-ctrl-c-abort-running" in captured.out
     assert "product-composed-interaction" in captured.out
     assert "product-streaming-control-flow" in captured.out
+    assert "multiagent-tools" in captured.out
+    assert "multiagent-messaging" in captured.out
+    assert "multiagent-render" in captured.out
 
 
 def test_screen_tui_playback_runner_runs_named_scenario(capsys) -> None:
@@ -205,18 +376,37 @@ def test_screen_tui_playback_runner_runs_named_scenario(capsys) -> None:
     assert "long-transcript-input" not in captured.out
 
 
+def test_screen_tui_playback_runner_runs_child_approval_scenario(capsys) -> None:
+    exit_code = run_playback_cli(["multiagent-child-approval"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS multiagent-child-approval" in captured.out
+
+
+def test_screen_tui_playback_runner_runs_concurrent_child_approval_scenario(
+    capsys,
+) -> None:
+    exit_code = run_playback_cli(["multiagent-concurrent-child-approval"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS multiagent-concurrent-child-approval" in captured.out
+
+
 def test_screen_tui_playback_runner_runs_tagged_command_scenarios(capsys) -> None:
     exit_code = run_playback_cli(["--tag", "command"])
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert "PASS session-name-command" in captured.out
+    assert "PASS session-rename-command" in captured.out
     assert "PASS command-palette-session-command" in captured.out
     assert "PASS commands-info-session-command" in captured.out
     assert "PASS model-select" not in captured.out
     assert "PASS long-transcript-input" not in captured.out
 
 
+@pytest.mark.tui_render_contract
 def test_screen_tui_playback_runner_runs_tagged_product_scenarios(capsys) -> None:
     exit_code = run_playback_cli(["--tag", "product"])
 
@@ -232,7 +422,7 @@ def test_screen_tui_playback_runner_lists_tagged_command_scenarios(capsys) -> No
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert "session-name-command" in captured.out
+    assert "session-rename-command" in captured.out
     assert "command-palette-session-command" in captured.out
     assert "model-select" not in captured.out
     assert "long-transcript-input" not in captured.out
@@ -360,11 +550,11 @@ def test_screen_tui_playback_runner_runs_lifecycle_scenario(capsys) -> None:
 
 
 def test_screen_tui_playback_runner_runs_session_name_command_scenario(capsys) -> None:
-    exit_code = run_playback_cli(["session-name-command"])
+    exit_code = run_playback_cli(["session-rename-command"])
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert "PASS session-name-command" in captured.out
+    assert "PASS session-rename-command" in captured.out
 
 
 def test_screen_tui_playback_runner_runs_session_command_error_scenario(capsys) -> None:
@@ -463,6 +653,16 @@ def test_screen_tui_playback_runner_runs_approval_surface_scenario(capsys) -> No
     assert "PASS approval-surface" in captured.out
 
 
+def test_screen_tui_playback_runner_runs_approval_session_surface_scenario(
+    capsys,
+) -> None:
+    exit_code = run_playback_cli(["approval-session-surface"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS approval-session-surface" in captured.out
+
+
 def test_screen_tui_playback_runner_runs_approval_reject_surface_scenario(
     capsys,
 ) -> None:
@@ -471,6 +671,26 @@ def test_screen_tui_playback_runner_runs_approval_reject_surface_scenario(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "PASS approval-reject-surface" in captured.out
+
+
+def test_screen_tui_playback_runner_runs_approval_abort_surface_scenario(
+    capsys,
+) -> None:
+    exit_code = run_playback_cli(["approval-abort-surface"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS approval-abort-surface" in captured.out
+
+
+def test_screen_tui_playback_runner_runs_approval_persistent_surface_scenario(
+    capsys,
+) -> None:
+    exit_code = run_playback_cli(["approval-persistent-surface"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS approval-persistent-surface" in captured.out
 
 
 def test_screen_tui_playback_runner_runs_dialog_surface_scenario(capsys) -> None:
@@ -516,6 +736,7 @@ def test_screen_tui_playback_runner_writes_json_summary(tmp_path, capsys) -> Non
                 "artifacts": [
                     str(tmp_path / "completion-tab.jsonl"),
                     str(tmp_path / "completion-tab-screen.txt"),
+                    str(tmp_path / "completion-tab-terminal.txt"),
                 ],
                 "elapsed_ms": payload["results"][0]["elapsed_ms"],
             }
@@ -610,6 +831,7 @@ def test_screen_tui_playback_runner_writes_review_artifacts_for_playback_failure
         "forced-review-failure-error.txt",
         "forced-review-failure.jsonl",
         "forced-review-failure-screen.txt",
+        "forced-review-failure-terminal.txt",
     ]
     assert "forced review failure" in (
         tmp_path / "forced-review-failure-error.txt"

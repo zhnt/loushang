@@ -101,7 +101,7 @@ session
 {"type":"agent_start"}
 {"type":"turn_start"}
 {"type":"message_start","message":{...}}
-{"type":"message_update","message":{...},"assistantMessageEvent":{...}}
+{"type":"message_update","message":{...},"assistant_message_event":{...}}
 {"type":"message_end","message":{...}}
 {"type":"turn_end","message":{...},"toolResults":[]}
 {"type":"agent_end","messages":[...]}
@@ -161,12 +161,12 @@ session
 `json mode` 可以通过 `render_tool_events=True` 或 CLI 的 `--render-tool-events`
 把工具事件附加为可展示 payload：
 
-- `tool_execution_start` 附加 `renderedToolCall`
-- `tool_execution_update` / `tool_execution_end` 附加 `renderedToolResult`
+- `tool_execution_start` 附加 `rendered_tool_call`
+- `tool_execution_update` / `tool_execution_end` 附加 `rendered_tool_result`
 
 这些字段属于 JSON boundary projection，不是新的核心 event object。
 它们复用 `ToolDefinition.render_call/render_result`，由 event projection 统一补齐
-`contractVersion`、`status`、`durationMs`、`artifacts` 等稳定边界字段。
+`contract_version`、`status`、`duration_ms`、`artifacts` 等稳定边界字段。
 
 详细合约见：
 

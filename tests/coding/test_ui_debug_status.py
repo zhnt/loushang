@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def test_debug_status_text_includes_paths_scopes_and_diag_export_command(tmp_path) -> None:
-    from loushang.coding.ui.debug_status import debug_status_text
+    from loushang.coding.diagnostics.debug_status import debug_status_text
 
     debug_path = tmp_path / "debug.log"
 
@@ -20,8 +20,8 @@ def test_debug_status_text_includes_paths_scopes_and_diag_export_command(tmp_pat
 
 
 def test_debug_status_text_shows_recent_problem_lines_from_debug_file(tmp_path) -> None:
-    from loushang.coding.ui.debug_status import debug_status_text
-    from loushang.observability import reset_observability
+    from loushang.coding.diagnostics.debug_status import debug_status_text
+    from loushang.foundation.observability._router import reset_observability
 
     debug_path = tmp_path / "debug.log"
     debug_path.write_text(
@@ -43,4 +43,3 @@ def test_debug_status_text_shows_recent_problem_lines_from_debug_file(tmp_path) 
     assert "WARNING module retrying provider" in text
     assert "provider_request_cancelled" in text
     assert "DEBUG module ignored" not in text
-

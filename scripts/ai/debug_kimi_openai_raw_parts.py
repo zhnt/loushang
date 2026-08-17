@@ -6,10 +6,10 @@ import asyncio
 import os
 import sys
 
-from loushang.ai import CallOptions, Model
+from loushang.ai import ApiKeyAuth, CallOptions, Model
 from loushang.ai.context import normalize_context
+from loushang.ai.protocols.openai_chat_completions import OpenAIChatCompletionsAdapter
 from loushang.ai.provider import ProviderRequest
-from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
 
 BASE_URL = "https://api.moonshot.cn/v1"
 
@@ -25,7 +25,7 @@ def _resolve_api_key() -> str:
 
 async def _main() -> None:
     api_key = _resolve_api_key()
-    provider = OpenAICompletionsProvider()
+    provider = OpenAIChatCompletionsAdapter()
     model = Model(
         id="kimi-k2.5",
         provider="moonshot",
@@ -41,7 +41,7 @@ async def _main() -> None:
             {"role": "user", "content": "你好，我叫李雷，1+1等于多少？"},
         ]
     }
-    options = CallOptions(api_key=api_key, max_tokens=128)
+    options = CallOptions(auth=ApiKeyAuth(api_key), max_output_tokens=128)
     request = ProviderRequest(
         provider="moonshot",
         endpoint="openai-completions",

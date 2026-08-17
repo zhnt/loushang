@@ -17,7 +17,7 @@ The governing split is:
 
 ## Harness Ownership
 
-`loushang.harness.host` owns:
+`loushang.harness.runtime` owns:
 
 - `TurnOrchestrator`, which orders interception, preflight, active-run queueing,
   before-run preparation, message construction, pending-input drain, start
@@ -28,7 +28,10 @@ The governing split is:
 - `RetryCoordinator`, which owns attempt state, exponential backoff,
   single-flight delay, cancellation handles, waiter completion, exhaustion,
   and delegated continuation;
-- `PayloadEventRouter`, which provides ordered, payload-neutral mirror routing.
+
+`loushang.harness.host.routing.PayloadEventRouter` remains an outer
+payload-neutral adapter utility; it is not part of the execution/queue/retry
+state-machine core.
 
 The existing `loushang.harness.context.CompactionCoordinator` remains the only
 generic compaction single-flight lifecycle. Product compaction adapters reuse
@@ -90,13 +93,20 @@ failure or cancellation therefore propagates without republishing an object
 that may already be partly or fully finalized; an uncommitted candidate is
 still rolled back by `SessionOperationCoordinator`.
 
+`loushang.harness.session.SessionLifecycleRuntime` is the higher-level active
+session profile over those two primitives. It supplies the common
+new/restore/fork/import/dispose transaction and accepts Product store/hooks.
+Its default `ForkProfile` supports only `at`; a Product can inject extra fork
+positions and a resolver without putting Product transcript semantics into
+Harness. See [Session Lifecycle Runtime Boundary](session-lifecycle-runtime-boundary.md).
+
 ## Product Ownership
 
 Coding and future Product adapters retain:
 
 - concrete message construction, input transformation, Product preflight
   decisions, prompts, skills, and before-start hook payloads; neutral slash
-  parsing now lives in `loushang.harness.capabilities.commands`;
+  parsing now lives in `loushang.harness.commands`;
 - retry error classification, retry defaults, Product events, and user-facing
   failure wording;
 - compaction thresholds, exact summary prompts, model calls, transcript
@@ -109,9 +119,10 @@ Coding and future Product adapters retain:
   commands, control/model/auth, channels, and UI.
 
 `AgentSession` remains the Coding composition root and public Product facade.
-`AgentSessionRuntime` remains the Product adapter for concrete
-new/restore/fork/clone/import semantics. The reusable transaction and lifecycle
-state no longer lives in those Product classes.
+`AgentSessionRuntime` remains the Product adapter for concrete fork payload
+interpretation, extension events, diagnostics, roots, and presentation. The
+reusable active-session transaction and lifecycle state now live in
+`harness.session.SessionLifecycleRuntime`.
 
 ## Non-Goals
 

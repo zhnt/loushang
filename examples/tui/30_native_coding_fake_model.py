@@ -8,6 +8,7 @@ from typing import TextIO
 
 from loushang.coding.ui.native_app import NativeCodingTuiApp
 from loushang.coding.ui.native_loop import run_native_coding_tui
+
 from loushang.tui import RenderConstraints, strip_control_sequences
 from loushang.tui.transcript import (
     AssistantMessageRecord,

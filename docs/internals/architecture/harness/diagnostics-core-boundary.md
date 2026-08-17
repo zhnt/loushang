@@ -14,6 +14,7 @@ user-interface behavior.
 
 `loushang.harness.diagnostics.types` owns:
 
+- `DiagnosticDraft`;
 - `DiagnosticLevel`;
 - `DiagnosticPhase`;
 - `DiagnosticSource`;
@@ -33,6 +34,11 @@ Session, entry, tool-call, source-path, and details fields are opaque
 correlation values. Harness stores and filters them without loading a session,
 tool, resource, provider, or model implementation.
 
+`DiagnosticDraft` is the immutable, unstamped input to the diagnostic engine.
+It carries only a code, message, optional source path, and opaque details.
+Phase, source, severity, timestamp, and correlation are supplied when the
+engine normalizes the draft into a `DiagnosticRecord`.
+
 ## Engine Decision
 
 `loushang.harness.diagnostics.service` owns `DiagnosticsService` and its
@@ -44,7 +50,7 @@ mechanisms:
 - record and structured-query filtering;
 - last-error report construction;
 - diagnostic summary aggregation;
-- resource-diagnostic normalization;
+- generic draft normalization and scoped batch recording;
 - exception normalization and failure capture;
 - caller-supplied startup-check execution and normalization;
 - runtime-record clearing.
@@ -54,36 +60,33 @@ capacity, query precedence, summary counting, default startup-check code and
 message, and JSON-safe fingerprint behavior. It does not discover or register
 checks by itself.
 
-`ResourceDiagnostic` remains owned by
-`loushang.harness.resources.diagnostics`. The core engine adapts that focused
-resource record into a general diagnostic record when a product supplies the
-phase, source, level, and correlation values.
+The core engine does not import a producer domain. Resource producers use the
+`loushang.harness.resources.diagnostics.resource_diagnostic` factory to place
+resource identity and provenance inside a `DiagnosticDraft.details` mapping.
+Extension, session, and runtime producers that do not report a resource create
+`DiagnosticDraft` directly.
 
 ## Coding Adapters
 
-Accepted Coding paths remain compatibility modules:
+The generic Coding diagnostic facade is removed. Product and extension code
+imports records, query values, and `DiagnosticsService` from the canonical
+owners in `loushang.harness.diagnostics`; Coding retains only
+`harness.diagnostics.serialization` and an observability source-classification
+resolver as its product projections. Coding's source-classification resolver
+remains Product-owned.
 
-```python
-from loushang.coding.diagnostics import DiagnosticRecord
-from loushang.coding.diagnostics import DiagnosticsQuery
-from loushang.coding.diagnostics import DiagnosticsService
-```
-
-`loushang.coding.diagnostics.types` and
-`loushang.coding.diagnostics.service` re-export the same Harness-owned objects.
-`loushang.coding.diagnostics` continues to combine those compatibility exports
-with Coding-owned serialization functions.
-
-Harness-owned classes keep their Harness `__module__`; compatibility paths
-preserve imports, not duplicate implementations or Coding-owned class
-identity. Coding internal consumers import the focused Harness owner directly.
+Harness diagnostic symbols are public from the focused
+`loushang.harness.diagnostics` subpackage, but are not promoted to top-level
+`loushang.harness.__all__`. Coding internal consumers import the focused owner
+directly.
 
 ## Coding-Owned Behavior
 
 This migration does not move or redesign:
 
-- `coding.diagnostics.serialization` and its camelCase RPC/SDK payload shape;
-- `coding.diagnostics.problem_bridge` and observability-source mapping;
+- `harness.diagnostics.serialization` and its existing camelCase RPC/SDK payload shape;
+- Coding's observability-source classification, including its `config` to
+  `model` policy;
 - bootstrap, resource, provider, model, extension, session, policy, exec, or
   tool checks;
 - diagnostic emission timing or product severity choices;
@@ -101,37 +104,46 @@ The target direction is:
 
 ```text
 coding checks / sessions / tools / runtime -> loushang.harness.diagnostics.service
-coding serializers / problem bridge       -> loushang.harness.diagnostics.types
-loushang.harness.diagnostics.service       -> loushang.harness.resources.diagnostics
+coding serializers                           -> loushang.harness.diagnostics.types
+coding observability policy                  -> loushang.harness.diagnostics.observability_bridge
+loushang.harness.diagnostics.observability_bridge -> loushang.foundation.observability
+loushang.harness.resources.diagnostics     -> loushang.harness.diagnostics.types
 ```
 
-Harness diagnostics must not import coding, method, work, TUI, AI, agent
-runtime, provider, observability, or product packages. No diagnostic symbols
-are added to top-level `loushang.harness.__all__` or the focused
-`loushang.harness.diagnostics.__all__`.
+The diagnostics core (`types` and `service`) must not import coding, method,
+work, TUI, AI, agent runtime, provider, observability, or product packages. It
+also must not import `loushang.harness.resources`.
+`loushang.harness.diagnostics.observability_bridge` is an optional adapter:
+it may import observability but must not import a Product. No diagnostic
+symbols are added to top-level `loushang.harness.__all__`; the focused
+diagnostics subpackage is the canonical public owner.
 
-## Compatibility
+## Migration Result
 
-Existing constructor fields, frozen-record behavior, callable aliases, service
-method signatures, query filtering, deduplication, occurrence counts,
+Existing record fields, query filtering, deduplication, occurrence counts,
 fingerprint payloads, summary counts, error reports, startup-check behavior,
-and serialized Coding payloads remain unchanged.
+and serialized Coding payloads remain unchanged. The resource-specific input
+class and service methods are replaced by `DiagnosticDraft`,
+`normalize_diagnostic`, and `record_drafts`; no compatibility facade remains.
 
-Private service helpers are implementation details and are not compatibility
-exports. The accepted public compatibility surface is the record, callable,
-and `DiagnosticsService` API exported by `loushang.coding.diagnostics`.
+Private service helpers are implementation details. The public generic surface
+is the record, callable, and `DiagnosticsService` API exported by
+`loushang.harness.diagnostics`.
 
 ## Validation
 
 The migration must prove:
 
 - all record defaults and frozen behavior are preserved;
+- draft inputs are defensively frozen;
+- resource factories preserve details precedence and serialized payloads;
 - record retention, ordering, deduplication, and capacity are preserved;
 - direct arguments and `DiagnosticsQuery` retain their precedence behavior;
 - source, phase, level, correlation, code, and limit filters are preserved;
 - summary and error-report occurrence semantics are preserved;
-- resource, exception, and startup-check normalization are preserved;
-- accepted Coding imports share Harness object identity;
+- draft, exception, and startup-check normalization are preserved;
+- diagnostics core modules do not import `loushang.harness.resources`;
+- Product and Coding consumers import the canonical owners;
 - Coding serializers and problem bridge still project the same payloads;
 - Coding internal consumers use Harness owners directly;
 - Harness import boundaries and top-level export discipline still pass.

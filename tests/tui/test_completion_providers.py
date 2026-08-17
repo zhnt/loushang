@@ -397,7 +397,14 @@ def test_path_completion_provider_uses_fd_for_recursive_at_paths(tmp_path: Path)
     )
     fake_fd.chmod(0o755)
 
-    provider = PathCompletionProvider(base_path=tmp_path, recursive=True, fd_path=fake_fd)
+    # macOS takes ~0.3s to first-exec a freshly written script, exceeding the
+    # provider's default 0.25s fd timeout; give the fake fd a generous budget.
+    provider = PathCompletionProvider(
+        base_path=tmp_path,
+        recursive=True,
+        fd_path=fake_fd,
+        fd_timeout_seconds=5.0,
+    )
 
     suggestions = provider.get_suggestions(("@module",), 0, len("@module"))
 

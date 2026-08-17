@@ -32,7 +32,7 @@
   - provider: "anthropic" | "openai" | "kimi" | ...
   - api: "anthropic-messages" | "openai-completions" | ...
   - model: "kimi-k2.5"
-  - compat: { betaFeatures: [...], providerTransport: "httpx" | "sdk" }
+  - adapter: { protocol: "anthropic-messages" | "openai-completions" | "openai-responses" }
   - timebase: "monotonic" | "wallclock"
   - redaction: { pii: true, secrets: true }
   - hashing: { algorithm: "sha256", requestKey: "..." }
@@ -79,36 +79,24 @@
   - Strict：必须匹配请求键，不匹配则拒绝回放
   - Lenient：忽略部分上下文差异，仍按录制流回放，同时输出差异报告
 
-### 7. CLI 设计
-- 录制
-  - `loushang-ai rec --out session.jsonl --provider anthropic --model kimi-k2.5 [--json]`
-  - 启动后代理真实调用并记录 vendor-raw 与 RawPart
-- 回放（白盒）
-  - `loushang-ai replay rawpart --in session.jsonl --speed instant [--json]`
-- 回放（黑盒 SSE）
-  - `loushang-ai replay sse --in session.jsonl --port 8787 --speed real`
-  - 客户端：`--base-url http://127.0.0.1:8787`
-- 验证
-  - `loushang-ai verify --in session.jsonl --assert usage,stop_reason,final_message`
-
-### 8. Provider 接入要点
+### 7. Provider 接入要点
 - Anthropic（httpx/SDK）
   - 录制 vendor_event：`message_start/content_block_* /message_delta/message_stop/error`
   - 同时录制 raw_part：`response_start/text_delta/thinking_delta/tool_call_* /usage_delta/stop_reason/response_done`
-  - Headers：透传/记录 `anthropic-version`、betaFeatures（fine-grained-tool-streaming、interleaved-thinking）
+  - 记录已脱敏的协议语义：版本标识、fine-grained tools、interleaved thinking
 - OpenAI Completions/Responses
   - 录制 SDK 事件或 SSE 行（Completions）
   - 同步生成 raw_part；在 `responses` 兼容代理缺失结束块时由 finally 补齐
 
-### 9. 工具调用与本地回路
+### 8. 工具调用与本地回路
 - 录制
   - tool_use 增量（作为 raw_part/tool_call_* 与 agent_event/tool_use_delta）
   - tool_result（作为 agent_event/tool_result，含 result 内容/错误）
 - 回放
   - 默认直接“推送录制的工具结果”，确保确定性与零 Token
-  - 半回放模式：保留真实工具执行以联调工具层（开关：--tool-replay off）
+  - 半回放模式：由上层调用方选择保留真实工具执行以联调工具层
 
-### 10. 安全与脱敏
+### 9. 安全与脱敏
 - 写入前脱敏
   - API Key/Secrets：删除或掩码
   - PII/企业标识/文件与 URL：按策略模糊化或置空
@@ -117,12 +105,12 @@
 - 审计
   - 记录 redaction 策略与版本；提供重识别风险评估入口（后续）
 
-### 11. 版本与兼容
+### 10. 版本与兼容
 - schemaVersion 版本化；各事件类型允许增加可选字段
 - 引入 `rawPartsVersion` 与 `vendorEventVersion` 以支持演化
 - 回放器按版本选择解析器并输出兼容警告
 
-### 12. 测试与 CI 集成
+### 11. 测试与 CI 集成
 - 单测
   - Provider 录制：mock 上游事件 → 断言 vendor_event/raw_part 写入正确
   - 回放：加载文件 → 断言高层事件与最终消息一致
@@ -132,7 +120,7 @@
 - CI
   - 基线文件存放与差异报告（final_message/usage/stop_reason/事件序列哈希）
 
-### 13. 开放接口（草案）
+### 12. 开放接口（草案）
 - Python API（Agent 层）
   - `with agent.recording(enabled=True, file="session.jsonl", mode="append"): ...`
   - `agent.replay(file="session.jsonl", speed="instant", strict=True)`
@@ -140,15 +128,14 @@
   - `register_recorder(fn_on_request, fn_on_vendor_event, fn_on_raw_part)`
   - `register_replay_source(kind="rawpart"|"vendor", reader=...)`
 
-### 14. 路线图
-- M1：RawPart 录制/回放（白盒），Agent 开关，CLI replay/verify
+### 13. 路线图
+- M1：RawPart 录制/回放（白盒）与 Agent 开关
 - M2：vendor-raw 录制/回放（黑盒 SSE/WS），请求匹配键与本地服务
 - M3：工具链半回放模式、差异报告、可视化时间线
 - M4：脱敏策略库、版本迁移工具、CI 基线管理
 
-### 15. 与现有实现的关系
+### 14. 与现有实现的关系
 - 不改变现有 RawPart/Assembler 语义；在 Provider 与 Agent 旁路集成
 - 文档相关
   - 参考《Loushang-AI 流式事件语义设计（详细版）》
   - 参考《Reference AI SDK 流式事件语义（参考）》
-

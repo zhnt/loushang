@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 from loushang.ai.errors import AIRequestValidationError
 from loushang.ai.types import AssistantMessage, TextPart
-from loushang.observability.problem import JSONValue, ensure_json_safe_mapping
+from loushang.foundation.json import JSONValue, require_json_mapping
 
 StructuredOutputMode = Literal["json_object", "json_schema"]
 
@@ -45,14 +45,7 @@ def get_structured_output_options(
     if options is None:
         return None
     output = getattr(options, "output", None)
-    if isinstance(output, StructuredOutputOptions):
-        return output
-    structured_output = getattr(options, "structured_output", None)
-    return (
-        structured_output
-        if isinstance(structured_output, StructuredOutputOptions)
-        else None
-    )
+    return output if isinstance(output, StructuredOutputOptions) else None
 
 
 def with_structured_output_options(
@@ -161,18 +154,18 @@ def _schema_mapping(
     schema: Mapping[str, JSONValue] | type | None,
 ) -> dict[str, JSONValue]:
     if isinstance(schema, Mapping):
-        return ensure_json_safe_mapping(schema)
+        return require_json_mapping(schema, name="schema")
     if isinstance(schema, type):
         model_json_schema = getattr(schema, "model_json_schema", None)
         if callable(model_json_schema):
             raw = model_json_schema()
             if isinstance(raw, Mapping):
-                return ensure_json_safe_mapping(raw)
+                return require_json_mapping(raw, name="schema")
         schema_json = getattr(schema, "schema", None)
         if callable(schema_json):
             raw = schema_json()
             if isinstance(raw, Mapping):
-                return ensure_json_safe_mapping(raw)
+                return require_json_mapping(raw, name="schema")
     raise StructuredOutputError("json_schema structured output requires a JSON schema")
 
 

@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Awaitable
-from typing import Any, TypeVar
+from typing import Any, TypeAlias, TypeVar
 
 from loushang.agent.types import AgentToolResult
 
 from .truncate import TruncationResult
 
 T = TypeVar("T")
-MaybeAwaitable = T | Awaitable[T]
+MaybeAwaitable: TypeAlias = T | Awaitable[T]
 _MISSING = object()
 
 

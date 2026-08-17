@@ -226,6 +226,7 @@ def test_playback_result_writes_jsonl_for_manual_inspection(tmp_path) -> None:
             "synchronized": False,
             "clear_scrollback_emitted": False,
             "visible_lines": ["hello", "", "", "", ""],
+            "scrollback_lines": [],
         }
     ]
     assert "serialized_output" not in rows[0]
@@ -298,10 +299,15 @@ def test_playback_result_writes_trace_and_final_screen_artifacts(tmp_path) -> No
 
     assert artifacts.trace == tmp_path / "artifacts" / "long-transcript.jsonl"
     assert artifacts.screen == tmp_path / "artifacts" / "long-transcript-screen.txt"
+    assert (
+        artifacts.terminal
+        == tmp_path / "artifacts" / "long-transcript-terminal.txt"
+    )
     trace_row = json.loads(artifacts.trace.read_text(encoding="utf-8"))
     assert trace_row["operation_class"] == "changed_range_update"
     assert trace_row["serialized_output"] == "hello"
     assert artifacts.screen.read_text(encoding="utf-8") == "hello\n\n\n\n"
+    assert artifacts.terminal.read_text(encoding="utf-8") == "hello\n\n\n\n"
 
 
 def test_playback_result_writes_artifacts_when_wrapped_assertion_fails(

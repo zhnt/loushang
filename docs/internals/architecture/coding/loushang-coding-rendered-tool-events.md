@@ -68,8 +68,8 @@ await run_print_mode(
 )
 ```
 
-如果某个工具没有 renderer，或者 renderer 抛错，事件仍正常输出，只是不附加 `renderedToolCall` /
-`renderedToolResult`。renderer failure 不应影响工具执行和 agent turn。
+如果某个工具没有 renderer，或者 renderer 抛错，事件仍正常输出，只是不附加 `rendered_tool_call` /
+`rendered_tool_result`。renderer failure 不应影响工具执行和 agent turn。
 
 ## Output Keys
 
@@ -78,14 +78,14 @@ await run_print_mode(
 ```json
 {
   "type": "tool_execution_start",
-  "toolCallId": "call-1",
-  "toolName": "bash",
+  "tool_call_id": "call-1",
+  "tool_name": "bash",
   "args": {"command": "ls"},
-  "renderedToolCall": {
+  "rendered_tool_call": {
     "type": "text",
     "text": "$ ls",
-    "plainText": "$ ls",
-    "contractVersion": 1,
+    "plain_text": "$ ls",
+    "contract_version": 1,
     "status": "running"
   }
 }
@@ -96,20 +96,20 @@ await run_print_mode(
 ```json
 {
   "type": "tool_execution_end",
-  "toolCallId": "call-1",
-  "toolName": "bash",
+  "tool_call_id": "call-1",
+  "tool_name": "bash",
   "result": {"content": [{"type": "text", "text": "README.md\n"}], "terminate": false},
-  "isError": false,
-  "renderedToolResult": {
+  "is_error": false,
+  "rendered_tool_result": {
     "type": "text",
     "text": "README.md",
-    "plainText": "README.md",
-    "contractVersion": 1,
+    "plain_text": "README.md",
+    "contract_version": 1,
     "status": "ok",
-    "isPartial": false,
+    "is_partial": false,
     "expanded": false,
-    "collapsedText": "README.md",
-    "durationMs": 12,
+    "collapsed_text": "README.md",
+    "duration_ms": 12,
     "artifacts": []
   }
 }
@@ -119,35 +119,35 @@ await run_print_mode(
 
 所有 rendered payload 都带：
 
-- `contractVersion`: 当前为 `1`
+- `contract_version`: 当前为 `1`
 - `type`: `text`、`html` 或 `custom`
 
 文本 payload 通常带：
 
 - `text`: 面向展示的文本
-- `plainText`: 面向复制、日志、搜索、降级展示的文本
+- `plain_text`: 面向复制、日志、搜索、降级展示的文本
 
 HTML payload 通常带：
 
 - `html`: 已由 renderer 生成的 HTML fragment
-- `plainText`: HTML 不可用时的降级文本
+- `plain_text`: HTML 不可用时的降级文本
 
-客户端应基于 `contractVersion` 做能力判断。未知字段必须容忍，避免破坏向前兼容。
+客户端应基于 `contract_version` 做能力判断。未知字段必须容忍，避免破坏向前兼容。
 
 ## Result Status
 
-`renderedToolCall.status` 当前固定为：
+`rendered_tool_call.status` 当前固定为：
 
 - `running`
 
-`renderedToolResult.status` 可能是：
+`rendered_tool_result.status` 可能是：
 
 - `partial`: 来自 `tool_execution_update`
 - `ok`: 最终成功
-- `error`: `is_error` / `isError` 为 true
+- `error`: `is_error` 为 true
 - `terminate`: `AgentToolResult.terminate` 为 true
-- `timed_out`: result details 中 `timed_out` / `timedOut` 为 true
-- `cancelled`: result details 中 `cancelled` / `canceled` 为 true
+- `timed_out`: result details 中 `timed_out` 为 true
+- `cancelled`: result details 中 `cancelled` 为 true
 
 状态由 event projection 统一推导，工具 renderer 不需要自己维护这些跨工具语义。
 
@@ -155,23 +155,21 @@ HTML payload 通常带：
 
 结果 payload 会稳定包含：
 
-- `isPartial`: 是否是中间 update
+- `is_partial`: 是否是中间 update
 - `expanded`: 当前输出是否为 expanded 渲染
-- `collapsedText`: collapsed 渲染的纯文本摘要，存在时可用于折叠态
-- `expandedText`: expanded 渲染的纯文本摘要，存在时可用于展开态
+- `collapsed_text`: collapsed 渲染的纯文本摘要，存在时可用于折叠态
+- `expanded_text`: expanded 渲染的纯文本摘要，存在时可用于展开态
 
 当前 print / RPC 的默认投影使用 collapsed 渲染。HTML export 可以按页面需要同时保留 renderer metadata。
 
 ## Duration
 
-`durationMs` 的解析优先级：
+`duration_ms` 的解析优先级：
 
-1. renderer payload 自带 `durationMs`
-2. `AgentToolResult.details.durationMs`
-3. `AgentToolResult.details.duration_ms`
-4. `AgentToolResult.details.elapsedMs`
-5. `AgentToolResult.details.elapsed_ms`
-6. session event 的 `duration_ms` / `durationMs`
+1. renderer payload 自带 `duration_ms`
+2. `AgentToolResult.details.duration_ms`
+3. `AgentToolResult.details.elapsed_ms`
+4. session event 的 `duration_ms`
 
 只接受非负数值，并投影为整数毫秒。
 
@@ -181,7 +179,6 @@ HTML payload 通常带：
 
 - `stdout_artifact_path`
 - `stderr_artifact_path`
-- `fullOutputPath`
 - `full_output_path`
 
 输出形态：
@@ -197,13 +194,14 @@ HTML payload 通常带：
 
 `stream` 只在能从 key 推断出 `stdout` / `stderr` 时出现。
 
-## Compatibility Rules
+## Protocol Rules
 
-- `renderedToolCall` / `renderedToolResult` 是 additive 字段，不改变原始 `tool_execution_*` event。
+- `rendered_tool_call` / `rendered_tool_result` 是 additive 字段，不改变原始 `tool_execution_*` event。
 - 未启用 `render_tool_events` 时，JSON/RPC 输出保持原形。
 - renderer 不存在或失败时，事件仍输出，不生成 rendered payload。
-- `text`、`plainText`、`isPartial`、`expanded` 等既有字段保持稳定。
-- 客户端应允许新字段出现，并基于 `contractVersion` 做降级。
+- `text`、`plain_text`、`is_partial`、`expanded` 等字段使用 snake_case。
+- camelCase 字段不再接受或发出；客户端必须升级到当前协议。
+- 客户端应允许新增字段，并基于 `contract_version` 做降级。
 
 ## Related Code
 

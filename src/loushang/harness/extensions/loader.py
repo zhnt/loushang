@@ -8,6 +8,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
 
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.api import ExtensionContributionAPI
 from loushang.harness.extensions.contributions import surfaces_from_loaded_extension
 from loushang.harness.extensions.events import VALID_EXTENSION_EVENTS
@@ -16,7 +17,7 @@ from loushang.harness.extensions.manifest import (
     parse_extension_manifest,
 )
 from loushang.harness.extensions.types import ExtensionPolicyDecision, LoadedExtension
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.diagnostics import resource_diagnostic
 from loushang.harness.resources.types import ExtensionDescriptor
 from loushang.harness.tools.core import ToolDefinition
 
@@ -34,12 +35,12 @@ class ExtensionLoader:
         policy_resolver: ExtensionPolicyResolver | None = None,
         legacy_event_names: tuple[str, ...] = VALID_EXTENSION_EVENTS,
     ) -> None:
-        self._diagnostics: list[ResourceDiagnostic] = []
+        self._diagnostics: list[DiagnosticDraft] = []
         self._api_factory = api_factory
         self._policy_resolver = policy_resolver or _descriptor_activation_policy
         self._legacy_event_names = legacy_event_names
 
-    def get_diagnostics(self) -> list[ResourceDiagnostic]:
+    def get_diagnostics(self) -> list[DiagnosticDraft]:
         return list(self._diagnostics)
 
     def load_extensions(
@@ -77,7 +78,7 @@ class ExtensionLoader:
                 )
             except Exception as exc:
                 self._diagnostics.append(
-                    ResourceDiagnostic(
+                    resource_diagnostic(
                         code="extension_load_failed",
                         message=f"Legacy metadata extension adaptation failed: {exc}",
                         source_path=descriptor.source_path,
@@ -88,7 +89,7 @@ class ExtensionLoader:
         entry_path = descriptor.entry_path
         if entry_path is None or not entry_path.is_file():
             self._diagnostics.append(
-                ResourceDiagnostic(
+                resource_diagnostic(
                     code="missing_extension_entry",
                     message="Extension descriptor does not point to a valid entry file.",
                     source_path=entry_path or descriptor.source_path,
@@ -100,7 +101,7 @@ class ExtensionLoader:
             module = _load_extension_module(entry_path)
         except Exception as exc:
             self._diagnostics.append(
-                ResourceDiagnostic(
+                resource_diagnostic(
                     code="extension_load_failed",
                     message=f"Failed to load extension module: {exc}",
                     source_path=entry_path,
@@ -119,7 +120,7 @@ class ExtensionLoader:
                 loaded = _register_with_api(register, api, entry_path)
             except Exception as exc:
                 self._diagnostics.append(
-                    ResourceDiagnostic(
+                    resource_diagnostic(
                         code="extension_load_failed",
                         message=f"Extension register(api) failed: {exc}",
                         source_path=entry_path,
@@ -140,7 +141,7 @@ class ExtensionLoader:
                 extension_object = builder()
             except Exception as exc:
                 self._diagnostics.append(
-                    ResourceDiagnostic(
+                    resource_diagnostic(
                         code="extension_load_failed",
                         message=f"Extension factory failed: {exc}",
                         source_path=entry_path,
@@ -149,7 +150,7 @@ class ExtensionLoader:
                 return None
             if inspect.isawaitable(extension_object):
                 self._diagnostics.append(
-                    ResourceDiagnostic(
+                    resource_diagnostic(
                         code="unsupported_async_extension_factory",
                         message="Async extension factories are not supported in v1.",
                         source_path=entry_path,
@@ -173,7 +174,7 @@ class ExtensionLoader:
                 )
             except Exception as exc:
                 self._diagnostics.append(
-                    ResourceDiagnostic(
+                    resource_diagnostic(
                         code="extension_load_failed",
                         message=f"Legacy build_extension() adaptation failed: {exc}",
                         source_path=entry_path,
@@ -199,7 +200,7 @@ class ExtensionLoader:
                 )
             except Exception as exc:
                 self._diagnostics.append(
-                    ResourceDiagnostic(
+                    resource_diagnostic(
                         code="extension_load_failed",
                         message=f"Legacy EXTENSION adaptation failed: {exc}",
                         source_path=entry_path,
@@ -208,7 +209,7 @@ class ExtensionLoader:
                 return None
 
         self._diagnostics.append(
-            ResourceDiagnostic(
+            resource_diagnostic(
                 code="invalid_extension_export",
                 message="Extension modules must export register(api), build_extension(), or EXTENSION.",
                 source_path=entry_path,

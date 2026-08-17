@@ -75,22 +75,6 @@ def _build_models_readme() -> str:
     )
 
 
-def _copy_model_templates(
-    *,
-    source_dir: Path,
-    target_dir: Path,
-    overwrite: bool,
-) -> None:
-    for template in sorted(source_dir.glob("*.json")):
-        if template.name.startswith("README"):
-            continue
-        _safe_copy(
-            src=template,
-            dst=target_dir / template.name,
-            overwrite=overwrite,
-        )
-
-
 def run(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Initialize examples/coding runtime assets for cross-machine execution."
@@ -173,11 +157,6 @@ def run(argv: list[str] | None = None) -> int:
     if args.copy_model_catalog:
         add("copy ", repo_root / BUILTIN_MODEL_CATALOG)
         add("file ", models_dir / "models.json")
-        for src in sorted((examples_root / "models").glob("*.json")):
-            if src.name.startswith("README"):
-                continue
-            add("copy ", src)
-            add("file ", models_dir / src.name)
 
     if args.dry_run:
         print(f"Plan for: {artifacts_root}")
@@ -216,11 +195,6 @@ def run(argv: list[str] | None = None) -> int:
         _safe_copy(
             src=repo_root / BUILTIN_MODEL_CATALOG,
             dst=models_dir / "models.json",
-            overwrite=args.overwrite,
-        )
-        _copy_model_templates(
-            source_dir=examples_root / "models",
-            target_dir=models_dir,
             overwrite=args.overwrite,
         )
 

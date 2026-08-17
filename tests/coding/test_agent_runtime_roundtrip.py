@@ -35,6 +35,7 @@ def _usage() -> Usage:
 
 def _assistant_text_message(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -48,14 +49,30 @@ def _assistant_text_message(text: str) -> AssistantMessage:
     )
 
 
-def _stream_with_final_message(message: AssistantMessage) -> AssistantMessageEventStream:
+def _stream_with_final_message(
+    message: AssistantMessage,
+) -> AssistantMessageEventStream:
     stream = AssistantMessageEventStream()
 
     async def _feed() -> None:
         stream.push({"type": "start", "partial": message})
         stream.push({"type": "text_start", "content_index": 0, "partial": message})
-        stream.push({"type": "text_delta", "content_index": 0, "delta": message.content[0].text, "partial": message})
-        stream.push({"type": "text_end", "content_index": 0, "content": message.content[0].text, "partial": message})
+        stream.push(
+            {
+                "type": "text_delta",
+                "content_index": 0,
+                "delta": message.content[0].text,
+                "partial": message,
+            }
+        )
+        stream.push(
+            {
+                "type": "text_end",
+                "content_index": 0,
+                "content": message.content[0].text,
+                "partial": message,
+            }
+        )
         stream.push({"type": "done", "reason": message.stop_reason, "message": message})  # type: ignore[typeddict-item]
 
     asyncio.create_task(_feed())
@@ -64,24 +81,36 @@ def _stream_with_final_message(message: AssistantMessage) -> AssistantMessageEve
 
 def test_agent_messages_roundtrip_through_persisted_session_manager(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     async def stream_fn(model, context, options=None):
         return _stream_with_final_message(_assistant_text_message("hello"))
 
     async def scenario() -> None:
-        agent = Agent(stream_fn=stream_fn, initial_state={"system_prompt": "You are helpful.", "model": _model()})
-        manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=True)
+        agent = Agent(
+            stream_fn=stream_fn,
+            initial_state={"system_prompt": "You are helpful.", "model": _model()},
+        )
+        manager = await SessionManager.new(
+            session_dir=tmp_path, cwd="/tmp/project", persist=True
+        )
 
         await agent.prompt("hi")
         for message in agent.state.messages:
-            manager.append_message(message)
+            await manager.append_message(message)
 
         assert manager.session_file is not None
-        reloaded = SessionManager.load(manager.session_file)
+        reloaded = await SessionManager.load(manager.session_file)
         context = reloaded.build_session_context()
 
-        assert [getattr(message, "role", None) for message in context.messages] == ["user", "assistant"]
-        assert context.model == {"provider": "faux", "model_id": "faux-model"}
+        assert [getattr(message, "role", None) for message in context.messages] == [
+            "user",
+            "assistant",
+        ]
+        assert context.model == {
+            "provider": "faux",
+            "endpoint_id": "test-endpoint",
+            "model_id": "faux-model",
+        }
 
     asyncio.run(scenario())

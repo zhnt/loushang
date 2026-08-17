@@ -3,17 +3,21 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_executable_source_identity_projects_stable_runtime_details(monkeypatch, tmp_path) -> None:
+def test_executable_source_identity_projects_stable_runtime_details(
+    monkeypatch, tmp_path
+) -> None:
     import sys
 
-    from loushang.coding.source_info import executable_source_identity
+    from loushang.coding.diagnostics.profile import coding_runtime_identity
 
     monkeypatch.setattr(sys, "executable", "/tmp/python")
     monkeypatch.setattr(sys, "argv", ["/tmp/bin/loushang", "--list-diagnostics"])
 
-    details = executable_source_identity(cwd=tmp_path)
+    details = coding_runtime_identity(cwd=tmp_path)
 
-    assert details["entrypoint"] == "/tmp/bin/loushang"
+    # entrypoint is resolved (symlinks expanded, e.g. /tmp -> /private/tmp on macOS);
+    # python_executable and argv0 keep the caller-supplied form.
+    assert details["entrypoint"] == str(Path("/tmp/bin/loushang").resolve())
     assert details["python_executable"] == "/tmp/python"
     assert details["argv0"] == "/tmp/bin/loushang"
     assert details["cwd"] == str(tmp_path)
@@ -29,12 +33,19 @@ def test_executable_source_identity_projects_stable_runtime_details(monkeypatch,
     assert "virtual_env" in details
     assert isinstance(details["sys_prefix"], str)
     assert isinstance(details["sys_base_prefix"], str)
-    assert details["import_source"] in {"editable", "installed", "source-tree", "unknown"}
+    assert details["import_source"] in {
+        "editable",
+        "installed",
+        "source-tree",
+        "unknown",
+    }
     assert details["install_mode"] in {"editable", "source-tree", "package", "unknown"}
 
 
-def test_executable_source_identity_marks_path_candidates_active_and_shadowed(tmp_path) -> None:
-    from loushang.coding.source_info import executable_source_identity
+def test_executable_source_identity_marks_path_candidates_active_and_shadowed(
+    tmp_path,
+) -> None:
+    from loushang.coding.diagnostics.profile import coding_runtime_identity
 
     first_bin = tmp_path / "first" / "bin"
     second_bin = tmp_path / "second" / "bin"
@@ -47,7 +58,7 @@ def test_executable_source_identity_marks_path_candidates_active_and_shadowed(tm
     first_candidate.chmod(0o755)
     second_candidate.chmod(0o755)
 
-    details = executable_source_identity(
+    details = coding_runtime_identity(
         cwd=tmp_path,
         argv0="loushang",
         env={"PATH": f"{first_bin}:{second_bin}"},
@@ -61,9 +72,9 @@ def test_executable_source_identity_marks_path_candidates_active_and_shadowed(tm
 
 
 def test_executable_source_identity_gracefully_degrades_outside_git(tmp_path) -> None:
-    from loushang.coding.source_info import executable_source_identity
+    from loushang.coding.diagnostics.profile import coding_runtime_identity
 
-    details = executable_source_identity(cwd=tmp_path, env={"PATH": ""})
+    details = coding_runtime_identity(cwd=tmp_path, env={"PATH": ""})
 
     assert details["project_root"] is None
     assert details["git_branch"] is None
@@ -72,8 +83,8 @@ def test_executable_source_identity_gracefully_degrades_outside_git(tmp_path) ->
 
 
 def test_source_info_from_resource_descriptor_projects_package_provenance() -> None:
-    from loushang.coding.loader import PromptFragmentDescriptor
-    from loushang.coding.source_info import source_info_from_resource_descriptor
+    from loushang.harness.resources.source import source_info_from_resource_descriptor
+    from loushang.harness.resources.types import PromptFragmentDescriptor
 
     descriptor = PromptFragmentDescriptor(
         name="review",
@@ -94,9 +105,11 @@ def test_source_info_from_resource_descriptor_projects_package_provenance() -> N
     assert info.base_dir == "/tmp/plugin/prompts"
 
 
-def test_source_info_from_resource_descriptor_projects_project_local_provenance() -> None:
-    from loushang.coding.loader import SkillDescriptor
-    from loushang.coding.source_info import source_info_from_resource_descriptor
+def test_source_info_from_resource_descriptor_projects_project_local_provenance() -> (
+    None
+):
+    from loushang.harness.resources.source import source_info_from_resource_descriptor
+    from loushang.harness.resources.types import SkillDescriptor
 
     descriptor = SkillDescriptor(
         name="debug",

@@ -4,7 +4,7 @@ import json
 
 
 def test_plugin_manager_resolves_local_plugin_package_roots(tmp_path) -> None:
-    from loushang.coding.plugin import PluginManager
+    from loushang.harness.resources.plugins import PluginManager
 
     plugin_root = tmp_path / "plugins" / "review-pack"
     package_root = plugin_root / "package"
@@ -25,8 +25,10 @@ def test_plugin_manager_resolves_local_plugin_package_roots(tmp_path) -> None:
 
 
 def test_plugin_manager_package_roots_feed_default_resource_loader(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
-    from loushang.coding.plugin import PluginManager
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
+    from loushang.harness.resources.plugins import PluginManager
 
     project = tmp_path / "project"
     plugin_root = tmp_path / "plugins" / "debug-pack"
@@ -47,7 +49,7 @@ def test_plugin_manager_package_roots_feed_default_resource_loader(tmp_path) -> 
 
 
 def test_plugin_manager_can_disable_and_refresh_plugins(tmp_path) -> None:
-    from loushang.coding.plugin import PluginManager
+    from loushang.harness.resources.plugins import PluginManager
 
     plugin_root = tmp_path / "plugins" / "demo"
     plugin_root.mkdir(parents=True)
@@ -67,7 +69,7 @@ def test_plugin_manager_can_disable_and_refresh_plugins(tmp_path) -> None:
 
 
 def test_plugin_manager_accepts_initial_disabled_plugins(tmp_path) -> None:
-    from loushang.coding.plugin import PluginManager
+    from loushang.harness.resources.plugins import PluginManager
 
     plugin_root = tmp_path / "plugins" / "demo"
     plugin_root.mkdir(parents=True)
@@ -81,7 +83,7 @@ def test_plugin_manager_accepts_initial_disabled_plugins(tmp_path) -> None:
 
 
 def test_plugin_manager_tracks_https_remote_sources_without_local_resolution() -> None:
-    from loushang.coding.plugin import PluginManager
+    from loushang.harness.resources.plugins import PluginManager
 
     manager = PluginManager()
     source = "https://packages.example.invalid/review-pack.git"
@@ -96,8 +98,8 @@ def test_plugin_manager_tracks_https_remote_sources_without_local_resolution() -
     assert manager.list_remote_plugins() == [remote]
 
 
-def test_plugin_types_are_exported_from_coding_package() -> None:
-    from loushang.coding import (
+def test_plugin_types_are_exported_from_harness() -> None:
+    from loushang.harness.resources.plugins import (
         PluginManager,
         PluginManifest,
         PluginRegistry,

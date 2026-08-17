@@ -7,7 +7,7 @@
 本文档从白盒视角列出 `loushang-ai` 的候选组件清单。  
 它建立在以下输入之上：
 
-- [Loushang Design Method: Identify Component](/home/dev/workspace/loushang/docs/architecture/loushang-design-method-identify-component.md)
+- [Component Identification Method](../../architecture-method/component-identification.md)
 - [Reference AI SDK Whitebox Candidate Components](/home/dev/workspace/loushang/docs/architecture/ai/reference/reference-ai-sdk/reference-ai-sdk-whitebox-candidate-components.md)
 - [Kimi-CLI AI Whitebox Candidate Components](/home/dev/workspace/loushang/docs/architecture/ai/reference/kimi-cli/kimi-cli-ai-whitebox-candidate-components.md)
 - [Loushang-AI Whitebox Candidate Functions](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-whitebox-candidate-functions.md)
@@ -112,7 +112,7 @@
 
 ---
 
-## 3. ApiProvider Registry
+## 3. API Adapter Registry
 
 **类别：**
 
@@ -121,18 +121,18 @@
 
 **主要来源：**
 
-- [loushang-ai-api-provider-registry.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-api-provider-registry.md)
+- [loushang-ai-api-adapter-registry.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-api-adapter-registry.md)
 - `reference AI SDK` api registry 经验
 
 **作用：**
 
-- 作为 `api -> ApiProvider` 的统一接线中枢
+- 作为 `api -> APIAdapter` 的统一接线中枢
 
 **主要职责：**
 
-- `register_api_provider`
-- `get_api_provider`
-- `list_api_providers`
+- `register_api_adapter`
+- `get_api_adapter`
+- `list_api_adapters`
 - 按 resolved api 解析真实调用执行单元
 
 **初步判断：**
@@ -176,7 +176,7 @@
 
 ---
 
-## 5. ApiProvider Protocol
+## 5. APIAdapter Protocol
 
 **类别：**
 
@@ -184,8 +184,8 @@
 
 **主要来源：**
 
-- [loushang-ai-api-provider-registry.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-api-provider-registry.md)
-- `reference AI SDK` 的 `ApiProvider`
+- [loushang-ai-api-adapter-registry.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-api-adapter-registry.md)
+- `reference AI SDK` 的 `APIAdapter`
 - `kimi-cli` 的 `ChatProvider` protocol
 
 **作用：**

@@ -153,9 +153,9 @@
 - 回放：保存原始事件 → 重放到 Assembler，对比高层产出与最终消息，便于回归。
 - 指标：块生命周期、工具完成率、usage 完整性、stop_reason 分布、错误率。
 
-### 配置与 CLI
-- `models.json`：在 endpoint adapter 配置中标注核心 adapter 实际消费的字段；provider/contrib 专用传输策略不进入 core model contract。
-- CLI：支持 `--tool-choice`、思考相关参数与 headers 透传，便于快速验证工具/思考流。
+### 配置与上层调用方
+- `models.json`：在 endpoint adapter 配置中标注核心 adapter 实际消费的字段；provider-specific 传输策略不进入 core model contract。
+- coding CLI/TUI 可暴露 tool choice、思考参数与 headers 透传，便于快速验证工具/思考流。
 
 ### 测试与验证
 - 单测：RawPart 映射（provider 适配）与 Assembler 组装（含异常补齐）。

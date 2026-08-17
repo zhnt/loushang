@@ -1,16 +1,17 @@
 {
+  "profile_id": "coding.compaction",
   "cases": [
     {
       "name": "headless-policy-pack",
-      "summary_type": "compaction",
       "summary": "## Goal\nStabilize headless policy binding.\n\n## Constraints & Preferences\n- Keep the behavior mode-neutral.\n\n## Progress\n### Done\n- [x] Bound policy settings to builtin tools.\n\n### In Progress\n- [ ] Add golden regression coverage.\n\n### Blocked\n- (none)\n\n## Key Decisions\n- **Headless resolver**: Use explicit allow or deny modes outside UI.\n\n## Next Steps\n1. Run coding regression tests.\n\n## Critical Context\n- Approval decisions must be observable in tool result details.\n\n<read-files>\nsrc/loushang/coding/policy/approval.py\n</read-files>\n<modified-files>\nsrc/loushang/coding/cli/__main__.py\n</modified-files>",
       "required_phrases": ["headless policy binding", "tool result details"],
-      "expected_read_files": ["src/loushang/coding/policy/approval.py"],
-      "expected_modified_files": ["src/loushang/coding/cli/__main__.py"]
+      "expected_resource_operations": {
+        "read": ["src/loushang/coding/policy/approval.py"],
+        "modified": ["src/loushang/coding/cli/__main__.py"]
+      }
     },
     {
       "name": "missing-critical-context",
-      "summary_type": "compaction",
       "summary": "## Goal\nDo work.\n\n## Constraints & Preferences\n- Keep tests small.\n\n## Progress\n### Done\n- [x] Changed code.\n\n## Key Decisions\n- **Decision**: Keep moving.\n\n## Next Steps\n1. Run tests.",
       "required_phrases": ["approval decisions"]
     }

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.types import SkillDescriptor
@@ -104,6 +105,101 @@ class SkillLoader:
         if self._settings_manager is not None:
             disabled.update(self._settings_manager.get_disabled_skills())
         return disabled
+
+
+def project_skill_descriptor(skill: object) -> dict[str, object] | None:
+    """Project a skill descriptor for resource listings.
+
+    The projection contains only resource identity, provenance, activation
+    state, and diagnostics.  Product CLIs may choose how to render it, but do
+    not need to duplicate the object-shape normalization.
+    """
+
+    name = _safe_skill_getattr(skill, "name", None)
+    if not isinstance(name, str) or not name:
+        return None
+    source_path = _safe_skill_getattr(skill, "source_path", None)
+    source_root = _safe_skill_getattr(skill, "source_root", None)
+    raw_diagnostics = _safe_skill_getattr(skill, "diagnostics", ())
+    diagnostic_values = (
+        raw_diagnostics if isinstance(raw_diagnostics, list | tuple) else ()
+    )
+    diagnostics = [
+        normalized
+        for diagnostic in diagnostic_values
+        if (normalized := project_skill_diagnostic(diagnostic)) is not None
+    ]
+    return {
+        "name": name,
+        "id": _safe_skill_getattr(skill, "id", "") or "",
+        "canonical_name": _safe_skill_getattr(skill, "canonical_name", "") or "",
+        "description": _safe_skill_getattr(skill, "description", "") or "",
+        "path": _safe_skill_string(source_path),
+        "source_kind": _safe_skill_getattr(skill, "source_kind", "") or "",
+        "source_scope": _safe_skill_getattr(skill, "source_scope", "") or "",
+        "source": _safe_skill_getattr(skill, "source", "") or "",
+        "source_root": _safe_skill_string(source_root)
+        if source_root is not None
+        else "",
+        "disable_model_invocation": bool(
+            _safe_skill_getattr(skill, "disable_model_invocation", False)
+        ),
+        "enabled": bool(_safe_skill_getattr(skill, "enabled", True)),
+        "diagnostics": diagnostics,
+    }
+
+
+def project_skill_diagnostic(diagnostic: object) -> dict[str, object] | None:
+    """Project one resource diagnostic nested in a skill listing."""
+
+    code = _safe_skill_getattr(diagnostic, "code", None)
+    if not isinstance(code, str) or not code:
+        return None
+    raw_details = _safe_skill_getattr(diagnostic, "details", {})
+    details = raw_details if isinstance(raw_details, Mapping) else {}
+    metadata = details.get("metadata")
+    return {
+        "code": code,
+        "message": _safe_skill_getattr(diagnostic, "message", "") or "",
+        "path": _safe_skill_string(
+            _safe_skill_getattr(diagnostic, "source_path", "")
+        ),
+        "resource_type": details.get("resource_type"),
+        "source_kind": details.get("source_kind"),
+        "metadata": _json_safe_skill_value(metadata if metadata is not None else {}),
+    }
+
+
+def _safe_skill_getattr(target: object, name: str, default: object) -> object:
+    try:
+        return getattr(target, name)
+    except Exception:
+        return default
+
+
+def _safe_skill_string(value: object) -> str:
+    if value is None:
+        return ""
+    try:
+        return str(value)
+    except Exception:
+        try:
+            return repr(value)
+        except Exception:
+            return ""
+
+
+def _json_safe_skill_value(value: Any) -> object:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, dict):
+        return {
+            _safe_skill_string(key): _json_safe_skill_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [_json_safe_skill_value(item) for item in value]
+    return _safe_skill_string(value)
 
 
 def _matches_skill(skill: SkillDescriptor, name: str) -> bool:

@@ -5,10 +5,11 @@
 Implementation complete for integration into `lane/harness` on the semantic
 branch `harness/product-configuration-runtime`.
 
-The reusable runtime lives under `loushang.harness.config`. Coding adopts it
-through `SettingsManager`, the config-value compatibility adapter, and explicit
-bootstrap activation steps. Merge remains gated on the validation recorded in
-the implementation plan.
+The reusable runtime lives under `loushang.harness.config`. The optional
+`loushang.harness.config.agent` profile now owns the standard settings used by
+Agent-backed products, including their common field codecs and accessors.
+Coding adopts that profile directly, alongside its config-value adapter and
+explicit bootstrap activation steps.
 
 ## Purpose
 
@@ -21,8 +22,9 @@ Harness: layer, transact, decode, scope, notify, resolve, order, report
 Product: define, validate, locate, authorize, activate, diagnose, present
 ```
 
-Harness supplies configuration mechanisms. It does not define a universal
-Product configuration or own the services affected by a configuration change.
+Harness supplies configuration mechanisms and may supply explicitly selectable
+cross-product profiles. It does not define one universal Product configuration
+or own the services affected by a configuration change.
 
 ## Harness Ownership
 
@@ -56,6 +58,41 @@ keeps the last valid patch when a persistent layer cannot be loaded or applied.
 The field specifications are supplied by the Product. Harness does not decide
 what a field means, which values are valid, which aliases remain compatible, or
 what diagnostic text a rejected or removed field should use.
+
+### Optional Standard Agent Settings Profile
+
+`loushang.harness.config.agent` composes the existing configuration components;
+it is not another configuration engine. Its `SettingsManager` delegates all
+layering, persistence, scope transactions, publication, snapshots, and issue
+collection to `SettingsRuntime`, `ScopedConfigRuntime`, and `LayeredConfig`.
+
+The profile owns settings shared by Agent-backed products: model and thinking
+selection, queue modes, compaction and retry, resources and packages, tool and
+approval preferences, terminal/presentation preferences, and method selection.
+It also owns their standard getters, setters, collection mutations, codecs, and
+cross-product defaults. A Product may use the profile unchanged or bind a
+different configuration profile when it needs additional domain fields.
+
+This optional profile may depend on stable Agent and AI value types. The neutral
+`loushang.harness.config` core outside `config.agent` remains free of Agent and
+AI imports, and the complete config package remains free of Product imports.
+
+The implemented Agent-profile internals have one-way ownership:
+
+- `types.py` owns immutable settings records and defaults;
+- `_settings_codec.py` owns the persistent schema, aliases, removed fields,
+  field decoding/encoding, and complete `ControlConfig` serialization;
+- `_settings_patch.py` owns the `UNSET` command distinction, typed update
+  record, typed-update-to-layer-patch conversion, and removed session override
+  preparation;
+- `manager.py` owns scopes, paths, listeners, collection commands, permission
+  ceiling checks, and the stable getter/setter facade.
+
+`SettingsManager` imports only the explicit codec/patch ports. It does not own
+field-level serializers. Persistent removed fields remain in the raw stored
+scope patch and report schema issues; removed session overrides are dropped
+before application and report adapter errors. These are deliberately different
+compatibility semantics.
 
 ### Scoped Configuration Runtime
 
@@ -131,17 +168,17 @@ hold all service instances, select the steps, and implement every callback.
 
 Coding and future Product adapters retain:
 
-- the concrete configuration type, including `ControlConfig` and its nested
-  records;
-- all fields, defaults, validation, normalization, aliases, removed-setting
-  compatibility, and unknown-field choices;
+- Product-only configuration records and fields not admitted to a shared
+  profile;
+- Product overlays that intentionally change standard defaults, validation, or
+  enabled field groups;
 - global and project settings paths, scope names, and file conventions;
-- convenience getters, setters, compatibility methods, commands, and UI;
+- Product-only compatibility methods, commands, and UI;
 - configuration effect selection, dependency order, callback implementation,
   context construction, failure escalation, and lifecycle integration;
 - diagnostic codes, wording, severity, remediation, and CLI/TUI projection;
-- provider registration, model selection policy, model/auth interpretation,
-  credentials, and persisted model-selection behavior.
+- provider registration, model selection policy, and persisted model-selection
+  behavior. Request authentication interpretation remains in AI.
 
 Coding's bootstrap may use `ConfigActivationRuntime` to preserve and make
 explicit its package, resource, extension, audit, and model-refresh order. The
@@ -152,9 +189,10 @@ controllers continue to own runtime reload behavior.
 
 ## Model, Authentication, And Credential Boundary
 
-`ModelRegistry` and `AuthManager` do not move in this migration. Provider
-registration, auth resolution, credential lookup and persistence, and model
-selection remain with their existing AI or Product owners.
+`ModelRegistry`, provider registration, and model selection remain Product
+concerns. Request authentication declarations and credential-to-header
+resolution remain AI concerns. Coding does not own an `AuthManager`, login or
+logout commands, credential persistence, or credential refresh.
 
 Harness configuration never stores credentials. It may carry opaque values
 provided by a Product, but it must not discover secrets, serialize credential
@@ -164,19 +202,22 @@ objects, choose a provider, resolve an account, or invoke model/auth services.
 
 Coding adopts the shared runtime without surrendering Product semantics:
 
-- `SettingsManager` supplies the `ControlConfig` default factory and field
-  specifications to `SchemaConfigCodec`, then delegates scopes and revisioned
-  mutations to `ScopedConfigRuntime`;
-- Coding field decoders preserve current validation, aliases, removed-setting
-  messages, JSON shape, paths, and setter behavior;
-- `coding.control.config_value` injects its Product-owned shell runner into the
-  Harness value resolver and preserves the established public functions;
+- `harness.config.agent.SettingsManager` supplies the standard `ControlConfig`
+  factory and field specifications to `SchemaConfigCodec`, then delegates
+  scopes and revisioned mutations to `ScopedConfigRuntime`;
+- Coding imports the shared manager and value types directly. Its public exports
+  retain type identity without preserving duplicate implementation modules;
+- the existing validation, aliases, removed-setting messages, JSON shape, and
+  setter behavior remain unchanged by the owner move;
+- `harness.config.subprocess_values.SubprocessConfigValueResolver` provides the optional
+  local-shell resolver over the neutral injected-runner contract; Products may
+  use the shared default or inject a different runner without adding a facade;
 - `coding.bootstrap` declares Product-owned activation steps and callbacks over
   an explicit Coding state object while retaining the existing effect order.
 
-No second configuration implementation should remain in Coding where the
-Harness mechanism is sufficient. Thin compatibility and Product-policy code is
-expected and remains Product-owned.
+No second configuration implementation remains in Coding where the Harness
+profile is sufficient. Product paths, `ModelRegistry`, policy, and
+presentation remain Product-owned.
 
 ## Import And Validation Rules
 
@@ -204,5 +245,5 @@ This migration does not:
 - move Product effect order, callbacks, services, or diagnostic wording into
   Harness;
 - execute shell commands or store credentials in Harness;
-- move `ModelRegistry`, `AuthManager`, provider registration, auth resolution,
-  persisted model selection, or credential policy into Harness.
+- move `ModelRegistry`, provider registration, persisted model selection, or AI
+  request authentication into Harness.

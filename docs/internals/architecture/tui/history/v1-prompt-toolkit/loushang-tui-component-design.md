@@ -243,7 +243,7 @@ Body policy:
 - edit/write tools do not dump diffs or file content into the transcript; they use `detail` for compact change stats.
 - failed tools show a short error detail and keep verbose output in tool result/export/debug paths.
 
-The projector can reuse `ToolRenderRuntime` and per-tool `render_call` / `render_result`, but output is still bounded before entering the transcript. Full output, raw tool results, artifacts, and structured `renderedToolResult` payloads remain available through JSON/RPC/export/debug paths.
+The projector can reuse `ToolRenderRuntime` and per-tool `render_call` / `render_result`, but output is still bounded before entering the transcript. Full output, raw tool results, artifacts, and structured `rendered_tool_result` payloads remain available through JSON/RPC/export/debug paths.
 
 ### TUI Uses UI Semantics Only
 

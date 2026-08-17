@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from loushang.harness.context import SummaryProfile, SummarySection
+from loushang.harness.context import (
+    STANDARD_SUMMARY_RESOURCE_OPERATION_TAGS,
+    SummaryProfile,
+    SummarySection,
+)
 
 COMPACTION_SYSTEM_PROMPT = """Summarize the older conversation context for later continuation.
 
@@ -167,7 +171,7 @@ CODING_COMPACTION_SUMMARY_PROFILE = SummaryProfile(
     },
     sections=_COMPACTION_SECTIONS,
     placeholder_markers=_PLACEHOLDER_MARKERS,
-    ignored_block_tags=("read-files", "modified-files"),
+    resource_operation_tags=STANDARD_SUMMARY_RESOURCE_OPERATION_TAGS,
 )
 
 CODING_BRANCH_SUMMARY_PROFILE = SummaryProfile(
@@ -176,7 +180,7 @@ CODING_BRANCH_SUMMARY_PROFILE = SummaryProfile(
     prompts={"branch": BRANCH_SUMMARY_PROMPT},
     sections=_BRANCH_SECTIONS,
     placeholder_markers=_PLACEHOLDER_MARKERS,
-    ignored_block_tags=("read-files", "modified-files"),
+    resource_operation_tags=STANDARD_SUMMARY_RESOURCE_OPERATION_TAGS,
 )
 
 CODING_TURN_PREFIX_SUMMARY_PROFILE = SummaryProfile(

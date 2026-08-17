@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from typing import Any
 
+import pytest
+
 import loushang.tui.markdown.renderer as markdown_renderer_module
 from loushang.tui import (
     CellDimensions,
@@ -188,6 +190,7 @@ def test_markdown_renderer_reuses_themed_instance_cache_until_theme_changes(monk
     assert calls == [29, 29]
 
 
+@pytest.mark.tui_render_contract
 def test_markdown_renderer_keeps_themed_instance_cache_bounded_to_current_render_key() -> None:
     renderer = MarkdownRenderer("one **two**", theme=ThemeResolver(defaults={"markdown.strong": {"bold": True}}))
 
@@ -197,6 +200,7 @@ def test_markdown_renderer_keeps_themed_instance_cache_bounded_to_current_render
     assert len(renderer._render_cache) == 1
 
 
+@pytest.mark.tui_render_contract
 def test_markdown_renderer_reuses_shared_cache_for_stable_streaming_blocks() -> None:
     cache = markdown_renderer_module.MarkdownRenderCache()
     highlighter = FakeCodeHighlighter()
@@ -1649,8 +1653,23 @@ def test_detect_image_protocol_from_terminal_environment() -> None:
     assert detect_image_protocol({"TERM_PROGRAM": "Apple_Terminal"}) is None
 
 
-def test_render_terminal_image_defaults_to_auto_protocol_when_data_is_available(monkeypatch: Any) -> None:
+def _set_kitty_test_environment(monkeypatch: Any) -> None:
+    for name in (
+        "TERM_PROGRAM",
+        "ITERM_SESSION_ID",
+        "TMUX",
+        "STY",
+        "WEZTERM_PANE",
+        "WEZTERM_EXECUTABLE",
+        "GHOSTTY_RESOURCES_DIR",
+        "LOUSHANG_TUI_TMUX_PASSTHROUGH",
+    ):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("TERM", "xterm-kitty")
+
+
+def test_render_terminal_image_defaults_to_auto_protocol_when_data_is_available(monkeypatch: Any) -> None:
+    _set_kitty_test_environment(monkeypatch)
 
     line = render_terminal_image(alt_text="screenshot", source="shot.png", data=b"abc")
 
@@ -1733,7 +1752,7 @@ def test_image_block_accounts_for_terminal_image_rows_and_styles_fallback() -> N
 
 
 def test_image_component_allocates_kitty_image_id_when_auto_detected(monkeypatch: Any) -> None:
-    monkeypatch.setenv("TERM", "xterm-kitty")
+    _set_kitty_test_environment(monkeypatch)
     image = Image(
         data=b"abc",
         mime_type="image/png",
@@ -1787,7 +1806,7 @@ def test_image_block_renders_kitty_protocol_line_when_data_and_protocol_are_avai
 
 
 def test_image_block_defaults_to_auto_protocol_when_data_is_available(monkeypatch: Any) -> None:
-    monkeypatch.setenv("TERM", "xterm-kitty")
+    _set_kitty_test_environment(monkeypatch)
     image = ImageBlock(alt_text="screenshot", source="shot.png", data=b"abc")
 
     line = rendered_text(image, width=10)[0]

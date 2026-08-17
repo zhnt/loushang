@@ -5,6 +5,7 @@ import asyncio
 import json
 import sys
 import time
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -203,10 +204,8 @@ async def _prompt_with_heartbeat(session: object, user_input: str, *, timeout_se
         now = time.monotonic()
         if deadline is not None and now >= deadline:
             task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
             print(f"[trace] timeout after {timeout_seconds:.1f}s before the turn completed", file=sys.stderr)
             return 124
 

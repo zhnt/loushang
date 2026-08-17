@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.diagnostics.types import DiagnosticDraft
 
 ExtensionSurfaceType = Literal[
     "command",
@@ -20,6 +20,7 @@ ExtensionSurfaceType = Literal[
     "resource_root",
     "policy",
     "approval",
+    "runtime_capability",
 ]
 
 
@@ -32,7 +33,7 @@ class ExtensionSurfaceDescriptor:
     active: bool = True
     priority: int = 0
     permission_requirements: tuple[str, ...] = ()
-    diagnostics: tuple[ResourceDiagnostic, ...] = ()
+    diagnostics: tuple[DiagnosticDraft, ...] = ()
     metadata: dict[str, object] = field(default_factory=dict)
     after: tuple[str, ...] = ()
     before: tuple[str, ...] = ()

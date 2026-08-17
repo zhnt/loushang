@@ -42,7 +42,7 @@
 
 ## 3. 当前执行路径（推荐）
 
-1. `examples/coding/init_examples_env.py --copy-model-catalog`
+1. `uv run python examples/coding/init_examples_env.py`
 2. `run.py list --category sdk --tag generated`
 
 ## 4. 后续生成执行约束

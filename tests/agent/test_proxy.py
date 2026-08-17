@@ -5,11 +5,6 @@ import pytest
 from loushang.agent.types import ProxyStreamOptions
 from loushang.ai.errors import AIStreamError
 from loushang.ai.model import Capabilities, Model
-from loushang.ai.model.domain import Endpoint
-from loushang.ai.model.registry import (
-    clear_default_model_registry,
-    get_default_model_registry,
-)
 from loushang.ai.types import AssistantMessage, Context, Usage, UserMessage
 
 
@@ -19,6 +14,7 @@ def _model() -> Model:
         name="Proxy Model",
         provider="proxy",
         endpoint="openai-completions",
+        api="openai-completions",
         capabilities=Capabilities(
             reasoning=False,
             input=("text",),
@@ -36,21 +32,6 @@ def _usage() -> Usage:
         cache_write=0,
         total_tokens=3,
         cost=None,
-    )
-
-
-@pytest.fixture(autouse=True)
-def _default_registry() -> None:
-    clear_default_model_registry()
-    registry = get_default_model_registry()
-    registry.register_endpoint(
-        "proxy",
-        Endpoint(
-            id="openai-completions",
-            provider="proxy",
-            api="openai-completions",
-            models={"proxy-model": _model()},
-        ),
     )
 
 

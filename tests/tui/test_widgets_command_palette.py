@@ -44,10 +44,10 @@ def test_command_palette_intent_kinds_are_declared() -> None:
     assert "command_cancel" in kinds
 
 
-def test_existing_coding_palette_adapter_keeps_disabled_out_of_scope() -> None:
-    from loushang.coding.ui.screen_surfaces import _palette_items
+def test_harnesstui_palette_projection_keeps_disabled_out_of_scope() -> None:
+    from loushang.harnesstui.commands.presentation import command_palette_select_items
 
-    items = _palette_items(
+    items = command_palette_select_items(
         CommandPalette(
             (
                 CommandPaletteItem(

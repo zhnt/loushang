@@ -78,10 +78,25 @@ loushang --command <command-name> --command-result-format json
 内置交互命令包括：
 
 ```text
-/settings /model /scoped-models /export /import /share /copy /name
+/settings /model /scoped-models /export /import /share /copy /rename
 /session /terminal /tools /changelog /hotkeys /fork /clone /tree
-/login /logout /new /compact /resume /reload /quit
+/new /compact /resume /delete /reload /quit
 ```
+
+`/new` 会在当前上下文中新建空会话，不接受参数。
+`/delete` 会打开带确认步骤的历史会话选择器；它不会删除当前活跃会话。
+
+## 认证迁移
+
+Coding 不再拥有认证生命周期。API Key 模型在执行 AI 请求时，根据模型
+catalog 声明读取对应的环境变量。Coding CLI 不再接受 `--api-key`，内置命令
+列表也不再包含 `/login` 和 `/logout`。
+
+SDK 调用方需要删除对 `loushang.coding.control.AuthManager`、
+`AuthResolution`、服务或会话参数 `auth_manager=`，以及会话参数
+`oauth_provider_registry=` 的使用。Coding 不负责获取、刷新、持久化或选择
+OAuth 凭证。需要 OAuth 的应用必须通过 AI 或 Agent API 提供当前可用于请求的
+凭证，而不是通过 Coding 提供。
 
 ## TUI
 

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 
 def test_session_label_falls_back_when_session_name_property_fails() -> None:
-    from loushang.coding.ui.session_view import session_label
+    from loushang.harnesstui.conversation.session_view import session_label
 
     class BrokenSessionName:
         session_id = "fallback-session"
@@ -17,7 +17,7 @@ def test_session_label_falls_back_when_session_name_property_fails() -> None:
 
 
 def test_is_running_reads_common_session_state_shapes() -> None:
-    from loushang.coding.ui.session_view import is_running
+    from loushang.harnesstui.conversation.session_view import is_running
 
     assert is_running(SimpleNamespace(isStreaming=True)) is True
     assert is_running(SimpleNamespace(is_streaming=True)) is True
@@ -26,7 +26,7 @@ def test_is_running_reads_common_session_state_shapes() -> None:
 
 
 def test_session_error_message_checks_session_agent_and_agent_state() -> None:
-    from loushang.coding.ui.session_view import session_error_message
+    from loushang.harnesstui.conversation.session_view import session_error_message
 
     assert session_error_message(SimpleNamespace(error_message="session failed")) == "session failed"
     assert session_error_message(SimpleNamespace(agent=SimpleNamespace(error_message="agent failed"))) == "agent failed"
@@ -38,7 +38,7 @@ def test_session_error_message_checks_session_agent_and_agent_state() -> None:
 
 
 def test_session_cwd_prefers_session_manager_then_runtime(tmp_path) -> None:
-    from loushang.coding.ui.session_view import session_cwd
+    from loushang.harnesstui.conversation.session_view import session_cwd
 
     session_cwd_path = tmp_path / "session"
     runtime_cwd_path = tmp_path / "runtime"

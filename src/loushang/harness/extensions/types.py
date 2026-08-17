@@ -7,11 +7,11 @@ from pathlib import Path
 from typing import Any, Literal
 
 from loushang.harness.contributions import ExtensionSurfaceDescriptor
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.routing_types import (
     ExtensionHandler,
     RegisteredExtensionHandler,
 )
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.source import SourceInfo
 from loushang.harness.resources.types import (
     ExtensionDescriptor,
@@ -46,23 +46,15 @@ class BeforeAgentStartResult:
     system_prompt_append: str = ""
     system_prompt: str | None = None
     extra_messages: list[object] = field(default_factory=list)
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
+    diagnostics: list[DiagnosticDraft] = field(default_factory=list)
     block: bool = False
     reason: str | None = None
-
-    @property
-    def systemPrompt(self) -> str | None:
-        return self.system_prompt
-
-    @property
-    def extraMessages(self) -> list[object]:
-        return self.extra_messages
 
 
 @dataclass(frozen=True)
 class ContextResult:
     messages: list[object] | None = None
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
+    diagnostics: list[DiagnosticDraft] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -71,13 +63,13 @@ class ToolCallDecision:
     reason: str | None = None
     tool_name: str | None = None
     arguments: dict[str, Any] | None = None
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
+    diagnostics: list[DiagnosticDraft] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class ToolResultDecision:
     result: object | None = None
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
+    diagnostics: list[DiagnosticDraft] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -101,6 +93,41 @@ class RegisteredControlContribution:
         if self.descriptor.type not in {"policy", "approval"}:
             raise ValueError(
                 "control contributions must use policy or approval surfaces"
+            )
+
+
+@dataclass(frozen=True)
+class RegisteredRuntimeCapabilityReplacement:
+    """One Extension-declared candidate for an explicit runtime slot."""
+
+    slot: str
+    name: str
+    create: Callable[[], object]
+    dispose: Callable[[object], None] | None = None
+    implementation_version: int = 1
+    priority: int = 0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.slot, str) or not self.slot.strip():
+            raise ValueError("runtime capability replacement slot must not be empty")
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise ValueError("runtime capability replacement name must not be empty")
+        if not callable(self.create):
+            raise TypeError("runtime capability replacement create must be callable")
+        if self.dispose is not None and not callable(self.dispose):
+            raise TypeError("runtime capability replacement dispose must be callable")
+        if (
+            isinstance(self.implementation_version, bool)
+            or not isinstance(self.implementation_version, int)
+            or self.implementation_version < 1
+        ):
+            raise ValueError(
+                "runtime capability replacement implementation_version must be "
+                "a positive integer"
+            )
+        if isinstance(self.priority, bool) or not isinstance(self.priority, int):
+            raise TypeError(
+                "runtime capability replacement priority must be an integer"
             )
 
 
@@ -169,7 +196,7 @@ class LoadedExtension:
     message_renderers: dict[str, Callable[[object, object, object], object | None]] = (
         field(default_factory=dict)
     )
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
+    diagnostics: list[DiagnosticDraft] = field(default_factory=list)
     metadata: dict[str, object] = field(default_factory=dict)
     api: object | None = None
     manifest: object | None = None
@@ -180,6 +207,9 @@ class LoadedExtension:
     )
     control_contributions: list[RegisteredControlContribution] = field(
         default_factory=list
+    )
+    runtime_capability_replacements: list[RegisteredRuntimeCapabilityReplacement] = (
+        field(default_factory=list)
     )
 
     def __post_init__(self) -> None:
@@ -209,7 +239,7 @@ class ExtensionResourceContribution:
     extensions: list[ExtensionDescriptor] = field(default_factory=list)
     prompts: list[PromptFragmentDescriptor] = field(default_factory=list)
     themes: list[ThemeDescriptor] = field(default_factory=list)
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
+    diagnostics: list[DiagnosticDraft] = field(default_factory=list)
 
 
 def _is_async_callable(value: object) -> bool:
@@ -232,6 +262,7 @@ __all__ = [
     "LoadedExtension",
     "RegisteredCommand",
     "RegisteredControlContribution",
+    "RegisteredRuntimeCapabilityReplacement",
     "RegisteredExtensionHandler",
     "RegisteredFlag",
     "RegisteredShortcut",

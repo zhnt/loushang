@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
+from pathlib import Path
 
 from loushang.harness.diagnostics.types import (
+    DiagnosticDraft,
     DiagnosticLevel,
     DiagnosticPhase,
     DiagnosticRecord,
@@ -15,8 +17,8 @@ from loushang.harness.diagnostics.types import (
     ErrorReport,
     StartupCheck,
     StartupCheckResult,
+    directory_available_startup_check,
 )
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
 
 def _now_iso() -> str:
@@ -50,26 +52,18 @@ class DiagnosticsService:
         for diagnostic in diagnostics:
             self.record(diagnostic)
 
-    def normalize_resource_diagnostic(
+    def normalize_diagnostic(
         self,
-        diagnostic: ResourceDiagnostic,
+        diagnostic: DiagnosticDraft,
         *,
         phase: DiagnosticPhase,
         source: DiagnosticSource,
         session_id: str | None = None,
         entry_id: str | None = None,
         level: DiagnosticLevel = "warning",
-        details: dict[str, object] | None = None,
+        details: Mapping[str, object] | None = None,
     ) -> DiagnosticRecord:
-        merged_details: dict[str, object] = {}
-        if diagnostic.resource_id:
-            merged_details["resource_id"] = diagnostic.resource_id
-        if diagnostic.resource_type:
-            merged_details["resource_type"] = diagnostic.resource_type
-        if diagnostic.source_kind:
-            merged_details["source_kind"] = diagnostic.source_kind
-        if diagnostic.metadata:
-            merged_details["metadata"] = dict(diagnostic.metadata)
+        merged_details = dict(diagnostic.details)
         if details:
             merged_details.update(details)
         return DiagnosticRecord(
@@ -84,6 +78,32 @@ class DiagnosticsService:
             source_path=diagnostic.source_path,
             details=merged_details,
         )
+
+    def record_drafts(
+        self,
+        diagnostics: Iterable[DiagnosticDraft],
+        *,
+        phase: DiagnosticPhase,
+        source: DiagnosticSource,
+        session_id: str | None = None,
+        entry_id: str | None = None,
+        level: DiagnosticLevel = "warning",
+    ) -> list[DiagnosticRecord]:
+        """Normalize and record diagnostic drafts with one shared scope."""
+
+        records = [
+            self.normalize_diagnostic(
+                diagnostic,
+                phase=phase,
+                source=source,
+                session_id=session_id,
+                entry_id=entry_id,
+                level=level,
+            )
+            for diagnostic in diagnostics
+        ]
+        self.record_many(records)
+        return records
 
     def normalize_exception(
         self,
@@ -230,7 +250,6 @@ class DiagnosticsService:
                     )
             records.append(self.record(record))
         return records
-
     def get_last_diagnostics(self, limit: int = 50) -> list[DiagnosticRecord]:
         if limit <= 0:
             return []
@@ -295,6 +314,43 @@ class DiagnosticsService:
 
     def clear_runtime_diagnostics(self) -> None:
         self._records = [record for record in self._records if record.phase != "runtime"]
+
+
+def run_standard_startup_checks(
+    diagnostics_service: DiagnosticsService,
+    *,
+    cwd: str,
+    package_roots: Iterable[str] = (),
+    additional_checks: Iterable[StartupCheck] = (),
+    session_id: str | None = None,
+) -> list[DiagnosticRecord]:
+    """Run the shared cwd and package-root startup checks."""
+
+    cwd_path = Path(cwd).expanduser()
+    checks = [
+        directory_available_startup_check(
+            name="cwd",
+            path=cwd_path,
+            code="cwd_unavailable",
+            message=f"Session cwd is not an available directory: {cwd_path}",
+            detail_key="cwd",
+        ),
+        *(
+            directory_available_startup_check(
+                name="package_root",
+                path=Path(root).expanduser(),
+                code="package_root_unavailable",
+                message=(
+                    "Package root is not an available directory: "
+                    f"{Path(root).expanduser()}"
+                ),
+                detail_key="package_root",
+            )
+            for root in package_roots
+        ),
+        *additional_checks,
+    ]
+    return diagnostics_service.run_startup_checks(checks, session_id=session_id)
 
 
 def _with_fingerprint(record: DiagnosticRecord) -> DiagnosticRecord:

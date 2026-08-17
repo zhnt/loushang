@@ -19,6 +19,7 @@ from loushang.ai import (
     complete,
     get_model,
 )
+from loushang.ai.auth import ApiKeyAuth
 
 # 用户可直接修改的配置。
 # `API_KEY` 是显式认证入口；环境变量只是可选读取来源。
@@ -64,7 +65,7 @@ def _build_context() -> dict:
 
 def _build_options(api_key: str) -> CallOptions:
     # 把 Anthropic 特有参数收束到 options 中，保持调用点干净。
-    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
+    return CallOptions(auth=ApiKeyAuth(api_key), max_output_tokens=MAX_TOKENS)
 
 
 def _iter_text(parts: Iterable[object]) -> str:

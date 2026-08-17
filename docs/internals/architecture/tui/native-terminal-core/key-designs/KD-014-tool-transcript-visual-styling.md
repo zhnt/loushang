@@ -3,8 +3,8 @@
 Tool transcript rows must stay readable as plain text while using color as a
 secondary scanning aid. The visual styling layer is a presentation concern:
 display records and tool projection still produce semantic plain text, and the
-native coding UI applies theme tokens after transcript lines are mapped to the
-product-facing prompt vocabulary.
+shared Harnesstui conversation styler applies theme tokens after transcript
+lines are mapped to the product-facing prompt vocabulary.
 
 ## Scope
 
@@ -79,10 +79,13 @@ truecolor:
 
 ## Rendering Boundary
 
-Styling is applied after `_coding_line()` maps generic transcript rows into the
-native coding vocabulary. This preserves the lower-level transcript renderer as
-a semantic renderer and avoids embedding product-specific ANSI codes inside
-tool projection.
+`loushang.harnesstui.conversation.transcript_style` applies styling after
+Coding's `_coding_line()` maps generic transcript rows into the native coding
+vocabulary. Harnesstui owns semantic-span recognition and theme-token
+application. Coding owns glyph and rail mapping, default theme values, path
+compaction, and duplicate command/timing suppression. This preserves the
+lower-level transcript renderer as a semantic renderer and avoids embedding
+product-specific ANSI codes inside tool projection.
 
 The styling function must preserve visible width. It may insert ANSI SGR
 sequences only around already-rendered text segments. Plain text produced by

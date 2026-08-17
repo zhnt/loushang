@@ -15,7 +15,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from loushang.coding import create_agent_session_runtime
-from loushang.coding.mode import RpcMode
+from loushang.harness.host.rpc import run_rpc_host
 
 RPC_COMMANDS = [
     ("intro", {"type": "get_state"}),
@@ -35,8 +35,12 @@ async def _run_rpc(project_root: Path) -> tuple[int, str, str]:
     stdout = StringIO()
     stderr = StringIO()
 
-    mode = RpcMode(runtime=runtime, stdin=stdin, stdout=stdout, stderr=stderr)
-    exit_code = await mode.run()
+    exit_code = await run_rpc_host(
+        runtime=runtime,
+        stdin=stdin,
+        stdout=stdout,
+        stderr=stderr,
+    )
     return exit_code, stdout.getvalue(), stderr.getvalue()
 
 
@@ -47,7 +51,7 @@ async def main() -> None:
 
         exit_code, raw_output, raw_error = await _run_rpc(project_root)
 
-        print(f"RpcMode exit code: {exit_code}")
+        print(f"RPC host exit code: {exit_code}")
         print("Responses:")
         for line in raw_output.splitlines():
             payload = json.loads(line)

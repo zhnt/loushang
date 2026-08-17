@@ -1,5 +1,12 @@
 # Loushang Coding Component Interfaces
 
+## Status
+
+Superseded as the current cross-component interface map by the
+[Harness Current Owner Map](../harness/current-owner-map.md). Feature-local
+Coding contracts remain useful historical inputs, but shared resource,
+Package, Plugin, and Extension contracts are owned by Harness.
+
 ## Scope
 
 本文档作为 `loushang-coding` 组件接口设计的总入口。
@@ -141,3 +148,4 @@
 - [Loushang Coding Component Dependencies](loushang-coding-component-dependencies.md)
 - [Loushang Coding Development Priority And Stability Strategy](loushang-coding-development-priority-and-stability-strategy.md)
 - [Component Interface Notes](component-interfaces/README.md)
+- [Proposed Coding LSP Capability Architecture](lsp/README.md)

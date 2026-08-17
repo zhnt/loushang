@@ -11,11 +11,6 @@ from loushang.agent import Agent
 from loushang.agent.types import AgentState, AgentToolResult
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
-from loushang.ai.model.domain import Endpoint
-from loushang.ai.model.registry import (
-    clear_default_model_registry,
-    get_default_model_registry,
-)
 from loushang.ai.types import (
     AssistantMessage,
     Context,
@@ -32,6 +27,7 @@ def _model() -> Model:
         name="Faux",
         provider="faux",
         endpoint="anthropic-messages",
+        api="anthropic-messages",
         capabilities=Capabilities(
             reasoning=False,
             input=("text",),
@@ -44,21 +40,6 @@ def _model() -> Model:
 def _usage() -> Usage:
     return Usage(
         input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
-    )
-
-
-@pytest.fixture(autouse=True)
-def _default_registry() -> None:
-    clear_default_model_registry()
-    registry = get_default_model_registry()
-    registry.register_endpoint(
-        "faux",
-        Endpoint(
-            id="anthropic-messages",
-            provider="faux",
-            api="anthropic-messages",
-            models={"faux-model": _model()},
-        ),
     )
 
 
@@ -149,10 +130,25 @@ class Abort:
     clear_queues: bool = True
 
     async def run(self, runtime: ScenarioRuntime) -> None:
-        runtime.agent.abort()
-        if self.clear_queues:
-            runtime.agent.clear_all_queues()
-        runtime.signal_abort()
+        runtime.abort(clear_queues=self.clear_queues)
+
+
+@dataclass(frozen=True)
+class AbortOnToolFinished:
+    name: str = "scenario_tool"
+    clear_queues: bool = True
+
+    async def run(self, runtime: ScenarioRuntime) -> None:
+        def abort_after_public_tool_result(event: dict, signal: object) -> None:
+            del signal
+            if event.get("type") != "tool_execution_end":
+                return
+            if event.get("tool_name") != self.name:
+                return
+            unsubscribe()
+            runtime.abort(clear_queues=self.clear_queues)
+
+        unsubscribe = runtime.agent.subscribe(abort_after_public_tool_result)
 
 
 @dataclass(frozen=True)
@@ -237,7 +233,6 @@ class ScenarioTool:
         del tool_call_id, params, on_update
         self.runtime.signal(ToolStarted(self.name))
         response = await self.runtime.next_tool_result(signal=signal)
-        self.runtime.signal(ToolFinished(self.name))
         return AgentToolResult(
             content=[TextPart(type="text", text=response.text)],
             details={"text": response.text},
@@ -280,7 +275,14 @@ class ScenarioRuntime:
         self.current_abort_event = None
 
     async def wait_for(self, checkpoint: object, *, timeout: float = 1.0) -> None:
-        await asyncio.wait_for(self._event_for(checkpoint).wait(), timeout=timeout)
+        async with asyncio.timeout(timeout):
+            await self._event_for(checkpoint).wait()
+
+    def abort(self, *, clear_queues: bool) -> None:
+        self.agent.abort()
+        if clear_queues:
+            self.agent.clear_all_queues()
+        self.signal_abort()
 
     def signal(self, checkpoint: object) -> None:
         self._event_for(checkpoint).set()
@@ -338,6 +340,9 @@ class ScenarioRuntime:
 
     async def _handle_event(self, event: dict, signal: object) -> None:
         del signal
+        if event.get("type") == "tool_execution_end":
+            self.signal(ToolFinished(str(event.get("tool_name", ""))))
+            return
         if event.get("type") != "message_start":
             return
         message = event.get("message")
@@ -452,14 +457,22 @@ SCENARIOS = [
             WaitFor(ModelCall(1)),
             ModelToolCall(),
             WaitFor(ToolStarted()),
+            AbortOnToolFinished(),
             ToolResult("done"),
             WaitFor(ToolFinished()),
-            Abort(),
             WaitIdle(),
             Prompt("你好", ModelText("hello")),
             Expect(
                 model_user_inputs=["use tool", "你好"],
                 consumed_users=["use tool", "你好"],
+                roles=[
+                    "user",
+                    "assistant",
+                    "toolResult",
+                    "assistant",
+                    "user",
+                    "assistant",
+                ],
                 abort_boundaries=1,
             ),
         ],
@@ -584,6 +597,7 @@ def test_agent_loop_control_flow_scenarios(scenario: Scenario) -> None:
 
 def _assistant_text_message(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -599,6 +613,7 @@ def _assistant_text_message(text: str) -> AssistantMessage:
 
 def _assistant_tool_call_message(name: str, tool_call_id: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[ToolCall(type="toolCall", id=tool_call_id, name=name, arguments={})],
         api="anthropic-messages",

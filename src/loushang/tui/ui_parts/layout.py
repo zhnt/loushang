@@ -20,6 +20,23 @@ class RegionRenderable(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class CappedRenderable:
+    """Render another region within a fixed height cap."""
+
+    renderable: RegionRenderable
+    max_height: int
+
+    def render(self, constraints: RenderConstraints) -> RenderResult:
+        return self.renderable.render(
+            RenderConstraints(
+                width=constraints.width,
+                max_height=max(1, min(self.max_height, constraints.max_height)),
+                visible_height=constraints.visible_height,
+            )
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class ScreenRegion:
     name: str
     renderable: RegionRenderable
@@ -240,6 +257,7 @@ def _ephemeral_segment(lines: tuple[RenderLine, ...]) -> RenderLineSegment:
 
 
 __all__ = [
+    "CappedRenderable",
     "RegionRenderable",
     "ScreenLayout",
     "ScreenRegion",

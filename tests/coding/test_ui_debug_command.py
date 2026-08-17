@@ -4,85 +4,90 @@ import asyncio
 from pathlib import Path
 
 
-class _Renderer:
-    def __init__(self) -> None:
-        self.statuses: list[str] = []
+def test_plain_coding_app_binds_debug_intent_policy_to_shared_action() -> None:
+    from loushang.coding.ui.plain_app import build_plain_coding_tui_app
 
-    def render_status(self, text: str) -> None:
-        self.statuses.append(text)
+    events: list[object] = []
+    enabled: list[tuple[object, tuple[str, ...]]] = []
+    disabled = 0
 
+    class Session:
+        session_id = "sid"
+        session_name = "session"
 
-def test_debug_command_handler_disables_debug_logging() -> None:
-    from loushang.coding.ui.debug_command import DebugCommandHandler
-    from loushang.coding.ui.intent import DebugIntent
+    class Renderer:
+        def render_status(self, text: str) -> None:
+            events.append(("status", text))
 
-    renderer = _Renderer()
-    emitted: list[str] = []
-    traces: list[str] = []
-    disabled = False
+        def render_error(self, text: str) -> None:
+            events.append(("error", text))
+
+        def render_worked(self, elapsed_seconds: float) -> None:
+            events.append(("worked", elapsed_seconds))
+
+    class EventRenderer:
+        last_error_message = None
+
+    class Writer:
+        def write(self, _text: str) -> None:
+            return None
+
+        def flush(self) -> None:
+            return None
 
     async def emit(write, *, label: str) -> None:
-        emitted.append(label)
+        events.append(("emit", label))
         write()
 
-    def disable() -> None:
+    def enable_debug(*, session: object, scopes: tuple[str, ...]) -> Path:
+        enabled.append((session, scopes))
+        return Path("/repo/.loushang/debug/session.log")
+
+    def disable_debug() -> None:
         nonlocal disabled
-        disabled = True
+        disabled += 1
 
-    handler = DebugCommandHandler(
-        session=object(),
-        cwd="/repo",
-        renderer=renderer,
-        emit=emit,
-        trace=lambda name, **_data: traces.append(name),
-        enable=lambda **_kwargs: Path("/tmp/debug.log"),
-        disable=disable,
-    )
-
-    result = asyncio.run(handler.handle(DebugIntent(enabled=False)))
-
-    assert result is None
-    assert disabled is True
-    assert emitted == ["debug:disabled"]
-    assert renderer.statuses == ["Debug logging disabled."]
-    assert traces == ["debug.disabled"]
-
-
-def test_debug_command_handler_enables_debug_logging_with_scopes() -> None:
-    from loushang.coding.ui.debug_command import DebugCommandHandler
-    from loushang.coding.ui.intent import DebugIntent
-
-    session = object()
-    renderer = _Renderer()
-    emitted: list[str] = []
-    traces: list[tuple[str, dict[str, object]]] = []
-    captured: dict[str, object] = {}
-    debug_path = Path("/repo/.loushang/debug/session.log")
-
-    async def emit(write, *, label: str) -> None:
-        emitted.append(label)
-        write()
-
-    def enable(*, session, scopes):
-        captured["session"] = session
-        captured["scopes"] = scopes
-        return debug_path
-
-    handler = DebugCommandHandler(
+    session = Session()
+    app = build_plain_coding_tui_app(
+        runtime=None,
         session=session,
+        renderer=Renderer(),
+        event_renderer=EventRenderer(),
+        stderr=Writer(),
+        verbose=False,
         cwd="/repo",
-        renderer=renderer,
         emit=emit,
-        trace=lambda name, **data: traces.append((name, data)),
-        enable=enable,
-        disable=lambda: None,
+        trace=lambda name, **data: events.append(("trace", name, data)),
+        now=lambda: 10.0,
+        enable_debug=enable_debug,
+        disable_debug=disable_debug,
     )
 
-    result = asyncio.run(handler.handle(DebugIntent(enabled=True, scopes=("tui", "agent"))))
+    enabled_result = asyncio.run(app.handle_prompt("/debug tui,agent"))
+    disabled_result = asyncio.run(app.handle_prompt("/debug off"))
 
-    assert result is None
-    assert captured == {"session": session, "scopes": ("tui", "agent")}
-    assert emitted == ["debug:enabled"]
-    assert "Debug logging enabled:" in renderer.statuses[0]
-    assert "Scopes: tui,agent" in renderer.statuses[0]
-    assert traces == [("debug.enabled", {"path": str(debug_path), "scopes": ["tui", "agent"]})]
+    assert enabled_result is None
+    assert disabled_result is None
+    assert enabled == [(session, ("tui", "agent"))]
+    assert disabled == 1
+    assert [event for event in events if event[:1] == ("emit",)] == [
+        ("emit", "debug:enabled"),
+        ("emit", "debug:disabled"),
+    ]
+    statuses = [event[1] for event in events if event[:1] == ("status",)]
+    assert "Debug logging enabled:" in statuses[0]
+    assert "Scopes: tui,agent" in statuses[0]
+    assert statuses[1] == "Debug logging disabled."
+    assert [event for event in events if event[:2] == ("trace", "debug.enabled")] == [
+        (
+            "trace",
+            "debug.enabled",
+            {
+                "path": "/repo/.loushang/debug/session.log",
+                "scopes": ["tui", "agent"],
+            },
+        )
+    ]
+    assert [event for event in events if event[:2] == ("trace", "debug.disabled")] == [
+        ("trace", "debug.disabled", {})
+    ]

@@ -8,6 +8,7 @@ from loushang.harness.extensions.dispatch import ExtensionDispatcher
 from loushang.harness.extensions.loader import ExtensionLoader
 from loushang.harness.extensions.registry import resolve_extension_registry
 from loushang.harness.extensions.resources import ExtensionResourceRuntime
+from loushang.harness.extensions.runtime import ExtensionRuntime
 from loushang.harness.extensions.types import (
     ExtensionPolicyDecision,
     LoadedExtension,
@@ -17,6 +18,167 @@ from loushang.harness.extensions.types import (
 )
 from loushang.harness.resources.types import ExtensionDescriptor, ResourceBundle
 from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.execution import direct_execution
+
+
+def test_extension_runtime_composes_standard_contributions(tmp_path: Path) -> None:
+    prompt_path = tmp_path / "prompts" / "review.md"
+    prompt_path.parent.mkdir()
+    prompt_path.write_text("Review carefully", encoding="utf-8")
+    contexts: list[tuple[str, str | None]] = []
+
+    async def command_handler(arguments: str, context: object) -> None:
+        del arguments, context
+
+    async def complete(prefix: str) -> list[object]:
+        return [f"{prefix}-result"]
+
+    def transform_input(event: object, context: object) -> dict[str, object]:
+        del context
+        return {"action": "transform", "text": f"{event.text} transformed"}
+
+    def discover(bundle: ResourceBundle, context: object) -> dict[str, object]:
+        del bundle, context
+        return {"promptPaths": [prompt_path]}
+
+    extension = LoadedExtension(
+        name="shared",
+        source_path=tmp_path / "extension.py",
+        hooks={
+            "input": [transform_input],
+            "resources_discover": [discover],
+        },
+        commands={
+            "inspect": RegisteredCommand(
+                name="inspect",
+                handler=command_handler,
+                get_argument_completions=complete,
+            )
+        },
+        flags={"plan": RegisteredFlag(name="plan", type="boolean", default=False)},
+        message_renderers={"progress": lambda message, options, context: message},
+    )
+    runtime = ExtensionRuntime(
+        [extension],
+        context_factory=lambda cwd, loaded: (
+            contexts.append((cwd, loaded.name if loaded is not None else None))
+            or {"cwd": cwd}
+        ),
+    )
+
+    assert runtime.get_command("inspect") is not None
+    assert asyncio.run(runtime.get_command_argument_completions("inspect", "in")) == [
+        "in-result"
+    ]
+    assert runtime.get_flag_value("plan") is False
+    runtime.set_flag_value("plan", True)
+    assert runtime.get_flag_values() == {"plan": True}
+    assert runtime.get_message_renderer("progress") is not None
+    assert runtime.list_message_renderers()[0]["extensionName"] == "shared"
+
+    input_result = asyncio.run(runtime.emit_input("start", cwd=str(tmp_path)))
+    resource_bundle = runtime.discover_resources(ResourceBundle(cwd=tmp_path))
+
+    assert input_result.text == "start transformed"
+    assert [(prompt.name, prompt.text) for prompt in resource_bundle.prompts] == [
+        ("review", "Review carefully")
+    ]
+    assert contexts == [
+        (str(tmp_path), "shared"),
+        (str(tmp_path), None),
+    ]
+    assert runtime.get_diagnostic_snapshot()["total"] == 0
+    assert runtime.list_extensions()[0]["runtimeName"] == "shared"
+
+
+def test_extension_runtime_validates_and_applies_flag_values(tmp_path: Path) -> None:
+    extension = LoadedExtension(
+        name="shared",
+        source_path=tmp_path / "extension.py",
+        flags={
+            "plan": RegisteredFlag(name="plan", type="boolean", default=False),
+            "request-id": RegisteredFlag(name="request-id", type="string"),
+        },
+    )
+    runtime = ExtensionRuntime(
+        [extension],
+        context_factory=lambda cwd, loaded: {"cwd": cwd, "extension": loaded},
+    )
+
+    diagnostics = runtime.apply_flag_values(
+        {
+            "--plan": True,
+            "request-id": "request-1",
+            "unknown": True,
+        }
+    )
+
+    assert runtime.get_flag_values() == {
+        "plan": True,
+        "request-id": "request-1",
+    }
+    assert [diagnostic.code for diagnostic in diagnostics] == [
+        "unknown_extension_flag"
+    ]
+
+
+def test_extension_runtime_rejects_non_string_string_flag(tmp_path: Path) -> None:
+    extension = LoadedExtension(
+        name="shared",
+        source_path=tmp_path / "extension.py",
+        flags={
+            "request-id": RegisteredFlag(name="request-id", type="string"),
+        },
+    )
+    runtime = ExtensionRuntime(
+        [extension],
+        context_factory=lambda cwd, loaded: {"cwd": cwd, "extension": loaded},
+    )
+
+    diagnostics = runtime.apply_flag_values({"request-id": True})
+
+    assert runtime.get_flag_values() == {}
+    assert [diagnostic.code for diagnostic in diagnostics] == [
+        "extension_flag_value_required"
+    ]
+
+
+def test_extension_runtime_contains_completion_errors(tmp_path: Path) -> None:
+    errors: list[tuple[str, str, str]] = []
+
+    async def command_handler(arguments: str, context: object) -> None:
+        del arguments, context
+
+    def broken_completion(prefix: str) -> list[object]:
+        del prefix
+        raise RuntimeError("completion failed")
+
+    extension = LoadedExtension(
+        name="shared",
+        source_path=tmp_path / "extension.py",
+        commands={
+            "inspect": RegisteredCommand(
+                name="inspect",
+                handler=command_handler,
+                get_argument_completions=broken_completion,
+            )
+        },
+    )
+    runtime = ExtensionRuntime(
+        [extension],
+        context_factory=lambda cwd, loaded: {"cwd": cwd, "extension": loaded},
+        runtime_error_handler=lambda extension, event, error: errors.append(
+            (extension.name, event, str(error))
+        ),
+    )
+
+    assert (
+        asyncio.run(runtime.get_command_argument_completions("inspect", "in")) is None
+    )
+    assert errors == [("shared", "command_argument_completions", "completion failed")]
+    assert [diagnostic.code for diagnostic in runtime.get_diagnostics()] == [
+        "extension_command_argument_completions_failed"
+    ]
 
 
 def test_contribution_api_builds_product_neutral_extension() -> None:
@@ -54,7 +216,7 @@ def test_loaded_extension_preserves_legacy_positional_field_order() -> None:
         label="Lookup",
         description="Lookup",
         parameters={},
-        execute=execute,  # type: ignore[arg-type]
+        execution=direct_execution(execute),  # type: ignore[arg-type]
     )
 
     def hook(event: object, context: object) -> None:
@@ -167,7 +329,7 @@ def test_registry_resolves_contributions_and_preserves_first_wins() -> None:
                 label="Lookup",
                 description="Lookup data",
                 parameters={},
-                execute=execute,  # type: ignore[arg-type]
+                execution=direct_execution(execute),  # type: ignore[arg-type]
             )
         ],
     )
@@ -232,7 +394,7 @@ def test_registry_excludes_every_surface_from_inactive_extensions() -> None:
                 label="Deploy",
                 description="Deploy",
                 parameters={},
-                execute=execute,  # type: ignore[arg-type]
+                execution=direct_execution(execute),  # type: ignore[arg-type]
             )
         ],
         policy=ExtensionPolicyDecision(enabled=False),

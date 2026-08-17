@@ -3,11 +3,10 @@ from __future__ import annotations
 import importlib
 
 
-def test_coding_workspace_tool_modules_alias_harness_owners() -> None:
+def test_workspace_tool_modules_are_owned_by_harness() -> None:
     module_names = (
         "bash",
         "builtin_renderers",
-        "context",
         "edit",
         "edit_diff",
         "external_tools",
@@ -15,7 +14,6 @@ def test_coding_workspace_tool_modules_alias_harness_owners() -> None:
         "grep",
         "ignore",
         "ls",
-        "normalize",
         "operations",
         "output_preview",
         "path_utils",
@@ -31,25 +29,26 @@ def test_coding_workspace_tool_modules_alias_harness_owners() -> None:
     )
 
     for module_name in module_names:
-        coding_module = importlib.import_module(f"loushang.coding.tools.{module_name}")
         harness_module = importlib.import_module(
             f"loushang.harness.tools.workspace.{module_name}"
         )
-        assert coding_module is harness_module
+        assert harness_module.__name__.startswith("loushang.harness.tools.workspace")
 
 
 def test_coding_factory_keeps_product_metadata_and_activation() -> None:
     import loushang.harness.tools.workspace as workspace_tools
-    from loushang.coding.tools import create_tool_definition
-    from loushang.coding.tools.builtins import BUILTIN_TOOL_PACK
+    from loushang.coding.tool_pack import (
+        CODING_BUILTIN_TOOL_PACK,
+        create_coding_tool_definition,
+    )
 
     harness_read = workspace_tools.create_tool_definition("read")
-    coding_read = create_tool_definition("read")
+    coding_read = create_coding_tool_definition("read")
 
     assert "coding workspace" not in harness_read.description
     assert "coding workspace" in coding_read.description
-    assert BUILTIN_TOOL_PACK.name == "coding.builtin"
-    assert not hasattr(workspace_tools, "BUILTIN_TOOL_PACK")
+    assert CODING_BUILTIN_TOOL_PACK.name == "coding.builtin"
+    assert not hasattr(workspace_tools, "CODING_BUILTIN_TOOL_PACK")
 
 
 def test_workspace_external_tool_location_accepts_legacy_coding_env(

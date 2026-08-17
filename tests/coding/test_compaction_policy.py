@@ -2,8 +2,8 @@ from __future__ import annotations
 
 
 def test_compaction_budget_uses_more_conservative_percent_threshold() -> None:
-    from loushang.coding.compaction import calculate_compaction_budget
     from loushang.coding.control import CompactionSettings
+    from loushang.harness.context.budget import calculate_compaction_budget
 
     budget = calculate_compaction_budget(
         context_window=128_000,
@@ -17,8 +17,8 @@ def test_compaction_budget_uses_more_conservative_percent_threshold() -> None:
 
 
 def test_compaction_budget_uses_more_conservative_reserve_threshold() -> None:
-    from loushang.coding.compaction import calculate_compaction_budget
     from loushang.coding.control import CompactionSettings
+    from loushang.harness.context.budget import calculate_compaction_budget
 
     budget = calculate_compaction_budget(
         context_window=32_000,

@@ -3,21 +3,43 @@ from loushang.ai.api import (
     complete_structured,
     stream,
 )
-from loushang.ai.errors import AIError, AIErrorCode, AIErrorInfo
+from loushang.ai.auth import (
+    ApiKeyAuth,
+    AuthError,
+    CredentialExpiredError,
+    CredentialStatus,
+    FileCredentialStore,
+    InvalidCredentialError,
+    MissingCredentialError,
+    OAuthBearerAuth,
+    OAuthCredential,
+    OAuthProviderNotConfiguredError,
+    RefreshFailedError,
+    credential_status,
+    login,
+    logout,
+)
+from loushang.ai.errors import (
+    AIError,
+    AIErrorCode,
+    AIErrorInfo,
+    AmbiguousModelError,
+    ModelNotFoundError,
+)
 from loushang.ai.event_stream import AssistantMessageEventStream
 from loushang.ai.model import Model, ModelSelection
 from loushang.ai.model.registry import (
-    ModelRegistry,
+    ModelRegistry as _ModelRegistry,
 )
 from loushang.ai.model.registry import (
     get_default_model_registry as _get_default_model_registry,
 )
 from loushang.ai.options import (
     CallOptions,
+    PreparedRequestLimits,
     ReasoningOptions,
     RetryOptions,
     ThinkingLevel,
-    TimeoutOptions,
 )
 from loushang.ai.structured import (
     StructuredOutputError,
@@ -46,12 +68,28 @@ from loushang.ai.usage import (
 )
 
 
-def _model_registry() -> ModelRegistry:
+def _model_registry() -> _ModelRegistry:
     return _get_default_model_registry()
 
 
 def get_model(provider: str, endpoint: str, model_id: str) -> Model:
-    return _model_registry().get_model(provider, endpoint, model_id)
+    try:
+        return _model_registry().get_model(provider, endpoint, model_id)
+    except KeyError as error:
+        ref = f"{provider}:{endpoint}:{model_id}"
+        raise ModelNotFoundError(
+            f"Model not found: {ref}",
+            provider=provider,
+            endpoint=endpoint,
+            model=model_id,
+        ) from error
+    except ValueError as error:
+        raise AmbiguousModelError(
+            f"Ambiguous model: {model_id}",
+            provider=provider,
+            endpoint=endpoint,
+            model=model_id,
+        ) from error
 
 
 def list_models(
@@ -71,18 +109,31 @@ __all__ = [
     "AssistantMessage",
     "AssistantMessageEvent",
     "AssistantMessageEventStream",
+    "AmbiguousModelError",
     "Context",
     "Message",
     "Model",
+    "ModelNotFoundError",
     "ModelSelection",
     "StopReason",
     "AIError",
     "AIErrorCode",
     "AIErrorInfo",
+    "ApiKeyAuth",
+    "AuthError",
     "CallOptions",
+    "PreparedRequestLimits",
+    "CredentialExpiredError",
+    "CredentialStatus",
+    "FileCredentialStore",
+    "InvalidCredentialError",
+    "MissingCredentialError",
+    "OAuthBearerAuth",
+    "OAuthCredential",
+    "OAuthProviderNotConfiguredError",
+    "RefreshFailedError",
     "ReasoningOptions",
     "RetryOptions",
-    "TimeoutOptions",
     "ThinkingLevel",
     "StructuredOutputError",
     "StructuredOutputOptions",
@@ -98,8 +149,11 @@ __all__ = [
     "UsageCost",
     "complete",
     "complete_structured",
+    "credential_status",
     "get_model",
     "list_models",
+    "login",
+    "logout",
     "stream",
     "usage_from_message",
     "usage_payload",

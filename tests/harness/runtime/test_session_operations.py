@@ -139,6 +139,74 @@ def test_session_operation_reports_after_commit_without_rolling_back() -> None:
     ]
 
 
+def test_session_operation_invalidation_failure_has_no_false_current() -> None:
+    events: list[str] = []
+
+    def fail_dispose(session: str) -> None:
+        events.append(f"dispose:{session}")
+        raise RuntimeError("dispose failed")
+
+    host = SessionTransitionHost("first", dispose=fail_dispose)
+    coordinator = SessionOperationCoordinator(host)
+
+    with pytest.raises(RuntimeError, match="dispose failed"):
+        asyncio.run(
+            coordinator.run(
+                lambda _current: SessionOperationCandidate(
+                    "second",
+                    None,
+                    rollback=lambda: events.append("rollback"),
+                ),
+                on_failure=lambda failure: events.append(
+                    f"failure:{failure.phase}:{failure.current}"
+                ),
+            )
+        )
+
+    assert host.current is None
+    assert events == [
+        "dispose:first",
+        "rollback",
+        f"failure:{SessionOperationPhase.REPLACE}:None",
+    ]
+
+
+def test_session_operation_rebind_failure_reports_published_candidate() -> None:
+    events: list[str] = []
+
+    def fail_rebind(session: str) -> None:
+        events.append(f"rebind:{session}")
+        raise RuntimeError("rebind failed")
+
+    host = SessionTransitionHost(
+        "first",
+        dispose=lambda session: events.append(f"dispose:{session}"),
+        rebind=fail_rebind,
+    )
+    coordinator = SessionOperationCoordinator(host)
+
+    with pytest.raises(RuntimeError, match="rebind failed"):
+        asyncio.run(
+            coordinator.run(
+                lambda _current: SessionOperationCandidate(
+                    "second",
+                    None,
+                    rollback=lambda: events.append("rollback"),
+                ),
+                on_failure=lambda failure: events.append(
+                    f"failure:{failure.phase}:{failure.current}"
+                ),
+            )
+        )
+
+    assert host.current == "second"
+    assert events == [
+        "dispose:first",
+        "rebind:second",
+        f"failure:{SessionOperationPhase.AFTER_COMMIT}:second",
+    ]
+
+
 def test_session_operation_cancellation_rolls_back_staged_candidate(tmp_path) -> None:
     staged_file = tmp_path / "staged.jsonl"
     staged_file.write_text("candidate", encoding="utf-8")

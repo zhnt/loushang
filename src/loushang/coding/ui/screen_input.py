@@ -1,339 +1,51 @@
 from __future__ import annotations
 
-import base64
-import uuid
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Literal
+from typing import cast
 
-from loushang.ai.types import ImagePart
-from loushang.coding.platform.clipboard_image import (
-    ClipboardImage,
-    extension_for_image_mime_type,
-    read_clipboard_image,
+from loushang.harnesstui.conversation.host import ConversationScreenRunProfile
+from loushang.harnesstui.conversation.input import (
+    ClipboardImageInputProfile,
+    ClipboardImageStatusCopy,
+    bind_clipboard_image_input_router,
 )
-from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.tui.input import (
-    ComposerInputTarget,
-    InputEvent,
-    InputIntent,
-    route_editor_editing_key,
-    route_editor_selection_key,
-    route_prompt_completion_key,
+from loushang.harnesstui.conversation.screen_runner import (
+    ConversationInputRouterFactoryPort,
 )
-from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
 
-RunningSubmitMode = Literal["steer", "follow_up"]
-ClipboardImageReader = Callable[[], ClipboardImage | None]
-ClipboardImageNameFactory = Callable[[], str]
+CODING_INTERRUPTION_MESSAGE = (
+    "Conversation interrupted - tell the model what to do differently."
+)
+CODING_CANCELLATION_MESSAGE = "Operation aborted"
 
+_CODING_CLIPBOARD_INPUT = ClipboardImageInputProfile(
+    directory=lambda app: Path(app.state.cwd) / ".loushang" / "clipboard",
+    display_root=lambda app: Path(app.state.cwd),
+    status_copy=ClipboardImageStatusCopy(
+        empty="No clipboard image found.",
+        read_error_prefix="Unable to read clipboard image: ",
+        unsupported_prefix="Unsupported clipboard image type: ",
+        write_error_prefix="Unable to attach clipboard image: ",
+        attached_prefix="Attached clipboard image: ",
+        unknown_type="unknown",
+    ),
+)
 
-@dataclass(frozen=True, slots=True)
-class _PendingClipboardImage:
-    marker: str
-    image: ImagePart
+build_screen_input_router = bind_clipboard_image_input_router(
+    _CODING_CLIPBOARD_INPUT
+)
+CODING_SCREEN_RUN_PROFILE = ConversationScreenRunProfile(
+    input_router_factory=cast(
+        ConversationInputRouterFactoryPort,
+        build_screen_input_router,
+    ),
+    interruption_message=CODING_INTERRUPTION_MESSAGE,
+    cancellation_message=CODING_CANCELLATION_MESSAGE,
+)
 
-
-@dataclass(frozen=True, slots=True)
-class ScreenInputResult:
-    prompt_text: str | None = None
-    prompt_images: tuple[ImagePart, ...] | None = None
-    local_text: str | None = None
-    steer_text: str | None = None
-    steer_images: tuple[ImagePart, ...] | None = None
-    followup_text: str | None = None
-    followup_images: tuple[ImagePart, ...] | None = None
-    surface_intent: InputIntent | None = None
-    abort_requested: bool = False
-    exit_code: int | None = None
-    render_requested: bool = True
-
-
-@dataclass(slots=True)
-class ScreenInputRouter:
-    app: ScreenCodingTuiApp
-    should_exit: Callable[[str], bool]
-    is_local_command: Callable[[str], bool] = lambda _text: False
-    keybindings: KeybindingManager | KeybindingConfig | None = None
-    running_submit_mode: RunningSubmitMode = "steer"
-    follow_up_keys: tuple[str, ...] = ("alt+enter",)
-    width: int = 80
-    height: int = 12
-    clipboard_image_reader: ClipboardImageReader = read_clipboard_image
-    clipboard_image_dir: Path | str | None = None
-    clipboard_image_name_factory: ClipboardImageNameFactory = field(default_factory=lambda: lambda: uuid.uuid4().hex)
-    _jump_mode: Literal["forward", "backward"] | None = None
-    _pending_clipboard_images: list[_PendingClipboardImage] = field(default_factory=list, init=False, repr=False)
-    _composer_target: ComposerInputTarget = field(init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.keybindings, KeybindingManager):
-            self.keybindings = KeybindingManager(self.keybindings)
-        self._composer_target = ComposerInputTarget(self.app.composer)
-
-    def handle(self, event: InputEvent) -> ScreenInputResult:
-        if event.kind == "key" and event.event_type == "release":
-            return ScreenInputResult(render_requested=False)
-        if self._runtime_surface_active():
-            return self._route_runtime_surface(event)
-        if self.app.active_surface is not None:
-            return self._route_active_surface(event)
-        if event.kind == "text":
-            if self._jump_mode is not None:
-                self.app.composer.jump_to_char(event.text, direction=self._jump_mode)
-                self._jump_mode = None
-                return ScreenInputResult()
-            self.app.composer.insert_text(event.text)
-            return ScreenInputResult()
-        if event.kind == "paste":
-            self._jump_mode = None
-            self.app.composer.paste(event.text)
-            return ScreenInputResult()
-        if event.kind == "resize":
-            if event.columns:
-                self.width = event.columns
-            if event.rows:
-                self.height = event.rows
-            return ScreenInputResult()
-        if event.kind != "key":
-            return ScreenInputResult(render_requested=False)
-
-        keybindings = self._keybindings()
-        if self._jump_mode is not None:
-            if keybindings.matches(event.key, "tui.editor.jumpForward") or keybindings.matches(
-                event.key,
-                "tui.editor.jumpBackward",
-            ):
-                self._jump_mode = None
-                return ScreenInputResult()
-            self._jump_mode = None
-        if keybindings.matches(event.key, "tui.queue.editLast"):
-            self._restore_queued_messages()
-            return ScreenInputResult()
-        if keybindings.matches(event.key, "tui.transcript.open"):
-            return ScreenInputResult(render_requested=self.app.open_transcript_reader())
-        if route_editor_selection_key(self._composer_target, event.key, keybindings=keybindings):
-            return ScreenInputResult()
-        if self.app.composer.has_completions and keybindings.matches(event.key, "tui.input.submit"):
-            return self._submit_selected_completion()
-        if self.app.composer.has_completions and self._route_completion_key(event, keybindings):
-            return ScreenInputResult()
-        if keybindings.matches(event.key, "tui.select.cancel"):
-            return self._abort_or_clear()
-        if keybindings.matches(event.key, "tui.input.tab"):
-            self.app.composer.refresh_completions(force=True, explicit=True)
-            if self.app.composer.has_completions:
-                self.app.composer.apply_selected_completion()
-            return ScreenInputResult()
-        if keybindings.matches(event.key, "app.clipboard.pasteImage"):
-            return self._paste_clipboard_image()
-        if keybindings.matches(event.key, "tui.editor.jumpForward"):
-            self._jump_mode = "forward"
-            return ScreenInputResult()
-        if keybindings.matches(event.key, "tui.editor.jumpBackward"):
-            self._jump_mode = "backward"
-            return ScreenInputResult()
-        if keybindings.matches(event.key, "tui.editor.cursorUp"):
-            if self.app.composer.browsing_history:
-                self.app.composer.history_previous()
-            elif not self.app.composer.value or not self.app.composer.move_visual_up(width=self.width):
-                self.app.composer.history_previous()
-            return ScreenInputResult()
-        if keybindings.matches(event.key, "tui.editor.cursorDown"):
-            if self.app.composer.browsing_history:
-                self.app.composer.history_next()
-            elif not self.app.composer.value or not self.app.composer.move_visual_down(width=self.width):
-                self.app.composer.history_next()
-            return ScreenInputResult()
-        if keybindings.matches(event.key, "tui.editor.pageUp"):
-            self.app.composer.move_visual_page_up(width=self.width, visible_lines=self._composer_page_lines())
-            return ScreenInputResult()
-        if keybindings.matches(event.key, "tui.editor.pageDown"):
-            self.app.composer.move_visual_page_down(width=self.width, visible_lines=self._composer_page_lines())
-            return ScreenInputResult()
-        if self.app.state.running and event.key in self.follow_up_keys:
-            return self._submit_running(mode="follow_up")
-        if keybindings.matches(event.key, "tui.input.newLine"):
-            self.app.composer.insert_newline()
-            return ScreenInputResult()
-        if keybindings.matches(event.key, "tui.input.submit"):
-            return self._submit()
-        if route_editor_editing_key(self._composer_target, event.key, keybindings=keybindings):
-            return ScreenInputResult()
-        return ScreenInputResult(render_requested=False)
-
-    def _route_completion_key(self, event: InputEvent, keybindings: KeybindingManager) -> bool:
-        return route_prompt_completion_key(self._composer_target, event.key, keybindings=keybindings)
-
-    def _submit_selected_completion(self) -> ScreenInputResult:
-        should_submit_after_completion = self.app.composer.value.lstrip().startswith("/")
-        self.app.composer.apply_selected_completion()
-        if should_submit_after_completion:
-            return self._submit()
-        return ScreenInputResult()
-
-    def _abort_or_clear(self) -> ScreenInputResult:
-        if self.app.state.running:
-            return ScreenInputResult(abort_requested=True)
-        if self.app.state.pending_steers:
-            pending_steer = self.app.state.pending_steers.pop(0)
-            return ScreenInputResult(steer_text=pending_steer)
-        if self.app.composer.value:
-            self.app.composer.clear()
-            self._clear_prompt_attachments()
-            return ScreenInputResult()
-        return ScreenInputResult(render_requested=False)
-
-    def _restore_queued_messages(self) -> None:
-        text = self.app.state.restore_queued_to_text()
-        if text:
-            self.app.composer.set_text(text)
-
-    def _submit(self) -> ScreenInputResult:
-        text = self.app.composer.value
-        if not text.strip():
-            return ScreenInputResult(render_requested=False)
-        if self.should_exit(text.strip()):
-            self.app.composer.clear()
-            self._clear_prompt_attachments()
-            return ScreenInputResult(exit_code=0)
-        if self.app.state.running:
-            return self._submit_running(mode=self.running_submit_mode)
-        if self.is_local_command(text.strip()):
-            self.app.composer.clear()
-            self._clear_prompt_attachments()
-            return ScreenInputResult(local_text=text.strip())
-        images = self._prompt_images_for_text(text)
-        self.app.start_prompt(text)
-        self._clear_prompt_attachments()
-        return ScreenInputResult(prompt_text=text, prompt_images=images)
-
-    def _submit_running(self, *, mode: RunningSubmitMode) -> ScreenInputResult:
-        text = self.app.composer.value
-        if not text.strip():
-            return ScreenInputResult(render_requested=False)
-        images = self._prompt_images_for_text(text)
-        self.app.composer.add_history(text)
-        self.app.composer.clear()
-        self._clear_prompt_attachments()
-        if mode == "follow_up":
-            self.app.queue_followup(text)
-            return ScreenInputResult(followup_text=text, followup_images=images)
-        self.app.queue_steer(text)
-        return ScreenInputResult(steer_text=text, steer_images=images)
-
-    def _keybindings(self) -> KeybindingManager:
-        return self.keybindings if isinstance(self.keybindings, KeybindingManager) else KeybindingManager(self.keybindings)
-
-    def _composer_page_lines(self) -> int:
-        return max(2, min(10, self.height))
-
-    def _route_active_surface(self, event: InputEvent) -> ScreenInputResult:
-        handler = getattr(self.app.active_surface, "handle_input", None)
-        if not callable(handler):
-            return ScreenInputResult(render_requested=False)
-        intent = handler(event)
-        if isinstance(intent, InputIntent):
-            if intent.kind == "consumed":
-                return ScreenInputResult()
-            return ScreenInputResult(surface_intent=intent)
-        return ScreenInputResult()
-
-    def _runtime_surface_active(self) -> bool:
-        surface_host = self.app.surface_host
-        return surface_host is not None and bool(surface_host.entries)
-
-    def _route_runtime_surface(self, event: InputEvent) -> ScreenInputResult:
-        surface_host = self.app.surface_host
-        if surface_host is None:
-            return ScreenInputResult(render_requested=False)
-        intents = surface_host.route_input(event, close_on_intents=("surface_close", "dialog_cancel"))
-        for intent in intents:
-            if isinstance(intent, InputIntent):
-                if intent.kind == "consumed":
-                    return ScreenInputResult()
-                return ScreenInputResult(surface_intent=intent)
-        return ScreenInputResult()
-
-    def _paste_clipboard_image(self) -> ScreenInputResult:
-        try:
-            image = self.clipboard_image_reader()
-        except Exception as error:  # noqa: BLE001 - platform clipboard commands can fail in many ways.
-            self.app.set_status(f"Unable to read clipboard image: {_exception_message(error)}")
-            return ScreenInputResult()
-        if image is None:
-            self.app.set_status("No clipboard image found.")
-            return ScreenInputResult()
-        extension = extension_for_image_mime_type(image.mime_type)
-        if extension is None:
-            self.app.set_status(f"Unsupported clipboard image type: {image.mime_type or 'unknown'}")
-            return ScreenInputResult()
-        try:
-            path = self._write_clipboard_image(image, extension=extension)
-        except OSError as error:
-            self.app.set_status(f"Unable to attach clipboard image: {error}")
-            return ScreenInputResult()
-        marker_path = _display_path(path, cwd=Path(self.app.cwd))
-        marker = f"@{marker_path}"
-        self.app.composer.paste(f"{marker} ")
-        self._pending_clipboard_images.append(
-            _PendingClipboardImage(
-                marker=marker,
-                image=ImagePart(
-                    type="image",
-                    data=base64.b64encode(image.bytes).decode("ascii"),
-                    mime_type=_base_mime_type(image.mime_type),
-                ),
-            )
-        )
-        self.app.set_status(f"Attached clipboard image: {marker_path}")
-        return ScreenInputResult()
-
-    def _write_clipboard_image(self, image: ClipboardImage, *, extension: str) -> Path:
-        directory = Path(self.clipboard_image_dir) if self.clipboard_image_dir is not None else Path(self.app.cwd) / ".loushang" / "clipboard"
-        directory.mkdir(parents=True, exist_ok=True)
-        token = _safe_filename_token(self.clipboard_image_name_factory())
-        path = directory / f"clipboard-{token}.{extension}"
-        path.write_bytes(image.bytes)
-        return path
-
-    def _prompt_images_for_text(self, text: str) -> tuple[ImagePart, ...] | None:
-        present = [
-            (position, pending.image)
-            for pending in self._pending_clipboard_images
-            if (position := text.find(pending.marker)) >= 0
-        ]
-        images = tuple(image for _position, image in sorted(present, key=lambda item: item[0]))
-        return images or None
-
-    def _clear_prompt_attachments(self) -> None:
-        self._pending_clipboard_images.clear()
-
-
-def _display_path(path: Path, *, cwd: Path) -> str:
-    try:
-        return path.relative_to(cwd).as_posix()
-    except ValueError:
-        return path.as_posix()
-
-
-def _safe_filename_token(value: str) -> str:
-    token = value.strip() or uuid.uuid4().hex
-    safe = "".join(character if _is_safe_filename_character(character) else "_" for character in token)
-    safe = safe.strip("._")
-    return safe or uuid.uuid4().hex
-
-
-def _is_safe_filename_character(character: str) -> bool:
-    return character.isascii() and (character.isalnum() or character in {"-", "_", "."})
-
-
-def _exception_message(error: BaseException) -> str:
-    return str(error) or error.__class__.__name__
-
-
-def _base_mime_type(mime_type: str) -> str:
-    return mime_type.split(";", 1)[0].strip().lower()
-
-
-__all__ = ["ScreenInputResult", "ScreenInputRouter", "RunningSubmitMode"]
+__all__ = [
+    "CODING_CANCELLATION_MESSAGE",
+    "CODING_INTERRUPTION_MESSAGE",
+    "CODING_SCREEN_RUN_PROFILE",
+    "build_screen_input_router",
+]

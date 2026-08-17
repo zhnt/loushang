@@ -1,22 +1,119 @@
 from __future__ import annotations
 
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Protocol
 
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.resources.layout import resolve_user_resource_roots
 from loushang.harness.resources.packages.manifest import resolve_package_manifest
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.packages.source import (
     PackageSourceConfig,
     is_remote_package_source,
 )
+from loushang.harness.resources.packages.source_resolver import (
+    configured_package_sources,
+    package_source_scopes,
+)
 from loushang.harness.resources.plugins import PluginManager
+
+
+class ResourceRootSettingsSnapshot(Protocol):
+    @property
+    def package_roots(self) -> tuple[str, ...]: ...
+
+    @property
+    def plugin_sources(self) -> tuple[str, ...]: ...
+
+    @property
+    def package_sources(self) -> tuple[PackageSourceConfig, ...]: ...
+
+    @property
+    def disabled_plugins(self) -> tuple[str, ...]: ...
+
+
+class ResourceRootSettingsManager(Protocol):
+    @property
+    def global_base_dir(self) -> Path | None: ...
+
+    @property
+    def project_base_dir(self) -> Path | None: ...
+
+    def get_settings(self) -> ResourceRootSettingsSnapshot: ...
+
+    def get_global_settings(self) -> Mapping[str, object]: ...
+
+
+class ResourceRootLoader(Protocol):
+    def set_package_roots(
+        self,
+        package_roots: Sequence[str | Path] | None,
+        package_source_filters: Mapping[str | Path, PackageSourceConfig] | None = None,
+    ) -> None: ...
+
+    def set_user_resource_roots(
+        self,
+        user_resource_roots: Sequence[str | Path] | None,
+        *,
+        explicit_roots: Collection[str | Path] | None = None,
+    ) -> None: ...
 
 
 @dataclass(frozen=True)
 class ResolvedPackageResourceRoots:
     roots: tuple[str, ...] = ()
     filters: dict[Path, PackageSourceConfig] = field(default_factory=dict)
+
+
+def configure_resource_loader_roots(
+    *,
+    resource_loader: ResourceRootLoader,
+    settings_manager: ResourceRootSettingsManager,
+    materializer: PackageMaterializer,
+    diagnostics_service: DiagnosticsService | None = None,
+    session_id: str | None = None,
+) -> ResolvedPackageResourceRoots:
+    """Bind standard package and user resource roots to one loader."""
+
+    settings = settings_manager.get_settings()
+    scoped_package_sources = configured_package_sources(settings_manager)
+    resolved = resolve_package_resource_roots(
+        package_roots=settings.package_roots,
+        plugin_sources=settings.plugin_sources,
+        package_sources=scoped_package_sources or settings.package_sources,
+        materializer=materializer,
+        package_source_scopes=package_source_scopes(settings_manager),
+        global_base_dir=settings_manager.global_base_dir,
+        project_base_dir=settings_manager.project_base_dir,
+        disabled_plugins=settings.disabled_plugins,
+        diagnostics_service=diagnostics_service,
+        session_id=session_id,
+    )
+    package_source_filters: dict[str | Path, PackageSourceConfig] = {
+        root: config for root, config in resolved.filters.items()
+    }
+    resource_loader.set_package_roots(resolved.roots, package_source_filters)
+    configured_global_roots = settings_manager.get_global_settings().get(
+        "resource_roots",
+        (),
+    )
+    global_resource_roots: tuple[str | Path, ...] = (
+        tuple(configured_global_roots)
+        if isinstance(configured_global_roots, list | tuple)
+        and all(isinstance(root, str | Path) for root in configured_global_roots)
+        else ()
+    )
+    user_roots, explicit_roots = resolve_user_resource_roots(
+        global_resource_roots,
+        global_base_dir=settings_manager.global_base_dir,
+    )
+    resource_loader.set_user_resource_roots(
+        user_roots,
+        explicit_roots=explicit_roots,
+    )
+    return resolved
 
 
 def resolve_package_resource_roots(
@@ -34,8 +131,8 @@ def resolve_package_resource_roots(
 ) -> ResolvedPackageResourceRoots:
     roots: list[str] = []
     filters: dict[Path, PackageSourceConfig] = {}
-    for root in package_roots:
-        _append_package_root(roots, root)
+    for configured_root in package_roots:
+        _append_package_root(roots, configured_root)
     manager = PluginManager(disabled_plugins=disabled_plugins)
     for source in plugin_sources:
         if is_remote_package_source(source):
@@ -64,17 +161,17 @@ def resolve_package_resource_roots(
             record = materializer.get_record(package_source.source)
             if record is None or record.lifecycle != "installed":
                 continue
-            root = resolve_package_manifest(record.target_path).package_root
+            resolved_root = resolve_package_manifest(record.target_path).package_root
         else:
             scope = (package_source_scopes or {}).get(package_source.source)
-            root = _resolve_local_package_source(
+            resolved_root = _resolve_local_package_source(
                 package_source.source,
                 scope=scope,
                 global_base_dir=global_base_dir,
                 project_base_dir=project_base_dir,
             )
-        _append_package_root(roots, root)
-        filters[Path(root).expanduser().resolve()] = package_source
+        _append_package_root(roots, resolved_root)
+        filters[Path(resolved_root).expanduser().resolve()] = package_source
     return ResolvedPackageResourceRoots(roots=tuple(roots), filters=filters)
 
 

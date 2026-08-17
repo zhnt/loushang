@@ -60,12 +60,27 @@ def normalize_context_result(
     pairing_mode: PairingMode = "strict",
 ) -> NormalizationResult:
     if isinstance(context, NormalizedContext):
-        return NormalizationResult(context=context)
+        tools = _normalize_tools(context.tools)
+        message_result = normalize_messages_result(
+            list(context.messages),
+            tools=list(tools),
+            model=model,
+            pairing_mode=pairing_mode,
+        )
+        return NormalizationResult(
+            context=NormalizedContext(
+                system_prompt=_optional_system_prompt(
+                    context.system_prompt,
+                    "system_prompt",
+                ),
+                messages=tuple(_validate_normalized_messages(message_result.messages)),
+                tools=tools,
+            ),
+            diagnostics=message_result.diagnostics,
+        )
 
     if context is None:
-        return NormalizationResult(
-            context=NormalizedContext(system_prompt=None)
-        )
+        return NormalizationResult(context=NormalizedContext(system_prompt=None))
 
     if isinstance(context, Context):
         tools = _normalize_tools(context.tools)
@@ -77,7 +92,10 @@ def normalize_context_result(
         )
         return NormalizationResult(
             context=NormalizedContext(
-                system_prompt=context.system_prompt,
+                system_prompt=_optional_system_prompt(
+                    context.system_prompt,
+                    "system_prompt",
+                ),
                 messages=tuple(_validate_normalized_messages(message_result.messages)),
                 tools=tools,
             ),
@@ -208,6 +226,8 @@ def _normalize_tools(tools: Any) -> tuple[Tool, ...]:
     normalized: list[Tool] = []
     for tool in tools:
         if isinstance(tool, Tool):
+            if not isinstance(tool.description, str):
+                raise TypeError("Unsupported tool description type")
             normalized.append(
                 Tool(
                     name=_normalize_tool_name(tool.name),
@@ -217,10 +237,13 @@ def _normalize_tools(tools: Any) -> tuple[Tool, ...]:
             )
             continue
         if isinstance(tool, dict):
+            description = tool.get("description", "")
+            if not isinstance(description, str):
+                raise TypeError("Unsupported tool description type")
             normalized.append(
                 Tool(
                     name=_normalize_tool_name(tool.get("name")),
-                    description=tool.get("description", ""),
+                    description=description,
                     parameters=_normalize_tool_parameters(
                         tool.get("parameters", {"type": "object"})
                     ),

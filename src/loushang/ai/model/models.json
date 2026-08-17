@@ -1,96 +1,5 @@
 {
   "providers": {
-    "anthropic": {
-      "displayName": "Anthropic",
-      "website": "https://docs.anthropic.com",
-      "auth": {
-        "kind": "apiKey",
-        "apiKeyEnv": "ANTHROPIC_API_KEY",
-        "header": "x-api-key",
-        "prefix": "",
-        "extraHeaders": {
-          "anthropic-version": "2023-06-01"
-        }
-      },
-      "endpoints": {
-        "anthropic-messages": {
-          "displayName": "Anthropic Messages API",
-          "api": "anthropic-messages",
-          "baseUrl": "https://api.anthropic.com",
-          "preferred": true,
-          "docs": "https://docs.anthropic.com/en/api/messages",
-          "models": {
-            "claude-opus-4-8": {
-              "displayName": "Claude Opus 4.8",
-              "family": "claude-opus-4-8",
-              "defaults": {
-                "maxTokens": 32000
-              },
-              "capabilities": {
-                "contextWindow": 1000000,
-                "maxTokens": 128000,
-                "input": [
-                  "text",
-                  "image"
-                ],
-                "output": [
-                  "text"
-                ],
-                "reasoning": true,
-                "stream": true,
-                "toolUse": true,
-                "structuredOutput": true,
-                "attachment": false,
-                "temperature": false
-              },
-              "pricing": {
-                "currency": "USD",
-                "input": 5,
-                "output": 25,
-                "cacheRead": 0.5,
-                "cacheWrite": 6.25
-              }
-            },
-            "claude-sonnet-4-6": {
-              "displayName": "Claude Sonnet 4.6",
-              "family": "claude-sonnet-4-6",
-              "defaults": {
-                "maxTokens": 32000
-              },
-              "capabilities": {
-                "contextWindow": 1000000,
-                "maxTokens": 64000,
-                "input": [
-                  "text",
-                  "image"
-                ],
-                "output": [
-                  "text"
-                ],
-                "reasoning": true,
-                "stream": true,
-                "toolUse": true,
-                "structuredOutput": true,
-                "attachment": false,
-                "temperature": true
-              },
-              "pricing": {
-                "currency": "USD",
-                "input": 3,
-                "output": 15,
-                "cacheRead": 0.3,
-                "cacheWrite": 3.75
-              }
-            }
-          },
-          "adapter": {
-            "fineGrainedTools": true,
-            "interleavedThinking": true,
-            "longCacheRetention": true
-          }
-        }
-      }
-    },
     "atlascloud": {
       "displayName": "Atlas Cloud",
       "website": "https://www.atlascloud.ai/docs",
@@ -197,10 +106,6 @@
           "region": "cn",
           "preferred": true,
           "docs": "https://cloud.baidu.com/doc/qianfan-api/s/3m7of64lb",
-          "transport": {
-            "kind": "http",
-            "stream": "sse"
-          },
           "models": {
             "ernie-5.1": {
               "displayName": "ERNIE 5.1",
@@ -211,7 +116,7 @@
                 "maxOutputTokens": 4096
               },
               "capabilities": {
-                "contextWindow": 248832,
+                "contextWindow": 131072,
                 "maxTokens": 65536,
                 "input": [
                   "text"
@@ -228,8 +133,8 @@
               },
               "pricing": {
                 "currency": "CNY",
-                "input": 6,
-                "output": 22
+                "input": 4,
+                "output": 18
               }
             }
           },
@@ -239,10 +144,7 @@
             "streamingUsage": true,
             "reasoningEffort": false,
             "strictSchema": false,
-            "maxOutputTokensField": "max_tokens",
-            "toolResultName": false,
-            "assistantAfterToolResult": false,
-            "toolStream": false
+            "maxOutputTokensField": "max_tokens"
           }
         }
       }
@@ -264,10 +166,6 @@
           "region": "cn",
           "preferred": true,
           "docs": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses",
-          "transport": {
-            "kind": "http",
-            "stream": "sse"
-          },
           "models": {
             "qwen3.7-max": {
               "displayName": "Qwen3.7 Max",
@@ -353,10 +251,6 @@
           "baseUrl": "https://api.deepseek.com",
           "preferred": true,
           "docs": "https://api-docs.deepseek.com/",
-          "transport": {
-            "kind": "http",
-            "stream": "sse"
-          },
           "models": {
             "deepseek-v4-flash": {
               "displayName": "DeepSeek V4 Flash",
@@ -426,10 +320,6 @@
             },
             "strictSchema": true,
             "maxOutputTokensField": "max_tokens",
-            "toolResultName": false,
-            "assistantAfterToolResult": false,
-            "toolStream": false,
-            "thinkingAsText": false,
             "assistantReasoningContent": true,
             "reasoningFormat": "deepseek"
           }
@@ -455,10 +345,6 @@
           "adapter": {
             "longCacheRetention": false
           },
-          "transport": {
-            "kind": "http",
-            "stream": "sse"
-          },
           "models": {
             "MiniMax-M3": {
               "displayName": "MiniMax-M3",
@@ -476,7 +362,28 @@
                 "reasoning": true,
                 "stream": true,
                 "toolUse": true,
-                "structuredOutput": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": true
+              }
+            },
+            "MiniMax-M2.7": {
+              "displayName": "MiniMax-M2.7",
+              "family": "MiniMax-M2.7",
+              "alias": "balanced-chat",
+              "capabilities": {
+                "contextWindow": 204800,
+                "maxTokens": 131072,
+                "input": [
+                  "text"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
                 "attachment": false,
                 "temperature": true
               }
@@ -505,7 +412,7 @@
             "kimi-k2.6": {
               "displayName": "Kimi K2.6",
               "family": "kimi-k2",
-              "alias": "default-chat",
+              "alias": "balanced-chat",
               "defaults": {
                 "maxOutputTokens": 32000,
                 "reasoningEffort": "medium"
@@ -527,10 +434,10 @@
                 "temperature": false
               },
               "pricing": {
-                "currency": "USD",
-                "input": 0.95,
-                "output": 4,
-                "cacheRead": 0.16
+                "currency": "CNY",
+                "input": 6.5,
+                "output": 27,
+                "cacheRead": 1.1
               }
             },
             "kimi-k2.7-code": {
@@ -558,10 +465,42 @@
                 "temperature": false
               },
               "pricing": {
-                "currency": "USD",
-                "input": 0.95,
-                "output": 4,
-                "cacheRead": 0.19
+                "currency": "CNY",
+                "input": 6.5,
+                "output": 27,
+                "cacheRead": 1.3
+              }
+            },
+            "kimi-k3": {
+              "displayName": "Kimi K3",
+              "family": "kimi-k3",
+              "alias": "default-chat",
+              "defaults": {
+                "maxOutputTokens": 131072,
+                "reasoningEffort": "high"
+              },
+              "capabilities": {
+                "contextWindow": 1048576,
+                "maxTokens": 1048576,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false
+              },
+              "pricing": {
+                "currency": "CNY",
+                "input": 20,
+                "output": 100,
+                "cacheRead": 2
               }
             }
           },
@@ -572,7 +511,6 @@
             "reasoningEffort": false,
             "strictSchema": false,
             "maxOutputTokensField": "max_tokens",
-            "thinkingAsText": false,
             "assistantReasoningContent": false,
             "reasoningFormat": "moonshot"
           }
@@ -589,6 +527,82 @@
         "prefix": "Bearer "
       },
       "endpoints": {
+        "kimi-code-openai": {
+          "displayName": "Kimi Code OpenAI Completions",
+          "api": "openai-completions",
+          "baseUrl": "https://api.kimi.com/coding/v1",
+          "region": "cn",
+          "lane": "coding",
+          "docs": "https://www.kimi.com/code/docs/en/third-party-tools/other-coding-agents",
+          "models": {
+            "kimi-for-coding": {
+              "displayName": "Kimi Code K2.7",
+              "family": "kimi-coding",
+              "alias": "balanced-coding",
+              "defaults": {
+                "maxOutputTokens": 32768
+              },
+              "capabilities": {
+                "contextWindow": 262144,
+                "maxTokens": 32768,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false
+              },
+              "adapter": {
+                "streamingUsage": false,
+                "reasoningEffort": false,
+                "strictSchema": true
+              }
+            },
+            "k3": {
+              "displayName": "Kimi Code K3",
+              "family": "kimi-k3",
+              "alias": "default-coding",
+              "defaults": {
+                "maxOutputTokens": 131072,
+                "reasoningEffort": "high"
+              },
+              "capabilities": {
+                "contextWindow": 1048576,
+                "maxTokens": 131072,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false
+              },
+              "adapter": {
+                "reasoningEffort": true,
+                "maxOutputTokensField": "max_completion_tokens",
+                "assistantReasoningContent": true,
+                "reasoningFormat": "openai"
+              }
+            }
+          },
+          "adapter": {
+            "reasoningFormat": "moonshot",
+            "developerRole": false
+          }
+        },
         "kimi-code-anthropic": {
           "displayName": "Kimi Code Anthropic Messages",
           "api": "anthropic-messages",
@@ -600,12 +614,9 @@
           "docs": "https://www.kimi.com/code/docs/en/",
           "models": {
             "kimi-for-coding": {
-              "displayName": "Kimi for Coding",
+              "displayName": "Kimi Code K2.7",
               "family": "kimi-coding",
-              "alias": "default-coding",
-              "knowledge": "2025-01",
-              "releaseDate": "2026-01",
-              "lastUpdated": "2026-01",
+              "alias": "balanced-coding",
               "defaults": {
                 "maxOutputTokens": 32768
               },
@@ -613,7 +624,94 @@
                 "contextWindow": 262144,
                 "maxTokens": 32768,
                 "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
                   "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": false
+              }
+            },
+            "k3": {
+              "displayName": "Kimi Code K3",
+              "family": "kimi-k3",
+              "alias": "default-coding",
+              "defaults": {
+                "maxOutputTokens": 131072,
+                "reasoningEffort": "high"
+              },
+              "capabilities": {
+                "contextWindow": 1048576,
+                "maxTokens": 131072,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": false
+              },
+              "adapter": {
+                "thinkingMode": "adaptive",
+                "reasoningEffortMap": {
+                  "minimal": "low",
+                  "low": "low",
+                  "medium": "medium",
+                  "high": "high",
+                  "xhigh": "max"
+                }
+              }
+            }
+          },
+          "adapter": {
+            "longCacheRetention": false
+          }
+        }
+      }
+    },
+    "openai": {
+      "displayName": "OpenAI",
+      "website": "https://platform.openai.com",
+      "endpoints": {
+        "openai-responses": {
+          "displayName": "OpenAI Responses API",
+          "api": "openai-responses",
+          "baseUrl": "https://api.openai.com/v1",
+          "preferred": true,
+          "docs": "https://developers.openai.com/api/reference/resources/responses/methods/create",
+          "auth": {
+            "kind": "apiKey",
+            "apiKeyEnv": "OPENAI_API_KEY",
+            "header": "Authorization",
+            "prefix": "Bearer "
+          },
+          "models": {
+            "gpt-5.5": {
+              "displayName": "GPT-5.5",
+              "family": "gpt-5",
+              "knowledge": "2025-12-01",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 1050000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
                 ],
                 "output": [
                   "text"
@@ -626,52 +724,22 @@
                 "temperature": true
               },
               "pricing": {
-                "currency": "CNY",
-                "input": 0,
-                "output": 0,
-                "cacheRead": 0,
-                "cacheWrite": 0
+                "currency": "USD",
+                "input": 5,
+                "output": 30,
+                "cacheRead": 0.5
               }
-            }
-          },
-          "adapter": {
-            "sessionAffinityHeaders": true,
-            "longCacheRetention": false
-          }
-        }
-      }
-    },
-    "openai": {
-      "displayName": "OpenAI",
-      "website": "https://platform.openai.com",
-      "auth": {
-        "kind": "apiKey",
-        "apiKeyEnv": "OPENAI_API_KEY",
-        "header": "Authorization",
-        "prefix": "Bearer "
-      },
-      "endpoints": {
-        "openai-responses": {
-          "displayName": "OpenAI Responses API",
-          "api": "openai-responses",
-          "baseUrl": "https://api.openai.com/v1",
-          "preferred": true,
-          "docs": "https://developers.openai.com/api/reference/resources/responses/methods/create",
-          "transport": {
-            "kind": "http",
-            "stream": "sse"
-          },
-          "models": {
-            "gpt-5.5": {
-              "displayName": "GPT-5.5",
-              "family": "gpt-5",
-              "knowledge": "2025-12-01",
+            },
+            "gpt-5.6-sol": {
+              "displayName": "GPT-5.6 Sol",
+              "family": "gpt-5.6",
+              "knowledge": "2026-02-16",
               "defaults": {
                 "maxOutputTokens": 32000,
                 "reasoningEffort": "medium"
               },
               "capabilities": {
-                "contextWindow": 1000000,
+                "contextWindow": 1050000,
                 "maxTokens": 128000,
                 "input": [
                   "text",
@@ -728,8 +796,80 @@
             }
           },
           "adapter": {
+            "developerRole": true
+          }
+        },
+        "coding-responses": {
+          "displayName": "OpenAI Responses Coding Endpoint",
+          "api": "openai-responses",
+          "baseUrl": "https://chatgpt.com/backend-api/codex",
+          "region": "global",
+          "auth": {
+            "kind": "oauth",
+            "header": "Authorization",
+            "prefix": "Bearer "
+          },
+          "headers": {
+            "originator": "loushang",
+            "OpenAI-Beta": "responses=experimental"
+          },
+          "models": {
+            "gpt-5.5": {
+              "displayName": "GPT-5.5-oauth",
+              "family": "gpt-5",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 400000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true
+              }
+            },
+            "gpt-5.6-sol": {
+              "displayName": "GPT-5.6 Sol oauth",
+              "family": "gpt-5.6",
+              "defaults": {
+                "maxOutputTokens": 32000,
+                "reasoningEffort": "medium"
+              },
+              "capabilities": {
+                "contextWindow": 1050000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true
+              }
+            }
+          },
+          "adapter": {
             "developerRole": true,
-            "assistantAfterToolResult": false
+            "maxOutputTokens": false,
+            "promptCacheKey": false,
+            "longCacheRetention": false
           }
         }
       }
@@ -753,10 +893,6 @@
           "baseUrl": "https://api.stepfun.ai/v1",
           "preferred": true,
           "docs": "https://platform.stepfun.ai/docs/en/api-reference/chat/chat-completion-create",
-          "transport": {
-            "kind": "http",
-            "stream": "sse"
-          },
           "models": {
             "step-3.7-flash": {
               "displayName": "Step 3.7 Flash",
@@ -803,10 +939,7 @@
               "xhigh": "high"
             },
             "strictSchema": false,
-            "maxOutputTokensField": "max_tokens",
-            "toolResultName": false,
-            "assistantAfterToolResult": false,
-            "toolStream": false
+            "maxOutputTokensField": "max_tokens"
           }
         }
       }
@@ -827,50 +960,44 @@
           "baseUrl": "https://tokenhub.tencentmaas.com/v1",
           "region": "cn",
           "preferred": true,
-          "docs": "https://cloud.tencent.com/document/product/1823/130079",
-          "transport": {
-            "kind": "http",
-            "stream": "sse"
-          },
+          "docs": "https://cloud.tencent.com/document/product/1823/132252",
           "models": {
-            "hy3-preview": {
-              "displayName": "Hy3 Preview",
+            "hy3": {
+              "displayName": "Hy3",
               "family": "hy3",
               "alias": "default-chat",
-              "lastUpdated": "2026-06-18",
+              "lastUpdated": "2026-07-24",
               "defaults": {
                 "maxOutputTokens": 4096
               },
               "capabilities": {
-                "contextWindow": 32768,
-                "maxTokens": 16384,
+                "contextWindow": 262144,
+                "maxTokens": 131072,
                 "input": [
                   "text"
                 ],
                 "output": [
                   "text"
                 ],
-                "reasoning": false,
+                "reasoning": true,
                 "stream": true,
                 "toolUse": true,
-                "structuredOutput": false,
+                "structuredOutput": true,
                 "attachment": false,
                 "temperature": true
               },
               "pricing": {
                 "currency": "CNY",
-                "input": 1.2,
+                "input": 1,
                 "output": 4,
-                "cacheRead": 0.4
+                "cacheRead": 0.25
               }
             }
           },
           "adapter": {
             "developerRole": false,
             "promptCacheKey": false,
-            "longCacheRetention": false,
-            "sessionIdHeader": false,
-            "assistantAfterToolResult": false
+            "longCacheRetention": false
           }
         }
       }
@@ -892,18 +1019,14 @@
           "region": "cn-beijing",
           "preferred": true,
           "docs": "https://www.volcengine.com/docs/82379/1330310",
-          "transport": {
-            "kind": "http",
-            "stream": "sse"
-          },
           "models": {
-            "doubao-seed-2-0-lite-260215": {
-              "displayName": "Doubao Seed 2.0 Lite",
-              "family": "doubao-seed-2.0",
-              "alias": "default-chat",
-              "lastUpdated": "2026-02-15",
+            "doubao-seed-evolving": {
+              "displayName": "Doubao Seed Evolving",
+              "family": "doubao-seed-evolving",
+              "alias": "default-coding",
               "capabilities": {
-                "contextWindow": 262144,
+                "contextWindow": 1048576,
+                "maxTokens": 262144,
                 "input": [
                   "text",
                   "image"
@@ -911,12 +1034,74 @@
                 "output": [
                   "text"
                 ],
-                "reasoning": false,
+                "reasoning": true,
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
                 "attachment": false,
                 "temperature": true
+              },
+              "pricing": {
+                "currency": "CNY",
+                "input": 6,
+                "output": 30,
+                "cacheRead": 1.2
+              }
+            },
+            "doubao-seed-2-1-pro-260628": {
+              "displayName": "Doubao Seed 2.1 Pro",
+              "family": "doubao-seed-2.1",
+              "alias": "default-chat",
+              "capabilities": {
+                "contextWindow": 262144,
+                "maxTokens": 262144,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true
+              },
+              "pricing": {
+                "currency": "CNY",
+                "input": 6,
+                "output": 30,
+                "cacheRead": 1.2
+              }
+            },
+            "doubao-seed-2-1-turbo-260628": {
+              "displayName": "Doubao Seed 2.1 Turbo",
+              "family": "doubao-seed-2.1",
+              "alias": "fast-chat",
+              "capabilities": {
+                "contextWindow": 262144,
+                "maxTokens": 262144,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": true
+              },
+              "pricing": {
+                "currency": "CNY",
+                "input": 3,
+                "output": 15,
+                "cacheRead": 0.6
               }
             }
           },
@@ -925,10 +1110,7 @@
             "developerRole": false,
             "reasoningEffort": false,
             "strictSchema": false,
-            "maxOutputTokensField": "max_tokens",
-            "toolResultName": false,
-            "assistantAfterToolResult": false,
-            "toolStream": false
+            "maxOutputTokensField": "max_tokens"
           }
         }
       }
@@ -949,10 +1131,6 @@
           "baseUrl": "https://api.z.ai/api/paas/v4/",
           "preferred": true,
           "docs": "https://docs.z.ai/guides/overview/quick-start",
-          "transport": {
-            "kind": "http",
-            "stream": "sse"
-          },
           "models": {
             "glm-5.2": {
               "displayName": "GLM-5.2",
@@ -984,9 +1162,9 @@
                 "cacheRead": 0.26
               }
             },
-            "glm-5.1": {
-              "displayName": "GLM-5.1",
-              "family": "glm-5",
+            "glm-4.7": {
+              "displayName": "GLM-4.7",
+              "family": "glm-4",
               "alias": "balanced-chat",
               "defaults": {
                 "maxOutputTokens": 4096
@@ -1009,9 +1187,9 @@
               },
               "pricing": {
                 "currency": "USD",
-                "input": 1.4,
-                "output": 4.4,
-                "cacheRead": 0.26
+                "input": 0.6,
+                "output": 2.2,
+                "cacheRead": 0.11
               }
             }
           },
@@ -1022,12 +1200,191 @@
             "reasoningEffort": false,
             "strictSchema": false,
             "maxOutputTokensField": "max_tokens",
-            "toolResultName": false,
-            "assistantAfterToolResult": false,
-            "toolStream": false,
-            "thinkingAsText": false,
             "assistantReasoningContent": false,
             "reasoningFormat": "zai-thinking"
+          }
+        }
+      }
+    },
+    "anthropic": {
+      "displayName": "Anthropic",
+      "website": "https://docs.anthropic.com",
+      "auth": {
+        "kind": "apiKey",
+        "apiKeyEnv": "ANTHROPIC_API_KEY",
+        "header": "x-api-key",
+        "prefix": ""
+      },
+      "endpoints": {
+        "anthropic-messages": {
+          "displayName": "Anthropic Messages API",
+          "api": "anthropic-messages",
+          "baseUrl": "https://api.anthropic.com",
+          "headers": {
+            "anthropic-version": "2023-06-01"
+          },
+          "preferred": true,
+          "docs": "https://docs.anthropic.com/en/api/messages",
+          "models": {
+            "claude-fable-5": {
+              "displayName": "Claude Fable 5",
+              "family": "claude-fable-5",
+              "defaults": {
+                "maxTokens": 32000
+              },
+              "capabilities": {
+                "contextWindow": 1000000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": false
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 10,
+                "output": 50,
+                "cacheRead": 1,
+                "cacheWrite": 12.5
+              },
+              "adapter": {
+                "thinkingMode": "adaptive",
+                "reasoningEffortMap": {
+                  "minimal": "low",
+                  "low": "low",
+                  "medium": "medium",
+                  "high": "high",
+                  "xhigh": "xhigh"
+                }
+              }
+            },
+            "claude-opus-5": {
+              "displayName": "Claude Opus 5",
+              "family": "claude-opus-5",
+              "defaults": {
+                "maxTokens": 32000
+              },
+              "capabilities": {
+                "contextWindow": 1000000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": false
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 5,
+                "output": 25,
+                "cacheRead": 0.5,
+                "cacheWrite": 6.25
+              },
+              "adapter": {
+                "thinkingMode": "adaptive",
+                "reasoningEffortMap": {
+                  "minimal": "low",
+                  "low": "low",
+                  "medium": "medium",
+                  "high": "high",
+                  "xhigh": "xhigh"
+                }
+              }
+            },
+            "claude-sonnet-5": {
+              "displayName": "Claude Sonnet 5",
+              "family": "claude-sonnet-5",
+              "defaults": {
+                "maxTokens": 32000
+              },
+              "capabilities": {
+                "contextWindow": 1000000,
+                "maxTokens": 128000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": false
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 3,
+                "output": 15,
+                "cacheRead": 0.3,
+                "cacheWrite": 3.75
+              },
+              "adapter": {
+                "thinkingMode": "adaptive",
+                "reasoningEffortMap": {
+                  "minimal": "low",
+                  "low": "low",
+                  "medium": "medium",
+                  "high": "high",
+                  "xhigh": "xhigh"
+                }
+              }
+            },
+            "claude-haiku-4-5": {
+              "displayName": "Claude Haiku 4.5",
+              "family": "claude-haiku-4-5",
+              "defaults": {
+                "maxTokens": 16000
+              },
+              "capabilities": {
+                "contextWindow": 200000,
+                "maxTokens": 64000,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": false,
+                "attachment": false,
+                "temperature": true
+              },
+              "pricing": {
+                "currency": "USD",
+                "input": 1,
+                "output": 5,
+                "cacheRead": 0.1,
+                "cacheWrite": 1.25
+              }
+            }
+          },
+          "adapter": {
+            "fineGrainedTools": true,
+            "interleavedThinking": true,
+            "longCacheRetention": true
           }
         }
       }

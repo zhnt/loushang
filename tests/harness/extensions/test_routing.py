@@ -281,7 +281,7 @@ def test_plan_preserves_external_edges_while_falling_back_inside_cycle() -> None
         if diagnostic.code == "extension_route_order_cycle"
     ]
     assert len(cycle) == 1
-    assert cycle[0].metadata["route_ids"] == (
+    assert cycle[0].details["metadata"]["route_ids"] == (
         "b/context/b",
         "a/context/a",
     )
@@ -489,7 +489,7 @@ def test_cycle_diagnostics_follow_stable_route_order() -> None:
     )
 
     assert [
-        diagnostic.metadata["route_ids"]
+        diagnostic.details["metadata"]["route_ids"]
         for diagnostic in diagnostics
         if diagnostic.code == "extension_route_order_cycle"
     ] == [
@@ -629,7 +629,7 @@ def test_router_skip_isolates_handler_and_runtime_callback_failures() -> None:
     assert [diagnostic.code for diagnostic in diagnostics] == [
         "extension_context_failed"
     ]
-    assert diagnostics[0].metadata["route_id"] == "shared/context/broken"
+    assert diagnostics[0].details["metadata"]["route_id"] == "shared/context/broken"
 
 
 def test_router_fail_chain_raises_typed_route_error() -> None:

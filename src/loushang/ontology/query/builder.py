@@ -1,191 +1,111 @@
-"""查询构建器——链式图查询 API.
-
-支持 Palantir 风格的链式查询：
-
-    onto.query()
-        .start_from(alice)              # 起始对象
-        .follow("works_for")            # 沿关系遍历
-        .where("industry", "==", "tech") # 属性过滤
-        .follow("located_in")           # 继续遍历
-        .limit(10)                      # 限制结果数
-        .execute()                      # 执行查询
-"""
+"""Typed chain builder over a read-only ontology projection."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable
+from typing import Any
 from uuid import UUID
 
-if TYPE_CHECKING:
-    from loushang.ontology.core.object import OntologyObject
-    from loushang.ontology.core.store import ObjectStore
-
-
-@dataclass
-class QueryStep:
-    """查询计划中的一个步骤."""
-
-    kind: str  # "start", "follow", "where", "limit", "offset", "sort"
-    params: dict[str, Any] = field(default_factory=dict)
+from loushang.ontology.projection import (
+    ProjectedObject,
+    ProjectionReadStore,
+)
+from loushang.ontology.query.contracts import (
+    Limit,
+    ObjectTypeFilter,
+    Offset,
+    PropertyFilter,
+    QueryRequest,
+    QueryResult,
+    QueryStep,
+    SortBy,
+    StartAll,
+    StartFromIds,
+    StartFromType,
+    Traverse,
+)
+from loushang.ontology.query.engine import execute_query
+from loushang.ontology.schema import SchemaIdentity
 
 
 class QueryBuilder:
-    """链式查询构建器."""
+    """Build one immutable request and evaluate it against a projection view."""
 
-    def __init__(self, store: ObjectStore) -> None:
+    def __init__(self, store: ProjectionReadStore) -> None:
         self._store = store
         self._steps: list[QueryStep] = []
 
-    # ------------------------------------------------------------------
-    # 链式 API
-    # ------------------------------------------------------------------
+    def start_from(self, obj: ProjectedObject | UUID) -> QueryBuilder:
+        obj_id = obj.id if isinstance(obj, ProjectedObject) else obj
+        self._steps.append(StartFromIds((obj_id,)))
+        return self
 
-    def start_from(self, obj: OntologyObject | UUID) -> QueryBuilder:
-        """设置查询起始对象."""
-        from loushang.ontology.core.object import OntologyObject
-        obj_id = obj.id if isinstance(obj, OntologyObject) else obj
-        self._steps.append(QueryStep("start", {"obj_id": obj_id}))
+    def start_from_type(self, object_type: str) -> QueryBuilder:
+        self._steps.append(StartFromType(object_type))
+        return self
+
+    def start_all(self) -> QueryBuilder:
+        self._steps.append(StartAll())
         return self
 
     def follow(self, link_type: str, direction: str = "outgoing") -> QueryBuilder:
-        """沿指定关系遍历."""
-        self._steps.append(QueryStep("follow", {"link_type": link_type, "direction": direction}))
+        self._steps.append(Traverse(link_type, direction))
         return self
 
     def where(self, property_name: str, op: str, value: Any) -> QueryBuilder:
-        """属性过滤条件.
-
-        Args:
-            property_name: 属性名
-            op: 操作符，支持 "==", "!=", "<", "<=", ">", ">=", "in", "contains"
-            value: 比较值
-        """
-        self._steps.append(QueryStep("where", {"property": property_name, "op": op, "value": value}))
+        self._steps.append(PropertyFilter(property_name, op, value))
         return self
 
     def where_type(self, object_type: str) -> QueryBuilder:
-        """按对象类型过滤."""
-        self._steps.append(QueryStep("where_type", {"object_type": object_type}))
+        self._steps.append(ObjectTypeFilter(object_type))
         return self
 
     def limit(self, n: int) -> QueryBuilder:
-        """限制结果数量."""
-        self._steps.append(QueryStep("limit", {"n": n}))
+        self._steps.append(Limit(n))
         return self
 
     def offset(self, n: int) -> QueryBuilder:
-        """跳过前 n 个结果."""
-        self._steps.append(QueryStep("offset", {"n": n}))
+        self._steps.append(Offset(n))
         return self
 
     def sort_by(self, property_name: str, ascending: bool = True) -> QueryBuilder:
-        """按属性排序."""
-        self._steps.append(QueryStep("sort", {"property": property_name, "ascending": ascending}))
+        self._steps.append(SortBy(property_name, ascending))
         return self
 
-    def as_of(self, timestamp: float) -> QueryBuilder:
-        """查询历史时间点快照."""
-        self._steps.append(QueryStep("as_of", {"timestamp": timestamp}))
-        return self
+    def to_request(self) -> QueryRequest:
+        schema_identity = SchemaIdentity.from_schema(self._store.schema)
+        return QueryRequest(steps=self._steps, schema_identity=schema_identity)
 
-    # ------------------------------------------------------------------
-    # 执行
-    # ------------------------------------------------------------------
+    def execute_result(self) -> QueryResult:
+        snapshot = self._store.read_snapshot()
+        return execute_query(snapshot, self._request_for(snapshot))
 
-    def execute(self) -> list[OntologyObject]:
-        """执行查询计划，返回结果列表."""
-        result_set: list[OntologyObject] = []
-        as_of: float | None = None
-
-        for step in self._steps:
-            if step.kind == "start":
-                obj = self._store.get(step.params["obj_id"])
-                result_set = [obj] if obj else []
-
-            elif step.kind == "follow":
-                new_set: list[OntologyObject] = []
-                seen: set[UUID] = set()
-                for obj in result_set:
-                    neighbors = self._store.find_neighbors(
-                        obj.id,
-                        step.params["link_type"],
-                        direction=step.params["direction"],
-                        as_of=as_of,
-                    )
-                    for n in neighbors:
-                        if n.id not in seen:
-                            seen.add(n.id)
-                            new_set.append(n)
-                result_set = new_set
-
-            elif step.kind == "where":
-                result_set = _filter_by_property(
-                    result_set,
-                    step.params["property"],
-                    step.params["op"],
-                    step.params["value"],
-                    as_of=as_of,
-                )
-
-            elif step.kind == "where_type":
-                result_set = [o for o in result_set if o.object_type == step.params["object_type"]]
-
-            elif step.kind == "as_of":
-                as_of = step.params["timestamp"]
-
-            elif step.kind == "limit":
-                result_set = result_set[: step.params["n"]]
-
-            elif step.kind == "offset":
-                result_set = result_set[step.params["n"] :]
-
-            elif step.kind == "sort":
-                prop = step.params["property"]
-                asc = step.params["ascending"]
-                result_set.sort(key=lambda o: (o.get(prop, as_of=as_of) or ""), reverse=not asc)
-
-        return result_set
+    def execute(self) -> list[ProjectedObject]:
+        snapshot = self._store.read_snapshot()
+        result = execute_query(snapshot, self._request_for(snapshot))
+        return [
+            obj
+            for object_id in result.object_ids
+            if (obj := snapshot.get(object_id)) is not None
+        ]
 
     def execute_ids(self) -> list[UUID]:
-        """执行查询，仅返回 UUID 列表."""
-        return [o.id for o in self.execute()]
+        return list(self.execute_result().object_ids)
 
-    def execute_first(self) -> OntologyObject | None:
-        """执行查询，返回第一个结果."""
+    def execute_first(self) -> ProjectedObject | None:
         results = self.execute()
         return results[0] if results else None
 
     def execute_count(self) -> int:
-        """执行查询，返回结果数量."""
-        return len(self.execute())
+        return len(self.execute_result().object_ids)
 
     def execute_exists(self) -> bool:
-        """执行查询，返回是否有结果."""
-        return len(self.execute()) > 0
+        return bool(self.execute_result().object_ids)
+
+    def _request_for(self, store: ProjectionReadStore) -> QueryRequest:
+        return QueryRequest(
+            steps=self._steps,
+            schema_identity=store.projection_state.schema_identity,
+        )
 
 
-def _filter_by_property(
-    objects: list[OntologyObject],
-    prop: str,
-    op: str,
-    value: Any,
-    as_of: float | None = None,
-) -> list[OntologyObject]:
-    """按属性值过滤对象列表."""
-    ops: dict[str, Callable[[Any, Any], bool]] = {
-        "==": lambda a, b: a == b,
-        "!=": lambda a, b: a != b,
-        "<": lambda a, b: a is not None and b is not None and a < b,
-        "<=": lambda a, b: a is not None and b is not None and a <= b,
-        ">": lambda a, b: a is not None and b is not None and a > b,
-        ">=": lambda a, b: a is not None and b is not None and a >= b,
-        "in": lambda a, b: a in b if b is not None else False,
-        "contains": lambda a, b: b in a if a is not None else False,
-    }
-
-    fn = ops.get(op)
-    if fn is None:
-        raise ValueError(f"Unsupported operator: {op}")
-
-    return [o for o in objects if fn(o.get(prop, as_of=as_of), value)]
+__all__ = ["QueryBuilder"]

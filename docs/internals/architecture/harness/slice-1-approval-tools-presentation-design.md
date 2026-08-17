@@ -4,6 +4,11 @@
 
 Implemented on `lane/harness` as the Slice 1 boundary design.
 
+> Historical compatibility notes in this document are superseded by
+> [Tool Facade Extinction Boundary](tool-facade-extinction-boundary.md):
+> `loushang.coding.tools` no longer exists and consumers import Harness owners
+> directly.
+
 The closure audit and migration status are recorded in
 [Slice 1 Closure Status](slice-1-status.md). This document remains the boundary
 reference for approval, tools-core, tool-contribution, and presentation
@@ -69,8 +74,8 @@ resolver mechanics:
 
 `ApprovalRequest` may carry product policy context only as opaque metadata.
 For example, a current `policy_decision` field must become `object | None` or
-a neutral metadata mapping. Harness must not import
-`loushang.coding.policy.types.PolicyDecision`.
+a neutral metadata mapping. Harness must not import Coding policy modules; the
+neutral value is owned by `loushang.harness.policy.PolicyDecision`.
 
 Approval contracts should fail fast on invalid neutral values. In Slice 1,
 `ApprovalDecision` validates its disposition, and `resolve_approval` validates

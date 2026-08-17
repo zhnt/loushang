@@ -122,7 +122,7 @@
 
 **来源：**
 
-- [loushang-ai-api-provider-registry.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-api-provider-registry.md)
+- [loushang-ai-api-adapter-registry.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-api-adapter-registry.md)
 - `reference AI SDK` api registry 经验
 
 **作用：**
@@ -131,9 +131,9 @@
 
 **主要能力：**
 
-- 注册 `ApiProvider`
-- 查询 `ApiProvider`
-- 列出已注册 `ApiProvider`
+- 注册 `APIAdapter`
+- 查询 `APIAdapter`
+- 列出已注册 `APIAdapter`
 - 在顶层调用中基于 resolved api 找到执行者
 
 **边界说明：**
@@ -164,7 +164,7 @@
 
 - 承接 `SimpleStreamOptions`
 - 抽象 reasoning / thinking 等常见控制项
-- 将 simple 语义下沉映射到具体 `ApiProvider`
+- 将 simple 语义下沉映射到具体 `APIAdapter`
 
 **边界说明：**
 

@@ -5,6 +5,12 @@ This directory keeps the current architecture notes for the frozen
 [`src/loushang/ai/README.md`](../../../../src/loushang/ai/README.md) and
 [`examples/ai`](../../../../examples/ai).
 
+## Active Refactor Inputs
+
+- [AI Refactor Blueprint](./loushang-ai-refactor-blueprint.md)
+  is the short entrypoint for the current AI package rebuild structure and
+  document reading order.
+
 ## Current References
 
 - [ARD List](./ARD-list.md)
@@ -24,8 +30,7 @@ This directory keeps the current architecture notes for the frozen
 - `src/loushang/ai/auth/`
 - `src/loushang/ai/event_stream/`
 - `src/loushang/ai/tool/`
-- `src/loushang/ai/providers/`
-- `src/loushang/ai/contrib/`
+- `src/loushang/ai/protocols/`
 - `src/loushang/ai/messages.py`
 - `src/loushang/ai/context.py`
 - `src/loushang/ai/pricing.py`
@@ -37,10 +42,13 @@ This directory keeps the current architecture notes for the frozen
 - `api/` owns public `complete`, `stream`, and `complete_structured`.
 - `provider/` owns `ProviderRequest`, request resolution, invocation guards,
   retry, cancellation, and provider request validation.
-- `providers/` owns the three core protocol adapters:
+- `protocols/` owns the three core protocol adapters:
   `openai-completions`, `openai-responses`, and `anthropic-messages`.
-- `contrib/` owns optional provider-specific integrations such as OpenAI Codex
-  and Moonshot quota helpers.
+- `auth/` resolves catalog API-key defaults or typed request auth such as
+  `OAuthBearerAuth` into request headers. OAuth lifecycle and credential storage
+  remain outside the package.
+- Product-backed routes reuse the three protocol adapters through catalog data;
+  they do not introduce product-specific provider modules.
 - `usage.py` owns response usage payload helpers only; account or platform quota
   is outside core usage.
 

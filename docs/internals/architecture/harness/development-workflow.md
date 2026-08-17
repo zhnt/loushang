@@ -107,4 +107,4 @@ Harness task PRs should be reviewed for:
 
 The review question is not only whether a slice works. It is whether the slice
 keeps `harness` product-neutral while making future `design`, `research`,
-`ppt`, `cowork`, and OEM products easier to build.
+`ppt`, `cowork`, and OEM-defined Products easier to build.

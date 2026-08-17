@@ -165,6 +165,8 @@ def test_compaction_lifecycle_is_single_flight_and_abortable() -> None:
 
     async def scenario() -> None:
         coordinator = CompactionCoordinator[str]()
+        coordinator.abort()
+        assert coordinator.get_status().aborted is False
         started = asyncio.Event()
         release = asyncio.Event()
         aborted: list[bool] = []

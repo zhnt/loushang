@@ -24,7 +24,7 @@ PROVIDER_EXAMPLES = (
     ProviderExample(
         "anthropic",
         "anthropic-messages",
-        "claude-sonnet-4-6",
+        "claude-sonnet-5",
         ("ANTHROPIC_API_KEY",),
     ),
     ProviderExample(
@@ -72,13 +72,13 @@ PROVIDER_EXAMPLES = (
     ProviderExample(
         "tencent-hunyuan",
         "openai-responses",
-        "hy3-preview",
+        "hy3",
         ("HUNYUAN_API_KEY",),
     ),
     ProviderExample(
         "volcano-ark",
         "openai-completions-cn-beijing",
-        "doubao-seed-2-0-lite-260215",
+        "doubao-seed-2-1-turbo-260628",
         ("ARK_API_KEY",),
     ),
     ProviderExample(

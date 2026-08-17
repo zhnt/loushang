@@ -3,16 +3,63 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from contextlib import suppress
-from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-from loushang.ai.utils.redaction import is_sensitive_key
-from loushang.observability import get_log
-from loushang.observability.problem import JSONValue
+from loushang.foundation.json import JSONValue
+from loushang.foundation.observability import get_log
 
 _log = get_log(__name__).bind(component="AITrace")
 TRACE_SCHEMA = "loushang.ai.trace.v1"
-_REDACTED = "<redacted>"
+_DROP = object()
+_SAFE_SCALAR_KEYS = frozenset(
+    {
+        "api",
+        "provider",
+        "endpoint",
+        "model",
+        "upstreamModel",
+        "requestId",
+        "request_id",
+        "response_id",
+        "callId",
+        "tool_call_id",
+        "id",
+        "tool_name",
+        "name",
+        "statusCode",
+        "status_code",
+        "code",
+        "level",
+        "field",
+        "reason",
+        "retryable",
+        "attempt",
+        "maxAttempts",
+        "delayMs",
+        "before",
+        "after",
+        "remaining",
+        "event_type",
+        "exceptionType",
+        "providerResponseSummary",
+        "args_source",
+        "valid_json",
+        "repair_valid",
+        "kind",
+        "mode",
+        "present",
+        "empty",
+        "error_position",
+    }
+)
+_SAFE_KEY_LIST_KEYS = frozenset(
+    {
+        "keys",
+        "parameter_keys",
+        "argument_keys",
+        "repaired_keys",
+    }
+)
 
 
 TraceEvent = dict[str, JSONValue]
@@ -27,11 +74,14 @@ def emit_trace(options: Any | None, event: Mapping[str, object]) -> None:
 def normalize_trace_event(event: Mapping[str, object]) -> TraceEvent:
     event_type = _trace_type(event)
     source, name = _trace_source_name(event_type)
-    data = {
-        str(key): _summarize_event_value(str(key), value)
-        for key, value in event.items()
-        if key != "type"
-    }
+    data: dict[str, JSONValue] = {}
+    for raw_key, value in event.items():
+        key = str(raw_key)
+        if key == "type":
+            continue
+        normalized = _safe_trace_value(key, value)
+        if normalized is not _DROP:
+            data[key] = cast(JSONValue, normalized)
     return {
         "schema": TRACE_SCHEMA,
         "type": event_type,
@@ -80,31 +130,36 @@ def _trace_source_name(event_type: str) -> tuple[str, str]:
     return "event", event_type
 
 
-def _json_safe(value: object, *, key: str | None = None) -> JSONValue:
-    if key is not None and is_sensitive_key(key):
-        return _REDACTED
+def _safe_trace_value(key: str, value: object) -> JSONValue | object:
+    if key == "args" and isinstance(value, Mapping):
+        return _summarize_tool_args(value)
+    if key in _SAFE_KEY_LIST_KEYS:
+        if isinstance(value, (list, tuple)) and all(
+            isinstance(item, str) for item in value
+        ):
+            return list(value)
+        return _DROP
+    if key in _SAFE_SCALAR_KEYS:
+        return _safe_scalar(value)
+    if key.endswith(("_tokens", "Tokens", "_chars", "Chars", "_count", "Count")):
+        return _safe_number(value)
+    if isinstance(value, BaseException):
+        return {"exceptionType": type(value).__name__}
+    return _DROP
+
+
+def _safe_scalar(value: object) -> JSONValue | object:
     if value is None or isinstance(value, str | bool | int):
         return value
     if isinstance(value, float):
-        return value if math.isfinite(value) else str(value)
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, list | tuple):
-        return [_json_safe(item) for item in value]
-    if isinstance(value, Mapping):
-        return {
-            str(item_key): _json_safe(item, key=str(item_key))
-            for item_key, item in value.items()
-        }
-    return str(value)
+        return value if math.isfinite(value) else _DROP
+    return _DROP
 
 
-def _summarize_event_value(key: str, value: object) -> JSONValue:
-    if is_sensitive_key(key):
-        return _REDACTED
-    if key == "args" and isinstance(value, Mapping):
-        return _summarize_tool_args(value)
-    return _json_safe(value, key=key)
+def _safe_number(value: object) -> JSONValue | object:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return _DROP
+    return value if not isinstance(value, float) or math.isfinite(value) else _DROP
 
 
 def _summarize_tool_args(args: Mapping[str, object]) -> dict[str, JSONValue]:
@@ -113,9 +168,6 @@ def _summarize_tool_args(args: Mapping[str, object]) -> dict[str, JSONValue]:
         "kind": "object",
         "keys": keys,
     }
-    path = args.get("path")
-    if isinstance(path, str):
-        summary["path"] = path
     content = args.get("content")
     if isinstance(content, str):
         summary["content_chars"] = len(content)

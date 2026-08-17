@@ -1,15 +1,23 @@
 from __future__ import annotations
 
-import inspect
-import time
-import traceback
-from typing import Any, Mapping, Sequence, TextIO
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any, TextIO
 
-from loushang.coding.ui.model import ensure_usable_session_model
-from loushang.coding.ui.plain_events import PlainCodingEventRenderer
-from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
-from loushang.coding.work_shell import CodingWorkShell
-from loushang.work import EventLogBackend
+from loushang.coding.adapters.harnesswork import create_coding_work_runtime
+from loushang.coding.model_selection import ensure_usable_session_model
+from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
+from loushang.harnesstui.conversation.agent_binding import (
+    run_agent_plain_prompt,
+    run_agent_plain_prompt_plan,
+)
+from loushang.harnesstui.conversation.plain_prompt_host import session_identity
+from loushang.harnesswork import EventLogBackend
+from loushang.harnesswork.integrations.session import (
+    SessionWorkRuntime,
+    SessionWorkTurn,
+    require_session_work_turn,
+    submit_session_turn,
+)
 
 
 async def run_prompt_command(
@@ -23,6 +31,7 @@ async def run_prompt_command(
     follow_up_messages: Sequence[str] = (),
     verbose: bool = False,
     work_event_log: EventLogBackend | None = None,
+    work_runtime: SessionWorkRuntime | None = None,
     method_id: str | None = None,
     plan_id: str | None = None,
     step_id: str | None = None,
@@ -32,243 +41,104 @@ async def run_prompt_command(
     audit_policy: Mapping[str, object] | None = None,
     plan_facts: Mapping[str, object] | None = None,
     step_facts: Mapping[str, object] | None = None,
-    emit_plan_start: bool = True,
-    emit_plan_completion: bool = True,
     dispose: bool = True,
 ) -> int:
     """Run one product prompt and render the stable coding transcript."""
 
     renderer = PlainCodingUiRenderer(stdout=stdout, stderr=stderr)
-    event_renderer = PlainCodingEventRenderer(renderer, render_user_messages=False)
-
-    def unsubscribe() -> None:
-        return None
-
-    exit_code = 0
-    try:
-        await ensure_usable_session_model(session)
-        unsubscribe = session.subscribe(event_renderer.handle)
-        exit_code = await _run_turn(
-            session,
-            renderer,
-            event_renderer,
-            prompt,
-            images=images,
-            work_event_log=work_event_log,
-            method_id=method_id,
-            plan_id=plan_id,
-            step_id=step_id,
-            step_index=step_index,
-            step_title=step_title,
-            planned_constraint=planned_constraint,
-            audit_policy=audit_policy,
-            plan_facts=plan_facts,
-            step_facts=step_facts,
-            emit_plan_start=emit_plan_start,
-            emit_plan_completion=emit_plan_completion and not follow_up_messages,
+    turn_work_runtime: SessionWorkRuntime | Callable[[], SessionWorkRuntime] | None = (
+        None
+    )
+    if work_event_log is not None:
+        turn_work_runtime = work_runtime or (
+            lambda: create_coding_work_runtime(
+                session=session,
+                event_log=work_event_log,
+                session_id=lambda: session_identity(session),
+            )
         )
-        if exit_code == 0:
-            for follow_up_index, message in enumerate(follow_up_messages):
-                exit_code = await _run_turn(
-                    session,
-                    renderer,
-                    event_renderer,
-                    message,
-                    work_event_log=work_event_log,
-                    method_id=method_id,
-                    plan_id=plan_id,
-                    step_id=step_id,
-                    step_index=step_index,
-                    step_title=step_title,
-                    planned_constraint=planned_constraint,
-                    audit_policy=audit_policy,
-                    plan_facts=plan_facts,
-                    step_facts=step_facts,
-                    emit_plan_start=False,
-                    emit_plan_completion=emit_plan_completion and follow_up_index == len(follow_up_messages) - 1,
-                )
-                if exit_code != 0:
-                    break
-    except Exception as exc:
-        renderer.render_error(str(exc) or exc.__class__.__name__)
-        if verbose:
-            traceback.print_exception(type(exc), exc, exc.__traceback__, file=stderr)
-        exit_code = 1
-    finally:
-        unsubscribe()
-        if dispose:
-            try:
-                await _dispose_runtime_or_session(runtime, session)
-            except Exception as exc:
-                renderer.render_error(str(exc) or exc.__class__.__name__)
-                if verbose:
-                    traceback.print_exception(type(exc), exc, exc.__traceback__, file=stderr)
-                exit_code = 1
-    return exit_code
+
+    async def submit_turn(text: str, turn_index: int, turn_count: int) -> None:
+        del turn_count
+        await submit_session_turn(
+            session,
+            SessionWorkTurn(
+                text=text,
+                images=images if turn_index == 0 else None,
+                method_id=method_id if turn_index == 0 else None,
+                plan_id=plan_id if turn_index == 0 else None,
+                step_id=step_id if turn_index == 0 else None,
+                step_index=step_index if turn_index == 0 else None,
+                step_title=step_title if turn_index == 0 else None,
+                planned_constraint=planned_constraint if turn_index == 0 else None,
+                audit_policy=audit_policy if turn_index == 0 else None,
+                plan_facts=plan_facts if turn_index == 0 else None,
+                step_facts=step_facts if turn_index == 0 else None,
+            ),
+            session_id=(
+                session_identity(session) if turn_work_runtime is not None else ""
+            ),
+            work_runtime=turn_work_runtime,
+        )
+
+    return await run_agent_plain_prompt(
+        runtime=runtime,
+        session=session,
+        prompts=(prompt, *follow_up_messages),
+        renderer=renderer,
+        prepare=lambda: ensure_usable_session_model(session),
+        submit=submit_turn,
+        stderr=stderr,
+        verbose=verbose,
+        dispose=dispose,
+    )
 
 
-async def _run_turn(
-    session: Any,
-    renderer: PlainCodingUiRenderer,
-    event_renderer: PlainCodingEventRenderer,
-    prompt: str,
+async def run_prompt_plan_command(
     *,
-    images: list[object] | None = None,
-    work_event_log: EventLogBackend | None = None,
-    method_id: str | None = None,
-    plan_id: str | None = None,
-    step_id: str | None = None,
-    step_index: int | None = None,
-    step_title: str | None = None,
-    planned_constraint: Mapping[str, object] | None = None,
-    audit_policy: Mapping[str, object] | None = None,
-    plan_facts: Mapping[str, object] | None = None,
-    step_facts: Mapping[str, object] | None = None,
-    emit_plan_start: bool = True,
-    emit_plan_completion: bool = True,
+    runtime: Any,
+    session: Any,
+    turns: Sequence[SessionWorkTurn],
+    stdout: TextIO,
+    stderr: TextIO,
+    work_event_log: EventLogBackend,
+    work_runtime: SessionWorkRuntime | None = None,
+    verbose: bool = False,
+    dispose: bool = True,
 ) -> int:
-    started_at = time.monotonic()
-    previous_error = event_renderer.last_error_message
-    renderer.render_user(prompt)
-    await _run_prompt_session(
-        session,
-        prompt,
-        images=images,
-        work_event_log=work_event_log,
-        method_id=method_id,
-        plan_id=plan_id,
-        step_id=step_id,
-        step_index=step_index,
-        step_title=step_title,
-        planned_constraint=planned_constraint,
-        audit_policy=audit_policy,
-        plan_facts=plan_facts,
-        step_facts=step_facts,
-        emit_plan_start=emit_plan_start,
-        emit_plan_completion=emit_plan_completion,
-    )
-    await session.wait_for_idle()
-    assistant_failure = _last_assistant_failure_message(session)
-    if assistant_failure is None and event_renderer.last_error_message != previous_error:
-        assistant_failure = event_renderer.last_error_message
-    if assistant_failure is not None:
-        return 1
-    renderer.render_worked(time.monotonic() - started_at)
-    return 0
+    """Render and execute a fixed MethodPlan as one Work-owned run."""
 
+    renderer = PlainCodingUiRenderer(stdout=stdout, stderr=stderr)
 
-async def _run_prompt_session(
-    session: Any,
-    user_input: str,
-    *,
-    images: list[object] | None = None,
-    work_event_log: EventLogBackend | None = None,
-    method_id: str | None = None,
-    plan_id: str | None = None,
-    step_id: str | None = None,
-    step_index: int | None = None,
-    step_title: str | None = None,
-    planned_constraint: Mapping[str, object] | None = None,
-    audit_policy: Mapping[str, object] | None = None,
-    plan_facts: Mapping[str, object] | None = None,
-    step_facts: Mapping[str, object] | None = None,
-    emit_plan_start: bool = True,
-    emit_plan_completion: bool = True,
-) -> None:
-    if work_event_log is None:
-        await _prompt_session(session, user_input, images=images)
-        return
-    shell = CodingWorkShell(session=session, event_log=work_event_log)
-    await shell.submit_coding_turn(
-        user_input,
-        session_id=_work_session_id(session),
-        images=images,
-        method_id=method_id,
-        plan_id=plan_id,
-        step_id=step_id,
-        step_index=step_index,
-        step_title=step_title,
-        planned_constraint=planned_constraint,
-        audit_policy=audit_policy,
-        plan_facts=plan_facts,
-        step_facts=step_facts,
-        emit_plan_start=emit_plan_start,
-        emit_plan_completion=emit_plan_completion,
+    async def submit_plan(
+        prepared_turns: Sequence[object],
+        before_turn: Any,
+        after_turn: Any,
+    ) -> None:
+        resolved_work_runtime = work_runtime or create_coding_work_runtime(
+            session=session,
+            event_log=work_event_log,
+            session_id=lambda: session_identity(session),
+        )
+        await resolved_work_runtime.submit_plan(
+            tuple(require_session_work_turn(turn) for turn in prepared_turns),
+            session_id=session_identity(session),
+            before_turn=before_turn,
+            after_turn=after_turn,
+        )
+
+    return await run_agent_plain_prompt_plan(
+        runtime=runtime,
+        session=session,
+        turns=turns,
+        renderer=renderer,
+        prepare=lambda: ensure_usable_session_model(session),
+        submit_plan=submit_plan,
+        turn_text=lambda turn: require_session_work_turn(turn).text,
+        stderr=stderr,
+        verbose=verbose,
+        dispose=dispose,
     )
 
 
-async def _prompt_session(session: Any, user_input: str, *, images: list[object] | None = None) -> None:
-    if images is None:
-        await session.prompt(user_input)
-        return
-    await session.prompt(user_input, images=images)
-
-
-def _last_assistant_failure_message(session: Any) -> str | None:
-    for message in reversed(_session_messages(session)):
-        if _safe_getattr(message, "role", None) != "assistant":
-            continue
-        stop_reason = _safe_getattr(message, "stop_reason", _safe_getattr(message, "stopReason", None))
-        if stop_reason not in {"error", "aborted"}:
-            return None
-        error_message = _safe_getattr(message, "error_message", _safe_getattr(message, "errorMessage", None))
-        return error_message if isinstance(error_message, str) and error_message else f"Request {stop_reason}"
-    return None
-
-
-def _session_messages(session: Any) -> list[object]:
-    context_getter = getattr(session, "get_session_context", None)
-    if callable(context_getter):
-        try:
-            context = context_getter()
-        except Exception:
-            context = None
-        messages = _safe_getattr(context, "messages", None)
-        if isinstance(messages, list):
-            return list(messages)
-    messages = _safe_getattr(session, "messages", None)
-    if isinstance(messages, list):
-        return list(messages)
-    agent_state = _safe_getattr(_safe_getattr(session, "agent", None), "state", None)
-    messages = _safe_getattr(agent_state, "messages", None)
-    if isinstance(messages, list):
-        return list(messages)
-    return []
-
-
-async def _dispose_runtime_or_session(runtime: Any, session: Any) -> None:
-    disposer = getattr(runtime, "dispose", None)
-    if not callable(disposer):
-        disposer = getattr(session, "dispose", None)
-    if not callable(disposer):
-        return
-    result = disposer()
-    if inspect.isawaitable(result):
-        await result
-
-
-def _safe_getattr(target: Any, name: str, default: object) -> object:
-    try:
-        return getattr(target, name, default)
-    except Exception:
-        return default
-
-
-def _work_session_id(session: Any) -> str:
-    session_id = _safe_getattr(session, "session_id", None)
-    if isinstance(session_id, str) and session_id:
-        return session_id
-    session_manager = getattr(session, "session_manager", None)
-    get_header = getattr(session_manager, "get_header", None)
-    if callable(get_header):
-        try:
-            header = get_header()
-        except Exception:
-            header = None
-        header_id = _safe_getattr(header, "id", None)
-        if isinstance(header_id, str) and header_id:
-            return header_id
-    return "session"
-
-
-__all__ = ["run_prompt_command"]
+__all__ = ["run_prompt_command", "run_prompt_plan_command"]

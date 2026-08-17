@@ -1194,3 +1194,556 @@ def test_approval_broker_rejects_presenter_rebind_after_disposal() -> None:
     )
     assert decision.disposition == "deny"
     assert not presented
+
+
+def test_approval_request_projects_only_policy_admitted_session_option() -> None:
+    from loushang.harness.approval import (
+        ApprovalGrantProposal,
+        ApprovalRequest,
+        approval_request_to_dict,
+    )
+
+    ordinary = approval_request_to_dict(
+        ApprovalRequest(tool_name="bash", arguments={"command": "rm -rf build"})
+    )
+    proposal = ApprovalGrantProposal(
+        capability="git.publish_refs",
+        constraints=(
+            ("remote", "origin"),
+            ("repository", "/workspace/project"),
+            ("refspecs", '["main"]'),
+            ("force", "false"),
+        ),
+        summary="Publish main to origin from this repository",
+    )
+    reusable = approval_request_to_dict(
+        ApprovalRequest(
+            tool_name="bash",
+            arguments={"command": "git push origin main"},
+            session_grant=proposal,
+        )
+    )
+
+    assert tuple(
+        option["outcome"] for option in ordinary["approval_options"]
+    ) == ("allow_once", "deny")
+    assert tuple(
+        option["outcome"] for option in reusable["approval_options"]
+    ) == ("allow_once", "allow_session", "deny")
+    assert reusable["session_grant"] == {
+        "capability": "git.publish_refs",
+        "constraints": {
+            "force": "false",
+            "refspecs": '["main"]',
+            "remote": "origin",
+            "repository": "/workspace/project",
+        },
+        "summary": "Publish main to origin from this repository",
+    }
+
+
+def test_interactive_approval_session_grant_reuses_exact_semantics_for_one_actor() -> (
+    None
+):
+    from dataclasses import replace
+
+    from loushang.harness.approval import (
+        ApprovalGrantProposal,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+    )
+
+    proposal = ApprovalGrantProposal(
+        capability="git.publish_refs",
+        constraints=(
+            ("repository", "/workspace/project"),
+            ("remote", "origin"),
+            ("refspecs", '["main"]'),
+            ("force", "false"),
+        ),
+        summary="Publish main to origin from this repository",
+    )
+
+    async def run() -> None:
+        presented = asyncio.Event()
+        payloads: list[dict[str, object]] = []
+        resolver = InteractiveApprovalResolver(
+            fallback=HeadlessApprovalResolver(mode="deny")
+        )
+
+        def present(payload: dict[str, object]) -> None:
+            payloads.append(payload)
+            presented.set()
+
+        resolver.set_request_presenter(present)
+        first = ApprovalRequest(
+            tool_name="bash",
+            arguments={"command": "git push origin main"},
+            action_id="approval-first",
+            action_fingerprint="a" * 64,
+            actor_id="/root#1",
+            session_grant=proposal,
+        )
+        pending = asyncio.create_task(resolver.resolve(first))
+        await presented.wait()
+
+        assert await resolver.handle_result(
+            "approval-first",
+            approved=True,
+            scope="session",
+        )
+        decision = await pending
+        assert decision.disposition == "allow"
+        assert decision.scope == "session"
+        assert decision.grant_id is not None
+        assert tuple(
+            option["outcome"] for option in payloads[0]["approval_options"]
+        ) == ("allow_once", "allow_session", "deny")
+
+        reused = await resolver.resolve(
+            replace(
+                first,
+                arguments={"command": "git push --porcelain origin main"},
+                action_id="approval-second",
+                action_fingerprint="b" * 64,
+            )
+        )
+        assert reused == decision
+        assert len(payloads) == 1
+        assert resolver.preauthorize(
+            replace(first, action_id="other-actor", actor_id="/root/child#1")
+        ) is None
+        assert resolver.preauthorize(
+            replace(
+                first,
+                action_id="other-ref",
+                session_grant=replace(
+                    proposal,
+                    constraints=(
+                        ("repository", "/workspace/project"),
+                        ("remote", "origin"),
+                        ("refspecs", '["release"]'),
+                        ("force", "false"),
+                    ),
+                ),
+            )
+        ) is None
+
+        resolver.close_session("presenter detached")
+        resolver.open_session()
+        assert resolver.preauthorize(first) == decision
+
+        snapshot = resolver.permissions_snapshot()
+        assert [item.permission_id for item in snapshot.grants] == [
+            decision.grant_id
+        ]
+        assert decision.grant_id is not None
+        assert resolver.revoke_grant(decision.grant_id)
+        assert resolver.preauthorize(first) is None
+
+        resolver.end_session("session replaced")
+        assert resolver.grant_store.grants() == ()
+        assert resolver.preauthorize(first) is None
+        resolver.dispose()
+
+    asyncio.run(run())
+
+
+def test_persistent_policy_amendment_survives_restart_and_matches_typed_scope(
+    tmp_path,
+) -> None:
+    from dataclasses import replace
+
+    from loushang.harness.approval import (
+        ApprovalGrantProposal,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+        JsonApprovalPolicyRuleStore,
+        PolicyAmendmentProposal,
+    )
+
+    proposal = ApprovalGrantProposal(
+        capability="git.publish_refs",
+        constraints=(
+            ("repository", "/workspace/project"),
+            ("remote", "origin"),
+            ("force", "false"),
+        ),
+        summary="Publish non-force refs to origin from this repository",
+    )
+    request = ApprovalRequest(
+        tool_name="bash",
+        arguments={"command": "git push origin main"},
+        action_id="approval-persist",
+        actor_id="/root/worker#1",
+        session_grant=proposal,
+        policy_amendments=(
+            PolicyAmendmentProposal(scope="project", grant=proposal),
+        ),
+    )
+    path = tmp_path / "project-policy.json"
+
+    async def approve() -> None:
+        presented = asyncio.Event()
+        resolver = InteractiveApprovalResolver(
+            fallback=HeadlessApprovalResolver(mode="deny"),
+            policy_stores={
+                "project": JsonApprovalPolicyRuleStore("project", path)
+            },
+        )
+        resolver.set_request_presenter(lambda _payload: presented.set())
+        pending = asyncio.create_task(resolver.resolve(request))
+        await presented.wait()
+        assert await resolver.handle_result(
+            "approval-persist",
+            outcome="allow_project",
+        )
+        decision = await pending
+        assert decision.policy_scope == "project"
+        assert decision.policy_rule_id is not None
+        assert len(resolver.permissions_snapshot().project_rules) == 1
+        resolver.dispose()
+
+    asyncio.run(approve())
+
+    restarted = InteractiveApprovalResolver(
+        fallback=HeadlessApprovalResolver(mode="deny"),
+        policy_stores={
+            "project": JsonApprovalPolicyRuleStore("project", path)
+        },
+    )
+    reused = restarted.preauthorize(
+        replace(request, action_id="approval-restart", actor_id="root")
+    )
+    assert reused is not None
+    assert reused.policy_scope == "project"
+    changed = replace(
+        proposal,
+        constraints=(
+            ("repository", "/workspace/project"),
+            ("remote", "upstream"),
+            ("force", "false"),
+        ),
+    )
+    assert restarted.preauthorize(
+        replace(
+            request,
+            action_id="approval-changed-boundary",
+            session_grant=changed,
+            policy_amendments=(
+                PolicyAmendmentProposal(scope="project", grant=changed),
+            ),
+        )
+    ) is None
+
+
+def test_abort_approval_is_distinct_from_deny_and_aborts_active_session() -> None:
+    from loushang.harness.approval import (
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+    )
+    from loushang.harness.permissions import permission_profile_snapshot
+    from loushang.harness.session.agent_adapter import AgentSessionAdapterMixin
+    from loushang.harness.session.approval_interaction import (
+        AgentSessionApprovalRuntime,
+    )
+
+    class Session(AgentSessionAdapterMixin):
+        def __init__(self, resolver: InteractiveApprovalResolver) -> None:
+            self.aborted = False
+
+            async def dispatch_event(_event: object) -> None:
+                return None
+
+            self._approval_runtime = AgentSessionApprovalRuntime(
+                resolver=resolver,
+                get_permission_profile_snapshot=lambda: permission_profile_snapshot(
+                    "standard"
+                ),
+                set_permission_profile=lambda _profile_id, *, scope: None,
+                dispatch_event=dispatch_event,
+                abort=self.abort,
+            )
+
+        def abort(self) -> None:
+            self.aborted = True
+
+    async def run(outcome: str) -> tuple[str, bool]:
+        presented = asyncio.Event()
+        resolver = InteractiveApprovalResolver(
+            fallback=HeadlessApprovalResolver(mode="deny")
+        )
+        resolver.set_request_presenter(lambda _payload: presented.set())
+        session = Session(resolver)
+        pending = asyncio.create_task(
+            resolver.resolve(
+                ApprovalRequest(
+                    tool_name="bash",
+                    arguments={"command": "rm -r /tmp/example"},
+                    action_id=f"approval-{outcome}",
+                )
+            )
+        )
+        await presented.wait()
+        assert await session.handle_screen_approval(
+            {
+                "action_id": f"approval-{outcome}",
+                "outcome": outcome,
+            }
+        )
+        return (await pending).disposition, session.aborted
+
+    assert asyncio.run(run("deny")) == ("deny", False)
+    assert asyncio.run(run("abort")) == ("abort", True)
+
+
+def test_interactive_approval_rejects_session_scope_without_policy_proposal() -> (
+    None
+):
+    from loushang.harness.approval import (
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+    )
+
+    async def run() -> None:
+        presented = asyncio.Event()
+        resolver = InteractiveApprovalResolver(
+            fallback=HeadlessApprovalResolver(mode="deny")
+        )
+        resolver.set_request_presenter(lambda _payload: presented.set())
+        pending = asyncio.create_task(
+            resolver.resolve(
+                ApprovalRequest(
+                    tool_name="bash",
+                    arguments={"command": "rm -rf build"},
+                    action_id="approval-delete",
+                )
+            )
+        )
+        await presented.wait()
+
+        assert not await resolver.handle_result(
+            "approval-delete",
+            approved=True,
+            scope="session",
+        )
+        assert await resolver.handle_result(
+            "approval-delete",
+            approved=True,
+            scope="once",
+        )
+        assert (await pending).scope == "once"
+        assert resolver.grant_store.grants() == ()
+
+    asyncio.run(run())
+
+
+def test_interactive_approval_coalesces_concurrent_matching_capabilities() -> None:
+    from dataclasses import replace
+
+    from loushang.harness.approval import (
+        ApprovalDecision,
+        ApprovalGrantProposal,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+    )
+
+    async def run() -> None:
+        presented = asyncio.Event()
+        payloads: list[dict[str, object]] = []
+        proposal = ApprovalGrantProposal(
+            capability="git.publish_refs",
+            constraints=(
+                ("repository", "/workspace/project"),
+                ("remote", "origin"),
+                ("force", "false"),
+            ),
+            summary="Publish non-force refs to origin from this repository",
+        )
+        resolver = InteractiveApprovalResolver(
+            fallback=HeadlessApprovalResolver(mode="deny")
+        )
+
+        def present(payload: dict[str, object]) -> None:
+            payloads.append(payload)
+            presented.set()
+
+        resolver.set_request_presenter(present)
+        first = ApprovalRequest(
+            tool_name="bash",
+            arguments={"command": "git push origin main"},
+            action_id="push-main",
+            actor_id="/root#1",
+            session_grant=proposal,
+        )
+        first_task = asyncio.create_task(resolver.resolve(first))
+        await presented.wait()
+        second_task = asyncio.create_task(
+            resolver.resolve(
+                replace(
+                    first,
+                    arguments={"command": "git push origin release"},
+                    action_id="push-release",
+                )
+            )
+        )
+        await asyncio.sleep(0)
+
+        assert len(payloads) == 1
+        assert len(resolver.permissions_snapshot().pending) == 1
+        assert await resolver.handle_result("push-main", approved=True)
+        assert await first_task == ApprovalDecision.allow()
+        assert await second_task == ApprovalDecision.allow()
+
+    asyncio.run(run())
+
+
+def test_interactive_approval_can_represent_a_dismissed_pending_request() -> None:
+    from loushang.harness.approval import (
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+    )
+
+    async def run() -> None:
+        presented = asyncio.Event()
+        payloads: list[dict[str, object]] = []
+        resolver = InteractiveApprovalResolver(
+            fallback=HeadlessApprovalResolver(mode="deny")
+        )
+
+        def present(payload: dict[str, object]) -> None:
+            payloads.append(payload)
+            presented.set()
+
+        resolver.set_request_presenter(present)
+        pending = asyncio.create_task(
+            resolver.resolve(
+                ApprovalRequest(
+                    tool_name="bash",
+                    arguments={"command": "rm -rf build"},
+                    action_id="delete-build",
+                    reason="Filesystem content would be deleted",
+                )
+            )
+        )
+        await presented.wait()
+
+        snapshot = resolver.permissions_snapshot()
+        assert [item.permission_id for item in snapshot.pending] == ["delete-build"]
+        assert await resolver.represent_request("delete-build")
+        assert len(payloads) == 2
+        assert await resolver.handle_result("delete-build", approved=False)
+        assert (await pending).disposition == "deny"
+        assert not await resolver.represent_request("delete-build")
+
+    asyncio.run(run())
+
+
+def test_actor_bound_resolver_releases_only_its_child_incarnation() -> None:
+    from dataclasses import replace
+
+    from loushang.harness.approval import (
+        ActorBoundApprovalResolver,
+        ApprovalGrantProposal,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+        resolve_approval,
+    )
+
+    async def run() -> None:
+        presented = asyncio.Event()
+        resolver = InteractiveApprovalResolver(
+            fallback=HeadlessApprovalResolver(mode="deny")
+        )
+        resolver.set_request_presenter(lambda _payload: presented.set())
+        child_a = ActorBoundApprovalResolver(
+            resolver=resolver,
+            actor_id="/root/reviewer-a#1",
+        )
+        child_b = ActorBoundApprovalResolver(
+            resolver=resolver,
+            actor_id="/root/reviewer-b#1",
+        )
+        proposal = ApprovalGrantProposal(
+            capability="git.publish_refs",
+            constraints=(("remote", "origin"),),
+            summary="Publish non-force refs to origin",
+        )
+        request_a = ApprovalRequest(
+            tool_name="bash",
+            arguments={"command": "git push origin main"},
+            action_id="grant-a",
+            session_grant=proposal,
+        )
+        request_b = ApprovalRequest(
+            tool_name="bash",
+            arguments={"command": "git push origin main"},
+            action_id="grant-b",
+            session_grant=proposal,
+        )
+        grant_a = resolver.grant_store.issue(
+            replace(request_a, actor_id=child_a.actor_id)
+        )
+        grant_b = resolver.grant_store.issue(
+            replace(request_b, actor_id=child_b.actor_id)
+        )
+
+        pending_a = asyncio.create_task(
+            resolve_approval(
+                child_a,
+                ApprovalRequest(
+                    tool_name="bash",
+                    arguments={"command": "rm -rf build"},
+                    action_id="pending-a",
+                ),
+            )
+        )
+        await presented.wait()
+        presented.clear()
+        pending_b = asyncio.create_task(
+            resolve_approval(
+                child_b,
+                ApprovalRequest(
+                    tool_name="bash",
+                    arguments={"command": "rm -rf dist"},
+                    action_id="pending-b",
+                ),
+            )
+        )
+        await presented.wait()
+
+        assert child_a.end_session("reviewer-a closed") == 1
+        assert (await pending_a).disposition == "deny"
+        assert (await pending_a).reason == "reviewer-a closed"
+        snapshot = resolver.permissions_snapshot()
+        assert [item.actor_id for item in snapshot.pending] == [child_b.actor_id]
+        assert [item.permission_id for item in snapshot.grants] == [grant_b.grant_id]
+        assert resolver.grant_store.find(
+            replace(request_a, actor_id=child_a.actor_id)
+        ) is None
+        assert resolver.grant_store.find(
+            replace(request_b, actor_id=child_b.actor_id)
+        ) == grant_b
+        assert grant_a.grant_id != grant_b.grant_id
+
+        assert await resolver.handle_result("pending-b", approved=True)
+        assert (await pending_b).disposition == "allow"
+        denied_after_close = await resolve_approval(
+            child_a,
+            ApprovalRequest(
+                tool_name="bash",
+                arguments={"command": "git push origin release"},
+                action_id="late-a",
+            ),
+        )
+        assert denied_after_close.disposition == "deny"
+        assert denied_after_close.reason == "reviewer-a closed"
+
+    asyncio.run(run())

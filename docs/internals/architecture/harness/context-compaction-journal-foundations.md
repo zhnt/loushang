@@ -7,15 +7,21 @@ Status: implementation complete for integration into `lane/harness`.
 This document defines the next capability-sized ownership transfer from
 `loushang.coding` and `loushang.work` into Harness. It covers neutral context
 items and packing, configurable context compaction, append-only journal
-mechanics, and branch graphs. It does not move product transcript
-schemas, summarization prompts, AI calls, artifact semantics, or product
-storage policy into Harness.
+mechanics, and branch graphs. This completed foundation wave did not move a
+concrete transcript profile, summarization prompts, AI calls, artifact
+semantics, or product storage policy into Harness.
 
 The follow-on
 [Runtime Data Foundations](runtime-data-foundations.md) now adds a generic
 transcript repository, rebuildable projection index, structural salience, and
-summary-profile mechanics. Product transcript schemas, exact prompt text, AI
-calls, artifact semantics, and storage policy remain outside Harness.
+summary-profile mechanics. The later
+[Agent Transcript Profile](agent-transcript-profile-boundary.md) adds the
+optional common Agent schema and codecs. The subsequent
+[Agent Transcript Maintenance Runtime](agent-transcript-maintenance-boundary.md)
+also moves standard summary message serialization and AI completion execution
+into that optional profile. Domain-specific payloads, exact prompt text,
+model/credential selection, artifact decoration, and storage policy remain
+Product-owned.
 
 The implementation should use one semantic task branch,
 `harness/context-compaction-journal`, with three delivery batches for
@@ -72,15 +78,18 @@ The implementation on `harness/context-compaction-journal` now provides:
 
 This first implementation did not add a generic index/checkpoint layer,
 migrate Coding message codecs, or replace Coding's specialized compaction
-planner. The follow-on wave adds rebuildable JSON indexes but not
-journal-offset checkpoints.
+planner. That historical non-goal is superseded for common messages by the
+Agent Transcript Profile wave. The Runtime Data Foundations follow-on added
+rebuildable JSON indexes but not journal-offset checkpoints.
 
 The later [Conversation Runtime Core](conversation-runtime-core-boundary.md)
 closes the in-memory checkpoint/replay and specialized cut-planner gaps:
 opaque-record turn grouping, split-turn/non-cut planning, previous-summary
 accounting, metadata cut groups, repository/catalog/query, and replay now live
-in Harness. Journal-offset checkpoints remain deferred, and Product codecs,
-prompts, model calls, and artifact semantics remain Product-owned.
+in Harness. Journal-offset checkpoints remain deferred. The optional Agent
+profile owns common codecs and standard summary execution; domain codecs,
+prompt content, model/credential selection, and artifact semantics remain
+Product-owned.
 
 ## Motivation And Existing Evidence
 
@@ -90,9 +99,10 @@ different product semantics:
 - `coding.compaction` owns context cut-point planning, recent-token retention,
   a compaction coordinator, summary production, and Coding-specific summary
   quality rules;
-- `coding.store` owns cross-platform file locking, atomic JSONL rewrite,
-  append/load recovery, a parent-linked entry graph, branch selection, fork,
-  and a session index;
+- `harness.transcript` owns cross-platform file locking, atomic JSONL
+  rewrite, append/load recovery, a parent-linked entry graph, branch selection,
+  fork, and a session index; Coding binds it through
+  `coding.session_manager`;
 - `work.event_log` owns another in-memory and JSONL append/query/subscribe
   implementation;
 - before this wave, `loushang.harness.context` owned only budget accounting and
@@ -153,9 +163,9 @@ loushang.harness.journal
 `types.py` may define small focused `ContextDiagnostic` and
 `JournalDiagnostic` records when an operation cannot yet construct a complete
 `DiagnosticRecord`. Products normalize those records through the existing
-Harness diagnostics service. Do not reuse `ResourceDiagnostic` merely because
-it has a convenient path field; journal corruption and context overflow are not
-resource-discovery failures.
+Harness diagnostics service. Do not use the `resource_diagnostic` factory
+merely because it accepts a path; journal corruption and context overflow are
+not resource-discovery failures.
 
 Do not introduce top-level `loushang.context`, `loushang.session`,
 `loushang.persistence`, or `loushang.memory`. Do not export the new symbols from
@@ -367,9 +377,9 @@ files merely to match a new Harness envelope.
 
 ### Codec Boundary
 
-Harness owns JSON framing and focused codec protocols, not product payload
-schemas. Headerless logs must not implement fake header methods, so header and
-record codecs remain separate:
+This generic journal package owns JSON framing and focused codec protocols, not
+concrete payload schemas. Headerless logs must not implement fake header
+methods, so header and record codecs remain separate:
 
 ```python
 class JournalRecordCodec(Protocol, Generic[R]):
@@ -388,7 +398,7 @@ mappings, and sequences. It must not silently serialize arbitrary objects with
 `repr()` in durable formats. Unsupported values produce a typed error or
 diagnostic chosen by the caller.
 
-Ownership of concrete codecs is:
+At completion of this foundation wave, concrete codec ownership was:
 
 - Coding owns Coding transcript entries, custom messages, model/thinking
   changes, compaction-entry projection, and their compatibility codec;
@@ -400,8 +410,13 @@ Ownership of concrete codecs is:
 - Agent owns the extension-message codec protocol and registry that composes
   those base codecs;
 - each Product owns codecs for its custom transcript entries and message
-  extensions. Moving those codecs requires the relevant owner-lane changes and
-  is not part of this Harness implementation branch.
+  extensions.
+
+The follow-on Agent Transcript Profile supersedes the first item for common
+Agent transcript records: it composes stable AI/Agent codecs into a standard
+optional profile and migrates Coding to it. Products continue to own only their
+domain-specific payload codecs and projections. The generic journal itself
+remains unaware of both Agent messages and Product payloads.
 
 Harness may import stable `loushang.agent` value primitives elsewhere, but this
 journal design remains opaque and does not import `loushang.ai`.
@@ -568,7 +583,8 @@ The initial migration must preserve:
 - invalid entry-line skip behavior;
 - append fsync and atomic rewrite behavior;
 - session id, cwd, parent session, leaf selection, labels, and fork outputs;
-- current `SessionManager` and `coding.store` public imports;
+- the public `loushang.coding.SessionManager` import; the retired
+  `coding.store` package is not preserved;
 - current compaction triggers, cut points, retained messages, summary payloads,
   and public result behavior when Coding selects its compatibility strategy.
 
@@ -719,11 +735,11 @@ final wave merge, but it does not block progress on the other adapters.
 | `coding.compaction.compaction` | common packing/reducer boundary plus opaque-record turn/cut planning | Coding compatibility records, message/token adapters, prompts, AI completion, transcript mapping, and file details |
 | `coding.compaction.service` | single-flight coordinator state, cancellation, and failure lifecycle | Coding invocation and artifact projection adapter |
 | `coding.session.context_usage` | existing Harness budget and usage inputs only | trigger policy, model lookup, and Coding stale-entry interpretation |
-| `coding.store.file_lock` | Harness journal locking | compatibility alias |
-| `coding.store.file_codec` | JSONL framing and atomic IO | SessionHeader/SessionEntry codec |
-| `coding.store.session_manager` | conversation repository/catalog/query, branch/tree/fork/LCA/delta, checkpoint replay, and projection-index mechanics | projection schema/fields, lifecycle, cwd, labels, naming, recovery, and retention |
+| removed `coding.store.file_lock` | Harness journal locking | no Coding alias remains |
+| removed `coding.store.file_codec` | JSONL framing and atomic IO | SessionHeader/SessionEntry codec remains in Harness |
+| `coding.session_manager.SessionManager` | Coding Product runtime binding | projection schema/fields, lifecycle, cwd, labels, naming, recovery, and retention |
 | `work.event_log` | matching JSONL I/O only | Work normalization, in-memory backend, positions, filters, query, replay, subscriptions, records, and public adapters |
-| `coding.message.json_codec` | no direct Harness migration | AI owns base codecs, Agent owns extension codec composition, and Coding owns custom transcript codecs |
+| `coding.message.json_codec` | superseded by `loushang.harness.transcript` for common transcript records | AI owns base codecs, Agent owns extension codec composition, and Products own only domain payload codecs |
 
 ## Planned Size And Measured Outcome
 

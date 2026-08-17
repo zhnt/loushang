@@ -13,6 +13,7 @@ Use long-lived worktree lanes for major module work:
 - `.worktrees/method` is the long-lived method/work-runtime lane when method-layer work is active. For `loushang.method`, method execution semantics, MethodPlan/WorkEvent projection, and work/method integration work, create or switch task branches inside this lane.
 - `.worktrees/ai` is the long-lived AI/provider lane when AI-layer work is active. For AI/provider/model/usage/auth work, create or switch task branches inside this lane.
 - `.worktrees/agent` is the long-lived agent-runtime lane when agent-layer work is active. For agent loop/session orchestration/queue/tool-call semantics work, create or switch task branches inside this lane.
+- `.worktrees/ontology` is the long-lived ontology lane. For `loushang.ontology`, operational ontology infrastructure, semantic schema/runtime, ontology actions/functions, standards interoperability, data fusion, and ontology architecture docs, create or switch task branches inside this lane. Use `lane/ontology` as its integration branch and keep it synchronized with the control lane's latest `main`.
 
 Only the control lane should normally check out `main`. Other lanes should use task branches based on `main` or `origin/main` and should regularly rebase or merge the latest `main`. Before switching branches in any lane, check dirty state and preserve user changes.
 
@@ -35,6 +36,15 @@ Target Python 3.11+ and use 4-space indentation. Follow existing naming patterns
 
 ## Testing Guidelines
 Tests use `pytest` with `--import-mode=importlib` and `src` on `PYTHONPATH`. Name files `test_*.py` and keep test scope narrow and behavior-focused. Add or update tests when changing provider behavior, model resolution, auth handling, or public examples. Run targeted tests first, then broader suites if the change crosses subsystem boundaries.
+
+Run `pytest` in the normal sandbox with `--skip-host-runtime`; `make
+test-sandbox` provides the full sandbox-safe suite. The
+`requires_host_runtime` marker is reserved for tests with a demonstrated host
+dependency. It currently excludes only the revision-aware
+`JsonConversationIndex` test whose `asyncio.to_thread` work does not progress
+in the restricted sandbox. Outside the sandbox, normal `pytest` runs it by
+default, and `make test-host-runtime` selects the marked test explicitly. Do
+not disable sandboxing for the full suite.
 
 ## Commit & Pull Request Guidelines
 Recent history uses short summaries and occasional conventional prefixes such as `test(integration): ...`. Prefer concise, imperative commit messages; use `type(scope): summary` when helpful. PRs should explain the user-visible change, list validation performed, and call out config or API contract changes. Link related issues or design docs when relevant.

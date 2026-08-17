@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Generic, TypeVar
 from urllib.parse import quote
 
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.registry import source_info_from_extension
 from loushang.harness.extensions.routing_types import (
     RegisteredExtensionHandler,
@@ -19,7 +20,7 @@ from loushang.harness.extensions.types import (
     LoadedExtension,
     extension_is_active,
 )
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.diagnostics import resource_diagnostic
 from loushang.harness.resources.source import SourceInfo
 
 S = TypeVar("S")
@@ -63,16 +64,16 @@ class ExtensionRouteError(RuntimeError):
 @dataclass(frozen=True)
 class ExtensionRoutePlan:
     _routes_by_event: Mapping[str, tuple[ResolvedExtensionRoute, ...]]
-    diagnostics: tuple[ResourceDiagnostic, ...] = ()
+    diagnostics: tuple[DiagnosticDraft, ...] = ()
 
     @classmethod
     def from_extensions(
         cls,
         extensions: Sequence[LoadedExtension],
         *,
-        diagnostics: list[ResourceDiagnostic] | None = None,
+        diagnostics: list[DiagnosticDraft] | None = None,
     ) -> ExtensionRoutePlan:
-        planning_diagnostics: list[ResourceDiagnostic] = []
+        planning_diagnostics: list[DiagnosticDraft] = []
         registrations = tuple(
             (
                 extension,
@@ -96,7 +97,7 @@ class ExtensionRoutePlan:
             tuple[LoadedExtension, Sequence[RegisteredExtensionHandler]]
         ],
         *,
-        diagnostics: list[ResourceDiagnostic] | None = None,
+        diagnostics: list[DiagnosticDraft] | None = None,
     ) -> ExtensionRoutePlan:
         """Compile explicit registrations without applying legacy synthesis."""
 
@@ -113,8 +114,8 @@ class ExtensionRoutePlan:
             tuple[LoadedExtension, Sequence[RegisteredExtensionHandler]]
         ],
         *,
-        planning_diagnostics: list[ResourceDiagnostic],
-        diagnostics: list[ResourceDiagnostic] | None,
+        planning_diagnostics: list[DiagnosticDraft],
+        diagnostics: list[DiagnosticDraft] | None,
     ) -> ExtensionRoutePlan:
         valid_extension_registrations = []
         for extension, registrations in extension_registrations:
@@ -226,7 +227,7 @@ class ExtensionRouter:
         self,
         plan: ExtensionRoutePlan,
         *,
-        diagnostics: list[ResourceDiagnostic],
+        diagnostics: list[DiagnosticDraft],
         runtime_error_handler: ExtensionRuntimeErrorHandler | None = None,
         include_route_id_in_error_metadata: bool = True,
         include_provenance_in_error_metadata: bool = True,
@@ -244,7 +245,7 @@ class ExtensionRouter:
         cls,
         extensions: Sequence[LoadedExtension],
         *,
-        diagnostics: list[ResourceDiagnostic],
+        diagnostics: list[DiagnosticDraft],
         runtime_error_handler: ExtensionRuntimeErrorHandler | None = None,
         include_route_id_in_error_metadata: bool = True,
         include_provenance_in_error_metadata: bool = True,
@@ -405,7 +406,7 @@ class ExtensionRouter:
         if self._include_route_id_in_error_metadata:
             metadata["route_id"] = route.route_id
         self._diagnostics.append(
-            ResourceDiagnostic(
+            resource_diagnostic(
                 code=f"extension_{event_name}_failed",
                 message=f"Extension hook '{event_name}' failed: {error}",
                 source_path=route.extension.source_path,
@@ -421,7 +422,7 @@ class ExtensionRouter:
 def _registrations_for_extension(
     extension: LoadedExtension,
     *,
-    diagnostics: list[ResourceDiagnostic],
+    diagnostics: list[DiagnosticDraft],
 ) -> tuple[RegisteredExtensionHandler, ...]:
     registrations = tuple(extension.handler_registrations)
     if not registrations:
@@ -471,7 +472,7 @@ def _same_hook_projection(
 def _order_routes(
     routes: Sequence[ResolvedExtensionRoute],
     *,
-    diagnostics: list[ResourceDiagnostic],
+    diagnostics: list[DiagnosticDraft],
     inactive_extension_ids: set[str],
     inactive_route_ids: set[str],
 ) -> tuple[ResolvedExtensionRoute, ...]:
@@ -673,7 +674,7 @@ def _resolve_reference(
     routes_by_extension: Mapping[str, Sequence[ResolvedExtensionRoute]],
     inactive_extension_ids: set[str],
     inactive_route_ids: set[str],
-    diagnostics: list[ResourceDiagnostic],
+    diagnostics: list[DiagnosticDraft],
 ) -> tuple[ResolvedExtensionRoute, ...]:
     if reference.startswith("route:"):
         route_id = reference.removeprefix("route:")
@@ -760,8 +761,8 @@ def _planning_diagnostic(
     code: str,
     message: str,
     metadata: dict[str, object] | None = None,
-) -> ResourceDiagnostic:
-    return ResourceDiagnostic(
+) -> DiagnosticDraft:
+    return resource_diagnostic(
         code=code,
         message=message,
         source_path=extension.source_path,
@@ -776,7 +777,7 @@ def _route_diagnostic(
     code: str,
     message: str,
     metadata: dict[str, object] | None = None,
-) -> ResourceDiagnostic:
+) -> DiagnosticDraft:
     return _planning_diagnostic(
         route.extension,
         code=code,

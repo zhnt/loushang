@@ -515,7 +515,8 @@
 
 归属组件：
 
-- `prompt`
+- `loushang.harness.capabilities.prompt_assembly`
+- `coding.prompt` 仅保留默认值与公共导入兼容适配
 
 角色：
 
@@ -534,8 +535,9 @@
 理由：
 
 - `reference coding agent` 的 prompt assembly 分散在 `AgentSession`、`system-prompt`、resource loader 之间
-- 当前保留 `PromptAssembler`，是为了让 Python 设计中 prompt 组装边界更显式
-- 它的语义更接近显式桥接层，而不是取代 `DefaultResourceLoader` 的资源聚合职责
+- 标准资源、skill、tool 与 runtime footer 组装并非 Coding 独有，canonical 实现归 Harness
+- Coding 只注入 `DEFAULT_CODING_SYSTEM_PROMPT`，不复制通用组装或 preflight 实现
+- 该服务仍是显式桥接层，而不取代资源加载器的发现与聚合职责
 
 ### `CompactionCoordinator`
 

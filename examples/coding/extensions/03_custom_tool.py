@@ -18,7 +18,7 @@ from _support import (
 )
 
 EXTENSION_SOURCE = """
-from loushang.coding.tools import tool
+from loushang.harness.tools.core import tool
 
 
 @tool(label="Echo Extension")

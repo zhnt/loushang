@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def test_parse_slash_command_splits_name_args_and_mcp_marker() -> None:
-    from loushang.coding.commands import parse_slash_command
+    from loushang.harness.commands import parse_slash_command
 
     parsed = parse_slash_command("/deploy prod now")
     assert parsed is not None
@@ -10,11 +10,15 @@ def test_parse_slash_command_splits_name_args_and_mcp_marker() -> None:
 
     mcp = parse_slash_command("/mcp__ide__diagnostics (MCP) current file")
     assert mcp is not None
-    assert (mcp.name, mcp.args, mcp.is_mcp) == ("mcp__ide__diagnostics (MCP)", "current file", True)
+    assert (mcp.name, mcp.args, mcp.is_mcp) == (
+        "mcp__ide__diagnostics (MCP)",
+        "current file",
+        True,
+    )
 
 
 def test_parse_slash_command_rejects_non_commands_and_empty_names() -> None:
-    from loushang.coding.commands import parse_slash_command
+    from loushang.harness.commands import parse_slash_command
 
     assert parse_slash_command("deploy prod") is None
     assert parse_slash_command(" /deploy prod") is None
@@ -22,41 +26,33 @@ def test_parse_slash_command_rejects_non_commands_and_empty_names() -> None:
     assert parse_slash_command("/   ") is None
 
 
-def test_builtin_slash_commands_match_pi_style_core_surface() -> None:
-    from loushang.coding.commands import BUILTIN_SLASH_COMMANDS
+def test_standard_session_commands_have_shared_metadata() -> None:
+    from loushang.harness.session import STANDARD_SESSION_COMMANDS
 
-    commands = {command.name: command.description for command in BUILTIN_SLASH_COMMANDS}
+    commands = {command.name: command.description for command in STANDARD_SESSION_COMMANDS}
 
     assert commands == {
-        "settings": "Open settings menu",
-        "model": "Select model (opens selector UI)",
-        "scoped-models": "Enable/disable models for Ctrl+P cycling",
         "export": "Export session (HTML default, or specify path: .html/.jsonl)",
         "import": "Import and resume a session from a JSONL file",
-        "share": "Share session as a secret GitHub gist",
         "copy": "Copy an assistant message to clipboard",
-        "name": "Set session display name",
+        "rename": "Rename the current session",
         "session": "Show session info and stats",
-        "terminal": "Show terminal capabilities and protocol diagnostics",
         "changelog": "Show changelog entries",
-        "hotkeys": "Show all keyboard shortcuts",
         "fork": "Create a new fork from a previous user message",
         "clone": "Duplicate the current session at the current position",
         "tree": "Navigate session tree (switch branches)",
-        "login": "Configure provider authentication",
-        "logout": "Remove provider authentication",
         "tools": "Show or update active tools for this session",
         "extensions": "Show loaded extensions and diagnostics",
-        "new": "Start a new session",
+        "new": "Start a new session in the current context",
         "compact": "Manually compact the session context",
         "resume": "Resume a different session",
+        "delete": "Delete a previous session",
         "reload": "Reload keybindings, extensions, skills, prompts, and themes",
-        "quit": "Quit loushang",
     }
 
 
 def test_complete_slash_commands_filters_by_prefix_and_marks_conflicts() -> None:
-    from loushang.coding.commands import (
+    from loushang.harness.commands import (
         CommandSourceInfo,
         SessionCommandDescriptor,
         complete_slash_commands,
@@ -114,11 +110,11 @@ def test_complete_slash_commands_filters_by_prefix_and_marks_conflicts() -> None
 
 
 def test_session_command_descriptor_remains_a_runtime_class() -> None:
-    from loushang.coding.commands import (
+    from loushang.harness.commands import (
+        CommandDescriptor,
         CommandSourceInfo,
         SessionCommandDescriptor,
     )
-    from loushang.harness.capabilities.commands import CommandDescriptor
 
     command = SessionCommandDescriptor(
         name="review",
@@ -132,7 +128,7 @@ def test_session_command_descriptor_remains_a_runtime_class() -> None:
 
 
 def test_session_command_descriptor_preserves_legacy_positional_fields() -> None:
-    from loushang.coding.commands import (
+    from loushang.harness.commands import (
         CommandSourceInfo,
         SessionCommandDescriptor,
     )

@@ -42,7 +42,8 @@ runtime/RPC/diagnostics/tool hardening pass.
 - Extension registry/resource alignment:
   - Message renderer headless registry added.
   - `resources_discover` accepts reference-style `promptPaths`, `skillPaths`, `themePaths`.
-  - Bad extension resource paths generate `ResourceDiagnostic` instead of being silently ignored.
+  - Bad extension resource paths generate a resource-scoped `DiagnosticDraft`
+    instead of being silently ignored.
 - Command surface alignment:
   - Session/RPC command listing returns all registered extension commands.
   - `RegisteredCommand.hidden` and `ExtensionAPI.register_command(hidden=...)` were removed.

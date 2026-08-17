@@ -6,7 +6,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Literal
 
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.diagnostics.types import DiagnosticDraft
 
 ResourceSourceKind = Literal[
     "built_in", "project_local", "external_package", "user_global", "temporary"
@@ -56,7 +56,7 @@ class PromptFragmentDescriptor:
     source: str = "filesystem"
     enabled: bool = True
     metadata: Mapping[str, object] = field(default_factory=lambda: _EMPTY_METADATA)
-    diagnostics: tuple[ResourceDiagnostic, ...] = ()
+    diagnostics: tuple[DiagnosticDraft, ...] = ()
     id: str | None = None
     resource_type: str = "prompt"
     source_kind: ResourceSourceKind = "project_local"
@@ -84,7 +84,7 @@ class SkillDescriptor:
     source: str = "filesystem"
     enabled: bool = True
     metadata: Mapping[str, object] = field(default_factory=lambda: _EMPTY_METADATA)
-    diagnostics: tuple[ResourceDiagnostic, ...] = ()
+    diagnostics: tuple[DiagnosticDraft, ...] = ()
     id: str | None = None
     resource_type: str = "skill"
     source_kind: ResourceSourceKind = "project_local"
@@ -109,7 +109,7 @@ class ExtensionDescriptor:
     source: str = "filesystem"
     enabled: bool = True
     metadata: Mapping[str, object] = field(default_factory=lambda: _EMPTY_METADATA)
-    diagnostics: tuple[ResourceDiagnostic, ...] = ()
+    diagnostics: tuple[DiagnosticDraft, ...] = ()
     id: str | None = None
     resource_type: str = "extension"
     source_kind: ResourceSourceKind = "project_local"
@@ -134,7 +134,7 @@ class ThemeDescriptor:
     source: str = "filesystem"
     enabled: bool = True
     metadata: Mapping[str, object] = field(default_factory=lambda: _EMPTY_METADATA)
-    diagnostics: tuple[ResourceDiagnostic, ...] = ()
+    diagnostics: tuple[DiagnosticDraft, ...] = ()
     id: str | None = None
     resource_type: str = "theme"
     source_kind: ResourceSourceKind = "project_local"
@@ -161,7 +161,7 @@ class ResourceBundle:
     extensions: list[ExtensionDescriptor] = field(default_factory=list)
     prompts: list[PromptFragmentDescriptor] = field(default_factory=list)
     themes: list[ThemeDescriptor] = field(default_factory=list)
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
+    diagnostics: list[DiagnosticDraft] = field(default_factory=list)
 
     def merge(
         self,
@@ -171,7 +171,7 @@ class ResourceBundle:
         extensions: list[ExtensionDescriptor] | None = None,
         prompts: list[PromptFragmentDescriptor] | None = None,
         themes: list[ThemeDescriptor] | None = None,
-        diagnostics: list[ResourceDiagnostic] | None = None,
+        diagnostics: list[DiagnosticDraft] | None = None,
     ) -> ResourceBundle:
         merged_prompts = [*self.prompts, *(prompts or [])]
         merged_prompt_descriptors = [
@@ -212,7 +212,7 @@ class ResourceSnapshot:
     candidate_extension_descriptors: tuple[ExtensionDescriptor, ...] = ()
     active_theme_descriptors: tuple[ThemeDescriptor, ...] = ()
     candidate_theme_descriptors: tuple[ThemeDescriptor, ...] = ()
-    diagnostics: tuple[ResourceDiagnostic, ...] = ()
+    diagnostics: tuple[DiagnosticDraft, ...] = ()
     merge_decisions: tuple[ResourceMergeDecision, ...] = ()
 
     def to_bundle(self) -> ResourceBundle:

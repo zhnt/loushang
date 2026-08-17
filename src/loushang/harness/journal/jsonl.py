@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Generic, Literal, TypeVar, cast
 
+from loushang.foundation.json import JsonValueError, require_json_mapping
 from loushang.harness.journal.codec import (
     JournalCodecError,
     JournalHeaderCodec,
@@ -23,7 +24,6 @@ from loushang.harness.journal.types import (
     JournalLoadPolicy,
     JsonlSnapshot,
 )
-from loushang.protocol import JsonValueError, require_json_mapping
 
 H = TypeVar("H")
 R = TypeVar("R")
@@ -119,6 +119,38 @@ def append_jsonl_record(
             _sync_handle(handle, durability)
 
 
+def append_jsonl_records(
+    path: str | Path,
+    records: Sequence[R],
+    *,
+    record_codec: JournalRecordCodec[R],
+    format_profile: JournalFormatProfile = DEFAULT_JSONL_FORMAT,
+    durability: JournalDurabilityProfile = DURABLE_LOCKED_JOURNAL,
+    lock_factory: LockFactory | None = None,
+) -> None:
+    """Append an ordered record batch with one lock, open, write, and sync."""
+
+    durable_records = tuple(records)
+    if not durable_records:
+        return
+    lines = tuple(
+        _dump_mapping(record_codec.encode_record(record), format_profile)
+        for record in durable_records
+    )
+    payload = format_profile.newline.join(lines) + format_profile.newline
+    target = Path(path)
+    with _lock_context(
+        target,
+        "exclusive",
+        durability=durability,
+        lock_factory=lock_factory,
+    ):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("a", encoding=format_profile.encoding) as handle:
+            handle.write(payload)
+            _sync_handle(handle, durability)
+
+
 def write_jsonl(
     path: str | Path,
     records: Sequence[R],
@@ -152,17 +184,12 @@ def write_jsonl(
         durability=durability,
         lock_factory=lock_factory,
     ):
-        target.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = target.with_name(f".{target.name}.{os.getpid()}.tmp")
-        try:
-            with temp_path.open("w", encoding=format_profile.encoding) as handle:
-                handle.write(data)
-                _sync_handle(handle, durability)
-            temp_path.replace(target)
-        except BaseException:
-            with suppress(FileNotFoundError):
-                temp_path.unlink()
-            raise
+        _replace_text_unlocked(
+            target,
+            data,
+            encoding=format_profile.encoding,
+            durability=durability,
+        )
 
 
 def load_jsonl(
@@ -176,13 +203,52 @@ def load_jsonl(
     lock_factory: LockFactory | None = None,
 ) -> JsonlSnapshot[H, R]:
     target = Path(path)
+    lock_mode: LockMode = (
+        "exclusive" if load_policy.partial_tail == "repair" else "shared"
+    )
     with _lock_context(
         target,
-        "shared",
+        lock_mode,
         durability=durability,
         lock_factory=lock_factory,
     ):
         raw = target.read_text(encoding=format_profile.encoding)
+        snapshot = _decode_jsonl(
+            raw,
+            target=target,
+            record_codec=record_codec,
+            header_codec=header_codec,
+            load_policy=load_policy,
+        )
+        partial_tail = next(
+            (
+                diagnostic
+                for diagnostic in snapshot.diagnostics
+                if diagnostic.code == "partial_journal_tail"
+            ),
+            None,
+        )
+        if load_policy.partial_tail == "repair" and partial_tail is not None:
+            if partial_tail.line_number is None:
+                raise RuntimeError("partial-tail diagnostic requires a line number")
+            repaired = raw[: _line_start_offset(raw, partial_tail.line_number)]
+            _replace_text_unlocked(
+                target,
+                repaired,
+                encoding=format_profile.encoding,
+                durability=durability,
+            )
+        return snapshot
+
+
+def _decode_jsonl(
+    raw: str,
+    *,
+    target: Path,
+    record_codec: JournalRecordCodec[R],
+    header_codec: JournalHeaderCodec[H] | None,
+    load_policy: JournalLoadPolicy,
+) -> JsonlSnapshot[H, R]:
 
     numbered_lines = [
         (line_number, line)
@@ -332,6 +398,16 @@ class JsonlJournal(Generic[H, R]):
             lock_factory=self.lock_factory,
         )
 
+    def append_batch(self, records: Sequence[R]) -> None:
+        append_jsonl_records(
+            self.path,
+            records,
+            record_codec=self.record_codec,
+            format_profile=self.format_profile,
+            durability=self.durability,
+            lock_factory=self.lock_factory,
+        )
+
     def rewrite(self, records: Sequence[R], *, header: H | None = None) -> None:
         write_jsonl(
             self.path,
@@ -446,6 +522,35 @@ def _has_trailing_newline(raw: str) -> bool:
     return raw.endswith(("\n", "\r"))
 
 
+def _line_start_offset(raw: str, line_number: int) -> int:
+    offset = 0
+    for current_line, line in enumerate(raw.splitlines(keepends=True), start=1):
+        if current_line == line_number:
+            return offset
+        offset += len(line)
+    raise ValueError(f"line {line_number} does not exist in journal")
+
+
+def _replace_text_unlocked(
+    target: Path,
+    data: str,
+    *,
+    encoding: str,
+    durability: JournalDurabilityProfile,
+) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+    try:
+        with temp_path.open("w", encoding=encoding) as handle:
+            handle.write(data)
+            _sync_handle(handle, durability)
+        temp_path.replace(target)
+    except BaseException:
+        with suppress(FileNotFoundError):
+            temp_path.unlink()
+        raise
+
+
 def _diagnostic(
     code: str,
     message: str,
@@ -489,6 +594,7 @@ __all__ = [
     "LockFactory",
     "LockMode",
     "append_jsonl_record",
+    "append_jsonl_records",
     "journal_file_lock",
     "load_jsonl",
     "parse_legacy_jsonl_line",

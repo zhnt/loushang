@@ -9,6 +9,7 @@ notice bundle for packaged binaries or container images.
 | Package | Version | License | Notice source |
 |---|---:|---|---|
 | `anthropic` | 0.89.0 | MIT | Package metadata |
+| `authlib` | 1.7.2 | BSD-3-Clause | Package metadata; ships `LICENSE` |
 | `httpx` | 0.28.1 | BSD-3-Clause | Package metadata |
 | `markdown-it-py` | 4.2.0 | MIT | Package metadata; ships `LICENSE` and `LICENSE.markdown-it` |
 | `openai` | 2.30.0 | Apache-2.0 | Package metadata |

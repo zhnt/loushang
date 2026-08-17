@@ -1,5 +1,7 @@
 # Loushang AI Historical Handoff Summary
 
+> 历史快照：本文保留当时的命名与设计语境，不代表当前正式术语；当前代码统一使用 `APIAdapter`。
+
 ## Goal
 
 当前在设计 `loushang.ai`，优先做 `public API / types / streaming / cancellation`，暂不进入正式实现代码。

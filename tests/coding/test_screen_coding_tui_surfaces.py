@@ -5,14 +5,28 @@ from contextlib import suppress
 from types import SimpleNamespace
 
 from loushang.ai import Model
-from loushang.coding.types import ModelSelection
+from loushang.ai.errors import UnsupportedCapabilityError
+from loushang.ai.model import ModelSelection
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager, ScreenSurfaceView
-from loushang.coding.ui.status_provider import CodingTuiStatusProvider
+from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
+from loushang.harness.multiagent import (
+    AgentPath,
+    AgentTypeRegistry,
+    AgentTypeSpec,
+    HostCaller,
+    MultiAgentControl,
+)
+from loushang.harnesstui.conversation.fork import ForkPromptSurface
+from loushang.harnesstui.multiagent import AgentTreeSurface
+from loushang.harnesstui.selection.model import (
+    ModelSelectorSurface as SharedModelSelectorSurface,
+)
+from loushang.harnesstui.status.provider import StatusProvider
+from loushang.harnesstui.surface.view import ScreenSurfaceView
 from loushang.tui import (
     ApprovalSurface,
+    CommandSurface,
     CursorDeclaration,
-    DialogSurface,
     InputEvent,
     InputIntent,
     RenderConstraints,
@@ -113,31 +127,37 @@ def test_screen_surface_manager_opens_model_surface_and_selects_model() -> None:
     assert app.active_surface.title == "Select Model"
     assert app.active_surface.presentation == "bottom-exclusive"
     assert app.active_surface.exclusive_bottom is True
+    assert isinstance(app.active_surface.content, SharedModelSelectorSurface)
+    assert app.active_surface.content.max_visible == 10
 
-    rendered = app.active_surface.render(RenderConstraints(width=80, max_height=10))
+    rendered = app.active_surface.render(RenderConstraints(width=160, max_height=10))
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
     assert plain_lines[:3] == (
         "Select Model",
-        "Access legacy models by running loushang --model <provider/model>.",
+        "Choose a model for this session · legacy: loushang --model <provider:model>",
         "",
     )
-    assert plain_lines[3].startswith("> 1. moonshot/kimi-for-coding")
+    assert plain_lines[3].startswith("> 1. moonshot:test-endpoint:kimi-for-coding")
     assert plain_lines[3].endswith("current")
-    assert plain_lines[-1] == "  Press number or enter to confirm or esc to go back"
+    assert plain_lines[-1] == (
+        "Type to filter · ↑/↓ choose · Enter switch · "
+        "1–9 quick select · Esc keep current"
+    )
+    assert rendered.lines[0].text.startswith("\x1b[1;36mSelect Model")
     assert rendered.lines[3].text.startswith("\x1b[1;38;5;33m> 1.")
 
     assert app.active_surface.handle_input(InputEvent(kind="key", key="down")) is None
     intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
-    assert intent == InputIntent(kind="select", text="openai/gpt-5.4")
+    assert intent == InputIntent(kind="select", text="openai:test-endpoint:gpt-5.4")
 
     asyncio.run(manager.handle_surface_intent(intent))
 
     assert session.set_model_calls[-1] == ModelSelection(
-        provider="openai", model_id="gpt-5.4"
+        endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
     )
     assert app.active_surface is None
-    assert app.state.status_message == "Model set: openai/gpt-5.4"
-    assert app.state.model_label == "openai/gpt-5.4"
+    assert app.state.status_message == "Model set: openai:test-endpoint:gpt-5.4"
+    assert app.state.model_label == "openai:test-endpoint:gpt-5.4"
 
 
 def test_screen_surface_model_selector_displays_endpoint_and_selects_full_identity() -> (
@@ -145,8 +165,12 @@ def test_screen_surface_model_selector_displays_endpoint_and_selects_full_identi
 ):
     session = _Session()
     session.models = [
-        ModelSelection(provider="dashscope", model_id="qwen3.6-plus"),
-        ModelSelection(provider="dashscope", model_id="qwen3.6-plus"),
+        ModelSelection(
+            endpoint_id="test-endpoint", provider="dashscope", model_id="qwen3.6-plus"
+        ),
+        ModelSelection(
+            endpoint_id="test-endpoint", provider="dashscope", model_id="qwen3.6-plus"
+        ),
     ]
     responses_model = Model(
         id="qwen3.6-plus",
@@ -167,7 +191,7 @@ def test_screen_surface_model_selector_displays_endpoint_and_selects_full_identi
     asyncio.run(manager.handle_text("/model"))
 
     assert isinstance(app.active_surface, ScreenSurfaceView)
-    rendered = app.active_surface.render(RenderConstraints(width=96, max_height=10))
+    rendered = app.active_surface.render(RenderConstraints(width=160, max_height=10))
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
     assert "openai-responses" in plain_lines[3]
     assert "openai-completions:cn" in plain_lines[4]
@@ -187,8 +211,7 @@ def test_screen_surface_model_selector_displays_endpoint_and_selects_full_identi
     assert session.default_model_calls[-1] == (selection, "global")
     assert app.active_surface is None
     assert (
-        app.state.status_message
-        == "Model set: dashscope/qwen3.6-plus (endpoint: openai-responses)"
+        app.state.status_message == "Model set: dashscope:openai-responses:qwen3.6-plus"
     )
 
 
@@ -208,8 +231,12 @@ def test_screen_surface_model_selector_marks_only_current_endpoint() -> None:
     )
     session.current_model = completions_model
     session.models = [
-        ModelSelection(provider="dashscope", model_id="qwen3.6-plus"),
-        ModelSelection(provider="dashscope", model_id="qwen3.6-plus"),
+        ModelSelection(
+            endpoint_id="test-endpoint", provider="dashscope", model_id="qwen3.6-plus"
+        ),
+        ModelSelection(
+            endpoint_id="test-endpoint", provider="dashscope", model_id="qwen3.6-plus"
+        ),
     ]
     session.model_details = [responses_model, completions_model]
     app = _app()
@@ -218,15 +245,16 @@ def test_screen_surface_model_selector_marks_only_current_endpoint() -> None:
     asyncio.run(manager.handle_text("/model"))
 
     assert isinstance(app.active_surface, ScreenSurfaceView)
-    rendered = app.active_surface.render(RenderConstraints(width=100, max_height=10))
+    rendered = app.active_surface.render(RenderConstraints(width=160, max_height=10))
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
-    model_lines = [line for line in plain_lines if "dashscope/qwen3.6-plus" in line]
+    model_lines = [line for line in plain_lines if "dashscope:" in line]
     current_lines = [line for line in model_lines if "current" in line]
     assert len(current_lines) == 1
-    assert current_lines[0].startswith("> 1. dashscope/qwen3.6-plus")
-    assert "endpoint: openai-completions:cn" in current_lines[0]
+    assert current_lines[0].startswith(
+        "> 1. dashscope:openai-completions:cn:qwen3.6-plus"
+    )
     assert any(
-        "endpoint: openai-responses" in line and "current" not in line
+        "dashscope:openai-responses:qwen3.6-plus" in line and "current" not in line
         for line in model_lines
     )
 
@@ -246,12 +274,16 @@ def test_screen_surface_model_selector_uses_agent_model_endpoint_for_current() -
         name="Kimi for Coding",
     )
     session.current_model = ModelSelection(
-        provider="moonshot", model_id="kimi-for-coding"
+        endpoint_id="test-endpoint", provider="moonshot", model_id="kimi-for-coding"
     )
     session.agent = SimpleNamespace(model=anthropic_model)
     session.models = [
-        ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
-        ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
+        ModelSelection(
+            endpoint_id="test-endpoint", provider="moonshot", model_id="kimi-for-coding"
+        ),
+        ModelSelection(
+            endpoint_id="test-endpoint", provider="moonshot", model_id="kimi-for-coding"
+        ),
     ]
     session.model_details = [coding_model, anthropic_model]
     app = _app()
@@ -260,15 +292,17 @@ def test_screen_surface_model_selector_uses_agent_model_endpoint_for_current() -
     asyncio.run(manager.handle_text("/model"))
 
     assert isinstance(app.active_surface, ScreenSurfaceView)
-    rendered = app.active_surface.render(RenderConstraints(width=100, max_height=10))
+    rendered = app.active_surface.render(RenderConstraints(width=160, max_height=10))
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
-    model_lines = [line for line in plain_lines if "moonshot/kimi-for-coding" in line]
+    model_lines = [line for line in plain_lines if "moonshot:" in line]
     current_lines = [line for line in model_lines if "current" in line]
     assert len(current_lines) == 1
-    assert current_lines[0].startswith("> 1. moonshot/kimi-for-coding")
-    assert "endpoint: kimi-code-anthropic" in current_lines[0]
+    assert current_lines[0].startswith(
+        "> 1. moonshot:kimi-code-anthropic:kimi-for-coding"
+    )
     assert any(
-        "endpoint: coding" in line and "current" not in line for line in model_lines
+        "moonshot:coding:kimi-for-coding" in line and "current" not in line
+        for line in model_lines
     )
 
 
@@ -281,12 +315,30 @@ def test_screen_surface_model_selection_error_stays_in_tui() -> None:
 
     assert isinstance(app.active_surface, ScreenSurfaceView)
     intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
-    assert intent == InputIntent(kind="select", text="moonshot/kimi-for-coding")
+    assert intent == InputIntent(
+        kind="select", text="moonshot:test-endpoint:kimi-for-coding"
+    )
 
     asyncio.run(manager.handle_surface_intent(intent))
 
     assert isinstance(app.active_surface, ScreenSurfaceView)
-    assert app.state.status_message == "Error: model switch failed"
+    expected_error = (
+        "Error: Cannot switch to 'deepseek-v4-flash': this conversation contains "
+        "images, but the model does not support image input"
+    )
+    assert app.state.status_message == expected_error
+    assert app.active_surface.preferred_height == 20
+    rendered = app.render(RenderConstraints(width=100, max_height=24))
+    plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
+    assert expected_error in " ".join(plain_lines)
+    assert any("/fork and select the image prompt" in line for line in plain_lines)
+    assert any("/compact works" in line for line in plain_lines)
+    assert any("moonshot:test-endpoint:kimi-for-coding" in line for line in plain_lines)
+    assert any(line.text.startswith("\x1b[91mError:") for line in rendered.lines)
+    assert any(
+        line.text.startswith("\x1b[33mTo use it:")
+        for line in rendered.lines
+    )
 
 
 def test_screen_surface_manager_opens_model_surface_in_bottom_frame_with_runtime_overlay_host() -> (
@@ -306,15 +358,15 @@ def test_screen_surface_manager_opens_model_surface_in_bottom_frame_with_runtime
 
     assert app.active_surface.handle_input(InputEvent(kind="key", key="down")) is None
     intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
-    assert intent == InputIntent(kind="select", text="openai/gpt-5.4")
+    assert intent == InputIntent(kind="select", text="openai:test-endpoint:gpt-5.4")
 
     asyncio.run(manager.handle_surface_intent(intent))
 
     assert app.active_surface is None
     assert session.set_model_calls[-1] == ModelSelection(
-        provider="openai", model_id="gpt-5.4"
+        endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
     )
-    assert app.state.model_label == "openai/gpt-5.4"
+    assert app.state.model_label == "openai:test-endpoint:gpt-5.4"
 
 
 def test_screen_surface_manager_opens_non_model_surfaces_in_runtime_overlay_host() -> (
@@ -338,6 +390,124 @@ def test_screen_surface_manager_opens_non_model_surfaces_in_runtime_overlay_host
         assert app.surface_host.entries == []
 
 
+def test_screen_surface_manager_opens_resume_as_full_screen_continuity_page() -> None:
+    session = _Session()
+    runtime = SimpleNamespace(current_session=session)
+    app = _app()
+    app.surface_host = SurfaceHost()
+    manager = ScreenSurfaceManager(
+        app=app,
+        session=session,
+        runtime=runtime,
+        status_provider=_status_provider(app),
+    )
+
+    assert manager.is_local_command("/resume")
+    assert not manager.is_local_command("/resume explicit")
+    asyncio.run(manager.handle_text("/resume"))
+
+    assert app.active_surface is None
+    assert len(app.surface_host.entries) == 1
+    surface = app.surface_host.entries[0].surface
+    assert surface.presentation == "page"
+    assert isinstance(surface.renderable, ScreenSurfaceView)
+    assert surface.renderable.purpose == "session"
+
+
+def test_screen_surface_manager_opens_live_agent_tree_page() -> None:
+    async def scenario() -> None:
+        session = _Session()
+        control = MultiAgentControl(
+            agent_types=AgentTypeRegistry(
+                (AgentTypeSpec(name="reviewer", maximum_children=2),)
+            )
+        )
+        session.multiagent_runtime = SimpleNamespace(
+            control=control,
+            list_agents=lambda *, caller: control.list_agents(caller=caller),
+        )
+        app = _app()
+        manager = _manager(app, session)
+
+        assert manager.is_local_command("/agents")
+        await manager.handle_text("/agents")
+        await asyncio.sleep(0)
+
+        surface = app.active_surface
+        assert isinstance(surface, ScreenSurfaceView)
+        assert surface.purpose == "agent_tree"
+        assert surface.presentation == "page"
+        assert isinstance(surface.content, AgentTreeSurface)
+
+        control.spawn(
+            caller=HostCaller(),
+            parent_path=AgentPath.root(),
+            name="reviewer",
+            agent_type="reviewer",
+        )
+        plain = _surface_plain_lines(surface)
+        assert any("reviewer  idle · reviewer" in line for line in plain)
+
+        manager.close()
+
+    asyncio.run(scenario())
+
+
+def test_screen_surface_manager_forks_selected_prompt_and_restores_composer() -> None:
+    session = _Session()
+    session.fork_messages = [
+        {"entry_id": "entry-1", "text": "first prompt"},
+        {"entry_id": "entry-2", "text": "latest prompt"},
+    ]
+
+    class Runtime:
+        def __init__(self) -> None:
+            self.current_session = session
+            self.calls: list[tuple[str, str]] = []
+
+        async def fork_session_operation(self, entry_id: str, *, position: str):
+            self.calls.append((entry_id, position))
+            return SimpleNamespace(
+                cancelled=False,
+                current=self.current_session,
+                payload="latest prompt",
+            )
+
+    async def scenario() -> None:
+        runtime = Runtime()
+        app = _app()
+        app.surface_host = SurfaceHost()
+        manager = ScreenSurfaceManager(
+            app=app,
+            session=session,
+            runtime=runtime,
+            status_provider=_status_provider(app),
+        )
+
+        assert manager.is_local_command("/fork")
+        assert not manager.is_local_command("/fork entry-2 before")
+        await manager.handle_text("/fork")
+
+        view = _only_overlay_view(app)
+        assert view.purpose == "fork"
+        assert isinstance(view.content, ForkPromptSurface)
+        assert view.content.selected_entry_id == "entry-2"
+        intent = view.handle_input(InputEvent(kind="key", key="enter"))
+        assert intent == InputIntent(kind="select", text="entry-2")
+
+        await manager.handle_surface_intent(intent)
+        task = manager._fork_activation_task
+        assert task is not None
+        await task
+
+        assert runtime.calls == [("entry-2", "before")]
+        assert app.composer.value == "latest prompt"
+        assert app.state.status_message == "Forked from selected prompt"
+        assert app.surface_host.entries == []
+
+    asyncio.run(scenario())
+
+
 def test_screen_surface_manager_opens_models_info_in_bottom_frame_with_runtime_overlay_host() -> (
     None
 ):
@@ -353,20 +523,26 @@ def test_screen_surface_manager_opens_models_info_in_bottom_frame_with_runtime_o
     assert app.active_surface.exclusive_bottom is True
     assert app.surface_host.entries == []
 
-    rendered = app.active_surface.render(RenderConstraints(width=100, max_height=10))
+    rendered = app.active_surface.render(RenderConstraints(width=160, max_height=10))
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
     assert plain_lines[0] == "Available Models"
     assert "Available models:" not in plain_lines
-    assert any("moonshot/kimi-for-coding" in line for line in plain_lines)
+    assert any("moonshot:test-endpoint:kimi-for-coding" in line for line in plain_lines)
     assert plain_lines[-1] == "Enter/Esc to close"
 
 
 def test_screen_surface_models_info_keeps_footer_when_content_overflows() -> None:
     session = _Session()
     session.models = [
-        ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
+        ModelSelection(
+            endpoint_id="test-endpoint", provider="moonshot", model_id="kimi-for-coding"
+        ),
         *(
-            ModelSelection(provider="provider", model_id=f"model-{index:02d}")
+            ModelSelection(
+                endpoint_id="test-endpoint",
+                provider="provider",
+                model_id=f"model-{index:02d}",
+            )
             for index in range(12)
         ),
     ]
@@ -381,16 +557,22 @@ def test_screen_surface_models_info_keeps_footer_when_content_overflows() -> Non
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
 
     assert plain_lines[-2:] == ("", "Up/Down/Page to scroll - Enter/Esc to close")
-    assert any("provider/model-00" in line for line in plain_lines)
-    assert not any("provider/model-08" in line for line in plain_lines)
+    assert any("provider:test-endpoint:model-00" in line for line in plain_lines)
+    assert not any("provider:test-endpoint:model-08" in line for line in plain_lines)
 
 
 def test_screen_surface_models_info_scrolls_with_page_keys() -> None:
     session = _Session()
     session.models = [
-        ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
+        ModelSelection(
+            endpoint_id="test-endpoint", provider="moonshot", model_id="kimi-for-coding"
+        ),
         *(
-            ModelSelection(provider="provider", model_id=f"model-{index:02d}")
+            ModelSelection(
+                endpoint_id="test-endpoint",
+                provider="provider",
+                model_id=f"model-{index:02d}",
+            )
             for index in range(12)
         ),
     ]
@@ -416,18 +598,24 @@ def test_screen_surface_models_info_scrolls_with_page_keys() -> None:
     )
 
     assert intent == InputIntent(kind="consumed", note="info_scroll")
-    assert any("provider/model-00" in line for line in before)
-    assert not any("provider/model-00" in line for line in after)
-    assert any("provider/model-03" in line for line in after)
+    assert any("provider:test-endpoint:model-00" in line for line in before)
+    assert not any("provider:test-endpoint:model-00" in line for line in after)
+    assert any("provider:test-endpoint:model-03" in line for line in after)
     assert after[-2:] == ("", "Up/Down/Page to scroll - Enter/Esc to close")
 
 
 def test_screen_surface_models_info_cursor_stays_on_last_visible_body_line() -> None:
     session = _Session()
     session.models = [
-        ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
+        ModelSelection(
+            endpoint_id="test-endpoint", provider="moonshot", model_id="kimi-for-coding"
+        ),
         *(
-            ModelSelection(provider="provider", model_id=f"model-{index:02d}")
+            ModelSelection(
+                endpoint_id="test-endpoint",
+                provider="provider",
+                model_id=f"model-{index:02d}",
+            )
             for index in range(12)
         ),
     ]
@@ -601,13 +789,17 @@ def test_screen_surface_manager_settings_page_model_submit_uses_model_selection(
     asyncio.run(manager.handle_text("/settings"))
     asyncio.run(
         manager.handle_surface_intent(
-            InputIntent(kind="setting", text="model.current", note="openai/gpt-5.4")
+            InputIntent(
+                kind="setting",
+                text="model.current",
+                note="openai:test-endpoint:gpt-5.4",
+            )
         )
     )
 
     assert isinstance(app.active_surface, ScreenSurfaceView)
     assert session.set_model_calls
-    assert app.state.model_label == "openai/gpt-5.4"
+    assert app.state.model_label == "openai:test-endpoint:gpt-5.4"
 
 
 def test_screen_surface_manager_runtime_overlay_escape_and_close_are_idempotent() -> (
@@ -709,11 +901,15 @@ def test_screen_surface_model_selector_filters_by_typed_search() -> None:
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
 
     assert "Search: gpt" in plain_lines
-    assert any(line.startswith("> 2. openai/gpt-5.4") for line in plain_lines)
-    assert not any("moonshot/kimi-for-coding" in line for line in plain_lines)
+    assert any(
+        line.startswith("> 2. openai:test-endpoint:gpt-5.4") for line in plain_lines
+    )
+    assert not any(
+        "moonshot:test-endpoint:kimi-for-coding" in line for line in plain_lines
+    )
 
     intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
-    assert intent == InputIntent(kind="select", text="openai/gpt-5.4")
+    assert intent == InputIntent(kind="select", text="openai:test-endpoint:gpt-5.4")
 
 
 def test_screen_surface_model_selector_uses_model_detail_descriptions() -> None:
@@ -735,7 +931,7 @@ def test_screen_surface_model_selector_uses_model_detail_descriptions() -> None:
     rendered = app.active_surface.render(RenderConstraints(width=100, max_height=10))
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
     assert any(
-        line.startswith("  2. openai/gpt-5.4")
+        line.startswith("  2. openai:responses:gpt-5.4")
         and line.endswith("Strong model for everyday coding.")
         for line in plain_lines
     )
@@ -743,19 +939,24 @@ def test_screen_surface_model_selector_uses_model_detail_descriptions() -> None:
 
 def test_screen_surface_model_selector_lists_current_model_first() -> None:
     session = _Session()
-    session.current_model = ModelSelection(provider="openai", model_id="gpt-5.4")
+    session.current_model = ModelSelection(
+        endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
+    )
     app = _app()
     manager = _manager(app, session)
 
     asyncio.run(manager.handle_text("/model"))
 
     assert isinstance(app.active_surface, ScreenSurfaceView)
-    rendered = app.active_surface.render(RenderConstraints(width=100, max_height=10))
+    rendered = app.active_surface.render(RenderConstraints(width=160, max_height=10))
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
 
-    assert plain_lines[3].startswith("> 1. openai/gpt-5.4")
+    assert plain_lines[3].startswith("> 1. openai:test-endpoint:gpt-5.4")
     assert plain_lines[3].endswith("current")
-    assert any(line.startswith("  2. moonshot/kimi-for-coding") for line in plain_lines)
+    assert any(
+        line.startswith("  2. moonshot:test-endpoint:kimi-for-coding")
+        for line in plain_lines
+    )
 
 
 def test_screen_surface_model_selector_number_key_selects_current_scope_ordinal() -> (
@@ -763,7 +964,9 @@ def test_screen_surface_model_selector_number_key_selects_current_scope_ordinal(
 ):
     session = _Session()
     session.models.append(
-        ModelSelection(provider="anthropic", model_id="claude-sonnet")
+        ModelSelection(
+            endpoint_id="test-endpoint", provider="anthropic", model_id="claude-sonnet"
+        )
     )
     app = _app()
     manager = _manager(app, session)
@@ -773,13 +976,15 @@ def test_screen_surface_model_selector_number_key_selects_current_scope_ordinal(
     assert isinstance(app.active_surface, ScreenSurfaceView)
     intent = app.active_surface.handle_input(InputEvent(kind="text", text="2"))
 
-    assert intent == InputIntent(kind="select", text="openai/gpt-5.4")
+    assert intent == InputIntent(kind="select", text="openai:test-endpoint:gpt-5.4")
 
 
 def test_screen_surface_model_selector_zero_key_selects_tenth_model() -> None:
     session = _Session()
     session.models = [
-        ModelSelection(provider="p", model_id=f"model-{index}")
+        ModelSelection(
+            endpoint_id="test-endpoint", provider="p", model_id=f"model-{index}"
+        )
         for index in range(1, 12)
     ]
     app = _app()
@@ -790,13 +995,15 @@ def test_screen_surface_model_selector_zero_key_selects_tenth_model() -> None:
     assert isinstance(app.active_surface, ScreenSurfaceView)
     intent = app.active_surface.handle_input(InputEvent(kind="text", text="0"))
 
-    assert intent == InputIntent(kind="select", text="p/model-10")
+    assert intent == InputIntent(kind="select", text="p:test-endpoint:model-10")
 
 
 def test_screen_surface_model_selector_multidigit_number_selects_ordinal() -> None:
     session = _Session()
     session.models = [
-        ModelSelection(provider="p", model_id=f"model-{index}")
+        ModelSelection(
+            endpoint_id="test-endpoint", provider="p", model_id=f"model-{index}"
+        )
         for index in range(1, 13)
     ]
     app = _app()
@@ -808,7 +1015,7 @@ def test_screen_surface_model_selector_multidigit_number_selects_ordinal() -> No
     assert app.active_surface.handle_input(InputEvent(kind="text", text="1")) is None
     intent = app.active_surface.handle_input(InputEvent(kind="text", text="2"))
 
-    assert intent == InputIntent(kind="select", text="p/model-12")
+    assert intent == InputIntent(kind="select", text="p:test-endpoint:model-12")
 
 
 def test_screen_surface_model_selector_enter_confirms_pending_single_digit_ordinal() -> (
@@ -816,7 +1023,9 @@ def test_screen_surface_model_selector_enter_confirms_pending_single_digit_ordin
 ):
     session = _Session()
     session.models = [
-        ModelSelection(provider="p", model_id=f"model-{index}")
+        ModelSelection(
+            endpoint_id="test-endpoint", provider="p", model_id=f"model-{index}"
+        )
         for index in range(1, 13)
     ]
     app = _app()
@@ -828,12 +1037,16 @@ def test_screen_surface_model_selector_enter_confirms_pending_single_digit_ordin
     assert app.active_surface.handle_input(InputEvent(kind="text", text="1")) is None
     intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
 
-    assert intent == InputIntent(kind="select", text="p/model-1")
+    assert intent == InputIntent(kind="select", text="p:test-endpoint:model-1")
 
 
 def test_screen_surface_model_selector_number_key_extends_active_search() -> None:
     session = _Session()
-    session.models.append(ModelSelection(provider="openai", model_id="gpt-5.4-mini"))
+    session.models.append(
+        ModelSelection(
+            endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4-mini"
+        )
+    )
     app = _app()
     manager = _manager(app, session)
 
@@ -846,7 +1059,7 @@ def test_screen_surface_model_selector_number_key_extends_active_search() -> Non
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
 
     assert "Search: gpt-5" in plain_lines
-    assert any("openai/gpt-5.4" in line for line in plain_lines)
+    assert any("openai:test-endpoint:gpt-5.4" in line for line in plain_lines)
 
 
 def test_screen_surface_model_selector_home_end_move_selection_before_search_is_visible() -> (
@@ -862,7 +1075,7 @@ def test_screen_surface_model_selector_home_end_move_selection_before_search_is_
     assert app.active_surface.handle_input(InputEvent(kind="key", key="end")) is None
     assert app.active_surface.handle_input(
         InputEvent(kind="key", key="enter")
-    ) == InputIntent(kind="select", text="openai/gpt-5.4")
+    ) == InputIntent(kind="select", text="openai:test-endpoint:gpt-5.4")
 
 
 def test_screen_surface_model_selector_switches_between_scoped_and_all_models_with_tab() -> (
@@ -870,11 +1083,25 @@ def test_screen_surface_model_selector_switches_between_scoped_and_all_models_wi
 ):
     session = _Session()
     session.models.append(
-        ModelSelection(provider="anthropic", model_id="claude-sonnet")
+        ModelSelection(
+            endpoint_id="test-endpoint", provider="anthropic", model_id="claude-sonnet"
+        )
     )
     session.scoped_models = [
-        {"model": ModelSelection(provider="moonshot", model_id="kimi-for-coding")},
-        {"model": {"provider": "openai", "model_id": "gpt-5.4"}},
+        {
+            "model": ModelSelection(
+                endpoint_id="test-endpoint",
+                provider="moonshot",
+                model_id="kimi-for-coding",
+            )
+        },
+        {
+            "model": {
+                "provider": "openai",
+                "endpoint_id": "test-endpoint",
+                "model_id": "gpt-5.4",
+            }
+        },
     ]
     app = _app()
     manager = _manager(app, session)
@@ -885,13 +1112,17 @@ def test_screen_surface_model_selector_switches_between_scoped_and_all_models_wi
     scoped_lines = tuple(
         strip_control_sequences(line.text)
         for line in app.active_surface.render(
-            RenderConstraints(width=100, max_height=12)
+            RenderConstraints(width=160, max_height=12)
         ).lines
     )
     assert "Scope: scoped | all" in scoped_lines
-    assert any("moonshot/kimi-for-coding" in line for line in scoped_lines)
-    assert any("openai/gpt-5.4" in line for line in scoped_lines)
-    assert not any("anthropic/claude-sonnet" in line for line in scoped_lines)
+    assert any(
+        "moonshot:test-endpoint:kimi-for-coding" in line for line in scoped_lines
+    )
+    assert any("openai:test-endpoint:gpt-5.4" in line for line in scoped_lines)
+    assert not any(
+        "anthropic:test-endpoint:claude-sonnet" in line for line in scoped_lines
+    )
 
     assert app.active_surface.handle_input(InputEvent(kind="key", key="tab")) is None
     all_lines = tuple(
@@ -901,20 +1132,38 @@ def test_screen_surface_model_selector_switches_between_scoped_and_all_models_wi
         ).lines
     )
     assert "Scope: all | scoped" in all_lines
-    assert any("anthropic/claude-sonnet" in line for line in all_lines)
+    assert any("anthropic:test-endpoint:claude-sonnet" in line for line in all_lines)
 
 
 def test_screen_surface_model_selector_preserves_search_when_scope_changes() -> None:
     session = _Session()
     session.models.extend(
         [
-            ModelSelection(provider="openai", model_id="gpt-5.4-mini"),
-            ModelSelection(provider="anthropic", model_id="claude-sonnet"),
+            ModelSelection(
+                endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4-mini"
+            ),
+            ModelSelection(
+                endpoint_id="test-endpoint",
+                provider="anthropic",
+                model_id="claude-sonnet",
+            ),
         ]
     )
     session.scoped_models = [
-        {"model": ModelSelection(provider="moonshot", model_id="kimi-for-coding")},
-        {"model": {"provider": "openai", "model_id": "gpt-5.4"}},
+        {
+            "model": ModelSelection(
+                endpoint_id="test-endpoint",
+                provider="moonshot",
+                model_id="kimi-for-coding",
+            )
+        },
+        {
+            "model": {
+                "provider": "openai",
+                "endpoint_id": "test-endpoint",
+                "model_id": "gpt-5.4",
+            }
+        },
     ]
     app = _app()
     manager = _manager(app, session)
@@ -931,19 +1180,35 @@ def test_screen_surface_model_selector_preserves_search_when_scope_changes() -> 
         ).lines
     )
     assert "Search: gpt" in all_lines
-    assert any("openai/gpt-5.4" in line for line in all_lines)
-    assert any("openai/gpt-5.4-mini" in line for line in all_lines)
-    assert not any("anthropic/claude-sonnet" in line for line in all_lines)
+    assert any("openai:test-endpoint:gpt-5.4" in line for line in all_lines)
+    assert any("openai:test-endpoint:gpt-5.4-mini" in line for line in all_lines)
+    assert not any(
+        "anthropic:test-endpoint:claude-sonnet" in line for line in all_lines
+    )
 
 
 def test_screen_surface_model_selector_switches_scope_with_left_and_right() -> None:
     session = _Session()
     session.models.append(
-        ModelSelection(provider="anthropic", model_id="claude-sonnet")
+        ModelSelection(
+            endpoint_id="test-endpoint", provider="anthropic", model_id="claude-sonnet"
+        )
     )
     session.scoped_models = [
-        {"model": ModelSelection(provider="moonshot", model_id="kimi-for-coding")},
-        {"model": {"provider": "openai", "model_id": "gpt-5.4"}},
+        {
+            "model": ModelSelection(
+                endpoint_id="test-endpoint",
+                provider="moonshot",
+                model_id="kimi-for-coding",
+            )
+        },
+        {
+            "model": {
+                "provider": "openai",
+                "endpoint_id": "test-endpoint",
+                "model_id": "gpt-5.4",
+            }
+        },
     ]
     app = _app()
     manager = _manager(app, session)
@@ -959,7 +1224,7 @@ def test_screen_surface_model_selector_switches_scope_with_left_and_right() -> N
         ).lines
     )
     assert "Scope: all | scoped" in all_lines
-    assert any("anthropic/claude-sonnet" in line for line in all_lines)
+    assert any("anthropic:test-endpoint:claude-sonnet" in line for line in all_lines)
 
     assert app.active_surface.handle_input(InputEvent(kind="key", key="left")) is None
     scoped_lines = tuple(
@@ -969,13 +1234,17 @@ def test_screen_surface_model_selector_switches_scope_with_left_and_right() -> N
         ).lines
     )
     assert "Scope: scoped | all" in scoped_lines
-    assert not any("anthropic/claude-sonnet" in line for line in scoped_lines)
+    assert not any(
+        "anthropic:test-endpoint:claude-sonnet" in line for line in scoped_lines
+    )
 
 
 def test_screen_surface_model_selector_aligns_multi_digit_ordinals() -> None:
     session = _Session()
     session.models = [
-        ModelSelection(provider="p", model_id=f"model-{index}")
+        ModelSelection(
+            endpoint_id="test-endpoint", provider="p", model_id=f"model-{index}"
+        )
         for index in range(1, 12)
     ]
     app = _app()
@@ -986,9 +1255,15 @@ def test_screen_surface_model_selector_aligns_multi_digit_ordinals() -> None:
     assert isinstance(app.active_surface, ScreenSurfaceView)
     rendered = app.active_surface.render(RenderConstraints(width=100, max_height=16))
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
-    first_model_line = next(line for line in plain_lines if "p/model-1" in line)
-    tenth_model_line = next(line for line in plain_lines if "p/model-10" in line)
-    assert first_model_line.index("p/model-1") == tenth_model_line.index("p/model-10")
+    first_model_line = next(
+        line for line in plain_lines if "p:test-endpoint:model-1" in line
+    )
+    tenth_model_line = next(
+        line for line in plain_lines if "p:test-endpoint:model-10" in line
+    )
+    assert first_model_line.index("p:test-endpoint:model-1") == tenth_model_line.index(
+        "p:test-endpoint:model-10"
+    )
 
 
 def test_screen_surface_view_translates_mouse_row_to_selection_content() -> None:
@@ -1043,13 +1318,17 @@ def test_screen_surface_manager_applies_settings_page_statusline_change() -> Non
         for line in app.render(RenderConstraints(width=100, max_height=12)).lines
     )
     assert not any(
-        "moonshot/kimi-for-coding | repo | main | abcd | idle" in line
+        "moonshot:test-endpoint:kimi-for-coding | repo | main | abcd | idle" in line
         for line in rendered
     )
 
 
 def test_screen_surface_manager_command_surface_inserts_selected_command() -> None:
-    session = _Session()
+    class AsyncCommandSession(_Session):
+        async def list_commands(self) -> list[object]:
+            return self.commands
+
+    session = AsyncCommandSession()
     session.commands = [
         SimpleNamespace(name="report", description="Show report", source="core"),
         SimpleNamespace(name="model", description="Switch model", source="core"),
@@ -1060,29 +1339,22 @@ def test_screen_surface_manager_command_surface_inserts_selected_command() -> No
     asyncio.run(manager.handle_text("/command"))
 
     assert isinstance(app.active_surface, ScreenSurfaceView)
+    assert app.active_surface.title == "Commands"
+    assert app.active_surface.purpose == "command"
+    assert app.active_surface.footer == "Enter to select - Esc to close"
+    assert app.active_surface.presentation == "bottom"
+    assert isinstance(app.active_surface.content, CommandSurface)
+    assert app.active_surface.content.max_visible == 8
+    assert (
+        app.active_surface.handle_input(InputEvent(kind="text", text="report")) is None
+    )
     intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
-    assert intent == InputIntent(kind="command", text="/model")
+    assert intent == InputIntent(kind="command", text="/report")
 
     asyncio.run(manager.handle_surface_intent(intent))
 
     assert app.active_surface is None
-    assert app.composer.value == "/model "
-
-
-def test_screen_surface_manager_handles_dialog_surface_confirm() -> None:
-    app = _app()
-    manager = _manager(app, _Session())
-
-    app.active_surface = ScreenSurfaceView(
-        title="Confirm",
-        purpose="dialog",
-        content=DialogSurface(title="Confirm", message="Proceed?"),
-        footer="",
-    )
-
-    asyncio.run(manager.handle_surface_intent(InputIntent(kind="dialog_confirm")))
-
-    assert app.active_surface is None
+    assert app.composer.value == "/report "
 
 
 def test_screen_surface_manager_handles_approval_submit() -> None:
@@ -1106,7 +1378,11 @@ def test_screen_surface_manager_handles_approval_submit() -> None:
         footer="",
     )
 
-    asyncio.run(manager.handle_surface_intent(InputIntent(kind="approve")))
+    asyncio.run(
+        manager.handle_surface_intent(
+            InputIntent(kind="approval_decision", text="allow_once")
+        )
+    )
 
     assert app.active_surface is None
     assert events == [
@@ -1114,175 +1390,15 @@ def test_screen_surface_manager_handles_approval_submit() -> None:
             "action_id": "clear-cache-01",
             "action": "delete cache",
             "approved": True,
+            "outcome": "allow_once",
+            "scope": "once",
             "raw_note": "clear-cache-01",
         }
     ]
-
-
-def test_screen_surface_manager_handles_approval_reject() -> None:
-    app = _app()
-    events: list[dict[str, object]] = []
-
-    async def on_approval(event: dict[str, object]) -> None:
-        events.append(event)
-
-    manager = ScreenSurfaceManager(
-        app=app,
-        session=_Session(),
-        status_provider=_status_provider(app),
-        on_approval=on_approval,
-    )
-
-    app.active_surface = ScreenSurfaceView(
-        title="Approval",
-        purpose="approval",
-        content=ApprovalSurface(action="delete cache", action_id="clear-cache-01"),
-        footer="",
-    )
-
-    asyncio.run(manager.handle_surface_intent(InputIntent(kind="reject")))
-
-    assert app.active_surface is None
-    assert events == [
-        {
-            "action_id": "clear-cache-01",
-            "action": "delete cache",
-            "approved": False,
-            "raw_note": "clear-cache-01",
-        }
-    ]
-
-
-def test_screen_surface_manager_escape_rejects_approval() -> None:
-    app = _app()
-    events: list[dict[str, object]] = []
-
-    async def on_approval(event: dict[str, object]) -> None:
-        events.append(event)
-
-    manager = ScreenSurfaceManager(
-        app=app,
-        session=_Session(),
-        status_provider=_status_provider(app),
-        on_approval=on_approval,
-    )
-    manager.open_approval(
-        action="delete cache",
-        action_id="clear-cache-escape",
-    )
-    surface = app.active_surface
-    assert isinstance(surface, ScreenSurfaceView)
-
-    intent = surface.handle_input(InputEvent(kind="key", key="escape"))
-    assert intent is not None
-    asyncio.run(manager.handle_surface_intent(intent))
-
-    assert app.active_surface is None
-    assert events == [
-        {
-            "action_id": "clear-cache-escape",
-            "action": "delete cache",
-            "approved": False,
-            "raw_note": "clear-cache-escape",
-        }
-    ]
-
-
-def test_screen_surface_manager_queues_concurrent_approvals() -> None:
-    app = _app()
-    events: list[dict[str, object]] = []
-
-    async def on_approval(event: dict[str, object]) -> None:
-        events.append(event)
-
-    manager = ScreenSurfaceManager(
-        app=app,
-        session=_Session(),
-        status_provider=_status_provider(app),
-        on_approval=on_approval,
-    )
-    manager.open_approval(action="first action", action_id="approval-1")
-    manager.open_approval(action="second action", action_id="approval-2")
-
-    first = app.active_surface
-    assert isinstance(first, ScreenSurfaceView)
-    assert getattr(first.content, "action_id") == "approval-1"
-    asyncio.run(manager.handle_surface_intent(InputIntent(kind="approve")))
-
-    second = app.active_surface
-    assert isinstance(second, ScreenSurfaceView)
-    assert getattr(second.content, "action_id") == "approval-2"
-    asyncio.run(manager.handle_surface_intent(InputIntent(kind="reject")))
-
-    assert app.active_surface is None
-    assert [event["action_id"] for event in events] == ["approval-1", "approval-2"]
-    assert [event["approved"] for event in events] == [True, False]
-
-
-def test_screen_surface_manager_keeps_fifo_order_during_async_resolution() -> None:
-    app = _app()
-    callback_started = asyncio.Event()
-    release_callback = asyncio.Event()
-    events: list[str] = []
-
-    async def on_approval(event: dict[str, object]) -> None:
-        action_id = event.get("action_id")
-        assert isinstance(action_id, str)
-        events.append(action_id)
-        if action_id == "approval-a":
-            callback_started.set()
-            await release_callback.wait()
-
-    manager = ScreenSurfaceManager(
-        app=app,
-        session=_Session(),
-        status_provider=_status_provider(app),
-        on_approval=on_approval,
-    )
-
-    async def run() -> None:
-        manager.open_approval(action="A", action_id="approval-a")
-        manager.open_approval(action="B", action_id="approval-b")
-        first = asyncio.create_task(
-            manager.handle_surface_intent(InputIntent(kind="approve"))
-        )
-        await callback_started.wait()
-        manager.open_approval(action="C", action_id="approval-c")
-        release_callback.set()
-        await first
-
-        current = app.active_surface
-        assert isinstance(current, ScreenSurfaceView)
-        assert getattr(current.content, "action_id") == "approval-b"
-        await manager.handle_surface_intent(InputIntent(kind="approve"))
-        current = app.active_surface
-        assert isinstance(current, ScreenSurfaceView)
-        assert getattr(current.content, "action_id") == "approval-c"
-        await manager.handle_surface_intent(InputIntent(kind="reject"))
-
-    asyncio.run(run())
-
-    assert events == ["approval-a", "approval-b", "approval-c"]
-    assert app.active_surface is None
-
-
-def test_screen_surface_manager_clears_current_and_queued_approvals() -> None:
-    app = _app()
-    manager = _manager(app, _Session())
-    manager.open_approval(action="A", action_id="approval-a")
-    manager.open_approval(action="B", action_id="approval-b")
-
-    manager.clear_approval_surfaces()
-
-    assert app.active_surface is None
-    manager.open_approval(action="C", action_id="approval-c")
-    current = app.active_surface
-    assert isinstance(current, ScreenSurfaceView)
-    assert getattr(current.content, "action_id") == "approval-c"
 
 
 def test_screen_surface_manager_dismisses_timeout_and_cancelled_requests() -> None:
-    from loushang.coding.policy import (
+    from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
@@ -1363,32 +1479,29 @@ def test_screen_surface_manager_does_not_confirm_stale_approval_result() -> None
     )
     manager.open_approval(action="stale action", action_id="approval-stale")
 
-    asyncio.run(manager.handle_surface_intent(InputIntent(kind="approve")))
+    asyncio.run(
+        manager.handle_surface_intent(
+            InputIntent(kind="approval_decision", text="allow_once")
+        )
+    )
 
     assert app.state.status_message == "Approval request is no longer pending"
-
-
-def test_screen_surface_manager_ignores_unmapped_surface_intent() -> None:
-    app = _app()
-    manager = _manager(app, _Session())
-
-    asyncio.run(manager.handle_text("/hotkeys"))
-    surface = app.active_surface
-    assert surface is not None
-
-    asyncio.run(manager.handle_surface_intent(InputIntent(kind="abort")))
-
-    assert app.active_surface is surface
 
 
 class _Session:
     def __init__(self) -> None:
         self.current_model: object = ModelSelection(
-            provider="moonshot", model_id="kimi-for-coding"
+            endpoint_id="test-endpoint", provider="moonshot", model_id="kimi-for-coding"
         )
         self.models = [
-            ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
-            ModelSelection(provider="openai", model_id="gpt-5.4"),
+            ModelSelection(
+                endpoint_id="test-endpoint",
+                provider="moonshot",
+                model_id="kimi-for-coding",
+            ),
+            ModelSelection(
+                endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
+            ),
         ]
         self.set_model_calls: list[object] = []
         self.default_model_calls: list[tuple[ModelSelection | None, str]] = []
@@ -1396,6 +1509,7 @@ class _Session:
         self.commands: list[object] = []
         self.model_details: list[Model] = []
         self.scoped_models: list[object] = []
+        self.fork_messages: list[dict[str, str]] = []
 
     def get_model_selection(self) -> object:
         return self.current_model
@@ -1425,15 +1539,23 @@ class _Session:
     def list_commands(self) -> list[object]:
         return self.commands
 
+    def get_user_messages_for_forking(self) -> list[dict[str, str]]:
+        return list(self.fork_messages)
+
 
 class _FailingModelSession(_Session):
     async def set_model(self, selection: object) -> None:
-        raise ValueError("model switch failed")
+        raise UnsupportedCapabilityError(
+            "Cannot switch to 'deepseek-v4-flash': this conversation contains images, "
+            "but the model does not support image input",
+            model="deepseek-v4-flash",
+            details={"capability": "image_input"},
+        )
 
 
 def _app() -> ScreenCodingTuiApp:
     return ScreenCodingTuiApp(
-        model_label="moonshot/kimi-for-coding",
+        model_label="moonshot:test-endpoint:kimi-for-coding",
         cwd="/repo",
         branch="main",
         session_label="abcd",
@@ -1465,8 +1587,8 @@ def _status_provider(
     app: ScreenCodingTuiApp,
     *,
     settings_manager: object | None = None,
-) -> CodingTuiStatusProvider:
-    from loushang.coding.ui.status_line import (
+) -> StatusProvider:
+    from loushang.harnesstui.status.line import (
         status_line_settings_from_control,
         status_line_settings_to_patch,
     )
@@ -1484,7 +1606,7 @@ def _status_provider(
                 scope="global",
             )
 
-    return CodingTuiStatusProvider(
+    return StatusProvider(
         model_label=app.state.model_label,
         cwd=app.state.cwd,
         branch=app.state.branch,

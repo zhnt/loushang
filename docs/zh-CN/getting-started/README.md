@@ -44,7 +44,7 @@ loushang --list-commands
 loushang -p "Inspect this repository and summarize what it does."
 ```
 
-需要选择具体模型路线时，可以使用 `--model` 或 provider 相关环境变量。`--model provider/model` 是短写：当该模型只匹配一个 endpoint，或 catalog 明确将其中一个匹配 endpoint 标为 preferred 时可用。如果同一个 provider/model 存在多个 endpoint 且没有唯一 preferred endpoint，CLI 会报告歧义并列出可显式选择的 `provider:endpoint:model` 候选。需要指定具体 endpoint、region、lane 或 protocol 时，使用 `--model provider:endpoint:model`。模型切换成功后，CLI 会把完整选择保存为全局 `default_model`，路径是 `~/.loushang/coding/settings.json`；带 endpoint 的选择会保留 `provider`、`model_id` 和 `endpoint_id`，不会写入项目级 `.loushang/settings.json`。catalog key 中 `provider` 和 `model` id 不能包含 `:`，endpoint id 可以包含 `:`。项目与示例模型 catalog 可以放在 `.loushang/models/`，也可以在支持的入口显式传入。
+需要选择具体模型路线时，可以使用 `--model` 或 provider 相关环境变量。`--model provider:model` 是短写（也接受 `provider/model`）：只有该 provider/model 恰好匹配一个 endpoint 时才可用。如果同一个 provider/model 存在多个 endpoint，CLI 会报告歧义并列出可显式选择的 `provider:endpoint:model` 候选。需要指定具体 endpoint、region、lane 或 protocol 时，使用 `--model provider:endpoint:model`。模型切换成功后，CLI 会把完整选择保存为全局 `default_model`，路径是 `~/.loushang/coding/settings.json`；带 endpoint 的选择会保留 `provider`、`model_id` 和 `endpoint_id`，不会写入项目级 `.loushang/settings.json`。catalog key 中 `provider` 和 `model` id 不能包含 `:`，endpoint id 可以包含 `:`。项目与示例模型 catalog 可以放在 `.loushang/models/`，也可以在支持的入口显式传入。
 
 ## 下一步
 

@@ -12,13 +12,13 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from loushang.agent import AgentTool
-from loushang.ai import get_model
+from loushang.ai import ApiKeyAuth, CallOptions, get_model
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import (
     Capabilities,
     Model,
-    get_default_model_registry,
-    load_model_registry,
+    load_model_registry_from_directory,
+    load_model_registry_from_file,
     resolve_model_endpoint,
 )
 from loushang.ai.model.registry import ModelRegistry
@@ -26,16 +26,15 @@ from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage, UserM
 from loushang.coding import (
     AgentSession,
     AgentSessionRuntime,
-    ToolDefinition,
     create_agent_session_runtime,
     create_services,
 )
+from loushang.harness.tools.core import ToolDefinition
 
 ENV_EXAMPLES_MODEL_CATALOG = "LOUSHANG_EXAMPLES_MODEL_CATALOG"
 ENV_EXAMPLES_SESSION_DIR = "LOUSHANG_EXAMPLES_SESSION_DIR"
 
 _OVERRIDE_REGISTRY: ModelRegistry | None = None
-_DEFAULT_REGISTRY_SYNCED = False
 
 
 def _resolve_session_dir(default_session_dir: Path) -> Path:
@@ -53,15 +52,15 @@ def _resolve_model_catalog() -> Path | None:
 
 
 def _resolve_model(provider: str, endpoint: str, model_id: str) -> Model:
-    if _resolve_model_catalog() is not None:
-        _sync_custom_catalog_into_default()
     registry = _resolve_model_registry()
     if registry is not None:
         catalog = _resolve_model_catalog()
         try:
             return registry.get_model(provider, endpoint, model_id)
         except Exception as exc:
-            raise RuntimeError(f"resolve model from custom catalog failed: {catalog}") from exc
+            raise RuntimeError(
+                f"resolve model from custom catalog failed: {catalog}"
+            ) from exc
     return get_model(provider, endpoint, model_id)
 
 
@@ -72,7 +71,12 @@ def _resolve_model_registry() -> ModelRegistry | None:
     global _OVERRIDE_REGISTRY
     if _OVERRIDE_REGISTRY is None:
         try:
-            _OVERRIDE_REGISTRY = load_model_registry(catalog)
+            loader = (
+                load_model_registry_from_directory
+                if catalog.is_dir()
+                else load_model_registry_from_file
+            )
+            _OVERRIDE_REGISTRY = loader(catalog)
         except FileNotFoundError as exc:
             raise RuntimeError(f"model catalog not found: {catalog}") from exc
         except Exception as exc:
@@ -80,20 +84,8 @@ def _resolve_model_registry() -> ModelRegistry | None:
     return _OVERRIDE_REGISTRY
 
 
-def _sync_custom_catalog_into_default() -> None:
-    global _DEFAULT_REGISTRY_SYNCED
-    if _DEFAULT_REGISTRY_SYNCED:
-        return
-    registry = _resolve_model_registry()
-    if registry is None:
-        return
-    default_registry = get_default_model_registry()
-    for provider in registry.providers.values():
-        default_registry.register_provider(provider)
-    _DEFAULT_REGISTRY_SYNCED = True
-
-
 MODEL_ID = "kimi-for-coding"
+KIMI_PROVIDER_ID = "kimi-code"
 DEFAULT_SYSTEM_PROMPT = (
     "You are Kimi, an AI assistant provided by Moonshot AI. "
     "You are better at Chinese and English conversations and provide helpful, accurate answers."
@@ -118,7 +110,7 @@ def offline_model() -> Model:
 def resolve_kimi_model_id(
     *, default: str = MODEL_ID, endpoint_id: str = "kimi-code-anthropic"
 ) -> str:
-    if endpoint_id in {"anthropic-messages", "kimi-code-anthropic", "kimi-code-openai"}:
+    if endpoint_id in {"kimi-code-anthropic", "kimi-code-openai"}:
         return default
     return os.getenv("KIMI_MODEL_NAME", "").strip() or default
 
@@ -132,10 +124,10 @@ def build_kimi_model(
         else resolve_kimi_model_id(endpoint_id=endpoint_id)
     )
     try:
-        return _resolve_model("moonshot", endpoint_id, resolved_model_id)
+        return _resolve_model(KIMI_PROVIDER_ID, endpoint_id, resolved_model_id)
     except Exception:
         if resolved_model_id != MODEL_ID:
-            return _resolve_model("moonshot", endpoint_id, MODEL_ID)
+            return _resolve_model(KIMI_PROVIDER_ID, endpoint_id, MODEL_ID)
         raise
 
 
@@ -151,15 +143,11 @@ def describe_model(model: Model) -> dict[str, str | None]:
 
 
 def resolve_api_key() -> str:
-    api_key = (
-        os.environ.get("KIMI_API_KEY")
-        or os.environ.get("KIMI_AUTH_TOKEN")
-        or os.environ.get("MOONSHOT_API_KEY")
-        or os.environ.get("ANTHROPIC_API_KEY")
-        or os.environ.get("OPENAI_API_KEY")
-    )
+    api_key = os.environ.get("KIMI_CODE_API_KEY")
     if not api_key:
-        raise RuntimeError("Please export KIMI_API_KEY or MOONSHOT_API_KEY before running online extension examples.")
+        raise RuntimeError(
+            "Please export KIMI_CODE_API_KEY before running online extension examples."
+        )
     return api_key
 
 
@@ -180,6 +168,7 @@ def assistant_text_message(text: str) -> AssistantMessage:
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
         provider="offline",
+        endpoint="offline",
         model="offline-extension-demo",
         response_id=None,
         usage=usage(),
@@ -189,7 +178,9 @@ def assistant_text_message(text: str) -> AssistantMessage:
     )
 
 
-def assistant_tool_call_message(tool_name: str, arguments: dict[str, object]) -> AssistantMessage:
+def assistant_tool_call_message(
+    tool_name: str, arguments: dict[str, object]
+) -> AssistantMessage:
     return AssistantMessage(
         role="assistant",
         content=[
@@ -202,6 +193,7 @@ def assistant_tool_call_message(tool_name: str, arguments: dict[str, object]) ->
         ],
         api="anthropic-messages",
         provider="offline",
+        endpoint="offline",
         model="offline-extension-demo",
         response_id=None,
         usage=usage(),
@@ -218,12 +210,42 @@ def stream_with_final_message(message: AssistantMessage) -> AssistantMessageEven
         stream.push({"type": "start", "partial": message})
         if message.content and isinstance(message.content[0], TextPart):
             stream.push({"type": "text_start", "content_index": 0, "partial": message})
-            stream.push({"type": "text_delta", "content_index": 0, "delta": message.content[0].text, "partial": message})
-            stream.push({"type": "text_end", "content_index": 0, "content": message.content[0].text, "partial": message})
+            stream.push(
+                {
+                    "type": "text_delta",
+                    "content_index": 0,
+                    "delta": message.content[0].text,
+                    "partial": message,
+                }
+            )
+            stream.push(
+                {
+                    "type": "text_end",
+                    "content_index": 0,
+                    "content": message.content[0].text,
+                    "partial": message,
+                }
+            )
         elif message.content and isinstance(message.content[0], ToolCall):
-            stream.push({"type": "toolcall_start", "content_index": 0, "partial": message})
-            stream.push({"type": "toolcall_delta", "content_index": 0, "delta": str(message.content[0].arguments), "partial": message})
-            stream.push({"type": "toolcall_end", "content_index": 0, "tool_call": message.content[0], "partial": message})
+            stream.push(
+                {"type": "toolcall_start", "content_index": 0, "partial": message}
+            )
+            stream.push(
+                {
+                    "type": "toolcall_delta",
+                    "content_index": 0,
+                    "delta": str(message.content[0].arguments),
+                    "partial": message,
+                }
+            )
+            stream.push(
+                {
+                    "type": "toolcall_end",
+                    "content_index": 0,
+                    "tool_call": message.content[0],
+                    "partial": message,
+                }
+            )
         stream.push({"type": "done", "reason": message.stop_reason, "message": message})  # type: ignore[typeddict-item]
 
     asyncio.create_task(_feed())
@@ -295,7 +317,7 @@ async def create_kimi_runtime_session(
         persist=persist,
     )
     session = await runtime.create_session(cwd=str(working_dir))
-    session.agent.get_api_key = lambda provider: resolve_api_key()
+    session.agent.call_options = CallOptions(auth=ApiKeyAuth(resolve_api_key()))
     return runtime, session
 
 
@@ -309,7 +331,9 @@ def print_messages(session) -> None:
         print(f"{index}. {role}: {text}")
 
 
-def attach_stream_printer(session: AgentSession, *, show_thinking: bool = False) -> None:
+def attach_stream_printer(
+    session: AgentSession, *, show_thinking: bool = False
+) -> None:
     thinking_open = False
 
     def on_event(event: dict) -> None:
@@ -323,7 +347,11 @@ def attach_stream_printer(session: AgentSession, *, show_thinking: bool = False)
                     print("\n[thinking] ", end="", flush=True)
                     thinking_open = True
                 print(assistant_event.get("delta", ""), end="", flush=True)
-            elif assistant_event_type == "thinking_end" and show_thinking and thinking_open:
+            elif (
+                assistant_event_type == "thinking_end"
+                and show_thinking
+                and thinking_open
+            ):
                 print()
                 thinking_open = False
             elif assistant_event_type == "text_delta":
@@ -342,7 +370,9 @@ def attach_stream_printer(session: AgentSession, *, show_thinking: bool = False)
             result = event.get("result")
             if result and hasattr(result, "content"):
                 content_text = "".join(
-                    part.text for part in result.content if getattr(part, "type", None) == "text"
+                    part.text
+                    for part in result.content
+                    if getattr(part, "type", None) == "text"
                 )
                 print(f"[tool end: {content_text}]")
 
@@ -363,6 +393,8 @@ def latest_user_text(context_messages: list[object]) -> str:
         if isinstance(last_message.content, str):
             return last_message.content
         return " ".join(
-            part.text for part in last_message.content if getattr(part, "type", None) == "text"
+            part.text
+            for part in last_message.content
+            if getattr(part, "type", None) == "text"
         )
     return ""

@@ -2,7 +2,7 @@
 
 These examples demonstrate the current `loushang-coding` `ExtensionAPI v1` surface.
 
-`01-04` are offline and runnable without API keys. Each script creates a temporary project, writes an extension file using the recommended `register(api)` protocol, and then runs a local coding session against that project.
+`01-06` are offline and runnable without API keys. Each script creates a temporary project, writes an extension file using the recommended `register(api)` protocol, and then runs a local coding session against that project.
 
 `11+` are online integration examples. They require API credentials in the environment and run against a real model.
 
@@ -13,6 +13,7 @@ These examples demonstrate the current `loushang-coding` `ExtensionAPI v1` surfa
 - `03_custom_tool.py`: `@tool` and tool execution through a session
 - `04_tool_guard.py`: `tool_call` and `tool_result` interception
 - `05_manifest_visibility.py`: `loushang-extension.toml`, `/extensions`, and extension tool source visibility
+- `06_runtime_capability_replacement.py`: permission-gated side-question Runtime Capability replacement and lifecycle
 - `11_online_tool_guard.py`: extension interception on top of the real built-in `bash` tool
 - `12_online_dynamic_resources.py`: dynamic prompt/skill resources against a real model
 - `13_online_resume_with_extension.py`: persisted online session + restore with extension resources still active

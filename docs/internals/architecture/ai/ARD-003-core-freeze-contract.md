@@ -91,8 +91,7 @@ Negative:
 - `src/loushang/ai/api/`
 - `src/loushang/ai/model/`
 - `src/loushang/ai/provider/`
-- `src/loushang/ai/providers/`
+- `src/loushang/ai/protocols/`
 - `src/loushang/ai/context.py`
 - `src/loushang/ai/event_stream/`
 - `src/loushang/ai/auth/`
-- `src/loushang/ai/contrib/`

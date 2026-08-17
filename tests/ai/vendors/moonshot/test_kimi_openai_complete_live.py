@@ -26,6 +26,7 @@ from loushang.ai import (
     complete,
     get_model,
 )
+from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.errors import AIAuthenticationError
 
 # 用户可直接修改的配置。
@@ -71,7 +72,7 @@ def _build_context() -> dict:
 
 def _build_options(api_key: str) -> CallOptions:
     # options 只放本次调用直接相关的参数，避免把认证散落到别处。
-    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
+    return CallOptions(auth=ApiKeyAuth(api_key), max_output_tokens=MAX_TOKENS)
 
 
 def _iter_text(parts: Iterable[object]) -> str:

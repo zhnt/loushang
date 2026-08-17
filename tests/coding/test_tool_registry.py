@@ -3,8 +3,22 @@ from __future__ import annotations
 import json
 
 
+def _bind_workspace_scope(registry, *, policy_evaluator=None):
+    from loushang.harness.policy_engine import PolicyEngine
+    from loushang.harness.tools.workspace.authorization import (
+        create_workspace_tool_execution_host,
+    )
+
+    registry.bind_execution_host(
+        create_workspace_tool_execution_host(
+            policy_evaluator=policy_evaluator or PolicyEngine(),
+        )
+    )
+    return registry
+
+
 def _tool_context_provider(*, cwd: str, model=None):
-    from loushang.coding.tools import ToolContext
+    from loushang.harness.tools.workspace import ToolContext
 
     def _provider(*, tool_call_id: str) -> ToolContext:
         kwargs = {"model": model} if model is not None else {}
@@ -13,47 +27,63 @@ def _tool_context_provider(*, cwd: str, model=None):
     return _provider
 
 
-def test_registry_register_tool_accepts_raw_runtime_agent_tool() -> None:
+def test_registry_rejects_raw_runtime_agent_tool() -> None:
+    import pytest
+
     from loushang.agent.types import AgentToolResult
-    from loushang.coding.tools import ToolRegistry
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     class RuntimeTool:
         name = "runtime_tool"
         label = "Runtime Tool"
         description = "runtime tool"
-        parameters = {"type": "object", "properties": {}, "required": [], "additionalProperties": False}
+        parameters = {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": False,
+        }
         prepare_arguments = None
         execution_mode = "sequential"
 
-        async def execute(self, tool_call_id: str, params: dict[str, object], signal=None, on_update=None):
+        async def execute(
+            self,
+            tool_call_id: str,
+            params: dict[str, object],
+            signal=None,
+            on_update=None,
+        ):
             del tool_call_id, params, signal, on_update
             return AgentToolResult(content=[], details={})
 
-    registry = ToolRegistry()
-    registry.register_tool(RuntimeTool())
-
-    assert registry.get_definition("runtime_tool").name == "runtime_tool"
-    assert registry.get_definition("runtime_tool").execution_mode == "sequential"
+    registry = _bind_workspace_scope(ToolRegistry())
+    with pytest.raises(TypeError, match="explicitly bound ToolDefinition"):
+        registry.register_tool(RuntimeTool())  # type: ignore[arg-type]
 
 
-def test_registry_register_tool_accepts_decorated_tool() -> None:
-    from loushang.coding.tools import ToolRegistry, tool
+def test_registry_register_tool_accepts_explicitly_bound_decorated_tool() -> None:
+    from loushang.harness.tools.core import tool
+    from loushang.harness.tools.workspace import direct_tool
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
     @tool()
     async def greet(name: str) -> str:
         return f"hi {name}"
 
-    registry = ToolRegistry()
-    registry.register_tool(greet)
+    registry = WorkspaceToolRegistry()
+    registry.register_tool(direct_tool(greet))
 
     assert registry.get_definition("greet").name == "greet"
 
 
 def test_tool_registry_exposes_builtin_tool_family() -> None:
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
-    registry = ToolRegistry()
-    register_builtin_tools(registry)
+    registry = WorkspaceToolRegistry()
+    register_coding_builtin_tools(registry)
 
     assert [definition.name for definition in registry.list_definitions()] == [
         "bash",
@@ -76,22 +106,54 @@ def test_tool_registry_exposes_builtin_tool_family() -> None:
     assert registry.get_definition("bash").label == "Bash"
 
 
-def test_registry_resolves_harness_contributions_without_mutating_state() -> None:
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
-    from loushang.harness.tools.contribution import ToolPackDefinition
+def test_tool_registry_selects_powershell_tool_for_windows_target() -> None:
+    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.harness.environment import HostEnvironment
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
-    registry = ToolRegistry()
-    register_builtin_tools(registry)
+    registry = WorkspaceToolRegistry()
+    register_coding_builtin_tools(
+        registry,
+        host_environment=HostEnvironment(
+            os_family="windows",
+            platform_name="win32",
+            architecture="amd64",
+        ),
+    )
+
+    names = [definition.name for definition in registry.list_definitions()]
+    assert names == ["shell", "read", "ls", "find", "grep", "write", "edit"]
+    assert "bash" not in names
+    definition = registry.get_definition("shell")
+    assert definition.label == "PowerShell"
+    assert definition.parameters["properties"]["command"] == {"type": "string"}
+    assert "PowerShell" in definition.description
+
+
+def test_registry_resolves_harness_contributions_without_mutating_state() -> None:
+    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.harness.tools.contribution import ToolPackDefinition
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+
+    registry = WorkspaceToolRegistry()
+    register_coding_builtin_tools(registry)
     registry.disable_tool("bash")
 
     result = registry.resolve_contributions(
         packs=(
-            ToolPackDefinition(name="read_only", tools=("read", "ls", "find", "grep", "bash")),
+            ToolPackDefinition(
+                name="read_only", tools=("read", "ls", "find", "grep", "bash")
+            ),
         ),
         include_packs=("read_only",),
     )
 
-    assert [definition.name for definition in result.definitions] == ["read", "ls", "find", "grep"]
+    assert [definition.name for definition in result.definitions] == [
+        "read",
+        "ls",
+        "find",
+        "grep",
+    ]
     assert result.diagnostics == ()
     assert [definition.name for definition in registry.list_enabled_definitions()] == [
         "read",
@@ -103,133 +165,114 @@ def test_registry_resolves_harness_contributions_without_mutating_state() -> Non
     ]
 
 
-def test_tool_factory_surface_exposes_pi_style_tool_groups() -> None:
-    from loushang.coding.tools import (
-        ALL_TOOL_NAMES,
-        ToolName,
-        allToolNames,
-        create_all_tool_definitions,
-        create_all_tools,
+def test_workspace_factory_and_coding_pack_have_distinct_owners() -> None:
+    from loushang.coding.tool_pack import (
         create_coding_tool_definitions,
         create_coding_tools,
+    )
+    from loushang.harness.tools.workspace.factory import (
+        ALL_TOOL_NAMES,
+        ToolName,
+        create_all_tool_definitions,
+        create_all_tools,
+        create_core_workspace_tool_definitions,
+        create_core_workspace_tools,
         create_read_only_tool_definitions,
         create_read_only_tools,
         create_tool,
         create_tool_definition,
     )
 
-    assert ALL_TOOL_NAMES == ("read", "bash", "edit", "write", "grep", "find", "ls")
-    assert allToolNames == {"read", "bash", "edit", "write", "grep", "find", "ls"}
+    assert ALL_TOOL_NAMES == (
+        "read",
+        "bash",
+        "shell",
+        "edit",
+        "write",
+        "grep",
+        "find",
+        "ls",
+    )
     assert ToolName is not None
     assert create_tool_definition("read").name == "read"
     assert create_tool("read").name == "read"
-    assert [definition.name for definition in create_coding_tool_definitions()] == ["read", "bash", "edit", "write"]
-    assert [definition.name for definition in create_read_only_tool_definitions()] == ["read", "grep", "find", "ls"]
-    assert list(create_all_tool_definitions()) == ["read", "bash", "edit", "write", "grep", "find", "ls"]
-    assert [tool.name for tool in create_coding_tools()] == ["read", "bash", "edit", "write"]
-    assert [tool.name for tool in create_read_only_tools()] == ["read", "grep", "find", "ls"]
-    assert list(create_all_tools()) == ["read", "bash", "edit", "write", "grep", "find", "ls"]
+    assert [
+        definition.name for definition in create_core_workspace_tool_definitions()
+    ] == [
+        "read",
+        "bash",
+        "edit",
+        "write",
+    ]
+    assert [definition.name for definition in create_coding_tool_definitions()] == [
+        "read",
+        "bash",
+        "edit",
+        "write",
+    ]
+    assert [definition.name for definition in create_read_only_tool_definitions()] == [
+        "read",
+        "grep",
+        "find",
+        "ls",
+    ]
+    assert list(create_all_tool_definitions()) == [
+        "read",
+        "bash",
+        "shell",
+        "edit",
+        "write",
+        "grep",
+        "find",
+        "ls",
+    ]
+    assert [tool.name for tool in create_core_workspace_tools()] == [
+        "read",
+        "bash",
+        "edit",
+        "write",
+    ]
+    assert [tool.name for tool in create_coding_tools()] == [
+        "read",
+        "bash",
+        "edit",
+        "write",
+    ]
+    assert [tool.name for tool in create_read_only_tools()] == [
+        "read",
+        "grep",
+        "find",
+        "ls",
+    ]
+    assert list(create_all_tools()) == [
+        "read",
+        "bash",
+        "shell",
+        "edit",
+        "write",
+        "grep",
+        "find",
+        "ls",
+    ]
 
 
-def test_tool_factory_exposes_pi_style_camel_case_aliases(tmp_path) -> None:
+def test_workspace_factory_binds_cwd_without_pi_aliases(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding import (
-        createAllToolDefinitions as top_level_create_all_tool_definitions,
-    )
-    from loushang.coding.tools import (
-        createAllToolDefinitions,
-        createAllTools,
-        createCodingToolDefinitions,
-        createCodingTools,
-        createReadOnlyToolDefinitions,
-        createReadOnlyTools,
-        createTool,
-        createToolDefinition,
-    )
+    from loushang.harness.tools.workspace.factory import create_tool
 
-    (tmp_path / "note.txt").write_text("from camel-case tool", encoding="utf-8")
+    (tmp_path / "note.txt").write_text("from workspace factory", encoding="utf-8")
 
-    assert createToolDefinition("read", str(tmp_path)).name == "read"
-    assert [definition.name for definition in createCodingToolDefinitions(str(tmp_path))] == [
-        "read",
-        "bash",
-        "edit",
-        "write",
-    ]
-    assert [definition.name for definition in createReadOnlyToolDefinitions(str(tmp_path))] == [
-        "read",
-        "grep",
-        "find",
-        "ls",
-    ]
-    assert list(createAllToolDefinitions(str(tmp_path))) == ["read", "bash", "edit", "write", "grep", "find", "ls"]
-    assert list(top_level_create_all_tool_definitions(str(tmp_path))) == [
-        "read",
-        "bash",
-        "edit",
-        "write",
-        "grep",
-        "find",
-        "ls",
-    ]
-    assert [tool.name for tool in createCodingTools(str(tmp_path))] == ["read", "bash", "edit", "write"]
-    assert [tool.name for tool in createReadOnlyTools(str(tmp_path))] == ["read", "grep", "find", "ls"]
-    assert list(createAllTools(str(tmp_path))) == ["read", "bash", "edit", "write", "grep", "find", "ls"]
-
-    runtime_tool = createTool("read", str(tmp_path))
+    runtime_tool = create_tool("read", cwd=str(tmp_path))
     result = asyncio.run(runtime_tool.execute("call-read-camel", {"path": "note.txt"}))
 
-    assert result.content[0].text == "from camel-case tool"
-
-
-def test_tool_factory_exposes_pi_style_individual_tool_factories(tmp_path) -> None:
-    import asyncio
-
-    from loushang.coding.tools import (
-        createBashTool,
-        createEditTool,
-        createFindTool,
-        createGrepTool,
-        createLsTool,
-        createReadTool,
-        createWriteTool,
-    )
-
-    (tmp_path / "note.txt").write_text("from read alias", encoding="utf-8")
-    (tmp_path / "search.txt").write_text("needle\n", encoding="utf-8")
-    (tmp_path / "replace.txt").write_text("hello old\n", encoding="utf-8")
-
-    read_result = asyncio.run(createReadTool(str(tmp_path)).execute("call-read-alias", {"path": "note.txt"}))
-    write_result = asyncio.run(
-        createWriteTool(str(tmp_path)).execute("call-write-alias", {"path": "written.txt", "content": "created"})
-    )
-    edit_result = asyncio.run(
-        createEditTool(str(tmp_path)).execute(
-            "call-edit-alias",
-            {"path": "replace.txt", "edits": [{"oldText": "old", "newText": "new"}]},
-        )
-    )
-    grep_result = asyncio.run(
-        createGrepTool(str(tmp_path)).execute("call-grep-alias", {"pattern": "needle", "path": "."})
-    )
-    find_result = asyncio.run(createFindTool(str(tmp_path)).execute("call-find-alias", {"pattern": "*.txt"}))
-    ls_result = asyncio.run(createLsTool(str(tmp_path)).execute("call-ls-alias", {"path": "."}))
-    bash_tool = createBashTool(str(tmp_path))
-
-    assert read_result.content[0].text == "from read alias"
-    assert write_result.details["operation"] == "create"
-    assert edit_result.details["first_changed_line"] == 1
-    assert "search.txt:1:needle" in grep_result.content[0].text
-    assert "note.txt" in find_result.content[0].text
-    assert "written.txt" in ls_result.content[0].text
-    assert bash_tool.name == "bash"
+    assert result.content[0].text == "from workspace factory"
 
 
 def test_tool_factory_create_tool_binds_cwd_context(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_tool
+    from loushang.harness.tools.workspace import create_tool
 
     (tmp_path / "note.txt").write_text("from cwd-bound tool", encoding="utf-8")
 
@@ -242,8 +285,8 @@ def test_tool_factory_create_tool_binds_cwd_context(tmp_path) -> None:
 def test_tool_factory_options_forward_to_file_tools(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import ToolsOptions, create_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import ToolsOptions, create_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class VirtualOperations:
         async def exists(self, path):
@@ -256,7 +299,9 @@ def test_tool_factory_options_forward_to_file_tools(tmp_path) -> None:
             return b"from virtual operations"
 
     runtime_tool = wrap_tool_definition(
-        create_tool_definition("read", options=ToolsOptions(read_operations=VirtualOperations())),
+        create_tool_definition(
+            "read", options=ToolsOptions(read_operations=VirtualOperations())
+        ),
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
@@ -268,8 +313,8 @@ def test_tool_factory_options_forward_to_file_tools(tmp_path) -> None:
 def test_tool_factory_forwards_external_tool_resolver_to_find(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import ToolsOptions, create_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import ToolsOptions, create_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     fake_fd = tmp_path / "fd"
     fake_fd.write_text("#!/bin/sh\nprintf 'factory.py\\n'\n", encoding="utf-8")
@@ -285,21 +330,29 @@ def test_tool_factory_forwards_external_tool_resolver_to_find(tmp_path) -> None:
 
     resolver = Resolver()
     runtime_tool = wrap_tool_definition(
-        create_tool_definition("find", options=ToolsOptions(external_tool_resolver=resolver)),
+        create_tool_definition(
+            "find", options=ToolsOptions(external_tool_resolver=resolver)
+        ),
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-find-factory-resolver", {"pattern": "*.py", "path": "."}))
+    result = asyncio.run(
+        runtime_tool.execute(
+            "call-find-factory-resolver", {"pattern": "*.py", "path": "."}
+        )
+    )
 
     assert resolver.names == ["fd"]
     assert result.content[0].text == "factory.py"
 
 
-def test_tool_factory_forwards_external_tool_downloader_to_find_when_enabled(tmp_path) -> None:
+def test_tool_factory_forwards_external_tool_downloader_to_find_when_enabled(
+    tmp_path,
+) -> None:
     import asyncio
 
-    from loushang.coding.tools import ToolsOptions, create_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import ToolsOptions, create_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     fake_fd = tmp_path / "fd"
     fake_fd.write_text("#!/bin/sh\nprintf 'downloaded.py\\n'\n", encoding="utf-8")
@@ -331,17 +384,21 @@ def test_tool_factory_forwards_external_tool_downloader_to_find_when_enabled(tmp
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-find-downloader", {"pattern": "*.py", "path": "."}))
+    result = asyncio.run(
+        runtime_tool.execute("call-find-downloader", {"pattern": "*.py", "path": "."})
+    )
 
     assert downloader.calls == ["fd"]
     assert result.content[0].text == "downloaded.py"
 
 
-def test_tool_factory_external_tool_policy_auto_downloads_without_legacy_flag(tmp_path) -> None:
+def test_tool_factory_external_tool_policy_auto_downloads_without_legacy_flag(
+    tmp_path,
+) -> None:
     import asyncio
 
-    from loushang.coding.tools import ToolsOptions, create_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import ToolsOptions, create_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     fake_fd = tmp_path / "fd"
     fake_fd.write_text("#!/bin/sh\nprintf 'policy.py\\n'\n", encoding="utf-8")
@@ -373,17 +430,21 @@ def test_tool_factory_external_tool_policy_auto_downloads_without_legacy_flag(tm
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-find-policy-auto", {"pattern": "*.py", "path": "."}))
+    result = asyncio.run(
+        runtime_tool.execute("call-find-policy-auto", {"pattern": "*.py", "path": "."})
+    )
 
     assert downloader.calls == ["fd"]
     assert result.content[0].text == "policy.py"
 
 
-def test_tool_factory_external_tool_policy_never_skips_resolver_and_uses_fallback(tmp_path) -> None:
+def test_tool_factory_external_tool_policy_never_skips_resolver_and_uses_fallback(
+    tmp_path,
+) -> None:
     import asyncio
 
-    from loushang.coding.tools import ToolsOptions, create_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import ToolsOptions, create_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     (tmp_path / "local.py").write_text("pass", encoding="utf-8")
 
@@ -407,19 +468,23 @@ def test_tool_factory_external_tool_policy_never_skips_resolver_and_uses_fallbac
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-find-policy-never", {"pattern": "*.py", "path": "."}))
+    result = asyncio.run(
+        runtime_tool.execute("call-find-policy-never", {"pattern": "*.py", "path": "."})
+    )
 
     assert resolver.names == []
     assert result.content[0].text == "local.py"
 
 
-def test_tool_factory_external_tool_policy_required_errors_when_unavailable(tmp_path) -> None:
+def test_tool_factory_external_tool_policy_required_errors_when_unavailable(
+    tmp_path,
+) -> None:
     import asyncio
 
     import pytest
 
-    from loushang.coding.tools import ToolsOptions, create_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import ToolsOptions, create_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class MissingResolver:
         def resolve_tool(self, name: str) -> None:
@@ -447,18 +512,26 @@ def test_tool_factory_external_tool_policy_required_errors_when_unavailable(tmp_
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    with pytest.raises(RuntimeError, match="rg external tool is required but unavailable"):
-        asyncio.run(runtime_tool.execute("call-grep-policy-required", {"pattern": "needle", "path": "."}))
+    with pytest.raises(
+        RuntimeError, match="rg external tool is required but unavailable"
+    ):
+        asyncio.run(
+            runtime_tool.execute(
+                "call-grep-policy-required", {"pattern": "needle", "path": "."}
+            )
+        )
     assert downloader.calls == ["rg"]
 
 
-def test_tool_factory_download_failure_surfaces_as_stable_unavailable_error(tmp_path) -> None:
+def test_tool_factory_download_failure_surfaces_as_stable_unavailable_error(
+    tmp_path,
+) -> None:
     import asyncio
 
     import pytest
 
-    from loushang.coding.tools import ToolsOptions, create_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import ToolsOptions, create_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class MissingResolver:
         def resolve_tool(self, name: str) -> None:
@@ -487,17 +560,26 @@ def test_tool_factory_download_failure_surfaces_as_stable_unavailable_error(tmp_
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    with pytest.raises(RuntimeError, match="rg external tool is required but unavailable"):
-        asyncio.run(runtime_tool.execute("call-grep-downloader-failure", {"pattern": "needle", "path": "."}))
+    with pytest.raises(
+        RuntimeError, match="rg external tool is required but unavailable"
+    ):
+        asyncio.run(
+            runtime_tool.execute(
+                "call-grep-downloader-failure", {"pattern": "needle", "path": "."}
+            )
+        )
     assert downloader.calls == ["rg"]
 
 
-def test_tool_factory_uses_builtin_external_tool_downloader_when_enabled(tmp_path, monkeypatch) -> None:
+def test_tool_factory_uses_builtin_external_tool_downloader_when_enabled(
+    tmp_path, monkeypatch
+) -> None:
     import asyncio
 
-    import loushang.coding.tools.factory as factory
-    from loushang.coding.tools import ToolsOptions, create_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    import loushang.coding.tool_pack as coding_factory
+    import loushang.harness.tools.workspace.factory as workspace_factory
+    from loushang.harness.tools.workspace import ToolsOptions
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     fake_fd = tmp_path / "fd"
     fake_fd.write_text("#!/bin/sh\nprintf 'builtin.py\\n'\n", encoding="utf-8")
@@ -518,9 +600,13 @@ def test_tool_factory_uses_builtin_external_tool_downloader_when_enabled(tmp_pat
 
     created: list[BuiltinDownloader] = []
     calls: list[str] = []
-    monkeypatch.setattr(factory, "GitHubReleaseExternalToolDownloader", BuiltinDownloader, raising=False)
+    monkeypatch.setattr(
+        workspace_factory,
+        "GitHubReleaseExternalToolDownloader",
+        BuiltinDownloader,
+    )
     runtime_tool = wrap_tool_definition(
-        create_tool_definition(
+        coding_factory.create_coding_tool_definition(
             "find",
             options=ToolsOptions(
                 external_tool_resolver=MissingResolver(),
@@ -530,7 +616,11 @@ def test_tool_factory_uses_builtin_external_tool_downloader_when_enabled(tmp_pat
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-find-builtin-downloader", {"pattern": "*.py", "path": "."}))
+    result = asyncio.run(
+        runtime_tool.execute(
+            "call-find-builtin-downloader", {"pattern": "*.py", "path": "."}
+        )
+    )
 
     assert len(created) == 1
     assert calls == ["fd"]
@@ -540,8 +630,8 @@ def test_tool_factory_uses_builtin_external_tool_downloader_when_enabled(tmp_pat
 def test_tool_factory_does_not_download_external_tools_by_default(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import ToolsOptions, create_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import ToolsOptions, create_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     (tmp_path / "local.py").write_text("pass", encoding="utf-8")
 
@@ -570,16 +660,23 @@ def test_tool_factory_does_not_download_external_tools_by_default(tmp_path) -> N
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-find-no-download", {"pattern": "*.py", "path": "."}))
+    result = asyncio.run(
+        runtime_tool.execute("call-find-no-download", {"pattern": "*.py", "path": "."})
+    )
 
     assert downloader.calls == []
     assert result.content[0].text == "local.py"
 
 
 def test_register_builtin_tools_reuses_factory_but_keeps_legacy_order() -> None:
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
-    registry = ToolRegistry()
+    registry = _bind_workspace_scope(ToolRegistry())
     register_builtin_tools(registry)
 
     assert [definition.name for definition in registry.list_definitions()] == [
@@ -594,11 +691,14 @@ def test_register_builtin_tools_reuses_factory_but_keeps_legacy_order() -> None:
 
 
 def test_register_builtin_tools_uses_harness_pack_resolver(monkeypatch) -> None:
-    import loushang.coding.tools.builtins as builtins
-    from loushang.coding.tools import ToolRegistry
+    import loushang.coding.tool_pack as builtins
+    import loushang.harness.tools.workspace.registry as registry_module
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     calls: list[dict[str, object]] = []
-    real_resolver = builtins.resolve_tool_contributions
+    real_resolver = registry_module.resolve_tool_contributions
 
     def spy_resolver(contributions, **kwargs):
         calls.append(
@@ -610,13 +710,15 @@ def test_register_builtin_tools_uses_harness_pack_resolver(monkeypatch) -> None:
         )
         return real_resolver(calls[-1]["contributions"], **kwargs)
 
-    monkeypatch.setattr(builtins, "resolve_tool_contributions", spy_resolver)
+    monkeypatch.setattr(registry_module, "resolve_tool_contributions", spy_resolver)
 
     registry = ToolRegistry()
-    builtins.register_builtin_tools(registry)
+    builtins.register_coding_builtin_tools(registry)
 
     assert len(calls) == 1
-    assert [contribution.definition.name for contribution in calls[0]["contributions"]] == [
+    assert [
+        contribution.definition.name for contribution in calls[0]["contributions"]
+    ] == [
         "bash",
         "read",
         "ls",
@@ -638,10 +740,17 @@ def test_register_builtin_tools_uses_harness_pack_resolver(monkeypatch) -> None:
     ]
 
 
-def test_register_builtin_tools_forwards_external_tool_policy_to_read_only_tools(tmp_path) -> None:
+def test_register_builtin_tools_forwards_external_tool_policy_to_read_only_tools(
+    tmp_path,
+) -> None:
     import asyncio
 
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     fake_fd = tmp_path / "fd"
     fake_fd.write_text("#!/bin/sh\nprintf 'registered.py\\n'\n", encoding="utf-8")
@@ -661,7 +770,7 @@ def test_register_builtin_tools_forwards_external_tool_policy_to_read_only_tools
             return str(fake_fd) if name == "fd" else None
 
     downloader = Downloader()
-    registry = ToolRegistry()
+    registry = _bind_workspace_scope(ToolRegistry())
     register_builtin_tools(
         registry,
         external_tool_policy="auto",
@@ -673,7 +782,11 @@ def test_register_builtin_tools_forwards_external_tool_policy_to_read_only_tools
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )[0]
 
-    result = asyncio.run(runtime_tool.execute("call-find-registered-policy", {"pattern": "*.py", "path": "."}))
+    result = asyncio.run(
+        runtime_tool.execute(
+            "call-find-registered-policy", {"pattern": "*.py", "path": "."}
+        )
+    )
 
     assert downloader.calls == ["fd"]
     assert result.content[0].text == "registered.py"
@@ -682,16 +795,21 @@ def test_register_builtin_tools_forwards_external_tool_policy_to_read_only_tools
 def test_bash_tool_uses_policy_and_exec(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec.types import ExecResult
-    from loushang.coding.policy.types import PolicyDecision
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
+    from loushang.harness.workspace.exec import ExecResult
 
     class RecordingPolicyEngine:
         def __init__(self) -> None:
             self.calls: list[tuple[str, object]] = []
 
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            self.calls.append((tool_name, exec_request))
+        def evaluate(self, subject):
+            self.calls.append((subject.tool_name, subject))
             return PolicyDecision.allow()
 
     class RecordingExecService:
@@ -706,8 +824,14 @@ def test_bash_tool_uses_policy_and_exec(tmp_path) -> None:
         policy_engine = RecordingPolicyEngine()
         exec_service = RecordingExecService()
 
-        registry = ToolRegistry()
-        register_builtin_tools(registry, policy_engine=policy_engine, exec_service=exec_service)
+        registry = _bind_workspace_scope(
+            ToolRegistry(),
+            policy_evaluator=policy_engine,
+        )
+        register_builtin_tools(
+            registry,
+            exec_service=exec_service,
+        )
         result = await registry.materialize_tool("bash").execute(
             "call-1",
             {"command": ["/bin/sh", "-lc", "printf hi"], "cwd": str(tmp_path)},
@@ -720,36 +844,40 @@ def test_bash_tool_uses_policy_and_exec(tmp_path) -> None:
     asyncio.run(scenario())
 
 
-def test_bash_tool_does_not_double_invoke_policy_for_builtin_engines(tmp_path) -> None:
+def test_bash_tool_invokes_canonical_policy_once(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.policy.types import PolicyDecision
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     class CountingPolicyEngine:
         def __init__(self) -> None:
-            self.calls = {"tool_call": 0, "action": 0}
+            self.calls = 0
 
-        def evaluate_tool_call(self, *, tool_name: str, arguments, cwd: str | None = None):
-            del arguments, tool_name, cwd
-            self.calls["tool_call"] += 1
-            return PolicyDecision.allow()
-
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
-            self.calls["action"] += 1
+        def evaluate(self, subject):
+            del subject
+            self.calls += 1
             return PolicyDecision.allow()
 
     async def scenario() -> None:
         policy_engine = CountingPolicyEngine()
-        registry = ToolRegistry()
-        register_builtin_tools(registry, policy_engine=policy_engine)
+        registry = _bind_workspace_scope(
+            ToolRegistry(),
+            policy_evaluator=policy_engine,
+        )
+        register_builtin_tools(registry)
         bash = registry.materialize_tool("bash")
 
-        await bash.execute("call-bash-count", {"command": "printf ok", "cwd": str(tmp_path)})
+        await bash.execute(
+            "call-bash-count", {"command": "printf ok", "cwd": str(tmp_path)}
+        )
 
-        assert policy_engine.calls["tool_call"] == 1
-        assert policy_engine.calls["action"] == 0
+        assert policy_engine.calls == 1
 
     asyncio.run(scenario())
 
@@ -757,17 +885,21 @@ def test_bash_tool_does_not_double_invoke_policy_for_builtin_engines(tmp_path) -
 def test_bash_tool_accepts_pi_style_shell_command_string(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec.types import ExecResult
-    from loushang.coding.policy.types import PolicyDecision
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
+    from loushang.harness.workspace.exec import ExecResult
 
     class RecordingPolicyEngine:
         def __init__(self) -> None:
             self.requests: list[object] = []
 
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name
-            self.requests.append(exec_request)
+        def evaluate(self, subject):
+            self.requests.append(subject)
             return PolicyDecision.allow()
 
     class RecordingExecService:
@@ -782,8 +914,14 @@ def test_bash_tool_accepts_pi_style_shell_command_string(tmp_path) -> None:
     async def scenario() -> None:
         policy_engine = RecordingPolicyEngine()
         exec_service = RecordingExecService()
-        registry = ToolRegistry()
-        register_builtin_tools(registry, policy_engine=policy_engine, exec_service=exec_service)
+        registry = _bind_workspace_scope(
+            ToolRegistry(),
+            policy_evaluator=policy_engine,
+        )
+        register_builtin_tools(
+            registry,
+            exec_service=exec_service,
+        )
 
         result = await registry.materialize_tool("bash").execute(
             "call-shell",
@@ -791,9 +929,17 @@ def test_bash_tool_accepts_pi_style_shell_command_string(tmp_path) -> None:
         )
 
         assert result.content[0].text == "shell-ok"
-        assert exec_service.requests[0].command == ("/bin/bash", "-lc", "printf shell-ok")
+        assert exec_service.requests[0].command == (
+            "/bin/bash",
+            "-lc",
+            "printf shell-ok",
+        )
         assert exec_service.requests[0].timeout_seconds == 3
-        assert policy_engine.requests[0].command == ("/bin/bash", "-lc", "printf shell-ok")
+        assert policy_engine.requests[0].command.command == (
+            "/bin/bash",
+            "-lc",
+            "printf shell-ok",
+        )
 
     asyncio.run(scenario())
 
@@ -802,18 +948,20 @@ def test_bash_tool_applies_prefix_shell_path_and_spawn_hook(tmp_path) -> None:
     import asyncio
     from dataclasses import replace
 
-    from loushang.coding.exec.types import ExecResult
-    from loushang.coding.policy.types import PolicyDecision
-    from loushang.coding.tools import BashSpawnContext, create_bash_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace import (
+        BashSpawnContext,
+        create_bash_tool_definition,
+    )
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+    from loushang.harness.workspace.exec import ExecResult
 
     class RecordingPolicyEngine:
         def __init__(self) -> None:
             self.requests: list[object] = []
 
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name
-            self.requests.append(exec_request)
+        def evaluate(self, subject):
+            self.requests.append(subject)
             return PolicyDecision.allow()
 
     class RecordingExecService:
@@ -841,15 +989,17 @@ def test_bash_tool_applies_prefix_shell_path_and_spawn_hook(tmp_path) -> None:
         exec_service = RecordingExecService()
         tool = wrap_tool_definition(
             create_bash_tool_definition(
-                policy_engine=policy_engine,
                 exec_service=exec_service,
                 command_prefix="set -e",
                 shell_path="/custom/bash",
                 spawn_hook=spawn_hook,
-            )
+            ),
+            policy_evaluator=policy_engine,
         )
 
-        result = await tool.execute("call-bash-config", {"command": "printf ok", "cwd": str(tmp_path)})
+        result = await tool.execute(
+            "call-bash-config", {"command": "printf ok", "cwd": str(tmp_path)}
+        )
 
         assert result.content[0].text == "ok\n"
         assert exec_service.requests[0].command == (
@@ -859,7 +1009,10 @@ def test_bash_tool_applies_prefix_shell_path_and_spawn_hook(tmp_path) -> None:
         )
         assert exec_service.requests[0].cwd == str(alt_cwd)
         assert ("HOOKED", "1") in exec_service.requests[0].env
-        assert policy_engine.requests[0].command == exec_service.requests[0].command
+        assert (
+            policy_engine.requests[0].command.command
+            == exec_service.requests[0].command
+        )
 
     asyncio.run(scenario())
 
@@ -867,14 +1020,14 @@ def test_bash_tool_applies_prefix_shell_path_and_spawn_hook(tmp_path) -> None:
 def test_bash_tool_can_execute_through_custom_operations(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec.types import ExecResult
-    from loushang.coding.policy.types import PolicyDecision
-    from loushang.coding.tools import create_bash_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+    from loushang.harness.workspace.exec import ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class FailingExecService:
@@ -889,7 +1042,9 @@ def test_bash_tool_can_execute_through_custom_operations(tmp_path) -> None:
         async def execute(self, request, *, signal=None, on_update=None):
             self.calls.append((request, signal))
             if on_update is not None:
-                await on_update(type("Chunk", (), {"stream": "stdout", "text": "partial\n"})())
+                await on_update(
+                    type("Chunk", (), {"stream": "stdout", "text": "partial\n"})()
+                )
             return ExecResult(exit_code=0, stdout="remote\n")
 
     async def scenario() -> None:
@@ -898,7 +1053,6 @@ def test_bash_tool_can_execute_through_custom_operations(tmp_path) -> None:
         signal = object()
         tool = wrap_tool_definition(
             create_bash_tool_definition(
-                policy_engine=AllowingPolicyEngine(),
                 exec_service=FailingExecService(),
                 operations=operations,
             )
@@ -908,7 +1062,9 @@ def test_bash_tool_can_execute_through_custom_operations(tmp_path) -> None:
             "call-bash-operations",
             {"command": "printf remote", "cwd": str(tmp_path)},
             signal=signal,
-            on_update=lambda partial: updates.append(partial.content[0].text if partial.content else ""),
+            on_update=lambda partial: updates.append(
+                partial.content[0].text if partial.content else ""
+            ),
         )
 
         assert result.content[0].text == "remote\n"
@@ -922,14 +1078,14 @@ def test_bash_tool_can_execute_through_custom_operations(tmp_path) -> None:
 def test_bash_tool_requests_rolling_capture_by_default(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec.types import ExecResult
-    from loushang.coding.policy.types import PolicyDecision
-    from loushang.coding.tools import create_bash_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+    from loushang.harness.workspace.exec import ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class RecordingExecService:
@@ -945,12 +1101,13 @@ def test_bash_tool_requests_rolling_capture_by_default(tmp_path) -> None:
         exec_service = RecordingExecService()
         tool = wrap_tool_definition(
             create_bash_tool_definition(
-                policy_engine=AllowingPolicyEngine(),
                 exec_service=exec_service,
             )
         )
 
-        await tool.execute("call-bash-rolling", {"command": "printf ok", "cwd": str(tmp_path)})
+        await tool.execute(
+            "call-bash-rolling", {"command": "printf ok", "cwd": str(tmp_path)}
+        )
 
         assert exec_service.requests[0].capture_full_output is False
         assert exec_service.requests[0].rolling_max_bytes == 100 * 1024
@@ -961,14 +1118,14 @@ def test_bash_tool_requests_rolling_capture_by_default(tmp_path) -> None:
 def test_bash_tool_accepts_pi_style_request_aliases(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec.types import ExecResult
-    from loushang.coding.policy.types import PolicyDecision
-    from loushang.coding.tools import create_bash_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+    from loushang.harness.workspace.exec import ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class RecordingExecService:
@@ -983,7 +1140,6 @@ def test_bash_tool_accepts_pi_style_request_aliases(tmp_path) -> None:
     async def scenario() -> None:
         exec_service = RecordingExecService()
         tool_definition = create_bash_tool_definition(
-            policy_engine=AllowingPolicyEngine(),
             exec_service=exec_service,
         )
         tool = wrap_tool_definition(tool_definition)
@@ -1018,14 +1174,14 @@ def test_bash_tool_rejects_conflicting_alias_parameters(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.exec.types import ExecResult
-    from loushang.coding.policy.types import PolicyDecision
-    from loushang.coding.tools import create_bash_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+    from loushang.harness.workspace.exec import ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class RecordingExecService:
@@ -1036,7 +1192,6 @@ def test_bash_tool_rejects_conflicting_alias_parameters(tmp_path) -> None:
     async def scenario(params, message: str) -> None:
         tool = wrap_tool_definition(
             create_bash_tool_definition(
-                policy_engine=AllowingPolicyEngine(),
                 exec_service=RecordingExecService(),
             )
         )
@@ -1051,19 +1206,31 @@ def test_bash_tool_rejects_conflicting_alias_parameters(tmp_path) -> None:
     )
     asyncio.run(
         scenario(
-            {"command": "printf ok", "artifact_dir": str(tmp_path), "artifactDir": str(tmp_path / "other")},
+            {
+                "command": "printf ok",
+                "artifact_dir": str(tmp_path),
+                "artifactDir": str(tmp_path / "other"),
+            },
             "conflicting tool arguments: artifact_dir and artifactDir",
         )
     )
     asyncio.run(
         scenario(
-            {"command": "printf ok", "capture_full_output": True, "captureFullOutput": False},
+            {
+                "command": "printf ok",
+                "capture_full_output": True,
+                "captureFullOutput": False,
+            },
             "conflicting tool arguments: capture_full_output and captureFullOutput",
         )
     )
     asyncio.run(
         scenario(
-            {"command": "printf ok", "rolling_max_bytes": 1024, "rollingMaxBytes": 2048},
+            {
+                "command": "printf ok",
+                "rolling_max_bytes": 1024,
+                "rollingMaxBytes": 2048,
+            },
             "conflicting tool arguments: rolling_max_bytes and rollingMaxBytes",
         )
     )
@@ -1074,14 +1241,14 @@ def test_bash_tool_rejects_runtime_values_that_do_not_match_schema() -> None:
 
     import pytest
 
-    from loushang.coding.exec.types import ExecResult
-    from loushang.coding.policy.types import PolicyDecision
-    from loushang.coding.tools import create_bash_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+    from loushang.harness.workspace.exec import ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class RecordingExecService:
@@ -1092,29 +1259,53 @@ def test_bash_tool_rejects_runtime_values_that_do_not_match_schema() -> None:
     async def scenario(params, message: str) -> None:
         tool = wrap_tool_definition(
             create_bash_tool_definition(
-                policy_engine=AllowingPolicyEngine(),
                 exec_service=RecordingExecService(),
             )
         )
         with pytest.raises(TypeError, match=message):
             await tool.execute("call-bash-invalid-runtime-value", params)
 
-    asyncio.run(scenario({"command": "printf ok", "timeoutSeconds": "3"}, "timeout_seconds must be a number"))
-    asyncio.run(scenario({"command": "printf ok", "artifactDir": 123}, "artifact_dir must be a string"))
-    asyncio.run(scenario({"command": "printf ok", "captureFullOutput": "true"}, "capture_full_output must be a boolean"))
-    asyncio.run(scenario({"command": "printf ok", "env": [["A", 1]]}, "env must contain 2-item string pairs"))
+    asyncio.run(
+        scenario(
+            {"command": "printf ok", "timeoutSeconds": "3"},
+            "timeout_seconds must be a number",
+        )
+    )
+    asyncio.run(
+        scenario(
+            {"command": "printf ok", "artifactDir": 123},
+            "artifact_dir must be a string",
+        )
+    )
+    asyncio.run(
+        scenario(
+            {"command": "printf ok", "captureFullOutput": "true"},
+            "capture_full_output must be a boolean",
+        )
+    )
+    asyncio.run(
+        scenario(
+            {"command": "printf ok", "env": [["A", 1]]},
+            "env must contain 2-item string pairs",
+        )
+    )
 
 
 def test_bash_tool_truncates_large_output_with_shared_tail_policy(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec.types import ExecResult
-    from loushang.coding.policy.types import PolicyDecision
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
+    from loushang.harness.workspace.exec import ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class LargeOutputExecService:
@@ -1125,10 +1316,9 @@ def test_bash_tool_truncates_large_output_with_shared_tail_policy(tmp_path) -> N
             return ExecResult(exit_code=0, stdout=stdout, stderr=stderr)
 
     async def scenario() -> None:
-        registry = ToolRegistry()
+        registry = _bind_workspace_scope(ToolRegistry())
         register_builtin_tools(
             registry,
-            policy_engine=AllowingPolicyEngine(),
             exec_service=LargeOutputExecService(),
         )
 
@@ -1157,14 +1347,14 @@ def test_bash_tool_truncates_large_output_with_shared_tail_policy(tmp_path) -> N
 def test_bash_tool_preserves_interleaved_stdout_and_stderr_output(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec.types import ExecOutputChunk, ExecResult
-    from loushang.coding.policy.types import PolicyDecision
-    from loushang.coding.tools import create_bash_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+    from loushang.harness.workspace.exec import ExecOutputChunk, ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class InterleavedExecService:
@@ -1184,12 +1374,13 @@ def test_bash_tool_preserves_interleaved_stdout_and_stderr_output(tmp_path) -> N
     async def scenario() -> None:
         tool = wrap_tool_definition(
             create_bash_tool_definition(
-                policy_engine=AllowingPolicyEngine(),
                 exec_service=InterleavedExecService(),
             )
         )
 
-        result = await tool.execute("call-bash-interleaved", {"command": "printf mixed", "cwd": str(tmp_path)})
+        result = await tool.execute(
+            "call-bash-interleaved", {"command": "printf mixed", "cwd": str(tmp_path)}
+        )
 
         assert result.content[0].text == "out1\nerr1\nout2\n"
         assert result.details["stderr"] == "err1\n"
@@ -1197,19 +1388,21 @@ def test_bash_tool_preserves_interleaved_stdout_and_stderr_output(tmp_path) -> N
     asyncio.run(scenario())
 
 
-def test_bash_tool_error_message_preserves_interleaved_stdout_and_stderr(tmp_path) -> None:
+def test_bash_tool_error_message_preserves_interleaved_stdout_and_stderr(
+    tmp_path,
+) -> None:
     import asyncio
 
     import pytest
 
-    from loushang.coding.exec.types import ExecOutputChunk, ExecResult
-    from loushang.coding.policy.types import PolicyDecision
-    from loushang.coding.tools import create_bash_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+    from loushang.harness.workspace.exec import ExecOutputChunk, ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class InterleavedFailingExecService:
@@ -1229,13 +1422,15 @@ def test_bash_tool_error_message_preserves_interleaved_stdout_and_stderr(tmp_pat
     async def scenario() -> None:
         tool = wrap_tool_definition(
             create_bash_tool_definition(
-                policy_engine=AllowingPolicyEngine(),
                 exec_service=InterleavedFailingExecService(),
             )
         )
 
         with pytest.raises(RuntimeError) as exc:
-            await tool.execute("call-bash-interleaved-error", {"command": "printf mixed", "cwd": str(tmp_path)})
+            await tool.execute(
+                "call-bash-interleaved-error",
+                {"command": "printf mixed", "cwd": str(tmp_path)},
+            )
 
         assert str(exc.value) == "out1\nerr1\nout2\n\nCommand exited with code 7"
 
@@ -1246,19 +1441,19 @@ def test_bash_tool_rolling_artifact_details_count_full_output(tmp_path) -> None:
     import asyncio
     from pathlib import Path
 
-    from loushang.coding.policy.types import PolicyDecision
-    from loushang.coding.tools import create_bash_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     full_output = "".join(f"line-{index:04d}\n" for index in range(3000))
 
     async def scenario() -> None:
-        tool = wrap_tool_definition(create_bash_tool_definition(policy_engine=AllowingPolicyEngine()))
+        tool = wrap_tool_definition(create_bash_tool_definition())
 
         result = await tool.execute(
             "call-bash-artifact-contract",
@@ -1273,13 +1468,20 @@ def test_bash_tool_rolling_artifact_details_count_full_output(tmp_path) -> None:
             },
         )
 
-        assert result.details["full_output_path"] == result.details["stdout_artifact_path"]
+        assert (
+            result.details["full_output_path"] == result.details["stdout_artifact_path"]
+        )
         assert "fullOutputPath" not in result.details
         assert result.details["stdout_artifact_path"] is not None
-        assert Path(result.details["stdout_artifact_path"]).read_text(encoding="utf-8") == full_output
+        assert (
+            Path(result.details["stdout_artifact_path"]).read_text(encoding="utf-8")
+            == full_output
+        )
         assert result.details["stdout_total_lines"] == 3000
         assert result.details["stdout_total_bytes"] == len(full_output.encode("utf-8"))
-        assert result.details["stdout_output_lines"] < result.details["stdout_total_lines"]
+        assert (
+            result.details["stdout_output_lines"] < result.details["stdout_total_lines"]
+        )
         assert result.details["truncated"] is True
         assert result.details["truncation"]["totalLines"] == 3000
 
@@ -1289,14 +1491,14 @@ def test_bash_tool_rolling_artifact_details_count_full_output(tmp_path) -> None:
 def test_bash_tool_returns_no_output_placeholder(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec.types import ExecResult
-    from loushang.coding.policy.types import PolicyDecision
-    from loushang.coding.tools import create_bash_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+    from loushang.harness.workspace.exec import ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class EmptyExecService:
@@ -1307,12 +1509,13 @@ def test_bash_tool_returns_no_output_placeholder(tmp_path) -> None:
     async def scenario() -> None:
         tool = wrap_tool_definition(
             create_bash_tool_definition(
-                policy_engine=AllowingPolicyEngine(),
                 exec_service=EmptyExecService(),
             )
         )
 
-        result = await tool.execute("call-bash-empty", {"command": "true", "cwd": str(tmp_path)})
+        result = await tool.execute(
+            "call-bash-empty", {"command": "true", "cwd": str(tmp_path)}
+        )
 
         assert result.content[0].text == "(no output)"
         assert result.details["exit_code"] == 0
@@ -1325,14 +1528,14 @@ def test_bash_tool_raises_for_nonzero_exit_code_with_buffered_output(tmp_path) -
 
     import pytest
 
-    from loushang.coding.exec.types import ExecResult
-    from loushang.coding.policy.types import PolicyDecision
-    from loushang.coding.tools import create_bash_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+    from loushang.harness.workspace.exec import ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class FailingExecService:
@@ -1343,13 +1546,14 @@ def test_bash_tool_raises_for_nonzero_exit_code_with_buffered_output(tmp_path) -
     async def scenario() -> None:
         tool = wrap_tool_definition(
             create_bash_tool_definition(
-                policy_engine=AllowingPolicyEngine(),
                 exec_service=FailingExecService(),
             )
         )
 
         with pytest.raises(RuntimeError) as exc_info:
-            await tool.execute("call-bash-fail", {"command": "exit 2", "cwd": str(tmp_path)})
+            await tool.execute(
+                "call-bash-fail", {"command": "exit 2", "cwd": str(tmp_path)}
+            )
 
         message = str(exc_info.value)
         assert "out" in message
@@ -1364,13 +1568,18 @@ def test_bash_tool_raises_for_invalid_command_and_env_shapes(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     class RecordingPolicyEngine:
         def __init__(self) -> None:
             self.calls = 0
 
-        def evaluate_action(self, *, tool_name: str, exec_request):
+        def evaluate(self, subject):
             self.calls += 1
             raise AssertionError("policy should not run for invalid params")
 
@@ -1385,8 +1594,14 @@ def test_bash_tool_raises_for_invalid_command_and_env_shapes(tmp_path) -> None:
     async def scenario() -> None:
         policy_engine = RecordingPolicyEngine()
         exec_service = RecordingExecService()
-        registry = ToolRegistry()
-        register_builtin_tools(registry, policy_engine=policy_engine, exec_service=exec_service)
+        registry = _bind_workspace_scope(
+            ToolRegistry(),
+            policy_evaluator=policy_engine,
+        )
+        register_builtin_tools(
+            registry,
+            exec_service=exec_service,
+        )
         bash_tool = registry.materialize_tool("bash")
 
         with pytest.raises(TypeError):
@@ -1397,7 +1612,11 @@ def test_bash_tool_raises_for_invalid_command_and_env_shapes(tmp_path) -> None:
         with pytest.raises(TypeError):
             await bash_tool.execute(
                 "call-env",
-                {"command": ["/bin/sh", "-lc", "printf hi"], "cwd": str(tmp_path), "env": [["A", "B", "C"]]},
+                {
+                    "command": ["/bin/sh", "-lc", "printf hi"],
+                    "cwd": str(tmp_path),
+                    "env": [["A", "B", "C"]],
+                },
             )
         assert policy_engine.calls == 0
         assert exec_service.calls == 0
@@ -1410,16 +1629,21 @@ def test_bash_tool_policy_decisions_do_not_record_runtime_diagnostics(tmp_path) 
 
     import pytest
 
-    from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.coding.policy.types import PolicyDecision
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     class SequencedPolicyEngine:
         def __init__(self) -> None:
             self.calls = 0
 
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             self.calls += 1
             if self.calls == 1:
                 return PolicyDecision.deny("blocked by policy")
@@ -1431,10 +1655,13 @@ def test_bash_tool_policy_decisions_do_not_record_runtime_diagnostics(tmp_path) 
 
     async def scenario() -> None:
         diagnostics_service = DiagnosticsService()
-        registry = ToolRegistry()
+        policy_engine = SequencedPolicyEngine()
+        registry = _bind_workspace_scope(
+            ToolRegistry(),
+            policy_evaluator=policy_engine,
+        )
         register_builtin_tools(
             registry,
-            policy_engine=SequencedPolicyEngine(),
             exec_service=RecordingExecService(),
             diagnostics_service=diagnostics_service,
         )
@@ -1463,14 +1690,19 @@ def test_bash_tool_exec_timeout_does_not_record_runtime_diagnostics(tmp_path) ->
 
     import pytest
 
-    from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.coding.exec.types import ExecResult
-    from loushang.coding.policy.types import PolicyDecision
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
+    from loushang.harness.workspace.exec import ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class TimeoutExecService:
@@ -1480,10 +1712,9 @@ def test_bash_tool_exec_timeout_does_not_record_runtime_diagnostics(tmp_path) ->
 
     async def scenario() -> None:
         diagnostics_service = DiagnosticsService()
-        registry = ToolRegistry()
+        registry = _bind_workspace_scope(ToolRegistry())
         register_builtin_tools(
             registry,
-            policy_engine=AllowingPolicyEngine(),
             exec_service=TimeoutExecService(),
             diagnostics_service=diagnostics_service,
         )
@@ -1505,27 +1736,32 @@ def test_bash_tool_timeout_error_includes_buffered_output(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding import ToolRegistry, register_builtin_tools
-    from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.coding.exec.types import ExecResult
-    from loushang.coding.policy import PolicyDecision
+    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+    from loushang.harness.workspace.exec import ExecResult
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision(disposition="allow")
 
     class TimeoutExecService:
         async def execute(self, request):
             del request
-            return ExecResult(exit_code=-1, stdout="partial stdout\n", stderr="partial stderr\n", timed_out=True)
+            return ExecResult(
+                exit_code=-1,
+                stdout="partial stdout\n",
+                stderr="partial stderr\n",
+                timed_out=True,
+            )
 
     async def scenario() -> None:
-        registry = ToolRegistry()
+        registry = _bind_workspace_scope(WorkspaceToolRegistry())
         diagnostics_service = DiagnosticsService()
-        register_builtin_tools(
+        register_coding_builtin_tools(
             registry,
-            policy_engine=AllowingPolicyEngine(),
             exec_service=TimeoutExecService(),
             diagnostics_service=diagnostics_service,
         )
@@ -1533,7 +1769,10 @@ def test_bash_tool_timeout_error_includes_buffered_output(tmp_path) -> None:
         with pytest.raises(TimeoutError) as exc_info:
             await registry.materialize_tool("bash").execute(
                 "call-timeout-output",
-                {"command": ["/bin/sh", "-lc", "printf partial; sleep 1"], "cwd": str(tmp_path)},
+                {
+                    "command": ["/bin/sh", "-lc", "printf partial; sleep 1"],
+                    "cwd": str(tmp_path),
+                },
             )
 
         message = str(exc_info.value)
@@ -1545,16 +1784,19 @@ def test_bash_tool_timeout_error_includes_buffered_output(tmp_path) -> None:
     asyncio.run(scenario())
 
 
-def test_bash_tool_exec_exception_does_not_record_runtime_diagnostics_and_reraises(tmp_path) -> None:
+def test_bash_tool_exec_exception_does_not_record_runtime_diagnostics_and_reraises(
+    tmp_path,
+) -> None:
     import asyncio
 
-    from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.coding.policy.types import PolicyDecision
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
     class AllowingPolicyEngine:
-        def evaluate_action(self, *, tool_name: str, exec_request):
-            del tool_name, exec_request
+        def evaluate(self, subject):
+            del subject
             return PolicyDecision.allow()
 
     class FailingExecService:
@@ -1564,10 +1806,9 @@ def test_bash_tool_exec_exception_does_not_record_runtime_diagnostics_and_rerais
 
     async def scenario() -> None:
         diagnostics_service = DiagnosticsService()
-        registry = ToolRegistry()
-        register_builtin_tools(
+        registry = _bind_workspace_scope(WorkspaceToolRegistry())
+        register_coding_builtin_tools(
             registry,
-            policy_engine=AllowingPolicyEngine(),
             exec_service=FailingExecService(),
             diagnostics_service=diagnostics_service,
         )
@@ -1590,8 +1831,8 @@ def test_bash_tool_exec_exception_does_not_record_runtime_diagnostics_and_rerais
 def test_read_uses_shared_path_resolution(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_read_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     nested = tmp_path / "nested"
     nested.mkdir()
@@ -1604,7 +1845,9 @@ def test_read_uses_shared_path_resolution(tmp_path) -> None:
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-read", {"path": "nested/../nested/notes.txt"}))
+    result = asyncio.run(
+        runtime_tool.execute("call-read", {"path": "nested/../nested/notes.txt"})
+    )
 
     assert result.content[0].text == "alpha\nbeta\ngamma\n"
     assert result.details["path"] == str(path)
@@ -1622,8 +1865,8 @@ def test_read_uses_shared_path_resolution(tmp_path) -> None:
 def test_read_preserves_offset_and_limit_contract(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_read_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     path = tmp_path / "notes.txt"
     path.write_text("alpha\nbeta\ngamma\ndelta\n", encoding="utf-8")
@@ -1633,7 +1876,11 @@ def test_read_preserves_offset_and_limit_contract(tmp_path) -> None:
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-read", {"path": "notes.txt", "offset": 2, "limit": 2}))
+    result = asyncio.run(
+        runtime_tool.execute(
+            "call-read", {"path": "notes.txt", "offset": 2, "limit": 2}
+        )
+    )
 
     assert result.content[0].text.startswith("beta\ngamma\n")
     assert result.details["start_line"] == 2
@@ -1644,8 +1891,8 @@ def test_read_preserves_offset_and_limit_contract(tmp_path) -> None:
 def test_read_accepts_integral_numeric_offset_and_limit(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_read_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     (tmp_path / "notes.txt").write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
 
@@ -1655,17 +1902,24 @@ def test_read_accepts_integral_numeric_offset_and_limit(tmp_path) -> None:
     )
 
     result = asyncio.run(
-        runtime_tool.execute("call-read-float-window", {"path": "notes.txt", "offset": 2.0, "limit": 1.0})
+        runtime_tool.execute(
+            "call-read-float-window", {"path": "notes.txt", "offset": 2.0, "limit": 1.0}
+        )
     )
 
-    assert result.content[0].text == "beta\n\n[1 more lines in file. Use offset=3 to continue.]"
+    assert (
+        result.content[0].text
+        == "beta\n\n[1 more lines in file. Use offset=3 to continue.]"
+    )
 
 
-def test_read_reports_remaining_lines_when_user_limit_stops_before_eof(tmp_path) -> None:
+def test_read_reports_remaining_lines_when_user_limit_stops_before_eof(
+    tmp_path,
+) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_read_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     path = tmp_path / "notes.txt"
     path.write_text("alpha\nbeta\ngamma\ndelta\n", encoding="utf-8")
@@ -1675,9 +1929,16 @@ def test_read_reports_remaining_lines_when_user_limit_stops_before_eof(tmp_path)
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-read", {"path": "notes.txt", "offset": 2, "limit": 2}))
+    result = asyncio.run(
+        runtime_tool.execute(
+            "call-read", {"path": "notes.txt", "offset": 2, "limit": 2}
+        )
+    )
 
-    assert result.content[0].text == "beta\ngamma\n\n[1 more lines in file. Use offset=4 to continue.]"
+    assert (
+        result.content[0].text
+        == "beta\ngamma\n\n[1 more lines in file. Use offset=4 to continue.]"
+    )
     assert result.details["start_line"] == 2
     assert result.details["end_line"] == 3
     assert result.details["truncated"] is True
@@ -1686,8 +1947,8 @@ def test_read_reports_remaining_lines_when_user_limit_stops_before_eof(tmp_path)
 def test_read_reports_first_line_too_large_without_partial_payload(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_read_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     path = tmp_path / "long.txt"
     path.write_text(("x" * (60 * 1024)) + "\nsecond\n", encoding="utf-8")
@@ -1697,7 +1958,9 @@ def test_read_reports_first_line_too_large_without_partial_payload(tmp_path) -> 
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-read-long-line", {"path": "long.txt"}))
+    result = asyncio.run(
+        runtime_tool.execute("call-read-long-line", {"path": "long.txt"})
+    )
 
     assert result.content[0].text.startswith("[Line 1 is ")
     assert "exceeds 50.0KB limit" in result.content[0].text
@@ -1711,11 +1974,13 @@ def test_read_reports_first_line_too_large_without_partial_payload(tmp_path) -> 
 def test_read_aligns_line_metadata_after_shared_truncation(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_read_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     path = tmp_path / "notes.txt"
-    path.write_text("".join(f"line {index:04d}\n" for index in range(2500)), encoding="utf-8")
+    path.write_text(
+        "".join(f"line {index:04d}\n" for index in range(2500)), encoding="utf-8"
+    )
 
     runtime_tool = wrap_tool_definition(
         create_read_tool_definition(),
@@ -1723,7 +1988,9 @@ def test_read_aligns_line_metadata_after_shared_truncation(tmp_path) -> None:
     )
 
     result = asyncio.run(
-        runtime_tool.execute("call-read-large", {"path": "notes.txt", "offset": 2, "limit": 2100})
+        runtime_tool.execute(
+            "call-read-large", {"path": "notes.txt", "offset": 2, "limit": 2100}
+        )
     )
 
     visible_text = result.content[0].text.split("\n[Showing lines ", 1)[0]
@@ -1731,7 +1998,10 @@ def test_read_aligns_line_metadata_after_shared_truncation(tmp_path) -> None:
     assert len(visible_lines) == 2000
     assert result.details["start_line"] == 2
     assert result.details["end_line"] == 2001
-    assert result.details["end_line"] == result.details["start_line"] + len(visible_lines) - 1
+    assert (
+        result.details["end_line"]
+        == result.details["start_line"] + len(visible_lines) - 1
+    )
     assert result.details["truncated"] is True
     assert result.details["truncated_by"] == "lines"
     assert result.details["total_lines"] == 2100
@@ -1746,8 +2016,8 @@ def test_read_aligns_line_metadata_after_shared_truncation(tmp_path) -> None:
 def test_read_prepare_arguments_accepts_legacy_file_path_alias(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_read_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     (tmp_path / "notes.txt").write_text("legacy path", encoding="utf-8")
 
@@ -1763,16 +2033,18 @@ def test_read_prepare_arguments_accepts_legacy_file_path_alias(tmp_path) -> None
     assert result.content[0].text == "legacy path"
 
 
-def test_file_tool_prepare_arguments_reject_conflicting_file_path_aliases(tmp_path) -> None:
+def test_file_tool_prepare_arguments_reject_conflicting_file_path_aliases(
+    tmp_path,
+) -> None:
     import pytest
 
-    from loushang.coding.tools import (
+    from loushang.harness.tools.workspace import (
         create_find_tool_definition,
         create_ls_tool_definition,
         create_read_tool_definition,
         create_write_tool_definition,
     )
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     for definition in (
         create_read_tool_definition(),
@@ -1784,7 +2056,9 @@ def test_file_tool_prepare_arguments_reject_conflicting_file_path_aliases(tmp_pa
             definition,
             context_provider=_tool_context_provider(cwd=str(tmp_path)),
         )
-        with pytest.raises(ValueError, match="conflicting tool arguments: path and file_path"):
+        with pytest.raises(
+            ValueError, match="conflicting tool arguments: path and file_path"
+        ):
             runtime_tool.prepare_arguments({"path": "main.py", "file_path": "other.py"})
 
 
@@ -1793,8 +2067,8 @@ def test_read_rejects_binary_file_payloads(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.tools import create_read_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     binary_path = tmp_path / "payload.bin"
     binary_path.write_bytes(b"alpha\x00beta")
@@ -1811,8 +2085,8 @@ def test_read_rejects_binary_file_payloads(tmp_path) -> None:
 def test_read_returns_image_content_for_supported_image(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_read_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     png_payload = (
         b"\x89PNG\r\n\x1a\n"
@@ -1840,8 +2114,8 @@ def test_read_returns_image_content_for_supported_image(tmp_path) -> None:
 def test_read_omits_oversized_image_when_resize_is_unavailable(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_read_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     png_payload = (
         b"\x89PNG\r\n\x1a\n"
@@ -1872,8 +2146,11 @@ def test_read_omits_oversized_image_when_resize_is_unavailable(tmp_path) -> None
 def test_read_reports_unavailable_resize_backend_for_oversized_image(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import ReadToolOptions, create_read_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import (
+        ReadToolOptions,
+        create_read_tool_definition,
+    )
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     png_payload = (
         b"\x89PNG\r\n\x1a\n"
@@ -1889,11 +2166,15 @@ def test_read_reports_unavailable_resize_backend_for_oversized_image(tmp_path) -
         def is_available(self) -> bool:
             return False
 
-        async def resize_image(self, payload: bytes, *, mime_type: str, dimensions: tuple[int, int] | None):
+        async def resize_image(
+            self, payload: bytes, *, mime_type: str, dimensions: tuple[int, int] | None
+        ):
             raise AssertionError("unavailable resizer should not be called")
 
     runtime_tool = wrap_tool_definition(
-        create_read_tool_definition(options=ReadToolOptions(image_resizer=UnavailableResizer())),
+        create_read_tool_definition(
+            options=ReadToolOptions(image_resizer=UnavailableResizer())
+        ),
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
@@ -1911,12 +2192,12 @@ def test_read_resizes_oversized_image_when_resizer_is_available(tmp_path) -> Non
     import asyncio
     import base64
 
-    from loushang.coding.tools import (
+    from loushang.harness.tools.workspace import (
         ReadImageResizeResult,
         ReadToolOptions,
         create_read_tool_definition,
     )
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     png_payload = (
         b"\x89PNG\r\n\x1a\n"
@@ -1983,8 +2264,11 @@ def test_read_resizes_oversized_image_when_resizer_is_available(tmp_path) -> Non
 def test_read_does_not_resize_when_auto_resize_is_disabled(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import ReadToolOptions, create_read_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import (
+        ReadToolOptions,
+        create_read_tool_definition,
+    )
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     png_payload = (
         b"\x89PNG\r\n\x1a\n"
@@ -1997,7 +2281,9 @@ def test_read_does_not_resize_when_auto_resize_is_disabled(tmp_path) -> None:
     (tmp_path / "wide.png").write_bytes(png_payload)
 
     class FailingIfCalledResizer:
-        async def resize_image(self, payload: bytes, *, mime_type: str, dimensions: tuple[int, int] | None):
+        async def resize_image(
+            self, payload: bytes, *, mime_type: str, dimensions: tuple[int, int] | None
+        ):
             raise AssertionError("resizer should not be called")
 
     runtime_tool = wrap_tool_definition(
@@ -2020,7 +2306,7 @@ def test_read_does_not_resize_when_auto_resize_is_disabled(tmp_path) -> None:
 
 
 def test_read_accepts_pi_style_auto_resize_option_alias() -> None:
-    from loushang.coding.tools import ReadToolOptions
+    from loushang.harness.tools.workspace import ReadToolOptions
 
     options = ReadToolOptions(autoResizeImages=False)
 
@@ -2032,8 +2318,8 @@ def test_read_notes_when_current_model_does_not_support_images(tmp_path) -> None
     import asyncio
     from types import SimpleNamespace
 
-    from loushang.coding.tools import create_read_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     png_payload = (
         b"\x89PNG\r\n\x1a\n"
@@ -2045,7 +2331,9 @@ def test_read_notes_when_current_model_does_not_support_images(tmp_path) -> None
 
     runtime_tool = wrap_tool_definition(
         create_read_tool_definition(),
-        context_provider=_tool_context_provider(cwd=str(tmp_path), model=SimpleNamespace(input=("text",))),
+        context_provider=_tool_context_provider(
+            cwd=str(tmp_path), model=SimpleNamespace(input=("text",))
+        ),
     )
 
     result = asyncio.run(runtime_tool.execute("call-image-read", {"path": "pixel.png"}))
@@ -2060,7 +2348,7 @@ def test_read_notes_when_current_model_does_not_support_images(tmp_path) -> None
 
 
 def test_read_description_mentions_text_and_images() -> None:
-    from loushang.coding.tools import create_read_tool_definition
+    from loushang.harness.tools.workspace import create_read_tool_definition
 
     definition = create_read_tool_definition()
 
@@ -2072,8 +2360,8 @@ def test_read_tool_raises_for_missing_file(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.tools import create_read_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     runtime_tool = wrap_tool_definition(
         create_read_tool_definition(),
@@ -2087,8 +2375,8 @@ def test_read_tool_raises_for_missing_file(tmp_path) -> None:
 def test_ls_tool_lists_directory_entries(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_ls_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_ls_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     (tmp_path / "a.txt").write_text("a", encoding="utf-8")
     (tmp_path / "nested").mkdir()
@@ -2110,8 +2398,8 @@ def test_ls_tool_lists_directory_entries(tmp_path) -> None:
 def test_ls_truncates_large_listing_with_default_limit_and_notice(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_ls_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_ls_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     for index in range(510):
         (tmp_path / f"entry-{index:04d}.txt").write_text("x", encoding="utf-8")
@@ -2139,8 +2427,8 @@ def test_ls_truncates_large_listing_with_default_limit_and_notice(tmp_path) -> N
 def test_ls_accepts_integral_numeric_limit(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_ls_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_ls_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     (tmp_path / "a.txt").write_text("a", encoding="utf-8")
     (tmp_path / "b.txt").write_text("b", encoding="utf-8")
@@ -2150,17 +2438,22 @@ def test_ls_accepts_integral_numeric_limit(tmp_path) -> None:
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-ls-float-limit", {"path": ".", "limit": 1.0}))
+    result = asyncio.run(
+        runtime_tool.execute("call-ls-float-limit", {"path": ".", "limit": 1.0})
+    )
 
-    assert result.content[0].text == "a.txt\n\n[1 entries limit reached. Use limit=2 for more]"
+    assert (
+        result.content[0].text
+        == "a.txt\n\n[1 entries limit reached. Use limit=2 for more]"
+    )
     assert result.details["entry_limit"] == 1
 
 
 def test_ls_prepare_arguments_accepts_legacy_file_path_alias(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_ls_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_ls_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     (tmp_path / "nested").mkdir()
     (tmp_path / "nested" / "file.txt").write_text("x", encoding="utf-8")
@@ -2180,8 +2473,8 @@ def test_ls_prepare_arguments_accepts_legacy_file_path_alias(tmp_path) -> None:
 def test_ls_tool_returns_empty_directory_message(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_ls_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_ls_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     runtime_tool = wrap_tool_definition(
         create_ls_tool_definition(),
@@ -2199,8 +2492,8 @@ def test_ls_tool_raises_for_file_path(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.tools import create_ls_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_ls_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     file_path = tmp_path / "plain.txt"
     file_path.write_text("hello", encoding="utf-8")
@@ -2217,8 +2510,8 @@ def test_ls_tool_raises_for_file_path(tmp_path) -> None:
 def test_find_tool_returns_matching_paths(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_find_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_find_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "agent.py").write_text("pass", encoding="utf-8")
@@ -2229,7 +2522,9 @@ def test_find_tool_returns_matching_paths(tmp_path) -> None:
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-find", {"pattern": "agent", "path": "."}))
+    result = asyncio.run(
+        runtime_tool.execute("call-find", {"pattern": "agent", "path": "."})
+    )
 
     assert "src/agent.py" in result.content[0].text.splitlines()
     assert result.details["path"] == str(tmp_path)
@@ -2239,8 +2534,8 @@ def test_find_tool_returns_matching_paths(tmp_path) -> None:
 def test_find_respects_gitignore_and_skips_common_vendor_dirs(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_find_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_find_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     (tmp_path / ".gitignore").write_text("ignored.py\nbuild/\n", encoding="utf-8")
     (tmp_path / "visible.py").write_text("pass", encoding="utf-8")
@@ -2257,25 +2552,31 @@ def test_find_respects_gitignore_and_skips_common_vendor_dirs(tmp_path) -> None:
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-find-ignore", {"pattern": "*.py", "path": "."}))
+    result = asyncio.run(
+        runtime_tool.execute("call-find-ignore", {"pattern": "*.py", "path": "."})
+    )
 
     assert result.details["matches"] == [{"path": "visible.py"}]
     assert result.content[0].text == "visible.py"
 
 
-def test_find_fallback_scopes_nested_gitignore_rules_to_their_subtrees(monkeypatch, tmp_path) -> None:
+def test_find_fallback_scopes_nested_gitignore_rules_to_their_subtrees(
+    monkeypatch, tmp_path
+) -> None:
     import asyncio
 
-    import loushang.coding.tools.find as find_module
-    from loushang.coding.tools import create_find_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    import loushang.harness.tools.workspace.find as find_module
+    from loushang.harness.tools.workspace import create_find_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     monkeypatch.setattr(find_module.shutil, "which", lambda name: None)
 
     (tmp_path / "a" / "deep").mkdir(parents=True)
     (tmp_path / "b").mkdir()
     (tmp_path / "a" / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
-    (tmp_path / "a" / "deep" / ".gitignore").write_text("secret.txt\n", encoding="utf-8")
+    (tmp_path / "a" / "deep" / ".gitignore").write_text(
+        "secret.txt\n", encoding="utf-8"
+    )
     (tmp_path / "a" / "ignored.txt").write_text("", encoding="utf-8")
     (tmp_path / "a" / "kept.txt").write_text("", encoding="utf-8")
     (tmp_path / "a" / "deep" / "ignored.txt").write_text("", encoding="utf-8")
@@ -2290,17 +2591,31 @@ def test_find_fallback_scopes_nested_gitignore_rules_to_their_subtrees(monkeypat
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-find-nested-ignore", {"pattern": "**/*.txt", "path": "."}))
-    paths = sorted(line for line in result.content[0].text.splitlines() if line and not line.startswith("["))
+    result = asyncio.run(
+        runtime_tool.execute(
+            "call-find-nested-ignore", {"pattern": "**/*.txt", "path": "."}
+        )
+    )
+    paths = sorted(
+        line
+        for line in result.content[0].text.splitlines()
+        if line and not line.startswith("[")
+    )
 
-    assert paths == ["a/deep/kept.txt", "a/kept.txt", "b/ignored.txt", "b/kept.txt", "root.txt"]
+    assert paths == [
+        "a/deep/kept.txt",
+        "a/kept.txt",
+        "b/ignored.txt",
+        "b/kept.txt",
+        "root.txt",
+    ]
 
 
 def test_find_returns_structured_match_details(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_find_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_find_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "agent.py").write_text("pass", encoding="utf-8")
@@ -2311,7 +2626,9 @@ def test_find_returns_structured_match_details(tmp_path) -> None:
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-find-structured", {"pattern": "agent", "path": "."}))
+    result = asyncio.run(
+        runtime_tool.execute("call-find-structured", {"pattern": "agent", "path": "."})
+    )
 
     assert result.details["matches"] == [
         {"path": "src/agent.py"},
@@ -2323,8 +2640,11 @@ def test_find_returns_structured_match_details(tmp_path) -> None:
 def test_find_direct_options_external_tool_policy_auto_downloads(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import FindToolOptions, create_find_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import (
+        FindToolOptions,
+        create_find_tool_definition,
+    )
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     fake_fd = tmp_path / "fd"
     fake_fd.write_text("#!/bin/sh\nprintf 'direct-policy.py\\n'\n", encoding="utf-8")
@@ -2355,7 +2675,11 @@ def test_find_direct_options_external_tool_policy_auto_downloads(tmp_path) -> No
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-find-direct-policy-auto", {"pattern": "*.py", "path": "."}))
+    result = asyncio.run(
+        runtime_tool.execute(
+            "call-find-direct-policy-auto", {"pattern": "*.py", "path": "."}
+        )
+    )
 
     assert downloader.calls == ["fd"]
     assert result.content[0].text == "direct-policy.py"
@@ -2364,8 +2688,8 @@ def test_find_direct_options_external_tool_policy_auto_downloads(tmp_path) -> No
 def test_find_applies_default_limit_with_actionable_notice(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_find_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_find_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class VirtualOperations:
         async def exists(self, path):
@@ -2382,13 +2706,20 @@ def test_find_applies_default_limit_with_actionable_notice(tmp_path) -> None:
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-find-default-limit", {"pattern": "*.py", "path": "."}))
+    result = asyncio.run(
+        runtime_tool.execute(
+            "call-find-default-limit", {"pattern": "*.py", "path": "."}
+        )
+    )
     lines = result.content[0].text.splitlines()
 
     assert len(result.details["matches"]) == 1000
     assert lines[0] == "entry-0000.py"
     assert lines[999] == "entry-0999.py"
-    assert lines[-1] == "[1000 results limit reached. Use limit=2000 for more, or refine pattern]"
+    assert (
+        lines[-1]
+        == "[1000 results limit reached. Use limit=2000 for more, or refine pattern]"
+    )
     assert result.details["truncated"] is True
     assert result.details["truncated_by"] is None
     assert result.details["result_limit_reached"] is True
@@ -2398,8 +2729,8 @@ def test_find_applies_default_limit_with_actionable_notice(tmp_path) -> None:
 def test_find_accepts_integral_numeric_limit(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_find_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_find_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class VirtualOperations:
         async def exists(self, path):
@@ -2416,9 +2747,16 @@ def test_find_accepts_integral_numeric_limit(tmp_path) -> None:
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-find-float-limit", {"pattern": "*.py", "path": ".", "limit": 1.0}))
+    result = asyncio.run(
+        runtime_tool.execute(
+            "call-find-float-limit", {"pattern": "*.py", "path": ".", "limit": 1.0}
+        )
+    )
 
-    assert result.content[0].text == "a.py\n\n[1 results limit reached. Use limit=2 for more, or refine pattern]"
+    assert (
+        result.content[0].text
+        == "a.py\n\n[1 results limit reached. Use limit=2 for more, or refine pattern]"
+    )
     assert result.details["result_limit"] == 1
 
 
@@ -2426,7 +2764,7 @@ def test_find_fd_full_path_pattern_uses_full_path_glob(monkeypatch, tmp_path) ->
     import asyncio
     from types import SimpleNamespace
 
-    import loushang.coding.tools.find as find_module
+    import loushang.harness.tools.workspace.find as find_module
 
     captured: dict[str, object] = {}
 
@@ -2442,7 +2780,11 @@ def test_find_fd_full_path_pattern_uses_full_path_glob(monkeypatch, tmp_path) ->
     monkeypatch.setattr(find_module.shutil, "which", fake_which)
     monkeypatch.setattr(find_module, "run_external_process", fake_run_external_process)
 
-    matches = asyncio.run(find_module._walk_matching_paths_with_fd(tmp_path, pattern="src/**/*.py", limit=1000))
+    matches = asyncio.run(
+        find_module._walk_matching_paths_with_fd(
+            tmp_path, pattern="src/**/*.py", limit=1000
+        )
+    )
 
     assert "--full-path" in captured["command"]
     assert "--color=never" in captured["command"]
@@ -2455,8 +2797,11 @@ def test_find_fd_full_path_pattern_uses_full_path_glob(monkeypatch, tmp_path) ->
 def test_find_uses_external_tool_resolver_when_available(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import FindToolOptions, create_find_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import (
+        FindToolOptions,
+        create_find_tool_definition,
+    )
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     fake_fd = tmp_path / "fd"
     fake_fd.write_text("#!/bin/sh\nprintf 'src/app.py\\n'\n", encoding="utf-8")
@@ -2472,11 +2817,15 @@ def test_find_uses_external_tool_resolver_when_available(tmp_path) -> None:
 
     resolver = Resolver()
     runtime_tool = wrap_tool_definition(
-        create_find_tool_definition(options=FindToolOptions(external_tool_resolver=resolver)),
+        create_find_tool_definition(
+            options=FindToolOptions(external_tool_resolver=resolver)
+        ),
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-find-resolver", {"pattern": "*.py", "path": "."}))
+    result = asyncio.run(
+        runtime_tool.execute("call-find-resolver", {"pattern": "*.py", "path": "."})
+    )
 
     assert resolver.names == ["fd"]
     assert result.content[0].text == "src/app.py"
@@ -2486,8 +2835,11 @@ def test_find_uses_external_tool_resolver_when_available(tmp_path) -> None:
 def test_find_falls_back_when_external_tool_resolver_misses(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import FindToolOptions, create_find_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import (
+        FindToolOptions,
+        create_find_tool_definition,
+    )
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "app.py").write_text("pass", encoding="utf-8")
@@ -2498,11 +2850,15 @@ def test_find_falls_back_when_external_tool_resolver_misses(tmp_path) -> None:
             return None
 
     runtime_tool = wrap_tool_definition(
-        create_find_tool_definition(options=FindToolOptions(external_tool_resolver=MissingResolver())),
+        create_find_tool_definition(
+            options=FindToolOptions(external_tool_resolver=MissingResolver())
+        ),
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-find-fallback", {"pattern": "*.py", "path": "."}))
+    result = asyncio.run(
+        runtime_tool.execute("call-find-fallback", {"pattern": "*.py", "path": "."})
+    )
 
     assert result.content[0].text == "src/app.py"
 
@@ -2512,13 +2868,18 @@ def test_find_external_tool_failure_is_not_masked_by_fallback(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.tools import FindToolOptions, create_find_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import (
+        FindToolOptions,
+        create_find_tool_definition,
+    )
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "app.py").write_text("pass", encoding="utf-8")
     fake_fd = tmp_path / "fd"
-    fake_fd.write_text("#!/bin/sh\nprintf 'fd failed\\n' >&2\nexit 2\n", encoding="utf-8")
+    fake_fd.write_text(
+        "#!/bin/sh\nprintf 'fd failed\\n' >&2\nexit 2\n", encoding="utf-8"
+    )
     fake_fd.chmod(0o755)
 
     class Resolver:
@@ -2526,12 +2887,18 @@ def test_find_external_tool_failure_is_not_masked_by_fallback(tmp_path) -> None:
             return str(fake_fd) if name == "fd" else None
 
     runtime_tool = wrap_tool_definition(
-        create_find_tool_definition(options=FindToolOptions(external_tool_resolver=Resolver())),
+        create_find_tool_definition(
+            options=FindToolOptions(external_tool_resolver=Resolver())
+        ),
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
     with pytest.raises(RuntimeError, match="fd failed"):
-        asyncio.run(runtime_tool.execute("call-find-fd-failure", {"pattern": "*.py", "path": "."}))
+        asyncio.run(
+            runtime_tool.execute(
+                "call-find-fd-failure", {"pattern": "*.py", "path": "."}
+            )
+        )
 
 
 def test_find_requires_external_tool_when_configured(tmp_path) -> None:
@@ -2539,8 +2906,11 @@ def test_find_requires_external_tool_when_configured(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.tools import FindToolOptions, create_find_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import (
+        FindToolOptions,
+        create_find_tool_definition,
+    )
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class MissingResolver:
         async def resolve_tool(self, name: str) -> None:
@@ -2558,7 +2928,9 @@ def test_find_requires_external_tool_when_configured(tmp_path) -> None:
     )
 
     with pytest.raises(RuntimeError, match="fd external tool is required"):
-        asyncio.run(runtime_tool.execute("call-find-required", {"pattern": "*.py", "path": "."}))
+        asyncio.run(
+            runtime_tool.execute("call-find-required", {"pattern": "*.py", "path": "."})
+        )
 
 
 def test_find_fd_process_is_killed_when_signal_aborts(monkeypatch, tmp_path) -> None:
@@ -2567,16 +2939,18 @@ def test_find_fd_process_is_killed_when_signal_aborts(monkeypatch, tmp_path) -> 
 
     import pytest
 
-    import loushang.coding.tools.find as find_module
+    import loushang.harness.tools.workspace.find as find_module
     from loushang.agent import AbortController
-    from loushang.coding.tools import create_find_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_find_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     fake_fd = tmp_path / "fd"
     fake_fd.write_text("#!/bin/sh\nsleep 1\n", encoding="utf-8")
     fake_fd.chmod(0o755)
 
-    monkeypatch.setattr(find_module.shutil, "which", lambda name: str(fake_fd) if name == "fd" else None)
+    monkeypatch.setattr(
+        find_module.shutil, "which", lambda name: str(fake_fd) if name == "fd" else None
+    )
 
     runtime_tool = wrap_tool_definition(
         create_find_tool_definition(),
@@ -2593,7 +2967,11 @@ def test_find_fd_process_is_killed_when_signal_aborts(monkeypatch, tmp_path) -> 
         asyncio.create_task(abort_soon())
         started = time.monotonic()
         with pytest.raises(RuntimeError, match="Operation aborted"):
-            await runtime_tool.execute("call-find-abort", {"pattern": "*.py", "path": "."}, signal=controller.signal)
+            await runtime_tool.execute(
+                "call-find-abort",
+                {"pattern": "*.py", "path": "."},
+                signal=controller.signal,
+            )
         return time.monotonic() - started
 
     assert asyncio.run(scenario()) < 0.5
@@ -2602,8 +2980,8 @@ def test_find_fd_process_is_killed_when_signal_aborts(monkeypatch, tmp_path) -> 
 def test_find_byte_truncation_keeps_only_fully_rendered_matches(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_find_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_find_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     for index in range(260):
         name = f"entry-{index:04d}-" + ("a" * 220) + ".txt"
@@ -2614,7 +2992,11 @@ def test_find_byte_truncation_keeps_only_fully_rendered_matches(tmp_path) -> Non
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-find-byte-truncation", {"pattern": "entry-", "path": "."}))
+    result = asyncio.run(
+        runtime_tool.execute(
+            "call-find-byte-truncation", {"pattern": "entry-", "path": "."}
+        )
+    )
 
     rendered_prefix = "\n".join(match["path"] for match in result.details["matches"])
     assert result.details["truncated"] is True
@@ -2630,8 +3012,8 @@ def test_find_byte_truncation_keeps_only_fully_rendered_matches(tmp_path) -> Non
 def test_find_details_keep_python_snake_case_result_limit(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_find_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_find_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     for index in range(3):
         (tmp_path / f"entry-{index}.txt").write_text("x", encoding="utf-8")
@@ -2641,7 +3023,11 @@ def test_find_details_keep_python_snake_case_result_limit(tmp_path) -> None:
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-find-limit", {"pattern": "entry-", "path": ".", "limit": 2}))
+    result = asyncio.run(
+        runtime_tool.execute(
+            "call-find-limit", {"pattern": "entry-", "path": ".", "limit": 2}
+        )
+    )
 
     assert result.details["result_limit_reached"] is True
     assert result.details["result_limit"] == 2
@@ -2651,15 +3037,17 @@ def test_find_details_keep_python_snake_case_result_limit(tmp_path) -> None:
 def test_find_tool_returns_no_match_message(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_find_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_find_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     runtime_tool = wrap_tool_definition(
         create_find_tool_definition(),
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-find", {"pattern": "missing", "path": "."}))
+    result = asyncio.run(
+        runtime_tool.execute("call-find", {"pattern": "missing", "path": "."})
+    )
 
     assert result.content[0].text == "No files found matching pattern"
     assert result.details["path"] == str(tmp_path)
@@ -2670,8 +3058,8 @@ def test_find_tool_raises_for_missing_root(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.tools import create_find_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_find_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     runtime_tool = wrap_tool_definition(
         create_find_tool_definition(),
@@ -2679,16 +3067,22 @@ def test_find_tool_raises_for_missing_root(tmp_path) -> None:
     )
 
     with pytest.raises(FileNotFoundError):
-        asyncio.run(runtime_tool.execute("call-find", {"pattern": "agent", "path": "missing-dir"}))
+        asyncio.run(
+            runtime_tool.execute(
+                "call-find", {"pattern": "agent", "path": "missing-dir"}
+            )
+        )
 
 
 def test_grep_tool_returns_matching_lines(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_grep_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_grep_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
-    (tmp_path / "main.py").write_text("def create_agent_session():\n    pass\n", encoding="utf-8")
+    (tmp_path / "main.py").write_text(
+        "def create_agent_session():\n    pass\n", encoding="utf-8"
+    )
 
     runtime_tool = wrap_tool_definition(
         create_grep_tool_definition(),
@@ -2702,7 +3096,9 @@ def test_grep_tool_returns_matching_lines(tmp_path) -> None:
         )
     )
 
-    assert "main.py:1:def create_agent_session():" in result.content[0].text.splitlines()
+    assert (
+        "main.py:1:def create_agent_session():" in result.content[0].text.splitlines()
+    )
     assert result.details["path"] == str(tmp_path)
     assert result.details["truncated"] is False
 
@@ -2710,8 +3106,8 @@ def test_grep_tool_returns_matching_lines(tmp_path) -> None:
 def test_grep_tool_renders_context_lines(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_grep_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_grep_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     (tmp_path / "main.py").write_text("before\nneedle\n after\n", encoding="utf-8")
 
@@ -2740,10 +3136,12 @@ def test_grep_tool_renders_context_lines(tmp_path) -> None:
 def test_grep_accepts_integral_numeric_context_and_limit(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_grep_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_grep_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
-    (tmp_path / "main.py").write_text("before\nneedle\n after\nneedle again\n", encoding="utf-8")
+    (tmp_path / "main.py").write_text(
+        "before\nneedle\n after\nneedle again\n", encoding="utf-8"
+    )
 
     runtime_tool = wrap_tool_definition(
         create_grep_tool_definition(),
@@ -2753,7 +3151,13 @@ def test_grep_accepts_integral_numeric_context_and_limit(tmp_path) -> None:
     result = asyncio.run(
         runtime_tool.execute(
             "call-grep-float-context-limit",
-            {"pattern": "needle", "path": ".", "literal": True, "context": 1.0, "limit": 1.0},
+            {
+                "pattern": "needle",
+                "path": ".",
+                "literal": True,
+                "context": 1.0,
+                "limit": 1.0,
+            },
         )
     )
 
@@ -2770,8 +3174,8 @@ def test_grep_accepts_integral_numeric_context_and_limit(tmp_path) -> None:
 def test_grep_accepts_file_path_as_search_target(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_grep_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_grep_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     (tmp_path / "main.py").write_text("before\nneedle\n", encoding="utf-8")
 
@@ -2781,7 +3185,9 @@ def test_grep_accepts_file_path_as_search_target(tmp_path) -> None:
     )
 
     result = asyncio.run(
-        runtime_tool.execute("call-grep-file", {"pattern": "needle", "path": "main.py", "literal": True})
+        runtime_tool.execute(
+            "call-grep-file", {"pattern": "needle", "path": "main.py", "literal": True}
+        )
     )
 
     assert result.content[0].text == "main.py:2:needle"
@@ -2794,15 +3200,18 @@ def test_grep_accepts_file_path_as_search_target(tmp_path) -> None:
 def test_grep_uses_external_tool_resolver_when_available(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import GrepToolOptions, create_grep_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import (
+        GrepToolOptions,
+        create_grep_tool_definition,
+    )
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     fake_rg = tmp_path / "rg"
     fake_rg.write_text(
         "#!/bin/sh\n"
         "printf '%s\\n' "
-        "'{\"type\":\"match\",\"data\":{\"path\":{\"text\":\"./main.py\"},"
-        "\"line_number\":2,\"lines\":{\"text\":\"needle\\n\"}}}'\n",
+        '\'{"type":"match","data":{"path":{"text":"./main.py"},'
+        '"line_number":2,"lines":{"text":"needle\\n"}}}\'\n',
         encoding="utf-8",
     )
     fake_rg.chmod(0o755)
@@ -2818,31 +3227,40 @@ def test_grep_uses_external_tool_resolver_when_available(tmp_path) -> None:
 
     resolver = Resolver()
     runtime_tool = wrap_tool_definition(
-        create_grep_tool_definition(options=GrepToolOptions(external_tool_resolver=resolver)),
+        create_grep_tool_definition(
+            options=GrepToolOptions(external_tool_resolver=resolver)
+        ),
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
     result = asyncio.run(
-        runtime_tool.execute("call-grep-resolver", {"pattern": "needle", "path": ".", "literal": True})
+        runtime_tool.execute(
+            "call-grep-resolver", {"pattern": "needle", "path": ".", "literal": True}
+        )
     )
 
     assert resolver.names == ["rg"]
     assert result.content[0].text == "main.py:2:needle"
-    assert result.details["matches"] == [{"path": "main.py", "line_number": 2, "line": "needle"}]
+    assert result.details["matches"] == [
+        {"path": "main.py", "line_number": 2, "line": "needle"}
+    ]
 
 
 def test_grep_external_regex_is_not_prevalidated_by_python_re(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import GrepToolOptions, create_grep_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import (
+        GrepToolOptions,
+        create_grep_tool_definition,
+    )
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     fake_rg = tmp_path / "rg"
     fake_rg.write_text(
         "#!/bin/sh\n"
         "printf '%s\\n' "
-        "'{\"type\":\"match\",\"data\":{\"path\":{\"text\":\"./main.py\"},"
-        "\"line_number\":1,\"lines\":{\"text\":\"alpha\\n\"}}}'\n",
+        '\'{"type":"match","data":{"path":{"text":"./main.py"},'
+        '"line_number":1,"lines":{"text":"alpha\\n"}}}\'\n',
         encoding="utf-8",
     )
     fake_rg.chmod(0o755)
@@ -2853,11 +3271,15 @@ def test_grep_external_regex_is_not_prevalidated_by_python_re(tmp_path) -> None:
             return str(fake_rg) if name == "rg" else None
 
     runtime_tool = wrap_tool_definition(
-        create_grep_tool_definition(options=GrepToolOptions(external_tool_resolver=Resolver())),
+        create_grep_tool_definition(
+            options=GrepToolOptions(external_tool_resolver=Resolver())
+        ),
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-grep-rg-regex", {"pattern": r"\p{L}", "path": "."}))
+    result = asyncio.run(
+        runtime_tool.execute("call-grep-rg-regex", {"pattern": r"\p{L}", "path": "."})
+    )
 
     assert result.content[0].text == "main.py:1:alpha"
 
@@ -2867,8 +3289,11 @@ def test_grep_requires_external_tool_when_configured(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.tools import GrepToolOptions, create_grep_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import (
+        GrepToolOptions,
+        create_grep_tool_definition,
+    )
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class MissingResolver:
         def resolve_tool(self, name: str) -> None:
@@ -2886,7 +3311,11 @@ def test_grep_requires_external_tool_when_configured(tmp_path) -> None:
     )
 
     with pytest.raises(RuntimeError, match="rg external tool is required"):
-        asyncio.run(runtime_tool.execute("call-grep-required", {"pattern": "needle", "path": "."}))
+        asyncio.run(
+            runtime_tool.execute(
+                "call-grep-required", {"pattern": "needle", "path": "."}
+            )
+        )
 
 
 def test_grep_external_tool_failure_is_not_masked_by_fallback(tmp_path) -> None:
@@ -2894,12 +3323,17 @@ def test_grep_external_tool_failure_is_not_masked_by_fallback(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.tools import GrepToolOptions, create_grep_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import (
+        GrepToolOptions,
+        create_grep_tool_definition,
+    )
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     (tmp_path / "main.py").write_text("needle\n", encoding="utf-8")
     fake_rg = tmp_path / "rg"
-    fake_rg.write_text("#!/bin/sh\nprintf 'rg failed\\n' >&2\nexit 2\n", encoding="utf-8")
+    fake_rg.write_text(
+        "#!/bin/sh\nprintf 'rg failed\\n' >&2\nexit 2\n", encoding="utf-8"
+    )
     fake_rg.chmod(0o755)
 
     class Resolver:
@@ -2907,12 +3341,19 @@ def test_grep_external_tool_failure_is_not_masked_by_fallback(tmp_path) -> None:
             return str(fake_rg) if name == "rg" else None
 
     runtime_tool = wrap_tool_definition(
-        create_grep_tool_definition(options=GrepToolOptions(external_tool_resolver=Resolver())),
+        create_grep_tool_definition(
+            options=GrepToolOptions(external_tool_resolver=Resolver())
+        ),
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
     with pytest.raises(RuntimeError, match="rg failed"):
-        asyncio.run(runtime_tool.execute("call-grep-rg-failure", {"pattern": "needle", "path": ".", "literal": True}))
+        asyncio.run(
+            runtime_tool.execute(
+                "call-grep-rg-failure",
+                {"pattern": "needle", "path": ".", "literal": True},
+            )
+        )
 
 
 def test_grep_rg_process_is_killed_when_signal_aborts(monkeypatch, tmp_path) -> None:
@@ -2921,16 +3362,18 @@ def test_grep_rg_process_is_killed_when_signal_aborts(monkeypatch, tmp_path) -> 
 
     import pytest
 
-    import loushang.coding.tools.grep as grep_module
+    import loushang.harness.tools.workspace.grep as grep_module
     from loushang.agent import AbortController
-    from loushang.coding.tools import create_grep_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_grep_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     fake_rg = tmp_path / "rg"
     fake_rg.write_text("#!/bin/sh\nsleep 1\n", encoding="utf-8")
     fake_rg.chmod(0o755)
 
-    monkeypatch.setattr(grep_module.shutil, "which", lambda name: str(fake_rg) if name == "rg" else None)
+    monkeypatch.setattr(
+        grep_module.shutil, "which", lambda name: str(fake_rg) if name == "rg" else None
+    )
 
     runtime_tool = wrap_tool_definition(
         create_grep_tool_definition(),
@@ -2961,9 +3404,9 @@ def test_grep_rg_stops_process_after_match_limit(monkeypatch, tmp_path) -> None:
     import asyncio
     import time
 
-    import loushang.coding.tools.grep as grep_module
-    from loushang.coding.tools import create_grep_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    import loushang.harness.tools.workspace.grep as grep_module
+    from loushang.harness.tools.workspace import create_grep_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     fake_rg = tmp_path / "rg"
     fake_rg.write_text(
@@ -2971,8 +3414,8 @@ def test_grep_rg_stops_process_after_match_limit(monkeypatch, tmp_path) -> None:
             [
                 "#!/bin/sh",
                 "i=1",
-                "while [ \"$i\" -le 10 ]; do",
-                "  printf '{\"type\":\"match\",\"data\":{\"path\":{\"text\":\"./main.py\"},\"line_number\":%s,\"lines\":{\"text\":\"needle %s\\\\n\"}}}\\n' \"$i\" \"$i\"",
+                'while [ "$i" -le 10 ]; do',
+                '  printf \'{"type":"match","data":{"path":{"text":"./main.py"},"line_number":%s,"lines":{"text":"needle %s\\\\n"}}}\\n\' "$i" "$i"',
                 "  i=$((i + 1))",
                 "  sleep 0.1",
                 "done",
@@ -2984,7 +3427,9 @@ def test_grep_rg_stops_process_after_match_limit(monkeypatch, tmp_path) -> None:
     fake_rg.chmod(0o755)
     (tmp_path / "main.py").write_text("needle\n" * 10, encoding="utf-8")
 
-    monkeypatch.setattr(grep_module.shutil, "which", lambda name: str(fake_rg) if name == "rg" else None)
+    monkeypatch.setattr(
+        grep_module.shutil, "which", lambda name: str(fake_rg) if name == "rg" else None
+    )
 
     runtime_tool = wrap_tool_definition(
         create_grep_tool_definition(),
@@ -3002,7 +3447,10 @@ def test_grep_rg_stops_process_after_match_limit(monkeypatch, tmp_path) -> None:
     result, elapsed = asyncio.run(scenario())
 
     assert elapsed < 0.5
-    assert result.content[0].text.splitlines()[-1] == "[2 matches limit reached. Use limit=4 for more, or refine pattern]"
+    assert (
+        result.content[0].text.splitlines()[-1]
+        == "[2 matches limit reached. Use limit=4 for more, or refine pattern]"
+    )
     assert result.details["matches"] == [
         {"path": "main.py", "line_number": 1, "line": "needle 1"},
         {"path": "main.py", "line_number": 2, "line": "needle 2"},
@@ -3013,8 +3461,8 @@ def test_grep_rg_stops_process_after_match_limit(monkeypatch, tmp_path) -> None:
 def test_grep_respects_gitignore_and_skips_common_vendor_dirs(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_grep_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_grep_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     (tmp_path / ".gitignore").write_text("ignored.txt\nbuild/\n", encoding="utf-8")
     (tmp_path / "visible.txt").write_text("needle\n", encoding="utf-8")
@@ -3031,7 +3479,11 @@ def test_grep_respects_gitignore_and_skips_common_vendor_dirs(tmp_path) -> None:
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-grep-ignore", {"pattern": "needle", "path": ".", "literal": True}))
+    result = asyncio.run(
+        runtime_tool.execute(
+            "call-grep-ignore", {"pattern": "needle", "path": ".", "literal": True}
+        )
+    )
 
     assert result.details["matches"] == [
         {"path": "visible.txt", "line_number": 1, "line": "needle"},
@@ -3039,11 +3491,13 @@ def test_grep_respects_gitignore_and_skips_common_vendor_dirs(tmp_path) -> None:
     assert result.content[0].text == "visible.txt:1:needle"
 
 
-def test_grep_truncates_large_match_sets_with_default_limit_and_notice(tmp_path) -> None:
+def test_grep_truncates_large_match_sets_with_default_limit_and_notice(
+    tmp_path,
+) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_grep_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_grep_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     haystack = "".join(f"needle line {index:04d}\n" for index in range(105))
     (tmp_path / "main.py").write_text(haystack, encoding="utf-8")
@@ -3065,7 +3519,10 @@ def test_grep_truncates_large_match_sets_with_default_limit_and_notice(tmp_path)
     assert len(lines) == 102
     assert lines[0] == "main.py:1:needle line 0000"
     assert lines[99] == "main.py:100:needle line 0099"
-    assert lines[-1] == "[100 matches limit reached. Use limit=200 for more, or refine pattern]"
+    assert (
+        lines[-1]
+        == "[100 matches limit reached. Use limit=200 for more, or refine pattern]"
+    )
     assert result.details["matches"][0] == {
         "path": "main.py",
         "line_number": 1,
@@ -3083,13 +3540,18 @@ def test_grep_truncates_large_match_sets_with_default_limit_and_notice(tmp_path)
     assert "matchLimitReached" not in result.details
 
 
-def test_grep_byte_truncation_excludes_partial_context_entries_from_details(tmp_path) -> None:
+def test_grep_byte_truncation_excludes_partial_context_entries_from_details(
+    tmp_path,
+) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_grep_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_grep_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
-    haystack = "".join(f"before {index:04d}\nneedle {index:04d}\nafter {index:04d}\n" for index in range(2000))
+    haystack = "".join(
+        f"before {index:04d}\nneedle {index:04d}\nafter {index:04d}\n"
+        for index in range(2000)
+    )
     (tmp_path / "main.py").write_text(haystack, encoding="utf-8")
 
     runtime_tool = wrap_tool_definition(
@@ -3100,7 +3562,13 @@ def test_grep_byte_truncation_excludes_partial_context_entries_from_details(tmp_
     result = asyncio.run(
         runtime_tool.execute(
             "call-grep-byte-truncation",
-            {"pattern": "needle", "path": ".", "literal": True, "context": 1, "limit": 2000},
+            {
+                "pattern": "needle",
+                "path": ".",
+                "literal": True,
+                "context": 1,
+                "limit": 2000,
+            },
         )
     )
 
@@ -3108,8 +3576,7 @@ def test_grep_byte_truncation_excludes_partial_context_entries_from_details(tmp_
     assert result.details["truncated_by"] == "bytes"
     assert result.details["matches"]
     rendered_matches = [
-        line for line in result.content[0].text.splitlines()
-        if ":needle " in line
+        line for line in result.content[0].text.splitlines() if ":needle " in line
     ]
     assert len(rendered_matches) == len(result.details["matches"])
     assert result.details["truncation"]["truncatedBy"] == "bytes"
@@ -3119,8 +3586,8 @@ def test_grep_byte_truncation_excludes_partial_context_entries_from_details(tmp_
 def test_grep_prepare_arguments_accepts_legacy_aliases(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_grep_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_grep_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     (tmp_path / "main.py").write_text("Needle\n", encoding="utf-8")
 
@@ -3129,7 +3596,9 @@ def test_grep_prepare_arguments_accepts_legacy_aliases(tmp_path) -> None:
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    prepared = runtime_tool.prepare_arguments({"pattern": "needle", "file_path": "main.py", "ignore_case": True})
+    prepared = runtime_tool.prepare_arguments(
+        {"pattern": "needle", "file_path": "main.py", "ignore_case": True}
+    )
     result = asyncio.run(runtime_tool.execute("call-grep-legacy-aliases", prepared))
 
     assert prepared == {"pattern": "needle", "path": "main.py", "ignoreCase": True}
@@ -3139,25 +3608,33 @@ def test_grep_prepare_arguments_accepts_legacy_aliases(tmp_path) -> None:
 def test_grep_prepare_arguments_rejects_conflicting_legacy_aliases(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.tools import create_grep_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_grep_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     runtime_tool = wrap_tool_definition(
         create_grep_tool_definition(),
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    with pytest.raises(ValueError, match="conflicting tool arguments: path and file_path"):
-        runtime_tool.prepare_arguments({"pattern": "needle", "path": "main.py", "file_path": "other.py"})
-    with pytest.raises(ValueError, match="conflicting tool arguments: ignoreCase and ignore_case"):
-        runtime_tool.prepare_arguments({"pattern": "needle", "ignoreCase": True, "ignore_case": False})
+    with pytest.raises(
+        ValueError, match="conflicting tool arguments: path and file_path"
+    ):
+        runtime_tool.prepare_arguments(
+            {"pattern": "needle", "path": "main.py", "file_path": "other.py"}
+        )
+    with pytest.raises(
+        ValueError, match="conflicting tool arguments: ignoreCase and ignore_case"
+    ):
+        runtime_tool.prepare_arguments(
+            {"pattern": "needle", "ignoreCase": True, "ignore_case": False}
+        )
 
 
 def test_grep_truncates_long_lines_but_keeps_match_details(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_grep_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_grep_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     long_line = "needle:" + ("x" * (60 * 1024))
     (tmp_path / "main.py").write_text(f"{long_line}\n", encoding="utf-8")
@@ -3186,15 +3663,17 @@ def test_grep_truncates_long_lines_but_keeps_match_details(tmp_path) -> None:
 def test_grep_tool_returns_no_matches_message(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_grep_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_grep_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     runtime_tool = wrap_tool_definition(
         create_grep_tool_definition(),
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-grep", {"pattern": "missing", "path": "."}))
+    result = asyncio.run(
+        runtime_tool.execute("call-grep", {"pattern": "missing", "path": "."})
+    )
 
     assert result.content[0].text == "No matches found"
     assert result.details["path"] == str(tmp_path)
@@ -3205,8 +3684,8 @@ def test_grep_tool_raises_for_missing_root(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.tools import create_grep_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_grep_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     runtime_tool = wrap_tool_definition(
         create_grep_tool_definition(),
@@ -3214,14 +3693,18 @@ def test_grep_tool_raises_for_missing_root(tmp_path) -> None:
     )
 
     with pytest.raises(FileNotFoundError):
-        asyncio.run(runtime_tool.execute("call-grep", {"pattern": "needle", "path": "missing-dir"}))
+        asyncio.run(
+            runtime_tool.execute(
+                "call-grep", {"pattern": "needle", "path": "missing-dir"}
+            )
+        )
 
 
 def test_write_tool_writes_text_file_from_context_cwd(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_write_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_write_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     (tmp_path / "nested").mkdir()
     runtime_tool = wrap_tool_definition(
@@ -3230,10 +3713,14 @@ def test_write_tool_writes_text_file_from_context_cwd(tmp_path) -> None:
     )
 
     result = asyncio.run(
-        runtime_tool.execute("call-write", {"path": "nested/notes.txt", "content": "alpha\nbeta\n"})
+        runtime_tool.execute(
+            "call-write", {"path": "nested/notes.txt", "content": "alpha\nbeta\n"}
+        )
     )
 
-    assert (tmp_path / "nested" / "notes.txt").read_text(encoding="utf-8") == "alpha\nbeta\n"
+    assert (tmp_path / "nested" / "notes.txt").read_text(
+        encoding="utf-8"
+    ) == "alpha\nbeta\n"
     assert result.content[0].text == "Successfully wrote 11 bytes to nested/notes.txt"
     assert result.details["path"] == str((tmp_path / "nested" / "notes.txt").resolve())
     assert result.details["bytes_written"] == 11
@@ -3243,8 +3730,8 @@ def test_write_tool_writes_text_file_from_context_cwd(tmp_path) -> None:
 def test_write_tool_writes_html_payload_with_script_content(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_write_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_write_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     runtime_tool = wrap_tool_definition(
         create_write_tool_definition(),
@@ -3265,10 +3752,17 @@ def test_write_tool_writes_html_payload_with_script_content(tmp_path) -> None:
 </html>
 """
 
-    result = asyncio.run(runtime_tool.execute("call-write-html", {"path": "tmp/bmi.html", "content": html}))
+    result = asyncio.run(
+        runtime_tool.execute(
+            "call-write-html", {"path": "tmp/bmi.html", "content": html}
+        )
+    )
 
     assert (tmp_path / "tmp" / "bmi.html").read_text(encoding="utf-8") == html
-    assert result.content[0].text == f"Successfully wrote {len(html.encode('utf-8'))} bytes to tmp/bmi.html"
+    assert (
+        result.content[0].text
+        == f"Successfully wrote {len(html.encode('utf-8'))} bytes to tmp/bmi.html"
+    )
     assert result.details["bytes_written"] == len(html.encode("utf-8"))
     assert result.details["operation"] == "create"
 
@@ -3276,15 +3770,17 @@ def test_write_tool_writes_html_payload_with_script_content(tmp_path) -> None:
 def test_write_prepare_arguments_accepts_legacy_file_path_alias(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_write_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_write_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     runtime_tool = wrap_tool_definition(
         create_write_tool_definition(),
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    prepared = runtime_tool.prepare_arguments({"file_path": "notes.txt", "content": "legacy write"})
+    prepared = runtime_tool.prepare_arguments(
+        {"file_path": "notes.txt", "content": "legacy write"}
+    )
     result = asyncio.run(runtime_tool.execute("call-write-legacy-path", prepared))
 
     assert prepared == {"content": "legacy write", "path": "notes.txt"}
@@ -3295,8 +3791,8 @@ def test_write_prepare_arguments_accepts_legacy_file_path_alias(tmp_path) -> Non
 def test_write_reports_create_vs_overwrite_details(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_write_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_write_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     existing = tmp_path / "existing.txt"
     existing.write_text("before\n", encoding="utf-8")
@@ -3308,10 +3804,14 @@ def test_write_reports_create_vs_overwrite_details(tmp_path) -> None:
     )
 
     create_result = asyncio.run(
-        runtime_tool.execute("call-write-create", {"path": "nested/new.txt", "content": "alpha\n"})
+        runtime_tool.execute(
+            "call-write-create", {"path": "nested/new.txt", "content": "alpha\n"}
+        )
     )
     overwrite_result = asyncio.run(
-        runtime_tool.execute("call-write-overwrite", {"path": "existing.txt", "content": "after\n"})
+        runtime_tool.execute(
+            "call-write-overwrite", {"path": "existing.txt", "content": "after\n"}
+        )
     )
 
     assert create_result.details["operation"] == "create"
@@ -3326,9 +3826,9 @@ def test_write_uses_file_mutation_queue_for_same_path(tmp_path, monkeypatch) -> 
 
     import pytest
 
-    import loushang.coding.tools.write as write_module
-    from loushang.coding.tools import create_write_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    import loushang.harness.tools.workspace.write as write_module
+    from loushang.harness.tools.workspace import create_write_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     runtime_tool = wrap_tool_definition(
         create_write_tool_definition(),
@@ -3364,11 +3864,15 @@ def test_write_uses_file_mutation_queue_for_same_path(tmp_path, monkeypatch) -> 
 
     async def run_both():
         first_task = asyncio.create_task(
-            runtime_tool.execute("call-write-first", {"path": "queued.txt", "content": "alpha\n"})
+            runtime_tool.execute(
+                "call-write-first", {"path": "queued.txt", "content": "alpha\n"}
+            )
         )
         await asyncio.wait_for(entered_first.wait(), timeout=0.1)
         second_task = asyncio.create_task(
-            runtime_tool.execute("call-write-second", {"path": "./queued.txt", "content": "beta\n"})
+            runtime_tool.execute(
+                "call-write-second", {"path": "./queued.txt", "content": "beta\n"}
+            )
         )
         with pytest.raises(asyncio.TimeoutError):
             await asyncio.wait_for(entered_second.wait(), timeout=0.02)
@@ -3387,8 +3891,8 @@ def test_write_uses_file_mutation_queue_for_same_path(tmp_path, monkeypatch) -> 
 def test_write_creates_missing_parent_directories(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_write_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_write_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     runtime_tool = wrap_tool_definition(
         create_write_tool_definition(),
@@ -3396,7 +3900,9 @@ def test_write_creates_missing_parent_directories(tmp_path) -> None:
     )
 
     result = asyncio.run(
-        runtime_tool.execute("call-write-missing-parent", {"path": "nested/notes.txt", "content": "x"})
+        runtime_tool.execute(
+            "call-write-missing-parent", {"path": "nested/notes.txt", "content": "x"}
+        )
     )
 
     assert (tmp_path / "nested" / "notes.txt").read_text(encoding="utf-8") == "x"
@@ -3408,8 +3914,8 @@ def test_write_raises_when_non_directory_ancestor_blocks_traversal(tmp_path) -> 
 
     import pytest
 
-    from loushang.coding.tools import create_write_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_write_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     blocker = tmp_path / "foo"
     blocker.write_text("not a directory", encoding="utf-8")
@@ -3421,7 +3927,10 @@ def test_write_raises_when_non_directory_ancestor_blocks_traversal(tmp_path) -> 
 
     with pytest.raises(NotADirectoryError):
         asyncio.run(
-            runtime_tool.execute("call-write-blocked-ancestor", {"path": "foo/bar/baz.txt", "content": "x"})
+            runtime_tool.execute(
+                "call-write-blocked-ancestor",
+                {"path": "foo/bar/baz.txt", "content": "x"},
+            )
         )
 
 
@@ -3430,9 +3939,9 @@ def test_write_raises_for_conflict_or_policy_rejection(tmp_path, monkeypatch) ->
 
     import pytest
 
-    from loushang.coding.tools import create_write_tool_definition
-    from loushang.coding.tools.operations import LocalToolOperations
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_write_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+    from loushang.harness.workspace.operations import LocalToolOperations
 
     runtime_tool = wrap_tool_definition(
         create_write_tool_definition(),
@@ -3441,7 +3950,11 @@ def test_write_raises_for_conflict_or_policy_rejection(tmp_path, monkeypatch) ->
 
     (tmp_path / "target-dir").mkdir()
     with pytest.raises(IsADirectoryError):
-        asyncio.run(runtime_tool.execute("call-write-directory", {"path": "target-dir", "content": "x"}))
+        asyncio.run(
+            runtime_tool.execute(
+                "call-write-directory", {"path": "target-dir", "content": "x"}
+            )
+        )
 
     blocked = (tmp_path / "blocked.txt").resolve()
     original_write_text = LocalToolOperations.write_text
@@ -3454,7 +3967,11 @@ def test_write_raises_for_conflict_or_policy_rejection(tmp_path, monkeypatch) ->
     monkeypatch.setattr(LocalToolOperations, "write_text", raising_write_text)
 
     with pytest.raises(PermissionError, match="blocked by policy"):
-        asyncio.run(runtime_tool.execute("call-write-blocked", {"path": "blocked.txt", "content": "x"}))
+        asyncio.run(
+            runtime_tool.execute(
+                "call-write-blocked", {"path": "blocked.txt", "content": "x"}
+            )
+        )
 
 
 def test_write_tool_raises_for_invalid_inputs(tmp_path) -> None:
@@ -3462,8 +3979,8 @@ def test_write_tool_raises_for_invalid_inputs(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.tools import create_write_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_write_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     runtime_tool = wrap_tool_definition(
         create_write_tool_definition(),
@@ -3473,14 +3990,16 @@ def test_write_tool_raises_for_invalid_inputs(tmp_path) -> None:
     with pytest.raises(TypeError):
         asyncio.run(runtime_tool.execute("call-write", {"path": "", "content": "x"}))
     with pytest.raises(TypeError):
-        asyncio.run(runtime_tool.execute("call-write", {"path": "notes.txt", "content": None}))
+        asyncio.run(
+            runtime_tool.execute("call-write", {"path": "notes.txt", "content": None})
+        )
 
 
 def test_edit_returns_diff_aware_details(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_edit_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_edit_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     nested = tmp_path / "nested"
     nested.mkdir()
@@ -3512,11 +4031,13 @@ def test_edit_returns_diff_aware_details(tmp_path) -> None:
     assert "+def new_name():" in result.details["diff"]
 
 
-def test_edit_prepare_arguments_accepts_json_string_edits_and_legacy_fields(tmp_path) -> None:
+def test_edit_prepare_arguments_accepts_json_string_edits_and_legacy_fields(
+    tmp_path,
+) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_edit_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_edit_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     path = tmp_path / "main.py"
     path.write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
@@ -3542,8 +4063,8 @@ def test_edit_prepare_arguments_accepts_json_string_edits_and_legacy_fields(tmp_
 def test_edit_prepare_arguments_accepts_legacy_file_path_alias(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_edit_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_edit_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     path = tmp_path / "main.py"
     path.write_text("alpha\n", encoding="utf-8")
@@ -3570,15 +4091,17 @@ def test_edit_prepare_arguments_accepts_legacy_file_path_alias(tmp_path) -> None
 def test_edit_prepare_arguments_rejects_conflicting_file_path_alias(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.tools import create_edit_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_edit_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     runtime_tool = wrap_tool_definition(
         create_edit_tool_definition(),
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    with pytest.raises(ValueError, match="conflicting tool arguments: path and file_path"):
+    with pytest.raises(
+        ValueError, match="conflicting tool arguments: path and file_path"
+    ):
         runtime_tool.prepare_arguments(
             {
                 "path": "main.py",
@@ -3592,8 +4115,8 @@ def test_edit_prepare_arguments_rejects_conflicting_file_path_alias(tmp_path) ->
 def test_edit_details_keep_python_snake_case_first_changed_line(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_edit_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_edit_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     path = tmp_path / "main.py"
     path.write_text("alpha\nbeta\n", encoding="utf-8")
@@ -3617,8 +4140,8 @@ def test_edit_details_keep_python_snake_case_first_changed_line(tmp_path) -> Non
 def test_edit_matches_lf_old_text_in_bom_prefixed_crlf_file(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_edit_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_edit_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     path = tmp_path / "main.py"
     path.write_bytes(b"\xef\xbb\xbfalpha\r\nbeta\r\n")
@@ -3644,8 +4167,8 @@ def test_edit_matches_lf_old_text_in_bom_prefixed_crlf_file(tmp_path) -> None:
 def test_edit_fuzzy_matches_smart_quotes_and_trailing_whitespace(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_edit_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_edit_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     path = tmp_path / "main.py"
     path.write_text("message = \u201chello\u201d  \nkeep = 1\n", encoding="utf-8")
@@ -3660,7 +4183,9 @@ def test_edit_fuzzy_matches_smart_quotes_and_trailing_whitespace(tmp_path) -> No
             "call-edit-fuzzy",
             {
                 "path": "main.py",
-                "edits": [{"oldText": 'message = "hello"\n', "newText": 'message = "world"\n'}],
+                "edits": [
+                    {"oldText": 'message = "hello"\n', "newText": 'message = "world"\n'}
+                ],
             },
         )
     )
@@ -3671,8 +4196,8 @@ def test_edit_fuzzy_matches_smart_quotes_and_trailing_whitespace(tmp_path) -> No
 def test_edit_matches_exact_crlf_old_text(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_edit_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_edit_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     path = tmp_path / "main.py"
     path.write_bytes(b"alpha\r\nbeta\r\ngamma\r\n")
@@ -3687,7 +4212,9 @@ def test_edit_matches_exact_crlf_old_text(tmp_path) -> None:
             "call-edit-crlf-match",
             {
                 "path": "main.py",
-                "edits": [{"oldText": "alpha\r\nbeta\r\n", "newText": "ALPHA\r\nBETA\r\n"}],
+                "edits": [
+                    {"oldText": "alpha\r\nbeta\r\n", "newText": "ALPHA\r\nBETA\r\n"}
+                ],
             },
         )
     )
@@ -3700,8 +4227,8 @@ def test_edit_matches_exact_crlf_old_text(tmp_path) -> None:
 def test_edit_preserves_crlf_line_endings_in_written_output(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_edit_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_edit_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     path = tmp_path / "main.py"
     original = b"first\r\nmiddle\r\nlast\r\n"
@@ -3725,11 +4252,13 @@ def test_edit_preserves_crlf_line_endings_in_written_output(tmp_path) -> None:
     assert path.read_bytes() == b"first\r\nchanged\r\nlast\r\n"
 
 
-def test_edit_tool_applies_multiple_disjoint_edits_against_original_file(tmp_path) -> None:
+def test_edit_tool_applies_multiple_disjoint_edits_against_original_file(
+    tmp_path,
+) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_edit_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_edit_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     path = tmp_path / "main.py"
     path.write_text("alpha = 1\nbeta = 2\ngamma = 3\n", encoding="utf-8")
@@ -3761,8 +4290,8 @@ def test_edit_raises_for_no_match(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.tools import create_edit_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_edit_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     path = tmp_path / "main.py"
     original = "alpha\nbeta\n"
@@ -3773,7 +4302,10 @@ def test_edit_raises_for_no_match(tmp_path) -> None:
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    with pytest.raises(ValueError, match=rf"edits\[0\].*{re.escape(str(path))}.*did not match any content"):
+    with pytest.raises(
+        ValueError,
+        match=rf"edits\[0\].*{re.escape(str(path))}.*did not match any content",
+    ):
         asyncio.run(
             runtime_tool.execute(
                 "call-edit-miss",
@@ -3793,8 +4325,8 @@ def test_edit_raises_for_multi_match_ambiguity(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.tools import create_edit_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_edit_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     path = tmp_path / "main.py"
     original = "repeat\nrepeat\n"
@@ -3805,7 +4337,9 @@ def test_edit_raises_for_multi_match_ambiguity(tmp_path) -> None:
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    with pytest.raises(ValueError, match=rf"edits\[0\].*{re.escape(str(path))}.*matched more than once"):
+    with pytest.raises(
+        ValueError, match=rf"edits\[0\].*{re.escape(str(path))}.*matched more than once"
+    ):
         asyncio.run(
             runtime_tool.execute(
                 "call-edit-duplicate",
@@ -3825,8 +4359,8 @@ def test_edit_rejects_overlapping_edits(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.tools import create_edit_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_edit_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     path = tmp_path / "main.py"
     original = "one\ntwo\nthree\n"

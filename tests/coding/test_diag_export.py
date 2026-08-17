@@ -4,8 +4,8 @@ import json
 import zipfile
 from types import SimpleNamespace
 
-from loushang.coding.diag_export import export_diagnostics_bundle
-from loushang.coding.diagnostics import DiagnosticRecord
+from loushang.harness.diagnostics import DiagnosticRecord
+from loushang.harness.diagnostics.export import export_diagnostics_bundle
 
 
 def test_export_diagnostics_bundle_collects_latest_artifacts(tmp_path) -> None:
@@ -13,7 +13,9 @@ def test_export_diagnostics_bundle_collects_latest_artifacts(tmp_path) -> None:
     project_root.mkdir()
     session_dir = project_root / ".loushang" / "sessions"
     session_dir.mkdir(parents=True)
-    (session_dir / "latest.jsonl").write_text('{"type":"user","text":"hello"}\n', encoding="utf-8")
+    (session_dir / "latest.jsonl").write_text(
+        '{"type":"user","text":"hello"}\n', encoding="utf-8"
+    )
 
     debug_latest = tmp_path / "debug" / "latest"
     debug_latest.parent.mkdir()
@@ -78,3 +80,26 @@ def test_export_diagnostics_bundle_uses_default_project_output(tmp_path) -> None
     assert bundle.parent == project_root / ".loushang" / "diagnostics"
     assert bundle.name.startswith("loushang-diag-")
     assert bundle.suffix == ".zip"
+
+
+def test_export_diagnostics_bundle_does_not_fall_back_to_record_repr(tmp_path) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+
+    class UnserializableDiagnostic:
+        def __repr__(self) -> str:
+            return "credential=private-value"
+
+    diagnostics_service = SimpleNamespace(
+        get_last_diagnostics=lambda limit=50: [UnserializableDiagnostic()]
+    )
+    bundle = export_diagnostics_bundle(
+        project_root=project_root,
+        session_dir=project_root / ".loushang" / "sessions",
+        output=tmp_path / "bundle.zip",
+        diagnostics_service=diagnostics_service,
+    )
+
+    with zipfile.ZipFile(bundle) as archive:
+        assert json.loads(archive.read("diagnostics.json")) == []
+        assert "private-value" not in archive.read("diagnostics.json").decode("utf-8")

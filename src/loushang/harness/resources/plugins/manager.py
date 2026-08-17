@@ -33,12 +33,13 @@ class PluginManager:
             source = PluginSource(url=path, kind="remote", enabled=enabled)
             self._remote_sources[path] = source
             return self.registry.register(self.resolver.resolve_plugin(source))
-        source = PluginSource(path=Path(path).expanduser().resolve(), enabled=enabled)
-        self._sources[source.path] = source
+        source_path = Path(path).expanduser().resolve()
+        source = PluginSource(path=source_path, enabled=enabled)
+        self._sources[source_path] = source
         plugin = self.resolver.resolve_plugin(source)
         if plugin.manifest.name in self._disabled_plugins:
             plugin = self.resolver.resolve_plugin(
-                PluginSource(path=source.path, enabled=False)
+                PluginSource(path=source_path, enabled=False)
             )
         return self.registry.register(plugin)
 
@@ -112,8 +113,22 @@ class PluginManager:
         plugin = self.registry.get_plugin(name)
         if plugin is None:
             raise KeyError(name)
-        source = PluginSource(path=plugin.source.path, enabled=enabled)
-        self._sources[source.path] = source
+        if plugin.source.kind == "remote":
+            source_url = plugin.source.url
+            if source_url is None:
+                raise ValueError(f"remote plugin {name!r} has no source URL")
+            source = PluginSource(
+                url=source_url,
+                kind="remote",
+                enabled=enabled,
+            )
+            self._remote_sources[source_url] = source
+        else:
+            source_path = plugin.source.path
+            if source_path is None:
+                raise ValueError(f"local plugin {name!r} has no source path")
+            source = PluginSource(path=source_path, enabled=enabled)
+            self._sources[source_path] = source
         if enabled:
             self._disabled_plugins.discard(name)
         else:

@@ -44,7 +44,7 @@ Fields:
 
 - `record(...)`
 - `record_many(...)`
-- `normalize_resource_diagnostic(...)`
+- `normalize_diagnostic(...)`
 - `normalize_exception(...)`
 - `get_last_diagnostics(limit=50)`
 - `get_diagnostics(phase=None, source=None, type=None)`

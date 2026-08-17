@@ -5,7 +5,7 @@ from io import StringIO
 from types import SimpleNamespace
 
 from loushang.ai import Model
-from loushang.coding.types import ModelSelection
+from loushang.ai.model import ModelSelection
 
 
 class _TTYStringIO(StringIO):
@@ -13,17 +13,48 @@ class _TTYStringIO(StringIO):
         return True
 
 
+def _runtime_for(session: object) -> object:
+    return SimpleNamespace(
+        get_current_session=lambda: session,
+        current_session=session,
+    )
+
+
 class _Session:
     def __init__(self) -> None:
         self.session_id = "254d6156"
         self.session_name = "254d6156"
-        self.session_manager = SimpleNamespace(get_cwd=lambda: "/repo")
-        self.current_model: object = ModelSelection(provider="unknown", model_id="unknown")
-        self.model_details = [Model(id="kimi-for-coding", provider="moonshot", endpoint="kimi-code-anthropic")]
+        self.session_manager = SimpleNamespace(
+            get_cwd=lambda: "/repo",
+            get_branch=lambda: [],
+        )
+        self.settings_manager = None
+        self.current_model: object = ModelSelection(
+            endpoint_id="test-endpoint", provider="unknown", model_id="unknown"
+        )
+        self.model_details = [
+            Model(
+                id="kimi-for-coding",
+                provider="moonshot",
+                endpoint="kimi-code-anthropic",
+            )
+        ]
         self.set_model_calls: list[object] = []
         self.prompts: list[str] = []
+        self.follow_ups: list[str] = []
+        self.steers: list[str] = []
         self.listeners: list[object] = []
         self.unsubscribed = False
+        self.session_control = self
+
+    def get_tool_definition(self, _tool_name: str) -> None:
+        return None
+
+    def get_steering_messages(self) -> list[str]:
+        return []
+
+    def get_follow_up_messages(self) -> list[str]:
+        return []
 
     def get_model_selection(self) -> object:
         return self.current_model
@@ -33,14 +64,24 @@ class _Session:
 
     def get_available_models(self) -> list[ModelSelection]:
         return [
-            ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
-            ModelSelection(provider="openai", model_id="gpt-5.4"),
+            ModelSelection(
+                endpoint_id="test-endpoint",
+                provider="moonshot",
+                model_id="kimi-for-coding",
+            ),
+            ModelSelection(
+                endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
+            ),
         ]
 
     async def set_model(self, selection: object) -> None:
         self.set_model_calls.append(selection)
         if isinstance(selection, Model):
-            self.current_model = ModelSelection(provider=selection.provider_id, model_id=selection.id)
+            self.current_model = ModelSelection(
+                endpoint_id="test-endpoint",
+                provider=selection.provider_id,
+                model_id=selection.id,
+            )
         else:
             self.current_model = selection
 
@@ -54,8 +95,26 @@ class _Session:
 
         return unsubscribe
 
-    async def prompt(self, text: str) -> None:
+    async def prompt(
+        self,
+        text: str,
+        *,
+        streaming_behavior: str | None = None,
+        source: str | None = None,
+    ) -> None:
+        del streaming_behavior, source
         self.prompts.append(text)
+
+    def steer(self, text: str, *, images=None) -> None:
+        del images
+        self.steers.append(text)
+
+    def follow_up(self, text: str, *, images=None) -> None:
+        del images
+        self.follow_ups.append(text)
+
+    async def wait_for_idle(self) -> None:
+        return None
 
     def clear_queue(self) -> None:
         return None
@@ -75,9 +134,11 @@ def test_run_coding_tui_uses_screen_loop_for_interactive_terminal(monkeypatch) -
         return 0
 
     async def fail_prompt_loop(**_kwargs):
-        raise AssertionError("interactive mode should not use non-interactive prompt loop")
+        raise AssertionError(
+            "interactive mode should not use non-interactive prompt loop"
+        )
 
-    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
+    monkeypatch.setattr(mode, "run_action_host_conversation_screen", fake_screen_loop)
     monkeypatch.setattr(mode, "run_non_interactive_prompt_loop", fail_prompt_loop)
 
     exit_code = asyncio.run(
@@ -92,9 +153,12 @@ def test_run_coding_tui_uses_screen_loop_for_interactive_terminal(monkeypatch) -
 
     assert exit_code == 0
     assert captured["app"].__class__.__name__ == "ScreenCodingTuiApp"
-    assert callable(captured["handle_prompt"])
-    assert callable(captured["handle_steer"])
-    assert callable(captured["handle_followup"])
+    assert captured["action_host"].__class__.__name__ == (
+        "PresentedConversationActionHost"
+    )
+    assert captured["profile"].__class__.__name__ == "ConversationScreenRunProfile"
+    assert callable(captured["handle_local"])
+    assert callable(captured["handle_surface_intent"])
 
 
 def test_run_coding_tui_non_interactive_keeps_plain_prompt_loop(monkeypatch) -> None:
@@ -104,19 +168,21 @@ def test_run_coding_tui_non_interactive_keeps_plain_prompt_loop(monkeypatch) -> 
     captured: dict[str, object] = {}
 
     async def fail_screen_loop(**_kwargs):
-        raise AssertionError("non-interactive mode should not enter screen terminal loop")
+        raise AssertionError(
+            "non-interactive mode should not enter screen terminal loop"
+        )
 
     async def fake_prompt_loop(**kwargs):
         captured.update(kwargs)
         await kwargs["handle_prompt"]("hello")
         return 0
 
-    monkeypatch.setattr(mode, "run_screen_coding_tui", fail_screen_loop)
+    monkeypatch.setattr(mode, "run_action_host_conversation_screen", fail_screen_loop)
     monkeypatch.setattr(mode, "run_non_interactive_prompt_loop", fake_prompt_loop)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
-            runtime=object(),
+            runtime=_runtime_for(session),
             session=session,
             stdin=StringIO("hello\n"),
             stdout=StringIO(),
@@ -137,7 +203,7 @@ def test_run_coding_tui_handles_startup_error(monkeypatch) -> None:
 
     stdout = StringIO()
     stderr = StringIO()
-    monkeypatch.setattr(mode, "load_coding_tui_startup_snapshot", fail_startup)
+    monkeypatch.setattr(mode, "load_coding_tui_startup_view", fail_startup)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(

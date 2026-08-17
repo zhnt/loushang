@@ -121,7 +121,7 @@
 - `AgentSessionRuntime`
 - `ToolRegistry`
 - `PolicyEngine`
-- `PromptAssembler`
+- Harness `PromptAssembler` contract 与 Coding 默认值兼容适配
 - `AuthStorage`
 
 理由：

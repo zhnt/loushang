@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from loushang.coding.tools.edit_diff import (
+from loushang.harness.tools.workspace.edit_diff import (
     apply_edits_to_normalized_content,
     apply_text_edits,
     build_unified_diff,
@@ -48,7 +48,9 @@ def test_fuzzy_find_text_normalizes_smart_punctuation_and_trailing_whitespace() 
     assert match.content_for_replacement == normalize_for_fuzzy_match(content)
 
 
-def test_apply_edits_to_normalized_content_uses_original_content_for_all_offsets() -> None:
+def test_apply_edits_to_normalized_content_uses_original_content_for_all_offsets() -> (
+    None
+):
     result = apply_edits_to_normalized_content(
         "alpha = 1\nbeta = 2\ngamma = 3\n",
         [
@@ -72,7 +74,9 @@ def test_apply_text_edits_preserves_bom_and_crlf_line_endings() -> None:
     assert result == "\ufeffALPHA\r\nBETA\r\n"
 
 
-def test_apply_edits_to_normalized_content_rejects_duplicate_and_overlapping_edits() -> None:
+def test_apply_edits_to_normalized_content_rejects_duplicate_and_overlapping_edits() -> (
+    None
+):
     with pytest.raises(ValueError, match=r"edits\[0\].*matched more than once"):
         apply_edits_to_normalized_content(
             "repeat\nrepeat\n",

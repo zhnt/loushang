@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from io import StringIO
+from types import SimpleNamespace
 
-from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
-from loushang.coding.ui.playback import ScreenTuiScenario
+import pytest
+
+from loushang.ai import TextPart
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.screen_input import ScreenInputRouter
-from loushang.coding.ui.screen_loop import _finish_tui_exit
+from loushang.coding.ui.screen_input import build_screen_input_router
+from loushang.harnesstui.testing.performance import (
+    build_synthetic_long_transcript_records,
+)
 from loushang.tui import (
     CompletionItem,
     CompletionProvider,
@@ -19,7 +23,144 @@ from loushang.tui import (
     TuiRuntime,
     strip_control_sequences,
 )
+from loushang.tui._runner_utils import finish_tui_exit
 from loushang.tui.theme import ThemeResolver
+from loushang.tui.transcript import ToolExecutionRecord
+from tests.coding.tui_support.playback import ScreenTuiScenario
+
+pytestmark = pytest.mark.tui_render_contract
+
+
+def _assistant(text: str = "") -> SimpleNamespace:
+    return SimpleNamespace(
+        role="assistant",
+        content=[TextPart(type="text", text=text)] if text else [],
+        stop_reason="stop",
+        error_message=None,
+    )
+
+
+def test_screen_coding_tui_playback_preserves_history_across_auto_compaction_and_streaming() -> None:
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_screen_conversation_projection,
+    )
+
+    app = _app()
+    runtime, port = _runtime(app, width=80, height=18)
+    projector = build_agent_screen_conversation_projection(app)
+
+    app.start_prompt("earlier prompt", started_at=0.0)
+    runtime.render_now()
+    app.begin_assistant()
+    for index in range(80):
+        app.append_assistant_chunk(f"earlier line {index}\n")
+        runtime.render_now()
+    app.end_assistant()
+    app.complete_run(elapsed_seconds=1.0)
+    runtime.render_now()
+
+    projector.handle({"type": "compaction_start", "reason": "threshold"})
+    runtime.render_now()
+    projector.handle(
+        {
+            "type": "compaction_end",
+            "reason": "threshold",
+            "result": {
+                "summary": "first summary line\nsecond summary line",
+                "first_kept_entry_id": "entry-100",
+                "tokens_before": 500_000,
+            },
+        }
+    )
+    compact_step = runtime.render_now()
+
+    app.start_prompt("continue", started_at=0.0)
+    runtime.render_now()
+    projector.handle({"type": "message_start", "message": _assistant()})
+    streaming_steps = []
+    streamed_text = ""
+    expected_after_lines = tuple(
+        f"AFTER_COMPACT_{index:03d}" for index in range(1, 41)
+    )
+    line_index = 0
+    batch_index = 0
+    batch_sizes = (1, 3, 2, 4)
+    while line_index < len(expected_after_lines):
+        batch_size = batch_sizes[batch_index % len(batch_sizes)]
+        batch_end = min(line_index + batch_size, len(expected_after_lines))
+        batch = "\n".join(expected_after_lines[line_index:batch_end])
+        if batch_end < len(expected_after_lines):
+            batch += "\n"
+
+        # Provider deltas do not align with rendered lines, while stream render
+        # requests may be coalesced. Split each batch mid-line and render only
+        # after the full batch to exercise multi-row viewport advances.
+        split_at = min(7, len(batch))
+        for chunk in (batch[:split_at], batch[split_at:]):
+            if not chunk:
+                continue
+            streamed_text += chunk
+            projector.handle(
+                {
+                    "type": "message_update",
+                    "message": _assistant(streamed_text),
+                    "assistant_message_event": {
+                        "type": "text_delta",
+                        "delta": chunk,
+                    },
+                }
+            )
+        streaming_steps.append(runtime.render_now())
+        line_index = batch_end
+        batch_index += 1
+    projector.handle(
+        {"type": "message_end", "message": _assistant(streamed_text)}
+    )
+    commit_step = runtime.render_now()
+
+    terminal_text = strip_control_sequences(
+        "\n".join((*port.screen.scrollback_lines, *port.screen.visible_lines))
+    )
+    compact_lines = tuple(
+        strip_control_sequences(line)
+        for line in compact_step.diagnostics.current_logical_lines
+    )
+    final_step = streaming_steps[-1]
+
+    assert sum(
+        "Context compacted (500000 tokens before)" in line
+        for line in compact_lines
+    ) == 1
+    assert "earlier prompt" in terminal_text
+    assert "earlier line 0" in terminal_text
+    assert "earlier line 79" in terminal_text
+    assert terminal_text.count("Context compacted (500000 tokens before)") == 1
+    assert all(terminal_text.count(line) == 1 for line in expected_after_lines)
+    assert [terminal_text.index(line) for line in expected_after_lines] == sorted(
+        terminal_text.index(line) for line in expected_after_lines
+    )
+    assert "first summary line" not in terminal_text
+    assert "second summary line" not in terminal_text
+    assert all(
+        step.diagnostics.operation_class != "recovery_repaint"
+        for step in (*streaming_steps, commit_step)
+    )
+    assert any(
+        current.diagnostics.viewport_top - previous.diagnostics.viewport_top > 1
+        for previous, current in zip(streaming_steps, streaming_steps[1:])
+    )
+    assert final_step.frame is not None
+    expected_physical_cursor_row = (
+        final_step.diagnostics.hardware_cursor_row
+        - final_step.diagnostics.viewport_top
+    )
+    assert final_step.frame.screen_after.cursor_row == expected_physical_cursor_row
+    assert (
+        final_step.frame.screen_after.cursor_column
+        == final_step.diagnostics.hardware_cursor_column
+    )
+    assert port.screen.cursor_row == expected_physical_cursor_row
+    assert port.screen.cursor_column == final_step.diagnostics.hardware_cursor_column
 
 
 def test_screen_coding_tui_streaming_uses_differential_updates_without_clearing_screen() -> None:
@@ -68,9 +209,9 @@ def test_screen_coding_tui_exit_cleanup_clears_bottom_frame_status() -> None:
     runtime.render_now()
 
     before = tuple(strip_control_sequences(line).rstrip() for line in port.screen.visible_lines)
-    assert "kimi | repo | main | abcd | idle" in before
+    assert "kimi | repo | main | abcd | idle | perm=standard" in before
 
-    exit_code = _finish_tui_exit(runtime=runtime, stdout=StringIO(), exit_code=0)
+    exit_code = finish_tui_exit(runtime=runtime, stdout=StringIO(), exit_code=0)
 
     after = tuple(strip_control_sequences(line).rstrip() for line in port.screen.visible_lines)
     assert exit_code == 0
@@ -123,7 +264,7 @@ def test_screen_coding_tui_long_stream_keeps_pi_style_diff_without_recovery_repa
     assert all(step.diagnostics.operation_class != "baseline_repaint" for step in streaming_steps)
 
 
-def test_screen_coding_tui_long_stream_uses_protected_bottom_frame_append() -> None:
+def test_screen_coding_tui_long_stream_commits_history_without_partial_scroll_region() -> None:
     app = _app()
     runtime, port = _runtime(app, width=100, height=18)
 
@@ -140,7 +281,23 @@ def test_screen_coding_tui_long_stream_uses_protected_bottom_frame_append() -> N
 
     assert protected_steps
     assert all("Working" in _visible_text(port) for _step in protected_steps)
-    assert all(TerminalOperation.set_scroll_region(top=0, bottom=11) in step.diagnostics.operations for step in protected_steps[-1:])
+    assert all(
+        TerminalOperation.clear_from_cursor() in step.diagnostics.operations
+        for step in protected_steps[-1:]
+    )
+    assert all(
+        operation.kind not in {"set_scroll_region", "reset_scroll_region"}
+        for step in protected_steps
+        for operation in step.diagnostics.operations
+    )
+    terminal_lines = tuple(
+        strip_control_sequences(line).rstrip()
+        for line in (
+            *port.screen.scrollback_lines,
+            *port.screen.visible_lines,
+        )
+    )
+    assert terminal_lines.count("• - line 0") == 1
     assert all(TerminalOperation.clear_screen() not in step.diagnostics.operations for step in protected_steps)
 
 
@@ -159,7 +316,7 @@ def test_screen_coding_tui_completion_close_keeps_footer_height_and_cursor_ancho
     app.append_assistant_chunk("done")
     app.end_assistant()
     app.complete_run(elapsed_seconds=1.0)
-    router = ScreenInputRouter(app, should_exit=lambda text: text == "/quit", is_local_command=lambda text: text.startswith("/"))
+    router = build_screen_input_router(app, should_exit=lambda text: text == "/quit", is_local_command=lambda text: text.startswith("/"))
     runtime, port = _runtime(app, width=80, height=18)
 
     runtime.render_now()
@@ -177,7 +334,7 @@ def test_screen_coding_tui_completion_close_keeps_footer_height_and_cursor_ancho
     assert collapsed.frame.screen_after.cursor_row == collapsed.diagnostics.hardware_cursor_row
     assert recalled.frame is not None
     assert recalled.frame.screen_after.cursor_row == recalled.diagnostics.hardware_cursor_row
-    assert visible.count("kimi | repo | main | abcd | idle") == 1
+    assert visible.count("kimi | repo | main | abcd | idle | perm=standard") == 1
 
 
 def test_screen_coding_tui_active_window_trim_rewrites_viewport_without_clearing_screen() -> None:
@@ -311,6 +468,70 @@ def test_screen_coding_tui_resize_repaints_without_replaying_working_or_composer
     assert resize_step.diagnostics.operation_class == "resize_repaint"
     assert visible.count("› resize me") == 1
     assert visible.count("Working") == 1
+
+
+def test_screen_coding_tui_tool_completion_and_append_do_not_replay_active_turn() -> None:
+    now = [1.0]
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+        now=lambda: now[0],
+    )
+    runtime, _port = _runtime(app, width=80, height=16)
+
+    app.start_prompt("wait for three agents", started_at=0.0)
+    app.state.upsert_tool_record(
+        "wait-1",
+        ToolExecutionRecord(
+            name="wait_agent",
+            state="running",
+            elapsed_seconds=0.0,
+        ),
+    )
+    runtime.render_now()
+
+    now[0] = 2.0
+    app.state.upsert_tool_record(
+        "wait-1",
+        ToolExecutionRecord(
+            name="wait_agent",
+            state="completed",
+            elapsed_seconds=1.32,
+        ),
+    )
+    app.begin_assistant()
+    app.append_assistant_chunk(
+        "\n".join(
+            (
+                "First result: 91.",
+                "Continue waiting for the remaining agents.",
+                "This active turn must remain singular.",
+                "No prior prompt should be replayed.",
+            )
+        )
+    )
+    app.end_assistant()
+    app.state.upsert_tool_record(
+        "wait-2",
+        ToolExecutionRecord(
+            name="wait_agent",
+            state="running",
+            elapsed_seconds=0.0,
+        ),
+    )
+    step = runtime.render_now()
+
+    assert step.diagnostics.operation_class == "managed_viewport_repaint"
+    assert step.diagnostics.repaint_reason == "non_pure_protected_append"
+    logical = "\n".join(
+        strip_control_sequences(line)
+        for line in step.diagnostics.current_logical_lines
+    )
+    assert logical.count("wait for three agents") == 1
+    assert logical.count("First result: 91.") == 1
+    assert logical.count("Working") == 1
 
 
 def test_screen_coding_tui_starts_below_existing_shell_output() -> None:

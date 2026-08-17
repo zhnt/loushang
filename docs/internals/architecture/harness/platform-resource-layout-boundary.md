@@ -88,6 +88,32 @@ example, Coding may register `loushang.coding.resources`; Design may register
 `loushang.design.resources`. The package slot and loading machinery are shared,
 while the prompt, skill, theme, and extension content remains product-owned.
 
+## Package, Plugin, And Extension Roles
+
+Canonical terminology comes from the
+[Product And OEM Glossary](../../glossary/loushang-product.md). Within the
+resource runtime, the three concepts remain separate:
+
+- a **Resource Package** is the distribution or materialization root for
+  resources;
+- a **Plugin** is a manifest-backed optional identity and activation view that
+  may resolve to a package root;
+- an **Extension** is executable or declarative behavior described by a
+  resource descriptor and admitted into an extension surface.
+
+The standard projection is:
+
+```text
+plugin source -> plugin manifest -> resource package root -> resource descriptors
+                                                        -> extension descriptors
+```
+
+A configured package root does not require a Plugin manifest. A Plugin may
+contain only prompts, Skills, themes, or assets and therefore no Extension.
+Package installation, Plugin enablement, descriptor discovery, Extension
+admission, and Extension activation are distinct state transitions. None of
+the first three grants execution authority.
+
 ## Responsibility Split
 
 Harness owns:
@@ -122,9 +148,31 @@ The product-neutral runtime now lives under `loushang.harness.resources`:
 - `builtin` owns built-in package registration and enumeration;
 - `types` owns descriptors, bundles, snapshots, merge decisions, and package
   summaries;
-- `loader` owns filesystem/package discovery, standard `AGENTS.md` convention,
-  filtering, deterministic precedence, merge diagnostics, reload, and the
-  standard workspace resource-root mode;
+- `loader` is the stable public facade and owns loader state, runtime options,
+  reload, queries, and the standard workspace resource-root mode;
+- `_loader_pipeline` owns the immutable loader-to-pipeline discovery request,
+  candidate-source ordering, discovery-to-resolution orchestration, diagnostic
+  and merge-decision aggregation, and `ResourceSnapshot` assembly;
+- `_loader_discovery_context` owns context-file ancestor traversal, descriptor
+  construction, diagnostics, and nearest-context selection;
+- `_loader_descriptor_parsing` owns source-neutral prompt/skill frontmatter
+  projection, descriptor construction, and skill validation without I/O;
+- `_loader_discovery_filesystem` owns filesystem directory traversal and reads,
+  skill ignore rules, extension entry lookup, and theme JSON validation;
+- `_loader_discovery_builtin` owns built-in package traversal, logical package
+  paths and reads, category discovery, and built-in diagnostics;
+- `_loader_discovery_temporary` owns temporary runtime-path resolution,
+  single-file/directory dispatch, source metadata, and path diagnostics;
+- `_loader_discovery` owns external-package and project/user source coordination
+  plus source-specific filtering;
+- `_loader_package_policy` owns external-package root/filter normalization,
+  root diagnostics, filtering, and per-root resource accounting;
+- `_loader_resolution` owns collision handling and winner/active-candidate
+  decisions without importing discovery;
+- `_loader_precedence` is the single owner of the source priority table, rank,
+  and stable candidate/winner sort keys;
+- `_loader_types` owns private discovery records and shared private constants,
+  but not precedence policy;
 - `packages` owns source identity/config parsing, manifests, materialization,
   resource-root resolution, and injected source-policy contracts;
 - `plugins` owns neutral plugin source, manifest, registry, resolver, and
@@ -137,6 +185,10 @@ legacy project-root mode or optional compatibility filenames. A built-in
 resource package must be registered by the product; Harness contains no Coding
 package name or content default.
 
+The private modules above are implementation owners, not additional public
+APIs. Consumers continue to import `ResourceLoader`, `ResourceLoaderProfile`,
+and `ProfiledResourceLoader` through the public resources facade.
+
 Harness package materialization requires an injected source-policy evaluator
 and safely rejects materialization when none is supplied. Coding injects its
 existing `PackageSecurityPolicy`, preserving HTTPS/trust behavior without
@@ -144,11 +196,13 @@ moving product risk defaults into Harness.
 
 ## Coding Migration Result
 
-Reusable behavior from `coding.loader`, `coding.package`, `coding.plugin`, and
-`coding.skill` has moved under focused `loushang.harness.resources` modules.
-Accepted Coding paths remain compatibility adapters.
+Reusable behavior formerly exposed through `coding.loader`, `coding.package`,
+`coding.plugin`, and `coding.skill` lives under focused
+`loushang.harness.resources` modules. Those Coding import paths are removed;
+all generic consumers import the Harness owner directly.
 
-`DefaultResourceLoader` is now a small Coding facade that:
+`coding.resource_runtime.CodingResourceLoader` is Coding's resource binding
+and:
 
 - registers `loushang.coding.resources`;
 - selects standard and compatibility convention presets;
@@ -156,8 +210,14 @@ Accepted Coding paths remain compatibility adapters.
 - projects the Harness resource snapshot into Coding prompt/session behavior.
 
 It does not retain a second implementation of scanning, provenance, merging,
-package materialization, or `AGENTS.md` discovery. Coding package projection
-and settings-backed source resolution remain product adapters.
+package materialization, package catalog construction, source resolution, or
+`AGENTS.md` discovery. `harness.resources.packages` owns the structured
+catalog, scoped source resolver, materialization lifecycle, manifest summary,
+and conflict diagnostics. `harness.resources.packages.projection` owns the
+structured catalog and materialization-record projection;
+`harness.resources.packages.session` owns session package operations.
+`CodingPackageMaterializer` supplies Coding's settings object and package
+security policy; no Coding package projection or controller facade remains.
 
 ## Security Boundary
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from loushang.harness.tools.execution import direct_execution
+
 
 def test_resolver_returns_all_enabled_contributions_in_registration_order() -> None:
     from loushang.harness.tools.contribution import (
@@ -142,5 +144,5 @@ def _tool_definition(name: str):
         label=name.title(),
         description=name,
         parameters={"type": "object", "properties": {}, "required": []},
-        execute=execute,
+        execution=direct_execution(execute),
     )

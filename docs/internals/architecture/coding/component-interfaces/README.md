@@ -1,5 +1,14 @@
 # Loushang Coding Component Interface Notes
 
+## Status
+
+The directory is retained as design history for the original Coding component
+decomposition. It is no longer the current shared-owner map. Use the
+[Harness Current Owner Map](../../harness/current-owner-map.md) for ownership,
+the [Product And OEM Glossary](../../../glossary/loushang-product.md) for
+terminology, and current focused Product documents for the remaining Coding
+adapters.
+
 ## Purpose
 
 本目录用于放置 `loushang-coding` 各组件的单独接口说明。
@@ -58,7 +67,7 @@
 
 - [_template.md](_template.md)
 
-## Current Notes
+## Retained Component Notes
 
 - [bootstrap.md](bootstrap.md)
 - [sdk.md](sdk.md)

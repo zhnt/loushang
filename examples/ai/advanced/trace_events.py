@@ -6,8 +6,8 @@ import asyncio
 import json
 
 from loushang.ai import CallOptions, Model, RetryOptions, stream
-from loushang.ai.advanced.registry import ApiProviderRegistry
-from loushang.ai.model import Capabilities, Endpoint
+from loushang.ai.advanced.registry import clear_api_adapters, register_api_adapter
+from loushang.ai.model import Auth, Capabilities, Endpoint, Provider
 from loushang.ai.model.registry import ModelRegistry
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.trace import emit_trace
@@ -39,7 +39,7 @@ class _TraceProvider:
                     "anthropic-version": "2023-06-01",
                 },
                 "apiKey": "secret-key",
-                "oauth": {"refresh_token": "refresh-secret"},
+                "credential": {"private_value": "secret-value"},
             },
         )
         if self.attempts == 1:
@@ -54,8 +54,8 @@ async def inspect_trace_events() -> dict[str, object]:
     trace_events: list[dict[str, object]] = []
     model_registry = _build_model_registry()
     model = model_registry.get_model("trace-demo", "anthropic-messages", "trace-demo")
-    registry = ApiProviderRegistry()
-    registry.register_api_provider(provider)
+    clear_api_adapters()
+    register_api_adapter(provider)
     event_stream = await stream(
         model,
         {"messages": []},
@@ -63,7 +63,6 @@ async def inspect_trace_events() -> dict[str, object]:
             retry=RetryOptions(max_attempts=2, max_delay_seconds=0),
             trace=trace_events.append,
         ),
-        provider_registry=registry,
     )
     message = await event_stream.result()
     sdk_client = next(event for event in trace_events if event["type"] == "sdk:client")
@@ -80,7 +79,9 @@ async def inspect_trace_events() -> dict[str, object]:
         "eventTypes": [event["type"] for event in trace_events],
         "callIdStable": (
             len(runtime_call_ids) == 3
-            and all(isinstance(call_id, str) and call_id for call_id in runtime_call_ids)
+            and all(
+                isinstance(call_id, str) and call_id for call_id in runtime_call_ids
+            )
             and len(set(runtime_call_ids)) == 1
         ),
         "text": "".join(
@@ -88,10 +89,10 @@ async def inspect_trace_events() -> dict[str, object]:
             for part in message.content
             if getattr(part, "type", None) == "text"
         ),
-        "redaction": {
-            "authorization": sdk_client["data"]["headers"]["Authorization"],
-            "apiKey": sdk_client["data"]["apiKey"],
-            "oauth": sdk_client["data"]["oauth"],
+        "privacy": {
+            "dataKeys": sorted(sdk_client["data"]),
+            "sensitiveValuesAbsent": "secret-token"
+            not in json.dumps(sdk_client, sort_keys=True),
         },
         "retry": retry_data,
     }
@@ -106,22 +107,28 @@ def _build_model() -> Model:
         id="trace-demo",
         provider="trace-demo",
         endpoint="anthropic-messages",
+        base_url="https://example.invalid/v1",
         capabilities=Capabilities(stream=True),
+        auth=Auth(kind="none"),
     )
 
 
 def _build_model_registry() -> ModelRegistry:
-    registry = ModelRegistry()
-    registry.register_endpoint(
-        "trace-demo",
-        Endpoint(
-            id="anthropic-messages",
-            provider="trace-demo",
-            api="anthropic-messages",
-            models={"trace-demo": _build_model()},
-        ),
+    endpoint = Endpoint(
+        id="anthropic-messages",
+        provider="trace-demo",
+        api="anthropic-messages",
+        base_url="https://example.invalid/v1",
+        models={"trace-demo": _build_model()},
     )
-    return registry
+    return ModelRegistry.from_providers(
+        {
+            "trace-demo": Provider(
+                id="trace-demo",
+                endpoints={endpoint.id: endpoint},
+            )
+        }
+    )
 
 
 if __name__ == "__main__":

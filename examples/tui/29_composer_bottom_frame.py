@@ -6,6 +6,7 @@ import random
 import shutil
 import sys
 import time
+from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Literal, Protocol, TextIO
 
@@ -614,10 +615,8 @@ async def _drain_finished_task(
 ) -> tuple[asyncio.Task[int | None] | None, bool]:
     if active_task is None or not active_task.done():
         return active_task, False
-    try:
+    with suppress(asyncio.CancelledError):
         await active_task
-    except asyncio.CancelledError:
-        pass
     next_task = app.start_next_followup(duration_seconds=random.uniform(min_run_seconds, max_run_seconds))
     return next_task, True
 

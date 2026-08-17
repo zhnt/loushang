@@ -5,13 +5,10 @@ from typing import Any
 import pytest
 
 from loushang.agent.types import AgentToolResult
+from loushang.ai.auth import ApiKeyAuth, OAuthBearerAuth
+from loushang.ai.errors import AIRequestTooLargeError, UnsupportedCapabilityError
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
-from loushang.ai.model import Capabilities, Model
-from loushang.ai.model.domain import Endpoint
-from loushang.ai.model.registry import (
-    clear_default_model_registry,
-    get_default_model_registry,
-)
+from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.options import CallOptions, ReasoningOptions, RetryOptions
 from loushang.ai.types import (
     AssistantMessage,
@@ -29,6 +26,7 @@ def _model() -> Model:
         name="Faux",
         provider="faux",
         endpoint="anthropic-messages",
+        api="anthropic-messages",
         capabilities=Capabilities(
             reasoning=False,
             input=("text",),
@@ -49,25 +47,11 @@ def _usage() -> Usage:
     )
 
 
-@pytest.fixture(autouse=True)
-def _default_registry() -> None:
-    clear_default_model_registry()
-    registry = get_default_model_registry()
-    registry.register_endpoint(
-        "faux",
-        Endpoint(
-            id="anthropic-messages",
-            provider="faux",
-            api="anthropic-messages",
-            models={"faux-model": _model()},
-        ),
-    )
-
-
 def _assistant_text_message(
     text: str, *, stop_reason: str = "stop", error_message: str | None = None
 ) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -83,6 +67,7 @@ def _assistant_text_message(
 
 def _assistant_tool_call_message() -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[ToolCall(type="toolCall", id="tc_1", name="calc", arguments={"x": 1})],
         api="anthropic-messages",
@@ -299,6 +284,96 @@ def test_continue_prefers_queued_steering_then_follow_up_when_last_message_is_as
     asyncio.run(scenario())
 
 
+def test_continue_consumes_system_mailbox_from_an_idle_assistant_boundary() -> None:
+    from loushang.agent import Agent
+
+    calls: list[str] = []
+
+    async def stream_fn(model, context, options=None):
+        del model, options
+        last = context.messages[-1]
+        if isinstance(last, UserMessage):
+            calls.append(_user_text_content(last))
+        return _stream_with_final_message(_assistant_text_message("ok"))
+
+    async def scenario() -> None:
+        agent = Agent(stream_fn=stream_fn)
+        agent.state.messages.append(_assistant_text_message("done"))
+        agent.enqueue_mailbox(
+            UserMessage(role="user", content="system result", timestamp=0.0)
+        )
+
+        await agent.continue_run()
+
+        assert calls == ["system result"]
+        assert agent.mailbox_queue.has_items() is False
+
+    asyncio.run(scenario())
+
+
+def test_continue_retries_from_error_assistant_boundary() -> None:
+    from loushang.agent import Agent
+
+    seen_messages: list[list[object]] = []
+
+    async def stream_fn(model, context, options=None):
+        del model, options
+        seen_messages.append(list(context.messages))
+        return _stream_with_final_message(_assistant_text_message("recovered"))
+
+    async def scenario() -> None:
+        agent = Agent(stream_fn=stream_fn)
+        agent.state.messages.extend(
+            [
+                UserMessage(role="user", content="retry this", timestamp=0.0),
+                _assistant_text_message(
+                    "",
+                    stop_reason="error",
+                    error_message="Provider request is too large.",
+                ),
+            ]
+        )
+
+        await agent.continue_run(model_call_purpose="continuation")
+
+    asyncio.run(scenario())
+
+    assert len(seen_messages) == 1
+    assert not any(
+        isinstance(message, AssistantMessage) and message.stop_reason == "error"
+        for message in seen_messages[0]
+    )
+
+
+def test_agent_forwards_caller_declared_model_call_purpose_to_preparation() -> None:
+    from loushang.agent import Agent
+
+    preparations: list[tuple[str, int]] = []
+
+    async def prepare_model_call(preparation):
+        preparations.append((preparation.purpose, preparation.sequence))
+        return preparation.options
+
+    async def stream_fn(model, context, options=None):
+        del model, context, options
+        return _stream_with_final_message(_assistant_text_message("retried"))
+
+    async def scenario() -> None:
+        agent = Agent(
+            stream_fn=stream_fn,
+            prepare_model_call=prepare_model_call,
+        )
+        agent.state.messages.append(
+            UserMessage(role="user", content="retry this", timestamp=0.0)
+        )
+
+        await agent.continue_run(model_call_purpose="retry")
+
+    asyncio.run(scenario())
+
+    assert preparations == [("retry", 1)]
+
+
 def test_wait_for_idle_waits_for_agent_end_listener_settlement() -> None:
     from loushang.agent import Agent
 
@@ -421,6 +496,7 @@ def test_clear_all_queues_removes_steering_and_follow_up_messages() -> None:
     from loushang.agent import Agent
 
     agent = Agent()
+    agent.enqueue_mailbox(UserMessage(role="user", content="system", timestamp=0.0))
     agent.steer(UserMessage(role="user", content="steer", timestamp=0.0))
     agent.follow_up(UserMessage(role="user", content="follow", timestamp=0.0))
 
@@ -440,28 +516,59 @@ def test_process_event_requires_active_run_signal() -> None:
     asyncio.run(scenario())
 
 
-def test_get_api_key_is_forwarded_to_stream_function_options() -> None:
+def test_request_auth_is_forwarded_to_stream_function_options() -> None:
     from loushang.agent import Agent
 
-    captured_api_keys: list[str | None] = []
-
-    async def get_api_key(provider: str) -> str:
-        assert provider == "faux"
-        return "secret-token"
+    captured_auth: list[object] = []
 
     async def stream_fn(model, context, options=None):
-        captured_api_keys.append(getattr(options, "api_key", None))
+        captured_auth.append(getattr(options, "auth", None))
         return _stream_with_final_message(_assistant_text_message("hello"))
 
     async def scenario() -> None:
         agent = Agent(
             stream_fn=stream_fn,
-            get_api_key=get_api_key,
+            call_options=CallOptions(auth=ApiKeyAuth("secret-token")),
             initial_state=agent_state_seed(),
         )
         await agent.prompt("hi")
 
-        assert captured_api_keys == ["secret-token"]
+        assert captured_auth == [ApiKeyAuth("secret-token")]
+
+    asyncio.run(scenario())
+
+
+def test_agent_forwards_oauth_request_auth_without_provider_judgment() -> None:
+    from loushang.agent import Agent
+    from loushang.agent.types import AgentState
+
+    captured_auth: list[object] = []
+
+    async def stream_fn(model, context, options=None):
+        captured_auth.append(getattr(options, "auth", None))
+        return _stream_with_final_message(_assistant_text_message("hello"))
+
+    async def scenario() -> None:
+        oauth_model = Model(
+            id="oauth-model",
+            provider="faux",
+            endpoint="anthropic-messages",
+            api="anthropic-messages",
+            auth=Auth(kind="oauth"),
+            capabilities=Capabilities(input=("text",), output=("text",)),
+        )
+        agent = Agent(
+            stream_fn=stream_fn,
+            call_options=CallOptions(auth=OAuthBearerAuth("oauth-token")),
+            initial_state=AgentState(
+                system_prompt="",
+                model=oauth_model,
+                thinking_level="off",
+            ),
+        )
+        await agent.prompt("hi")
+
+        assert captured_auth == [OAuthBearerAuth("oauth-token")]
 
     asyncio.run(scenario())
 
@@ -474,9 +581,8 @@ def test_default_agent_stream_preserves_canonical_options(
 
     captured_options: list[object] = []
 
-    async def stream_fn(model, context, options=None, *, provider_registry=None):
+    async def stream_fn(model, context, options=None):
         del model, context
-        assert provider_registry is not None
         captured_options.append(options)
         return _stream_with_final_message(_assistant_text_message("hello"))
 
@@ -500,7 +606,7 @@ def test_default_agent_stream_preserves_canonical_options(
     assert len(captured_options) == 1
     options = captured_options[0]
     assert isinstance(options, CallOptions)
-    assert options.session_id == "session-1"
+    assert options.cache_key == "session-1"
     assert options.reasoning == ReasoningOptions(
         enabled=True,
         effort="high",
@@ -515,6 +621,57 @@ def test_default_agent_stream_preserves_canonical_options(
     assert not hasattr(options, "max_retry_delay_ms")
     assert not hasattr(options, "on_payload")
     assert not hasattr(options, "on_response")
+
+
+def test_default_agent_stream_remains_standalone_without_committer() -> None:
+    from loushang.agent import Agent
+    from loushang.ai.api_registry import get_default_api_registry
+
+    class _StandaloneAdapter:
+        api = "agent-standalone-prepared-barrier-test"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def invoke_raw(self, request):  # type: ignore[no-untyped-def]
+            self.calls += 1
+            assert request.options is not None
+            assert request.options.prepared_request_committer is None
+            yield {"type": "response_start", "response_id": "standalone-1"}
+            yield {"type": "text_delta", "text": "standalone"}
+            yield {"type": "stop_reason", "stop_reason": "stop"}
+            yield {"type": "response_done"}
+
+    adapter = _StandaloneAdapter()
+    registry = get_default_api_registry()
+    source_id = "test-agent-standalone-prepared-barrier"
+    registry.register_api_adapter(adapter, source_id=source_id)
+    model = Model(
+        id="standalone-model",
+        provider="standalone-provider",
+        endpoint="standalone-endpoint",
+        api=adapter.api,
+        base_url="https://provider.test/v1",
+        auth=Auth(kind="none"),
+        capabilities=Capabilities(input=("text",), output=("text",), stream=True),
+    )
+
+    async def scenario() -> None:
+        agent = Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": model,
+                "thinking_level": "off",
+            }
+        )
+        await agent.prompt("hi")
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        registry.unregister_api_adapters(source_id)
+
+    assert adapter.calls == 1
 
 
 def test_abort_marks_run_as_aborted_and_sets_error_message() -> None:
@@ -540,6 +697,72 @@ def test_abort_marks_run_as_aborted_and_sets_error_message() -> None:
         assert agent.state.streaming_message is None
         assert agent.state.messages[-1].stop_reason == "aborted"
         assert agent.state.error_message == "Request aborted by user"
+
+    asyncio.run(scenario())
+
+
+def test_abort_identity_overrides_concurrent_capacity_failure() -> None:
+    from loushang.agent.agent import _run_failure_error_info
+
+    error_info = _run_failure_error_info(
+        AIRequestTooLargeError(
+            "Prepared Provider request exceeds its configured capacity limit."
+        ),
+        aborted=True,
+        model=_model(),
+    )
+
+    assert error_info["code"] == "cancelled"
+    assert error_info["retryable"] is False
+
+
+def test_non_ai_run_failure_does_not_expose_exception_text() -> None:
+    from loushang.agent import Agent
+
+    async def stream_fn(model, context, options=None):
+        del model, context, options
+        raise RuntimeError("Authorization: Bearer secret-token")
+
+    async def scenario() -> None:
+        agent = Agent(stream_fn=stream_fn, initial_state=agent_state_seed())
+
+        await agent.prompt("hi")
+
+        assert agent.state.messages[-1].stop_reason == "error"
+        assert agent.state.error_message == "Agent run failed."
+        assert agent.state.messages[-1].error_info is not None
+        assert agent.state.messages[-1].error_info["code"] == "stream"
+        assert agent.state.messages[-1].error_info["details"] == {
+            "exceptionType": "RuntimeError"
+        }
+        assert "secret-token" not in repr(agent.state.messages)
+
+    asyncio.run(scenario())
+
+
+def test_ai_run_failure_preserves_safe_public_message() -> None:
+    from loushang.agent import Agent
+
+    async def stream_fn(model, context, options=None):
+        del model, context, options
+        raise UnsupportedCapabilityError(
+            "Model 'text-only' does not support image input",
+            model="text-only",
+            details={"capability": "image_input"},
+        )
+
+    async def scenario() -> None:
+        agent = Agent(stream_fn=stream_fn, initial_state=agent_state_seed())
+
+        await agent.prompt("hi")
+
+        assert agent.state.messages[-1].stop_reason == "error"
+        assert (
+            agent.state.error_message
+            == "Model 'text-only' does not support image input"
+        )
+        assert agent.state.messages[-1].error_info is not None
+        assert agent.state.messages[-1].error_info["code"] == ("unsupported_capability")
 
     asyncio.run(scenario())
 
@@ -605,6 +828,274 @@ def test_abort_cancels_non_cooperative_stream_prompt() -> None:
     assert agent.state.streaming_message is None
     assert agent.state.messages[-1].stop_reason == "aborted"
     assert agent.state.error_message == "Request aborted by user"
+
+
+def test_abort_during_stream_does_not_cancel_durable_terminalization() -> None:
+    from loushang.agent import Agent
+
+    started = asyncio.Event()
+    finalizer_started = asyncio.Event()
+    release_finalizer = asyncio.Event()
+    emitted: list[dict[str, object]] = []
+
+    async def stream_fn(model, context, options=None):
+        del model, context, options
+        started.set()
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    async def scenario() -> None:
+        agent = Agent(stream_fn=stream_fn, initial_state=agent_state_seed())
+
+        async def listener(event, signal) -> None:
+            del signal
+            emitted.append(event)
+            message = event.get("message")
+            if (
+                event["type"] == "message_end"
+                and isinstance(message, AssistantMessage)
+                and message.stop_reason == "aborted"
+            ):
+                finalizer_started.set()
+                await release_finalizer.wait()
+
+        agent.subscribe(listener)
+        task = asyncio.create_task(agent.prompt("hi"))
+        await started.wait()
+        agent.abort()
+        await asyncio.wait_for(finalizer_started.wait(), timeout=0.2)
+
+        agent.abort()
+        await asyncio.sleep(0.06)
+        assert task.done() is False
+
+        release_finalizer.set()
+        await task
+        assert agent.state.is_streaming is False
+
+    asyncio.run(scenario())
+
+    aborted_ends = [
+        event
+        for event in emitted
+        if event["type"] == "message_end"
+        and isinstance(event.get("message"), AssistantMessage)
+        and event["message"].stop_reason == "aborted"  # type: ignore[union-attr]
+    ]
+    assert len(aborted_ends) == 1
+    assert sum(event["type"] == "agent_end" for event in emitted) == 1
+
+
+def test_abort_during_sequential_tool_persists_one_result_and_boundary() -> None:
+    from loushang.agent import Agent
+
+    started = asyncio.Event()
+    emitted: list[dict[str, object]] = []
+
+    class BlockingTool(FakeTool):
+        async def execute(
+            self, tool_call_id, params, signal=None, on_update=None
+        ) -> AgentToolResult[dict[str, Any]]:
+            del tool_call_id, params, signal, on_update
+            started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+    calls = 0
+
+    async def stream_fn(model, context, options=None):
+        nonlocal calls
+        del model, context, options
+        calls += 1
+        return _stream_with_final_message(_assistant_tool_call_message())
+
+    async def scenario() -> Agent:
+        state = agent_state_seed()
+        state.set_tools([BlockingTool()])
+        agent = Agent(
+            stream_fn=stream_fn,
+            initial_state=state,
+            tool_execution="sequential",
+        )
+        agent.subscribe(lambda event, signal: emitted.append(event))
+        task = asyncio.create_task(agent.prompt("use tool"))
+        await started.wait()
+        agent.abort()
+        await asyncio.wait_for(task, timeout=0.2)
+        return agent
+
+    agent = asyncio.run(scenario())
+
+    tool_ends = [event for event in emitted if event["type"] == "tool_execution_end"]
+    assert len(tool_ends) == 1
+    assert tool_ends[0]["tool_call_id"] == "tc_1"
+    assert tool_ends[0]["is_error"] is True
+    aborted_messages = [
+        message
+        for message in agent.state.messages
+        if isinstance(message, AssistantMessage) and message.stop_reason == "aborted"
+    ]
+    assert len(aborted_messages) == 1
+    assert (
+        sum(
+            event["type"] == "message_end"
+            and isinstance(event.get("message"), AssistantMessage)
+            and event["message"].stop_reason == "aborted"  # type: ignore[union-attr]
+            for event in emitted
+        )
+        == 1
+    )
+    assert calls == 1
+
+
+def test_abort_during_parallel_tools_preserves_only_precompleted_result() -> None:
+    from loushang.agent import Agent
+    from loushang.ai.types import ToolResultMessage
+
+    slow_started = asyncio.Event()
+    fast_completed = asyncio.Event()
+    emitted: list[dict[str, object]] = []
+
+    class PartialTool(FakeTool):
+        async def execute(
+            self, tool_call_id, params, signal=None, on_update=None
+        ) -> AgentToolResult[dict[str, Any]]:
+            del params, signal, on_update
+            if tool_call_id == "tc_fast":
+                fast_completed.set()
+                return AgentToolResult(
+                    content=[TextPart(type="text", text="fast")],
+                    details={"value": "fast"},
+                )
+            slow_started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+    tool_message = AssistantMessage(
+        endpoint="test-endpoint",
+        role="assistant",
+        content=[
+            ToolCall(type="toolCall", id="tc_slow", name="calc", arguments={"x": 1}),
+            ToolCall(type="toolCall", id="tc_fast", name="calc", arguments={"x": 2}),
+        ],
+        api="anthropic-messages",
+        provider="faux",
+        model="faux-model",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=0.0,
+    )
+
+    async def stream_fn(model, context, options=None):
+        del model, context, options
+        return _stream_with_final_message(tool_message)
+
+    async def scenario() -> Agent:
+        state = agent_state_seed()
+        state.set_tools([PartialTool()])
+        agent = Agent(stream_fn=stream_fn, initial_state=state)
+        agent.subscribe(lambda event, signal: emitted.append(event))
+        task = asyncio.create_task(agent.prompt("use tools"))
+        await slow_started.wait()
+        await fast_completed.wait()
+        agent.abort()
+        await asyncio.wait_for(task, timeout=0.2)
+        return agent
+
+    agent = asyncio.run(scenario())
+
+    results = {
+        message.tool_call_id: message
+        for message in agent.state.messages
+        if isinstance(message, ToolResultMessage)
+    }
+    assert set(results) == {"tc_slow", "tc_fast"}
+    assert results["tc_slow"].details == {"code": "tool_call_aborted"}
+    assert results["tc_fast"].details == {"value": "fast"}
+    tool_end_ids = [
+        event["tool_call_id"]
+        for event in emitted
+        if event["type"] == "tool_execution_end"
+    ]
+    assert sorted(tool_end_ids) == ["tc_fast", "tc_slow"]
+
+
+def test_external_prompt_cancellation_waits_for_terminalization_then_propagates() -> (
+    None
+):
+    from loushang.agent import Agent
+
+    started = asyncio.Event()
+    finalizer_started = asyncio.Event()
+    release_finalizer = asyncio.Event()
+
+    async def stream_fn(model, context, options=None):
+        del model, context, options
+        started.set()
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    async def scenario() -> None:
+        agent = Agent(stream_fn=stream_fn, initial_state=agent_state_seed())
+
+        async def listener(event, signal) -> None:
+            del signal
+            message = event.get("message")
+            if (
+                event["type"] == "message_end"
+                and isinstance(message, AssistantMessage)
+                and message.stop_reason == "aborted"
+            ):
+                finalizer_started.set()
+                await release_finalizer.wait()
+
+        agent.subscribe(listener)
+        task = asyncio.create_task(agent.prompt("hi"))
+        await started.wait()
+        task.cancel()
+        await asyncio.wait_for(finalizer_started.wait(), timeout=0.2)
+        task.cancel()
+        await asyncio.sleep(0)
+        assert task.done() is False
+        release_finalizer.set()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert agent.state.messages[-1].stop_reason == "aborted"
+        assert agent.state.is_streaming is False
+
+    asyncio.run(scenario())
+
+
+def test_cancelling_wait_for_idle_does_not_cancel_the_active_run() -> None:
+    from loushang.agent import Agent
+
+    started = asyncio.Event()
+
+    async def stream_fn(model, context, options=None):
+        del model, context, options
+        started.set()
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    async def scenario() -> None:
+        agent = Agent(stream_fn=stream_fn, initial_state=agent_state_seed())
+        prompt_task = asyncio.create_task(agent.prompt("hi"))
+        await started.wait()
+        waiter = asyncio.create_task(agent.wait_for_idle())
+        await asyncio.sleep(0)
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+
+        assert prompt_task.done() is False
+        assert agent.state.is_streaming is True
+        agent.abort()
+        await asyncio.wait_for(prompt_task, timeout=0.2)
+
+    asyncio.run(scenario())
 
 
 def test_prompt_with_images_builds_single_user_message_with_text_and_images() -> None:

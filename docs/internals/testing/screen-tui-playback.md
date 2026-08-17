@@ -3,6 +3,13 @@
 Use the `tests/coding/test_screen_tui_playback_*` tests when a screen TUI
 change can affect terminal behavior, not just pure component rendering.
 
+Reusable conversation drivers and product-neutral scenario recipes live under
+`loushang.harnesstui.testing`. The bound Coding suite, product fakes, frozen
+frame budgets, and product profiles are repository-local support under
+`tests/coding/tui_support`. They are not installed as a Coding compatibility
+package. The former `loushang.coding.ui.playback*` compatibility imports are
+retired; tests use the shared drivers and local support directly.
+
 Good candidates include:
 
 - composer input echo
@@ -61,9 +68,9 @@ smoke path.
 Useful direct smoke commands:
 
 ```bash
-uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner composer-selection-stress --artifacts /tmp/loushang-selection-playback --include-frames
-uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner product-composed-interaction --artifacts /tmp/loushang-product-playback --include-frames
-uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner product-streaming-control-flow --artifacts /tmp/loushang-product-streaming-playback --include-frames
+uv --cache-dir .uv-cache run --extra dev python scripts/run_tui_playback.py composer-selection-stress --artifacts /tmp/loushang-selection-playback --include-frames
+uv --cache-dir .uv-cache run --extra dev python scripts/run_tui_playback.py product-composed-interaction --artifacts /tmp/loushang-product-playback --include-frames
+uv --cache-dir .uv-cache run --extra dev python scripts/run_tui_playback.py product-streaming-control-flow --artifacts /tmp/loushang-product-streaming-playback --include-frames
 ```
 
 For a public, product-neutral playback example, see

@@ -4,7 +4,7 @@ from __future__ import annotations
 def test_exec_service_runs_command_and_returns_stdout(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec import ExecRequest, ExecService
+    from loushang.harness.workspace.exec import ExecRequest, ExecService
 
     async def scenario() -> None:
         service = ExecService()
@@ -21,7 +21,7 @@ def test_exec_service_runs_command_and_returns_stdout(tmp_path) -> None:
 def test_exec_service_returns_nonzero_exit_status(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec import ExecRequest, ExecService
+    from loushang.harness.workspace.exec import ExecRequest, ExecService
 
     async def scenario() -> None:
         service = ExecService()
@@ -37,7 +37,7 @@ def test_exec_service_returns_nonzero_exit_status(tmp_path) -> None:
 def test_exec_service_marks_timeout_and_kills_process(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec import ExecRequest, ExecService
+    from loushang.harness.workspace.exec import ExecRequest, ExecService
 
     async def scenario() -> None:
         service = ExecService()
@@ -59,7 +59,7 @@ def test_exec_service_marks_timeout_and_kills_process(tmp_path) -> None:
 def test_exec_service_timeout_kills_process_tree_and_keeps_output(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec import ExecRequest, ExecService
+    from loushang.harness.workspace.exec import ExecRequest, ExecService
 
     marker = tmp_path / "child-still-running"
 
@@ -89,7 +89,7 @@ def test_exec_service_timeout_kills_process_tree_and_keeps_output(tmp_path) -> N
 def test_exec_service_applies_request_env_to_subprocess(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec import ExecRequest, ExecService
+    from loushang.harness.workspace.exec import ExecRequest, ExecService
 
     async def scenario() -> None:
         service = ExecService()
@@ -110,7 +110,7 @@ def test_exec_service_applies_request_env_to_subprocess(tmp_path) -> None:
 def test_exec_service_honors_cwd(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec import ExecRequest, ExecService
+    from loushang.harness.workspace.exec import ExecRequest, ExecService
 
     async def scenario() -> None:
         service = ExecService()
@@ -127,7 +127,7 @@ def test_exec_service_honors_cwd(tmp_path) -> None:
 def test_exec_service_streams_output_updates_and_records_chunks(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec import ExecRequest, ExecService
+    from loushang.harness.workspace.exec import ExecRequest, ExecService
 
     updates: list[tuple[str, str]] = []
 
@@ -175,7 +175,7 @@ def test_exec_service_streams_output_updates_and_records_chunks(tmp_path) -> Non
 def test_exec_service_captures_truncated_previews_and_full_output_artifacts(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec import ExecRequest, ExecService
+    from loushang.harness.workspace.exec import ExecRequest, ExecService
 
     async def scenario() -> None:
         service = ExecService()
@@ -207,7 +207,7 @@ def test_exec_service_can_roll_output_without_retaining_full_stdout(tmp_path) ->
     import asyncio
     from pathlib import Path
 
-    from loushang.coding.exec import ExecRequest, ExecService
+    from loushang.harness.workspace.exec import ExecRequest, ExecService
 
     full_output = "".join(f"line-{index:04d}\n" for index in range(3000))
 
@@ -246,7 +246,7 @@ def test_exec_service_marks_cancelled_and_kills_process(tmp_path) -> None:
     import asyncio
 
     from loushang.agent import AbortController
-    from loushang.coding.exec import ExecRequest, ExecService
+    from loushang.harness.workspace.exec import ExecRequest, ExecService
 
     async def scenario() -> None:
         service = ExecService()
@@ -276,7 +276,7 @@ def test_exec_service_marks_cancelled_and_kills_process(tmp_path) -> None:
 def test_exec_service_delegates_to_custom_backend(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec import (
+    from loushang.harness.workspace.exec import (
         ExecOutputChunk,
         ExecRequest,
         ExecResult,

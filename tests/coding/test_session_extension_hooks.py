@@ -13,8 +13,13 @@ from loushang.agent import (
 )
 from loushang.agent.types import AfterToolCallContext, AfterToolCallResult, AgentContext
 from loushang.ai.types import TextPart, UserMessage
-from loushang.coding.extensions import ContextResult, ExtensionRunner, LoadedExtension
-from loushang.coding.session.extension_hooks import ExtensionHooks
+from loushang.harness.extensions.agent import (
+    ContextResult,
+    ExtensionAgentHookRuntime,
+    ExtensionRunner,
+    LoadedExtension,
+)
+from loushang.harness.extensions.agent.hooks import compose_after_tool_call_hooks
 
 
 def _user_message(text: str) -> UserMessage:
@@ -39,9 +44,9 @@ def test_extension_hooks_compose_existing_transform_with_extension_context(
         )
 
     agent = Agent(transform_context=_existing_transform)
-    ExtensionHooks(
+    ExtensionAgentHookRuntime(
         agent=agent,
-        extension_runner=ExtensionRunner(
+        extension_runtime=ExtensionRunner(
             [
                 LoadedExtension(
                     name="context",
@@ -66,8 +71,6 @@ def test_extension_hooks_compose_existing_transform_with_extension_context(
 def test_after_hook_composition_refreshes_hook_view_for_projector_only_override() -> (
     None
 ):
-    from loushang.coding.session.extension_hooks import compose_after_tool_call_hooks
-
     first_projector = FunctionalToolOutputProjector(
         transcript=lambda details: {"view": "transcript-0"},
         hook=lambda details: {"view": "hook-0"},
@@ -121,8 +124,6 @@ def test_after_hook_composition_refreshes_hook_view_for_projector_only_override(
 
 
 def test_after_hook_composition_can_clear_details_to_json_null() -> None:
-    from loushang.coding.session.extension_hooks import compose_after_tool_call_hooks
-
     initial_result = AgentToolResult(
         content=[TextPart(type="text", text="original")],
         details={"value": 1},
@@ -170,7 +171,6 @@ def test_after_hook_composition_propagates_projection_failure_from_middle_of_cha
     None
 ):
     from loushang.agent import ToolOutputProjectionError
-    from loushang.coding.session.extension_hooks import compose_after_tool_call_hooks
 
     projector = FunctionalToolOutputProjector(
         transcript=lambda details: {"view": "transcript"},

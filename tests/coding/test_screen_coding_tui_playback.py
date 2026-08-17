@@ -6,20 +6,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from loushang.coding.types import ModelSelection
+from loushang.ai.model import ModelSelection
 from loushang.coding.ui.completion import coding_inline_completion_provider
-from loushang.coding.ui.playback import ScreenTuiInputPlayback
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.screen_input import ScreenInputRouter
-from loushang.coding.ui.screen_loop import (
-    _flush_pending_input,
-    _format_terminal_diagnostics,
-    _input_events_for_chunk,
-    _poll_terminal_runtime,
-    _terminal_runtime_wakeup_ms,
-)
+from loushang.coding.ui.screen_input import build_screen_input_router
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
-from loushang.coding.ui.status_provider import CodingTuiStatusProvider
+from loushang.harnesstui.status.provider import StatusProvider
 from loushang.tui import (
     FakeTerminalPort,
     ImageBlock,
@@ -37,31 +29,48 @@ from loushang.tui import (
     TerminalSize,
     TuiRuntime,
     drain_input,
+    format_terminal_diagnostics,
     strip_control_sequences,
 )
+from loushang.tui._runner_utils import (
+    flush_pending_input,
+    input_events_for_chunk,
+    poll_terminal_runtime,
+    terminal_runtime_wakeup_ms,
+)
+from tests.coding.tui_support.playback import ScreenTuiInputPlayback
 
 
 def test_screen_tui_playback_applies_model_argument_completion() -> None:
     session = _Session()
     app = _app()
-    app.composer.set_completion_provider(asyncio.run(coding_inline_completion_provider(session)))
+    app.composer.set_completion_provider(
+        asyncio.run(coding_inline_completion_provider(session, base_path=None))
+    )
     playback = ScreenTuiInputPlayback(app)
 
     steps = playback.play([PlaybackEvent.input("/model gpt\t")])
 
     assert all(step.flush_succeeded for step in steps)
-    assert app.composer.value == "/model openai/gpt-5.4"
+    assert app.composer.value == "/model openai:test-endpoint:gpt-5.4"
     lines = _plain_lines(steps[-1].diagnostics)
-    assert "› /model openai/gpt-5.4" in lines
-    assert lines[-1] == "moonshot/kimi-for-coding | repo | main | abcd | idle"
+    assert "› /model openai:test-endpoint:gpt-5.4" in lines
+    assert (
+        "moonshot:test-endpoint:kimi-for-coding | repo | main | abcd | idle"
+        in lines[-1]
+    )
 
 
-def test_screen_tui_playback_applies_recursive_at_file_completion(tmp_path: Path) -> None:
+def test_screen_tui_playback_applies_recursive_at_file_completion(
+    tmp_path: Path,
+) -> None:
     (tmp_path / "src" / "tests").mkdir(parents=True)
     (tmp_path / "src" / "tests" / "test_completion.py").write_text("", encoding="utf-8")
     session = _Session(cwd=tmp_path)
     app = _app(cwd=str(tmp_path))
-    app.composer.set_completion_provider(asyncio.run(coding_inline_completion_provider(session)))
+    app.composer.set_completion_provider(
+        asyncio.run(coding_inline_completion_provider(session, base_path=tmp_path))
+    )
     playback = ScreenTuiInputPlayback(app)
 
     steps = playback.play([PlaybackEvent.input("@test\t")])
@@ -88,7 +97,7 @@ def test_screen_tui_playback_browses_history_from_non_empty_single_line_draft() 
     )
 
     assert all(step.flush_succeeded for step in result)
-    assert [state["composer_text"] for state in playback.step_coding_states] == [
+    assert [state["composer_text"] for state in playback.step_state_snapshots] == [
         "draft",
         "second prompt",
         "first prompt",
@@ -101,7 +110,9 @@ def test_screen_tui_playback_browses_history_from_non_empty_single_line_draft() 
         step.assert_no_clear_scrollback()
 
 
-def test_screen_tui_playback_uses_visual_up_before_history_for_multiline_draft() -> None:
+def test_screen_tui_playback_uses_visual_up_before_history_for_multiline_draft() -> (
+    None
+):
     app = _app()
     app.composer.add_history("previous prompt")
     playback = ScreenTuiInputPlayback(app, columns=80, rows=12)
@@ -115,7 +126,7 @@ def test_screen_tui_playback_uses_visual_up_before_history_for_multiline_draft()
     )
 
     assert all(step.flush_succeeded for step in result)
-    assert [state["composer_text"] for state in playback.step_coding_states] == [
+    assert [state["composer_text"] for state in playback.step_state_snapshots] == [
         "alpha\nbeta",
         "alpha\nbeta",
         "previous prompt",
@@ -147,10 +158,14 @@ def test_screen_tui_playback_routes_composer_page_keys() -> None:
         step.assert_no_clear_scrollback()
 
 
-def test_screen_tui_playback_completion_navigation_wins_over_history_navigation() -> None:
+def test_screen_tui_playback_completion_navigation_wins_over_history_navigation() -> (
+    None
+):
     app = _app()
     app.composer.add_history("history prompt")
-    app.composer.set_completion_provider(asyncio.run(coding_inline_completion_provider(_Session())))
+    app.composer.set_completion_provider(
+        asyncio.run(coding_inline_completion_provider(_Session(), base_path=None))
+    )
     playback = ScreenTuiInputPlayback(app)
 
     result = playback.play(
@@ -163,7 +178,7 @@ def test_screen_tui_playback_completion_navigation_wins_over_history_navigation(
 
     assert all(step.flush_succeeded for step in result)
     assert app.composer.value == "/models "
-    assert [state["composer_text"] for state in playback.step_coding_states] == [
+    assert [state["composer_text"] for state in playback.step_state_snapshots] == [
         "/",
         "/",
         "/models ",
@@ -206,7 +221,9 @@ def test_screen_tui_playback_escape_clears_idle_draft_without_abort() -> None:
 
     assert all(step.flush_succeeded for step in result)
     assert app.composer.value == ""
-    assert not any(input_result.abort_requested for input_result in playback.input_results)
+    assert not any(
+        input_result.abort_requested for input_result in playback.input_results
+    )
     assert "› draft" not in _plain_lines(result[-1].diagnostics)
     for step in result:
         step.assert_no_clear_scrollback()
@@ -233,18 +250,26 @@ def test_screen_tui_playback_edits_settings_search_with_text_input_cursor() -> N
     assert "No matching items" in lines
 
 
-def test_tui_playback_renders_auto_terminal_image_and_text_fallback(monkeypatch: Any) -> None:
+def test_tui_playback_renders_auto_terminal_image_and_text_fallback(
+    monkeypatch: Any,
+) -> None:
     _clear_image_protocol_env(monkeypatch)
     monkeypatch.setenv("TERM", "xterm-kitty")
-    kitty_playback = _RenderPlayback(ImageBlock(alt_text="screenshot", source="shot.png", data=b"abc"))
+    kitty_playback = _RenderPlayback(
+        ImageBlock(alt_text="screenshot", source="shot.png", data=b"abc")
+    )
 
     kitty_step = kitty_playback.play([PlaybackEvent("render")])[0]
 
     assert kitty_step.flush_succeeded
-    assert "\x1b_Ga=T,f=100,t=d;YWJj\x1b\\" in (kitty_step.frame.serialized_output if kitty_step.frame else "")
+    assert "\x1b_Ga=T,f=100,t=d;YWJj\x1b\\" in (
+        kitty_step.frame.serialized_output if kitty_step.frame else ""
+    )
 
     _clear_image_protocol_env(monkeypatch)
-    fallback_playback = _RenderPlayback(ImageBlock(alt_text="screenshot", source="shot.png", data=b"abc"))
+    fallback_playback = _RenderPlayback(
+        ImageBlock(alt_text="screenshot", source="shot.png", data=b"abc")
+    )
 
     fallback_step = fallback_playback.play([PlaybackEvent("render")])[0]
 
@@ -275,16 +300,18 @@ def test_screen_tui_playback_resizes_cleanly_after_drain() -> None:
     assert playback.harness.port.screen.size == TerminalSize(columns=42, rows=8)
 
 
-def test_screen_tui_playback_smokes_surfaces_editor_and_image_fallback(monkeypatch: Any) -> None:
+def test_screen_tui_playback_smokes_surfaces_editor_and_image_fallback(
+    monkeypatch: Any,
+) -> None:
     _clear_image_protocol_env(monkeypatch)
     session = _Session()
     app = _app()
     app.terminal_diagnostics_provider = lambda: (
-        "keyboard_protocol_state: kitty\n"
-        "runtime_image_protocol: none\n"
-        "cell_size: 9x18"
+        "keyboard_protocol_state: kitty\nruntime_image_protocol: none\ncell_size: 9x18"
     )
-    app.composer.set_completion_provider(asyncio.run(coding_inline_completion_provider(session)))
+    app.composer.set_completion_provider(
+        asyncio.run(coding_inline_completion_provider(session, base_path=None))
+    )
     playback = _ScreenInteractivePlayback(
         app,
         _manager(app, session),
@@ -309,17 +336,24 @@ def test_screen_tui_playback_smokes_surfaces_editor_and_image_fallback(monkeypat
     assert any(line.strip() == "Terminal" for line in terminal_lines)
     assert any("keyboard_protocol_state: kitty" in line for line in terminal_lines)
     assert any("cell_size: 9x18" in line for line in terminal_lines)
-    assert not any(line.strip() == "Terminal" for line in _plain_lines(steps[2].diagnostics))
-    assert any(line.strip() == "Select Model" for line in _plain_lines(steps[3].diagnostics))
+    assert not any(
+        line.strip() == "Terminal" for line in _plain_lines(steps[2].diagnostics)
+    )
+    assert any(
+        line.strip() == "Select Model" for line in _plain_lines(steps[3].diagnostics)
+    )
     final_lines = _plain_lines(steps[-1].diagnostics)
     assert not any(line.strip() == "Select Model" for line in final_lines)
     assert not any(line.strip() == "Terminal" for line in final_lines)
     assert "› abc!" in final_lines
-    assert "moonshot/kimi-for-coding | repo | main | abcd | idle" in final_lines
+    assert (
+        "moonshot:test-endpoint:kimi-for-coding | repo | main | abcd | idle | perm=standard"
+        in final_lines
+    )
 
-    fallback_step = _RenderPlayback(ImageBlock(alt_text="screenshot", source="shot.png", data=b"abc")).play(
-        [PlaybackEvent("render")]
-    )[0]
+    fallback_step = _RenderPlayback(
+        ImageBlock(alt_text="screenshot", source="shot.png", data=b"abc")
+    ).play([PlaybackEvent("render")])[0]
 
     assert fallback_step.flush_succeeded
     output = fallback_step.frame.serialized_output if fallback_step.frame else ""
@@ -388,7 +422,10 @@ def test_screen_tui_playback_settings_page_toggles_statusline_and_exits() -> Non
     lines = _plain_lines(steps[-1].diagnostics)
     assert "Settings" not in lines
     assert not any("Status line: off" in line for line in lines)
-    assert not any("moonshot/kimi-for-coding | repo | main | abcd | idle" in line for line in lines)
+    assert not any(
+        "moonshot:test-endpoint:kimi-for-coding | repo | main | abcd | idle" in line
+        for line in lines
+    )
     for step in steps:
         step.assert_no_clear_scrollback()
 
@@ -513,7 +550,9 @@ def test_screen_tui_playback_settings_page_q_is_search_text() -> None:
         step.assert_no_clear_scrollback()
 
 
-def test_screen_tui_playback_settings_escape_restores_single_prompt_with_status_gap() -> None:
+def test_screen_tui_playback_settings_escape_restores_single_prompt_with_status_gap() -> (
+    None
+):
     session = _Session()
     app = _app()
     playback = _ScreenInteractivePlayback(
@@ -537,7 +576,7 @@ def test_screen_tui_playback_settings_escape_restores_single_prompt_with_status_
     status_rows = [
         index
         for index, line in enumerate(lines)
-        if "moonshot/kimi-for-coding | repo | main | abcd | idle" in line
+        if "moonshot:test-endpoint:kimi-for-coding | repo | main | abcd | idle" in line
     ]
     assert prompt_rows == [status_rows[0] - 2]
     assert lines[prompt_rows[0] + 1] == ""
@@ -565,17 +604,21 @@ def test_screen_tui_playback_settings_page_model_tab_is_available() -> None:
     assert all(step.flush_succeeded for step in steps)
     lines = _plain_lines(steps[-1].diagnostics)
     assert any("Search models..." in line for line in lines)
-    assert any("moonshot/kimi-for-coding" in line for line in lines)
+    assert any("moonshot:test-endpoint:kimi-for-coding" in line for line in lines)
     for step in steps:
         step.assert_no_clear_scrollback()
 
 
-def test_screen_tui_playback_smokes_terminal_context_model_selector_and_resize() -> None:
+def test_screen_tui_playback_smokes_terminal_context_model_selector_and_resize() -> (
+    None
+):
     context = _PlaybackTerminalContext()
     session = _Session()
     app = _app()
-    app.terminal_diagnostics_provider = lambda: _format_terminal_diagnostics(context)
-    app.composer.set_completion_provider(asyncio.run(coding_inline_completion_provider(session)))
+    app.terminal_diagnostics_provider = lambda: format_terminal_diagnostics(context)
+    app.composer.set_completion_provider(
+        asyncio.run(coding_inline_completion_provider(session, base_path=None))
+    )
     playback = _ScreenInteractivePlayback(
         app,
         _manager(app, session),
@@ -600,8 +643,10 @@ def test_screen_tui_playback_smokes_terminal_context_model_selector_and_resize()
     terminal_lines = _plain_lines(steps[1].diagnostics)
     assert any("keyboard_protocol_state: kitty" in line for line in terminal_lines)
     assert any("cell_size: 9x18" in line for line in terminal_lines)
-    assert session.current_model == ModelSelection(provider="openai", model_id="gpt-5.4")
-    assert app.state.model_label == "openai/gpt-5.4"
+    assert session.current_model == ModelSelection(
+        endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
+    )
+    assert app.state.model_label == "openai:test-endpoint:gpt-5.4"
     assert steps[-1].size == TerminalSize(columns=72, rows=10)
     assert steps[-1].diagnostics.operation_class == "resize_repaint"
 
@@ -609,9 +654,19 @@ def test_screen_tui_playback_smokes_terminal_context_model_selector_and_resize()
 def test_screen_tui_model_selector_ignores_key_release_events() -> None:
     session = _Session(
         models=(
-            ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
-            ModelSelection(provider="openai", model_id="gpt-5.4"),
-            ModelSelection(provider="anthropic", model_id="claude-sonnet"),
+            ModelSelection(
+                endpoint_id="test-endpoint",
+                provider="moonshot",
+                model_id="kimi-for-coding",
+            ),
+            ModelSelection(
+                endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
+            ),
+            ModelSelection(
+                endpoint_id="test-endpoint",
+                provider="anthropic",
+                model_id="claude-sonnet",
+            ),
         )
     )
     app = _app()
@@ -632,15 +687,17 @@ def test_screen_tui_model_selector_ignores_key_release_events() -> None:
     )
 
     assert all(step.flush_succeeded for step in steps)
-    assert session.current_model == ModelSelection(provider="openai", model_id="gpt-5.4")
-    assert app.state.model_label == "openai/gpt-5.4"
+    assert session.current_model == ModelSelection(
+        endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
+    )
+    assert app.state.model_label == "openai:test-endpoint:gpt-5.4"
     lines = _plain_lines(steps[-1].diagnostics)
-    assert "Model set: openai/gpt-5.4" in lines[-1]
+    assert "Model set: openai:test-endpoint:gpt-5.4" in lines[-1]
     assert not any("claude-sonnet" in line for line in lines)
 
 
 def test_screen_loop_filters_terminal_control_responses_before_routing() -> None:
-    events = _input_events_for_chunk(InputReader(), "\x1b[?7uhello")
+    events = input_events_for_chunk(InputReader(), "\x1b[?7uhello")
 
     assert len(events) == 1
     assert events[0].kind == "text"
@@ -651,8 +708,8 @@ def test_screen_loop_filters_split_terminal_control_responses_before_routing() -
     reader = InputReader()
     context = _ControlContext()
 
-    first = _input_events_for_chunk(reader, "\x1b[?", terminal_context=context)
-    second = _input_events_for_chunk(reader, "7uhello", terminal_context=context)
+    first = input_events_for_chunk(reader, "\x1b[?", terminal_context=context)
+    second = input_events_for_chunk(reader, "7uhello", terminal_context=context)
 
     assert first == ()
     assert len(second) == 1
@@ -666,8 +723,8 @@ def test_screen_loop_filters_split_terminal_control_responses_before_routing() -
 def test_screen_loop_keeps_split_escape_sequence_pending_until_complete() -> None:
     reader = InputReader()
 
-    first = _input_events_for_chunk(reader, "\x1b")
-    second = _input_events_for_chunk(reader, "[A")
+    first = input_events_for_chunk(reader, "\x1b")
+    second = input_events_for_chunk(reader, "[A")
 
     assert first == ()
     assert len(second) == 1
@@ -678,8 +735,8 @@ def test_screen_loop_keeps_split_escape_sequence_pending_until_complete() -> Non
 def test_screen_loop_flushes_pending_escape_explicitly() -> None:
     reader = InputReader()
 
-    first = _input_events_for_chunk(reader, "\x1b")
-    flushed = _flush_pending_input(reader)
+    first = input_events_for_chunk(reader, "\x1b")
+    flushed = flush_pending_input(reader)
 
     assert first == ()
     assert len(flushed) == 1
@@ -690,7 +747,9 @@ def test_screen_loop_flushes_pending_escape_explicitly() -> None:
 def test_screen_loop_passes_terminal_control_events_to_context() -> None:
     context = _ControlContext()
 
-    events = _input_events_for_chunk(InputReader(), "\x1b[6;18;9t", terminal_context=context)
+    events = input_events_for_chunk(
+        InputReader(), "\x1b[6;18;9t", terminal_context=context
+    )
 
     assert events == ()
     assert len(context.events) == 1
@@ -700,14 +759,14 @@ def test_screen_loop_passes_terminal_control_events_to_context() -> None:
 def test_screen_loop_reads_terminal_runtime_wakeup_delay() -> None:
     context = _RuntimeWakeupContext(delay_ms=42)
 
-    assert _terminal_runtime_wakeup_ms(context) == 42
+    assert terminal_runtime_wakeup_ms(context) == 42
     assert context.wakeup_calls == 1
 
 
 def test_screen_loop_polls_terminal_runtime_fallback() -> None:
     context = _RuntimeWakeupContext(delay_ms=0)
 
-    assert _poll_terminal_runtime(context) is True
+    assert poll_terminal_runtime(context) is True
     assert context.poll_calls == 1
 
 
@@ -731,7 +790,7 @@ class _ScreenInteractivePlayback:
             terminal=self.terminal,
         )
         self.app.surface_host = self.runtime.overlay_host()
-        self.router = ScreenInputRouter(
+        self.router = build_screen_input_router(
             app,
             should_exit=lambda _text: False,
             is_local_command=surface_manager.is_local_command,
@@ -756,15 +815,23 @@ class _ScreenInteractivePlayback:
         return tuple(steps)
 
     def _route_input(self, data: str) -> None:
-        events = list(_input_events_for_chunk(self.reader, data, terminal_context=self.terminal_context))
+        events = list(
+            input_events_for_chunk(
+                self.reader, data, terminal_context=self.terminal_context
+            )
+        )
         if self.reader.has_pending:
-            events.extend(_flush_pending_input(self.reader, terminal_context=self.terminal_context))
+            events.extend(
+                flush_pending_input(self.reader, terminal_context=self.terminal_context)
+            )
         for event in events:
             result = self.router.handle(event)
             if result.local_text is not None:
                 asyncio.run(self.surface_manager.handle_text(result.local_text))
             if result.surface_intent is not None:
-                asyncio.run(self.surface_manager.handle_surface_intent(result.surface_intent))
+                asyncio.run(
+                    self.surface_manager.handle_surface_intent(result.surface_intent)
+                )
 
 
 class _RenderPlayback:
@@ -814,7 +881,9 @@ class _RuntimeWakeupContext:
 
 class _PlaybackTerminalContext:
     def __init__(self) -> None:
-        self.capabilities = TerminalRuntimeCapabilities(image_protocol="none", truecolor=True)
+        self.capabilities = TerminalRuntimeCapabilities(
+            image_protocol="none", truecolor=True
+        )
         self.events: tuple[Any, ...] = ()
         self.keyboard_protocol_state = "querying"
         self.cell_size = None
@@ -850,11 +919,21 @@ class _Session:
         cwd: Path | None = None,
         models: tuple[ModelSelection, ...] | None = None,
     ) -> None:
-        self.session_manager = SimpleNamespace(get_cwd=lambda: str(cwd)) if cwd is not None else None
-        self.current_model = ModelSelection(provider="moonshot", model_id="kimi-for-coding")
+        self.session_manager = (
+            SimpleNamespace(get_cwd=lambda: str(cwd)) if cwd is not None else None
+        )
+        self.current_model = ModelSelection(
+            endpoint_id="test-endpoint", provider="moonshot", model_id="kimi-for-coding"
+        )
         self.models = models or (
-            ModelSelection(provider="moonshot", model_id="kimi-for-coding"),
-            ModelSelection(provider="openai", model_id="gpt-5.4"),
+            ModelSelection(
+                endpoint_id="test-endpoint",
+                provider="moonshot",
+                model_id="kimi-for-coding",
+            ),
+            ModelSelection(
+                endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
+            ),
         )
 
     def list_commands(self) -> list[object]:
@@ -862,7 +941,11 @@ class _Session:
             SimpleNamespace(name="model", description="Select model", source="builtin"),
             SimpleNamespace(name="models", description="List models", source="builtin"),
             SimpleNamespace(name="report", description="Show report", source="builtin"),
-            SimpleNamespace(name="terminal", description="Show terminal diagnostics", source="builtin"),
+            SimpleNamespace(
+                name="terminal",
+                description="Show terminal diagnostics",
+                source="builtin",
+            ),
         ]
 
     def get_model_selection(self) -> ModelSelection:
@@ -877,7 +960,7 @@ class _Session:
 
 def _app(*, cwd: str = "/repo") -> ScreenCodingTuiApp:
     return ScreenCodingTuiApp(
-        model_label="moonshot/kimi-for-coding",
+        model_label="moonshot:test-endpoint:kimi-for-coding",
         cwd=cwd,
         branch="main",
         session_label="abcd",
@@ -889,7 +972,7 @@ def _manager(app: ScreenCodingTuiApp, session: _Session) -> ScreenSurfaceManager
     return ScreenSurfaceManager(
         app=app,
         session=session,
-        status_provider=CodingTuiStatusProvider(
+        status_provider=StatusProvider(
             model_label=app.state.model_label,
             cwd=app.state.cwd,
             branch=app.state.branch,
@@ -901,9 +984,22 @@ def _manager(app: ScreenCodingTuiApp, session: _Session) -> ScreenSurfaceManager
 
 
 def _plain_lines(diagnostics: RenderDiagnostics) -> tuple[str, ...]:
-    return tuple(strip_control_sequences(line) for line in diagnostics.current_logical_lines)
+    return tuple(
+        strip_control_sequences(line) for line in diagnostics.current_logical_lines
+    )
 
 
 def _clear_image_protocol_env(monkeypatch: Any) -> None:
-    for name in ("TERM", "TERM_PROGRAM", "KITTY_WINDOW_ID", "WEZTERM_EXECUTABLE", "GHOSTTY_RESOURCES_DIR"):
+    for name in (
+        "TERM",
+        "TERM_PROGRAM",
+        "ITERM_SESSION_ID",
+        "KITTY_WINDOW_ID",
+        "TMUX",
+        "STY",
+        "WEZTERM_PANE",
+        "WEZTERM_EXECUTABLE",
+        "GHOSTTY_RESOURCES_DIR",
+        "LOUSHANG_TUI_TMUX_PASSTHROUGH",
+    ):
         monkeypatch.delenv(name, raising=False)

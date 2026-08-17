@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from loushang.harness.host.events import OrderedEventBus
+from loushang.harness.events import OrderedEventBus
 
 
 def test_ordered_event_bus_subscribes_and_unsubscribes() -> None:

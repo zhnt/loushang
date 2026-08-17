@@ -19,6 +19,28 @@ class SummarySection:
 
 
 @dataclass(frozen=True)
+class SummaryResourceOperationTag:
+    """Maps a summary XML block tag to a product-neutral resource operation."""
+
+    operation: str
+    tag: str
+
+    def __post_init__(self) -> None:
+        operation = self.operation.strip()
+        if not operation:
+            raise ValueError("summary resource operation must not be empty")
+        if not _TAG_RE.fullmatch(self.tag):
+            raise ValueError(f"invalid summary resource operation tag: {self.tag!r}")
+        object.__setattr__(self, "operation", operation)
+
+
+STANDARD_SUMMARY_RESOURCE_OPERATION_TAGS = (
+    SummaryResourceOperationTag(operation="read", tag="read-files"),
+    SummaryResourceOperationTag(operation="modified", tag="modified-files"),
+)
+
+
+@dataclass(frozen=True)
 class SummaryProfile:
     profile_id: str
     system_prompt: str
@@ -26,6 +48,7 @@ class SummaryProfile:
     sections: tuple[SummarySection, ...] = ()
     placeholder_markers: tuple[str, ...] = ()
     ignored_block_tags: tuple[str, ...] = ()
+    resource_operation_tags: tuple[SummaryResourceOperationTag, ...] = ()
     content_tag: str = "conversation"
     previous_summary_tag: str = "previous-summary"
     custom_instruction_label: str = "Additional focus"
@@ -43,13 +66,27 @@ class SummaryProfile:
         headings = [_normalize_heading(section.heading) for section in self.sections]
         if len(headings) != len(set(headings)):
             raise ValueError("summary profile section headings must be unique")
+        if any(
+            not isinstance(resource_tag, SummaryResourceOperationTag)
+            for resource_tag in self.resource_operation_tags
+        ):
+            raise TypeError(
+                "summary profile resource operation tags must be "
+                "SummaryResourceOperationTag values"
+            )
         for tag in (
             self.content_tag,
             self.previous_summary_tag,
             *self.ignored_block_tags,
+            *(resource_tag.tag for resource_tag in self.resource_operation_tags),
         ):
             if not _TAG_RE.fullmatch(tag):
                 raise ValueError(f"invalid summary block tag: {tag!r}")
+        resource_tag_names = tuple(
+            resource_tag.tag for resource_tag in self.resource_operation_tags
+        )
+        if len(resource_tag_names) != len(set(resource_tag_names)):
+            raise ValueError("summary resource operation tags must be unique")
         object.__setattr__(self, "prompts", prompts)
         object.__setattr__(self, "sections", tuple(self.sections))
         object.__setattr__(
@@ -58,6 +95,11 @@ class SummaryProfile:
             tuple(marker.lower() for marker in self.placeholder_markers),
         )
         object.__setattr__(self, "ignored_block_tags", tuple(self.ignored_block_tags))
+        object.__setattr__(
+            self,
+            "resource_operation_tags",
+            tuple(self.resource_operation_tags),
+        )
 
     def prompt(self, mode: str) -> str:
         try:
@@ -148,7 +190,10 @@ def validate_summary(
 ) -> SummaryValidationReport:
     sections = _section_contents(
         summary or "",
-        ignored_block_tags=profile.ignored_block_tags,
+        ignored_block_tags=(
+            *profile.ignored_block_tags,
+            *(resource_tag.tag for resource_tag in profile.resource_operation_tags),
+        ),
     )
     required_sections = tuple(
         section.heading for section in profile.sections if section.required
@@ -218,8 +263,10 @@ def _has_placeholder_content(content: str, markers: tuple[str, ...]) -> bool:
 
 
 __all__ = [
+    "STANDARD_SUMMARY_RESOURCE_OPERATION_TAGS",
     "SummaryProfile",
     "SummaryPrompt",
+    "SummaryResourceOperationTag",
     "SummarySection",
     "SummaryValidationReport",
     "build_summary_prompt",

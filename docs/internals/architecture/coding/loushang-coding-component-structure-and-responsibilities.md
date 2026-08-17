@@ -1,5 +1,14 @@
 # Loushang Coding Component Structure And Responsibilities
 
+## Status
+
+Superseded as the current ownership topology by the
+[Harness Current Owner Map](../harness/current-owner-map.md). The original
+component analysis remains design history; current Package, Plugin, and
+Extension ownership is defined by the
+[Platform Resource Layout Boundary](../harness/platform-resource-layout-boundary.md)
+and [Extension Runtime Core Boundary](../harness/extension-runtime-core-boundary.md).
+
 ## Scope
 
 本文档描述 `loushang-coding` 的内部候选组件结构关系与职责边界。
@@ -124,7 +133,8 @@
 
 它们的共同特点是：
 
-- 提供 coding-specific 的资源注入、扩展能力、package/plugin lifecycle 与 method bridge
+- 提供 coding-specific 的资源注入、扩展能力、Resource Package lifecycle、
+  Plugin source/activation 与 method bridge
 - 更多负责“装什么”和“从哪里装”，而不是直接推进 run loop
 - 其中 `prompt` 是桥接组件：
   - 上接 `loader` / `resources` / `skill` / `domain`
@@ -453,13 +463,14 @@ flowchart TD
 备注：
 
 - `extensions` 是 runtime 扩展面
-- `plugin` 是上层 bundle / distribution 组件，不取代 `extensions`
+- `plugin` 是 manifest-backed 可选贡献源的身份与启停边界，不取代
+  `extensions`，也不是 Package 分发组件
 
 ### `plugin`
 
 角色：
 
-- plugin bundle 管理与资源展开层
+- plugin identity、source、启停与资源根解析层
 
 职责：
 
@@ -471,13 +482,14 @@ flowchart TD
 
 角色：
 
-- package/plugin lifecycle 与 source 管理层
+- Resource Package lifecycle、source 与物化管理层；Plugin identity 和启停
+  状态保持独立
 
 职责：
 
 - 管理 package catalog/source
 - 安装、更新、移除 package
-- 将 package materialize 为 plugin/resource 可消费形态
+- 将 Resource Package materialize 为资源加载器可消费的 package root
 
 ### `domain`
 

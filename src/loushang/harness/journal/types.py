@@ -9,6 +9,7 @@ R = TypeVar("R")
 JournalSeverity = Literal["warning", "error"]
 HeaderMode = Literal["required", "none"]
 InvalidValueBehavior = Literal["raise", "skip"]
+PartialTailBehavior = Literal["raise", "skip", "repair"]
 
 
 @dataclass(frozen=True)
@@ -43,7 +44,7 @@ class JournalLoadPolicy:
     header: HeaderMode = "none"
     invalid_header: InvalidValueBehavior = "raise"
     invalid_record: InvalidValueBehavior = "raise"
-    partial_tail: InvalidValueBehavior = "raise"
+    partial_tail: PartialTailBehavior = "raise"
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,7 @@ __all__ = [
     "JournalLoadPolicy",
     "JournalSeverity",
     "JsonlSnapshot",
+    "PartialTailBehavior",
     "PROCESS_LOCAL_JOURNAL",
     "SORTED_UNICODE_JSONL_FORMAT",
 ]

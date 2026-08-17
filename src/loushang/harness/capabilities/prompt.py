@@ -64,6 +64,27 @@ class PreparedPrompt:
         )
 
 
+@dataclass(frozen=True)
+class PromptSectionComposer:
+    """A selectable, pure prompt-section composition implementation."""
+
+    separator: str = "\n\n"
+    strip_sections: bool = True
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.separator, str):
+            raise TypeError("prompt section separator must be a string")
+        if type(self.strip_sections) is not bool:
+            raise TypeError("prompt section strip_sections must be a bool")
+
+    def compose(self, sections: Iterable[PromptSection]) -> PreparedPrompt:
+        return compose_prompt_sections(
+            sections,
+            separator=self.separator,
+            strip_sections=self.strip_sections,
+        )
+
+
 def compose_prompt_sections(
     sections: Iterable[PromptSection],
     *,
@@ -227,6 +248,7 @@ __all__ = [
     "PromptArgumentAppender",
     "PromptArgumentParser",
     "PromptPlaceholderProbe",
+    "PromptSectionComposer",
     "PromptSection",
     "PromptTemplateExpander",
     "PromptTemplateSubstituter",

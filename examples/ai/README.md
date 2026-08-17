@@ -1,83 +1,99 @@
-`examples/ai` 面向上层开发者，展示 `loushang.ai` 根包公开 API、公开 tool
-校验辅助，以及自定义模型文件加载的常见调用路径。
+# AI examples
 
-顶层编号示例默认离线可运行，不需要真实厂商凭证：
+`examples/ai` 展示当前 `loushang.ai` 公共调用边界。编号示例全部离线运行，
+不会访问真实厂商。
 
-- [01_complete.py](01_complete.py)
-  完整返回调用，并读取最终 `AssistantMessage`
-- [02_stream.py](02_stream.py)
-  流式消费事件并读取最终结果
-- [03_typed_context.py](03_typed_context.py)
-  显式 `Context` / `Tool` / `UserMessage` 类型构造
-- [04_tools.py](04_tools.py)
-  工具调用、默认 strict 参数校验、显式 coerce diagnostics，以及 `ToolResultMessage` 往返
-- [05_parallel_tools.py](05_parallel_tools.py)
-  多个并行 tool call 的交错增量按 id/index 正确组装
-- [06_reasoning.py](06_reasoning.py)
-  `CallOptions.reasoning` 如何映射到统一 reasoning 请求
-- [07_structured_output.py](07_structured_output.py)
-  `StructuredOutputOptions`、provider payload 映射和 `complete_structured` 解析结果
-- [08_image_input.py](08_image_input.py)
-  用户图片输入和图片 tool result 回流到 provider context
-- [09_errors_retry.py](09_errors_retry.py)
-  稳定错误信息的序列化、脱敏，以及可见输出前的安全 retry
-- [10_usage.py](10_usage.py)
-  响应级 `Usage`，与账号级平台额度分开
-- [11_provider_matrix.py](11_provider_matrix.py)
-  查看内置 curated provider、endpoint、环境变量和模型入口
-- [12_provider_smoke.py](12_provider_smoke.py)
-  离线验证内置 curated provider 的默认模型句柄可解析
-- [custom_model_file.py](custom_model_file.py)
-  写入当前 `models.json` 形状的自定义模型文件，加载独立 registry，并查询自定义模型
+## 编号示例
 
-`examples/ai/advanced/` 放协议观察、faux provider、本地 registry 注入这类高级样例，不作为第一次接入的推荐入口。
+1. `01_complete.py`：完整返回与最终 `AssistantMessage`。
+2. `02_stream.py`：事件流和 `result()`。
+3. `03_typed_context.py`：显式 `Context`、`Tool`、`UserMessage`。
+4. `04_tools.py`：工具调用、严格参数校验和结果回传。
+5. `05_parallel_tools.py`：并行 tool call 增量组装。
+6. `06_reasoning.py`：`ReasoningOptions`。
+7. `07_structured_output.py`：结构化输出映射与解析。
+8. `08_image_input.py`：图片输入与图片工具结果。
+9. `09_errors_retry.py`：稳定错误载荷与 retry trace。
+10. `10_usage.py`：response usage 和未知价格。
+11. `11_provider_matrix.py`：内置 catalog 概览。
+12. `12_provider_smoke.py`：可选真实调用入口。
 
-- [advanced/inspect_endpoint_contract.py](advanced/inspect_endpoint_contract.py)
-  查看 endpoint 默认 facts 和模型最终 resolved request 的 typed contract
-- [advanced/custom_catalog.py](advanced/custom_catalog.py)
-  从自定义模型文件读取 `upstreamId`，并查看最终 provider 请求绑定
-- [advanced/normalization_diagnostics.py](advanced/normalization_diagnostics.py)
-  离线查看 context/message 归一化产生的 repair、downgrade 和 signature-removal diagnostics；
-  该示例显式启用 `pairing_mode="repair"` 以演示历史兼容修复
-- [advanced/capability_failure.py](advanced/capability_failure.py)
-  离线查看 stream/tools 等能力请求在 provider 调用前被统一校验和拒绝
-- [advanced/cancel_stream.py](advanced/cancel_stream.py)
-  离线演示 `asyncio.Event` 取消流式调用，并关闭上游 provider source
-- [advanced/trace_events.py](advanced/trace_events.py)
-  离线查看版本化 trace event、runtime retry 事件和敏感字段脱敏
-- [advanced/oauth_credential_store.py](advanced/oauth_credential_store.py)
-  离线查看 OAuth scoped credential store 写入、选择和本地文件权限
-- [advanced/platform_quota.py](advanced/platform_quota.py)
-  离线查看 Moonshot/Kimi 平台额度查询与 `PlatformQuota` 输出
-- [advanced/usage_online.py](advanced/usage_online.py)
-  在线检查 usage；当 catalog 缺少价格事实时，cost 输出为 `{"known": false}`
-- [advanced/openai_codex_contrib.py](advanced/openai_codex_contrib.py)
-  显式注册非稳定 Codex contrib adapter 和私有 catalog 后再查找模型
+`custom_model_file.py` 展示显式装载自定义 catalog。
 
-## Provider 配置速查
+内置 catalog 当前覆盖这些 provider：
 
-模型调用使用三元组定位：`provider:endpoint:model`。内置 catalog 现在是小型 curated provider 集；更长尾的 provider/model 应通过当前 `models.json` 形状的自定义模型文件添加。
+- `anthropic`
+- `baidu-qianfan`
+- `dashscope`
+- `deepseek`
+- `minimax`
+- `moonshot`
+- `openai`
+- `stepfun`
+- `tencent-hunyuan`
+- `volcano-ark`
+- `zai`
 
-例如 Moonshot 默认 OpenAI-compatible route：
+常用 API key 环境变量包括 `ANTHROPIC_API_KEY`、`QIANFAN_API_KEY`、
+`DASHSCOPE_API_KEY`、`DEEPSEEK_API_KEY`、`MOONSHOT_API_KEY` 和
+`STEPFUN_API_KEY`。具体 endpoint 声明以 `models.json` 为准。
 
-```python
-model = get_model("moonshot", "openai-completions", "kimi-k2.6")
+运行全部离线示例：
+
+```bash
+uv run python scripts/ai/check_examples.py
 ```
 
-内置 curated provider 的最小环境变量：
+## 常规调用
 
-- `anthropic`: `ANTHROPIC_API_KEY`
-- `baidu-qianfan`: `QIANFAN_API_KEY` 或 `BAIDU_QIANFAN_API_KEY`
-- `dashscope`: `DASHSCOPE_API_KEY`
-- `deepseek`: `DEEPSEEK_API_KEY`
-- `minimax`: `MINIMAX_API_KEY`
-- `moonshot`: `MOONSHOT_API_KEY`
-- `openai`: `OPENAI_API_KEY`
-- `stepfun`: `STEP_API_KEY` 或 `STEPFUN_API_KEY`
-- `tencent-hunyuan`: `HUNYUAN_API_KEY`
-- `volcano-ark`: `ARK_API_KEY`
-- `zai`: `ZAI_API_KEY`
-补充：
+```python
+from loushang.ai import ApiKeyAuth, CallOptions, complete, get_model
 
-- [advanced/openai_codex_login.py](advanced/openai_codex_login.py)
-  用于手工登录 `openai-codex` 并保存本地 credentials
+model = get_model("moonshot", "openai-completions", "kimi-k2.6")
+message = await complete(
+    model,
+    {"messages": [{"role": "user", "content": "Hello"}]},
+    CallOptions(auth=ApiKeyAuth("...")),
+)
+```
+
+`message.provider`、`message.endpoint` 和 `message.model` 共同记录完整响应来源。
+
+公共 `complete` 和 `stream` 不接收 registry 参数。
+
+## 高级示例
+
+`advanced/` 用于 catalog 检查、归一化诊断、trace、取消和自定义 adapter。
+自定义 adapter 通过进程级高级 registry 注册：
+
+```python
+from loushang.ai.advanced.registry import (
+    clear_api_adapters,
+    register_api_adapter,
+)
+
+clear_api_adapters()
+register_api_adapter(custom_adapter)
+```
+
+高级离线 faux 示例：
+
+- `advanced/faux_stream.py`
+- `advanced/context_tools_minimal.py`
+- `advanced/tool_result_roundtrip.py`
+- `advanced/cancel_stream.py`
+- `advanced/trace_events.py`
+- `advanced/inspect_endpoint_contract.py`
+- `advanced/custom_catalog.py`
+
+## OpenAI Codex live validation
+
+真实的上层应用验证位于 `examples/auth/openai_codex_live_example.py`。它选择
+`openai:coding-responses:gpt-5.5`，调用公共 `auth.get_auth(model)`，再把认证显式传给
+公共 `stream()`。示例不读取 token 文件，也不直接调用 credential source。
+
+## Live tests
+
+真实厂商验证位于 `tests/ai/vendors/`，默认跳过。运行时必须显式设置
+`LOUSHANG_AI_LIVE=1` 并提供对应 API key，或使用 Makefile 的
+`vendor-ai-*` 目标。

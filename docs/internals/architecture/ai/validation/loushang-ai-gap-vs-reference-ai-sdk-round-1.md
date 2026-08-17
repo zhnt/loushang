@@ -24,8 +24,8 @@
 
 - top-level AI API 的四个入口概念
 - model registry
-- api provider registry
-- `Provider Adapter -> Raw Parts -> Raw Assembler -> Event Stream` 主链
+- API adapter registry
+- `APIAdapter -> Raw Parts -> Raw Assembler -> Event Stream` 主链
 - `ToolResultMessage` 作为输入回流消息的定位
 - public streaming event 的主输出族：
   - `text_*`
@@ -64,10 +64,10 @@
 
 当前 `loushang-ai` 只覆盖：
 
-- `FauxProvider`
-- `AnthropicHttpxProvider`
-- `OpenAIChatCompletionsHttpxProvider`
-- `OpenAIResponsesHttpxProvider`
+- `FauxAdapter`
+- `AnthropicMessagesAdapter`
+- `OpenAIChatCompletionsAdapter`
+- `OpenAIResponsesAdapter`
 
 也就是：
 
@@ -154,7 +154,7 @@
 - audio / video 尚未建模
 - real provider image output path 仍未落地，当前 image output 主要由 faux path 验证
 
-### 7. Built-In Provider Ecosystem
+### 7. Built-In Adapter Ecosystem
 
 `reference AI SDK` 的 built-in provider registration / loading 生态更成熟。
 
@@ -165,7 +165,7 @@
 - openai-completions-httpx
 - openai-responses-httpx
 
-还未形成更完整的 built-in provider 层。
+还未形成更完整的 built-in adapter 层。
 
 ---
 

@@ -14,20 +14,23 @@ The runtime dependency direction is:
 
 ```text
 Product adapter
-  -> loushang.harness.runtime       # bindings, contexts, transitions, scheduling
-  -> loushang.harness.host          # active run lifecycle and input/event control
-  -> loushang.agent                 # message loop and tool feedback
-  -> loushang.ai                    # model/message/auth data and provider execution
+  -> loushang.harness.host          # optional RPC/channel/mode adapter
+  -> loushang.harness.session       # Agent-session composition
+  -> loushang.harness.runtime       # lifecycle, queue, retry, transitions
+  -> loushang.harness.events        # immutable facts and ordered delivery
+
+loushang.harness.session -> loushang.agent -> loushang.ai
 ```
 
 Related data contracts live with their actual lower-layer owner rather than in
 Harness:
 
-- `loushang.protocol` owns the strict cross-layer JSON value algebra;
+- `loushang.foundation.json` owns the strict cross-layer JSON value algebra;
 - `loushang.ai.json_codec` owns AI message, content-part, usage, and assistant
   event JSON codecs;
 - `loushang.ai.model.ModelSelection` owns stable model references;
-- `loushang.ai.auth.AuthResolution` owns the neutral auth-resolution result;
+- `loushang.ai.auth` owns request-ready credential types and credential-to-header
+  resolution;
 - `loushang.agent.json_codec.AgentMessageJsonCodec` composes AI messages with
   product-registered custom message codecs;
 - `loushang.agent.tool_output.ToolOutputProjector` owns raw tool-result
@@ -80,7 +83,7 @@ Coding and future Product adapters retain:
 
 - product goals, domain language, completion criteria, prompt and skill content;
 - domain-specific tools and activation of shared tool packs;
-- model choice, provider registration, credential lookup/login, auth wording,
+- model choice, provider registration, auth error presentation,
   risk/approval defaults, and configuration fields/defaults;
 - context salience, exact compaction/summary prompts, and artifact semantics;
 - transcript header/custom record schemas and codecs, session paths, naming,
@@ -93,9 +96,10 @@ Coding and future Product adapters retain:
 Coding's `ExtensionRuntimeBindings` is now only a typed specialization of
 `ProductRuntimeBindings`. Its extension context classes are zero-logic naming
 adapters over Harness contexts. `AgentSessionRuntime` supplies product callbacks
-to `SessionTransitionHost`, `SessionOperationCoordinator`, navigation
-transactions, and `CoalescingScheduler` while keeping every Coding-specific
-session decision and projection.
+to `SessionTransitionHost` and navigation transactions while keeping every
+Coding-specific session decision and projection. `AgentTranscriptDirectoryRuntime`
+owns the reusable catalog queries, index refresh, and coalesced refresh
+scheduling that it consumes.
 
 ## Explicit Non-Goals
 

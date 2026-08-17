@@ -5,8 +5,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.events import VALID_EXTENSION_EVENTS
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.diagnostics import resource_diagnostic
 
 PermissionLevel = Literal["safe", "standard", "powerful"]
 HookKind = Literal["observe", "transform", "intercept", "augment"]
@@ -97,11 +98,11 @@ class ExtensionManifest:
 @dataclass(frozen=True)
 class ExtensionManifestParseResult:
     manifest: ExtensionManifest | None = None
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
+    diagnostics: list[DiagnosticDraft] = field(default_factory=list)
 
 
 def parse_extension_manifest(path: Path) -> ExtensionManifestParseResult:
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
     try:
         with path.open("rb") as stream:
             data = tomllib.load(stream)
@@ -224,7 +225,7 @@ class _NamedDeclaration:
 def _parse_permissions(
     value: object,
     path: Path,
-    diagnostics: list[ResourceDiagnostic],
+    diagnostics: list[DiagnosticDraft],
 ) -> ExtensionPermissionDeclaration:
     if value is None:
         return ExtensionPermissionDeclaration()
@@ -259,7 +260,7 @@ def _parse_named_declarations(
     value: object,
     path: Path,
     resource_name: str,
-    diagnostics: list[ResourceDiagnostic],
+    diagnostics: list[DiagnosticDraft],
 ) -> tuple[_NamedDeclaration, ...]:
     if value is None:
         return ()
@@ -308,7 +309,7 @@ def _parse_named_declarations(
 def _parse_hooks(
     value: object,
     path: Path,
-    diagnostics: list[ResourceDiagnostic],
+    diagnostics: list[DiagnosticDraft],
 ) -> tuple[ExtensionHookDeclaration, ...]:
     if value is None:
         return ()
@@ -412,8 +413,8 @@ def _diagnostic(
     source_path: Path,
     *,
     metadata: dict[str, object] | None = None,
-) -> ResourceDiagnostic:
-    return ResourceDiagnostic(
+) -> DiagnosticDraft:
+    return resource_diagnostic(
         code=code,
         message=message,
         source_path=source_path,

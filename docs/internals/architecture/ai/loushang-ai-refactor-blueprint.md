@@ -10,14 +10,15 @@
    - 领域对象、registry、装载
 2. `provider/`
    - 统一 provider 边界、请求解析、payload helper
-3. `providers/`
-   - 各厂商具体适配实现
+3. `protocols/`
+   - OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 协议适配
 4. `messages.py` / `context.py`
    - 消息规范化与 `Context` 形状整理
 5. `event_stream/`
    - raw part 与统一流式事件组装
 6. `auth/`
-   - 认证解析与 OAuth 支持
+   - 调用凭证解析与 provider auth header 生成
+   - OAuth 生命周期、账号选择、quota、billing 和产品级认证策略不属于 AI 包
 
 ## 当前原则
 
@@ -47,14 +48,14 @@
 
 - `provider/`
   - 负责统一请求解析与边界对象
-- `providers/`
-  - 负责具体厂商协议适配
+- `protocols/`
+  - 负责具体 wire protocol 适配，不承载产品路由
 
 ## 当前文档使用方式
 
 如果需要理解当前代码，请优先阅读：
 
 - [`src/loushang/ai/README.md`](../../../src/loushang/ai/README.md)
-- [`docs/architecture/ai/README.md`](./README.md)
+- [`docs/internals/architecture/ai/README.md`](./README.md)
 
 本文件不再作为旧方案细节的保留地。

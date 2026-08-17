@@ -5,10 +5,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal, TypeAlias
 
-from loushang.work import WorkEvent, WorkOperation
+from loushang.harness.events.projection import RuntimeEventView
+from loushang.harnesswork.types import WorkEvent, WorkOperation
 
 ChannelEnvelopeKind: TypeAlias = Literal["operation", "event"]
-ChannelPayload: TypeAlias = WorkOperation | WorkEvent
+ChannelPayload: TypeAlias = WorkOperation | WorkEvent | RuntimeEventView
 
 
 @dataclass(frozen=True)
@@ -34,8 +35,10 @@ class ChannelEnvelope:
             raise ValueError("channel envelope kind must be 'operation' or 'event'")
         if self.kind == "operation" and not isinstance(self.payload, WorkOperation):
             actual = _payload_name(self.payload)
-            raise TypeError(f"operation channel envelopes cannot carry {actual} payload")
-        if self.kind == "event" and not isinstance(self.payload, WorkEvent):
+            raise TypeError(
+                f"operation channel envelopes cannot carry {actual} payload"
+            )
+        if self.kind == "event" and not _is_event_payload(self.payload):
             actual = _payload_name(self.payload)
             raise TypeError(f"event channel envelopes cannot carry {actual} payload")
 
@@ -45,7 +48,13 @@ def _payload_name(payload: object) -> str:
         return "operation"
     if isinstance(payload, WorkEvent):
         return "event"
+    if isinstance(payload, RuntimeEventView):
+        return "runtime event view"
     return type(payload).__name__
+
+
+def _is_event_payload(payload: object) -> bool:
+    return isinstance(payload, WorkEvent | RuntimeEventView)
 
 
 __all__ = [

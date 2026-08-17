@@ -6,16 +6,33 @@ from datetime import UTC, datetime
 import pytest
 
 
-def test_channel_public_api_exposes_minimal_boundary_surface() -> None:
+def test_channel_public_api_exposes_boundary_and_jsonl_surfaces() -> None:
     import loushang.channel as channel
 
     assert set(channel.__all__) == {
+        "ChannelError",
+        "ChannelDelivery",
+        "ChannelDeliveryListener",
         "ChannelEndpoint",
         "ChannelEnvelope",
         "ChannelEnvelopeKind",
+        "ChannelEventDelivery",
+        "ChannelHost",
+        "ChannelHostPort",
+        "ChannelOperationAccepted",
+        "ChannelOperationCancelRequest",
+        "ChannelOperationCancelled",
+        "ChannelOperationRequest",
         "ChannelPayload",
+        "ChannelRpcFrame",
+        "ChannelRpcFrameKind",
+        "ChannelUnsubscribe",
         "channel_envelope_from_json",
         "channel_envelope_to_json",
+        "decode_rpc_jsonl_frame",
+        "encode_rpc_jsonl_frame",
+        "rpc_jsonl_frame_from_json",
+        "rpc_jsonl_frame_to_json",
     }
 
 
@@ -91,6 +108,29 @@ def test_channel_envelope_carries_work_event_for_client_delivery() -> None:
     assert envelope.created_at is created_at
 
 
+def test_channel_envelope_carries_projected_runtime_event_for_client_delivery() -> None:
+    from loushang.channel import ChannelEnvelope
+    from loushang.harness.events import RuntimeEventView
+
+    created_at = datetime(2026, 6, 10, 12, 30, tzinfo=UTC)
+    event = RuntimeEventView(
+        event_id="runtime-event-1",
+        kind="agent.message_update",
+        stream_id="session:session-1",
+        sequence=4,
+        occurred_at=created_at,
+        event_type="assistant_delta",
+        view="assistant_stream",
+        payload={"type": "assistant_delta", "text": "hello"},
+        delivery_hint="coalesce",
+        session_id="session-1",
+    )
+
+    envelope = ChannelEnvelope(envelope_id="env-runtime-1", kind="event", payload=event)
+
+    assert envelope.payload is event
+
+
 def test_channel_envelope_rejects_mismatched_payload_kind() -> None:
     from loushang.channel import ChannelEnvelope
     from loushang.work import WorkOperation
@@ -105,6 +145,18 @@ def test_channel_envelope_rejects_mismatched_payload_kind() -> None:
 
     with pytest.raises(TypeError, match="operation"):
         ChannelEnvelope(envelope_id="env-1", kind="event", payload=operation)
+
+
+def test_channel_envelope_rejects_unknown_event_payload_without_lazy_import_error() -> (
+    None
+):
+    from loushang.channel import ChannelEnvelope
+
+    with pytest.raises(
+        TypeError,
+        match="event channel envelopes cannot carry object payload",
+    ):
+        ChannelEnvelope(envelope_id="env-unknown", kind="event", payload=object())
 
 
 def test_channel_envelope_rejects_unknown_kind_at_runtime() -> None:

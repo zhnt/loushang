@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Generic, Protocol, TypeVar
 
+from loushang.harness.conversation.store import ConversationLocator
 from loushang.harness.journal import (
     FunctionalJournalHeaderCodec as FunctionalConversationHeaderCodec,
 )
@@ -30,7 +30,7 @@ class ConversationProjector(Protocol[H_contra, R_contra, P_co]):
         header: H_contra,
         records: Sequence[R_contra],
         leaf_id: str | None,
-        source_path: Path | None,
+        locator: ConversationLocator,
     ) -> P_co: ...
 
 
@@ -42,7 +42,7 @@ class ConversationFolder(Protocol[R_contra, S]):
 
 @dataclass(frozen=True)
 class FunctionalConversationProjector(Generic[H, R, P]):
-    projection: Callable[[H, Sequence[R], str | None, Path | None], P]
+    projection: Callable[[H, Sequence[R], str | None, ConversationLocator], P]
 
     def project(
         self,
@@ -50,9 +50,9 @@ class FunctionalConversationProjector(Generic[H, R, P]):
         header: H,
         records: Sequence[R],
         leaf_id: str | None,
-        source_path: Path | None,
+        locator: ConversationLocator,
     ) -> P:
-        return self.projection(header, records, leaf_id, source_path)
+        return self.projection(header, records, leaf_id, locator)
 
 
 @dataclass(frozen=True)

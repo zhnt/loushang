@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import MISSING, dataclass, field, fields, is_dataclass
 from inspect import Parameter, signature
+from pathlib import Path
 from types import NoneType
 from typing import (
     Annotated,
@@ -10,22 +11,32 @@ from typing import (
     NotRequired,
     Protocol,
     Required,
-    TypedDict,
+    cast,
     get_args,
     get_origin,
     get_type_hints,
     is_typeddict,
     runtime_checkable,
 )
+from uuid import uuid4
 
-from loushang.agent.types import (
-    AgentTool,
-    AgentToolResult,
-    ToolExecutionMode,
-    ensure_agent_tool,
-    is_agent_tool_like,
-)
+from loushang.agent.types import AgentTool, AgentToolResult, ToolExecutionMode
+from loushang.ai.types import ToolCall
 from loushang.harness.presentation import ToolRenderContext, ToolRenderResultOptions
+from loushang.harness.runtime.registration import (
+    RegistrationDisposalResult,
+    RegistrationIdentity,
+    RegistrationLease,
+    RegistrationLeaseState,
+    RegistrationOwner,
+)
+from loushang.harness.tools.execution import (
+    AuthorizedExecution,
+    DirectExecution,
+    ExecutionBinding,
+    ToolCallContext,
+    ToolExecutionHost,
+)
 
 _TOOL_SPEC_ATTR = "__loushang_tool_spec__"
 
@@ -35,6 +46,13 @@ ToolRenderResult = Callable[
     [AgentToolResult[Any], ToolRenderResultOptions, Mapping[str, str], ToolRenderContext],
     ToolRenderOutput,
 ]
+
+
+class ToolContextProvider(Protocol):
+    """Build Product-neutral context for one materialized tool call."""
+
+    def __call__(self, *, tool_call_id: str) -> object: ...
+
 
 _SCALAR_TYPES: dict[type[object], str] = {
     str: "string",
@@ -67,10 +85,7 @@ class ToolDefinition:
     label: str
     description: str
     parameters: dict[str, Any]
-    execute: Callable[
-        [str, dict[str, Any], object | None, object | None],
-        Awaitable[AgentToolResult[Any]],
-    ]
+    execution: ExecutionBinding
     prepare_arguments: Callable[[object], dict[str, Any]] | None = None
     execution_mode: ToolExecutionMode = "parallel"
     prompt_snippet: str | None = None
@@ -96,6 +111,10 @@ class ToolDefinition:
             raise TypeError("render_result must be callable")
         if self.provider_parameters is not None and not isinstance(self.provider_parameters, dict):
             raise TypeError("provider_parameters must be a dict")
+        if not isinstance(self.execution, DirectExecution | AuthorizedExecution):
+            raise TypeError(
+                "execution must be DirectExecution or AuthorizedExecution"
+            )
 
     @property
     def renderCall(self) -> ToolRenderCall | None:
@@ -104,6 +123,49 @@ class ToolDefinition:
     @property
     def renderResult(self) -> ToolRenderResult | None:
         return self.render_result
+
+
+def project_tool_definition(
+    definition: ToolDefinition,
+    source_info: object | None = None,
+    *,
+    builtin_names: frozenset[str] = frozenset(),
+) -> dict[str, object]:
+    """Project a tool definition into the neutral session/tool wire shape."""
+    return {
+        "name": definition.name,
+        "description": definition.description,
+        "parameters": definition.parameters,
+        "sourceInfo": _project_tool_source_info(source_info, definition.name, builtin_names),
+    }
+
+
+def _project_tool_source_info(
+    source_info: object | None,
+    name: str,
+    builtin_names: frozenset[str],
+) -> dict[str, object]:
+    if source_info is None:
+        source = "builtin" if name in builtin_names else "sdk"
+        return {
+            "path": f"<{source}:{name}>",
+            "source": source,
+            "scope": "temporary",
+            "origin": "top-level",
+            "baseDir": None,
+        }
+    base_dir = getattr(source_info, "base_dir", None)
+    return {
+        "path": _path_text(getattr(source_info, "path", "")),
+        "source": getattr(source_info, "source", "filesystem"),
+        "scope": getattr(source_info, "scope", "project"),
+        "origin": getattr(source_info, "origin", "top-level"),
+        "baseDir": _path_text(base_dir) if base_dir is not None else None,
+    }
+
+
+def _path_text(value: object) -> str:
+    return value.as_posix() if isinstance(value, Path) else str(value)
 
 
 @dataclass(frozen=True)
@@ -150,13 +212,20 @@ def tool(
     return decorator
 
 
-def _base_object_schema() -> dict[str, object]:
-    return {
+def _base_object_schema() -> tuple[
+    dict[str, object],
+    dict[str, object],
+    list[str],
+]:
+    properties: dict[str, object] = {}
+    required: list[str] = []
+    schema: dict[str, object] = {
         "type": "object",
-        "properties": {},
-        "required": [],
+        "properties": properties,
+        "required": required,
         "additionalProperties": False,
     }
+    return schema, properties, required
 
 
 def _unwrap_annotation(annotation: object) -> object:
@@ -173,8 +242,9 @@ def _unwrap_annotation(annotation: object) -> object:
 def _merge_schema(base: dict[str, object], overrides: dict[str, object]) -> dict[str, object]:
     merged: dict[str, object] = dict(base)
     for key, value in overrides.items():
-        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
-            merged[key] = _merge_schema(merged[key], value)
+        existing = merged.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            merged[key] = _merge_schema(existing, value)
         else:
             merged[key] = value
     return merged
@@ -188,12 +258,14 @@ def apply_schema_overrides(schema: dict[str, object], overrides: dict[str, objec
     return _merge_schema(schema, overrides)
 
 
-def infer_schema_from_signature(fn: object, *, exclude_names: set[str] | frozenset[str] | None = None) -> dict[str, object]:
+def infer_schema_from_signature(
+    fn: Callable[..., object],
+    *,
+    exclude_names: set[str] | frozenset[str] | None = None,
+) -> dict[str, object]:
     sig = signature(fn)
     hints = get_type_hints(fn, include_extras=True)
-    schema = _base_object_schema()
-    properties = schema["properties"]
-    required = schema["required"]
+    schema, properties, required = _base_object_schema()
     excluded = set(exclude_names or ())
 
     for param in sig.parameters.values():
@@ -264,11 +336,9 @@ def infer_schema_from_type(annotation: object) -> dict[str, object]:
 
 def _infer_schema_from_dataclass(cls: type[object]) -> dict[str, object]:
     type_hints = get_type_hints(cls, include_extras=True)
-    schema = _base_object_schema()
-    properties = schema["properties"]
-    required = schema["required"]
+    schema, properties, required = _base_object_schema()
 
-    for dataclass_field in fields(cls):
+    for dataclass_field in fields(cast(Any, cls)):
         annotation = type_hints.get(dataclass_field.name, dataclass_field.type)
         properties[dataclass_field.name] = infer_schema_from_type(annotation)
         if dataclass_field.default is MISSING and dataclass_field.default_factory is MISSING:
@@ -277,14 +347,18 @@ def _infer_schema_from_dataclass(cls: type[object]) -> dict[str, object]:
     return schema
 
 
-def _infer_schema_from_typeddict(cls: type[TypedDict]) -> dict[str, object]:
+def _infer_schema_from_typeddict(cls: type[object]) -> dict[str, object]:
     type_hints = get_type_hints(cls, include_extras=True)
-    schema = _base_object_schema()
-    properties = schema["properties"]
-    required = schema["required"]
+    schema, properties, required = _base_object_schema()
 
-    required_keys = getattr(cls, "__required_keys__", frozenset())
-    optional_keys = getattr(cls, "__optional_keys__", frozenset())
+    required_keys = cast(
+        frozenset[str],
+        getattr(cls, "__required_keys__", frozenset()),
+    )
+    optional_keys = cast(
+        frozenset[str],
+        getattr(cls, "__optional_keys__", frozenset()),
+    )
 
     for name, annotation in type_hints.items():
         properties[name] = infer_schema_from_type(annotation)
@@ -301,7 +375,7 @@ def _infer_schema_from_typeddict(cls: type[TypedDict]) -> dict[str, object]:
 
 
 def _typeddict_key_is_required(
-    cls: type[TypedDict],
+    cls: type[object],
     name: str,
     annotation: object,
     *,
@@ -359,6 +433,8 @@ def _raise_on_unresolved_pydantic_refs(value: object, *, in_properties_map: bool
 @dataclass
 class WrappedToolDefinition:
     definition: ToolDefinition
+    execution_host: ToolExecutionHost
+    context_provider: ToolContextProvider | None = None
 
     @property
     def name(self) -> str:
@@ -374,7 +450,7 @@ class WrappedToolDefinition:
 
     @property
     def parameters(self) -> dict[str, Any]:
-        return self.definition.parameters
+        return self.definition.provider_parameters or self.definition.parameters
 
     @property
     def prepare_arguments(self):
@@ -407,75 +483,352 @@ class WrappedToolDefinition:
         signal: object | None = None,
         on_update: object | None = None,
     ) -> AgentToolResult[Any]:
-        return await self.definition.execute(tool_call_id, params, signal, on_update)
+        context = _build_tool_call_context(
+            tool_call_id=tool_call_id,
+            signal=signal,
+            on_update=on_update,
+            context_provider=self.context_provider,
+        )
+        return await self.execution_host.dispatch(
+            self.definition,
+            ToolCall(
+                type="toolCall",
+                id=tool_call_id,
+                name=self.definition.name,
+                arguments=dict(params),
+            ),
+            context,
+        )
 
 
-def wrap_tool_definition(definition: ToolDefinition) -> AgentTool[Any]:
-    return WrappedToolDefinition(definition=definition)
-
-
-def create_tool_definition_from_tool(tool: AgentTool[Any]) -> ToolDefinition:
-    definition = getattr(tool, "definition", None)
-    if isinstance(definition, ToolDefinition):
-        return definition
-    return ToolDefinition(
-        name=tool.name,
-        label=tool.label,
-        description=tool.description,
-        parameters=tool.parameters,
-        prepare_arguments=tool.prepare_arguments,
-        execution_mode=tool.execution_mode,
-        render_call=getattr(tool, "render_call", getattr(tool, "renderCall", None)),
-        render_result=getattr(tool, "render_result", getattr(tool, "renderResult", None)),
-        execute=tool.execute,
+def _build_tool_call_context(
+    *,
+    tool_call_id: str,
+    signal: object | None,
+    on_update: object | None,
+    context_provider: ToolContextProvider | None,
+) -> ToolCallContext:
+    provided = (
+        context_provider(tool_call_id=tool_call_id)
+        if context_provider is not None
+        else None
+    )
+    if isinstance(provided, ToolCallContext):
+        return ToolCallContext(
+            tool_call_id=tool_call_id,
+            cwd=provided.cwd,
+            diagnostics=provided.diagnostics,
+            signal=signal,
+            model=provided.model,
+            event_sink=provided.event_sink,
+            exec_service=provided.exec_service,
+            on_update=on_update if callable(on_update) else None,
+            operation_bindings=provided.operation_bindings,
+        )
+    return ToolCallContext(
+        tool_call_id=tool_call_id,
+        cwd=getattr(provided, "cwd", None),
+        diagnostics=getattr(provided, "diagnostics", None),
+        signal=signal,
+        model=getattr(provided, "model", None),
+        event_sink=getattr(provided, "event_sink", None),
+        exec_service=getattr(provided, "exec_service", None),
+        on_update=on_update if callable(on_update) else None,
     )
 
 
-def wrap_tool_definitions(definitions: list[ToolDefinition]) -> list[AgentTool[Any]]:
-    return [wrap_tool_definition(definition) for definition in definitions]
+def wrap_tool_definition(
+    definition: ToolDefinition,
+    *,
+    execution_host: ToolExecutionHost | None = None,
+    context_provider: ToolContextProvider | None = None,
+) -> AgentTool[Any]:
+    return WrappedToolDefinition(
+        definition=definition,
+        execution_host=execution_host or ToolExecutionHost(),
+        context_provider=context_provider,
+    )
+
+
+def wrap_tool_definitions(
+    definitions: list[ToolDefinition],
+    *,
+    execution_host: ToolExecutionHost | None = None,
+    context_provider: ToolContextProvider | None = None,
+) -> list[AgentTool[Any]]:
+    host = execution_host or ToolExecutionHost()
+    return [
+        wrap_tool_definition(
+            definition,
+            execution_host=host,
+            context_provider=context_provider,
+        )
+        for definition in definitions
+    ]
 
 
 @dataclass(frozen=True)
 class _RegisteredTool:
+    owner: RegistrationOwner
+    identity: RegistrationIdentity
     definition: ToolDefinition
     enabled: bool = True
     source_info: object | None = None
+    published: bool = True
 
 
 class ToolRegistry:
-    def __init__(self) -> None:
-        self._tools: dict[str, _RegisteredTool] = {}
+    def __init__(self, *, execution_host: ToolExecutionHost | None = None) -> None:
+        self._tools: dict[str, list[_RegisteredTool]] = {}
         self._order: list[str] = []
+        self._legacy_registration_ids: dict[str, str] = {}
+        self._legacy_owner = RegistrationOwner(
+            owner_kind="runtime",
+            owner_id="tool-registry-compatibility",
+            runtime_id=uuid4().hex,
+            generation=0,
+        )
+        self._execution_host = execution_host
+
+    def bind_execution_host(self, host: ToolExecutionHost) -> None:
+        self._execution_host = host
+
+    @property
+    def registration_inventory(
+        self,
+    ) -> tuple[
+        tuple[RegistrationOwner, RegistrationIdentity, RegistrationLeaseState], ...
+    ]:
+        """Return pre-redacted identities for currently published Tool layers."""
+
+        return tuple(
+            (registered.owner, registered.identity, "active")
+            for name in self._order
+            for registered in self._tools.get(name, ())
+            if registered.published
+        )
 
     def register_tool(
         self,
-        tool: ToolDefinition | AgentTool[Any] | object,
+        tool: ToolDefinition,
         *,
         enabled: bool = True,
         source_info: object | None = None,
     ) -> ToolDefinition:
-        if isinstance(tool, ToolDefinition):
-            definition = tool
-        elif is_agent_tool_like(tool):
-            definition = create_tool_definition_from_tool(ensure_agent_tool(tool))
-        else:
-            raise TypeError(
-                "ToolRegistry.register_tool expects a pre-normalized ToolDefinition "
-                "or AgentTool-like object"
-            )
-        if definition.name not in self._tools:
+        """Compatibility facade; live owners should use :meth:`bind_tool`."""
+
+        definition = self._require_definition(tool, operation="register_tool")
+        layers = self._tools.get(definition.name)
+        if layers is None:
+            layers = []
+            self._tools[definition.name] = layers
             self._order.append(definition.name)
-        self._tools[definition.name] = _RegisteredTool(definition=definition, enabled=enabled, source_info=source_info)
-        return definition
+        previous_id = self._legacy_registration_ids.get(definition.name)
+        identity = RegistrationIdentity.create(
+            surface="tool",
+            public_key=definition.name,
+        )
+        registered = _RegisteredTool(
+            owner=self._legacy_owner,
+            identity=identity,
+            definition=definition,
+            enabled=enabled,
+            source_info=source_info,
+        )
+        previous_index = next(
+            (
+                index
+                for index, existing in enumerate(layers)
+                if existing.identity.registration_id == previous_id
+            ),
+            None,
+        )
+        if previous_index is None:
+            layers.append(registered)
+        else:
+            layers[previous_index] = registered
+        self._legacy_registration_ids[definition.name] = identity.registration_id
+        return tool
+
+    def bind_tool(
+        self,
+        tool: ToolDefinition,
+        *,
+        owner: RegistrationOwner,
+        enabled: bool = True,
+        source_info: object | None = None,
+    ) -> RegistrationLease:
+        """Bind one owner-scoped Tool layer and return its exact disposer."""
+
+        return self._bind_tool(
+            tool,
+            owner=owner,
+            enabled=enabled,
+            source_info=source_info,
+            published=True,
+        )
+
+    def stage_tool(
+        self,
+        tool: ToolDefinition,
+        *,
+        owner: RegistrationOwner,
+        enabled: bool = True,
+        source_info: object | None = None,
+    ) -> RegistrationLease:
+        """Add one invisible Tool layer that becomes effective on lease activation."""
+
+        return self._bind_tool(
+            tool,
+            owner=owner,
+            enabled=enabled,
+            source_info=source_info,
+            published=False,
+        )
+
+    def _bind_tool(
+        self,
+        tool: ToolDefinition,
+        *,
+        owner: RegistrationOwner,
+        enabled: bool,
+        source_info: object | None,
+        published: bool,
+    ) -> RegistrationLease:
+        definition = self._require_definition(tool, operation="bind_tool")
+        if not isinstance(owner, RegistrationOwner):
+            raise TypeError("ToolRegistry.bind_tool owner must be a RegistrationOwner")
+        identity = RegistrationIdentity.create(
+            surface="tool",
+            public_key=definition.name,
+        )
+        layers = self._tools.get(definition.name)
+        if layers is None:
+            layers = []
+            self._tools[definition.name] = layers
+            self._order.append(definition.name)
+        layers.append(
+            _RegisteredTool(
+                owner=owner,
+                identity=identity,
+                definition=definition,
+                enabled=enabled,
+                source_info=source_info,
+                published=published,
+            )
+        )
+        return RegistrationLease(
+            owner=owner,
+            identity=identity,
+            dispose=lambda: self._remove_bound_tool(
+                owner=owner,
+                identity=identity,
+            ),
+            activate=(
+                None
+                if published
+                else lambda: self._set_bound_tool_published(
+                    owner=owner,
+                    identity=identity,
+                    published=True,
+                )
+            ),
+            deactivate=(
+                None
+                if published
+                else lambda: self._set_bound_tool_published(
+                    owner=owner,
+                    identity=identity,
+                    published=False,
+                )
+            ),
+            rollback=lambda: self._remove_bound_tool(
+                owner=owner,
+                identity=identity,
+            ),
+        )
+
+    def adopt_compatibility_tool(
+        self,
+        tool: ToolDefinition,
+        *,
+        owner: RegistrationOwner,
+        source_info: object | None = None,
+    ) -> RegistrationLease | None:
+        """Move one bootstrap compatibility entry under an exact live owner."""
+
+        definition = self._require_definition(tool, operation="adopt_tool")
+        if not isinstance(owner, RegistrationOwner):
+            raise TypeError("ToolRegistry adoption owner must be a RegistrationOwner")
+        name = definition.name
+        registration_id = self._legacy_registration_ids.get(name)
+        layers = self._tools.get(name)
+        if registration_id is None or layers is None:
+            return None
+        for index, registered in enumerate(layers):
+            if registered.identity.registration_id != registration_id:
+                continue
+            if (
+                registered.definition is not definition
+                or registered.source_info != source_info
+            ):
+                return None
+            identity = RegistrationIdentity.create(surface="tool", public_key=name)
+            layers[index] = _RegisteredTool(
+                owner=owner,
+                identity=identity,
+                definition=registered.definition,
+                enabled=registered.enabled,
+                source_info=registered.source_info,
+            )
+            del self._legacy_registration_ids[name]
+
+            def dispose_adopted(
+                resolved_identity: RegistrationIdentity = identity,
+            ) -> RegistrationDisposalResult:
+                return self._remove_bound_tool(
+                    owner=owner,
+                    identity=resolved_identity,
+                )
+
+            def rollback_adoption(
+                resolved_identity: RegistrationIdentity = identity,
+                original: _RegisteredTool = registered,
+            ) -> RegistrationDisposalResult:
+                current_layers = self._tools.get(name)
+                if current_layers is None:
+                    return RegistrationDisposalResult(state="already_removed")
+                for current_index, current in enumerate(current_layers):
+                    if current.identity.registration_id != resolved_identity.registration_id:
+                        continue
+                    if current.owner != owner:
+                        return RegistrationDisposalResult(
+                            state="failed_terminal",
+                            diagnostic_code="tool_registration_owner_mismatch",
+                        )
+                    current_layers[current_index] = original
+                    self._legacy_registration_ids[name] = (
+                        original.identity.registration_id
+                    )
+                    return RegistrationDisposalResult(state="removed")
+                return RegistrationDisposalResult(state="already_removed")
+
+            return RegistrationLease(
+                owner=owner,
+                identity=identity,
+                dispose=dispose_adopted,
+                rollback=rollback_adoption,
+            )
+        return None
 
     def get_tool(self, name: str) -> AgentTool[Any]:
         return self.materialize_tool(name)
 
     def get_definition(self, name: str) -> ToolDefinition:
-        return self._tools[name].definition
+        return self._effective_tool(name).definition
 
     def get_source_info(self, name: str) -> object | None:
-        return self._tools[name].source_info
+        return self._effective_tool(name).source_info
 
     def list_tools(self) -> list[AgentTool[Any]]:
         return self.materialize_definitions(self.list_definitions())
@@ -484,29 +837,166 @@ class ToolRegistry:
         return self.materialize_definitions(self.list_enabled_definitions())
 
     def list_definitions(self) -> list[ToolDefinition]:
-        return [self._tools[name].definition for name in self._order]
+        return [
+            registered.definition
+            for name in self._order
+            if (registered := self._effective_tool_or_none(name)) is not None
+        ]
 
     def list_enabled_definitions(self) -> list[ToolDefinition]:
-        return [self._tools[name].definition for name in self._order if self._tools[name].enabled]
+        return [
+            registered.definition
+            for name in self._order
+            if (registered := self._effective_tool_or_none(name)) is not None
+            and registered.enabled
+        ]
 
     def enable_tool(self, name: str) -> None:
-        registered = self._tools[name]
-        self._tools[name] = _RegisteredTool(
+        index, registered = self._effective_tool_entry(name)
+        self._tools[name][index] = _RegisteredTool(
+            owner=registered.owner,
+            identity=registered.identity,
             definition=registered.definition,
             enabled=True,
             source_info=registered.source_info,
+            published=registered.published,
         )
 
     def disable_tool(self, name: str) -> None:
-        registered = self._tools[name]
-        self._tools[name] = _RegisteredTool(
+        index, registered = self._effective_tool_entry(name)
+        self._tools[name][index] = _RegisteredTool(
+            owner=registered.owner,
+            identity=registered.identity,
             definition=registered.definition,
             enabled=False,
             source_info=registered.source_info,
+            published=registered.published,
         )
 
     def materialize_tool(self, name: str) -> AgentTool[Any]:
-        return wrap_tool_definition(self.get_definition(name))
+        return wrap_tool_definition(
+            self.get_definition(name),
+            execution_host=self._execution_host,
+        )
 
-    def materialize_definitions(self, definitions: list[ToolDefinition]) -> list[AgentTool[Any]]:
-        return [wrap_tool_definition(definition) for definition in definitions]
+    def materialize_definitions(
+        self,
+        definitions: list[ToolDefinition],
+        *,
+        context_provider: ToolContextProvider | None = None,
+    ) -> list[AgentTool[Any]]:
+        return wrap_tool_definitions(
+            definitions,
+            execution_host=self._execution_host,
+            context_provider=context_provider,
+        )
+
+    @staticmethod
+    def _require_definition(
+        tool: ToolDefinition,
+        *,
+        operation: str,
+    ) -> ToolDefinition:
+        if not isinstance(tool, ToolDefinition):
+            raise TypeError(
+                f"ToolRegistry.{operation} expects an explicitly bound ToolDefinition"
+            )
+        return tool
+
+    def _effective_tool(self, name: str) -> _RegisteredTool:
+        registered = self._effective_tool_or_none(name)
+        if registered is None:
+            raise KeyError(name)
+        return registered
+
+    def _effective_tool_or_none(self, name: str) -> _RegisteredTool | None:
+        return next(
+            (
+                registered
+                for registered in reversed(self._tools.get(name, ()))
+                if registered.published
+            ),
+            None,
+        )
+
+    def _effective_tool_entry(self, name: str) -> tuple[int, _RegisteredTool]:
+        layers = self._tools.get(name, ())
+        for index in range(len(layers) - 1, -1, -1):
+            if layers[index].published:
+                return index, layers[index]
+        raise KeyError(name)
+
+    def _set_bound_tool_published(
+        self,
+        *,
+        owner: RegistrationOwner,
+        identity: RegistrationIdentity,
+        published: bool,
+    ) -> None:
+        name = identity.public_key
+        layers = self._tools.get(name or "")
+        if identity.surface != "tool" or name is None or layers is None:
+            raise RuntimeError("staged Tool registration is unavailable")
+        for index, registered in enumerate(layers):
+            if registered.identity.registration_id != identity.registration_id:
+                continue
+            if registered.owner != owner:
+                raise RuntimeError("staged Tool registration owner changed")
+            layers[index] = _RegisteredTool(
+                owner=registered.owner,
+                identity=registered.identity,
+                definition=registered.definition,
+                enabled=registered.enabled,
+                source_info=registered.source_info,
+                published=published,
+            )
+            return
+        raise RuntimeError("staged Tool registration was removed")
+
+    def _remove_bound_tool(
+        self,
+        *,
+        owner: RegistrationOwner,
+        identity: RegistrationIdentity,
+    ) -> RegistrationDisposalResult:
+        if identity.surface != "tool":
+            return RegistrationDisposalResult(
+                state="failed_terminal",
+                diagnostic_code="tool_registration_surface_mismatch",
+            )
+        name = identity.public_key
+        if name is None:
+            return RegistrationDisposalResult(
+                state="failed_terminal",
+                diagnostic_code="tool_registration_public_key_missing",
+            )
+        layers = self._tools.get(name)
+        if layers is None:
+            return RegistrationDisposalResult(state="already_removed")
+        for index, registered in enumerate(layers):
+            if registered.identity.registration_id != identity.registration_id:
+                continue
+            if registered.owner != owner:
+                return RegistrationDisposalResult(
+                    state="failed_terminal",
+                    diagnostic_code="tool_registration_owner_mismatch",
+                )
+            layers.pop(index)
+            if not layers:
+                del self._tools[name]
+                self._order.remove(name)
+            return RegistrationDisposalResult(state="removed")
+        return RegistrationDisposalResult(state="already_removed")
+
+    def _rollback_tool_binding(
+        self,
+        lease: RegistrationLease,
+    ) -> RegistrationDisposalResult:
+        """Remove an unpublished binding after Session admission fails."""
+
+        if not isinstance(lease, RegistrationLease):
+            raise TypeError("tool binding rollback requires a RegistrationLease")
+        return self._remove_bound_tool(
+            owner=lease.owner,
+            identity=lease.identity,
+        )

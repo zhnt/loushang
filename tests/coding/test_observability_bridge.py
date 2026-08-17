@@ -1,12 +1,27 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from types import SimpleNamespace
+
+from loushang.coding.diagnostics.profile import coding_diagnostic_source
+from loushang.harness.diagnostics.observability_runtime import (
+    session_observability_context,
+)
+
+
+@contextmanager
+def coding_observability_context(**kwargs):
+    with session_observability_context(
+        **kwargs,
+        source_resolver=coding_diagnostic_source,
+    ):
+        yield
 
 
 def test_coding_observability_context_bridges_problems_to_diagnostics(tmp_path) -> None:
-    from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.coding.observability import coding_observability_context
-    from loushang.observability import get_log, get_problem_store
+    from loushang.foundation.observability import get_log
+    from loushang.foundation.observability._router import get_problem_store
+    from loushang.harness.diagnostics import DiagnosticsService
 
     diagnostics = DiagnosticsService()
     session = SimpleNamespace(session_id="session-1", diagnostics_service=diagnostics)
@@ -42,9 +57,8 @@ def test_coding_observability_context_bridges_problems_to_diagnostics(tmp_path) 
 
 
 def test_coding_observability_context_maps_config_problem_to_model_diagnostic(tmp_path) -> None:
-    from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.coding.observability import coding_observability_context
-    from loushang.observability import get_log
+    from loushang.foundation.observability import get_log
+    from loushang.harness.diagnostics import DiagnosticsService
 
     diagnostics = DiagnosticsService()
     session = SimpleNamespace(session_id="session-1", diagnostics_service=diagnostics)
@@ -69,8 +83,7 @@ def test_coding_observability_context_maps_config_problem_to_model_diagnostic(tm
 
 
 def test_coding_observability_context_uses_stable_debug_env(monkeypatch, tmp_path) -> None:
-    from loushang.coding.observability import coding_observability_context
-    from loushang.observability import get_log
+    from loushang.foundation.observability import get_log
 
     debug_path = tmp_path / "env-debug.log"
     monkeypatch.setenv("LOUSHANG_DEBUG_SCOPES", "tui")
@@ -85,8 +98,7 @@ def test_coding_observability_context_uses_stable_debug_env(monkeypatch, tmp_pat
 
 
 def test_coding_observability_context_cli_debug_overrides_env(monkeypatch, tmp_path) -> None:
-    from loushang.coding.observability import coding_observability_context
-    from loushang.observability import get_log
+    from loushang.foundation.observability import get_log
 
     env_debug_path = tmp_path / "env-debug.log"
     cli_debug_path = tmp_path / "cli-debug.log"
@@ -105,8 +117,7 @@ def test_coding_observability_context_cli_debug_overrides_env(monkeypatch, tmp_p
 
 
 def test_coding_observability_context_bare_debug_enables_all_debug_scopes(tmp_path) -> None:
-    from loushang.coding.observability import coding_observability_context
-    from loushang.observability import get_log
+    from loushang.foundation.observability import get_log
 
     debug_path = tmp_path / "debug.log"
     args = SimpleNamespace(debug="", trace=None, debug_file=str(debug_path), trace_file=None)
@@ -124,8 +135,7 @@ def test_coding_observability_context_bare_debug_enables_all_debug_scopes(tmp_pa
 def test_coding_observability_context_uses_stable_trace_env(monkeypatch, tmp_path) -> None:
     import json
 
-    from loushang.coding.observability import coding_observability_context
-    from loushang.observability import get_log
+    from loushang.foundation.observability import get_log
 
     trace_path = tmp_path / "env-trace.jsonl"
     monkeypatch.setenv("LOUSHANG_TRACE_SCOPES", "provider")
@@ -142,20 +152,24 @@ def test_coding_observability_context_uses_stable_trace_env(monkeypatch, tmp_pat
 
 
 def test_coding_observability_context_reuses_startup_label_for_default_files(monkeypatch, tmp_path) -> None:
-    from loushang.coding import observability as coding_observability
-    from loushang.coding.observability import coding_observability_context
-    from loushang.observability import get_log
+    from loushang.foundation.observability import get_log
+    from loushang.harness.diagnostics import observability_runtime
 
     debug_dir = tmp_path / "debug"
     trace_dir = tmp_path / "traces"
     times = iter([1.0, 2.0])
-    monkeypatch.setattr(coding_observability, "_default_debug_dir", lambda: debug_dir)
-    monkeypatch.setattr(coding_observability, "_default_trace_dir", lambda: trace_dir)
-    monkeypatch.setattr(coding_observability.time, "time", lambda: next(times))
+    monkeypatch.setattr(observability_runtime.time, "time", lambda: next(times))
     args = SimpleNamespace(debug="", trace="tui", debug_file=None, trace_file=None)
     session = SimpleNamespace(session_id=None, diagnostics_service=None)
 
-    with coding_observability_context(args=args, session=session, cwd=tmp_path, mode="startup"):
+    with coding_observability_context(
+        args=args,
+        session=session,
+        cwd=tmp_path,
+        mode="startup",
+        debug_dir=debug_dir,
+        trace_dir=trace_dir,
+    ):
         get_log("loushang.tests.ui").debug_event("tui", "startup.trace")
 
     debug_files = list(debug_dir.glob("startup-*.log"))
@@ -168,14 +182,13 @@ def test_coding_observability_context_reuses_startup_label_for_default_files(mon
 def test_coding_observability_context_preserves_existing_trace_when_bridging_problems(tmp_path) -> None:
     import json
 
-    from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.coding.observability import coding_observability_context
-    from loushang.observability import (
+    from loushang.foundation.observability import get_log
+    from loushang.foundation.observability._router import (
         configure_observability,
-        get_log,
         reset_observability,
     )
-    from loushang.observability.trace import TraceJSONLSink
+    from loushang.foundation.observability.trace_sink import TraceJSONLSink
+    from loushang.harness.diagnostics import DiagnosticsService
 
     trace_path = tmp_path / "trace.jsonl"
     diagnostics = DiagnosticsService()
@@ -199,14 +212,13 @@ def test_coding_observability_context_preserves_existing_trace_when_bridging_pro
 def test_coding_observability_context_restores_existing_trace_after_exit(tmp_path) -> None:
     import json
 
-    from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.coding.observability import coding_observability_context
-    from loushang.observability import (
+    from loushang.foundation.observability import get_log
+    from loushang.foundation.observability._router import (
         configure_observability,
-        get_log,
         reset_observability,
     )
-    from loushang.observability.trace import TraceJSONLSink
+    from loushang.foundation.observability.trace_sink import TraceJSONLSink
+    from loushang.harness.diagnostics import DiagnosticsService
 
     trace_path = tmp_path / "trace.jsonl"
     diagnostics = DiagnosticsService()

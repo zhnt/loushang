@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -49,6 +50,10 @@ def test_resolve_workspace_path_prefers_selected_candidate_before_variants(tmp_p
     assert resolved == selected.resolve()
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="expected platform path variants do not exist on macOS/APFS",
+)
 def test_optional_user_input_helpers_find_unicode_and_platform_variants(tmp_path) -> None:
     from loushang.harness.workspace.paths import (
         normalize_unicode_spaces,

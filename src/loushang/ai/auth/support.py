@@ -1,326 +1,374 @@
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 
-from loushang.ai.auth.types import OAuthCredentials
+from loushang.ai.auth.credentials import ApiKeyAuth, AuthCredential, OAuthBearerAuth
+from loushang.ai.auth.errors import MissingCredentialError
+from loushang.ai.errors import AIAuthenticationError, AIConfigurationError
 from loushang.ai.model import Auth
-from loushang.ai.utils.redaction import is_sensitive_key
+from loushang.foundation.json import JSONValue
 
 AuthConfig = Auth
 
-
-def _auth_value(config, field_name: str, default=None):
-    if config is None:
-        return default
-    return getattr(config, field_name, default)
+_HTTP_TOKEN = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
 
 
-_AUTH_FIELD_DEFAULTS: dict[str, object] = {
-    "kind": "apiKey",
-    "api_key_env": None,
-    "api_key_envs": (),
-    "header": "Authorization",
-    "prefix": "Bearer ",
-    "extra_headers": {},
-}
-_AUTH_ATTR_TO_RAW_KEY = {
-    "kind": "kind",
-    "api_key_env": "apiKeyEnv",
-    "api_key_envs": "apiKeyEnvs",
-    "header": "header",
-    "prefix": "prefix",
-    "extra_headers": "extraHeaders",
-}
+class MissingAuthError(MissingCredentialError):
+    pass
 
 
-def _auth_field_explicit(config, field_name: str) -> bool:
-    explicit_keys = getattr(config, "_explicit_keys", None)
-    raw_key = _AUTH_ATTR_TO_RAW_KEY[field_name]
-    if explicit_keys is not None:
-        return raw_key in explicit_keys
-    value = _auth_value(config, field_name, _AUTH_FIELD_DEFAULTS[field_name])
-    if field_name == "api_key_env":
-        return value is not None
-    if field_name == "api_key_envs":
-        return bool(tuple(value or ()))
-    if field_name == "extra_headers":
-        return bool(dict(value or {}))
-    return value != _AUTH_FIELD_DEFAULTS[field_name]
+class MissingAuthConfigError(AIConfigurationError):
+    pass
 
 
-def _merged_auth_value(effective, override, field_name: str):
-    if _auth_field_explicit(override, field_name):
-        return _auth_value(override, field_name, _AUTH_FIELD_DEFAULTS[field_name])
-    return _auth_value(effective, field_name, _AUTH_FIELD_DEFAULTS[field_name])
+class InvalidAuthConfigError(AIConfigurationError):
+    pass
+
+
+class AuthResolutionError(AIAuthenticationError):
+    pass
 
 
 @dataclass(frozen=True)
 class AuthView:
-    headers: dict[str, str] = field(default_factory=dict)
-    metadata: dict[str, object] = field(default_factory=dict)
+    headers: Mapping[str, str] = field(default_factory=dict, repr=False)
 
-
-@dataclass(frozen=True)
-class AuthInput:
-    api_key: str | None = None
-    oauth_credentials: dict[str, OAuthCredentials] | None = None
-    headers: dict[str, str] = field(default_factory=dict)
-
-
-def merge_auth_config(
-    provider_auth=None,
-    endpoint_auth=None,
-    binding_auth=None,
-):
-    effective = provider_auth
-    for override in (endpoint_auth, binding_auth):
-        if override is None:
-            continue
-        if effective is None:
-            effective = override
-            continue
-        auth_type = type(effective)
-        extra_headers = dict(_auth_value(effective, "extra_headers", {}) or {})
-        if _auth_field_explicit(override, "extra_headers"):
-            extra_headers.update(dict(_auth_value(override, "extra_headers", {}) or {}))
-        effective = auth_type(
-            kind=_merged_auth_value(effective, override, "kind"),
-            api_key_env=_merged_auth_value(effective, override, "api_key_env"),
-            api_key_envs=tuple(
-                _merged_auth_value(effective, override, "api_key_envs") or ()
-            ),
-            header=_merged_auth_value(effective, override, "header"),
-            prefix=_merged_auth_value(effective, override, "prefix"),
-            extra_headers=extra_headers,
-        )
-    return effective
-
-
-def normalize_auth_input(options=None) -> AuthInput:
-    if options is None:
-        return AuthInput()
-    oauth_credentials = getattr(options, "oauth_credentials", None)
-    if not isinstance(oauth_credentials, dict):
-        oauth_credentials = None
-    headers = _str_dict(getattr(options, "headers", None))
-    return AuthInput(
-        api_key=_non_empty_str(getattr(options, "api_key", None)),
-        oauth_credentials=oauth_credentials,
-        headers=headers,
-    )
-
-
-def resolve_auth_material(
-    *,
-    api_key: str | None = None,
-    bearer_token: str | None = None,
-    extra_headers: dict[str, str] | None = None,
-    config=None,
-    env: dict[str, str] | None = None,
-) -> AuthView:
-    headers: dict[str, str] = {}
-    resolved_env = os.environ if env is None else env
-    if api_key is None and bearer_token is None and config is not None:
-        api_key = _resolve_api_key_from_env(config, resolved_env)
-
-    if api_key is not None:
-        if config is not None:
-            headers[_auth_value(config, "header", "Authorization")] = (
-                f"{_auth_value(config, 'prefix', 'Bearer ')}{api_key}"
-            )
-        else:
-            headers["Authorization"] = f"Bearer {api_key}"
-    elif bearer_token is not None:
-        headers["Authorization"] = f"Bearer {bearer_token}"
-    extra = _expand_extra_headers(
-        dict(_auth_value(config, "extra_headers", {}) or {}),
-        resolved_env,
-    )
-    if extra:
-        headers.update(extra)
-    if extra_headers:
-        headers.update(extra_headers)
-    return AuthView(headers=headers)
-
-
-def _resolve_oauth_auth_view(
-    provider: str, oauth_credentials: dict | None
-) -> AuthView | None:
-    if not oauth_credentials:
-        return None
-    from loushang.ai.auth.oauth import get_oauth_api_key
-
-    result = get_oauth_api_key(provider, oauth_credentials)  # type: ignore[arg-type]
-    if result is None:
-        return None
-    credentials = result["newCredentials"]
-    metadata = dict(getattr(credentials, "extra", None) or {})
-    headers = resolve_auth_material(bearer_token=result["apiKey"]).headers
-    headers.update(_oauth_provider_headers(provider, credentials))
-    return AuthView(
-        headers=headers,
-        metadata=metadata,
-    )
-
-
-def _resolve_env_oauth_auth_view(
-    provider: str,
-    env: dict[str, str] | None = None,
-) -> AuthView | None:
-    from loushang.ai.auth.env import get_env_oauth_credentials
-
-    credentials = get_env_oauth_credentials(provider, env=env)
-    if credentials is None:
-        return None
-    return _resolve_oauth_auth_view(provider, {provider: credentials})
-
-
-def _resolve_stored_oauth_auth_view(
-    provider: str,
-    *,
-    endpoint_id: str | None = None,
-    model_id: str | None = None,
-) -> AuthView | None:
-    from loushang.ai.auth.storage import (
-        CredentialStoreError,
-        find_scoped_credential,
-        load_credential_store,
-    )
-
-    try:
-        store = load_credential_store()
-    except CredentialStoreError:
-        return None
-    credential = find_scoped_credential(
-        store,
-        provider,
-        endpoint_id=endpoint_id,
-        model_id=model_id,
-    )
-    if credential is None:
-        return None
-    return _resolve_oauth_auth_view(provider, {provider: credential})
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "headers", MappingProxyType(dict(self.headers)))
 
 
 def resolve_auth_for_model(
     model,
     *,
     options=None,
-    env: dict[str, str] | None = None,
+    env: Mapping[str, str] | None = None,
 ) -> AuthView:
-    provider = model.provider_id
-    auth_input = normalize_auth_input(options)
-    auth_config = getattr(model, "auth", None)
-    auth_kind = _auth_value(auth_config, "kind", None)
+    return resolve_auth_for_request(model, options=options, env=env)
 
-    if isinstance(auth_input.oauth_credentials, dict):
-        oauth_view = _resolve_oauth_auth_view(provider, auth_input.oauth_credentials)
-        if oauth_view is not None:
-            return oauth_view
 
-    if auth_input.api_key is not None:
-        return resolve_auth_material(
-            api_key=auth_input.api_key, config=auth_config, env=env
+def resolve_auth_for_request(
+    model,
+    *,
+    options=None,
+    env: Mapping[str, str] | None = None,
+) -> AuthView:
+    declaration = getattr(model, "auth", None)
+    explicit_auth = getattr(options, "auth", None) if options is not None else None
+    call_headers = getattr(options, "headers", {}) if options is not None else {}
+    static_headers = getattr(model, "headers", {})
+    resolved_env = os.environ if env is None else env
+
+    headers = _validated_headers(
+        static_headers,
+        source="model endpoint headers",
+        invalid_config=True,
+    )
+    primary_header: str | None = None
+    credential_headers: dict[str, str] = {}
+    if explicit_auth is not None:
+        primary_header, credential_headers = _resolve_explicit_credential(
+            explicit_auth,
+            declaration=declaration,
+        )
+    else:
+        primary_header, credential_headers = _resolve_default_credential(
+            declaration,
+            model=model,
+            env=resolved_env,
         )
 
-    oauth_view = _resolve_env_oauth_auth_view(provider, env=env)
-    if oauth_view is not None:
-        return oauth_view
-
-    if auth_config is None or auth_kind == "none":
-        return AuthView()
-
-    oauth_view = _resolve_stored_oauth_auth_view(
-        provider,
-        endpoint_id=getattr(model, "endpoint_id", None),
-        model_id=getattr(model, "id", None),
+    _merge_headers(headers, credential_headers)
+    credential_extra_headers = (
+        explicit_auth.extra_headers
+        if isinstance(explicit_auth, OAuthBearerAuth)
+        else {}
     )
-    if oauth_view is not None:
-        return oauth_view
+    _merge_non_primary_headers(
+        headers,
+        _validated_headers(
+            credential_extra_headers,
+            source="OAuthBearerAuth.extra_headers",
+        ),
+        primary_header=primary_header,
+        source="OAuthBearerAuth.extra_headers",
+    )
+    _merge_non_primary_headers(
+        headers,
+        _validated_headers(call_headers, source="CallOptions.headers"),
+        primary_header=primary_header,
+        source="CallOptions.headers",
+    )
+    return AuthView(headers=headers)
 
-    return resolve_auth_material(config=auth_config, env=env)
+
+def resolve_explicit_auth(
+    auth: AuthCredential,
+    *,
+    declaration_hint=None,
+    provider_id: str | None = None,
+    env: Mapping[str, str] | None = None,
+) -> AuthView:
+    del provider_id, env
+    primary_header, headers = _resolve_explicit_credential(
+        auth,
+        declaration=declaration_hint,
+    )
+    if isinstance(auth, OAuthBearerAuth):
+        _merge_non_primary_headers(
+            headers,
+            _validated_headers(
+                auth.extra_headers,
+                source="OAuthBearerAuth.extra_headers",
+            ),
+            primary_header=primary_header,
+            source="OAuthBearerAuth.extra_headers",
+        )
+    return AuthView(headers=headers)
 
 
-def _resolve_api_key_from_env(config, env: Mapping[str, str]) -> str | None:
-    for name in _api_key_env_names(config):
-        value = env.get(name)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    return None
+def resolve_default_auth(
+    declaration,
+    *,
+    model,
+    env: Mapping[str, str] | None = None,
+) -> AuthView:
+    _primary_header, headers = _resolve_default_credential(
+        declaration,
+        model=model,
+        env=os.environ if env is None else env,
+    )
+    return AuthView(headers=headers)
 
 
-def _api_key_env_names(config) -> tuple[str, ...]:
+def normalize_auth_kind(kind: str | None) -> str | None:
+    if kind is None:
+        return None
+    normalized = kind.strip().replace("-", "_").lower()
+    if normalized in {"apikey", "api_key"}:
+        return "api_key"
+    if normalized in {"oauth", "none"}:
+        return normalized
+    return normalized
+
+
+def _resolve_explicit_credential(
+    auth: AuthCredential,
+    *,
+    declaration,
+) -> tuple[str, dict[str, str]]:
+    header, prefix = _resolve_header_prefix(declaration)
+    if isinstance(auth, ApiKeyAuth):
+        secret = _validated_secret(auth.value, field_name="auth.value")
+    elif isinstance(auth, OAuthBearerAuth):
+        secret = _validated_secret(
+            auth.access_token,
+            field_name="auth.access_token",
+        )
+    else:
+        raise AuthResolutionError(
+            "Unsupported CallOptions.auth credential type.",
+            details={"auth_type": type(auth).__name__},
+        )
+    return header, {header: f"{prefix}{secret}"}
+
+
+def _resolve_default_credential(
+    declaration,
+    *,
+    model,
+    env: Mapping[str, str],
+) -> tuple[str | None, dict[str, str]]:
+    if declaration is None or normalize_auth_kind(declaration.kind) == "none":
+        return None, {}
+    kind = normalize_auth_kind(declaration.kind)
+    if kind == "oauth":
+        raise MissingAuthError(
+            "Model declares oauth auth; provide CallOptions.auth=OAuthBearerAuth(...).",
+            provider=model.provider_id,
+            endpoint=model.endpoint_id,
+            model=model.id,
+            details={"expected_auth": "oauth"},
+        )
+    if kind != "api_key":
+        raise InvalidAuthConfigError(
+            "Unsupported model auth kind.",
+            provider=model.provider_id,
+            endpoint=model.endpoint_id,
+            model=model.id,
+            details={"auth_kind": str(kind)},
+        )
+
+    api_key = resolve_api_key_auth(declaration, model=model, env=env).value
+    header, prefix = _resolve_header_prefix(declaration)
+    return header, {header: f"{prefix}{api_key}"}
+
+
+def resolve_api_key_auth(
+    declaration,
+    *,
+    model,
+    env: Mapping[str, str],
+) -> ApiKeyAuth:
+    env_names = _api_key_env_names(declaration)
+    api_key = next(
+        (
+            value.strip()
+            for name in env_names
+            if isinstance((value := env.get(name)), str) and value.strip()
+        ),
+        None,
+    )
+    if api_key is None:
+        raise MissingAuthError(
+            "Model requires api_key auth but no configured API key env is set.",
+            provider=model.provider_id,
+            endpoint=model.endpoint_id,
+            model=model.id,
+            details={"expected_env": list(env_names), "recovery": "configure"},
+        )
+    return ApiKeyAuth(api_key)
+
+
+def _resolve_header_prefix(declaration) -> tuple[str, str]:
+    header = (
+        getattr(declaration, "header", "Authorization")
+        if declaration
+        else "Authorization"
+    )
+    prefix = getattr(declaration, "prefix", "Bearer ") if declaration else "Bearer "
+    if not isinstance(header, str) or not header or not _HTTP_TOKEN.fullmatch(header):
+        raise InvalidAuthConfigError(
+            "models.json.auth.header must be a valid HTTP header name.",
+            details={"field": "header"},
+        )
+    if not isinstance(prefix, str) or "\r" in prefix or "\n" in prefix:
+        raise InvalidAuthConfigError(
+            "models.json.auth.prefix must be a string without CR or LF.",
+            details={"field": "prefix"},
+        )
+    return header, prefix
+
+
+def _api_key_env_names(declaration) -> tuple[str, ...]:
     names: list[str] = []
-    for value in tuple(_auth_value(config, "api_key_envs", ()) or ()):
-        if isinstance(value, str) and value:
-            names.append(value)
-    api_key_env = _auth_value(config, "api_key_env")
-    if isinstance(api_key_env, str) and api_key_env:
-        names.append(api_key_env)
+    if isinstance(declaration.api_key_env, str) and declaration.api_key_env:
+        names.append(declaration.api_key_env)
+    names.extend(
+        name for name in declaration.api_key_envs if isinstance(name, str) and name
+    )
     return tuple(dict.fromkeys(names))
 
 
-def _expand_extra_headers(
-    headers: dict[str, str],
-    env: Mapping[str, str],
+def _merge_headers(target: dict[str, str], incoming: Mapping[str, str]) -> None:
+    for key, value in incoming.items():
+        existing = _find_header(target, key)
+        if existing is not None and existing != key:
+            del target[existing]
+        target[key] = value
+
+
+def _merge_non_primary_headers(
+    target: dict[str, str],
+    incoming: Mapping[str, str],
+    *,
+    primary_header: str | None,
+    source: str,
+) -> None:
+    for key in incoming:
+        if primary_header is not None and key.casefold() == primary_header.casefold():
+            raise AuthResolutionError(
+                f"{source} cannot override the primary authentication header.",
+                details={"header": key, "primary_header": primary_header},
+            )
+    _merge_headers(target, incoming)
+
+
+def _find_header(headers: Mapping[str, str], name: str) -> str | None:
+    normalized = name.casefold()
+    return next((key for key in headers if key.casefold() == normalized), None)
+
+
+def _validated_secret(value: object, *, field_name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise AuthResolutionError(
+            f"{field_name} must be a non-empty string.",
+            details={"field": field_name},
+        )
+    resolved = value.strip()
+    if "\r" in resolved or "\n" in resolved:
+        raise AuthResolutionError(
+            f"{field_name} must not contain CR or LF.",
+            details={"field": field_name},
+        )
+    return resolved
+
+
+def _validated_headers(
+    value: object,
+    *,
+    source: str,
+    invalid_config: bool = False,
 ) -> dict[str, str]:
-    expanded: dict[str, str] = {}
-    for key, value in headers.items():
-        if not isinstance(key, str) or not isinstance(value, str):
-            continue
-        env_name = _env_reference(value)
-        if env_name is not None:
-            env_value = env.get(env_name)
-            if isinstance(env_value, str) and env_value:
-                expanded[key] = env_value
-            continue
-        expanded[key] = value
-    return expanded
+    if not isinstance(value, Mapping):
+        raise _auth_validation_error(
+            f"{source} must be a mapping of strings.",
+            details={"field": source},
+            invalid_config=invalid_config,
+        )
+    headers: dict[str, str] = {}
+    normalized_names: set[str] = set()
+    for key, entry in value.items():
+        if (
+            not isinstance(key, str)
+            or not key
+            or not _HTTP_TOKEN.fullmatch(key)
+            or not isinstance(entry, str)
+            or not entry
+            or "\r" in entry
+            or "\n" in entry
+        ):
+            raise _auth_validation_error(
+                f"{source} must contain valid non-empty HTTP header strings.",
+                details={"field": source},
+                invalid_config=invalid_config,
+            )
+        normalized = key.casefold()
+        if normalized in normalized_names:
+            raise _auth_validation_error(
+                f"{source} contains duplicate case-insensitive header names.",
+                details={"field": source, "header": key},
+                invalid_config=invalid_config,
+            )
+        normalized_names.add(normalized)
+        headers[key] = entry
+    return headers
 
 
-def _oauth_provider_headers(
-    provider: str,
-    credentials: OAuthCredentials,
-) -> dict[str, str]:
-    from loushang.ai.auth.registry import get_default_oauth_registry
-
-    oauth_provider = get_default_oauth_registry().get(provider)
-    if oauth_provider is None:
-        return {}
-    try:
-        headers = oauth_provider.get_auth_headers(credentials)
-    except AttributeError:
-        return {}
-    if not isinstance(headers, dict):
-        return {}
-    return {
-        key: value
-        for key, value in headers.items()
-        if isinstance(key, str) and isinstance(value, str) and not is_sensitive_key(key)
-    }
+def _auth_validation_error(
+    message: str,
+    *,
+    details: Mapping[str, JSONValue],
+    invalid_config: bool,
+) -> AIAuthenticationError | AIConfigurationError:
+    error_type = InvalidAuthConfigError if invalid_config else AuthResolutionError
+    return error_type(message, details=details)
 
 
-def _env_reference(value: str) -> str | None:
-    if not value.startswith("${") or not value.endswith("}"):
-        return None
-    name = value[2:-1].strip()
-    return name or None
-
-
-def _non_empty_str(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-    stripped = value.strip()
-    return stripped or None
-
-
-def _str_dict(value: object) -> dict[str, str]:
-    if not isinstance(value, dict):
-        return {}
-    return {
-        key: entry
-        for key, entry in value.items()
-        if isinstance(key, str) and isinstance(entry, str)
-    }
+__all__ = [
+    "AuthConfig",
+    "AuthResolutionError",
+    "AuthView",
+    "InvalidAuthConfigError",
+    "MissingAuthConfigError",
+    "MissingAuthError",
+    "normalize_auth_kind",
+    "resolve_auth_for_model",
+    "resolve_auth_for_request",
+    "resolve_default_auth",
+    "resolve_explicit_auth",
+    "resolve_api_key_auth",
+]

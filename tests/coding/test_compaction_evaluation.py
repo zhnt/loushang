@@ -3,17 +3,24 @@ from __future__ import annotations
 import pytest
 
 from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage, UserMessage
-from loushang.coding.compaction import (
-    BranchSummaryDetails,
-    CompactionPreparation,
+from loushang.coding.compaction.adapter import (
+    execute_coding_branch_summary,
+    execute_coding_compaction,
+)
+from loushang.coding.compaction.evaluation import evaluate_coding_summary_fixture
+from loushang.coding.compaction.profiles import (
+    CODING_BRANCH_SUMMARY_PROFILE,
+    CODING_COMPACTION_SUMMARY_PROFILE,
+)
+from loushang.harness.context import (
     SummaryEvaluationCase,
-    SummaryEvaluationResult,
-    compact,
+    SummaryResourceOperations,
     evaluate_summary_case,
+    evaluate_summary_cases,
     evaluate_summary_fixture,
-    generate_branch_summary,
     load_summary_evaluation_cases,
 )
+from loushang.harness.transcript import CompactionPreparation
 
 
 def _usage() -> Usage:
@@ -79,8 +86,6 @@ Explore branch-specific compaction behavior.
 
 
 def test_evaluate_summary_cases_summarizes_real_workload_batch() -> None:
-    from loushang.coding.compaction import evaluate_summary_cases
-
     passing = SummaryEvaluationCase(
         name="passes",
         summary=_structured_compaction_summary(),
@@ -92,13 +97,18 @@ def test_evaluate_summary_cases_summarizes_real_workload_batch() -> None:
         required_phrases=("ship the release",),
     )
 
-    result = evaluate_summary_cases([passing, failing])
+    result = evaluate_summary_cases(
+        [passing, failing],
+        profile=CODING_COMPACTION_SUMMARY_PROFILE,
+    )
 
     assert result.total_count == 2
     assert result.passed_count == 1
     assert result.failed_case_names == ("missing-next-step",)
     assert result.ok is False
-    assert result.results[0] == SummaryEvaluationResult(case_name="passes")
+    assert result.results[0].case_name == "passes"
+    assert result.results[0].profile_id == "coding.compaction"
+    assert result.results[0].ok is True
     assert result.to_dict()["failed_case_names"] == ["missing-next-step"]
 
 
@@ -106,46 +116,60 @@ def test_summary_evaluation_fixture_loader_runs_golden_cases() -> None:
     fixture = "tests/coding/fixtures/summary_evaluation_cases.json"
 
     cases = load_summary_evaluation_cases(fixture)
-    result = evaluate_summary_fixture(fixture)
+    result = evaluate_coding_summary_fixture(fixture)
+    generic_result = evaluate_summary_fixture(
+        fixture,
+        profiles={"coding.compaction": CODING_COMPACTION_SUMMARY_PROFILE},
+    )
 
-    assert [case.name for case in cases] == ["headless-policy-pack", "missing-critical-context"]
+    assert [case.name for case in cases] == [
+        "headless-policy-pack",
+        "missing-critical-context",
+    ]
     assert result.total_count == 2
     assert result.passed_count == 1
     assert result.failed_case_names == ("missing-critical-context",)
-    assert result.results[0] == SummaryEvaluationResult(case_name="headless-policy-pack")
+    assert result.results[0].case_name == "headless-policy-pack"
+    assert result.results[0].profile_id == "coding.compaction"
+    assert generic_result == result
 
 
 @pytest.mark.anyio
-async def test_evaluate_summary_case_accepts_fixed_compaction_workload(monkeypatch) -> None:
-    async def fake_summarize_messages(**kwargs):
-        del kwargs
+async def test_evaluate_summary_case_accepts_fixed_compaction_workload() -> None:
+    async def fake_completer(*args: object) -> str:
+        del args
         return _structured_compaction_summary()
 
-    monkeypatch.setattr("loushang.coding.compaction.compaction._summarize_messages", fake_summarize_messages)
-
-    result = await compact(
+    result = await execute_coding_compaction(
         preparation=CompactionPreparation(
             first_kept_entry_id="keep-1",
             messages_to_summarize=[
                 UserMessage(
                     role="user",
-                    content=[TextPart(type="text", text="Harden session index lifecycle.")],
+                    content=[
+                        TextPart(type="text", text="Harden session index lifecycle.")
+                    ],
                     timestamp=1.0,
                 ),
                 AssistantMessage(
+                    endpoint="test-endpoint",
                     role="assistant",
                     content=[
                         ToolCall(
                             type="toolCall",
                             id="read-1",
                             name="read",
-                            arguments={"path": "docs/architecture/coding/component-interfaces/runtime.md"},
+                            arguments={
+                                "path": "docs/architecture/coding/component-interfaces/runtime.md"
+                            },
                         ),
                         ToolCall(
                             type="toolCall",
                             id="edit-1",
                             name="edit",
-                            arguments={"path": "src/loushang/coding/runtime/agent_session_runtime.py"},
+                            arguments={
+                                "path": "src/loushang/coding/runtime/agent_session_runtime.py"
+                            },
                         ),
                     ],
                     api="responses",
@@ -164,47 +188,68 @@ async def test_evaluate_summary_case_accepts_fixed_compaction_workload(monkeypat
         ),
         model=object(),
         api_key="",
+        completer=fake_completer,
     )
 
     report = evaluate_summary_case(
         SummaryEvaluationCase(
             name="runtime-store-stress",
             summary=result.summary,
-            summary_type="compaction",
+            profile_id="coding.compaction",
             required_phrases=("session index lifecycle", "runtime diagnostics"),
-            expected_read_files=("docs/architecture/coding/component-interfaces/runtime.md",),
-            expected_modified_files=("src/loushang/coding/runtime/agent_session_runtime.py",),
-        )
+            expected_resource_operations=SummaryResourceOperations.from_mapping(
+                {
+                    "read": (
+                        "docs/architecture/coding/component-interfaces/runtime.md",
+                    ),
+                    "modified": (
+                        "src/loushang/coding/runtime/agent_session_runtime.py",
+                    ),
+                }
+            ),
+        ),
+        profile=CODING_COMPACTION_SUMMARY_PROFILE,
     )
 
-    assert report == SummaryEvaluationResult(case_name="runtime-store-stress")
+    assert report.ok is True
+    assert report.resource_operations.to_dict() == {
+        "read": ["docs/architecture/coding/component-interfaces/runtime.md"],
+        "modified": ["src/loushang/coding/runtime/agent_session_runtime.py"],
+    }
 
 
 @pytest.mark.anyio
-async def test_evaluate_summary_case_accepts_fixed_branch_workload(monkeypatch) -> None:
-    async def fake_complete(*args, **kwargs):
-        del args, kwargs
+async def test_evaluate_summary_case_accepts_fixed_branch_workload() -> None:
+    async def fake_completer(*args: object) -> str:
+        del args
         return _structured_branch_summary()
 
-    monkeypatch.setattr("loushang.coding.compaction.branch_summarization._complete_text", fake_complete)
-
-    result = await generate_branch_summary(
+    result = await execute_coding_branch_summary(
         [
-            UserMessage(role="user", content=[TextPart(type="text", text="Try branch behavior.")], timestamp=1.0),
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="Try branch behavior.")],
+                timestamp=1.0,
+            ),
             AssistantMessage(
+                endpoint="test-endpoint",
                 role="assistant",
                 content=[
                     ToolCall(
                         type="toolCall",
                         id="read-1",
                         name="read",
-                        arguments={"path": "src/loushang/coding/compaction/compaction.py"},
+                        arguments={
+                            "path": "src/loushang/coding/compaction/compaction.py"
+                        },
                     ),
                     ToolCall(
                         type="toolCall",
                         id="write-1",
                         name="write",
-                        arguments={"path": "docs/architecture/coding/component-interfaces/compaction.md"},
+                        arguments={
+                            "path": "docs/architecture/coding/component-interfaces/compaction.md"
+                        },
                     ),
                 ],
                 api="responses",
@@ -220,23 +265,33 @@ async def test_evaluate_summary_case_accepts_fixed_branch_workload(monkeypatch) 
         model=object(),
         api_key="",
         reserve_tokens=1024,
+        completer=fake_completer,
     )
 
     report = evaluate_summary_case(
         SummaryEvaluationCase(
             name="branch-compaction",
             summary=result.summary,
-            summary_type="branch",
+            profile_id="coding.branch",
             required_phrases=("branch-specific compaction",),
-            expected_read_files=("src/loushang/coding/compaction/compaction.py",),
-            expected_modified_files=("docs/architecture/coding/component-interfaces/compaction.md",),
-        )
+            expected_resource_operations=SummaryResourceOperations.from_mapping(
+                {
+                    "read": ("src/loushang/coding/compaction/compaction.py",),
+                    "modified": (
+                        "docs/architecture/coding/component-interfaces/compaction.md",
+                    ),
+                }
+            ),
+        ),
+        profile=CODING_BRANCH_SUMMARY_PROFILE,
     )
 
-    assert result.details == BranchSummaryDetails(
-        read_files=["src/loushang/coding/compaction/compaction.py"],
-        modified_files=["docs/architecture/coding/component-interfaces/compaction.md"],
-    )
+    assert result.details == {
+        "readFiles": ["src/loushang/coding/compaction/compaction.py"],
+        "modifiedFiles": [
+            "docs/architecture/coding/component-interfaces/compaction.md"
+        ],
+    }
     assert report.ok is True
 
 
@@ -251,20 +306,24 @@ Do work.
 ### Done
 - [x] Something changed.
 """,
-            summary_type="compaction",
+            profile_id="coding.compaction",
             required_phrases=("runtime diagnostics",),
-            expected_read_files=("README.md",),
-            expected_modified_files=("src/app.py",),
-        )
+            expected_resource_operations=SummaryResourceOperations.from_mapping(
+                {"read": ("README.md",), "modified": ("src/app.py",)}
+            ),
+        ),
+        profile=CODING_COMPACTION_SUMMARY_PROFILE,
     )
 
     assert report.ok is False
-    assert report.quality_report.missing_sections == (
+    assert report.validation.missing_sections == (
         "Constraints & Preferences",
         "Key Decisions",
         "Next Steps",
         "Critical Context",
     )
     assert report.missing_phrases == ("runtime diagnostics",)
-    assert report.missing_read_files == ("README.md",)
-    assert report.missing_modified_files == ("src/app.py",)
+    assert report.missing_resource_operations.to_dict() == {
+        "read": ["README.md"],
+        "modified": ["src/app.py"],
+    }

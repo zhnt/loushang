@@ -1,9 +1,4 @@
-"""Inspect typed provider request facts from the built-in catalog.
-
-This advanced example is offline. It reads the model catalog and prints the
-endpoint-default adapter, transport, and routing contracts, then shows the
-model-effective request facts produced by provider resolution.
-"""
+"""Inspect typed adapter and request facts from the built-in catalog."""
 
 from __future__ import annotations
 
@@ -11,6 +6,7 @@ import json
 import re
 from typing import Any
 
+from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.model import Endpoint, load_builtin_model_registry
 from loushang.ai.options import CallOptions
 from loushang.ai.provider import resolve_request_for_model
@@ -35,10 +31,6 @@ def inspect_endpoint_contract(
         "api": endpoint.api,
         "adapterScope": "endpoint-default",
         "adapter": endpoint.adapter.to_raw() if endpoint.adapter is not None else None,
-        "transportScope": "endpoint-default",
-        "transport": endpoint.transport.to_raw(),
-        "routingScope": "endpoint-default",
-        "routing": endpoint.routing.to_raw(),
     }
     if model_id is not None:
         model = registry.find_model(provider_id, endpoint_id, model_id)
@@ -46,20 +38,17 @@ def inspect_endpoint_contract(
             raise KeyError((provider_id, endpoint_id, model_id))
         resolved = resolve_request_for_model(
             model,
-            options=CallOptions(api_key="example-offline-api-key"),
-            registry=registry,
+            options=CallOptions(auth=ApiKeyAuth("example-offline-api-key")),
             env=_offline_template_env(endpoint),
         )
         contract["model"] = model_id
         contract["requestAdapterScope"] = "model-effective"
-        adapter_config = resolved.adapter_config
+        adapter_config = resolved.model.adapter
         contract["requestAdapter"] = (
             adapter_config.to_raw() if hasattr(adapter_config, "to_raw") else None
         )
-        contract["requestTransportScope"] = "model-effective"
-        contract["requestTransport"] = resolved.transport.to_raw()
-        contract["requestRoutingScope"] = "model-effective"
-        contract["requestRouting"] = resolved.routing.to_raw()
+        contract["requestBaseUrl"] = resolved.base_url
+        contract["requestHeaderNames"] = sorted(resolved.headers)
     return contract
 
 

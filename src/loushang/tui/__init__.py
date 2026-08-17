@@ -80,6 +80,7 @@ from loushang.tui.framework import (
     surface_is_bottom_exclusive,
     surface_is_inline_presentation,
     surface_is_overlay_presentation,
+    surface_is_page_presentation,
     surface_presentation,
 )
 from loushang.tui.fuzzy import FuzzyMatch, fuzzy_filter, fuzzy_match
@@ -111,6 +112,12 @@ from loushang.tui.playback import (
     RenderDiagnostics,
     playback_artifacts_directory_from_env,
 )
+from loushang.tui.playback_suite import (
+    PlaybackScenarioResult,
+    PlaybackScenarioSpec,
+    PlaybackSuite,
+    run_playback_scenarios,
+)
 from loushang.tui.render_loop import RenderLoop
 from loushang.tui.runner import (
     TerminalSessionFactory,
@@ -119,6 +126,7 @@ from loushang.tui.runner import (
     TuiInputResult,
     TuiRunContext,
     TuiRunner,
+    TuiStartHandler,
 )
 from loushang.tui.runtime import TuiRuntime
 from loushang.tui.scheduler import (
@@ -135,6 +143,7 @@ from loushang.tui.selection_rendering import (
     highlight_selection_by_columns,
 )
 from loushang.tui.surfaces import (
+    ApprovalChoice,
     ApprovalSurface,
     AutocompleteSurface,
     CommandSurface,
@@ -165,6 +174,7 @@ from loushang.tui.terminal_capabilities import (
     format_terminal_capability_diagnostics,
     terminal_environment_from_env,
 )
+from loushang.tui.terminal_diagnostics import format_terminal_diagnostics
 from loushang.tui.terminal_image import (
     CellDimensions,
     Image,
@@ -350,6 +360,7 @@ from loushang.tui.ui_parts import (
 
 __all__ = [
     "ApprovalSurface",
+    "ApprovalChoice",
     "AnimationFrameSource",
     "APPLE_TERMINAL_SHIFT_ENTER_SEQUENCE",
     "AutocompleteSurface",
@@ -491,7 +502,10 @@ __all__ = [
     "PlaybackHarness",
     "PlaybackResult",
     "PlaybackScenario",
+    "PlaybackScenarioResult",
+    "PlaybackScenarioSpec",
     "PlaybackStep",
+    "PlaybackSuite",
     "playback_artifacts_directory_from_env",
     "PageScaffold",
     "PageNavigation",
@@ -559,6 +573,7 @@ __all__ = [
     "surface_is_bottom_exclusive",
     "surface_is_inline_presentation",
     "surface_is_overlay_presentation",
+    "surface_is_page_presentation",
     "surface_presentation",
     "TerminalFrame",
     "TerminalImageRender",
@@ -599,6 +614,7 @@ __all__ = [
     "TuiInputResult",
     "TuiRunContext",
     "TuiRunner",
+    "TuiStartHandler",
     "TuiRuntime",
     "Tui",
     "UserPromptRecord",
@@ -616,6 +632,7 @@ __all__ = [
     "detect_terminal_capabilities",
     "detect_image_protocol",
     "format_terminal_capability_diagnostics",
+    "format_terminal_diagnostics",
     "drain_input",
     "encode_iterm2_image",
     "encode_kitty_image",
@@ -640,6 +657,7 @@ __all__ = [
     "render_transcript_records",
     "render_terminal_image",
     "render_terminal_image_result",
+    "run_playback_scenarios",
     "slice_by_column",
     "slice_with_width",
     "stream_is_tty",

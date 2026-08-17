@@ -16,10 +16,15 @@ from loushang.ai.types import (
     TextPart,
     Tool,
     ToolCall,
+    ToolResultMessage,
     Usage,
     UserMessage,
 )
-from loushang.observability import get_problem_store, log_context, reset_observability
+from loushang.foundation.observability import log_context
+from loushang.foundation.observability._router import (
+    get_problem_store,
+    reset_observability,
+)
 
 
 def _model() -> Model:
@@ -50,6 +55,7 @@ def _usage() -> Usage:
 
 def _assistant_text_message(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -65,6 +71,7 @@ def _assistant_text_message(text: str) -> AssistantMessage:
 
 def _assistant_tool_call_message() -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[
             ToolCall(
@@ -89,6 +96,7 @@ def _assistant_tool_call_message_with_calls(
     tool_calls: list[ToolCall],
 ) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=tool_calls,
         api="anthropic-messages",
@@ -244,6 +252,124 @@ def test_agent_loop_preserves_preseeded_call_options_cancellation() -> None:
     assert captured_options[0].cancellation is marker
 
 
+def test_model_call_options_resolver_observes_final_context_before_transport() -> (
+    None
+):
+    from loushang.agent.agent_loop import run_agent_loop
+
+    events: list[str] = []
+    transformed = UserMessage(role="user", content="transformed", timestamp=0.0)
+
+    async def transform_context(messages, signal=None):
+        del messages, signal
+        events.append("transform")
+        return [transformed]
+
+    async def prepare_model_call(preparation):
+        events.append("prepare")
+        assert preparation.purpose == "main"
+        assert preparation.sequence == 1
+        assert preparation.context.messages == [transformed]
+        return replace(preparation.options, cache_key="prepared")
+
+    async def stream_fn(model, context: Context, options=None):
+        del model
+        events.append("transport")
+        assert context.messages == [transformed]
+        assert isinstance(options, CallOptions)
+        assert options.cache_key == "prepared"
+        return _stream_with_final_message(_assistant_text_message("done"))
+
+    async def emit(event):
+        del event
+
+    config = replace(
+        _config(stream_fn),
+        transform_context=transform_context,
+        prepare_model_call=prepare_model_call,
+    )
+    asyncio.run(
+        run_agent_loop(
+            [UserMessage(role="user", content="original", timestamp=0.0)],
+            AgentContext(system_prompt="system", messages=[]),
+            config,
+            emit,
+            stream_fn=stream_fn,
+        )
+    )
+
+    assert events == ["transform", "prepare", "transport"]
+
+
+def test_model_call_options_resolver_cannot_drop_agent_cancellation() -> None:
+    from loushang.agent.agent_loop import run_agent_loop
+
+    marker = object()
+
+    async def prepare_model_call(preparation):
+        return replace(preparation.options, cancellation=None)
+
+    async def stream_fn(model, context: Context, options=None):
+        del model, context
+        assert isinstance(options, CallOptions)
+        assert options.cancellation is marker
+        return _stream_with_final_message(_assistant_text_message("done"))
+
+    async def emit(event):
+        del event
+
+    asyncio.run(
+        run_agent_loop(
+            [UserMessage(role="user", content="hello", timestamp=0.0)],
+            AgentContext(system_prompt="system", messages=[]),
+            replace(
+                _config(stream_fn),
+                call_options=CallOptions(cancellation=marker),
+                prepare_model_call=prepare_model_call,
+            ),
+            emit,
+            signal=marker,
+            stream_fn=stream_fn,
+        )
+    )
+
+
+def test_model_call_options_resolver_failure_prevents_transport() -> None:
+    from loushang.agent.agent_loop import run_agent_loop
+
+    transport_calls = 0
+
+    async def prepare_model_call(preparation):
+        del preparation
+        raise RuntimeError("durable Model Input commit failed")
+
+    async def stream_fn(model, context: Context, options=None):
+        nonlocal transport_calls
+        del model, context, options
+        transport_calls += 1
+        return _stream_with_final_message(_assistant_text_message("unexpected"))
+
+    async def emit(event):
+        del event
+
+    config = replace(
+        _config(stream_fn),
+        prepare_model_call=prepare_model_call,
+    )
+    with pytest.raises(RuntimeError, match="durable Model Input commit failed"):
+        asyncio.run(
+            run_agent_loop(
+                [UserMessage(role="user", content="hello", timestamp=0.0)],
+                AgentContext(system_prompt="system", messages=[]),
+                config,
+                emit,
+                stream_fn=stream_fn,
+            )
+        )
+
+    assert transport_calls == 0
+
+
 @dataclass
 class FakeTool:
     name: str = "calc"
@@ -320,6 +446,11 @@ def test_run_agent_loop_executes_tool_and_continues_with_following_turn() -> Non
     from loushang.agent.agent_loop import run_agent_loop
 
     emitted: list[dict[str, Any]] = []
+    preparations: list[tuple[str, int]] = []
+
+    async def prepare_model_call(preparation):
+        preparations.append((preparation.purpose, preparation.sequence))
+        return preparation.options
 
     async def emit(event):
         emitted.append(event)
@@ -336,7 +467,16 @@ def test_run_agent_loop_executes_tool_and_continues_with_following_turn() -> Non
     context = AgentContext(system_prompt="system", messages=[], tools=[FakeTool()])
 
     new_messages = asyncio.run(
-        run_agent_loop(prompts, context, _config(stream_fn), emit, stream_fn=stream_fn)
+        run_agent_loop(
+            prompts,
+            context,
+            replace(
+                _config(stream_fn),
+                prepare_model_call=prepare_model_call,
+            ),
+            emit,
+            stream_fn=stream_fn,
+        )
     )
 
     event_types = [event["type"] for event in emitted]
@@ -353,6 +493,40 @@ def test_run_agent_loop_executes_tool_and_continues_with_following_turn() -> Non
     assert getattr(new_messages[2], "role", None) == "toolResult"
     assert isinstance(new_messages[-1], AssistantMessage)
     assert new_messages[-1].content[0].text == "done"
+    assert preparations == [("main", 1), ("tool_continuation", 2)]
+
+
+def test_tool_result_commit_failure_prevents_following_model_sample() -> None:
+    from loushang.agent.agent_loop import run_agent_loop
+
+    stream_calls = 0
+
+    async def stream_fn(model, context: Context, options=None):
+        nonlocal stream_calls
+        del model, context, options
+        stream_calls += 1
+        if stream_calls == 1:
+            return _stream_with_final_message(_assistant_tool_call_message())
+        return _stream_with_final_message(_assistant_text_message("unexpected"))
+
+    async def emit(event):
+        if event["type"] == "message_end" and isinstance(
+            event["message"], ToolResultMessage
+        ):
+            raise OSError("Tool result transcript commit failed")
+
+    with pytest.raises(OSError, match="Tool result transcript commit failed"):
+        asyncio.run(
+            run_agent_loop(
+                [UserMessage(role="user", content="calculate", timestamp=0.0)],
+                AgentContext(system_prompt="system", messages=[], tools=[FakeTool()]),
+                _config(stream_fn),
+                emit,
+                stream_fn=stream_fn,
+            )
+        )
+
+    assert stream_calls == 1
 
 
 def test_agent_loop_turns_projection_failure_into_structured_tool_error() -> None:
@@ -741,6 +915,105 @@ def test_agent_loop_snapshots_partial_update_before_callback_returns() -> None:
     assert update["partial_result"].event_details() == {"progress": "first"}
 
 
+def test_agent_loop_drains_system_mailbox_before_user_steering() -> None:
+    from loushang.agent.agent_loop import run_agent_loop
+
+    mailbox_polls = 0
+    captured: list[list[str]] = []
+
+    async def get_mailbox_messages():
+        nonlocal mailbox_polls
+        mailbox_polls += 1
+        if mailbox_polls == 1:
+            return [UserMessage(role="user", content="system result", timestamp=0.0)]
+        return []
+
+    async def get_steering_messages():
+        if mailbox_polls == 1:
+            return [UserMessage(role="user", content="user steer", timestamp=0.0)]
+        return []
+
+    async def stream_fn(model, context: Context, options=None):
+        del model, options
+        captured.append(
+            [
+                str(message.content)
+                for message in context.messages
+                if isinstance(message, UserMessage)
+            ]
+        )
+        return _stream_with_final_message(_assistant_text_message("done"))
+
+    async def emit(event):
+        del event
+
+    config = replace(
+        _config(stream_fn),
+        get_mailbox_messages=get_mailbox_messages,
+        get_steering_messages=get_steering_messages,
+    )
+    asyncio.run(
+        run_agent_loop(
+            [UserMessage(role="user", content="start", timestamp=0.0)],
+            AgentContext(system_prompt="system", messages=[], tools=[]),
+            config,
+            emit,
+            stream_fn=stream_fn,
+        )
+    )
+
+    assert captured[0] == ["start", "system result", "user steer"]
+
+
+def test_agent_loop_drains_mailbox_after_tool_result_before_next_sample() -> None:
+    from loushang.agent.agent_loop import run_agent_loop
+
+    mailbox_polls = 0
+    captured_roles: list[list[str | None]] = []
+
+    async def get_mailbox_messages():
+        nonlocal mailbox_polls
+        mailbox_polls += 1
+        if mailbox_polls == 2:
+            return [UserMessage(role="user", content="child completed", timestamp=0.0)]
+        return []
+
+    async def stream_fn(model, context: Context, options=None):
+        del model, options
+        captured_roles.append(
+            [getattr(message, "role", None) for message in context.messages]
+        )
+        if any(
+            getattr(message, "role", None) == "toolResult"
+            for message in context.messages
+        ):
+            return _stream_with_final_message(_assistant_text_message("done"))
+        return _stream_with_final_message(_assistant_tool_call_message())
+
+    async def emit(event):
+        del event
+
+    config = replace(
+        _config(stream_fn),
+        get_mailbox_messages=get_mailbox_messages,
+    )
+    asyncio.run(
+        run_agent_loop(
+            [UserMessage(role="user", content="wait for child", timestamp=0.0)],
+            AgentContext(
+                system_prompt="system",
+                messages=[],
+                tools=[FakeTool()],
+            ),
+            config,
+            emit,
+            stream_fn=stream_fn,
+        )
+    )
+
+    assert captured_roles[1][-2:] == ["toolResult", "user"]
+
+
 def test_run_agent_loop_abort_during_tool_does_not_continue_to_next_model_call() -> (
     None
 ):
@@ -788,13 +1061,15 @@ def test_run_agent_loop_abort_during_tool_does_not_continue_to_next_model_call()
     event_types = [event["type"] for event in emitted]
     assert stream_calls == 1
     assert "tool_execution_start" in event_types
-    assert "tool_execution_end" not in event_types
+    assert "tool_execution_end" in event_types
     assert event_types[-1] == "agent_end"
     assert [getattr(message, "role", None) for message in new_messages] == [
         "user",
         "assistant",
+        "toolResult",
         "assistant",
     ]
+    assert new_messages[-2].details == {"code": "tool_call_aborted"}
     assert getattr(new_messages[-1], "stop_reason", None) == "aborted"
 
 
@@ -967,14 +1242,80 @@ def test_run_agent_loop_abort_before_tool_execution_skips_tool_and_next_model_ca
     assert stream_calls == 1
     assert executed is False
     assert "tool_execution_start" in event_types
-    assert "tool_execution_end" not in event_types
+    assert "tool_execution_end" in event_types
     assert event_types[-1] == "agent_end"
     assert [getattr(message, "role", None) for message in new_messages] == [
         "user",
         "assistant",
+        "toolResult",
         "assistant",
     ]
+    assert new_messages[-2].details == {"code": "tool_call_aborted"}
     assert getattr(new_messages[-1], "stop_reason", None) == "aborted"
+
+
+def test_run_agent_loop_force_cancel_closes_the_active_tool_call() -> None:
+    from loushang.agent import AbortSignal
+    from loushang.agent.agent_loop import run_agent_loop
+
+    signal = AbortSignal()
+    started = asyncio.Event()
+    emitted: list[dict[str, Any]] = []
+
+    class BlockingTool(FakeTool):
+        async def execute(
+            self,
+            tool_call_id: str,
+            params: dict[str, Any],
+            signal=None,
+            on_update=None,
+        ) -> AgentToolResult[dict[str, Any]]:
+            del tool_call_id, params, signal, on_update
+            started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+    async def emit(event):
+        emitted.append(event)
+
+    async def stream_fn(model, context: Context, options=None):
+        del model, context, options
+        return _stream_with_final_message(_assistant_tool_call_message())
+
+    async def scenario() -> None:
+        task = asyncio.create_task(
+            run_agent_loop(
+                [UserMessage(role="user", content="use tool", timestamp=0.0)],
+                AgentContext(
+                    system_prompt="system",
+                    messages=[],
+                    tools=[BlockingTool()],
+                ),
+                _config(stream_fn),
+                emit,
+                signal=signal,
+                stream_fn=stream_fn,
+            )
+        )
+        await started.wait()
+        signal.aborted = True
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(scenario())
+
+    ended = [event for event in emitted if event["type"] == "tool_execution_end"]
+    assert len(ended) == 1
+    assert ended[0]["tool_call_id"] == "tc_1"
+    assert ended[0]["is_error"] is True
+    assert ended[0]["result"].details == {"code": "tool_call_aborted"}
+    message_roles = [
+        getattr(event.get("message"), "role", None)
+        for event in emitted
+        if event["type"] == "message_end"
+    ]
+    assert message_roles[-1] == "toolResult"
 
 
 def test_tool_exception_can_project_structured_error_details() -> None:

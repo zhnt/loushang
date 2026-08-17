@@ -61,18 +61,18 @@
 
 3. 接口依赖图与前文的抽象边界存在两处冲突，会误导后续实现依赖方向。
 
-- 在 [loushang-ai-component-interfaces-v1.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-component-interfaces-v1.md#L133) 到 [loushang-ai-component-interfaces-v1.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-component-interfaces-v1.md#L168) 中，`ApiProvider Registry` 被定义为只依赖 `ApiProvider Protocol`，不直接依赖具体 adapter class。
+- 在 [loushang-ai-component-interfaces-v1.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-component-interfaces-v1.md#L133) 到 [loushang-ai-component-interfaces-v1.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-component-interfaces-v1.md#L168) 中，`API Registry` 被定义为只依赖 `APIAdapter Protocol`，不直接依赖具体 adapter class。
 - 但在同一文档的依赖图 [loushang-ai-component-interfaces-v1.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-component-interfaces-v1.md#L434) 到 [loushang-ai-component-interfaces-v1.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-component-interfaces-v1.md#L435) 中，又画成了 `APIREG --> APIPROTO` 和 `APIREG --> ADAPTER`。
 - 同样，接口文档前文把 `Assistant Message Event Stream` 定义成由 assembler 产物对外承载的统一读侧边界 [loushang-ai-component-interfaces-v1.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-component-interfaces-v1.md#L252) 到 [loushang-ai-component-interfaces-v1.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-component-interfaces-v1.md#L285)，但依赖图中却画成 `STREAM --> ASM` [loushang-ai-component-interfaces-v1.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-component-interfaces-v1.md#L441) 到 [loushang-ai-component-interfaces-v1.md](/home/dev/workspace/loushang/docs/architecture/ai/loushang-ai-component-interfaces-v1.md#L443)。
 
 影响：
 
-- `ApiProvider Registry` 是否知道 concrete adapter、`Stream` 与 `Assembler` 谁依赖谁，这两件事目前图文不一致。
+- `API Registry` 是否知道 concrete adapter、`Stream` 与 `Assembler` 谁依赖谁，这两件事目前图文不一致。
 - 这类图上的反向箭头很容易直接变成错误实现依赖。
 
 建议：
 
-- 把 `ApiProvider Registry` 到 `Provider Adapter` 的直接依赖箭头删掉，只保留“持有符合 `ApiProvider Protocol` 的对象”。
+- 把 `API Registry` 到具体 Adapter 的直接依赖箭头删掉，只保留“持有符合 `APIAdapter Protocol` 的对象”。
 - 重新明确 `Assembler` 与 `Event Stream` 的依赖方向，至少要和“writer-side / reader-side” 叙述保持同一口径。
 
 ### Low
@@ -98,8 +98,8 @@
 
 以下关键设计已经相对稳定，可以视为本轮评审通过项：
 
-- `Top-Level AI API -> ApiProvider Registry -> Provider Adapter -> Raw Part -> Raw Assembler -> Assistant Message Event Stream` 这条总链路已经成型。
-- `Provider Adapter` 作为唯一直接理解 provider 协议的边界组件，这个原则在多篇文档中保持一致。
+- `Top-Level AI API -> API Registry -> APIAdapter -> Raw Part -> Raw Assembler -> Assistant Message Event Stream` 这条总链路已经成型。
+- `APIAdapter` 作为唯一直接理解具体 API 协议的边界组件，这个原则在多篇文档中保持一致。
 - `raw part` 作为 adapter 与 assembler 之间的唯一标准中间边界，这个设计已经足够清楚，且与前面的 adapter strategy、validation 方向一致。
 - `complete()` / `complete_simple()` 建立在 stream 语义上，这个大方向是稳定的，当前问题主要在交互图表达，而不是原则本身。
 

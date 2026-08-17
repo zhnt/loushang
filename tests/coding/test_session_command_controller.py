@@ -5,28 +5,34 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.diagnostics import DiagnosticsService
-from loushang.coding.extensions import (
+from loushang.coding.session_manager import SessionManager
+from loushang.harness.diagnostics import DiagnosticsService
+from loushang.harness.extensions.agent import (
     ExtensionRunner,
     LoadedExtension,
     RegisteredCommand,
 )
-from loushang.coding.loader import (
+from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
     SkillDescriptor,
 )
-from loushang.coding.platform.clipboard import ClipboardCopyResult
-from loushang.coding.session.builtin_commands import BuiltinCommandBackend
-from loushang.coding.session.command_controller import CommandController
-from loushang.coding.store import SessionManager
+from loushang.harness.session import (
+    StandardSessionCommandController as CommandController,
+)
+from loushang.harness.session import StandardSessionCommandPorts
+from loushang.tui.clipboard import ClipboardCopyResult
 
 
-def test_command_controller_lists_extension_prompt_and_enabled_skill_commands(tmp_path) -> None:
+def test_command_controller_lists_extension_prompt_and_enabled_skill_commands(
+    tmp_path,
+) -> None:
     async def _handler(args: str, ctx) -> None:
         del args, ctx
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     runner = ExtensionRunner(
         [
             LoadedExtension(
@@ -75,8 +81,16 @@ def test_command_controller_lists_extension_prompt_and_enabled_skill_commands(tm
 
     commands = controller.list_commands()
 
-    assert [command.name for command in commands] == ["deploy", "plan", "skill:debugging"]
-    assert [command.description for command in commands] == ["Deploy the project", "Plan the change.", "Debug failures."]
+    assert [command.name for command in commands] == [
+        "deploy",
+        "plan",
+        "skill:debugging",
+    ]
+    assert [command.description for command in commands] == [
+        "Deploy the project",
+        "Plan the change.",
+        "Debug failures.",
+    ]
     assert [command.source for command in commands] == ["extension", "prompt", "skill"]
     assert [command.source_info.path for command in commands] == [
         "/tmp/project/extensions/deploy.py",
@@ -85,11 +99,15 @@ def test_command_controller_lists_extension_prompt_and_enabled_skill_commands(tm
     ]
 
 
-def test_command_controller_lists_builtin_commands_before_extension_and_resource_commands(tmp_path) -> None:
+def test_command_controller_lists_builtin_commands_before_extension_and_resource_commands(
+    tmp_path,
+) -> None:
     async def _handler(args: str, ctx) -> None:
         del args, ctx
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     runner = ExtensionRunner(
         [
             LoadedExtension(
@@ -101,26 +119,49 @@ def test_command_controller_lists_builtin_commands_before_extension_and_resource
     )
     bundle = ResourceBundle(
         cwd=Path("/tmp/project"),
-        prompts=[PromptFragmentDescriptor(name="plan", source_path=Path("/tmp/project/prompts/plan.md"), text="Plan")],
+        prompts=[
+            PromptFragmentDescriptor(
+                name="plan",
+                source_path=Path("/tmp/project/prompts/plan.md"),
+                text="Plan",
+            )
+        ],
     )
     controller = CommandController(
         session_manager=manager,
         get_extension_runner=lambda: runner,
         get_resource_bundle=lambda: bundle,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(),
+        standard_ports=StandardSessionCommandPorts(),
     )
 
     commands = controller.list_commands()
 
-    assert [command.name for command in commands[:4]] == ["settings", "model", "scoped-models", "export"]
-    assert {command.name for command in commands} >= {"copy", "name", "session", "terminal", "changelog", "tools", "deploy", "plan"}
-    assert all(command.source == "builtin" for command in commands[:23])
+    assert [command.name for command in commands[:4]] == [
+        "export",
+        "import",
+        "copy",
+        "rename",
+    ]
+    assert {command.name for command in commands} >= {
+        "copy",
+        "rename",
+        "session",
+        "changelog",
+        "tools",
+        "deploy",
+        "plan",
+    }
+    assert all(command.source == "builtin" for command in commands[:15])
     assert commands[0].source_info.source == "builtin"
 
 
-def test_command_controller_exposes_prompt_argument_hint_from_frontmatter(tmp_path) -> None:
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+def test_command_controller_exposes_prompt_argument_hint_from_frontmatter(
+    tmp_path,
+) -> None:
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     bundle = ResourceBundle(
         cwd=Path("/tmp/project"),
         prompts=[
@@ -147,18 +188,23 @@ def test_command_controller_exposes_prompt_argument_hint_from_frontmatter(tmp_pa
 
     commands = controller.list_commands()
 
-    assert [(command.name, command.description, command.argument_hint) for command in commands] == [
-        ("review", "Review pull requests", "<PR-URL>")
-    ]
+    assert [
+        (command.name, command.description, command.argument_hint)
+        for command in commands
+    ] == [("review", "Review pull requests", "<PR-URL>")]
 
 
-def test_command_controller_executes_extension_command_before_resource_command(tmp_path) -> None:
+def test_command_controller_executes_extension_command_before_resource_command(
+    tmp_path,
+) -> None:
     calls: list[tuple[str, str]] = []
 
     async def _handler(args: str, ctx) -> None:
         calls.append((args, ctx.cwd))
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     runner = ExtensionRunner(
         [
             LoadedExtension(
@@ -170,7 +216,13 @@ def test_command_controller_executes_extension_command_before_resource_command(t
     )
     bundle = ResourceBundle(
         cwd=Path("/tmp/project"),
-        prompts=[PromptFragmentDescriptor(name="deploy", source_path=Path("/tmp/project/prompts/deploy.md"), text="Prompt deploy")],
+        prompts=[
+            PromptFragmentDescriptor(
+                name="deploy",
+                source_path=Path("/tmp/project/prompts/deploy.md"),
+                text="Prompt deploy",
+            )
+        ],
     )
     controller = CommandController(
         session_manager=manager,
@@ -187,20 +239,26 @@ def test_command_controller_executes_extension_command_before_resource_command(t
     assert calls == [("now", "/tmp/project")]
 
 
-def test_command_controller_dispatches_extension_before_builtin_and_resource(tmp_path) -> None:
+def test_command_controller_dispatches_extension_before_builtin_and_resource(
+    tmp_path,
+) -> None:
     calls: list[tuple[str, str]] = []
     builtin_names: list[str | None] = []
 
     async def _handler(args: str, ctx) -> None:
         calls.append((args, ctx.cwd))
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     runner = ExtensionRunner(
         [
             LoadedExtension(
-                name="name-ext",
-                source_path=Path("/tmp/project/extensions/name.py"),
-                commands={"name": RegisteredCommand(name="name", handler=_handler)},
+                name="rename-ext",
+                source_path=Path("/tmp/project/extensions/rename.py"),
+                commands={
+                    "rename": RegisteredCommand(name="rename", handler=_handler)
+                },
             )
         ]
     )
@@ -208,9 +266,9 @@ def test_command_controller_dispatches_extension_before_builtin_and_resource(tmp
         cwd=Path("/tmp/project"),
         prompts=[
             PromptFragmentDescriptor(
-                name="name",
-                source_path=Path("/tmp/project/prompts/name.md"),
-                text="Resource name $ARGUMENTS",
+                name="rename",
+                source_path=Path("/tmp/project/prompts/rename.md"),
+                text="Resource rename $ARGUMENTS",
             )
         ],
     )
@@ -219,78 +277,55 @@ def test_command_controller_dispatches_extension_before_builtin_and_resource(tmp
         get_extension_runner=lambda: runner,
         get_resource_bundle=lambda: bundle,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(set_session_name=builtin_names.append),
+        standard_ports=StandardSessionCommandPorts(set_session_name=builtin_names.append),
     )
 
-    result = asyncio.run(controller.execute_command_async("/name", "Project Alpha"))
+    result = asyncio.run(
+        controller.execute_command_async("/rename", "Project Alpha")
+    )
 
     assert result is not None
-    assert result.invocation_name == "name"
+    assert result.invocation_name == "rename"
     assert result.result is None
     assert calls == [("Project Alpha", "/tmp/project")]
     assert builtin_names == []
 
 
-def test_command_controller_executes_builtin_login(tmp_path) -> None:
-    calls: list[str | None] = []
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    controller = CommandController(
-        session_manager=manager,
-        get_extension_runner=lambda: None,
-        get_resource_bundle=lambda: None,
-        get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
-            login_provider=lambda target: calls.append(target)
-            or {"provider": "demo", "scope": "provider", "message": "Login complete."}
-        ),
-    )
-
-    result = asyncio.run(controller.execute_command_async("login", "demo"))
-
-    assert calls == ["demo"]
-    assert result is not None
-    assert result.result["status"] == "ok"
-    assert result.result["message"] == "Login complete."
-
-
-def test_command_controller_rejects_builtin_login_extra_args(tmp_path) -> None:
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    controller = CommandController(
-        session_manager=manager,
-        get_extension_runner=lambda: None,
-        get_resource_bundle=lambda: None,
-        get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
-            login_provider=lambda _target: pytest.fail("login should not execute")
-        ),
-    )
-
-    result = asyncio.run(controller.execute_command_async("login", "one two"))
-
-    assert result is not None
-    assert result.result["status"] == "error"
-    assert result.result["message"] == "Usage: /login [provider[:endpoint[:model]]]"
-
-
-def test_command_controller_executes_builtin_name_session_and_unsupported_commands(tmp_path) -> None:
+def test_command_controller_executes_builtin_rename_session_and_unsupported_commands(
+    tmp_path,
+) -> None:
     names: list[str | None] = []
     controller = CommandController(
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False, session_id="session-1"),
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path,
+                cwd="/tmp/project",
+                persist=False,
+                session_id="session-1",
+            )
+        ),
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
+        standard_ports=StandardSessionCommandPorts(
             set_session_name=names.append,
             get_session_info=lambda: {"session_id": "session-1", "cwd": "/tmp/project"},
         ),
     )
 
-    name_result = asyncio.run(controller.execute_command_async("/name", "Project Alpha"))
+    rename_result = asyncio.run(
+        controller.execute_command_async("/rename", "Project Alpha")
+    )
     session_result = asyncio.run(controller.execute_command_async("/session", ""))
-    model_result = asyncio.run(controller.execute_command_async("/model", ""))
 
-    assert name_result is not None
-    assert name_result.result == {"source": "builtin", "command": "name", "status": "ok", "name": "Project Alpha"}
+    assert rename_result is not None
+    assert rename_result.result == {
+        "source": "builtin",
+        "command": "rename",
+        "status": "ok",
+        "name": "Project Alpha",
+        "message": "Session renamed to Project Alpha",
+    }
     assert names == ["Project Alpha"]
     assert session_result is not None
     assert session_result.result == {
@@ -298,14 +333,9 @@ def test_command_controller_executes_builtin_name_session_and_unsupported_comman
         "command": "session",
         "status": "ok",
         "session": {"session_id": "session-1", "cwd": "/tmp/project"},
+        "message": "Session: session-1 | CWD: /tmp/project",
     }
-    assert model_result is not None
-    assert model_result.result == {
-        "source": "builtin",
-        "command": "model",
-        "status": "unsupported",
-        "message": 'Builtin command "/model" is handled by the interactive shell.',
-    }
+    assert controller.extract_builtin_command_invocation("/model") is None
 
 
 def test_command_controller_executes_builtin_tools_list_and_mutations(tmp_path) -> None:
@@ -322,11 +352,18 @@ def test_command_controller_executes_builtin_tools_list_and_mutations(tmp_path) 
         active_tools[:] = list(tool_names)
 
     controller = CommandController(
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False, session_id="session-1"),
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path,
+                cwd="/tmp/project",
+                persist=False,
+                session_id="session-1",
+            )
+        ),
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
+        standard_ports=StandardSessionCommandPorts(
             get_active_tool_names=lambda: list(active_tools),
             get_all_tools=lambda: list(all_tools),
             set_active_tools=_set_active_tools,
@@ -366,11 +403,18 @@ def test_command_controller_executes_builtin_tools_list_and_mutations(tmp_path) 
 
 def test_command_controller_builtin_tools_preserves_tool_source_info(tmp_path) -> None:
     controller = CommandController(
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False, session_id="session-1"),
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path,
+                cwd="/tmp/project",
+                persist=False,
+                session_id="session-1",
+            )
+        ),
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
+        standard_ports=StandardSessionCommandPorts(
             get_active_tool_names=lambda: ["review_lookup"],
             get_all_tools=lambda: [
                 {
@@ -407,7 +451,9 @@ def test_command_controller_builtin_tools_preserves_tool_source_info(tmp_path) -
     ]
 
 
-def test_command_controller_executes_builtin_extensions_list_and_detail(tmp_path) -> None:
+def test_command_controller_executes_builtin_extensions_list_and_detail(
+    tmp_path,
+) -> None:
     extensions = [
         {
             "id": "acme.review",
@@ -418,8 +464,18 @@ def test_command_controller_executes_builtin_extensions_list_and_detail(tmp_path
             "permissionLevel": "standard",
             "capabilities": ["filesystem"],
             "surfaces": [
-                {"type": "command", "name": "acme-review", "active": True, "source": "manifest"},
-                {"type": "tool", "name": "review_lookup", "active": True, "source": "runtime"},
+                {
+                    "type": "command",
+                    "name": "acme-review",
+                    "active": True,
+                    "source": "manifest",
+                },
+                {
+                    "type": "tool",
+                    "name": "review_lookup",
+                    "active": True,
+                    "source": "runtime",
+                },
             ],
             "diagnostics": [
                 {
@@ -431,15 +487,24 @@ def test_command_controller_executes_builtin_extensions_list_and_detail(tmp_path
         }
     ]
     controller = CommandController(
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False, session_id="session-1"),
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path,
+                cwd="/tmp/project",
+                persist=False,
+                session_id="session-1",
+            )
+        ),
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(get_extensions=lambda: extensions),
+        standard_ports=StandardSessionCommandPorts(get_extensions=lambda: extensions),
     )
 
     list_result = asyncio.run(controller.execute_command_async("/extensions", ""))
-    detail_result = asyncio.run(controller.execute_command_async("/extensions", "acme.review"))
+    detail_result = asyncio.run(
+        controller.execute_command_async("/extensions", "acme.review")
+    )
 
     assert list_result is not None
     assert list_result.result == {
@@ -480,13 +545,24 @@ def test_command_controller_executes_builtin_extensions_list_and_detail(tmp_path
     }
 
 
-def test_command_controller_builtin_extensions_reports_unknown_extension(tmp_path) -> None:
+def test_command_controller_builtin_extensions_reports_unknown_extension(
+    tmp_path,
+) -> None:
     controller = CommandController(
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False, session_id="session-1"),
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path,
+                cwd="/tmp/project",
+                persist=False,
+                session_id="session-1",
+            )
+        ),
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(get_extensions=lambda: [{"id": "acme.review", "name": "Acme Review"}]),
+        standard_ports=StandardSessionCommandPorts(
+            get_extensions=lambda: [{"id": "acme.review", "name": "Acme Review"}]
+        ),
     )
 
     result = asyncio.run(controller.execute_command_async("/extensions", "missing.ext"))
@@ -502,11 +578,18 @@ def test_command_controller_builtin_extensions_reports_unknown_extension(tmp_pat
 
 def test_command_controller_builtin_tools_rejects_unknown_tool(tmp_path) -> None:
     controller = CommandController(
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False, session_id="session-1"),
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path,
+                cwd="/tmp/project",
+                persist=False,
+                session_id="session-1",
+            )
+        ),
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
+        standard_ports=StandardSessionCommandPorts(
             get_active_tool_names=lambda: ["read"],
             get_all_tools=lambda: [{"name": "read", "description": "Read files"}],
             set_active_tools=lambda tool_names: None,
@@ -533,11 +616,13 @@ def test_command_controller_executes_builtin_copy_by_recent_index(tmp_path) -> N
         return ClipboardCopyResult(ok=True, command="fake-copy", message="copied")
 
     controller = CommandController(
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
+        standard_ports=StandardSessionCommandPorts(
             get_recent_assistant_texts=lambda: ("latest answer", "previous answer"),
             copy_text=_copy_text,
         ),
@@ -573,11 +658,15 @@ def test_command_controller_executes_builtin_copy_by_recent_index(tmp_path) -> N
 
 def test_command_controller_rejects_invalid_builtin_copy_index(tmp_path) -> None:
     controller = CommandController(
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(get_recent_assistant_texts=lambda: ("latest answer",)),
+        standard_ports=StandardSessionCommandPorts(
+            get_recent_assistant_texts=lambda: ("latest answer",)
+        ),
     )
 
     zero_result = asyncio.run(controller.execute_command_async("/copy", "0"))
@@ -608,13 +697,17 @@ def test_command_controller_rejects_invalid_builtin_copy_index(tmp_path) -> None
 def test_command_controller_keeps_legacy_builtin_copy_backend(tmp_path) -> None:
     copied: list[str] = []
     controller = CommandController(
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
+        standard_ports=StandardSessionCommandPorts(
             get_last_assistant_text=lambda: "legacy latest",
-            copy_text=lambda text: (copied.append(text) or ClipboardCopyResult(ok=True, command="fake-copy")),
+            copy_text=lambda text: (
+                copied.append(text) or ClipboardCopyResult(ok=True, command="fake-copy")
+            ),
         ),
     )
 
@@ -641,7 +734,9 @@ def test_command_controller_executes_builtin_runtime_session_commands(tmp_path) 
         calls.append(("new", options))
         return {"cancelled": False}
 
-    async def _resume_session(session_path: str, options: object | None = None) -> dict[str, object]:
+    async def _resume_session(
+        session_path: str, options: object | None = None
+    ) -> dict[str, object]:
         calls.append(("resume", (session_path, options)))
         return {"cancelled": False}
 
@@ -653,20 +748,26 @@ def test_command_controller_executes_builtin_runtime_session_commands(tmp_path) 
         calls.append(("clone", None))
         return {"cancelled": False}
 
-    async def _navigate_tree(target_id: str, options: object | None = None) -> dict[str, object]:
+    async def _navigate_tree(
+        target_id: str, options: object | None = None
+    ) -> dict[str, object]:
         calls.append(("tree", (target_id, options)))
         return {"cancelled": False}
 
-    async def _import_session(input_path: str, cwd_override: str | None = None) -> dict[str, object]:
+    async def _import_session(
+        input_path: str, cwd_override: str | None = None
+    ) -> dict[str, object]:
         calls.append(("import", (input_path, cwd_override)))
         return {"cancelled": False}
 
     controller = CommandController(
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
+        standard_ports=StandardSessionCommandPorts(
             new_session=_new_session,
             resume_session=_resume_session,
             fork_session=_fork,
@@ -677,29 +778,63 @@ def test_command_controller_executes_builtin_runtime_session_commands(tmp_path) 
     )
 
     results = [
-        asyncio.run(controller.execute_command_async("/new", "/tmp/next")),
+        asyncio.run(controller.execute_command_async("/new", "")),
         asyncio.run(controller.execute_command_async("/resume", "/tmp/session.jsonl")),
         asyncio.run(controller.execute_command_async("/fork", "entry-1 before")),
         asyncio.run(controller.execute_command_async("/clone", "")),
-        asyncio.run(controller.execute_command_async("/tree", "entry-2 --summarize --label chosen")),
-        asyncio.run(controller.execute_command_async("/import", "/tmp/import.jsonl /tmp/project")),
+        asyncio.run(
+            controller.execute_command_async(
+                "/tree", "entry-2 --summarize --label chosen"
+            )
+        ),
+        asyncio.run(
+            controller.execute_command_async(
+                "/import", "/tmp/import.jsonl /tmp/project"
+            )
+        ),
     ]
 
     assert [result.result for result in results if result is not None] == [
-        {"source": "builtin", "command": "new", "status": "ok", "result": {"cancelled": False}},
-        {"source": "builtin", "command": "resume", "status": "ok", "result": {"cancelled": False}},
+        {
+            "source": "builtin",
+            "command": "new",
+            "status": "ok",
+            "result": {"cancelled": False},
+            "message": "Started a new session.",
+        },
+        {
+            "source": "builtin",
+            "command": "resume",
+            "status": "ok",
+            "result": {"cancelled": False},
+        },
         {
             "source": "builtin",
             "command": "fork",
             "status": "ok",
             "result": {"cancelled": False, "selected_text": "selected"},
         },
-        {"source": "builtin", "command": "clone", "status": "ok", "result": {"cancelled": False}},
-        {"source": "builtin", "command": "tree", "status": "ok", "result": {"cancelled": False}},
-        {"source": "builtin", "command": "import", "status": "ok", "result": {"cancelled": False}},
+        {
+            "source": "builtin",
+            "command": "clone",
+            "status": "ok",
+            "result": {"cancelled": False},
+        },
+        {
+            "source": "builtin",
+            "command": "tree",
+            "status": "ok",
+            "result": {"cancelled": False},
+        },
+        {
+            "source": "builtin",
+            "command": "import",
+            "status": "ok",
+            "result": {"cancelled": False},
+        },
     ]
     assert calls == [
-        ("new", {"cwd": "/tmp/next"}),
+        ("new", None),
         ("resume", ("/tmp/session.jsonl", None)),
         ("fork", ("entry-1", {"position": "before"})),
         ("clone", None),
@@ -708,8 +843,83 @@ def test_command_controller_executes_builtin_runtime_session_commands(tmp_path) 
     ]
 
 
-def test_command_controller_records_missing_command_without_resource_bundle(tmp_path) -> None:
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+def test_command_controller_projects_standard_session_argument_errors(tmp_path) -> None:
+    async def _resume(
+        session_path: str, options: object | None = None
+    ) -> dict[str, object]:
+        del session_path, options
+        return {"cancelled": False}
+
+    async def _fork(entry_id: str, options: object | None = None) -> dict[str, object]:
+        del entry_id, options
+        return {"cancelled": False}
+
+    async def _navigate_tree(
+        target_id: str, options: object | None = None
+    ) -> dict[str, object]:
+        del target_id, options
+        return {"cancelled": False}
+
+    async def _new_session(options: object | None = None) -> dict[str, object]:
+        del options
+        return {"cancelled": False}
+
+    controller = CommandController(
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
+        get_extension_runner=lambda: None,
+        get_resource_bundle=lambda: None,
+        get_diagnostics_service=lambda: None,
+        standard_ports=StandardSessionCommandPorts(
+            new_session=_new_session,
+            resume_session=_resume,
+            fork_session=_fork,
+            navigate_tree=_navigate_tree,
+        ),
+    )
+
+    resume = asyncio.run(controller.execute_command_async("/resume", ""))
+    new = asyncio.run(controller.execute_command_async("/new", "/tmp/project"))
+    fork = asyncio.run(controller.execute_command_async("/fork", "entry elsewhere"))
+    tree = asyncio.run(controller.execute_command_async("/tree", ""))
+
+    assert resume is not None
+    assert resume.result == {
+        "source": "builtin",
+        "command": "resume",
+        "status": "error",
+        "message": "Usage: /resume <session-id-or-path>",
+    }
+    assert new is not None
+    assert new.result == {
+        "source": "builtin",
+        "command": "new",
+        "status": "error",
+        "message": "Usage: /new",
+    }
+    assert fork is not None
+    assert fork.result == {
+        "source": "builtin",
+        "command": "fork",
+        "status": "error",
+        "message": "Unsupported fork position: elsewhere",
+    }
+    assert tree is not None
+    assert tree.result == {
+        "source": "builtin",
+        "command": "tree",
+        "status": "error",
+        "message": "Usage: /tree <entry-id> [--summarize] [--label <label>]",
+    }
+
+
+def test_command_controller_records_missing_command_without_resource_bundle(
+    tmp_path,
+) -> None:
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     diagnostics_service = DiagnosticsService()
     controller = CommandController(
         session_manager=manager,
@@ -725,7 +935,9 @@ def test_command_controller_records_missing_command_without_resource_bundle(tmp_
     assert records[0].details == {"invocation_name": "missing", "args": "args"}
 
 
-def test_command_controller_extracts_and_rejects_queued_extension_commands(tmp_path) -> None:
+def test_command_controller_extracts_and_rejects_queued_extension_commands(
+    tmp_path,
+) -> None:
     async def _handler(args: str, ctx) -> None:
         del args, ctx
 
@@ -739,21 +951,30 @@ def test_command_controller_extracts_and_rejects_queued_extension_commands(tmp_p
         ]
     )
     controller = CommandController(
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         get_extension_runner=lambda: runner,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
     )
 
-    assert controller.extract_extension_command_invocation("/deploy now") == ("deploy", "now")
+    assert controller.extract_extension_command_invocation("/deploy now") == (
+        "deploy",
+        "now",
+    )
     assert controller.extract_extension_command_invocation("deploy now") is None
     assert controller.extract_extension_command_invocation("/missing now") is None
 
-    with pytest.raises(RuntimeError, match='Extension command "/deploy" cannot be queued'):
+    with pytest.raises(
+        RuntimeError, match='Extension command "/deploy" cannot be queued'
+    ):
         controller.raise_if_queued_extension_command("/deploy now")
 
 
-def test_command_controller_preflight_async_consumes_extension_command(tmp_path) -> None:
+def test_command_controller_preflight_async_consumes_extension_command(
+    tmp_path,
+) -> None:
     calls: list[str] = []
 
     async def _handler(args: str, ctx) -> None:
@@ -770,7 +991,9 @@ def test_command_controller_preflight_async_consumes_extension_command(tmp_path)
         ]
     )
     controller = CommandController(
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         get_extension_runner=lambda: runner,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
@@ -786,15 +1009,19 @@ def test_command_controller_preflight_async_consumes_extension_command(tmp_path)
 def test_command_controller_preflight_async_consumes_builtin_command(tmp_path) -> None:
     names: list[str | None] = []
     controller = CommandController(
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(set_session_name=names.append),
+        standard_ports=StandardSessionCommandPorts(set_session_name=names.append),
     )
 
-    result = asyncio.run(controller.preflight_user_input_async("/name Project Alpha"))
+    result = asyncio.run(
+        controller.preflight_user_input_async("/rename Project Alpha")
+    )
 
     assert result.consumed is True
-    assert result.text == "/name Project Alpha"
+    assert result.text == "/rename Project Alpha"
     assert names == ["Project Alpha"]

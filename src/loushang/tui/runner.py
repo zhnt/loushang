@@ -26,13 +26,20 @@ from loushang.tui.terminal import (
     TerminalSize,
     terminal_size_from_environment,
 )
-from loushang.tui.terminal_input import read_input_chunk_or_render_tick
+from loushang.tui.terminal_input import (
+    InputChunkReader,
+    read_input_chunk_or_render_tick,
+)
 from loushang.tui.terminal_session import TerminalSession
 from loushang.tui.tui import Tui
 
 TuiInputHandler = Callable[
     [InputEvent, "TuiRunContext"],
     "TuiInputResult | Awaitable[TuiInputResult | None] | None",
+]
+TuiStartHandler = Callable[
+    ["TuiRunContext"],
+    "Awaitable[None] | None",
 ]
 TerminalSessionFactory = Callable[[TextIO, TextIO], AbstractContextManager[object]]
 TerminalSizeProvider = Callable[[], TerminalSize]
@@ -79,17 +86,29 @@ class TuiRunner:
     stdout: TextIO | None = None
     terminal_size_provider: TerminalSizeProvider | None = None
     terminal_session_factory: TerminalSessionFactory | None = None
+    input_chunk_reader: InputChunkReader | None = None
     _running: bool = field(default=False, init=False, repr=False)
 
-    async def run(self, on_input: TuiInputHandler | None = None) -> int:
+    async def run(
+        self,
+        on_input: TuiInputHandler | None = None,
+        *,
+        on_start: TuiStartHandler | None = None,
+    ) -> int:
         if self._running:
-            raise RuntimeError("TuiRunner.run() cannot be called while the runner is already running")
+            raise RuntimeError(
+                "TuiRunner.run() cannot be called while the runner is already running"
+            )
         self._running = True
         stdin = self.stdin if self.stdin is not None else sys.stdin
         stdout = self.stdout if self.stdout is not None else sys.stdout
         size_provider = self.terminal_size_provider or terminal_size_from_environment
-        terminal = ProcessTerminalPort(output=stdout, size_provider=size_provider, track_screen=False)
-        runtime = TuiRuntime(render_loop=RenderLoop(self.tui._screen_root), terminal=terminal)
+        terminal = ProcessTerminalPort(
+            output=stdout, size_provider=size_provider, track_screen=False
+        )
+        runtime = TuiRuntime(
+            render_loop=RenderLoop(self.tui._screen_root), terminal=terminal
+        )
         reader = InputReader()
         render_wakeup = asyncio.Event()
 
@@ -100,7 +119,9 @@ class TuiRunner:
 
         self.tui.attach_terminal(terminal)
         self.tui._runtime = runtime
-        session_factory = self.terminal_session_factory or _default_terminal_session_factory
+        session_factory = (
+            self.terminal_session_factory or _default_terminal_session_factory
+        )
         try:
             with session_factory(stdin, stdout) as terminal_context:
                 self.tui.terminal_context = terminal_context
@@ -112,12 +133,17 @@ class TuiRunner:
                     reader=reader,
                     _render_wakeup=render_wakeup,
                 )
+                if on_start is not None:
+                    start_result = on_start(context)
+                    if inspect.isawaitable(start_result):
+                        await start_result
                 runtime.render_now()
                 while True:
                     data = await read_input_chunk_or_render_tick(
                         stdin,
                         runtime=runtime,
                         active_task=None,
+                        input_chunk_reader=self.input_chunk_reader,
                         render_wakeup=render_wakeup,
                         pending_input_idle_ms=10 if reader.has_pending else None,
                         idle_wakeup_ms=terminal_runtime_wakeup_ms(terminal_context),
@@ -126,21 +152,35 @@ class TuiRunner:
                         poll_terminal_runtime(terminal_context)
                         if not reader.has_pending:
                             continue
-                        input_events = flush_pending_input(reader, terminal_context=terminal_context)
+                        input_events = flush_pending_input(
+                            reader, terminal_context=terminal_context
+                        )
                     elif data == "" and reader.has_pending:
-                        input_events = flush_pending_input(reader, terminal_context=terminal_context)
+                        input_events = flush_pending_input(
+                            reader, terminal_context=terminal_context
+                        )
                     elif data == "":
                         runtime.render_now()
-                        return finish_tui_exit(runtime=runtime, stdout=stdout, exit_code=0)
+                        return finish_tui_exit(
+                            runtime=runtime, stdout=stdout, exit_code=0
+                        )
                     else:
-                        input_events = input_events_for_chunk(reader, data, terminal_context=terminal_context)
+                        input_events = input_events_for_chunk(
+                            reader, data, terminal_context=terminal_context
+                        )
 
                     for event in input_events:
-                        result = await _dispatch_input(event, context=context, on_input=on_input)
+                        result = await _dispatch_input(
+                            event, context=context, on_input=on_input
+                        )
                         if result.exit_code is not None:
                             if result.render_requested:
                                 runtime.render_now()
-                            return finish_tui_exit(runtime=runtime, stdout=stdout, exit_code=result.exit_code)
+                            return finish_tui_exit(
+                                runtime=runtime,
+                                stdout=stdout,
+                                exit_code=result.exit_code,
+                            )
                         if result.render_requested:
                             request_runtime_render(runtime, "input")
         finally:
@@ -181,4 +221,5 @@ __all__ = [
     "TuiInputResult",
     "TuiRunContext",
     "TuiRunner",
+    "TuiStartHandler",
 ]

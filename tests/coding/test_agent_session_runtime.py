@@ -2,10 +2,19 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date
+from functools import wraps
 from pathlib import Path
 
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
+
+
+def _async_test(test):
+    @wraps(test)
+    def run(*args, **kwargs):
+        return asyncio.run(test(*args, **kwargs))
+
+    return run
 
 
 def _runtime_footer(cwd: Path) -> str:
@@ -48,6 +57,7 @@ def _user_message(text: str) -> UserMessage:
 
 def _assistant_message(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -61,9 +71,209 @@ def _assistant_message(text: str) -> AssistantMessage:
     )
 
 
-def test_runtime_create_switch_and_list_sessions(tmp_path) -> None:
+@_async_test
+async def test_session_publishes_receipt_backed_events_for_every_new_commit(
+    tmp_path,
+) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.store import SessionManager
+    from loushang.harness.events import TranscriptRecordCommitted
+
+    runtime = create_agent_session_runtime(
+        session_dir=tmp_path,
+        model=_model(),
+        persist=False,
+    )
+    session = await runtime.create_session(cwd=str(tmp_path))
+    seen = []
+    session.subscribe_runtime_events(seen.append)
+
+    record_id = await session.session_manager.append_custom_entry("demo", {"ok": True})
+    await asyncio.sleep(0)
+
+    assert len(seen) == 1
+    event = seen[0]
+    assert event.kind == "transcript.record_committed"
+    assert event.source_record_id == record_id
+    assert isinstance(event.payload, TranscriptRecordCommitted)
+    assert event.payload.record_id == record_id
+    assert event.payload.revision == 1
+    assert event.payload.committed_at.tzinfo is not None
+
+
+@_async_test
+async def test_session_uses_one_runtime_stream_with_product_projection(
+    tmp_path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.harness.events import ConversationMetadataChanged
+
+    runtime = create_agent_session_runtime(
+        session_dir=tmp_path,
+        model=_model(),
+        persist=False,
+    )
+    session = await runtime.create_session(cwd=str(tmp_path))
+    runtime_events = []
+    product_events = []
+    session.subscribe_runtime_events(runtime_events.append)
+    session.subscribe(product_events.append)
+
+    await session.set_session_name("Demo")
+
+    assert [event.kind for event in runtime_events] == [
+        "transcript.record_committed",
+        "session.session_info_changed",
+    ]
+    assert [event.sequence for event in runtime_events] == [1, 2]
+    assert runtime_events[0].source_record_id == runtime_events[1].source_record_id
+    assert isinstance(runtime_events[1].payload, ConversationMetadataChanged)
+    assert product_events == [{"type": "session_info_changed", "name": "Demo"}]
+
+
+@_async_test
+async def test_session_normalizes_gateway_audit_sequence_into_runtime_stream(
+    tmp_path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.harness.events import ToolPolicyAuditEvent
+
+    runtime = create_agent_session_runtime(
+        session_dir=tmp_path,
+        model=_model(),
+        persist=False,
+    )
+    session = await runtime.create_session(cwd=str(tmp_path))
+    runtime_events = []
+    product_events = []
+    session.subscribe_runtime_events(runtime_events.append)
+    session.subscribe(product_events.append)
+
+    event_types = (
+        "tool_action_frozen",
+        "tool_policy_evaluated",
+        "tool_approval_requested",
+        "tool_approval_resolved",
+        "tool_execution_started",
+        "tool_execution_completed",
+        "tool_execution_failed",
+    )
+    for event_type in event_types:
+        await session._dispatch_event(
+            {
+                "type": event_type,
+                "tool_name": "write",
+                "action_fingerprint": "f" * 64,
+            }
+        )
+
+    assert [event.kind for event in runtime_events] == [
+        f"session.{event_type}" for event_type in event_types
+    ]
+    assert [event.payload for event in runtime_events] == [
+        ToolPolicyAuditEvent(
+            event_type,
+            {"tool_name": "write", "action_fingerprint": "f" * 64},
+        )
+        for event_type in event_types
+    ]
+    assert product_events == [
+        {
+            "type": event_type,
+            "tool_name": "write",
+            "action_fingerprint": "f" * 64,
+        }
+        for event_type in event_types
+    ]
+
+
+@_async_test
+async def test_session_emits_auditable_permission_profile_changes(
+    tmp_path,
+) -> None:
+    from loushang.coding.bootstrap import (
+        create_agent_session_runtime,
+        create_services,
+    )
+    from loushang.harness.config.agent import SettingsManager
+    from loushang.harness.events import PermissionProfileChanged
+
+    settings = SettingsManager(
+        global_settings_path=tmp_path / "settings.json",
+        project_settings_path=tmp_path / "project-settings.json",
+    )
+    runtime = create_agent_session_runtime(
+        session_dir=tmp_path,
+        model=_model(),
+        services=create_services(settings_manager=settings),
+        persist=False,
+    )
+    session = await runtime.create_session(cwd=str(tmp_path))
+    runtime_events = []
+    session.subscribe_runtime_events(runtime_events.append)
+
+    accepted = await session.apply_approval_permission_action(
+        "set-profile:project:cautious"
+    )
+
+    assert accepted is True
+    assert settings.get_permission_profile_id() == "cautious"
+    assert runtime_events[-1].kind == "session.permission_profile_changed"
+    assert runtime_events[-1].payload == PermissionProfileChanged(
+        previous_profile_id="standard",
+        requested_profile_id="cautious",
+        effective_profile_id="cautious",
+        scope="project",
+    )
+
+
+@_async_test
+async def test_runtime_listener_failure_does_not_duplicate_agent_message(
+    tmp_path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session_runtime
+
+    runtime = create_agent_session_runtime(
+        session_dir=tmp_path,
+        model=_model(),
+        persist=False,
+    )
+    session = await runtime.create_session(cwd=str(tmp_path))
+    commit_events = 0
+    failed_message_events = 0
+
+    def fail_first_message_projection(event) -> None:
+        nonlocal commit_events, failed_message_events
+        if event.kind == "transcript.record_committed":
+            commit_events += 1
+        if event.kind == "agent.message_end" and failed_message_events == 0:
+            failed_message_events += 1
+            raise RuntimeError("message projection failed")
+
+    session.subscribe_runtime_events(fail_first_message_projection)
+    message = _assistant_message("answer")
+    event = {"type": "message_end", "message": message}
+
+    try:
+        await session._composition.session_runtime.handle_agent_event(
+            event, session.agent.signal
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "message projection failed"
+    else:
+        raise AssertionError("message projection failure must propagate")
+    await session._composition.session_runtime.handle_agent_event(
+        event, session.agent.signal
+    )
+
+    assert commit_events == 1
+    assert failed_message_events == 1
+    assert len(session.session_manager.get_entries()) == 1
+
+
+@_async_test
+async def test_runtime_create_switch_and_list_sessions(tmp_path) -> None:
+    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.session_manager import SessionManager
 
     project_a = tmp_path / "project-a"
     project_b = tmp_path / "project-b"
@@ -74,16 +284,16 @@ def test_runtime_create_switch_and_list_sessions(tmp_path) -> None:
         session_dir=tmp_path, model=_model(), persist=True
     )
 
-    first = asyncio.run(runtime.create_session(cwd=str(project_a)))
-    first.session_manager.append_message(_user_message("first"))
+    first = await runtime.create_session(cwd=str(project_a))
+    await first.session_manager.append_message(_user_message("first"))
 
-    second_manager = SessionManager.new(
+    second_manager = await SessionManager.new(
         session_dir=tmp_path, cwd=str(project_b.resolve()), persist=True
     )
-    second_manager.append_message(_user_message("second"))
+    await second_manager.append_message(_user_message("second"))
     assert second_manager.session_file is not None
 
-    switched = asyncio.run(runtime.switch_session(second_manager.session_file))
+    switched = await runtime.switch_session(second_manager.session_file)
     records = runtime.list_sessions()
 
     assert runtime.get_current_session() is switched
@@ -96,7 +306,8 @@ def test_runtime_create_switch_and_list_sessions(tmp_path) -> None:
     ]
 
 
-def test_runtime_clone_session_forks_current_leaf(tmp_path) -> None:
+@_async_test
+async def test_runtime_clone_session_forks_current_leaf(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
 
     project = tmp_path / "project"
@@ -104,12 +315,12 @@ def test_runtime_clone_session_forks_current_leaf(tmp_path) -> None:
     runtime = create_agent_session_runtime(
         session_dir=tmp_path, model=_model(), persist=True
     )
-    session = asyncio.run(runtime.create_session(cwd=str(project)))
-    session.session_manager.append_message(_user_message("first"))
-    session.session_manager.append_message(_assistant_message("second"))
+    session = await runtime.create_session(cwd=str(project))
+    await session.session_manager.append_message(_user_message("first"))
+    await session.session_manager.append_message(_assistant_message("second"))
     leaf_id = session.session_manager.get_leaf_id()
 
-    cloned = asyncio.run(runtime.clone_session())
+    cloned = await runtime.clone_session()
 
     assert runtime.get_current_session() is cloned
     assert cloned.session_manager.session_file != session.session_manager.session_file
@@ -119,7 +330,8 @@ def test_runtime_clone_session_forks_current_leaf(tmp_path) -> None:
     ] == ["first", "second"]
 
 
-def test_runtime_lists_session_summaries(tmp_path) -> None:
+@_async_test
+async def test_runtime_lists_session_summaries(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
 
     project = tmp_path / "project"
@@ -127,10 +339,12 @@ def test_runtime_lists_session_summaries(tmp_path) -> None:
     runtime = create_agent_session_runtime(
         session_dir=tmp_path, model=_model(), persist=True
     )
-    session = asyncio.run(runtime.create_session(cwd=str(project)))
-    session.set_session_name("Runtime Summary")
-    asyncio.run(session.set_model(_model()))
-    session.session_manager.append_message(_user_message("summarize runtime sessions"))
+    session = await runtime.create_session(cwd=str(project))
+    await session.set_session_name("Runtime Summary")
+    await session.set_model(_model())
+    await session.session_manager.append_message(
+        _user_message("summarize runtime sessions")
+    )
 
     summaries = runtime.list_session_summaries()
 
@@ -138,12 +352,17 @@ def test_runtime_lists_session_summaries(tmp_path) -> None:
     assert summaries[0].session_id == session.session_id
     assert summaries[0].name == "Runtime Summary"
     assert summaries[0].last_message_preview == "summarize runtime sessions"
-    assert summaries[0].model == {"provider": "faux", "model_id": "faux-model"}
+    assert summaries[0].model == {
+        "provider": "faux",
+        "endpoint_id": "anthropic-messages",
+        "model_id": "faux-model",
+    }
 
 
-def test_runtime_finds_session_summaries(tmp_path) -> None:
+@_async_test
+async def test_runtime_finds_session_summaries(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     project_a = tmp_path / "project-a"
     project_b = tmp_path / "project-b"
@@ -153,17 +372,15 @@ def test_runtime_finds_session_summaries(tmp_path) -> None:
         session_dir=tmp_path, model=_model(), persist=True
     )
 
-    first = asyncio.run(runtime.create_session(cwd=str(project_a)))
-    first.set_session_name("Alpha")
-    first.session_manager.append_message(_user_message("alpha repository task"))
+    first = await runtime.create_session(cwd=str(project_a))
+    await first.set_session_name("Alpha")
+    await first.session_manager.append_message(_user_message("alpha repository task"))
 
-    second = asyncio.run(
-        runtime.create_session(
-            cwd=str(project_b), parent_session=str(first.session_file)
-        )
+    second = await runtime.create_session(
+        cwd=str(project_b), parent_session=str(first.get_session_file())
     )
-    second.set_session_name("Beta")
-    second.session_manager.append_message(_user_message("beta follow up"))
+    await second.set_session_name("Beta")
+    await second.session_manager.append_message(_user_message("beta follow up"))
 
     summaries = runtime.find_session_summaries(
         SessionQuery(name="bet", text="follow", limit=1)
@@ -172,34 +389,43 @@ def test_runtime_finds_session_summaries(tmp_path) -> None:
     assert [summary.session_id for summary in summaries] == [second.session_id]
 
 
-def test_runtime_renames_and_deletes_sessions_by_resolved_reference(tmp_path) -> None:
+@_async_test
+async def test_runtime_renames_and_deletes_sessions_by_resolved_reference(
+    tmp_path,
+) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project = tmp_path / "project"
     project.mkdir()
     runtime = create_agent_session_runtime(
         session_dir=tmp_path, model=_model(), persist=True
     )
-    current = asyncio.run(runtime.create_session(cwd=str(project)))
+    current = await runtime.create_session(cwd=str(project))
 
-    other_manager = SessionManager.new(
+    other_manager = await SessionManager.new(
         session_dir=tmp_path, cwd=str(project), persist=True
     )
+    await other_manager.append_message(_user_message("other"))
     other_file = other_manager.get_session_file()
     assert other_file is not None
 
-    renamed = runtime.rename_session(other_manager.get_header().id[:4], "Other Session")
-    deleted = runtime.delete_session(other_manager.get_header().id[:4])
+    renamed = await runtime.rename_session(
+        other_manager.get_header().conversation_id[:4], "Other Session"
+    )
+    deleted = await runtime.delete_session(
+        other_manager.get_header().conversation_id[:4]
+    )
 
     assert renamed.name == "Other Session"
     assert deleted is True
     assert other_file.exists() is False
     assert current.session_manager.get_session_file() is not None
-    assert current.session_manager.get_session_file().exists() is True
+    assert current.session_manager.get_session_file().exists() is False
 
 
-def test_runtime_delete_session_refuses_current_session(tmp_path) -> None:
+@_async_test
+async def test_runtime_delete_session_refuses_current_session(tmp_path) -> None:
     import pytest
 
     from loushang.coding.bootstrap import create_agent_session_runtime
@@ -209,28 +435,30 @@ def test_runtime_delete_session_refuses_current_session(tmp_path) -> None:
     runtime = create_agent_session_runtime(
         session_dir=tmp_path, model=_model(), persist=True
     )
-    current = asyncio.run(runtime.create_session(cwd=str(project)))
+    current = await runtime.create_session(cwd=str(project))
+    await current.session_manager.append_message(_user_message("current"))
     session_file = current.session_manager.get_session_file()
     assert session_file is not None
 
     with pytest.raises(ValueError, match="currently active session"):
-        runtime.delete_session(session_file)
+        await runtime.delete_session(session_file)
 
     assert session_file.exists() is True
 
 
-def test_runtime_rename_session_records_failure_diagnostic(tmp_path) -> None:
+@_async_test
+async def test_runtime_rename_session_records_failure_diagnostic(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
             self.session_manager = manager
             self.diagnostics_service = None
-            self.session_id = manager.get_header().id
+            self.session_id = manager.get_header().conversation_id
 
     project = tmp_path / "project"
     project.mkdir()
@@ -241,10 +469,10 @@ def test_runtime_rename_session_records_failure_diagnostic(tmp_path) -> None:
         persist=True,
         diagnostics_service=diagnostics_service,
     )
-    current = asyncio.run(runtime.create_session(cwd=str(project)))
+    current = await runtime.create_session(cwd=str(project))
 
     with pytest.raises(FileNotFoundError):
-        runtime.rename_session("missing-session", "New Name")
+        await runtime.rename_session("missing-session", "New Name")
 
     records = diagnostics_service.get_diagnostics(
         query=DiagnosticsQuery(code="session_rename_failed")
@@ -261,18 +489,19 @@ def test_runtime_rename_session_records_failure_diagnostic(tmp_path) -> None:
     }
 
 
-def test_runtime_delete_session_records_failure_diagnostic(tmp_path) -> None:
+@_async_test
+async def test_runtime_delete_session_records_failure_diagnostic(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
             self.session_manager = manager
             self.diagnostics_service = None
-            self.session_id = manager.get_header().id
+            self.session_id = manager.get_header().conversation_id
 
     project = tmp_path / "project"
     project.mkdir()
@@ -283,10 +512,10 @@ def test_runtime_delete_session_records_failure_diagnostic(tmp_path) -> None:
         persist=True,
         diagnostics_service=diagnostics_service,
     )
-    current = asyncio.run(runtime.create_session(cwd=str(project)))
+    current = await runtime.create_session(cwd=str(project))
 
     with pytest.raises(FileNotFoundError):
-        runtime.delete_session("missing-session")
+        await runtime.delete_session("missing-session")
 
     records = diagnostics_service.get_diagnostics(
         query=DiagnosticsQuery(code="session_delete_failed")
@@ -302,7 +531,10 @@ def test_runtime_delete_session_records_failure_diagnostic(tmp_path) -> None:
     }
 
 
-def test_runtime_lists_all_session_summaries_across_session_dirs(tmp_path) -> None:
+@_async_test
+async def test_runtime_lists_all_session_summaries_across_session_dirs(
+    tmp_path,
+) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
 
     project_a = tmp_path / "project-a"
@@ -317,10 +549,12 @@ def test_runtime_lists_all_session_summaries_across_session_dirs(tmp_path) -> No
         session_dir=sessions_root / "project-b", model=_model(), persist=True
     )
 
-    first = asyncio.run(runtime_a.create_session(cwd=str(project_a)))
-    first.set_session_name("Alpha")
-    second = asyncio.run(runtime_b.create_session(cwd=str(project_b)))
-    second.set_session_name("Beta")
+    first = await runtime_a.create_session(cwd=str(project_a))
+    await first.set_session_name("Alpha")
+    await first.session_manager.append_message(_user_message("alpha"))
+    second = await runtime_b.create_session(cwd=str(project_b))
+    await second.set_session_name("Beta")
+    await second.session_manager.append_message(_user_message("beta"))
 
     summaries = runtime_a.list_all_session_summaries()
 
@@ -331,9 +565,12 @@ def test_runtime_lists_all_session_summaries_across_session_dirs(tmp_path) -> No
     assert {summary.name for summary in summaries} == {"Alpha", "Beta"}
 
 
-def test_runtime_finds_all_session_summaries_across_session_dirs(tmp_path) -> None:
+@_async_test
+async def test_runtime_finds_all_session_summaries_across_session_dirs(
+    tmp_path,
+) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     project_a = tmp_path / "project-a"
     project_b = tmp_path / "project-b"
@@ -347,19 +584,21 @@ def test_runtime_finds_all_session_summaries_across_session_dirs(tmp_path) -> No
         session_dir=sessions_root / "project-b", model=_model(), persist=True
     )
 
-    asyncio.run(runtime_a.create_session(cwd=str(project_a))).set_session_name("Alpha")
-    second = asyncio.run(runtime_b.create_session(cwd=str(project_b)))
-    second.set_session_name("Beta")
-    second.session_manager.append_message(_user_message("global lookup target"))
+    first = await runtime_a.create_session(cwd=str(project_a))
+    await first.set_session_name("Alpha")
+    second = await runtime_b.create_session(cwd=str(project_b))
+    await second.set_session_name("Beta")
+    await second.session_manager.append_message(_user_message("global lookup target"))
 
     summaries = runtime_a.find_all_session_summaries(SessionQuery(text="lookup target"))
 
     assert [summary.session_id for summary in summaries] == [second.session_id]
 
 
-def test_runtime_exposes_indexed_session_summary_facades(tmp_path) -> None:
+@_async_test
+async def test_runtime_exposes_indexed_session_summary_facades(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     project_a = tmp_path / "project-a"
     project_b = tmp_path / "project-b"
@@ -373,10 +612,10 @@ def test_runtime_exposes_indexed_session_summary_facades(tmp_path) -> None:
         session_dir=sessions_root / "project-b", model=_model(), persist=True
     )
 
-    first = asyncio.run(runtime_a.create_session(cwd=str(project_a)))
-    first.session_manager.append_message(_user_message("indexed alpha"))
-    second = asyncio.run(runtime_b.create_session(cwd=str(project_b)))
-    second.session_manager.append_message(_user_message("indexed beta"))
+    first = await runtime_a.create_session(cwd=str(project_a))
+    await first.session_manager.append_message(_user_message("indexed alpha"))
+    second = await runtime_b.create_session(cwd=str(project_b))
+    await second.session_manager.append_message(_user_message("indexed beta"))
 
     assert [summary.session_id for summary in runtime_a.refresh_session_index()] == [
         first.session_id
@@ -401,9 +640,10 @@ def test_runtime_exposes_indexed_session_summary_facades(tmp_path) -> None:
     ] == [second.session_id]
 
 
-def test_runtime_auto_refreshes_session_index_after_replacement(tmp_path) -> None:
+@_async_test
+async def test_runtime_auto_refreshes_session_index_after_replacement(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project = tmp_path / "project"
     project.mkdir()
@@ -416,20 +656,86 @@ def test_runtime_auto_refreshes_session_index_after_replacement(tmp_path) -> Non
     async def scenario():
         session = await runtime.create_session(cwd=str(project))
         assert not SessionManager.index_file(tmp_path).exists()
-        await asyncio.sleep(0.02)
+        await runtime.drain_session_index_flush()
         return session
 
-    session = asyncio.run(scenario())
+    session = await scenario()
 
     assert SessionManager.index_file(tmp_path).exists()
     assert [
         summary.session_id for summary in runtime.list_indexed_session_summaries()
-    ] == [session.session_id]
+    ] == []
+    session_file = session.session_manager.get_session_file()
+    assert session_file is not None
+    assert session_file.exists() is False
 
 
-def test_runtime_auto_refreshes_session_index_after_rename_and_delete(tmp_path) -> None:
+@_async_test
+async def test_runtime_dispose_publishes_latest_session_summary(tmp_path) -> None:
+    from loushang.ai.types import UserMessage
+    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.session_manager import SessionManager
+
+    project = tmp_path / "project"
+    project.mkdir()
+    runtime = create_agent_session_runtime(
+        session_dir=tmp_path,
+        model=_model(),
+        persist=True,
+    )
+    session = await runtime.create_session(cwd=str(project))
+    await session.session_manager.append_message(
+        UserMessage(role="user", content="first", timestamp=1.0)
+    )
+    runtime.refresh_session_index()
+    await session.session_manager.append_message(
+        UserMessage(role="user", content="hi", timestamp=2.0)
+    )
+
+    await runtime.dispose_session_runtime()
+
+    summaries = SessionManager.load_index(tmp_path)
+    assert len(summaries) == 1
+    assert summaries[0].last_message_preview == "hi"
+    assert summaries[0].entry_count == 2
+
+
+@_async_test
+async def test_runtime_incrementally_repairs_current_summary_before_continuity_query(
+    tmp_path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session_runtime
+
+    runtime = create_agent_session_runtime(
+        session_dir=tmp_path,
+        model=_model(),
+        persist=True,
+    )
+    session = await runtime.create_session(cwd=str(tmp_path))
+    await session.session_manager.append_message(_user_message("first"))
+    runtime.refresh_session_index()
+    await session.session_manager.append_message(_user_message("latest"))
+    catalog = runtime.session_catalog
+
+    assert catalog.try_query_index_snapshot().index_state == "stale"
+    runtime.repair_session_index()
+
+    published = catalog.try_query_index_snapshot()
+    assert published.index_state == "fresh"
+    assert published.items[0].source_revision == 2
+    assert published.items[0].projection.last_message_preview == "latest"
+
+    runtime.repair_session_index()
+    unchanged = catalog.try_query_index_snapshot()
+    assert unchanged.query_snapshot == published.query_snapshot
+
+
+@_async_test
+async def test_runtime_auto_refreshes_session_index_after_rename_and_delete(
+    tmp_path,
+) -> None:
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -445,35 +751,42 @@ def test_runtime_auto_refreshes_session_index_after_rename_and_delete(tmp_path) 
     )
     project = tmp_path / "project"
     project.mkdir()
-    first = SessionManager.new(session_dir=tmp_path, cwd=str(project), persist=True)
-    second = SessionManager.new(session_dir=tmp_path, cwd=str(project), persist=True)
+    first = await SessionManager.new(
+        session_dir=tmp_path, cwd=str(project), persist=True
+    )
+    second = await SessionManager.new(
+        session_dir=tmp_path, cwd=str(project), persist=True
+    )
+    await first.append_message(_user_message("first"))
+    await second.append_message(_user_message("second"))
 
     async def scenario() -> None:
-        runtime.rename_session(first.get_header().id, "Renamed")
+        await runtime.rename_session(first.get_header().conversation_id, "Renamed")
         assert SessionManager.load_index(tmp_path) == []
         await runtime.drain_session_index_flush()
         assert (
             next(
                 summary
                 for summary in SessionManager.load_index(tmp_path)
-                if summary.session_id == first.get_header().id
+                if summary.session_id == first.get_header().conversation_id
             ).name
             == "Renamed"
         )
 
-        runtime.delete_session(second.get_header().id)
+        await runtime.delete_session(second.get_header().conversation_id)
         await runtime.drain_session_index_flush()
 
-    asyncio.run(scenario())
+    await scenario()
 
     assert {summary.session_id for summary in SessionManager.load_index(tmp_path)} == {
-        first.get_header().id
+        first.get_header().conversation_id
     }
 
 
-def test_runtime_auto_index_refresh_uses_debounce_interval(tmp_path) -> None:
+@_async_test
+async def test_runtime_auto_index_refresh_uses_debounce_interval(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project = tmp_path / "project"
     project.mkdir()
@@ -485,14 +798,15 @@ def test_runtime_auto_index_refresh_uses_debounce_interval(tmp_path) -> None:
 
     async def scenario():
         session = await runtime.create_session(cwd=str(project))
+        await session.session_manager.append_message(_user_message("materialize"))
         await runtime.drain_session_index_flush()
         return session
 
-    session = asyncio.run(scenario())
+    session = await scenario()
     index_file = SessionManager.index_file(tmp_path)
     first_mtime = index_file.stat().st_mtime_ns
 
-    session.session_manager.append_message(_user_message("not refreshed yet"))
+    await session.session_manager.append_message(_user_message("not refreshed yet"))
     summaries = runtime.list_indexed_session_summaries()
 
     assert index_file.stat().st_mtime_ns == first_mtime
@@ -500,7 +814,8 @@ def test_runtime_auto_index_refresh_uses_debounce_interval(tmp_path) -> None:
     assert "not refreshed yet" not in summaries[0].all_messages_text
 
 
-def test_runtime_list_sessions_ignores_default_jsonl_exports(tmp_path) -> None:
+@_async_test
+async def test_runtime_list_sessions_ignores_default_jsonl_exports(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
 
     project_root = tmp_path / "project"
@@ -508,8 +823,8 @@ def test_runtime_list_sessions_ignores_default_jsonl_exports(tmp_path) -> None:
     runtime = create_agent_session_runtime(
         session_dir=tmp_path, model=_model(), persist=True
     )
-    session = asyncio.run(runtime.create_session(cwd=str(project_root)))
-    session.session_manager.append_message(_user_message("first"))
+    session = await runtime.create_session(cwd=str(project_root))
+    await session.session_manager.append_message(_user_message("first"))
 
     export_path = session.export_to_jsonl()
     records = runtime.list_sessions()
@@ -520,7 +835,8 @@ def test_runtime_list_sessions_ignores_default_jsonl_exports(tmp_path) -> None:
     assert records[0].session_file != export_path
 
 
-def test_runtime_list_sessions_skips_invalid_session_files(tmp_path) -> None:
+@_async_test
+async def test_runtime_list_sessions_skips_invalid_session_files(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
 
     project = tmp_path / "project"
@@ -528,8 +844,8 @@ def test_runtime_list_sessions_skips_invalid_session_files(tmp_path) -> None:
     runtime = create_agent_session_runtime(
         session_dir=tmp_path, model=_model(), persist=True
     )
-    session = asyncio.run(runtime.create_session(cwd=str(project)))
-    session.session_manager.append_message(_user_message("hello"))
+    session = await runtime.create_session(cwd=str(project))
+    await session.session_manager.append_message(_user_message("hello"))
 
     (tmp_path / "broken.jsonl").write_text("not json\n", encoding="utf-8")
     (tmp_path / "not-session.jsonl").write_text("{}\n", encoding="utf-8")
@@ -539,7 +855,8 @@ def test_runtime_list_sessions_skips_invalid_session_files(tmp_path) -> None:
     assert [record.session_id for record in records] == [session.session_id]
 
 
-def test_runtime_fork_session_switches_to_selected_branch(tmp_path) -> None:
+@_async_test
+async def test_runtime_fork_session_switches_to_selected_branch(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
 
     project_root = tmp_path / "project"
@@ -553,21 +870,25 @@ def test_runtime_fork_session_switches_to_selected_branch(tmp_path) -> None:
         system_prompt="Base instructions.",
         persist=True,
     )
-    session = asyncio.run(runtime.create_session(cwd=str(nested)))
+    session = await runtime.create_session(cwd=str(nested))
 
-    first_id = session.session_manager.append_message(_user_message("root"))
-    second_id = session.session_manager.append_message(_assistant_message("answer"))
-    session.session_manager.append_message(_user_message("tail"))
+    first_id = await session.session_manager.append_message(_user_message("root"))
+    second_id = await session.session_manager.append_message(
+        _assistant_message("answer")
+    )
+    await session.session_manager.append_message(_user_message("tail"))
     original_file = session.session_manager.session_file
 
-    forked = asyncio.run(runtime.fork_session(second_id))
+    forked = await runtime.fork_session(second_id)
 
     assert runtime.get_current_session() is forked
     assert original_file is not None
     assert forked.session_manager.session_file is not None
     assert forked.session_manager.session_file != original_file
-    assert forked.session_manager.get_header().parent_session == str(original_file)
-    assert [entry.id for entry in forked.session_manager.get_branch()] == [
+    assert forked.session_manager.get_header().metadata.get("parentSession") == str(
+        original_file
+    )
+    assert [entry.record_id for entry in forked.session_manager.get_branch()] == [
         first_id,
         second_id,
     ]
@@ -585,7 +906,8 @@ def test_runtime_fork_session_switches_to_selected_branch(tmp_path) -> None:
     )
 
 
-def test_runtime_fork_session_before_user_message_returns_selected_text(
+@_async_test
+async def test_runtime_fork_session_before_user_message_returns_selected_text(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
@@ -595,24 +917,31 @@ def test_runtime_fork_session_before_user_message_returns_selected_text(
     runtime = create_agent_session_runtime(
         session_dir=tmp_path, model=_model(), persist=True
     )
-    session = asyncio.run(runtime.create_session(cwd=str(project_root)))
-    first_id = session.session_manager.append_message(_user_message("root"))
-    second_id = session.session_manager.append_message(_assistant_message("answer"))
-    third_id = session.session_manager.append_message(_user_message("tail"))
-
-    forked, selected_text = asyncio.run(
-        runtime.fork_session_with_result(third_id, position="before")
+    session = await runtime.create_session(cwd=str(project_root))
+    first_id = await session.session_manager.append_message(_user_message("root"))
+    second_id = await session.session_manager.append_message(
+        _assistant_message("answer")
     )
+    third_id = await session.session_manager.append_message(_user_message("tail"))
 
+    fork_result = await runtime.fork_session_operation(
+        third_id,
+        position="before",
+    )
+    forked = fork_result.current
+    selected_text = fork_result.payload
+
+    assert forked is not None
     assert runtime.get_current_session() is forked
     assert selected_text == "tail"
-    assert [entry.id for entry in forked.session_manager.get_branch()] == [
+    assert [entry.record_id for entry in forked.session_manager.get_branch()] == [
         first_id,
         second_id,
     ]
 
 
-def test_runtime_fork_before_requires_user_message(tmp_path) -> None:
+@_async_test
+async def test_runtime_fork_before_requires_user_message(tmp_path) -> None:
     import pytest
 
     from loushang.coding.bootstrap import create_agent_session_runtime
@@ -622,15 +951,18 @@ def test_runtime_fork_before_requires_user_message(tmp_path) -> None:
     runtime = create_agent_session_runtime(
         session_dir=tmp_path, model=_model(), persist=True
     )
-    session = asyncio.run(runtime.create_session(cwd=str(project_root)))
-    session.session_manager.append_message(_user_message("root"))
-    assistant_id = session.session_manager.append_message(_assistant_message("answer"))
+    session = await runtime.create_session(cwd=str(project_root))
+    await session.session_manager.append_message(_user_message("root"))
+    assistant_id = await session.session_manager.append_message(
+        _assistant_message("answer")
+    )
 
     with pytest.raises(ValueError, match="requires a user message entry"):
-        asyncio.run(runtime.fork_session_with_result(assistant_id, position="before"))
+        await runtime.fork_session_operation(assistant_id, position="before")
 
 
-def test_runtime_exposes_pi_style_lifecycle_method_aliases(tmp_path) -> None:
+@_async_test
+async def test_runtime_exposes_standard_lifecycle_operations(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
 
     project_root = tmp_path / "project"
@@ -638,41 +970,40 @@ def test_runtime_exposes_pi_style_lifecycle_method_aliases(tmp_path) -> None:
     runtime = create_agent_session_runtime(
         session_dir=tmp_path, model=_model(), persist=True
     )
-    session = asyncio.run(runtime.create_session(cwd=str(project_root)))
-    first_id = session.session_manager.append_message(_user_message("root"))
-    second_id = session.session_manager.append_message(_assistant_message("answer"))
-    third_id = session.session_manager.append_message(_user_message("tail"))
+    session = await runtime.create_session(cwd=str(project_root))
+    first_id = await session.session_manager.append_message(_user_message("root"))
+    second_id = await session.session_manager.append_message(
+        _assistant_message("answer")
+    )
+    third_id = await session.session_manager.append_message(_user_message("tail"))
     first_session_file = session.session_manager.session_file
     assert first_session_file is not None
 
-    fork_result = asyncio.run(runtime.fork(third_id))
+    fork_result = await runtime.fork_session_operation(third_id, position="before")
     forked = runtime.get_current_session()
-    assert fork_result == {
-        "cancelled": False,
-        "selectedText": "tail",
-        "selected_text": "tail",
-    }
+    assert fork_result.cancelled is False
+    assert fork_result.payload == "tail"
     assert forked is not None
-    assert [entry.id for entry in forked.session_manager.get_branch()] == [
+    assert [entry.record_id for entry in forked.session_manager.get_branch()] == [
         first_id,
         second_id,
     ]
 
-    switch_result = asyncio.run(runtime.switchSession(first_session_file))
-    assert switch_result == {"cancelled": False}
+    switch_result = await runtime.switch_session(first_session_file)
+    assert switch_result is runtime.get_current_session()
     assert runtime.get_current_session() is not forked
 
-    new_result = asyncio.run(
-        runtime.newSession({"parentSession": str(first_session_file)})
-    )
-    assert new_result == {"cancelled": False}
-    assert (
-        runtime.get_current_session().session_manager.get_header().parent_session
-        == str(first_session_file)
-    )
+    new_result = await runtime.new_session(parent_session=str(first_session_file))
+    assert new_result is runtime.get_current_session()
+    assert runtime.get_current_session().session_manager.get_header().metadata.get(
+        "parentSession"
+    ) == str(first_session_file)
 
 
-def test_runtime_pi_style_new_session_runs_setup_and_with_session(tmp_path) -> None:
+@_async_test
+async def test_runtime_new_session_operation_runs_setup_and_with_session(
+    tmp_path,
+) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
 
     project_root = tmp_path / "project"
@@ -680,14 +1011,14 @@ def test_runtime_pi_style_new_session_runs_setup_and_with_session(tmp_path) -> N
     runtime = create_agent_session_runtime(
         session_dir=tmp_path, model=_model(), persist=True
     )
-    session = asyncio.run(runtime.create_session(cwd=str(project_root)))
+    session = await runtime.create_session(cwd=str(project_root))
     first_session_file = session.session_manager.session_file
     assert first_session_file is not None
     events: list[tuple[str, object]] = []
 
     async def _setup(manager):
         events.append(("setup", manager.get_cwd()))
-        manager.append_message(_user_message("initialized from setup"))
+        await manager.append_message(_user_message("initialized from setup"))
 
     async def _with_session(ctx):
         events.append(
@@ -695,26 +1026,23 @@ def test_runtime_pi_style_new_session_runs_setup_and_with_session(tmp_path) -> N
                 "withSession",
                 (
                     ctx.cwd,
-                    ctx.sessionManager is runtime.get_current_session().session_manager,
+                    ctx.session_manager
+                    is runtime.get_current_session().session_manager,
                 ),
             )
         )
 
-    result = asyncio.run(
-        runtime.newSession(
-            {
-                "parentSession": str(first_session_file),
-                "setup": _setup,
-                "withSession": _with_session,
-            }
-        )
+    result = await runtime.new_session_operation(
+        parent_session=str(first_session_file),
+        setup=_setup,
+        with_session=_with_session,
     )
     created = runtime.get_current_session()
 
-    assert result == {"cancelled": False}
+    assert result.cancelled is False
     assert created is not None
     assert created is not session
-    assert created.session_manager.get_header().parent_session == str(
+    assert created.session_manager.get_header().metadata.get("parentSession") == str(
         first_session_file
     )
     assert [
@@ -729,23 +1057,24 @@ def test_runtime_pi_style_new_session_runs_setup_and_with_session(tmp_path) -> N
     ]
 
 
-def test_runtime_pi_style_switch_and_fork_run_with_session(tmp_path) -> None:
+@_async_test
+async def test_runtime_restore_and_fork_operations_run_with_session(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     project_root.mkdir()
     runtime = create_agent_session_runtime(
         session_dir=tmp_path, model=_model(), persist=True
     )
-    session = asyncio.run(runtime.create_session(cwd=str(project_root)))
-    user_id = session.session_manager.append_message(_user_message("root"))
-    session.session_manager.append_message(_assistant_message("answer"))
+    session = await runtime.create_session(cwd=str(project_root))
+    user_id = await session.session_manager.append_message(_user_message("root"))
+    await session.session_manager.append_message(_assistant_message("answer"))
 
-    target_manager = SessionManager.new(
+    target_manager = await SessionManager.new(
         session_dir=tmp_path, cwd=str(project_root), persist=True
     )
-    target_manager.append_message(_user_message("target"))
+    await target_manager.append_message(_user_message("target"))
     target_file = target_manager.session_file
     assert target_file is not None
 
@@ -757,34 +1086,75 @@ def test_runtime_pi_style_switch_and_fork_run_with_session(tmp_path) -> None:
                 "switch",
                 [
                     message.content[0].text
-                    for message in ctx.sessionManager.build_session_context().messages
+                    for message in ctx.session_manager.build_session_context().messages
                 ],
             )
         )
 
     async def _fork_with_session(ctx):
-        events.append(("fork", [entry.id for entry in ctx.sessionManager.get_branch()]))
+        events.append(
+            ("fork", [entry.record_id for entry in ctx.session_manager.get_branch()])
+        )
 
-    switch_result = asyncio.run(
-        runtime.switchSession(target_file, {"withSession": _switch_with_session})
+    switch_result = await runtime.restore_session_operation(
+        target_file, with_session=_switch_with_session
     )
     switch_session = runtime.get_current_session()
     assert switch_session is not None
 
-    asyncio.run(runtime.switchSession(session.session_manager.session_file))
-    fork_result = asyncio.run(
-        runtime.fork(user_id, {"position": "at", "withSession": _fork_with_session})
+    await runtime.switch_session(session.session_manager.session_file)
+    fork_result = await runtime.fork_session_operation(
+        user_id, position="at", with_session=_fork_with_session
     )
 
-    assert switch_result == {"cancelled": False}
-    assert fork_result == {"cancelled": False}
+    assert switch_result.cancelled is False
+    assert fork_result.cancelled is False
     assert events == [
         ("switch", ["target"]),
         ("fork", [user_id]),
     ]
 
 
-def test_runtime_replacement_callbacks_require_async_callables(tmp_path) -> None:
+@_async_test
+async def test_runtime_switches_from_provisional_session_without_persisting_it(
+    tmp_path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.session_manager import SessionManager
+
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    historical = await SessionManager.new(
+        session_dir=tmp_path,
+        cwd=str(project_root),
+        persist=True,
+    )
+    await historical.append_message(_user_message("historical"))
+    historical_file = historical.get_session_file()
+    assert historical_file is not None
+
+    runtime = create_agent_session_runtime(
+        session_dir=tmp_path,
+        model=_model(),
+        persist=True,
+    )
+    provisional = await runtime.create_session(cwd=str(project_root))
+    provisional_file = provisional.get_session_file()
+    assert provisional_file is not None
+    assert provisional_file.exists() is False
+
+    result = await runtime.restore_session_operation(historical_file)
+
+    current = runtime.get_current_session()
+    assert result.cancelled is False
+    assert current is not None
+    assert current.session_id == historical.get_header().conversation_id
+    assert provisional_file.exists() is False
+    assert provisional_file.with_name(f"{provisional_file.name}.lock").exists() is False
+
+
+@_async_test
+async def test_runtime_replacement_callbacks_require_async_callables(tmp_path) -> None:
     import pytest
 
     from loushang.coding.bootstrap import create_agent_session_runtime
@@ -794,28 +1164,29 @@ def test_runtime_replacement_callbacks_require_async_callables(tmp_path) -> None
     runtime = create_agent_session_runtime(
         session_dir=tmp_path, model=_model(), persist=True
     )
-    asyncio.run(runtime.create_session(cwd=str(project_root)))
+    await runtime.create_session(cwd=str(project_root))
 
     def _sync_setup(manager):
         del manager
 
     with pytest.raises(TypeError, match="setup callback must be an async callable"):
-        asyncio.run(runtime.newSession({"setup": _sync_setup}))
+        await runtime.new_session_operation(setup=_sync_setup)
 
 
-def test_runtime_replacement_callback_failures_keep_replacement_and_record_diagnostics(
+@_async_test
+async def test_runtime_replacement_callback_failures_keep_replacement_and_record_diagnostics(
     tmp_path,
 ) -> None:
     import pytest
 
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
             self.session_manager = manager
-            self.session_id = manager.get_header().id
+            self.session_id = manager.get_header().conversation_id
             self.extension_runner = None
             self.diagnostics_service = diagnostics_service
             self.disposed = False
@@ -834,9 +1205,10 @@ def test_runtime_replacement_callback_failures_keep_replacement_and_record_diagn
     target_root = tmp_path / "target"
     project_root.mkdir()
     target_root.mkdir()
-    target_manager = SessionManager.new(
+    target_manager = await SessionManager.new(
         session_dir=tmp_path, cwd=str(target_root), persist=True
     )
+    await target_manager.append_message(_user_message("target"))
     target_file = target_manager.session_file
     assert target_file is not None
 
@@ -845,7 +1217,7 @@ def test_runtime_replacement_callback_failures_keep_replacement_and_record_diagn
         raise RuntimeError("setup boom")
 
     with pytest.raises(RuntimeError, match="setup boom"):
-        asyncio.run(runtime.newSession({"cwd": str(project_root), "setup": _setup}))
+        await runtime.new_session_operation(cwd=project_root, setup=_setup)
 
     setup_session = runtime.get_current_session()
     assert setup_session is not None
@@ -856,7 +1228,7 @@ def test_runtime_replacement_callback_failures_keep_replacement_and_record_diagn
         raise RuntimeError("withSession boom")
 
     with pytest.raises(RuntimeError, match="withSession boom"):
-        asyncio.run(runtime.switchSession(target_file, {"withSession": _with_session}))
+        await runtime.restore_session_operation(target_file, with_session=_with_session)
 
     current = runtime.get_current_session()
     records = diagnostics_service.get_diagnostics(
@@ -873,9 +1245,10 @@ def test_runtime_replacement_callback_failures_keep_replacement_and_record_diagn
     assert records[1].session_id == current.session_id
 
 
-def test_runtime_import_from_jsonl_copies_and_switches_session(tmp_path) -> None:
+@_async_test
+async def test_runtime_import_from_jsonl_copies_and_switches_session(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -884,17 +1257,17 @@ def test_runtime_import_from_jsonl_copies_and_switches_session(tmp_path) -> None
     runtime = create_agent_session_runtime(
         session_dir=tmp_path / "sessions", model=_model(), persist=True
     )
-    original = asyncio.run(runtime.create_session(cwd=str(project_root)))
-    original.session_manager.append_message(_user_message("original"))
+    original = await runtime.create_session(cwd=str(project_root))
+    await original.session_manager.append_message(_user_message("original"))
 
-    imported_manager = SessionManager.new(
+    imported_manager = await SessionManager.new(
         session_dir=import_dir, cwd=str(project_root), persist=True
     )
-    imported_manager.append_message(_user_message("imported"))
+    await imported_manager.append_message(_user_message("imported"))
     imported_file = imported_manager.session_file
     assert imported_file is not None
 
-    result = asyncio.run(runtime.importFromJsonl(str(imported_file)))
+    result = await runtime.import_from_jsonl(str(imported_file))
     current = runtime.get_current_session()
 
     assert result == {"cancelled": False}
@@ -910,11 +1283,12 @@ def test_runtime_import_from_jsonl_copies_and_switches_session(tmp_path) -> None
     ] == ["imported"]
 
 
-def test_runtime_import_from_jsonl_does_not_overwrite_existing_same_name_session(
+@_async_test
+async def test_runtime_import_from_jsonl_does_not_overwrite_existing_same_name_session(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     import_dir = tmp_path / "imports"
@@ -924,23 +1298,23 @@ def test_runtime_import_from_jsonl_does_not_overwrite_existing_same_name_session
     runtime = create_agent_session_runtime(
         session_dir=session_dir, model=_model(), persist=True
     )
-    existing = asyncio.run(runtime.create_session(cwd=str(project_root)))
-    existing.session_manager.append_message(_user_message("existing session"))
+    existing = await runtime.create_session(cwd=str(project_root))
+    await existing.session_manager.append_message(_user_message("existing session"))
     existing_file = existing.session_manager.session_file
     assert existing_file is not None
 
-    imported_manager = SessionManager.new(
+    imported_manager = await SessionManager.new(
         session_dir=import_dir, cwd=str(project_root), persist=True
     )
-    imported_manager.append_message(_user_message("imported same basename"))
+    await imported_manager.append_message(_user_message("imported same basename"))
     imported_file = imported_manager.session_file
     assert imported_file is not None
     import_source = import_dir / existing_file.name
     imported_file.rename(import_source)
 
-    result = asyncio.run(runtime.importFromJsonl(str(import_source)))
+    result = await runtime.import_from_jsonl(str(import_source))
     current = runtime.get_current_session()
-    reloaded_existing = SessionManager.open(existing_file)
+    reloaded_existing = await SessionManager.open(existing_file)
 
     assert result == {"cancelled": False}
     assert current is not None
@@ -957,7 +1331,8 @@ def test_runtime_import_from_jsonl_does_not_overwrite_existing_same_name_session
     ] == ["existing session"]
 
 
-def test_runtime_import_from_jsonl_retries_when_unique_destination_is_claimed_before_copy(
+@_async_test
+async def test_runtime_import_from_jsonl_retries_when_unique_destination_is_claimed_before_copy(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -965,7 +1340,7 @@ def test_runtime_import_from_jsonl_retries_when_unique_destination_is_claimed_be
 
     from loushang.coding.bootstrap import create_agent_session_runtime
     from loushang.coding.runtime import agent_session_runtime as runtime_module
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     import_dir = tmp_path / "imports"
@@ -975,15 +1350,15 @@ def test_runtime_import_from_jsonl_retries_when_unique_destination_is_claimed_be
     runtime = create_agent_session_runtime(
         session_dir=session_dir, model=_model(), persist=True
     )
-    existing = asyncio.run(runtime.create_session(cwd=str(project_root)))
-    existing.session_manager.append_message(_user_message("existing session"))
+    existing = await runtime.create_session(cwd=str(project_root))
+    await existing.session_manager.append_message(_user_message("existing session"))
     existing_file = existing.session_manager.session_file
     assert existing_file is not None
 
-    imported_manager = SessionManager.new(
+    imported_manager = await SessionManager.new(
         session_dir=import_dir, cwd=str(project_root), persist=True
     )
-    imported_manager.append_message(_user_message("imported after race"))
+    await imported_manager.append_message(_user_message("imported after race"))
     imported_file = imported_manager.session_file
     assert imported_file is not None
     import_source = import_dir / existing_file.name
@@ -1001,7 +1376,7 @@ def test_runtime_import_from_jsonl_retries_when_unique_destination_is_claimed_be
 
     monkeypatch.setattr(runtime_module, "_copy_import_file", _copy_with_external_race)
 
-    result = asyncio.run(runtime.importFromJsonl(str(import_source)))
+    result = await runtime.import_from_jsonl(str(import_source))
     current = runtime.get_current_session()
     stem = existing_file.stem
     suffix = existing_file.suffix
@@ -1020,23 +1395,24 @@ def test_runtime_import_from_jsonl_retries_when_unique_destination_is_claimed_be
     ] == ["imported after race"]
 
 
-def test_runtime_import_from_jsonl_race_retry_emits_before_switch_once_for_final_destination(
+@_async_test
+async def test_runtime_import_from_jsonl_race_retry_emits_before_switch_once_for_final_destination(
     tmp_path,
     monkeypatch,
 ) -> None:
     import errno
 
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.runtime import agent_session_runtime as runtime_module
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     class DummySession:
         def __init__(self, manager: SessionManager, runner: ExtensionRunner) -> None:
             self.session_manager = manager
             self.extension_runner = runner
             self.diagnostics_service = None
-            self.session_id = manager.get_header().id
+            self.session_id = manager.get_header().conversation_id
 
         def set_extension_runtime_host(self, _host) -> None:
             return None
@@ -1073,15 +1449,15 @@ def test_runtime_import_from_jsonl_race_retry_emits_before_switch_once_for_final
         session_factory=lambda manager: DummySession(manager, runner),
         persist=True,
     )
-    existing = asyncio.run(runtime.create_session(cwd=str(project_root)))
-    existing.session_manager.append_message(_user_message("existing session"))
+    existing = await runtime.create_session(cwd=str(project_root))
+    await existing.session_manager.append_message(_user_message("existing session"))
     existing_file = existing.session_manager.session_file
     assert existing_file is not None
 
-    imported_manager = SessionManager.new(
+    imported_manager = await SessionManager.new(
         session_dir=import_dir, cwd=str(project_root), persist=True
     )
-    imported_manager.append_message(_user_message("imported after race"))
+    await imported_manager.append_message(_user_message("imported after race"))
     imported_file = imported_manager.session_file
     assert imported_file is not None
     import_source = import_dir / existing_file.name
@@ -1099,7 +1475,7 @@ def test_runtime_import_from_jsonl_race_retry_emits_before_switch_once_for_final
 
     monkeypatch.setattr(runtime_module, "_copy_import_file", _copy_with_external_race)
 
-    result = asyncio.run(runtime.importFromJsonl(str(import_source)))
+    result = await runtime.import_from_jsonl(str(import_source))
     current = runtime.get_current_session()
     final_destination = copy_attempts[1]
 
@@ -1109,14 +1485,15 @@ def test_runtime_import_from_jsonl_race_retry_emits_before_switch_once_for_final
     assert seen_targets == [str(final_destination)]
 
 
-def test_runtime_import_from_jsonl_cleans_copied_file_when_stored_cwd_is_missing(
+@_async_test
+async def test_runtime_import_from_jsonl_cleans_copied_file_when_stored_cwd_is_missing(
     tmp_path,
 ) -> None:
     import pytest
 
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.runtime import MissingSessionCwdError
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.session import MissingSessionCwdError
 
     project_root = tmp_path / "project"
     missing_cwd = tmp_path / "missing-project"
@@ -1127,35 +1504,37 @@ def test_runtime_import_from_jsonl_cleans_copied_file_when_stored_cwd_is_missing
     runtime = create_agent_session_runtime(
         session_dir=session_dir, model=_model(), persist=True
     )
-    current = asyncio.run(runtime.create_session(cwd=str(project_root)))
-    imported_manager = SessionManager.new(
+    current = await runtime.create_session(cwd=str(project_root))
+    imported_manager = await SessionManager.new(
         session_dir=import_dir, cwd=str(missing_cwd), persist=True
     )
-    imported_manager.append_message(_user_message("missing cwd import"))
+    await imported_manager.append_message(_user_message("missing cwd import"))
     imported_file = imported_manager.session_file
     assert imported_file is not None
 
     with pytest.raises(MissingSessionCwdError):
-        asyncio.run(runtime.importFromJsonl(str(imported_file)))
+        await runtime.import_from_jsonl(str(imported_file))
 
     assert runtime.get_current_session() is current
     assert imported_file.exists()
     assert (session_dir / imported_file.name).exists() is False
 
 
-def test_runtime_import_from_jsonl_records_failure_diagnostic(tmp_path) -> None:
+@_async_test
+async def test_runtime_import_from_jsonl_records_failure_diagnostic(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
-    from loushang.coding.runtime import AgentSessionRuntime, MissingSessionCwdError
-    from loushang.coding.store import SessionManager
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
+    from loushang.harness.session import MissingSessionCwdError
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
             self.session_manager = manager
             self.extension_runner = None
             self.diagnostics_service = None
-            self.session_id = manager.get_header().id
+            self.session_id = manager.get_header().conversation_id
 
         def set_extension_runtime_host(self, _host) -> None:
             return None
@@ -1179,15 +1558,16 @@ def test_runtime_import_from_jsonl_records_failure_diagnostic(tmp_path) -> None:
         persist=True,
         diagnostics_service=diagnostics_service,
     )
-    current = asyncio.run(runtime.create_session(cwd=str(project_root)))
-    imported_manager = SessionManager.new(
+    current = await runtime.create_session(cwd=str(project_root))
+    imported_manager = await SessionManager.new(
         session_dir=import_dir, cwd=str(missing_cwd), persist=True
     )
+    await imported_manager.append_message(_user_message("imported"))
     imported_file = imported_manager.session_file
     assert imported_file is not None
 
     with pytest.raises(MissingSessionCwdError):
-        asyncio.run(runtime.importFromJsonl(str(imported_file)))
+        await runtime.import_from_jsonl(str(imported_file))
 
     records = diagnostics_service.get_diagnostics(
         query=DiagnosticsQuery(code="session_import_failed")
@@ -1205,16 +1585,21 @@ def test_runtime_import_from_jsonl_records_failure_diagnostic(tmp_path) -> None:
     assert records[0].details["cwd_override"] is None
 
 
-def test_runtime_restore_rejects_session_when_stored_cwd_is_missing(tmp_path) -> None:
+@_async_test
+async def test_runtime_restore_rejects_session_when_stored_cwd_is_missing(
+    tmp_path,
+) -> None:
     import pytest
 
-    from loushang.coding.runtime import AgentSessionRuntime, MissingSessionCwdError
-    from loushang.coding.store import SessionManager
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.session import MissingSessionCwdError
 
     missing_cwd = tmp_path / "missing-project"
-    manager = SessionManager.new(
+    manager = await SessionManager.new(
         session_dir=tmp_path, cwd=str(missing_cwd), persist=True
     )
+    await manager.append_message(_user_message("stored"))
     session_file = manager.session_file
     assert session_file is not None
     created: list[SessionManager] = []
@@ -1228,27 +1613,29 @@ def test_runtime_restore_rejects_session_when_stored_cwd_is_missing(tmp_path) ->
     )
 
     with pytest.raises(MissingSessionCwdError) as exc_info:
-        asyncio.run(runtime.restore_session(session_file))
+        await runtime.restore_session(session_file)
 
     assert exc_info.value.issue.session_cwd == str(missing_cwd)
-    assert exc_info.value.issue.session_file == session_file
+    assert exc_info.value.issue.session_ref == str(session_file)
     assert created == []
     assert runtime.get_current_session() is None
 
 
-def test_runtime_restore_session_records_failure_diagnostic(tmp_path) -> None:
+@_async_test
+async def test_runtime_restore_session_records_failure_diagnostic(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
-    from loushang.coding.runtime import AgentSessionRuntime, MissingSessionCwdError
-    from loushang.coding.store import SessionManager
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
+    from loushang.harness.session import MissingSessionCwdError
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
             self.session_manager = manager
             self.extension_runner = None
             self.diagnostics_service = None
-            self.session_id = manager.get_header().id
+            self.session_id = manager.get_header().conversation_id
 
         def set_extension_runtime_host(self, _host) -> None:
             return None
@@ -1264,9 +1651,10 @@ def test_runtime_restore_session_records_failure_diagnostic(tmp_path) -> None:
     session_dir = tmp_path / "sessions"
     project_root.mkdir()
     diagnostics_service = DiagnosticsService()
-    target_manager = SessionManager.new(
+    target_manager = await SessionManager.new(
         session_dir=session_dir, cwd=str(missing_cwd), persist=True
     )
+    await target_manager.append_message(_user_message("target"))
     target_file = target_manager.session_file
     assert target_file is not None
     runtime = AgentSessionRuntime(
@@ -1275,10 +1663,10 @@ def test_runtime_restore_session_records_failure_diagnostic(tmp_path) -> None:
         persist=True,
         diagnostics_service=diagnostics_service,
     )
-    current = asyncio.run(runtime.create_session(cwd=str(project_root)))
+    current = await runtime.create_session(cwd=str(project_root))
 
     with pytest.raises(MissingSessionCwdError):
-        asyncio.run(runtime.restore_session(target_file))
+        await runtime.restore_session(target_file)
 
     records = diagnostics_service.get_diagnostics(
         query=DiagnosticsQuery(code="session_restore_failed")
@@ -1294,17 +1682,20 @@ def test_runtime_restore_session_records_failure_diagnostic(tmp_path) -> None:
     assert records[0].details["missing_cwd"] == "error"
 
 
-def test_runtime_restore_can_fallback_when_stored_cwd_is_missing(tmp_path) -> None:
+@_async_test
+async def test_runtime_restore_can_fallback_when_stored_cwd_is_missing(
+    tmp_path,
+) -> None:
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     missing_cwd = tmp_path / "missing-project"
     project_root.mkdir()
-    manager = SessionManager.new(
+    manager = await SessionManager.new(
         session_dir=tmp_path, cwd=str(missing_cwd), persist=True
     )
-    manager.append_message(_user_message("hello"))
+    await manager.append_message(_user_message("hello"))
     session_file = manager.session_file
     assert session_file is not None
     created: list[SessionManager] = []
@@ -1314,7 +1705,7 @@ def test_runtime_restore_can_fallback_when_stored_cwd_is_missing(tmp_path) -> No
             self.session_manager = next_manager
             self.extension_runner = None
             self.diagnostics_service = None
-            self.session_id = next_manager.get_header().id
+            self.session_id = next_manager.get_header().conversation_id
 
         def set_extension_runtime_host(self, _host) -> None:
             return None
@@ -1330,33 +1721,32 @@ def test_runtime_restore_can_fallback_when_stored_cwd_is_missing(tmp_path) -> No
         session_dir=tmp_path, session_factory=_factory, persist=True
     )
 
-    restored = asyncio.run(
-        runtime.restore_session(
-            session_file,
-            fallback_cwd=project_root,
-            missing_cwd="fallback",
-        )
+    restored = await runtime.restore_session(
+        session_file,
+        fallback_cwd=project_root,
+        missing_cwd="fallback",
     )
 
     assert restored.session_manager.get_cwd() == str(project_root.resolve())
     assert created == [restored.session_manager]
 
 
-def test_runtime_import_from_jsonl_cwd_override_bypasses_missing_stored_cwd(
+@_async_test
+async def test_runtime_import_from_jsonl_cwd_override_bypasses_missing_stored_cwd(
     tmp_path,
 ) -> None:
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     missing_cwd = tmp_path / "missing-project"
     import_dir = tmp_path / "imports"
     project_root.mkdir()
     import_dir.mkdir()
-    imported_manager = SessionManager.new(
+    imported_manager = await SessionManager.new(
         session_dir=import_dir, cwd=str(missing_cwd), persist=True
     )
-    imported_manager.append_message(_user_message("imported"))
+    await imported_manager.append_message(_user_message("imported"))
     imported_file = imported_manager.session_file
     assert imported_file is not None
 
@@ -1365,7 +1755,7 @@ def test_runtime_import_from_jsonl_cwd_override_bypasses_missing_stored_cwd(
             self.session_manager = manager
             self.extension_runner = None
             self.diagnostics_service = None
-            self.session_id = manager.get_header().id
+            self.session_id = manager.get_header().conversation_id
 
         def set_extension_runtime_host(self, _host) -> None:
             return None
@@ -1380,8 +1770,8 @@ def test_runtime_import_from_jsonl_cwd_override_bypasses_missing_stored_cwd(
         session_dir=tmp_path / "sessions", session_factory=DummySession, persist=True
     )
 
-    result = asyncio.run(
-        runtime.importFromJsonl(str(imported_file), cwd_override=str(project_root))
+    result = await runtime.import_from_jsonl(
+        str(imported_file), cwd_override=str(project_root)
     )
     current = runtime.get_current_session()
 
@@ -1394,29 +1784,30 @@ def test_runtime_import_from_jsonl_cwd_override_bypasses_missing_stored_cwd(
     ] == ["imported"]
 
 
-def test_runtime_import_from_jsonl_respects_before_switch_cancellation(
+@_async_test
+async def test_runtime_import_from_jsonl_respects_before_switch_cancellation(
     tmp_path,
 ) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import (
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         SessionActionDecision,
     )
-    from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
 
     project_root = tmp_path / "project"
     project_root.mkdir()
     import_dir = tmp_path / "imports"
     import_dir.mkdir()
-    imported_manager = SessionManager.new(
+    imported_manager = await SessionManager.new(
         session_dir=import_dir, cwd=str(project_root), persist=True
     )
-    imported_manager.append_message(_user_message("imported"))
+    await imported_manager.append_message(_user_message("imported"))
     imported_file = imported_manager.session_file
     assert imported_file is not None
     events: list[str | None] = []
@@ -1445,9 +1836,9 @@ def test_runtime_import_from_jsonl_respects_before_switch_cancellation(
     runtime = AgentSessionRuntime(
         session_dir=tmp_path / "sessions", session_factory=_factory, persist=True
     )
-    current = asyncio.run(runtime.create_session(cwd=str(project_root)))
+    current = await runtime.create_session(cwd=str(project_root))
 
-    result = asyncio.run(runtime.importFromJsonl(str(imported_file)))
+    result = await runtime.import_from_jsonl(str(imported_file))
 
     assert result == {"cancelled": True}
     assert runtime.get_current_session() is current
@@ -1455,17 +1846,18 @@ def test_runtime_import_from_jsonl_respects_before_switch_cancellation(
     assert not (tmp_path / "sessions" / imported_file.name).exists()
 
 
-def test_runtime_import_from_jsonl_records_before_switch_failure_and_flushes_index(
+@_async_test
+async def test_runtime_import_from_jsonl_records_before_switch_failure_and_flushes_index(
     tmp_path,
 ) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     project_root = tmp_path / "project"
     import_dir = tmp_path / "imports"
@@ -1474,10 +1866,10 @@ def test_runtime_import_from_jsonl_records_before_switch_failure_and_flushes_ind
     import_dir.mkdir()
     diagnostics_service = DiagnosticsService()
 
-    imported_manager = SessionManager.new(
+    imported_manager = await SessionManager.new(
         session_dir=import_dir, cwd=str(project_root), persist=True
     )
-    imported_manager.append_message(_user_message("imported"))
+    await imported_manager.append_message(_user_message("imported"))
     imported_file = imported_manager.session_file
     assert imported_file is not None
 
@@ -1513,11 +1905,11 @@ def test_runtime_import_from_jsonl_records_before_switch_failure_and_flushes_ind
 
     async def scenario() -> None:
         await runtime.create_session(cwd=str(project_root))
-        result = await runtime.importFromJsonl(str(imported_file))
+        result = await runtime.import_from_jsonl(str(imported_file))
         assert result == {"cancelled": False}
         await runtime.drain_session_index_flush()
 
-    asyncio.run(scenario())
+    await scenario()
     current = runtime.get_current_session()
     records = diagnostics_service.get_diagnostics(
         query=DiagnosticsQuery(code="extension_session_before_switch_failed")
@@ -1538,16 +1930,17 @@ def test_runtime_import_from_jsonl_records_before_switch_failure_and_flushes_ind
     )
 
 
-def test_runtime_pi_style_lifecycle_aliases_report_cancellation(tmp_path) -> None:
+@_async_test
+async def test_runtime_lifecycle_operations_report_cancellation(tmp_path) -> None:
     from pathlib import Path
 
-    from loushang.coding.extensions import (
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         SessionActionDecision,
     )
-    from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.store import SessionManager
 
     class DummySession:
         def __init__(self, manager: SessionManager, runner: ExtensionRunner) -> None:
@@ -1586,30 +1979,30 @@ def test_runtime_pi_style_lifecycle_aliases_report_cancellation(tmp_path) -> Non
     )
     project = tmp_path / "project"
     project.mkdir()
-    current = asyncio.run(runtime.create_session(cwd=str(project)))
-    entry_id = current.session_manager.append_message(_user_message("root"))
+    current = await runtime.create_session(cwd=str(project))
+    entry_id = await current.session_manager.append_message(_user_message("root"))
 
-    assert asyncio.run(runtime.newSession()) == {"cancelled": True}
-    assert asyncio.run(runtime.fork(entry_id, {"position": "at"})) == {
-        "cancelled": True
-    }
+    assert (await runtime.new_session_operation()).cancelled is True
+    assert (
+        await runtime.fork_session_operation(entry_id, position="at")
+    ).cancelled is True
     assert runtime.get_current_session() is current
     assert current.disposed is False
 
 
-def test_extension_command_context_fork_uses_runtime_host(tmp_path) -> None:
-    import asyncio
+@_async_test
+async def test_extension_command_context_fork_uses_runtime_host(tmp_path) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import (
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         RegisteredCommand,
     )
-    from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
 
     results: list[object] = []
 
@@ -1644,37 +2037,41 @@ def test_extension_command_context_fork_uses_runtime_host(tmp_path) -> None:
     )
     project = tmp_path / "project"
     project.mkdir()
-    session = asyncio.run(runtime.create_session(cwd=str(project)))
-    first_id = session.session_manager.append_message(_user_message("root"))
-    second_id = session.session_manager.append_message(_assistant_message("answer"))
-    session.session_manager.append_message(_user_message("tail"))
+    session = await runtime.create_session(cwd=str(project))
+    first_id = await session.session_manager.append_message(_user_message("root"))
+    second_id = await session.session_manager.append_message(
+        _assistant_message("answer")
+    )
+    await session.session_manager.append_message(_user_message("tail"))
 
-    result = asyncio.run(session.execute_command_async("fork", second_id))
+    result = await session.execute_command_async("fork", second_id)
     forked = runtime.get_current_session()
 
     assert result.result is None
     assert results == [{"cancelled": False}]
     assert forked is not None
     assert forked is not session
-    assert [entry.id for entry in forked.session_manager.get_branch()] == [
+    assert [entry.record_id for entry in forked.session_manager.get_branch()] == [
         first_id,
         second_id,
     ]
 
 
-def test_extension_command_context_fork_supports_before_position(tmp_path) -> None:
-    import asyncio
+@_async_test
+async def test_extension_command_context_fork_supports_before_position(
+    tmp_path,
+) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import (
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         RegisteredCommand,
     )
-    from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
 
     results: list[object] = []
     seen_branches: list[list[str]] = []
@@ -1710,37 +2107,41 @@ def test_extension_command_context_fork_supports_before_position(tmp_path) -> No
     )
     project = tmp_path / "project"
     project.mkdir()
-    session = asyncio.run(runtime.create_session(cwd=str(project)))
-    first_id = session.session_manager.append_message(_user_message("root"))
-    second_id = session.session_manager.append_message(_assistant_message("answer"))
-    third_id = session.session_manager.append_message(_user_message("tail"))
+    session = await runtime.create_session(cwd=str(project))
+    first_id = await session.session_manager.append_message(_user_message("root"))
+    second_id = await session.session_manager.append_message(
+        _assistant_message("answer")
+    )
+    third_id = await session.session_manager.append_message(_user_message("tail"))
 
-    result = asyncio.run(session.execute_command_async("fork", third_id))
+    result = await session.execute_command_async("fork", third_id)
     forked = runtime.get_current_session()
     assert forked is not None
-    seen_branches.append([entry.id for entry in forked.session_manager.get_branch()])
+    seen_branches.append(
+        [entry.record_id for entry in forked.session_manager.get_branch()]
+    )
 
     assert result.result is None
-    assert results == [
-        {"cancelled": False, "selected_text": "tail", "selectedText": "tail"}
-    ]
+    assert results == [{"cancelled": False, "selected_text": "tail"}]
     assert forked is not session
     assert seen_branches == [[first_id, second_id]]
 
 
-def test_extension_command_context_fork_defaults_to_before_position(tmp_path) -> None:
-    import asyncio
+@_async_test
+async def test_extension_command_context_fork_defaults_to_before_position(
+    tmp_path,
+) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import (
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         RegisteredCommand,
     )
-    from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
 
     results: list[object] = []
 
@@ -1774,40 +2175,40 @@ def test_extension_command_context_fork_defaults_to_before_position(tmp_path) ->
     )
     project = tmp_path / "project"
     project.mkdir()
-    session = asyncio.run(runtime.create_session(cwd=str(project)))
-    first_id = session.session_manager.append_message(_user_message("root"))
-    second_id = session.session_manager.append_message(_assistant_message("answer"))
-    third_id = session.session_manager.append_message(_user_message("tail"))
+    session = await runtime.create_session(cwd=str(project))
+    first_id = await session.session_manager.append_message(_user_message("root"))
+    second_id = await session.session_manager.append_message(
+        _assistant_message("answer")
+    )
+    third_id = await session.session_manager.append_message(_user_message("tail"))
 
-    result = asyncio.run(session.execute_command_async("fork", third_id))
+    result = await session.execute_command_async("fork", third_id)
     forked = runtime.get_current_session()
 
     assert result.result is None
-    assert results == [
-        {"cancelled": False, "selected_text": "tail", "selectedText": "tail"}
-    ]
+    assert results == [{"cancelled": False, "selected_text": "tail"}]
     assert forked is not None
-    assert [entry.id for entry in forked.session_manager.get_branch()] == [
+    assert [entry.record_id for entry in forked.session_manager.get_branch()] == [
         first_id,
         second_id,
     ]
 
 
-def test_extension_command_context_fork_before_runs_with_session_on_new_fork(
+@_async_test
+async def test_extension_command_context_fork_before_runs_with_session_on_new_fork(
     tmp_path,
 ) -> None:
-    import asyncio
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import (
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         RegisteredCommand,
     )
-    from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
 
     seen: list[tuple[str, list[str]]] = []
 
@@ -1816,7 +2217,10 @@ def test_extension_command_context_fork_before_runs_with_session_on_new_fork(
             seen.append(
                 (
                     replaced_ctx.cwd,
-                    [entry.id for entry in replaced_ctx.sessionManager.get_branch()],
+                    [
+                        entry.record_id
+                        for entry in replaced_ctx.session_manager.get_branch()
+                    ],
                 )
             )
 
@@ -1849,30 +2253,34 @@ def test_extension_command_context_fork_before_runs_with_session_on_new_fork(
     )
     project = tmp_path / "project"
     project.mkdir()
-    session = asyncio.run(runtime.create_session(cwd=str(project)))
-    first_id = session.session_manager.append_message(_user_message("root"))
-    second_id = session.session_manager.append_message(_assistant_message("answer"))
-    third_id = session.session_manager.append_message(_user_message("tail"))
+    session = await runtime.create_session(cwd=str(project))
+    first_id = await session.session_manager.append_message(_user_message("root"))
+    second_id = await session.session_manager.append_message(
+        _assistant_message("answer")
+    )
+    third_id = await session.session_manager.append_message(_user_message("tail"))
 
-    result = asyncio.run(session.execute_command_async("fork", third_id))
+    result = await session.execute_command_async("fork", third_id)
 
     assert result.result is None
     assert seen == [(str(project.resolve()), [first_id, second_id])]
 
 
-def test_extension_command_context_new_session_uses_runtime_host(tmp_path) -> None:
-    import asyncio
+@_async_test
+async def test_extension_command_context_new_session_uses_runtime_host(
+    tmp_path,
+) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import (
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         RegisteredCommand,
     )
-    from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
 
     callback_events: list[tuple[str, object]] = []
 
@@ -1881,17 +2289,17 @@ def test_extension_command_context_new_session_uses_runtime_host(tmp_path) -> No
 
         async def _setup(manager):
             callback_events.append(("setup", manager.get_cwd()))
-            manager.append_message(_user_message("initialized"))
+            await manager.append_message(_user_message("initialized"))
 
         async def _with_session(replaced_ctx):
             callback_events.append(
                 (
                     "withSession",
-                    (replaced_ctx.cwd, replaced_ctx.sessionManager is not None),
+                    (replaced_ctx.cwd, replaced_ctx.session_manager is not None),
                 )
             )
 
-        await ctx.newSession(
+        await ctx.new_session(
             {"parentSession": "parent-1", "setup": _setup, "withSession": _with_session}
         )
 
@@ -1922,15 +2330,17 @@ def test_extension_command_context_new_session_uses_runtime_host(tmp_path) -> No
     )
     project = tmp_path / "project"
     project.mkdir()
-    session = asyncio.run(runtime.create_session(cwd=str(project)))
+    session = await runtime.create_session(cwd=str(project))
 
-    result = asyncio.run(session.execute_command_async("new", ""))
+    result = await session.execute_command_async("new", "")
     created = runtime.get_current_session()
 
     assert result.result is None
     assert created is not None
     assert created is not session
-    assert created.session_manager.get_header().parent_session == "parent-1"
+    assert (
+        created.session_manager.get_header().metadata.get("parentSession") == "parent-1"
+    )
     assert created.session_manager.get_cwd() == str(project.resolve())
     assert [
         message.content[0].text for message in created.get_session_context().messages
@@ -1941,21 +2351,21 @@ def test_extension_command_context_new_session_uses_runtime_host(tmp_path) -> No
     ]
 
 
-def test_extension_command_new_session_with_session_gets_fresh_context_and_stales_old_context(
+@_async_test
+async def test_extension_command_new_session_with_session_gets_fresh_context_and_stales_old_context(
     tmp_path,
 ) -> None:
-    import asyncio
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import (
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         RegisteredCommand,
     )
-    from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
 
     events: list[tuple[str, object]] = []
 
@@ -1965,14 +2375,14 @@ def test_extension_command_new_session_with_session_gets_fresh_context_and_stale
 
         async def _with_session(replaced_ctx):
             events.append(
-                ("fresh", (replaced_ctx.cwd, replaced_ctx.sessionManager is not None))
+                ("fresh", (replaced_ctx.cwd, replaced_ctx.session_manager is not None))
             )
             try:
                 old_ctx.cwd
             except RuntimeError as exc:
                 events.append(("stale", str(exc)))
 
-        await ctx.newSession({"withSession": _with_session})
+        await ctx.new_session({"withSession": _with_session})
 
     def _factory(manager: SessionManager, *, session_start_event=None) -> AgentSession:
         return AgentSession(
@@ -2001,9 +2411,9 @@ def test_extension_command_new_session_with_session_gets_fresh_context_and_stale
     )
     project = tmp_path / "project"
     project.mkdir()
-    session = asyncio.run(runtime.create_session(cwd=str(project)))
+    session = await runtime.create_session(cwd=str(project))
 
-    result = asyncio.run(session.execute_command_async("new", ""))
+    result = await session.execute_command_async("new", "")
 
     assert result.result is None
     assert events == [
@@ -2012,23 +2422,23 @@ def test_extension_command_new_session_with_session_gets_fresh_context_and_stale
     ]
 
 
-def test_replaced_session_context_send_message_becomes_stale_after_next_replacement(
+@_async_test
+async def test_replaced_session_context_send_message_becomes_stale_after_next_replacement(
     tmp_path,
 ) -> None:
-    import asyncio
     from pathlib import Path
 
     import pytest
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import (
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         RegisteredCommand,
     )
-    from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
 
     captured: dict[str, object] = {}
 
@@ -2037,11 +2447,11 @@ def test_replaced_session_context_send_message_becomes_stale_after_next_replacem
 
         async def _with_session(replaced_ctx):
             captured["ctx"] = replaced_ctx
-            await replaced_ctx.sendMessage(
+            await replaced_ctx.send_message(
                 {"customType": "demo", "content": "fresh", "display": True}
             )
 
-        await ctx.newSession({"withSession": _with_session})
+        await ctx.new_session({"withSession": _with_session})
 
     def _factory(manager: SessionManager, *, session_start_event=None) -> AgentSession:
         return AgentSession(
@@ -2070,42 +2480,43 @@ def test_replaced_session_context_send_message_becomes_stale_after_next_replacem
     )
     project = tmp_path / "project"
     project.mkdir()
-    session = asyncio.run(runtime.create_session(cwd=str(project)))
+    session = await runtime.create_session(cwd=str(project))
 
-    result = asyncio.run(session.execute_command_async("new", ""))
+    result = await session.execute_command_async("new", "")
     replaced_ctx = captured["ctx"]
     current = runtime.get_current_session()
     assert result.result is None
     assert current is not None
-    assert [entry.custom_type for entry in current.session_manager.get_entries()] == [
-        "demo"
-    ]
+    assert [
+        entry.payload.custom_type for entry in current.session_manager.get_entries()
+    ] == ["demo"]
 
-    asyncio.run(runtime.newSession())
+    await runtime.new_session()
 
     with pytest.raises(RuntimeError, match="stale"):
-        asyncio.run(
-            replaced_ctx.sendMessage(
-                {"customType": "demo", "content": "stale", "display": True}
-            )
+        await replaced_ctx.send_message(
+            {"customType": "demo", "content": "stale", "display": True}
         )
     with pytest.raises(RuntimeError, match="stale"):
-        asyncio.run(replaced_ctx.sendUserMessage("stale user text"))
+        await replaced_ctx.send_user_message("stale user text")
 
 
-def test_agent_session_exposes_pi_style_replaced_session_context(tmp_path) -> None:
+@_async_test
+async def test_agent_session_exposes_pi_style_replaced_session_context(
+    tmp_path,
+) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     project = tmp_path / "project"
     project.mkdir()
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
+        session_manager=await SessionManager.new(
             session_dir=tmp_path, cwd=str(project), persist=True
         ),
         extension_runner=ExtensionRunner(
@@ -2113,26 +2524,28 @@ def test_agent_session_exposes_pi_style_replaced_session_context(tmp_path) -> No
         ),
     )
 
-    context = session.createReplacedSessionContext()
+    context = session.create_replaced_session_context()
 
     assert context.cwd == str(project.resolve())
-    assert context.sessionManager is session.session_manager
-    assert context.getSessionName() is None
+    assert context.session_manager is session.session_manager
+    assert context.get_session_name() is None
 
 
-def test_extension_command_context_switch_session_uses_runtime_host(tmp_path) -> None:
-    import asyncio
+@_async_test
+async def test_extension_command_context_switch_session_uses_runtime_host(
+    tmp_path,
+) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import (
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         RegisteredCommand,
     )
-    from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
 
     callback_events: list[tuple[str, object]] = []
 
@@ -2141,11 +2554,11 @@ def test_extension_command_context_switch_session_uses_runtime_host(tmp_path) ->
             callback_events.append(
                 (
                     "withSession",
-                    (replaced_ctx.cwd, replaced_ctx.sessionManager is not None),
+                    (replaced_ctx.cwd, replaced_ctx.session_manager is not None),
                 )
             )
 
-        await ctx.switchSession(args, {"withSession": _with_session})
+        await ctx.switch_session(args, {"withSession": _with_session})
 
     def _factory(manager: SessionManager, *, session_start_event=None) -> AgentSession:
         return AgentSession(
@@ -2171,13 +2584,13 @@ def test_extension_command_context_switch_session_uses_runtime_host(tmp_path) ->
 
     project = tmp_path / "project"
     project.mkdir()
-    first_manager = SessionManager.new(
+    first_manager = await SessionManager.new(
         session_dir=tmp_path, cwd=str(project), persist=True
     )
-    second_manager = SessionManager.new(
+    second_manager = await SessionManager.new(
         session_dir=tmp_path, cwd=str(project), persist=True
     )
-    second_manager.append_message(_user_message("restored"))
+    await second_manager.append_message(_user_message("restored"))
     runtime = AgentSessionRuntime(
         session_dir=tmp_path,
         session_factory=_factory,
@@ -2187,8 +2600,8 @@ def test_extension_command_context_switch_session_uses_runtime_host(tmp_path) ->
     session = runtime.get_current_session()
     assert session is not None
 
-    result = asyncio.run(
-        session.execute_command_async("switch", str(second_manager.session_file))
+    result = await session.execute_command_async(
+        "switch", str(second_manager.session_file)
     )
     switched = runtime.get_current_session()
 
@@ -2201,22 +2614,22 @@ def test_extension_command_context_switch_session_uses_runtime_host(tmp_path) ->
     assert callback_events == [("withSession", (str(project.resolve()), True))]
 
 
-def test_extension_command_replacement_callbacks_require_async_callables(
+@_async_test
+async def test_extension_command_replacement_callbacks_require_async_callables(
     tmp_path,
 ) -> None:
-    import asyncio
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.coding.extensions import (
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         RegisteredCommand,
     )
-    from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
 
     async def _new_command(args: str, ctx):
         del args
@@ -2224,7 +2637,7 @@ def test_extension_command_replacement_callbacks_require_async_callables(
         def _with_session(replaced_ctx):
             del replaced_ctx
 
-        await ctx.newSession({"withSession": _with_session})
+        await ctx.new_session({"withSession": _with_session})
 
     diagnostics_service = DiagnosticsService()
 
@@ -2255,9 +2668,9 @@ def test_extension_command_replacement_callbacks_require_async_callables(
         persist=True,
         diagnostics_service=diagnostics_service,
     )
-    session = asyncio.run(runtime.create_session(cwd=str(project)))
+    session = await runtime.create_session(cwd=str(project))
 
-    result = asyncio.run(session.execute_command_async("new", ""))
+    result = await session.execute_command_async("new", "")
 
     assert result is not None
     assert result.result is None
@@ -2266,9 +2679,10 @@ def test_extension_command_replacement_callbacks_require_async_callables(
     ] == ["extension_command_failed"]
 
 
-def test_runtime_exposes_diagnostics_snapshot(tmp_path) -> None:
+@_async_test
+async def test_runtime_exposes_diagnostics_snapshot(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime, create_services
-    from loushang.coding.diagnostics import DiagnosticsQuery
+    from loushang.harness.diagnostics import DiagnosticsQuery
 
     services = create_services()
     services.diagnostics_service.record(
@@ -2311,9 +2725,10 @@ def test_runtime_exposes_diagnostics_snapshot(tmp_path) -> None:
     assert runtime.get_last_error_report().primary.code == "runtime_error"
 
 
-def test_runtime_exposes_current_session_diagnostics(tmp_path) -> None:
+@_async_test
+async def test_runtime_exposes_current_session_diagnostics(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime, create_services
-    from loushang.coding.diagnostics import DiagnosticsQuery
+    from loushang.harness.diagnostics import DiagnosticsQuery
 
     services = create_services()
     runtime = create_agent_session_runtime(
@@ -2322,7 +2737,7 @@ def test_runtime_exposes_current_session_diagnostics(tmp_path) -> None:
         services=services,
         persist=False,
     )
-    session = asyncio.run(runtime.create_session(cwd=str(tmp_path)))
+    session = await runtime.create_session(cwd=str(tmp_path))
     services.diagnostics_service.record(
         services.diagnostics_service.normalize_exception(
             code="current_runtime_error",
@@ -2359,16 +2774,17 @@ def test_runtime_exposes_current_session_diagnostics(tmp_path) -> None:
     assert summary.latest_error.code == "current_runtime_error"
 
 
-def test_agent_session_runtime_create_restore_and_fork_reconstruct_extension_start_hooks(
+@_async_test
+async def test_agent_session_runtime_create_restore_and_fork_reconstruct_extension_start_hooks(
     tmp_path,
 ) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     events: list[str] = []
 
@@ -2396,11 +2812,12 @@ def test_agent_session_runtime_create_restore_and_fork_reconstruct_extension_sta
     )
     project = tmp_path / "project"
     project.mkdir()
-    session = asyncio.run(runtime.create_session(cwd=str(project)))
-    restored = asyncio.run(runtime.restore_session(session.session_file))
-    restored.session_manager.append_message(_user_message("branch me"))
-    fork_entry_id = restored.session_manager.get_entries()[0].id
-    asyncio.run(runtime.fork_session(fork_entry_id))
+    session = await runtime.create_session(cwd=str(project))
+    await session.session_manager.append_message(_user_message("materialize"))
+    restored = await runtime.restore_session(session.get_session_file())
+    await restored.session_manager.append_message(_user_message("branch me"))
+    fork_entry_id = restored.session_manager.get_entries()[0].record_id
+    await runtime.fork_session(fork_entry_id)
 
     assert events == [
         str(project.resolve()),
@@ -2409,14 +2826,17 @@ def test_agent_session_runtime_create_restore_and_fork_reconstruct_extension_sta
     ]
 
 
-def test_runtime_replacement_emits_shutdown_before_next_session_start(tmp_path) -> None:
+@_async_test
+async def test_runtime_replacement_emits_shutdown_before_next_session_start(
+    tmp_path,
+) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     events: list[tuple[str, str | None, str | None]] = []
 
@@ -2457,12 +2877,12 @@ def test_runtime_replacement_emits_shutdown_before_next_session_start(tmp_path) 
     )
     project = tmp_path / "project"
     project.mkdir()
-    first = asyncio.run(runtime.create_session(cwd=str(project)))
+    first = await runtime.create_session(cwd=str(project))
     first_session_file = first.session_manager.session_file
     assert first_session_file is not None
     events.clear()
 
-    asyncio.run(runtime.new_session())
+    await runtime.new_session()
 
     assert runtime.get_current_session() is not None
     assert events == [
@@ -2476,15 +2896,16 @@ def test_runtime_replacement_emits_shutdown_before_next_session_start(tmp_path) 
     ]
 
 
-def test_runtime_syncs_extension_lifecycle_failure_diagnostics(tmp_path) -> None:
+@_async_test
+async def test_runtime_syncs_extension_lifecycle_failure_diagnostics(tmp_path) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     diagnostics_service = DiagnosticsService()
 
@@ -2525,10 +2946,12 @@ def test_runtime_syncs_extension_lifecycle_failure_diagnostics(tmp_path) -> None
     project = tmp_path / "project"
     project.mkdir()
 
-    first = asyncio.run(runtime.create_session(cwd=str(project)))
-    second = asyncio.run(runtime.new_session())
-    fork_entry_id = second.session_manager.append_message(_user_message("fork root"))
-    asyncio.run(runtime.fork_session(fork_entry_id))
+    first = await runtime.create_session(cwd=str(project))
+    second = await runtime.new_session()
+    fork_entry_id = await second.session_manager.append_message(
+        _user_message("fork root")
+    )
+    await runtime.fork_session(fork_entry_id)
 
     records_by_code = {
         record.code: record
@@ -2553,11 +2976,12 @@ def test_runtime_syncs_extension_lifecycle_failure_diagnostics(tmp_path) -> None
     )
 
 
-def test_runtime_new_session_reuses_current_cwd_and_disposes_previous_session(
+@_async_test
+async def test_runtime_new_session_reuses_current_cwd_and_disposes_previous_session(
     tmp_path,
 ) -> None:
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -2576,21 +3000,55 @@ def test_runtime_new_session_reuses_current_cwd_and_disposes_previous_session(
     project = tmp_path / "project"
     project.mkdir()
 
-    first = asyncio.run(runtime.create_session(cwd=str(project)))
-    second = asyncio.run(runtime.new_session())
+    first = await runtime.create_session(cwd=str(project))
+    second = await runtime.new_session()
 
     assert runtime.get_current_session() is second
     assert second.session_manager.get_cwd() == str(project.resolve())
     assert first.disposed is True
     assert second.disposed is False
     assert (
-        second.session_manager.get_header().id != first.session_manager.get_header().id
+        second.session_manager.get_header().conversation_id
+        != first.session_manager.get_header().conversation_id
     )
 
 
-def test_runtime_session_replacement_keeps_shared_approval_presenter(tmp_path) -> None:
+@_async_test
+async def test_builtin_new_command_replaces_current_session_without_materializing_empty_files(
+    tmp_path,
+) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.policy import (
+
+    session_dir = tmp_path / "sessions"
+    runtime = create_agent_session_runtime(
+        session_dir=session_dir,
+        model=_model(),
+        persist=True,
+    )
+    first = await runtime.create_session(cwd=str(tmp_path))
+
+    execution = await first.execute_command_async("new", "")
+    current = runtime.get_current_session()
+
+    assert execution.result == {
+        "source": "builtin",
+        "command": "new",
+        "status": "ok",
+        "result": {"cancelled": False},
+        "message": "Started a new session.",
+    }
+    assert current is not None
+    assert current is not first
+    assert current.session_manager.get_cwd() == str(tmp_path.resolve())
+    assert list(session_dir.glob("*.jsonl")) == []
+
+
+@_async_test
+async def test_runtime_session_replacement_keeps_shared_approval_presenter(
+    tmp_path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
@@ -2653,20 +3111,21 @@ def test_runtime_session_replacement_keeps_shared_approval_presenter(tmp_path) -
         assert (await second_pending).disposition == "allow"
         await second.dispose()
 
-    asyncio.run(run())
+    await run()
     resolver.dispose()
 
 
-def test_runtime_direct_replacement_reactivates_shared_approval_presenter(
+@_async_test
+async def test_runtime_direct_replacement_reactivates_shared_approval_presenter(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.policy import (
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
-    from loushang.coding.store import SessionManager
 
     project = tmp_path / "project"
     project.mkdir()
@@ -2701,7 +3160,7 @@ def test_runtime_direct_replacement_reactivates_shared_approval_presenter(
         )
         await asyncio.wait_for(presentation.wait(), timeout=0.5)
 
-        replacement_manager = SessionManager.new(
+        replacement_manager = await SessionManager.new(
             session_dir=tmp_path / "sessions",
             cwd=str(project),
             persist=False,
@@ -2729,22 +3188,23 @@ def test_runtime_direct_replacement_reactivates_shared_approval_presenter(
         assert (await second_pending).disposition == "allow"
         await replacement.dispose()
 
-    asyncio.run(run())
+    await run()
     resolver.dispose()
 
 
-def test_runtime_injected_current_session_reopens_shared_approval_resolver(
+@_async_test
+async def test_runtime_injected_current_session_reopens_shared_approval_resolver(
     tmp_path,
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.policy import (
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.approval import (
         ApprovalRequest,
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
-    from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
 
     resolver = InteractiveApprovalResolver(
         fallback=HeadlessApprovalResolver(mode="deny")
@@ -2752,7 +3212,7 @@ def test_runtime_injected_current_session_reopens_shared_approval_resolver(
     presented = asyncio.Event()
     resolver.set_request_presenter(lambda payload: presented.set())
     resolver.close_session("previous session closed")
-    manager = SessionManager.new(
+    manager = await SessionManager.new(
         session_dir=tmp_path,
         cwd=str(tmp_path),
         persist=False,
@@ -2792,15 +3252,18 @@ def test_runtime_injected_current_session_reopens_shared_approval_resolver(
         assert (await pending).disposition == "allow"
         await runtime.dispose()
 
-    asyncio.run(run())
+    await run()
     resolver.dispose()
 
 
-def test_runtime_replacement_disposes_agent_session_local_resources(tmp_path) -> None:
+@_async_test
+async def test_runtime_replacement_disposes_agent_session_local_resources(
+    tmp_path,
+) -> None:
     from loushang.agent import Agent
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     def _factory(manager: SessionManager, *, session_start_event=None) -> AgentSession:
         return AgentSession(
@@ -2814,14 +3277,14 @@ def test_runtime_replacement_disposes_agent_session_local_resources(tmp_path) ->
     )
     project = tmp_path / "project"
     project.mkdir()
-    first = asyncio.run(runtime.create_session(cwd=str(project)))
+    first = await runtime.create_session(cwd=str(project))
     first.footer_data_provider.set_extension_status("demo", "running")
     first.footer_data_provider.start_git_watcher(
         poll_interval_seconds=0.01, debounce_seconds=0
     )
     assert first.footer_data_provider.is_git_watcher_running()
 
-    second = asyncio.run(runtime.new_session())
+    second = await runtime.new_session()
 
     assert runtime.get_current_session() is second
     assert second is not first
@@ -2829,17 +3292,18 @@ def test_runtime_replacement_disposes_agent_session_local_resources(tmp_path) ->
     assert first.footer_data_provider.is_git_watcher_running() is False
 
 
-def test_runtime_replacement_records_shutdown_emit_failure_and_keeps_replacement(
+@_async_test
+async def test_runtime_replacement_records_shutdown_emit_failure_and_keeps_replacement(
     tmp_path,
 ) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     class BrokenShutdownRunner(ExtensionRunner):
         async def emit_session_shutdown(self, event) -> None:
@@ -2867,10 +3331,10 @@ def test_runtime_replacement_records_shutdown_emit_failure_and_keeps_replacement
     )
     project = tmp_path / "project"
     project.mkdir()
-    first = asyncio.run(runtime.create_session(cwd=str(project)))
+    first = await runtime.create_session(cwd=str(project))
     first.footer_data_provider.set_extension_status("demo", "running")
 
-    second = asyncio.run(runtime.new_session())
+    second = await runtime.new_session()
     records = diagnostics_service.get_diagnostics(
         query=DiagnosticsQuery(code="session_shutdown_failed")
     )
@@ -2887,13 +3351,14 @@ def test_runtime_replacement_records_shutdown_emit_failure_and_keeps_replacement
     )
 
 
-def test_runtime_new_session_factory_failure_keeps_current_session_alive(
+@_async_test
+async def test_runtime_new_session_factory_failure_keeps_current_session_alive(
     tmp_path,
 ) -> None:
     import pytest
 
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -2918,18 +3383,19 @@ def test_runtime_new_session_factory_failure_keeps_current_session_alive(
     )
     project = tmp_path / "project"
     project.mkdir()
-    first = asyncio.run(runtime.create_session(cwd=str(project)))
+    first = await runtime.create_session(cwd=str(project))
 
     with pytest.raises(RuntimeError, match="factory boom"):
-        asyncio.run(runtime.new_session())
+        await runtime.new_session()
 
     assert runtime.get_current_session() is first
     assert first.disposed is False
 
 
-def test_runtime_replacements_are_serialized(tmp_path) -> None:
+@_async_test
+async def test_runtime_replacements_are_serialized(tmp_path) -> None:
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -2968,7 +3434,7 @@ def test_runtime_replacements_are_serialized(tmp_path) -> None:
         second, third = await asyncio.gather(first_replacement, second_replacement)
         return first, second, third
 
-    first, second, third = asyncio.run(scenario())
+    first, second, third = await scenario()
 
     assert first.dispose_calls == 1
     assert second.dispose_calls == 1
@@ -2976,12 +3442,14 @@ def test_runtime_replacements_are_serialized(tmp_path) -> None:
     assert runtime.get_current_session() is third
 
 
-def test_runtime_dispose_records_session_index_flush_failure(
+@_async_test
+async def test_runtime_dispose_records_session_index_flush_failure(
     tmp_path, monkeypatch
 ) -> None:
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
+    from loushang.harness.transcript import AgentTranscriptSessionCatalog
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -3007,17 +3475,19 @@ def test_runtime_dispose_records_session_index_flush_failure(
     async def scenario() -> DummySession:
         session = await runtime.create_session(cwd=str(project))
 
-        def _fail_refresh_index(cls, session_dir):
-            del cls, session_dir
+        def _fail_refresh_index(self):
+            del self
             raise RuntimeError("index boom")
 
         monkeypatch.setattr(
-            SessionManager, "refresh_index", classmethod(_fail_refresh_index)
+            AgentTranscriptSessionCatalog,
+            "refresh_index",
+            _fail_refresh_index,
         )
         await runtime.dispose()
         return session
 
-    session = asyncio.run(scenario())
+    session = await scenario()
     records = diagnostics_service.get_diagnostics(
         query=DiagnosticsQuery(code="session_index_refresh_failed")
     )
@@ -3029,7 +3499,8 @@ def test_runtime_dispose_records_session_index_flush_failure(
     assert records[0].details == {"all_sessions": False, "session_dir": str(tmp_path)}
 
 
-def test_runtime_exposes_current_session_and_cwd_properties(tmp_path) -> None:
+@_async_test
+async def test_runtime_exposes_current_session_and_cwd_properties(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
 
     project = tmp_path / "project"
@@ -3038,16 +3509,17 @@ def test_runtime_exposes_current_session_and_cwd_properties(tmp_path) -> None:
         session_dir=tmp_path, model=_model(), persist=False
     )
 
-    session = asyncio.run(runtime.create_session(cwd=str(project)))
+    session = await runtime.create_session(cwd=str(project))
 
     assert runtime.session is session
     assert runtime.current_session is session
     assert runtime.cwd == str(project.resolve())
 
 
-def test_runtime_replacement_callbacks_run_before_with_session(tmp_path) -> None:
+@_async_test
+async def test_runtime_replacement_callbacks_run_before_with_session(tmp_path) -> None:
     from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -3065,7 +3537,7 @@ def test_runtime_replacement_callbacks_run_before_with_session(tmp_path) -> None
     )
     project = tmp_path / "project"
     project.mkdir()
-    first = asyncio.run(runtime.create_session(cwd=str(project)))
+    first = await runtime.create_session(cwd=str(project))
     events: list[tuple[str, object]] = []
 
     async def _rebind(session):
@@ -3078,14 +3550,14 @@ def test_runtime_replacement_callbacks_run_before_with_session(tmp_path) -> None
         events.append(
             (
                 "withSession",
-                ctx.sessionManager is runtime.get_current_session().session_manager,
+                ctx.session_manager is runtime.get_current_session().session_manager,
             )
         )
 
     runtime.set_rebind_session(_rebind)
     runtime.set_before_session_invalidate(_before_invalidate)
 
-    asyncio.run(runtime.newSession({"withSession": _with_session}))
+    await runtime.new_session_operation(with_session=_with_session)
 
     assert events == [
         ("before", False),
@@ -3095,7 +3567,8 @@ def test_runtime_replacement_callbacks_run_before_with_session(tmp_path) -> None
     assert first.disposed is True
 
 
-def test_runtime_restore_session_accepts_session_id(tmp_path) -> None:
+@_async_test
+async def test_runtime_restore_session_accepts_session_id(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
 
     project = tmp_path / "project"
@@ -3104,14 +3577,16 @@ def test_runtime_restore_session_accepts_session_id(tmp_path) -> None:
         session_dir=tmp_path, model=_model(), persist=True
     )
 
-    created = asyncio.run(runtime.create_session(cwd=str(project)))
-    restored = asyncio.run(runtime.restore_session(created.session_id))
+    created = await runtime.create_session(cwd=str(project))
+    await created.session_manager.append_message(_user_message("materialize"))
+    restored = await runtime.restore_session(created.session_id)
 
     assert restored.session_id == created.session_id
     assert restored.session_manager.get_cwd() == str(project.resolve())
 
 
-def test_runtime_restore_session_accepts_session_id_prefix(tmp_path) -> None:
+@_async_test
+async def test_runtime_restore_session_accepts_session_id_prefix(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
 
     project = tmp_path / "project"
@@ -3120,18 +3595,24 @@ def test_runtime_restore_session_accepts_session_id_prefix(tmp_path) -> None:
         session_dir=tmp_path, model=_model(), persist=True
     )
 
-    created = asyncio.run(runtime.create_session(cwd=str(project)))
-    restored = asyncio.run(runtime.restore_session(created.session_id[:8]))
+    created = await runtime.create_session(cwd=str(project))
+    await created.session_manager.append_message(_user_message("materialize"))
+    restored = await runtime.restore_session(created.session_id[:8])
 
     assert restored.session_id == created.session_id
 
 
-def test_runtime_restore_session_rejects_ambiguous_session_id_prefix(tmp_path) -> None:
-    import json
-
+@_async_test
+async def test_runtime_restore_session_rejects_ambiguous_session_id_prefix(
+    tmp_path,
+) -> None:
     import pytest
 
     from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.harness.conversation import ConversationHeader
+    from loushang.harness.transcript.jsonl_file import (
+        write_agent_transcript_export as write_session_file,
+    )
 
     project = tmp_path / "project"
     project.mkdir()
@@ -3140,26 +3621,23 @@ def test_runtime_restore_session_rejects_ambiguous_session_id_prefix(tmp_path) -
     )
     timestamp = "2026-05-01T00:00:00Z"
     for session_id in ("abcdef01", "abcdef02"):
-        (tmp_path / f"{timestamp}_{session_id}.jsonl").write_text(
-            json.dumps(
-                {
-                    "type": "session",
-                    "version": 3,
-                    "id": session_id,
-                    "timestamp": timestamp,
-                    "cwd": str(project),
-                    "parentSession": None,
-                }
-            )
-            + "\n",
-            encoding="utf-8",
+        write_session_file(
+            tmp_path / f"{timestamp}_{session_id}.jsonl",
+            ConversationHeader(
+                conversation_id=session_id,
+                version=1,
+                created_at=timestamp,
+                metadata={"cwd": str(project)},
+            ),
+            [],
         )
 
     with pytest.raises(ValueError, match="Ambiguous session reference"):
-        asyncio.run(runtime.restore_session("abcdef"))
+        await runtime.restore_session("abcdef")
 
 
-def test_runtime_create_session_normalizes_cwd_and_rejects_missing_paths(
+@_async_test
+async def test_runtime_create_session_normalizes_cwd_and_rejects_missing_paths(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
@@ -3171,30 +3649,31 @@ def test_runtime_create_session_normalizes_cwd_and_rejects_missing_paths(
         session_dir=tmp_path, model=_model(), persist=False
     )
 
-    created = asyncio.run(runtime.create_session(cwd=str(nested / "..")))
+    created = await runtime.create_session(cwd=str(nested / ".."))
 
     assert created.session_manager.get_cwd() == str(project.resolve())
 
     try:
-        asyncio.run(runtime.create_session(cwd=str(tmp_path / "missing")))
+        await runtime.create_session(cwd=str(tmp_path / "missing"))
     except FileNotFoundError as exc:
         assert exc.filename == str(tmp_path / "missing")
     else:
         raise AssertionError("create_session should reject missing cwd paths")
 
 
-def test_runtime_new_session_respects_extension_before_switch_cancellation(
+@_async_test
+async def test_runtime_new_session_respects_extension_before_switch_cancellation(
     tmp_path,
 ) -> None:
     from pathlib import Path
 
-    from loushang.coding.extensions import (
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         SessionActionDecision,
     )
-    from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.store import SessionManager
 
     class DummySession:
         def __init__(self, manager: SessionManager, runner: ExtensionRunner) -> None:
@@ -3229,8 +3708,8 @@ def test_runtime_new_session_respects_extension_before_switch_cancellation(
     project = tmp_path / "project"
     project.mkdir()
 
-    first = asyncio.run(runtime.create_session(cwd=str(project)))
-    second = asyncio.run(runtime.new_session())
+    first = await runtime.create_session(cwd=str(project))
+    second = await runtime.new_session()
 
     assert second is first
     assert runtime.get_current_session() is first
@@ -3238,18 +3717,19 @@ def test_runtime_new_session_respects_extension_before_switch_cancellation(
     assert seen == [("new", str(project.resolve()), None)]
 
 
-def test_runtime_fork_session_respects_extension_before_fork_cancellation(
+@_async_test
+async def test_runtime_fork_session_respects_extension_before_fork_cancellation(
     tmp_path,
 ) -> None:
     from pathlib import Path
 
-    from loushang.coding.extensions import (
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         SessionActionDecision,
     )
-    from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.store import SessionManager
 
     class DummySession:
         def __init__(self, manager: SessionManager, runner: ExtensionRunner) -> None:
@@ -3285,9 +3765,9 @@ def test_runtime_fork_session_respects_extension_before_fork_cancellation(
     project = tmp_path / "project"
     project.mkdir()
 
-    current = asyncio.run(runtime.create_session(cwd=str(project)))
-    first_entry_id = current.session_manager.append_message(_user_message("root"))
-    forked = asyncio.run(runtime.fork_session(first_entry_id))
+    current = await runtime.create_session(cwd=str(project))
+    first_entry_id = await current.session_manager.append_message(_user_message("root"))
+    forked = await runtime.fork_session(first_entry_id)
 
     assert forked is current
     assert runtime.get_current_session() is current
@@ -3295,16 +3775,19 @@ def test_runtime_fork_session_respects_extension_before_fork_cancellation(
     assert seen == [first_entry_id]
 
 
-def test_runtime_new_session_allows_extension_non_cancel_decision(tmp_path) -> None:
+@_async_test
+async def test_runtime_new_session_allows_extension_non_cancel_decision(
+    tmp_path,
+) -> None:
     from pathlib import Path
 
-    from loushang.coding.extensions import (
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         SessionActionDecision,
     )
-    from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.store import SessionManager
 
     class DummySession:
         def __init__(self, manager: SessionManager, runner: ExtensionRunner) -> None:
@@ -3340,8 +3823,8 @@ def test_runtime_new_session_allows_extension_non_cancel_decision(tmp_path) -> N
     project = tmp_path / "project"
     project.mkdir()
 
-    first = asyncio.run(runtime.create_session(cwd=str(project)))
-    second = asyncio.run(runtime.new_session())
+    first = await runtime.create_session(cwd=str(project))
+    second = await runtime.new_session()
 
     assert second is not first
     assert runtime.get_current_session() is second
@@ -3349,16 +3832,19 @@ def test_runtime_new_session_allows_extension_non_cancel_decision(tmp_path) -> N
     assert seen == [("new", str(project.resolve()), None)]
 
 
-def test_runtime_restore_session_allows_extension_non_cancel_decision(tmp_path) -> None:
+@_async_test
+async def test_runtime_restore_session_allows_extension_non_cancel_decision(
+    tmp_path,
+) -> None:
     from pathlib import Path
 
-    from loushang.coding.extensions import (
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         SessionActionDecision,
     )
-    from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.store import SessionManager
 
     class DummySession:
         def __init__(self, manager: SessionManager, runner: ExtensionRunner) -> None:
@@ -3391,13 +3877,13 @@ def test_runtime_restore_session_allows_extension_non_cancel_decision(tmp_path) 
     target = tmp_path / "target"
     project.mkdir()
     target.mkdir()
-    current_manager = SessionManager.new(
+    current_manager = await SessionManager.new(
         session_dir=tmp_path, cwd=str(project), persist=True
     )
-    target_manager = SessionManager.new(
+    target_manager = await SessionManager.new(
         session_dir=tmp_path, cwd=str(target), persist=True
     )
-    target_manager.append_message(_user_message("from target"))
+    await target_manager.append_message(_user_message("from target"))
 
     runtime = AgentSessionRuntime(
         session_dir=tmp_path,
@@ -3408,30 +3894,33 @@ def test_runtime_restore_session_allows_extension_non_cancel_decision(tmp_path) 
     current = runtime.get_current_session()
     assert current is not None
 
-    restored = asyncio.run(runtime.restore_session(target_manager.session_file))
+    restored = await runtime.restore_session(target_manager.session_file)
 
     assert restored is not current
     assert current.disposed is True
     assert runtime.get_current_session() is restored
     assert isinstance(restored, DummySession)
-    assert [entry.id for entry in restored.session_manager.get_entries()] == [
-        target_manager.get_entries()[0].id
+    assert [entry.record_id for entry in restored.session_manager.get_entries()] == [
+        target_manager.get_entries()[0].record_id
     ]
     assert seen == [
         ("resume", str(project.resolve()), str(target_manager.session_file))
     ]
 
 
-def test_runtime_fork_session_allows_extension_non_cancel_decision(tmp_path) -> None:
+@_async_test
+async def test_runtime_fork_session_allows_extension_non_cancel_decision(
+    tmp_path,
+) -> None:
     from pathlib import Path
 
-    from loushang.coding.extensions import (
+    from loushang.coding.runtime import AgentSessionRuntime
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         SessionActionDecision,
     )
-    from loushang.coding.runtime import AgentSessionRuntime
-    from loushang.coding.store import SessionManager
 
     class DummySession:
         def __init__(self, manager: SessionManager, runner: ExtensionRunner) -> None:
@@ -3468,12 +3957,14 @@ def test_runtime_fork_session_allows_extension_non_cancel_decision(tmp_path) -> 
     project = tmp_path / "project"
     project.mkdir()
 
-    current = asyncio.run(runtime.create_session(cwd=str(project)))
-    fork_entry = current.session_manager.append_message(_user_message("root"))
-    forked = asyncio.run(runtime.fork_session(fork_entry))
+    current = await runtime.create_session(cwd=str(project))
+    fork_entry = await current.session_manager.append_message(_user_message("root"))
+    forked = await runtime.fork_session(fork_entry)
 
     assert forked is not current
     assert runtime.get_current_session() is forked
     assert current.disposed is True
-    assert [entry.id for entry in forked.session_manager.get_branch()] == [fork_entry]
+    assert [entry.record_id for entry in forked.session_manager.get_branch()] == [
+        fork_entry
+    ]
     assert seen == [(fork_entry, str(project.resolve()))]

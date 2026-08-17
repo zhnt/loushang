@@ -14,11 +14,11 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from loushang.agent import AgentTool, AgentToolResult, ThinkingLevel
-from loushang.ai import TextPart, get_model
+from loushang.ai import ApiKeyAuth, CallOptions, TextPart, get_model
 from loushang.ai.model import (
     Model,
-    get_default_model_registry,
-    load_model_registry,
+    load_model_registry_from_directory,
+    load_model_registry_from_file,
     resolve_model_endpoint,
 )
 from loushang.ai.model.registry import ModelRegistry
@@ -36,7 +36,6 @@ ENV_EXAMPLES_SESSION_DIR = "LOUSHANG_EXAMPLES_SESSION_DIR"
 ENV_EXAMPLES_ARTIFACT_ROOT = "LOUSHANG_EXAMPLES_ARTIFACT_ROOT"
 
 _OVERRIDE_REGISTRY: ModelRegistry | None = None
-_DEFAULT_REGISTRY_SYNCED = False
 
 
 def _resolve_session_dir(default_session_dir: Path) -> Path:
@@ -58,17 +57,12 @@ def _resolve_model_catalog() -> Path | None:
             if candidate_file.is_file():
                 return candidate_file
 
-        examples_models = REPO_ROOT / "examples" / "coding" / "models"
-        if examples_models.is_dir() and any(examples_models.glob("*.json")):
-            return examples_models
         return None
     return Path(raw).expanduser()
 
 
 def _resolve_model(provider: str, endpoint: str, model_id: str) -> Model:
     catalog = _resolve_model_catalog()
-    if catalog is not None:
-        _sync_custom_catalog_into_default()
     registry = _resolve_model_registry()
     if registry is not None:
         try:
@@ -85,7 +79,12 @@ def _resolve_model_registry() -> ModelRegistry | None:
     global _OVERRIDE_REGISTRY
     if _OVERRIDE_REGISTRY is None:
         try:
-            _OVERRIDE_REGISTRY = load_model_registry(catalog)
+            loader = (
+                load_model_registry_from_directory
+                if catalog.is_dir()
+                else load_model_registry_from_file
+            )
+            _OVERRIDE_REGISTRY = loader(catalog)
         except FileNotFoundError as exc:
             raise RuntimeError(f"model catalog not found: {catalog}") from exc
         except Exception as exc:
@@ -93,20 +92,8 @@ def _resolve_model_registry() -> ModelRegistry | None:
     return _OVERRIDE_REGISTRY
 
 
-def _sync_custom_catalog_into_default() -> None:
-    global _DEFAULT_REGISTRY_SYNCED
-    if _DEFAULT_REGISTRY_SYNCED:
-        return
-    registry = _resolve_model_registry()
-    if registry is None:
-        return
-    default_registry = get_default_model_registry()
-    for provider in registry.providers.values():
-        default_registry.register_provider(provider)
-    _DEFAULT_REGISTRY_SYNCED = True
-
-
 MODEL_ID = "kimi-for-coding"
+KIMI_PROVIDER_ID = "kimi-code"
 DEFAULT_SYSTEM_PROMPT = (
     "You are Kimi, an AI assistant provided by Moonshot AI. "
     "You are better at Chinese and English conversations and provide helpful, accurate answers."
@@ -156,7 +143,7 @@ class CalcTool:
 
 
 def resolve_kimi_model_id(default: str = MODEL_ID, *, endpoint_id: str = "kimi-code-anthropic") -> str:
-    if endpoint_id in {"anthropic-messages", "kimi-code-anthropic", "kimi-code-openai"}:
+    if endpoint_id in {"kimi-code-anthropic", "kimi-code-openai"}:
         return default
     return os.getenv("KIMI_MODEL_NAME", "").strip() or default
 
@@ -170,10 +157,10 @@ def build_kimi_model(
         else resolve_kimi_model_id(endpoint_id=endpoint_id)
     )
     try:
-        return _resolve_model("moonshot", endpoint_id, resolved_model_id)
+        return _resolve_model(KIMI_PROVIDER_ID, endpoint_id, resolved_model_id)
     except Exception:
         if resolved_model_id != MODEL_ID:
-            return _resolve_model("moonshot", endpoint_id, MODEL_ID)
+            return _resolve_model(KIMI_PROVIDER_ID, endpoint_id, MODEL_ID)
         raise
 
 
@@ -189,15 +176,9 @@ def describe_model(model: Model) -> dict[str, str | None]:
 
 
 def resolve_api_key() -> str:
-    api_key = (
-        os.environ.get("KIMI_API_KEY")
-        or os.environ.get("KIMI_AUTH_TOKEN")
-        or os.environ.get("MOONSHOT_API_KEY")
-        or os.environ.get("ANTHROPIC_API_KEY")
-        or os.environ.get("OPENAI_API_KEY")
-    )
+    api_key = os.environ.get("KIMI_CODE_API_KEY")
     if not api_key:
-        raise RuntimeError("请先导出 KIMI_API_KEY 或 MOONSHOT_API_KEY 环境变量")
+        raise RuntimeError("请先导出 KIMI_CODE_API_KEY 环境变量")
     return api_key
 
 
@@ -224,7 +205,7 @@ def create_kimi_session(
         tools=list(tools or []),
         services=_build_bootstrap_services(),
     )
-    session.agent.get_api_key = lambda provider: resolve_api_key()
+    session.agent.call_options = CallOptions(auth=ApiKeyAuth(resolve_api_key()))
     return session
 
 
@@ -276,7 +257,7 @@ async def create_kimi_runtime_session(
         persist=persist,
     )
     session = await runtime.create_session(cwd=str(working_dir))
-    session.agent.get_api_key = lambda provider: resolve_api_key()
+    session.agent.call_options = CallOptions(auth=ApiKeyAuth(resolve_api_key()))
     return runtime, session
 
 

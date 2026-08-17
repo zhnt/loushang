@@ -11,62 +11,71 @@ layered configuration, and context salience/summary profiles. It follows the
 dependency-first migration rule and replaces duplicate Product mechanics in
 the same branch as each adapter.
 
-The wave does not define a universal Product transcript, configuration schema,
-or summarization policy. Harness owns the engines; Products own the payloads,
-defaults, policy, and presentation passed into those engines.
+This foundation wave did not define an Agent transcript profile, configuration
+schema, or summarization policy. Harness owns the engines; Products own domain
+payloads, defaults, policy, and presentation passed into those engines. The
+follow-on [Agent Transcript Profile](agent-transcript-profile-boundary.md) now
+defines an optional common schema for Agent-backed Products without changing
+the neutrality of these foundations.
 
 ## Ownership Decision
 
 | Concern | Harness ownership | Product or subsystem ownership |
 | --- | --- | --- |
-| Transcript state | Parent-linked repository, active leaf, append, path, tree, fork, optional journal persistence | Header and record schemas, codec, lifecycle, naming, location, retention, query, rebuild, and UI |
-| Projection index | Versioned atomic JSON index, typed projection codec, validation, stale detection, corrupt-file preservation, rebuild callback, sorting | Projection schema, source scan, freshness predicate, query semantics, index path, and refresh policy |
+| Transcript state | Parent-linked in-memory repository, active leaf, validation, tree, fork, and Store contracts/providers | Header and record schemas, codec, lifecycle, naming, provider binding, retention, query, and UI |
+| Projection index | Revision-aware rebuildable index contract plus Memory/JSON adapters, tombstones, corrupt-file preservation, and atomic generations | Projection schema, Store provider set, query semantics, index selection, and refresh policy |
 | Configuration | Ordered layers, patch merge, persistence adapter, composition codec, reload preservation, issues, snapshots, and subscriptions | Fields, validation, defaults, layer names/paths, credentials, auth/model semantics, CLI, and UI |
 | Salience | Explainable signals, structural weighted scorer, stable ranking, and a custom scorer protocol | Content interpretation, weights, pinning, grouping, selection threshold, and compaction policy |
 | Summary profile | Profile and section records, tagged prompt composition, mode selection, prompt override, and structural validation | System/user prompt text, serialized content, required sections, placeholder rules, model call, and artifact projection |
 
-Harness implementations in this wave must not import Coding, Work, Method,
-TUI, AI, Agent runtime, providers, or any Product package. Payloads remain
-generic or opaque. In particular, Harness never serializes `AgentMessage`,
-resolves a model or API key, or writes a Product summary record.
+Harness implementations in this foundation package must not import Coding,
+Work, Method, TUI, AI, Agent runtime, providers, or any Product package.
+Payloads remain generic or opaque. In particular, the generic journal and
+conversation foundations never serialize `AgentMessage`, resolve a model or
+API key, or write a Product summary record. Only the separate optional Agent
+transcript profile serializes Agent messages through its exact codec allowlist.
 
 ## Transcript Repository
 
-`loushang.harness.journal.TranscriptRepository[H, R]` composes the existing
-profiled `JsonlJournal` and `BranchGraph`. A Product supplies only two
-structural accessors: record id and parent id. The repository provides:
+The follow-on persistence consolidation replaces this historical placement
+with `loushang.harness.conversation.ConversationRepository[H, R]`, a pure
+in-memory repository composed with conversation-owned `BranchGraph`. A Product
+supplies record-id and parent-id accessors. The repository provides:
 
-- create and load over an optional Product-configured journal;
-- validate-before-persist append so failed records do not mutate memory;
+- candidate-state validation before a Store commit;
 - active-leaf selection and reset;
 - record lookup, roots, children, and root-to-leaf paths;
-- fork into another Product header and journal;
-- header replacement and explicit rewrite;
-- accumulated journal-load and compatible-graph diagnostics;
-- detached read-only loading when a Product must not mutate the source file.
+- pure in-memory fork and fold operations;
+- compatible-graph diagnostics without a physical source locator.
 
-Coding's `SessionManager` is still the Product facade. It keeps
-`SessionHeader`, `SessionEntry`, labels, summary/query relevance, context
-rebuild, recovery wording, file naming, deletion, retention, and public APIs.
-It delegates conversation state, graph traversal, append persistence, replay,
-catalog/query mechanics, and fork materialization through
-`ConversationRepository`, which composes `TranscriptRepository` internally.
+Durable create/load/append/delete and revisions now belong only to
+`ConversationStore`; JSONL composition is isolated in its file adapter.
+
+Coding's `SessionManager` is still the Product facade, now asynchronous for
+create/load/mutation/delete. It keeps labels, summary/query relevance, recovery
+wording, file naming, retention, public APIs, and backend composition. It
+delegates open transcript state, graph traversal, revision-checked append,
+replay, context rebuild, and fork materialization through
+`AgentTranscriptUnitOfWork` over an injected `ConversationStore`; catalog and
+index projection remain separate Product concerns.
 
 The follow-on Conversation Runtime Core now wraps this lower-level repository
 with `loushang.harness.conversation.ConversationRepository`, catalog/query,
 checkpoint replay, LCA/branch delta, and opaque-record compaction planning. New
 Product adapters should depend on the conversation owner rather than importing
-`TranscriptRepository` or `BranchGraph` directly; see
+the journal package for repository or branch semantics; see
 [Conversation Runtime Core Boundary](conversation-runtime-core-boundary.md).
 
-No universal transcript envelope or message schema is introduced. Stable base
-AI message codecs belong to `loushang.ai`; extension-message codec composition
-belongs to `loushang.agent`; each Product owns codecs for its custom transcript
-records.
+This foundation introduced no concrete message schema. Stable base AI message
+codecs remain in `loushang.ai`, extension-message codec composition remains in
+`loushang.agent`, and the optional Agent transcript profile composes those
+stable codecs into the neutral conversation envelope. Each Product owns codecs
+only for its domain-specific transcript records.
 
 ## Projection Index
 
-`JsonProjectionIndex[P]` owns the mechanics proven by Coding's session index:
+`JsonConversationIndex[P, Q]` now owns the revision-aware, rebuildable
+projection mechanics proven by Coding's session index:
 
 - a caller-selected positive version and item key;
 - a typed functional or object codec;
@@ -127,15 +136,19 @@ score unresolved decisions. Those meanings do not enter Harness.
 - tagged serialized-content and previous-summary blocks;
 - append or replace custom instructions;
 - Product-defined required sections and placeholder markers;
-- optional Product block tags ignored during structural validation.
+- optional Product block tags ignored during structural validation;
+- profile-declared `SummaryResourceOperationTag` mappings, including the standard
+  `read-files` / `modified-files` tags where appropriate.
 
-Coding keeps its existing compaction, update, turn-prefix, and branch prompt
-text in `coding.compaction.profiles`. Coding also keeps message-to-text
-serialization, file-operation blocks, model completion, retry, Product role
-mappings, tool-result interpretation, and summary artifact semantics. Harness
-owns the generic split-turn and non-cut-role planning mechanism. Coding's public
-`SummaryQualityReport` is preserved while delegating generic section validation
-to Harness.
+Harness also owns profile-driven summary fixture evaluation and the neutral
+`SummaryResourceOperations` evidence model. Each fixture case resolves a
+Product-supplied profile independently; the evaluator parses only tags declared
+by that profile and never imports a Product package. Coding keeps its
+compaction, update, turn-prefix, and branch prompt text in
+`coding.compaction.profiles`, its message-to-text serialization, production
+summary decoration, model completion, retry, Product role mappings,
+tool-result interpretation, and summary artifact semantics. Harness owns the
+generic split-turn/non-cut-role planning and summary evaluation mechanisms.
 
 ## Compatibility And Failure Semantics
 
@@ -173,7 +186,9 @@ Coding cutover, and duplicate removal are sufficient evidence.
 
 This wave does not:
 
-- move Coding transcript records or custom message codecs into Harness;
+- move Coding transcript records or custom message codecs into Harness in this
+  completed foundation wave; that historical non-goal is superseded by the
+  separate Agent Transcript Profile wave;
 - move AI base-message codecs, model registry, or auth resolution into Harness;
 - move Product setting fields, defaults, credential policy, or presentation;
 - move Product system prompts, compaction prompt text, model calls, or content

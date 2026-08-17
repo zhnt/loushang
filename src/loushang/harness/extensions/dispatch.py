@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.routing import (
     ExtensionContextFactory,
     ExtensionRoutePlan,
@@ -17,7 +18,6 @@ from loushang.harness.extensions.types import (
     InputSource,
     LoadedExtension,
 )
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
 
 class ExtensionDispatcher:
@@ -28,7 +28,7 @@ class ExtensionDispatcher:
         extensions: Sequence[LoadedExtension],
         *,
         context_factory: ExtensionContextFactory,
-        diagnostics: list[ResourceDiagnostic],
+        diagnostics: list[DiagnosticDraft],
         runtime_error_handler: ExtensionRuntimeErrorHandler | None = None,
         route_plan: ExtensionRoutePlan | None = None,
     ) -> None:
@@ -196,8 +196,8 @@ def _coerce_input_result(
 def _invalid_input_diagnostic(
     extension: LoadedExtension,
     message: str,
-) -> ResourceDiagnostic:
-    return ResourceDiagnostic(
+) -> DiagnosticDraft:
+    return DiagnosticDraft(
         code="invalid_extension_input_result",
         message=message,
         source_path=extension.source_path,

@@ -19,6 +19,7 @@ def test_diagnostic_vocabularies_are_stable() -> None:
     assert get_args(DiagnosticSource) == (
         "bootstrap",
         "loader",
+        "package",
         "extensions",
         "session",
         "policy",
@@ -69,6 +70,24 @@ def test_diagnostic_record_preserves_correlation_and_comparison_behavior() -> No
     assert record == different_fingerprint
     with pytest.raises(FrozenInstanceError):
         record.code = "changed"  # type: ignore[misc]
+
+
+def test_diagnostic_draft_defensively_freezes_input_details() -> None:
+    from loushang.harness.diagnostics.types import DiagnosticDraft
+
+    supplied_details: dict[str, object] = {"attempt": 1}
+    draft = DiagnosticDraft(
+        code="retry_pending",
+        message="Retry is pending.",
+        details=supplied_details,
+    )
+    supplied_details["attempt"] = 2
+
+    assert draft.details == {"attempt": 1}
+    with pytest.raises(TypeError):
+        draft.details["attempt"] = 3  # type: ignore[index]
+    with pytest.raises(FrozenInstanceError):
+        draft.code = "changed"  # type: ignore[misc]
 
 
 def test_diagnostic_aggregate_and_query_defaults_are_stable() -> None:

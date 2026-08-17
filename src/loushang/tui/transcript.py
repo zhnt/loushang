@@ -576,9 +576,6 @@ def _render_thinking(record: ThinkingRecord, *, width: int) -> list[str]:
 
 def _context_compaction_line(record: ContextCompactionRecord) -> str:
     line = "* Context compacted"
-    summary = record.summary.strip()
-    if summary:
-        line += f": {summary}"
     if record.tokens_before is not None:
         line += f" ({record.tokens_before} tokens before)"
     return line

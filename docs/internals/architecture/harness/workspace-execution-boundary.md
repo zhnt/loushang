@@ -6,8 +6,7 @@ Status: accepted for `lane/harness`.
 
 This document defines ownership for bounded workspace output and process
 execution. It moves product-neutral execution mechanics into
-`loushang.harness.workspace` while preserving the existing
-`loushang.coding.exec` and `loushang.coding.tools.truncate` import paths.
+`loushang.harness.workspace`.
 
 ## Decision
 
@@ -22,7 +21,7 @@ Harness owns two focused workspace capabilities:
 
 Coding remains a product adapter. It owns command risk classification,
 approval policy, session cwd resolution, extension semantics, tool result
-projection, prompt wording, user-facing notices, and SDK compatibility paths.
+projection, prompt wording, and user-facing notices.
 
 ## Truncation Split
 
@@ -36,14 +35,9 @@ Move to harness:
 - `truncate_tail`
 - limit validation, line/byte accounting, and UTF-8-safe suffix helpers
 
-Keep in coding:
-
-- `GREP_MAX_LINE_LENGTH`
-- `LineTruncationResult`
-- `truncate_line` and its product-facing suffix
-- `format_size`
-- `truncation_details` and Pi-style detail projection
-- camelCase SDK compatibility aliases
+`loushang.harness.tools.workspace.truncate` owns the workspace grep line limit,
+line truncation, size formatting, and structured detail projection. Products
+choose user-facing wording but do not re-export these mechanisms.
 
 `harness.presentation.collapse_text` remains a rendering helper. It adds display
 wording and does not replace byte-bounded capture or artifact decisions.
@@ -67,11 +61,18 @@ Keep in coding:
 - relative cwd resolution against a coding session
 - extension runtime binding behavior
 - bash tool result conversion and notices
-- public exports from `loushang.coding` and `loushang.coding.exec`
+- the explicit `loushang.coding.exec` compatibility path
 
 The request capture fields remain caller-supplied neutral configuration. Their
 current defaults are preserved for compatibility; harness does not decide which
 commands a product may run.
+
+`retain_output_artifacts` defaults to `True`, preserving the diagnostic artifact
+contract for existing callers. A finite consumer that never publishes artifact
+paths may set it to `False`; the execution backend must then return bounded
+preview metadata without retaining capture files. Artifact creation and cleanup
+remain backend-owned mechanics rather than a tool-specific `unlink()` escape
+hatch.
 
 `materialize_exec_request()` freezes inherited cwd and the complete merged
 environment before a request crosses an asynchronous policy or execution
@@ -88,20 +89,12 @@ Materialization deliberately preserves the requested command and native
 executable bytes, or arbitrary files read by a child process. It is a cwd and
 environment binding contract, not a sandbox or immutable filesystem guarantee.
 
-## Compatibility
+## Public Owner
 
 Harness-owned classes keep their harness `__module__` and are not exported from
-top-level `loushang.harness.__all__`. Coding compatibility modules re-export the
-same class and protocol objects so existing imports continue to work:
-
-```python
-from loushang.coding import ExecRequest, ExecService
-from loushang.coding.tools.truncate import TruncationResult
-```
-
-Product-internal code should import the focused harness modules after the owner
-move. Compatibility shims exist for public SDK paths, not as duplicate
-implementations.
+top-level `loushang.harness.__all__`. Product-internal code imports the focused
+Harness modules. `coding.tools.truncate` is removed with the complete Coding
+tool facade.
 
 ## Dependency Direction
 
@@ -124,6 +117,6 @@ The migration must prove:
 - neutral truncation behavior and UTF-8 byte limits under the harness path;
 - exec subprocess, streaming, timeout, cancellation, rolling capture, preview,
   custom backend, and artifact behavior under the harness path;
-- coding compatibility imports preserve object identity;
+- direct Harness imports preserve object identity;
 - coding tools, policy, extension, session, and prompt behavior remain intact;
 - architecture import boundaries and top-level export discipline still pass.

@@ -4,8 +4,10 @@ import sys
 from io import StringIO
 
 
-def test_stdout_guard_routes_prints_to_stderr_and_raw_writes_to_stdout(monkeypatch) -> None:
-    from loushang.coding.platform.output_guard import (
+def test_stdout_guard_routes_prints_to_stderr_and_raw_writes_to_stdout(
+    monkeypatch,
+) -> None:
+    from loushang.harness.host.stdout_guard import (
         flush_raw_stdout,
         is_stdout_taken_over,
         stdout_guard,
@@ -34,7 +36,7 @@ def test_stdout_guard_routes_prints_to_stderr_and_raw_writes_to_stdout(monkeypat
 
 
 def test_stdout_guard_nested_context_restores_only_outer_owner(monkeypatch) -> None:
-    from loushang.coding.platform.output_guard import is_stdout_taken_over, stdout_guard
+    from loushang.harness.host.stdout_guard import is_stdout_taken_over, stdout_guard
 
     process_stdout = StringIO()
     raw_stderr = StringIO()

@@ -220,9 +220,12 @@ Update internal imports to the new path and delete
 `src/loushang/runtime/__init__.py` plus `src/loushang/runtime/commands.py`.
 Do not keep `loushang.runtime` as a compatibility shim.
 
-This phase stops at the value-type boundary. `loushang.coding.commands.catalog`,
-`loushang.coding.commands.slash`, session command execution, and UI command
-handlers remain owned by `loushang.coding`.
+The command substrate now includes value types, descriptors, parsing,
+completion, dispatch, and immutable local/session catalog composition under
+`loushang.harness.commands`. HarnessTUI binds that substrate to conversation
+routes through `ConversationCommandCatalog`. Products retain command selection,
+session operation bindings, local action handlers, and final wording; Coding
+does not retain a parallel catalog.
 
 ### Phase 2: Host and adapter contracts
 

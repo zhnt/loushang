@@ -2,17 +2,12 @@
 
 ## Status
 
-Ownership inventory for
-[ARD-001: Agent Harness and Product Adapter Boundaries](ARD-001-agent-harness-and-product-adapters.md).
-Updated direction:
+Superseded as the current ownership inventory by the
+[Harness Current Owner Map](../harness/current-owner-map.md). This document is
+retained as the historical ownership input for
+[ARD-001: Agent Harness and Product Adapter Boundaries](ARD-001-agent-harness-and-product-adapters.md)
+and
 [ARD-002: Harness Product Adapter Substrate](ARD-002-harness-product-adapter-substrate.md).
-
-This document records module ownership for the prepared agent run contract. It is
-intentionally an inventory, not an implementation plan.
-It remains accurate for the current thin facade; future host/adapter substrate
-migration is tracked by the follow-up
-[Coding To Harness Migration Inventory](../harness/coding-to-harness-migration-inventory.md)
-before code moves.
 
 ## Scope
 
@@ -122,7 +117,7 @@ not harness candidates.
 | `policy` | Coding tool permission and approval policy | Product adapter | Do not move. |
 | `prompt` | Coding prompt assembly, preflight, templates | Product adapter | Do not move. |
 | `loader` / `resources` / `skill` | Resource discovery and Coding injection | Harness mechanism plus Product adapter | Move platform roots/layout, standard conventions, descriptors, discovery, merge, and reload to Harness. Keep content, activation, trust, and projection in Coding. |
-| `package` / `plugin` | Package/plugin lifecycle and materialization | Harness mechanism plus Product adapter | Move source/manifest/materialization and generic registry/resolver mechanics to Harness. Keep product policy, settings, and presentation in Coding. |
+| `package` / `plugin` | Resource Package lifecycle/materialization plus separate Plugin identity/source/enablement | Harness mechanism plus Product adapter | Move source/manifest/materialization and generic registry/resolver mechanics to Harness. Keep Product policy, settings, and presentation in Coding. |
 | `extensions` | Coding extension API, runner, policy, contributions | Product adapter | Do not move to agent. |
 | `domain` | Method-to-coding prepared turn bridge | Product adapter | Keep as product bridge. |
 | `control` | Settings, model controls, auth integration | Product adapter | Do not move. |
@@ -150,7 +145,8 @@ independent from product packages.
 | --- | --- | --- | --- |
 | `work/types.py` | `WorkOperation`, `WorkRun`, `WorkEvent`, plan/step run data, `ArtifactRef` | Work primitive | Keep artifact references generic; product packages own concrete artifact content. |
 | `work/event_log.py` | Event log protocol, in-memory backend, JSONL backend | Work primitive | Keep. |
-| `work/projection.py` | Generic mapping from agent-like events to `WorkEvent` | Work primitive | Keep. It accepts mappings and does not need product imports. |
+| `work/agent_projection.py` | Standard Agent/tool event mapping to `WorkEventFact` | Work boundary adapter | Keep. It is the explicit upper-layer adapter to Agent/AI codecs and must not import a product. |
+| `work/projection.py` | Adds run identity and sequence to standard facts as `WorkEvent` | Work primitive | Keep. It depends only on the Work-owned Agent projection. |
 | `work/plan_projection.py` | Plan/step run projection from work log entries | Work primitive | Keep. |
 | `work/coding.py` | Compatibility re-export for `CodingWorkShell` | Transitional compatibility | Do not expand. Implementation lives in `loushang.coding.work_shell`. |
 | `work/__init__.py` | Work exports | Work primitive plus lazy compatibility exports | Avoid eager product imports. |
@@ -248,7 +244,7 @@ These names are intentionally excluded from `loushang.harness`:
 2. Completed: add `loushang.work.ArtifactRef`.
 3. Completed: move coding runtime imports to the `loushang.coding.work_shell` adapter.
 4. Completed: keep `Agent` prompt and continuation execution on the low-level loop while preserving the stateful lifecycle.
-5. Completed: isolate method resource loading from `loushang.coding.loader`.
+5. Completed: isolate method resource loading from the Harness resource owner.
 6. Completed: move `CodingWorkShell` implementation ownership to `loushang.coding.work_shell`.
 7. Completed: add architecture import boundary tests for agent, harness, work, method, and channel.
 8. Completed: remove remaining package-level compatibility shims from `loushang.coding.cli` and `loushang.coding.types`.

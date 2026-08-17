@@ -11,40 +11,44 @@ product-facing diagnostic behavior.
 
 ## Decision
 
-Harness owns two focused records:
+Harness owns one focused provenance record and one resource diagnostic factory:
 
 - `loushang.harness.resources.source` owns `SourceInfo`, `SourceScope`, and
   `SourceOrigin`.
-- `loushang.harness.resources.diagnostics` owns `ResourceDiagnostic`.
+- `loushang.harness.resources.diagnostics` owns `resource_diagnostic`.
 
 `SourceInfo` is generic over its path representation. Harness preserves the
 path and base-directory values supplied by an adapter rather than choosing a
 filesystem or serialization representation. Coding command surfaces may use
 `SourceInfo[str]`, while extension runtime surfaces may use
-`SourceInfo[pathlib.Path]`; both are instances of the same harness-owned class.
+`SourceInfo[pathlib.Path]`. These are the same harness-owned classes regardless
+of the product-facing path representation.
 
-`ResourceDiagnostic` carries a code, message, optional source path and resource
-identity, an opaque source-kind string, and neutral metadata. Harness does not
+`resource_diagnostic` maps a code, message, optional source path, resource
+identity, opaque source-kind string, and neutral metadata into the `details`
+of a `loushang.harness.diagnostics.types.DiagnosticDraft`. Harness does not
 define coding resource kinds, resource-check phase/source assignment,
 remediation text, or display policy.
 
 ## Compatibility
 
-Accepted coding paths remain available:
+The factory and source records are imported from their focused Harness owners:
 
 ```python
-from loushang.coding.source_info import SourceInfo
-from loushang.coding.extensions import SourceInfo
-from loushang.coding.loader import ResourceDiagnostic
+from loushang.harness.resources.source import SourceInfo
+from loushang.harness.resources.diagnostics import resource_diagnostic
 ```
 
-These paths re-export the same harness-owned classes. Harness-owned classes
-keep their harness `__module__`; compatibility paths preserve imports, not
-duplicate implementations or coding-owned class identity.
+`resource_diagnostic(...)` returns the canonical `DiagnosticDraft`; resources
+does not define or re-export a second diagnostic class. Deleted Coding resource
+facades do not preserve an alternate import path.
 
-`loushang.coding.source_info` remains a product adapter. It keeps string path
-projection for command/RPC surfaces, descriptor-to-source mapping, executable
-installation identity, Git discovery, and user-facing formatting.
+The former `loushang.coding.source_info` adapter is removed. Descriptor
+projection remains in `harness.resources.source`; executable, package,
+environment, and Git identity live in
+`loushang.foundation.observability.identity`.
+Coding supplies only package/module aliases and a display title through
+`coding.diagnostics.profile`.
 
 ## Outside This Focused Migration
 
@@ -54,8 +58,7 @@ This provenance migration does not move or redesign:
 - prompt, skill, theme, or extension descriptors;
 - search roots, source precedence, merge decisions, or conflict policy in this
   change;
-- executable entrypoint, package installation, virtual environment, or Git
-  identity discovery;
+- product-specific runtime-identity labels;
 - resource check selection, phase/source assignment, or emission timing;
 - product remediation messages, UI projection, or session recording policy.
 
@@ -77,14 +80,15 @@ The target direction is:
 coding loaders / extensions / commands / sessions
   -> loushang.harness.resources.source
 coding loaders / extensions / commands / sessions
-  -> loushang.harness.resources.diagnostics
-loushang.harness.diagnostics.service
-  -> loushang.harness.resources.diagnostics
+  -> loushang.harness.diagnostics.types
+loushang.harness.resources.diagnostics
+  -> loushang.harness.diagnostics.types
 ```
 
-The two harness modules are independent neutral records. They must not import
-coding, method, work, TUI, AI, provider, or product packages. No provenance or
-diagnostic symbols are added to top-level `loushang.harness.__all__`.
+The resource modules must not import coding, method, work, TUI, AI, provider,
+or product packages. The diagnostics core must not import resources. No
+provenance or diagnostic symbols are added to top-level
+`loushang.harness.__all__`.
 
 ## Validation
 
@@ -92,7 +96,10 @@ The migration must prove:
 
 - string and `Path` source representations are preserved without coercion;
 - coding source-info and extension paths share the harness class identity;
-- coding loader diagnostic paths share the harness class identity;
+- resource diagnostic factories return the canonical `DiagnosticDraft`;
+- resource identity, source kind, metadata, and normalization precedence are
+  preserved inside draft details;
+- diagnostics core modules do not import resources;
 - existing descriptor projection and executable identity behavior is unchanged;
 - coding internal consumers import the focused harness owners;
 - harness import boundaries and top-level export discipline still pass.

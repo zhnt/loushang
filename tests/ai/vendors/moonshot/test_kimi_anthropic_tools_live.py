@@ -19,6 +19,7 @@ from loushang.ai import (
     complete,
     get_model,
 )
+from loushang.ai.auth import ApiKeyAuth
 
 # 用户可直接修改的配置。
 # 这是高级示例，重点是工具协议，不是最短接入路径。
@@ -74,7 +75,7 @@ def _build_tools() -> list[dict]:
 
 def _build_options(api_key: str) -> CallOptions:
     # 把调用参数集中到 options，便于聚焦 tool 协议本身。
-    return CallOptions(api_key=api_key, max_output_tokens=MAX_TOKENS)
+    return CallOptions(auth=ApiKeyAuth(api_key), max_output_tokens=MAX_TOKENS)
 
 
 async def _main() -> None:

@@ -1,33 +1,5 @@
-from loushang.coding.diagnostics.serialization import (
-    serialize_diagnostic,
-    serialize_diagnostic_summary,
-    serialize_error_report,
-)
-from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.diagnostics.types import (
-    DiagnosticLevel,
-    DiagnosticPhase,
-    DiagnosticRecord,
-    DiagnosticSource,
-    DiagnosticsQuery,
-    DiagnosticSummary,
-    ErrorReport,
-    StartupCheck,
-    StartupCheckResult,
-)
+"""Coding diagnostic UI adapters.
 
-__all__ = [
-    "DiagnosticLevel",
-    "DiagnosticPhase",
-    "DiagnosticRecord",
-    "DiagnosticSource",
-    "DiagnosticSummary",
-    "DiagnosticsQuery",
-    "DiagnosticsService",
-    "ErrorReport",
-    "StartupCheck",
-    "StartupCheckResult",
-    "serialize_diagnostic",
-    "serialize_diagnostic_summary",
-    "serialize_error_report",
-]
+The shared diagnostic JSON projection lives in ``loushang.harness``.  This
+package remains for Coding's debug-status presentation only.
+"""

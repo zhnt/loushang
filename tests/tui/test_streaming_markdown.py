@@ -11,6 +11,8 @@ from loushang.tui import (
 )
 from loushang.tui.markdown import renderer as markdown_renderer
 
+pytestmark = pytest.mark.tui_render_contract
+
 
 def _assert_incremental_matches_full(
     chunks: Iterable[str],

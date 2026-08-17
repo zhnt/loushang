@@ -60,6 +60,7 @@ def _build_context() -> Context:
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="openai-responses",
         model="gpt-5.4-mini",
         response_id="resp_1",
         usage=Usage(

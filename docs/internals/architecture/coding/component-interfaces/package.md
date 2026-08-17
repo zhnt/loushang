@@ -1,8 +1,16 @@
 # `package`
 
+## Status
+
+Superseded as a Coding-owned component. Product-neutral Resource Package
+materialization and lifecycle now belong to
+[Harness Platform Resource Layout](../../harness/platform-resource-layout-boundary.md).
+The definitions below are retained for compatibility history.
+
 ## Role
 
-- package/plugin lifecycle and source management boundary
+- Resource Package lifecycle and source-materialization boundary; Plugin
+  identity, registration, and enablement are separate
 - resource distribution unit bridge for local, remote, and Python package sources
 
 ## Owns

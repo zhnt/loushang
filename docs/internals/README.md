@@ -7,6 +7,7 @@ This directory keeps historical and contributor-facing material that used to liv
 ## Contents
 
 - [Architecture](./architecture/) - accepted architecture, subsystem boundaries, component notes, and design decisions.
+- [Architecture Method](./architecture-method/) - reusable architecture process, artifact model, component methods, templates, and method history.
 - [Strategy](./strategy/) - product strategy, roadmap thinking, and product surface notes.
 - [Glossary](./glossary/) - terminology drafts and internal vocabulary.
 - [Specs](./specs/) - iteration design specs.
@@ -21,7 +22,10 @@ These documents may describe target architecture, historical design decisions, o
 
 Internal docs are not all live architecture.
 
-- `architecture/` root and accepted ARDs are the primary architecture sources.
+- `architecture-method/` defines how architecture is designed and governed; it
+  does not describe Loushang Current or Target architecture.
+- `architecture/` root and accepted ARDs are the primary Loushang architecture
+  sources. Its governance profile binds the reusable method to this repository.
 - `architecture/drafts/` records exploratory architecture and unresolved design options.
 - `specs/` records dated implementation designs; use them for rationale, not as current API truth.
 - `plans/archive/` records completed or abandoned execution plans.

@@ -20,8 +20,8 @@ from loushang.coding import ToolRegistry, register_builtin_tools
 EXTENSION_SOURCE = """
 from pathlib import Path
 
-from loushang.coding.extensions import ExtensionResourceContribution
-from loushang.coding.loader import PromptFragmentDescriptor, SkillDescriptor
+from loushang.harness.extensions.agent import ExtensionResourceContribution
+from loushang.harness.resources.types import PromptFragmentDescriptor, SkillDescriptor
 
 
 def register(api):

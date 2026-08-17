@@ -2,7 +2,19 @@
 
 ## Status
 
-Accepted
+Superseded.
+
+The transition described here completed by removing `coding.mode` and placing
+Product command JSONL under `loushang.harness.host.rpc`. Channel's
+`rpc_jsonl` remains a separate Work/runtime-view boundary adapter. Current
+authority:
+
+- [Harness Mode/Host Boundary](../harness/mode-host-boundary.md);
+- [Harness Session/RPC Operation Boundary](../harness/session-rpc-operation-boundary.md);
+- [Channel RPC JSONL Boundary](../channel/rpc-jsonl-boundary.md).
+
+The remainder of this ARD is retained as migration rationale and historical
+protocol comparison, not Current architecture.
 
 ## Context
 
@@ -168,7 +180,7 @@ ChannelInbound
 
 ## Follow-up
 
-- [ ] 在 `loushang.channel` 设计文档中纳入 `rpc_jsonl` adapter 的接口草案
+- [x] `loushang.channel.rpc_jsonl` 已实现 JSONL framing、request correlation、accepted ACK 和 WorkEvent delivery；不包含 dispatcher 或旧 RpcMode command mapping
 - [ ] 定义旧 RpcMode command 到 future `WorkOperation`、work query、host/session operation 的分类矩阵
 - [ ] 定义 `ChannelInteractionRequest/Response` 与 `ChannelCapability` 的关系
 - [ ] 评估当前 `RpcMode` 的测试覆盖率，确保冻结期间 regression 可控

@@ -17,10 +17,15 @@ from _support import (
     resolve_api_key,
 )
 
+from loushang.ai import ApiKeyAuth, CallOptions
 from loushang.coding import (
-    ToolRegistry,
     create_agent_session_runtime,
-    register_builtin_tools,
+)
+from loushang.coding import (
+    register_coding_builtin_tools as register_builtin_tools,
+)
+from loushang.harness.tools.workspace.registry import (
+    WorkspaceToolRegistry as ToolRegistry,
 )
 
 EXAMPLE_FIRST_REQUEST = (
@@ -87,7 +92,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _configure_session(session) -> None:
-    session.agent.get_api_key = lambda provider: resolve_api_key()
+    session.agent.call_options = CallOptions(auth=ApiKeyAuth(resolve_api_key()))
     attach_stream_printer(session)
 
 

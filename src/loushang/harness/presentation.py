@@ -42,10 +42,6 @@ class ToolRenderResultOptions:
     expanded: bool = False
     is_partial: bool = False
 
-    @property
-    def isPartial(self) -> bool:
-        return self.is_partial
-
 
 @dataclass(frozen=True)
 class ToolRenderContext:
@@ -61,34 +57,6 @@ class ToolRenderContext:
     expanded: bool = False
     show_images: bool = False
     is_error: bool = False
-
-    @property
-    def toolCallId(self) -> str:
-        return self.tool_call_id
-
-    @property
-    def lastComponent(self) -> object | None:
-        return self.last_rendered
-
-    @property
-    def executionStarted(self) -> bool:
-        return self.execution_started
-
-    @property
-    def argsComplete(self) -> bool:
-        return self.args_complete
-
-    @property
-    def isPartial(self) -> bool:
-        return self.is_partial
-
-    @property
-    def showImages(self) -> bool:
-        return self.show_images
-
-    @property
-    def isError(self) -> bool:
-        return self.is_error
 
 
 class RenderableToolDefinition(Protocol):
@@ -312,8 +280,8 @@ class ToolRenderRuntime:
 
 
 def _event_tool_identity(event: Mapping[str, Any]) -> tuple[str | None, str]:
-    tool_call_id = event.get("tool_call_id", event.get("toolCallId"))
-    tool_name = event.get("tool_name", event.get("toolName"))
+    tool_call_id = event.get("tool_call_id")
+    tool_name = event.get("tool_name")
     return (
         tool_call_id if isinstance(tool_call_id, str) else None,
         tool_name if isinstance(tool_name, str) else "",

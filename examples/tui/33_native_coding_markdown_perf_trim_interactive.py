@@ -7,7 +7,15 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO, cast
 
-from loushang.coding.ui.screen_loop import run_screen_coding_tui
+from loushang.coding.ui.screen_input import (
+    CODING_CANCELLATION_MESSAGE,
+    CODING_INTERRUPTION_MESSAGE,
+    build_screen_input_router,
+)
+from loushang.harnesstui.conversation.screen_runner import (
+    ConversationInputRouterFactoryPort,
+    run_conversation_screen,
+)
 
 if TYPE_CHECKING:
     from loushang.coding.ui.screen_app import (
@@ -87,7 +95,7 @@ async def run_interactive(
     app.set_status(
         f"type 1, 10, 100... /quit exits | trim budget={active_line_budget} lines | per-turn auto trim"
     )
-    return await run_screen_coding_tui(
+    return await run_conversation_screen(
         app=app,
         stdin=stdin,
         stdout=stdout,
@@ -98,6 +106,12 @@ async def run_interactive(
         ),
         on_abort=lambda: None,
         should_exit=lambda text: text.strip() in {"/quit", "/exit", "q"},
+        input_router_factory=cast(
+            ConversationInputRouterFactoryPort,
+            build_screen_input_router,
+        ),
+        interruption_message=CODING_INTERRUPTION_MESSAGE,
+        cancellation_message=CODING_CANCELLATION_MESSAGE,
     )
 
 

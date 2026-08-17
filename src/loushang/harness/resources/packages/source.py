@@ -219,13 +219,13 @@ def _parse_git_source(source: str) -> tuple[str, str, str, str | None] | None:
         return f"git@{host}:{split[0]}", host, path, split[1]
     if re.match(r"^(?:https?|ssh|git)://", text):
         split = _split_url_at_ref(text)
-        parsed = urlparse(split[0])
-        if not parsed.hostname or not parsed.path.strip("/"):
+        parsed_url = urlparse(split[0])
+        if not parsed_url.hostname or not parsed_url.path.strip("/"):
             return None
-        path = _normalize_repo_path(parsed.path.strip("/"))
+        path = _normalize_repo_path(parsed_url.path.strip("/"))
         if path.count("/") < 1:
             return None
-        return split[0], parsed.hostname, path, split[1]
+        return split[0], parsed_url.hostname, path, split[1]
     return None
 
 

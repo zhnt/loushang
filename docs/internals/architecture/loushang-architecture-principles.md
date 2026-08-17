@@ -1,5 +1,12 @@
 # Loushang Architecture Principles
 
+## Status
+
+- Authority: normative cross-scope principles
+- Design status: accepted
+- Implementation status: not-applicable
+- Owner: Loushang architecture
+
 ## Scope
 
 本文档定义 `loushang` 的通用架构准则。  
@@ -26,8 +33,14 @@
 
 关系如下：
 
-- [Architecture Overview](/home/dev/workspace/loushang/docs/architecture/architecture-overview.md)
+- [Architecture Overview](./architecture-overview.md)
   - 定义整体分层与子系统地图
+- [Architecture Design And Governance Method](../architecture-method/README.md)
+  - 定义 truth plane、递归 Architecture Scope、设计流程与治理规则
+- [Product And OEM Glossary](../glossary/loushang-product.md)
+  - 定义 Product、OEM、Capability、Package、Plugin 与 Extension 等跨层术语
+- [Capability Variation And Replacement Boundary](./harness/capability-variation-and-replacement-boundary.md)
+  - 定义 Runtime Capability Shape、贡献、拦截、替换与 overlay 语义
 - 本文
   - 定义跨层通用的架构判断准则
 - 子系统文档
@@ -58,7 +71,7 @@
 - 把当前模型能力硬编码进 harness
 - 把状态混杂在 prompt 与临时上下文里
 - 把权限控制退化为提示词约束
-- 把规划、执行、评估混成一个不可验证的 agent
+- 把业务承诺、执行权限和完成判定混成一个不可追溯的 agent 黑箱
 - 把产品装配写成对底层内核的侵入式定制
 
 本文档的目标，是为后续架构设计提供一组稳定的高阶判断标准。
@@ -91,9 +104,10 @@
 
 优先约束如下：
 
-1. `architecture` 文档主要表达 should-be 的目标边界、结构约束与已接受设计。
-2. `spec / plan` 文档主要表达某次迭代的临时设计与落地步骤。
-3. 具体实现状态以代码与测试为准，而不是以架构文档为准。
+1. normative architecture 主要表达 should-be 的目标边界、结构约束与已接受设计。
+2. descriptive Current 文档必须链接代码、测试或 generated facts，不得冒充 Target。
+3. specification 精确定义长期 observable contract；plan 只表达本次迭代的临时步骤。
+4. 具体实现状态以代码、测试与 generated facts 为准，而不是以 Target 文档为准。
 
 在分析设计与实现关系时，统一使用：
 
@@ -153,7 +167,33 @@
 
 ---
 
-### 2. Externalized State Before Context Accumulation
+### 2. Stable Substrate Before Model-Contingent Cognition
+
+模型能力会持续增强，并逐步吸收任务分解、临时规划、反思、上下文选择、
+通用 verifier prompt 和工具选择启发式。Loushang 不应把这些当前代际的
+认知脚手架固化为 Agent 内循环、核心所有权或不可迁移的持久状态。
+
+应长期稳定的是模型无法替代的系统不变量：
+
+- authority、Policy、Approval、sandbox 和最小权限；
+- 副作用执行、幂等、取消、重试和失败收敛；
+- Conversation、Transcript、Session、事件顺序、持久化和恢复；
+- capability admission、租户与 workspace 隔离；
+- multi-agent 通信、并发与跨进程协调契约；
+- Work admission、权威事件、artifact、evidence、acceptance 和终态；
+- 输入、呈现和终端副作用等可执行交互不变量。
+
+todo、planner、reflection、verifier agent、plan mode、completion reminder、
+渐进工具 UX、模型路由和 prompt-based memory policy 应保持为可替换的
+Product-owned Capability Provider、admitted Extension、Skill 或显式选择的
+Runtime Profile binding。
+
+判断标准是：如果模型能力增强十倍后某组件可以删除，而权限、证据、持久化、
+协调和业务终态没有变弱，那么该组件不应进入稳定内核。
+
+---
+
+### 3. Externalized State Before Context Accumulation
 
 长时任务的核心问题不是“如何塞进更多上下文”，而是“如何维护可恢复、可查询、可审计的外部状态”。
 
@@ -178,7 +218,7 @@
 
 ---
 
-### 3. Capability Governance Before Fixed Invocation Paths
+### 4. Capability Governance Before Fixed Invocation Paths
 
 能力治理是授权问题，调用路径只是实现问题。
 
@@ -209,7 +249,7 @@
 
 ---
 
-### 4. Structural Security Before Instructional Safety
+### 5. Structural Security Before Instructional Safety
 
 安全边界应尽量通过系统结构保证，而不是依赖提示词、约定或“模型应该听话”。
 
@@ -234,9 +274,11 @@
 
 ---
 
-### 5. Verification And Traceability Are First-Class Capabilities
+### 6. Verification And Traceability Are First-Class Capabilities
 
-`loushang` 不应把验证视为“执行之后的补充动作”，而应把它视为系统的一等能力。
+`loushang` 不应把验证视为“执行之后的补充动作”，而应把可验证目标、外部
+证据和 traceability 视为系统的一等能力。这里的一等能力不是指在 Agent
+内循环中内置一个通用 verifier。
 
 这意味着：
 
@@ -260,34 +302,50 @@
 - validation note
 - provenance / trace
 
----
+需要区分：
 
-### 6. Separate Planning, Execution, And Evaluation Responsibilities
+```text
+提示模型“请自我验证”或强制固定 verdict 格式
+  -> 可替换的模型策略
 
-自主系统可以协同，但不应把规划、执行、评估无差别混合成一个黑箱。
+编译、测试、扫描、领域校验和独立执行环境产生的 evidence
+  -> Product 解释、Work 关联的外部事实
+```
 
-这条准则并不强制要求一定采用多个 agent 实例，而是要求职责显式可分。
-
-推荐保持分离的职责包括：
-
-- 规划
-- 执行
-- 评估
-- 审批
-- 记忆与状态整理
-
-对 `loushang` 的含义是：
-
-- 方法层不应只生成一个“计划文本”
-- 规划结果应成为可执行契约
-- 评估不应只是执行后的附带自评
-- 运行时应允许引入独立 evaluator / critic / reviewer 角色
-
-当系统无法说明“谁在规划、谁在执行、谁在判定完成”时，通常说明职责边界仍不清楚。
+独立 evaluator / reviewer 可以用于高风险或职责隔离场景，但不应成为所有
+普通 turn 的固定成本。验证机制应由 Product、Method、Work 和可选
+multi-agent 组合拥有；低层 Agent Loop 只执行准备好的调用和工具。
 
 ---
 
-### 7. Default For Long-Horizon Recovery And Evolution
+### 7. Keep Responsibilities Explicit Without Freezing Cognitive Choreography
+
+自主系统不能把业务承诺、执行权限和完成判定混成一个不可追溯的黑箱，但这
+不要求每个任务都经过独立 planner、executor 和 evaluator Agent。
+
+核心原则是：**Method 规定“什么必须成立”，模型决定“怎样达到”。**
+
+Method 稳定表达角色责任、约束、gates、预期 artifact、acceptance 和 evidence；
+模型可以在这个 envelope 内改变分解、工具顺序、推理方式、临时 plan 和
+subagent 使用策略。更强模型可以吸收这些局部认知步骤，而不改变 Method
+contract 或 Work truth。
+
+只有当计划或评估需要承担外部责任时，才必须显式物化：
+
+- 计划需要协调人或 agent、控制预算、等待审批、跨重启恢复或接受审计；
+- 验证需要独立权限、不同执行环境或客观 evidence；
+- 完成判定需要形成可查询、可回放的 Work outcome。
+
+在这些场景中，Product 把 Method 或用户意图绑定为 run-specific Work
+contract，Work 拥有接受、revision、deviation、evidence 和终态；Harness
+multi-agent 可以提供独立 reviewer 的技术执行，但不拥有业务验收。
+
+因此，职责必须可说明，认知 choreography 必须可替换。不要把“可分离”误写成
+“必须由多个 Agent 固定串联”，也不要把模型的临时 todo 自动提升为权威计划。
+
+---
+
+### 8. Default For Long-Horizon Recovery And Evolution
 
 `loushang` 应默认把长时任务视为常态，而不是异常情况。
 
@@ -313,9 +371,9 @@
 
 ---
 
-### 8. Product Assembly Must Preserve Kernel Consistency
+### 9. Product Assembly Must Preserve Kernel Consistency
 
-`loushang-coding`、`tui`、`methods` 等上层产品装配可以有强场景化选择，但不应破坏内核一致性。
+`loushang.coding`、`loushang.tui`、`loushang.method` 等上层产品与能力装配可以有强场景化选择，但不应破坏内核一致性。
 
 这意味着：
 
@@ -366,9 +424,12 @@
 
 ### Responsibility Separation vs Runtime Cost
 
-规划、执行、评估分离会带来更多运行步骤与协调成本。
+把计划和评估物化为独立 Agent 或外部阶段会带来更多运行步骤与协调成本。
 
-但在复杂任务中，缺少职责分离往往会造成更高的返工与验证成本。
+普通低风险 turn 可以让同一模型在明确边界内自主完成局部规划、执行和自检。
+只有当协调、权限、客观证据、恢复或审计要求足以证明其价值时，才引入独立
+planner、reviewer 或 verifier。职责的外部可追溯性必须稳定，具体认知步骤不必
+固定。
 
 ---
 
@@ -376,12 +437,13 @@
 
 结合当前 `loushang` 的分层设计，近期最应优先落实的方向包括：
 
-1. 明确 `session`、`event`、`artifact`、`capability` 的统一建模
-2. 把 `channel` 设计为可承载恢复、审计与查询的边界层，而不只是消息搬运层
-3. 在 `methods` 层把计划、阶段、验收条件与 work product 变成可运行对象
-4. 在 `agent` 层显式支持规划、执行、评估等职责分离
+1. 明确 Conversation、Session、event、artifact、capability 和 Work 的权威 owner
+2. 保持 `channel` 为 transport-safe operation/event boundary；恢复、审计和业务 truth 仍由 Harness、Work 或未来 AppService 的对应 owner 承担
+3. 在 `method` 层稳定表达目标、约束、gates、预期 artifact、acceptance 和 evidence，而不是冻结模型推理 choreography
+4. 保持 `agent` 为机械模型/工具执行内核；由 Harness、Product、Method、Work 和 multi-agent 在需要时组合 planner 或 verifier
 5. 在工具体系中区分能力模型、执行路径与凭据中介，避免混为一谈
 6. 在产品层坚持“场景装配建立在通用内核之上”，而不是反向侵入底层
+7. 把 TUI playback 作为输入、渲染和终端副作用的可执行契约，持续验证 resize、streaming、cursor、scrollback 和跨 feature 路由不变量
 
 ---
 
@@ -392,6 +454,8 @@
 - 所有工具都必须通过 proxy
 - 所有 sandbox 都完全不可接触任何受控资源
 - 任何场景都必须使用多 agent
+- 任何任务都必须显式生成计划或经过独立 verifier
+- planner、reflection 或 verifier 应进入 Agent 内循环
 - 任何状态都必须持久化到复杂基础设施
 - 为了追求抽象纯度而牺牲当前实现推进
 
@@ -400,7 +464,8 @@
 - 能力模型应先于调用路径争论
 - 结构性边界应先于提示词约束
 - 可恢复状态应先于上下文堆积
-- 可验证职责应先于黑箱式自主
+- 外部 evidence 和职责可追溯性应先于黑箱式自主
+- 稳定 substrate 应先于当前模型需要的认知脚手架
 
 ---
 
@@ -413,7 +478,7 @@
 - 哪些语义必须稳定
 - 哪些状态必须可恢复
 - 哪些能力必须被治理
-- 哪些职责必须被分离
+- 哪些职责必须对外显式，哪些认知步骤可以交给模型自主完成
 - 哪些产品装配不能破坏内核一致性
 
 这些准则构成 `loushang` 后续子系统设计、方法层设计与产品化装配的共同约束。

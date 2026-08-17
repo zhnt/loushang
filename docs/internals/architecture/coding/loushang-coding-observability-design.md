@@ -38,7 +38,7 @@ TUI 中途排障入口是：
 开发者不应该在 `logger.warning(...)`、`trace.emit(...)`、`diagnostics.record(...)` 之间做选择。模块内只需要：
 
 ```python
-from loushang.observability import get_log
+from loushang.foundation.observability import get_log
 
 log = get_log(__name__)
 ```
@@ -57,12 +57,12 @@ log.debug_event("tui", "prompt.dispatch.start", active_run=True)
 
 ### No Session Dependency Cycle
 
-`loushang.observability` 是基础层，不允许依赖 `loushang.coding.session`、`loushang.coding.runtime`、`loushang.coding.ui` 或 provider 具体实现。session/run/cwd/mode 等信息通过 context variables 绑定。
+`loushang.foundation.observability` 是基础层，不允许依赖 `loushang.coding.session`、`loushang.coding.runtime`、`loushang.coding.ui` 或 provider 具体实现。session/run/cwd/mode 等信息通过 context variables 绑定。
 
 依赖方向：
 
 ```text
-loushang.observability
+loushang.foundation.observability
   <- loushang.ai
   <- loushang.coding
   <- loushang.tui
@@ -189,7 +189,7 @@ Debug Event 默认不需要用户看到；只有 `--debug=<scope>` 或 `--trace=
 ### Entry
 
 ```python
-from loushang.observability import get_log, log_context
+from loushang.foundation.observability import get_log, log_context
 
 log = get_log(__name__)
 ```
@@ -587,7 +587,8 @@ CLI 优先级高于 env。
 
 ## Migration Plan
 
-1. 新增 `loushang.observability` 包。
+1. 使用 canonical `loushang.foundation.observability` 包；旧
+   `loushang.observability` 入口已经退出。
    - `get_log(...)`
    - `log_context(...)`
    - `ObservabilityLog`

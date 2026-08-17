@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from loushang.coding.tools import ToolContext
+from loushang.harness.tools.workspace import ToolContext
 
 
 def _tool_context_provider(*, cwd: str):
@@ -15,15 +15,16 @@ def _tool_context_provider(*, cwd: str):
 def test_decorated_tool_context_receives_abort_signal() -> None:
     import asyncio
 
-    from loushang.coding.tools import tool, tool_to_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.core import tool
+    from loushang.harness.tools.workspace import direct_tool
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     @tool()
     async def probe(*, ctx: ToolContext) -> dict[str, bool]:
         return {"signal_seen": ctx.signal is signal}
 
     signal = object()
-    runtime_tool = wrap_tool_definition(tool_to_definition(probe))
+    runtime_tool = wrap_tool_definition(direct_tool(probe))
 
     result = asyncio.run(runtime_tool.execute("call-probe", {}, signal=signal))
 
@@ -33,8 +34,8 @@ def test_decorated_tool_context_receives_abort_signal() -> None:
 def test_read_tool_uses_custom_operations(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_read_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class VirtualOperations:
         def __init__(self) -> None:
@@ -65,8 +66,8 @@ def test_read_tool_uses_custom_operations(tmp_path) -> None:
 def test_read_tool_accepts_pi_style_operations(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_read_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_read_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class PiReadOperations:
         def __init__(self) -> None:
@@ -94,7 +95,7 @@ def test_read_tool_accepts_pi_style_operations(tmp_path) -> None:
 
 
 def test_per_tool_operations_and_options_are_public_api() -> None:
-    from loushang.coding.tools import (
+    from loushang.harness.tools.workspace import (
         BashToolOptions,
         EditOperations,
         EditToolOptions,
@@ -128,12 +129,12 @@ def test_per_tool_operations_and_options_are_public_api() -> None:
 def test_factory_forwards_pi_style_per_tool_options(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import (
+    from loushang.harness.tools.workspace import (
         ReadToolOptions,
         ToolsOptions,
         create_tool_definition,
     )
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class VirtualReadOperations:
         async def exists(self, path):
@@ -146,20 +147,29 @@ def test_factory_forwards_pi_style_per_tool_options(tmp_path) -> None:
             return b"from read options\n"
 
     runtime_tool = wrap_tool_definition(
-        create_tool_definition("read", options=ToolsOptions(read=ReadToolOptions(operations=VirtualReadOperations()))),
+        create_tool_definition(
+            "read",
+            options=ToolsOptions(
+                read=ReadToolOptions(operations=VirtualReadOperations())
+            ),
+        ),
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-read-options", {"path": "remote.txt"}))
+    result = asyncio.run(
+        runtime_tool.execute("call-read-options", {"path": "remote.txt"})
+    )
 
     assert result.content[0].text == "from read options\n"
 
 
-def test_write_tool_uses_custom_operations_and_creates_parent_directories(tmp_path) -> None:
+def test_write_tool_uses_custom_operations_and_creates_parent_directories(
+    tmp_path,
+) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_write_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_write_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class RecordingOperations:
         def __init__(self) -> None:
@@ -188,19 +198,23 @@ def test_write_tool_uses_custom_operations_and_creates_parent_directories(tmp_pa
     )
 
     result = asyncio.run(
-        runtime_tool.execute("call-write", {"path": "nested/notes.txt", "content": "alpha\n"})
+        runtime_tool.execute(
+            "call-write", {"path": "nested/notes.txt", "content": "alpha\n"}
+        )
     )
 
     assert operations.mkdir_calls == [(str(tmp_path / "nested"), True, True)]
-    assert operations.write_calls == [(str(tmp_path / "nested" / "notes.txt"), "alpha\n")]
+    assert operations.write_calls == [
+        (str(tmp_path / "nested" / "notes.txt"), "alpha\n")
+    ]
     assert result.details["operation"] == "create"
 
 
 def test_write_tool_accepts_pi_style_operations(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_write_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_write_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class PiWriteOperations:
         def __init__(self) -> None:
@@ -220,19 +234,23 @@ def test_write_tool_accepts_pi_style_operations(tmp_path) -> None:
     )
 
     result = asyncio.run(
-        runtime_tool.execute("call-pi-write", {"path": "nested/notes.txt", "content": "alpha\n"})
+        runtime_tool.execute(
+            "call-pi-write", {"path": "nested/notes.txt", "content": "alpha\n"}
+        )
     )
 
     assert operations.mkdir_calls == [str(tmp_path / "nested")]
-    assert operations.write_calls == [(str(tmp_path / "nested" / "notes.txt"), "alpha\n")]
+    assert operations.write_calls == [
+        (str(tmp_path / "nested" / "notes.txt"), "alpha\n")
+    ]
     assert result.details["operation"] == "create"
 
 
 def test_edit_tool_uses_custom_operations(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_edit_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_edit_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class VirtualOperations:
         def __init__(self) -> None:
@@ -266,15 +284,17 @@ def test_edit_tool_uses_custom_operations(tmp_path) -> None:
     )
 
     assert operations.content == "alpha\nBETA\n"
-    assert operations.write_calls == [(str(tmp_path / "remote.py"), "alpha\nBETA\n", "")]
+    assert operations.write_calls == [
+        (str(tmp_path / "remote.py"), "alpha\nBETA\n", "")
+    ]
     assert result.details["first_changed_line"] == 2
 
 
 def test_edit_tool_accepts_pi_style_operations(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_edit_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_edit_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class PiEditOperations:
         def __init__(self) -> None:
@@ -313,8 +333,8 @@ def test_edit_tool_accepts_pi_style_operations(tmp_path) -> None:
 def test_ls_tool_uses_custom_operations(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_ls_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_ls_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class VirtualOperations:
         async def exists(self, path):
@@ -339,8 +359,8 @@ def test_ls_tool_uses_custom_operations(tmp_path) -> None:
 def test_ls_tool_accepts_pi_style_operations(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_ls_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_ls_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class Stat:
         def __init__(self, directory: bool) -> None:
@@ -372,8 +392,8 @@ def test_ls_tool_accepts_pi_style_operations(tmp_path) -> None:
 def test_find_tool_uses_custom_operations(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_find_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_find_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class VirtualOperations:
         async def exists(self, path):
@@ -390,7 +410,9 @@ def test_find_tool_uses_custom_operations(tmp_path) -> None:
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-find", {"pattern": "*.py", "path": "."}))
+    result = asyncio.run(
+        runtime_tool.execute("call-find", {"pattern": "*.py", "path": "."})
+    )
 
     assert result.content[0].text == "src/app.py"
     assert result.details["matches"] == [{"path": "src/app.py"}]
@@ -399,8 +421,8 @@ def test_find_tool_uses_custom_operations(tmp_path) -> None:
 def test_find_tool_accepts_pi_style_operations(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_find_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_find_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class PiFindOperations:
         def __init__(self) -> None:
@@ -409,7 +431,9 @@ def test_find_tool_accepts_pi_style_operations(tmp_path) -> None:
         async def exists(self, absolute_path: str) -> bool:
             return True
 
-        async def glob(self, pattern: str, cwd: str, options: dict[str, object]) -> list[str]:
+        async def glob(
+            self, pattern: str, cwd: str, options: dict[str, object]
+        ) -> list[str]:
             self.glob_calls.append((pattern, cwd, options))
             return ["src/app.py"]
 
@@ -419,20 +443,26 @@ def test_find_tool_accepts_pi_style_operations(tmp_path) -> None:
         context_provider=_tool_context_provider(cwd=str(tmp_path)),
     )
 
-    result = asyncio.run(runtime_tool.execute("call-pi-find", {"pattern": "*.py", "path": "."}))
+    result = asyncio.run(
+        runtime_tool.execute("call-pi-find", {"pattern": "*.py", "path": "."})
+    )
 
     assert result.content[0].text == "src/app.py"
     assert result.details["matches"] == [{"path": "src/app.py"}]
     assert operations.glob_calls == [
-        ("*.py", str(tmp_path), {"ignore": ["**/node_modules/**", "**/.git/**"], "limit": 1000})
+        (
+            "*.py",
+            str(tmp_path),
+            {"ignore": ["**/node_modules/**", "**/.git/**"], "limit": 1000},
+        )
     ]
 
 
 def test_grep_tool_uses_custom_operations(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_grep_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_grep_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     class VirtualOperations:
         async def exists(self, path):
@@ -453,7 +483,9 @@ def test_grep_tool_uses_custom_operations(tmp_path) -> None:
     )
 
     result = asyncio.run(
-        runtime_tool.execute("call-grep", {"pattern": "needle", "path": ".", "literal": True})
+        runtime_tool.execute(
+            "call-grep", {"pattern": "needle", "path": ".", "literal": True}
+        )
     )
 
     assert result.content[0].text == "src/app.py:2:needle"
@@ -465,8 +497,8 @@ def test_grep_tool_uses_custom_operations(tmp_path) -> None:
 def test_grep_tool_accepts_pi_style_operations(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_grep_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import create_grep_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     target = tmp_path / "src" / "app.py"
     target.parent.mkdir()
@@ -500,4 +532,6 @@ def test_grep_tool_accepts_pi_style_operations(tmp_path) -> None:
         "app.py:2:needle",
         "app.py-3-after",
     ]
-    assert result.details["matches"] == [{"path": "app.py", "line_number": 2, "line": "needle"}]
+    assert result.details["matches"] == [
+        {"path": "app.py", "line_number": 2, "line": "needle"}
+    ]

@@ -14,21 +14,21 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from _support import build_kimi_model, describe_model  # noqa: E402
+from _support import build_kimi_model, describe_model
 
-from loushang.ai.types import (  # noqa: E402
+from loushang.ai.types import (
     AssistantMessage,
     TextPart,
     ToolCall,
     Usage,
     UserMessage,
 )
-from loushang.coding import (  # noqa: E402
-    CompactionPreparation,
+from loushang.coding.compaction import (
     SummaryEvaluationCase,
-    compact,
     evaluate_summary_case,
 )
+from loushang.coding.compaction.adapter import execute_coding_compaction
+from loushang.harness.transcript import CompactionPreparation
 
 SAMPLE_SUMMARY = """## Goal
 Harden the session index lifecycle and runtime diagnostics.
@@ -65,7 +65,9 @@ src/loushang/coding/runtime/agent_session_runtime.py
 
 
 def _usage() -> Usage:
-    return Usage(input=20, output=10, cache_read=0, cache_write=0, total_tokens=30, cost=None)
+    return Usage(
+        input=20, output=10, cache_read=0, cache_write=0, total_tokens=30, cost=None
+    )
 
 
 def _fixed_preparation() -> CompactionPreparation:
@@ -84,17 +86,22 @@ def _fixed_preparation() -> CompactionPreparation:
                         type="toolCall",
                         id="read-1",
                         name="read",
-                        arguments={"path": "docs/architecture/coding/component-interfaces/runtime.md"},
+                        arguments={
+                            "path": "docs/architecture/coding/component-interfaces/runtime.md"
+                        },
                     ),
                     ToolCall(
                         type="toolCall",
                         id="edit-1",
                         name="edit",
-                        arguments={"path": "src/loushang/coding/runtime/agent_session_runtime.py"},
+                        arguments={
+                            "path": "src/loushang/coding/runtime/agent_session_runtime.py"
+                        },
                     ),
                 ],
                 api="responses",
                 provider="faux",
+                endpoint="responses",
                 model="alpha",
                 response_id="r1",
                 usage=_usage(),
@@ -117,12 +124,16 @@ async def _real_summary() -> str:
     print(f"Model: {model_info['model']}")
     print(f"Endpoint: {model_info['endpoint']}")
     print()
-    result = await compact(preparation=_fixed_preparation(), model=model, api_key="")
+    result = await execute_coding_compaction(
+        preparation=_fixed_preparation(), model=model, api_key=""
+    )
     return result.summary
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Evaluate compaction summary quality for a fixed workload.")
+    parser = argparse.ArgumentParser(
+        description="Evaluate compaction summary quality for a fixed workload."
+    )
     parser.add_argument(
         "--real",
         action="store_true",
@@ -140,8 +151,12 @@ async def main(argv: list[str] | None = None) -> None:
             summary=summary,
             summary_type="compaction",
             required_phrases=("session index lifecycle", "runtime diagnostics"),
-            expected_read_files=("docs/architecture/coding/component-interfaces/runtime.md",),
-            expected_modified_files=("src/loushang/coding/runtime/agent_session_runtime.py",),
+            expected_read_files=(
+                "docs/architecture/coding/component-interfaces/runtime.md",
+            ),
+            expected_modified_files=(
+                "src/loushang/coding/runtime/agent_session_runtime.py",
+            ),
         )
     )
     print("=== Compaction Summary Evaluation ===")

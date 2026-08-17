@@ -4,6 +4,12 @@ This report records the current `loushang.coding.ui` boundary after the screen U
 naming cleanup, the explicit plain renderer naming cleanup, and the explicit
 plain event projection and app assembly naming cleanups.
 
+> Historical note: the temporary playback, performance, shared state, status,
+> settings, control, reader, and transcript-style compatibility modules listed
+> below were retired by the later Harnesstui canonical-import cutover. Their
+> implementations and tests now use the canonical TUI, Harnesstui, and Coding
+> testing module paths directly.
+
 ## Scope
 
 This audit covers product-side coding UI modules only:
@@ -52,7 +58,7 @@ Evidence:
 
 - `plain_events.py` imports `PlainCodingUiRenderer` and calls only plain rendering
   methods.
-- `plain_app.py` requires `PlainCodingUiRenderer`, wires `CodingTuiHandlers`, and is
+- `plain_app.py` requires `PlainCodingUiRenderer`, wires `PlainCodingConversationActionHost`, and is
   used by `_run_plain_tui`.
 - `prompt_command.py` directly uses `PlainCodingUiRenderer` plus
   `PlainCodingEventRenderer` to render one-shot prompt output.

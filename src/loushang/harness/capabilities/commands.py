@@ -1,283 +1,96 @@
+"""Product-neutral composition and dispatch of dynamic command sources."""
+
 from __future__ import annotations
 
-import inspect
-from collections.abc import Awaitable, Callable, Iterable
-from dataclasses import dataclass, replace
-from typing import Generic, TypeVar, cast
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
+from typing import Generic, TypeVar
 
-SourceInfoT = TypeVar("SourceInfoT")
+from loushang.harness.capabilities.packs import (
+    CapabilityPack,
+    CapabilityPackComposer,
+    CapabilityPackSource,
+)
+from loushang.harness.commands import (
+    CommandDispatchOutcome,
+    CommandHandler,
+    CommandHandlerBinding,
+    ParsedSlashCommand,
+    dispatch_command_async,
+    normalize_command_name,
+)
+
+DescriptorT = TypeVar("DescriptorT")
 ResultT = TypeVar("ResultT")
 
 
 @dataclass(frozen=True)
-class CommandDescriptor(Generic[SourceInfoT]):
-    """Product-neutral metadata for one command contribution."""
+class CommandRuntimeSource(Generic[DescriptorT, ResultT]):
+    """One approved dynamic command contribution source."""
 
-    name: str
-    description: str | None
-    source: str
-    source_info: SourceInfoT | None = None
-    invocation_name: str | None = None
-    conflict_group: str | None = None
-    argument_hint: str | None = None
-    aliases: tuple[str, ...] = ()
-    precedence: int = 0
-
-    @property
-    def effective_invocation_name(self) -> str:
-        return normalize_command_name(self.invocation_name or self.name)
-
-
-@dataclass(frozen=True)
-class CommandConflict(Generic[SourceInfoT]):
-    invocation_name: str
-    winner: CommandDescriptor[SourceInfoT]
-    candidates: tuple[CommandDescriptor[SourceInfoT], ...]
-
-
-class CommandCatalog(Generic[SourceInfoT]):
-    """Resolve command names without imposing Product source semantics."""
-
-    def __init__(self, commands: Iterable[CommandDescriptor[SourceInfoT]] = ()) -> None:
-        self._descriptors = tuple(commands)
-        candidates: dict[str, list[int]] = {}
-        for index, descriptor in enumerate(self._descriptors):
-            claimed_names = dict.fromkeys(
-                (
-                    descriptor.effective_invocation_name,
-                    *(normalize_command_name(alias) for alias in descriptor.aliases),
-                )
-            )
-            for name in claimed_names:
-                if not name:
-                    continue
-                candidates.setdefault(name, []).append(index)
-        self._candidates = {
-            name: tuple(indexes) for name, indexes in candidates.items()
-        }
-        provisional_winners = {
-            name: max(
-                indexes, key=lambda index: (self._descriptors[index].precedence, -index)
-            )
-            for name, indexes in self._candidates.items()
-        }
-        active_indexes = {
-            index
-            for index, descriptor in enumerate(self._descriptors)
-            if provisional_winners.get(descriptor.effective_invocation_name) == index
-        }
-        self._winners = {
-            name: max(
-                (index for index in indexes if index in active_indexes),
-                key=lambda index: (self._descriptors[index].precedence, -index),
-            )
-            for name, indexes in self._candidates.items()
-            if any(index in active_indexes for index in indexes)
-        }
-
-    def commands(self) -> tuple[CommandDescriptor[SourceInfoT], ...]:
-        return tuple(
-            descriptor
-            for index, descriptor in enumerate(self._descriptors)
-            if self._winners.get(descriptor.effective_invocation_name) == index
-        )
-
-    def lookup(self, invocation_name: str) -> CommandDescriptor[SourceInfoT] | None:
-        winner = self._winners.get(normalize_command_name(invocation_name))
-        return self._descriptors[winner] if winner is not None else None
-
-    def conflicts(self) -> tuple[CommandConflict[SourceInfoT], ...]:
-        conflicts: list[CommandConflict[SourceInfoT]] = []
-        for invocation_name, indexes in self._candidates.items():
-            if len(indexes) < 2:
-                continue
-            winner_index = self._winners.get(invocation_name)
-            if winner_index is None:
-                continue
-            conflicts.append(
-                CommandConflict(
-                    invocation_name=invocation_name,
-                    winner=self._descriptors[winner_index],
-                    candidates=tuple(self._descriptors[index] for index in indexes),
-                )
-            )
-        return tuple(conflicts)
-
-
-@dataclass(frozen=True)
-class ParsedSlashCommand:
-    name: str
-    args: str
-    is_mcp: bool = False
-
-
-def parse_slash_command(text: str) -> ParsedSlashCommand | None:
-    if not text.startswith("/"):
-        return None
-    without_slash = text[1:].strip()
-    parts = without_slash.split()
-    if not parts:
-        return None
-
-    command_name = parts[0]
-    is_mcp = len(parts) > 1 and parts[1] == "(MCP)"
-    args_start = 2 if is_mcp else 1
-    if is_mcp:
-        command_name = f"{command_name} (MCP)"
-    return ParsedSlashCommand(
-        name=command_name,
-        args=" ".join(parts[args_start:]),
-        is_mcp=is_mcp,
-    )
-
-
-def split_slash_command(text: str) -> tuple[str, str] | None:
-    parsed = parse_slash_command(text)
-    if parsed is None:
-        return None
-    return parsed.name, parsed.args
-
-
-def complete_slash_commands(
-    prefix: str,
-    commands: Iterable[CommandDescriptor[SourceInfoT]],
-) -> list[dict[str, object]]:
-    normalized_prefix = normalize_command_name(prefix)
-    completions: list[dict[str, object]] = []
-    for command in commands:
-        invocation_names = dict.fromkeys(
-            (
-                command.effective_invocation_name,
-                *(normalize_command_name(alias) for alias in command.aliases),
-            )
-        )
-        for invocation_name in invocation_names:
-            if not invocation_name:
-                continue
-            if normalized_prefix and not invocation_name.startswith(normalized_prefix):
-                continue
-            completion: dict[str, object] = {
-                "value": f"/{invocation_name}",
-                "label": f"/{invocation_name}",
-                "description": command.description,
-                "source": command.source,
-                "kind": "command",
-            }
-            if command.conflict_group:
-                completion["conflictGroup"] = command.conflict_group
-            if command.argument_hint:
-                completion["argumentHint"] = command.argument_hint
-            completions.append(completion)
-    return completions
-
-
-@dataclass(frozen=True)
-class CommandDispatchOutcome(Generic[ResultT]):
-    handled: bool
-    result: ResultT | None = None
-    handler_name: str | None = None
-
-    @classmethod
-    def unhandled(cls) -> CommandDispatchOutcome[ResultT]:
-        return cls(handled=False)
-
-    @classmethod
-    def handled_result(
-        cls, result: ResultT | None = None
-    ) -> CommandDispatchOutcome[ResultT]:
-        return cls(handled=True, result=result)
-
-
-CommandHandler = Callable[
-    [ParsedSlashCommand],
-    CommandDispatchOutcome[ResultT] | Awaitable[CommandDispatchOutcome[ResultT]],
-]
-
-
-@dataclass(frozen=True)
-class CommandHandlerBinding(Generic[ResultT]):
-    name: str
+    pack_id: str
+    source: CapabilityPackSource
+    descriptor_priority: int
+    handler_priority: int
+    list_descriptors: Callable[[], Iterable[DescriptorT]]
+    handler_name: str
     handler: CommandHandler[ResultT]
 
 
-def dispatch_command(
-    invocation: ParsedSlashCommand,
-    handlers: Iterable[CommandHandlerBinding[ResultT]],
-) -> CommandDispatchOutcome[ResultT]:
-    """Dispatch through synchronous handlers until one claims the invocation."""
+@dataclass
+class SessionCommandRuntime(Generic[DescriptorT, ResultT]):
+    """Compose and dispatch dynamic command sources for one runtime owner."""
 
-    for binding in handlers:
-        outcome = binding.handler(invocation)
-        if inspect.isawaitable(outcome):
-            if inspect.iscoroutine(outcome):
-                outcome.close()
-            raise TypeError(
-                f'Command handler "{binding.name}" returned an awaitable; '
-                "use dispatch_command_async()."
+    sources: tuple[CommandRuntimeSource[DescriptorT, ResultT], ...]
+    pack_composer: CapabilityPackComposer = field(
+        default_factory=CapabilityPackComposer
+    )
+
+    def list_commands(self) -> list[DescriptorT]:
+        packs = tuple(
+            CapabilityPack(
+                pack_id=source.pack_id,
+                source=source.source,
+                priority=source.descriptor_priority,
+                items=tuple(source.list_descriptors()),
             )
-        validated = cast(
-            CommandDispatchOutcome[ResultT],
-            _validated_outcome(outcome, binding.name),
+            for source in self.sources
         )
-        if validated.handled:
-            return _with_handler_name(validated, binding.name)
-    return CommandDispatchOutcome.unhandled()
+        return list(self.pack_composer.compose(packs).items)
 
+    async def dispatch(
+        self,
+        invocation_name: str,
+        args: str,
+    ) -> CommandDispatchOutcome[ResultT]:
+        """Return the complete disposition, preserving handled ``None``."""
 
-async def dispatch_command_async(
-    invocation: ParsedSlashCommand,
-    handlers: Iterable[CommandHandlerBinding[ResultT]],
-) -> CommandDispatchOutcome[ResultT]:
-    """Dispatch through synchronous or asynchronous handlers in caller order."""
-
-    for binding in handlers:
-        outcome = binding.handler(invocation)
-        if inspect.isawaitable(outcome):
-            outcome = await outcome
-        validated = cast(
-            CommandDispatchOutcome[ResultT],
-            _validated_outcome(outcome, binding.name),
+        normalized_name = normalize_command_name(invocation_name)
+        invocation = ParsedSlashCommand(
+            name=normalized_name,
+            args=args,
+            is_mcp=normalized_name.endswith(" (MCP)"),
         )
-        if validated.handled:
-            return _with_handler_name(validated, binding.name)
-    return CommandDispatchOutcome.unhandled()
+        handlers = self.pack_composer.compose(
+            CapabilityPack(
+                pack_id=source.pack_id,
+                source=source.source,
+                priority=source.handler_priority,
+                items=(CommandHandlerBinding(source.handler_name, source.handler),),
+            )
+            for source in self.sources
+        ).items
+        return await dispatch_command_async(invocation, handlers)
+
+    async def execute(
+        self,
+        invocation_name: str,
+        args: str,
+    ) -> ResultT | None:
+        """Compatibility result surface for callers that do not need disposition."""
+
+        outcome = await self.dispatch(invocation_name, args)
+        return outcome.result if outcome.handled else None
 
 
-def normalize_command_name(value: str) -> str:
-    return value.strip().removeprefix("/")
-
-
-def _validated_outcome(
-    value: object, handler_name: str
-) -> CommandDispatchOutcome[object]:
-    if not isinstance(value, CommandDispatchOutcome):
-        raise TypeError(
-            f'Command handler "{handler_name}" must return CommandDispatchOutcome.'
-        )
-    return cast(CommandDispatchOutcome[object], value)
-
-
-def _with_handler_name(
-    outcome: CommandDispatchOutcome[ResultT],
-    handler_name: str,
-) -> CommandDispatchOutcome[ResultT]:
-    if outcome.handler_name is not None:
-        return outcome
-    return replace(outcome, handler_name=handler_name)
-
-
-__all__ = [
-    "CommandCatalog",
-    "CommandConflict",
-    "CommandDescriptor",
-    "CommandDispatchOutcome",
-    "CommandHandler",
-    "CommandHandlerBinding",
-    "ParsedSlashCommand",
-    "complete_slash_commands",
-    "dispatch_command",
-    "dispatch_command_async",
-    "normalize_command_name",
-    "parse_slash_command",
-    "split_slash_command",
-]
+__all__ = ["CommandRuntimeSource", "SessionCommandRuntime"]

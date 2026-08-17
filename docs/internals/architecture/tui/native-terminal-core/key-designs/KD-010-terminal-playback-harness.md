@@ -33,6 +33,12 @@ The harness must support golden logical-line assertions and operation-level
 assertions. Operation assertions are required for flicker, resize repaint, and
 clear-scrollback policy tests.
 
+`loushang.tui.playback_suite` owns the generic layer above individual playback
+runs: neutral scenario registration, name/tag selection, elapsed-time results,
+and artifact dispatch. Products retain their scenario catalogs, product hosts,
+and CLI entrypoints while importing this suite directly or through a temporary
+compatibility alias.
+
 ## Test Obligations
 
 - resize replay reproduces the same logical lines and operation classes

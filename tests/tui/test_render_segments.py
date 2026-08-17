@@ -15,6 +15,8 @@ from loushang.tui.core import (
 )
 from loushang.tui.ui_parts.layout import ScreenRegion, ScreenRegionStack
 
+pytestmark = pytest.mark.tui_render_contract
+
 
 def _lines(*values: str) -> tuple[RenderLine, ...]:
     return tuple(RenderLine(value) for value in values)

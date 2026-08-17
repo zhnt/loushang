@@ -19,7 +19,7 @@ def _model(max_tokens: int | None) -> Model:
 def test_output_budget_uses_uncapped_resolved_request_budget() -> None:
     budget = resolve_output_token_budget(
         _model(32768),
-        SimpleNamespace(max_tokens=32000),
+        SimpleNamespace(max_output_tokens=32000),
     )
 
     assert budget.value == 32000
@@ -30,7 +30,7 @@ def test_output_budget_uses_uncapped_resolved_request_budget() -> None:
 def test_output_budget_uses_resolved_request_before_options_argument() -> None:
     budget = resolve_output_token_budget(
         _model(32768),
-        SimpleNamespace(max_tokens=32000),
+        SimpleNamespace(max_output_tokens=32000),
         CallOptions(max_output_tokens=64),
     )
 

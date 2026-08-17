@@ -4,6 +4,7 @@ import asyncio
 import importlib.util
 import sys
 import time
+from contextlib import suppress
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -51,10 +52,8 @@ async def _produce_aborted(assembler: AssistantMessageAssembler, signal: ManualA
     await asyncio.sleep(0)
     signal.cancel()
     await asyncio.sleep(0)
-    try:
+    with suppress(RuntimeError):
         assembler.feed(RawTextPart("world"))
-    except RuntimeError:
-        pass
 
 
 async def scenario_normal_completion() -> tuple[int, str, str | None]:

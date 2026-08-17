@@ -5,6 +5,13 @@ from loushang.agent.agent_loop import (
     run_agent_loop,
     run_agent_loop_continue,
 )
+from loushang.agent.model_transport import (
+    is_prepared_request_conformant,
+    is_synthetic_model_transport,
+    prepared_request_conformant,
+    require_prepared_request_conformant,
+    synthetic_model_transport,
+)
 from loushang.agent.proxy import stream_proxy
 from loushang.agent.tool_output import (
     FunctionalToolOutputProjector,
@@ -30,7 +37,8 @@ from loushang.agent.types import (
     BeforeToolCallResult,
     ConvertToLlmFn,
     CustomAgentMessage,
-    GetApiKeyFn,
+    ModelCallPreparation,
+    PrepareModelCallFn,
     ProxyAssistantMessageEvent,
     ProxyStreamOptions,
     StreamFn,
@@ -50,6 +58,11 @@ __all__ = [
     "agent_loop_continue",
     "run_agent_loop",
     "run_agent_loop_continue",
+    "is_prepared_request_conformant",
+    "is_synthetic_model_transport",
+    "prepared_request_conformant",
+    "require_prepared_request_conformant",
+    "synthetic_model_transport",
     # Proxy
     "stream_proxy",
     # Context/Result types
@@ -76,11 +89,12 @@ __all__ = [
     "ToolOutputProjector",
     # Function types
     "ConvertToLlmFn",
-    "GetApiKeyFn",
+    "PrepareModelCallFn",
     "StreamFn",
     "TransformContextFn",
     # Message types
     "CustomAgentMessage",
+    "ModelCallPreparation",
     # Proxy types
     "ProxyAssistantMessageEvent",
     "ProxyStreamOptions",

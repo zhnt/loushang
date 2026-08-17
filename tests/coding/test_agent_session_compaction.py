@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 
@@ -36,6 +37,7 @@ def _model() -> Model:
 
 def _assistant_text_message(text: str) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -58,6 +60,7 @@ def _assistant_message(
     timestamp: float = 0.0,
 ) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
@@ -71,35 +74,74 @@ def _assistant_message(
     )
 
 
-def test_agent_session_compact_appends_compaction_and_rebuilds_context(tmp_path, monkeypatch) -> None:
+def _stream_with_final_message(
+    message: AssistantMessage,
+) -> AssistantMessageEventStream:
+    stream = AssistantMessageEventStream()
+
+    async def _feed() -> None:
+        stream.push({"type": "start", "partial": message})
+        stream.push(
+            {
+                "type": "done",
+                "reason": message.stop_reason,
+                "message": message,
+            }  # type: ignore[typeddict-item]
+        )
+
+    asyncio.create_task(_feed())
+    return stream
+
+
+def test_agent_session_compact_appends_compaction_and_rebuilds_context(
+    tmp_path, monkeypatch
+) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
         SettingsManager,
     )
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
+    from loushang.harness.transcript import CompactionResult
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(
-        UserMessage(
-            role="user",
-            content=[TextPart(type="text", text="older context that should be compacted")],
-            timestamp=0.0,
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[
+                    TextPart(type="text", text="older context that should be compacted")
+                ],
+                timestamp=0.0,
+            )
         )
     )
-    assistant_id = manager.append_message(_assistant_text_message("recent reply"))
+    assistant_id = asyncio.run(
+        manager.append_message(_assistant_text_message("recent reply"))
+    )
 
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
         settings_manager=SettingsManager(
-            ControlConfig(compaction=CompactionSettings(enabled=True, reserve_tokens=8192, keep_recent_tokens=1))
+            ControlConfig(
+                compaction=CompactionSettings(
+                    enabled=True, reserve_tokens=8192, keep_recent_tokens=1
+                )
+            )
         ),
     )
 
@@ -108,7 +150,9 @@ def test_agent_session_compact_appends_compaction_and_rebuilds_context(tmp_path,
 
     def _session_compact(event, ctx):
         del ctx
-        extension_events.append((event.type, event.compactionEntry.type, event.fromExtension))
+        extension_events.append(
+            (event.type, event.compaction_entry.kind, event.from_extension)
+        )
 
     session._extension_runner = ExtensionRunner(
         [
@@ -130,30 +174,52 @@ def test_agent_session_compact_appends_compaction_and_rebuilds_context(tmp_path,
             details={"source": "test"},
         )
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
     session.subscribe(events.append)
 
     result = asyncio.run(session.compact())
 
     assert result.summary == "condensed summary"
-    assert [entry.type for entry in manager.get_entries()] == ["message", "message", "compaction"]
-    assert [getattr(message, "role", None) for message in session.agent.state.messages] == [
-        "compactionSummary",
+    assert [entry.kind for entry in manager.get_entries()] == [
+        "agent.message",
+        "agent.message",
+        "context.compaction_checkpoint",
+    ]
+    assert [
+        getattr(message, "role", None) for message in session.agent.state.messages
+    ] == [
+        "user",
         "assistant",
     ]
-    assert [getattr(message, "role", None) for message in session.get_session_context().messages] == [
-        "compactionSummary",
+    assert [
+        getattr(message, "role", None)
+        for message in session.get_session_context().messages
+    ] == [
+        "user",
         "assistant",
     ]
-    assert session.get_session_context().messages[0].summary == "condensed summary"
-    assert extension_events == [("session_compact", "compaction", False)]
+    assert (
+        "condensed summary" in session.get_session_context().messages[0].content[0].text
+    )
+    assert extension_events == [
+        ("session_compact", "context.compaction_checkpoint", False)
+    ]
     compaction_entry = manager.get_entries()[-1]
-    assert isinstance(compaction_entry.details, dict)
-    assert compaction_entry.details["source"] == "test"
-    assert compaction_entry.details["compactionPlan"]["firstKeptEntryId"] == assistant_id
+    assert isinstance(compaction_entry.payload.details, dict)
+    assert compaction_entry.payload.details["source"] == "test"
+    assert (
+        compaction_entry.payload.details["compactionPlan"]["firstKeptEntryId"]
+        == assistant_id
+    )
 
     assert events[0]["type"] == "compaction_start"
     assert events[0]["reason"] == "manual"
+    assert events[0]["stage"] == "started"
+    assert events[0]["product_id"] == "coding"
+    assert events[0]["session_id"] == session.session_id
     assert events[0]["usage"]["reserve_tokens"] == 8192
     assert events[0]["usage"]["keep_recent_tokens"] == 1
     assert events[-1]["type"] == "compaction_end"
@@ -162,39 +228,64 @@ def test_agent_session_compact_appends_compaction_and_rebuilds_context(tmp_path,
         "summary": "condensed summary",
         "first_kept_entry_id": assistant_id,
         "tokens_before": result.tokens_before,
-        "details": compaction_entry.details,
+        "details": compaction_entry.payload.details,
     }
     assert events[-1]["aborted"] is False
     assert events[-1]["will_retry"] is False
+    assert events[-1]["stage"] == "committed"
+    assert events[-1]["product_id"] == "coding"
+    assert events[-1]["session_id"] == session.session_id
+    assert events[-1]["duration_ms"] >= 0
+    assert events[-1]["checkpoint_record_id"] == compaction_entry.record_id
     assert events[-1]["usage_before"] == events[0]["usage"]
     assert events[-1]["usage_after"]["stale_after_compaction"] is True
 
 
-def test_agent_session_exposes_compaction_service_surface(tmp_path, monkeypatch) -> None:
+def test_agent_session_exposes_compaction_service_surface(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.agent import Agent
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.transcript import CompactionResult
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(
-        UserMessage(
-            role="user",
-            content=[TextPart(type="text", text="older context that should be compacted")],
-            timestamp=0.0,
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[
+                    TextPart(type="text", text="older context that should be compacted")
+                ],
+                timestamp=0.0,
+            )
         )
     )
-    assistant_id = manager.append_message(_assistant_text_message("recent reply"))
+    assistant_id = asyncio.run(
+        manager.append_message(_assistant_text_message("recent reply"))
+    )
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
         settings_manager=SettingsManager(
-            ControlConfig(compaction=CompactionSettings(enabled=True, reserve_tokens=8192, keep_recent_tokens=1))
+            ControlConfig(
+                compaction=CompactionSettings(
+                    enabled=True, reserve_tokens=8192, keep_recent_tokens=1
+                )
+            )
         ),
     )
 
@@ -206,43 +297,274 @@ def test_agent_session_exposes_compaction_service_surface(tmp_path, monkeypatch)
             tokens_before=preparation.tokens_before,
         )
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
 
     assert session.get_compaction_status().is_compacting is False
-    result = asyncio.run(session.compact_session(custom_instructions="preserve tasks"))
+    result = asyncio.run(session.compact(custom_instructions="preserve tasks"))
 
     assert result.summary == "public surface summary"
     assert result.first_kept_entry_id == assistant_id
     assert session.get_compaction_status().is_compacting is False
 
 
-def test_agent_session_compact_emits_error_event_on_failure(tmp_path, monkeypatch) -> None:
+def test_agent_session_abort_compaction_cancels_public_manual_operation(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.agent import Agent
-    from loushang.coding.compaction import CompactionPreparation
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
         SettingsManager,
     )
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(
-        UserMessage(
-            role="user",
-            content=[TextPart(type="text", text="older context")],
-            timestamp=0.0,
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(role="user", content="older context", timestamp=0.0)
         )
     )
-    assistant_id = manager.append_message(_assistant_text_message("recent reply"))
-
+    asyncio.run(manager.append_message(_assistant_text_message("recent reply")))
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
         settings_manager=SettingsManager(
-            ControlConfig(compaction=CompactionSettings(enabled=True, reserve_tokens=8192, keep_recent_tokens=1))
+            ControlConfig(
+                compaction=CompactionSettings(
+                    enabled=True,
+                    reserve_tokens=8_192,
+                    keep_recent_tokens=1,
+                )
+            )
+        ),
+    )
+    started = asyncio.Event()
+    events: list[object] = []
+
+    async def _blocking_compact(**kwargs):
+        del kwargs
+        started.set()
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _blocking_compact,
+    )
+    session.subscribe(events.append)
+
+    async def scenario() -> None:
+        task = asyncio.create_task(session.compact())
+        await started.wait()
+        session.abort_compaction()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(scenario())
+
+    assert all(
+        entry.kind != "context.compaction_checkpoint" for entry in manager.get_entries()
+    )
+    assert session.get_compaction_status().is_compacting is False
+    compaction_end = next(
+        event for event in events if event["type"] == "compaction_end"
+    )
+    assert compaction_end["aborted"] is True
+    assert compaction_end["result"] is None
+
+
+def test_session_dispose_aborts_and_joins_manual_compaction(
+    tmp_path, monkeypatch
+) -> None:
+    from loushang.agent import Agent
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path,
+            cwd="/tmp/project",
+            persist=False,
+        )
+        await manager.append_message(
+            UserMessage(role="user", content="older context", timestamp=0.0)
+        )
+        await manager.append_message(_assistant_text_message("recent reply"))
+        session = AgentSession(
+            agent=Agent(
+                initial_state={
+                    "system_prompt": "",
+                    "model": _model(),
+                    "thinking_level": "off",
+                }
+            ),
+            session_manager=manager,
+            settings_manager=SettingsManager(
+                ControlConfig(
+                    compaction=CompactionSettings(
+                        enabled=True,
+                        reserve_tokens=8_192,
+                        keep_recent_tokens=1,
+                    )
+                )
+            ),
+        )
+        started = asyncio.Event()
+
+        async def _blocking_compact(**kwargs):
+            del kwargs
+            started.set()
+            await asyncio.Future()
+            raise AssertionError("unreachable")
+
+        monkeypatch.setattr(
+            "loushang.coding.session.agent_session._execute_coding_compaction",
+            _blocking_compact,
+        )
+        task = asyncio.create_task(session.compact())
+        await started.wait()
+
+        await session.dispose()
+
+        assert task.done()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert all(
+            entry.kind != "context.compaction_checkpoint"
+            for entry in manager.get_entries()
+        )
+
+    asyncio.run(scenario())
+
+
+def test_session_dispose_from_active_compaction_fails_fast(
+    tmp_path, monkeypatch
+) -> None:
+    from loushang.agent import Agent
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.transcript import CompactionResult
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path,
+            cwd="/tmp/project",
+            persist=False,
+        )
+        await manager.append_message(
+            UserMessage(role="user", content="older context", timestamp=0.0)
+        )
+        await manager.append_message(_assistant_text_message("recent reply"))
+        session = AgentSession(
+            agent=Agent(
+                initial_state={
+                    "system_prompt": "",
+                    "model": _model(),
+                    "thinking_level": "off",
+                }
+            ),
+            session_manager=manager,
+            settings_manager=SettingsManager(
+                ControlConfig(
+                    compaction=CompactionSettings(
+                        enabled=True,
+                        reserve_tokens=8_192,
+                        keep_recent_tokens=1,
+                    )
+                )
+            ),
+        )
+
+        async def _reentrant_compact(**kwargs):
+            with pytest.raises(RuntimeError, match="active compaction task"):
+                await session.dispose()
+            preparation = kwargs["preparation"]
+            return CompactionResult(
+                summary="completed after rejected reentry",
+                first_kept_entry_id=preparation.first_kept_entry_id,
+                tokens_before=preparation.tokens_before,
+            )
+
+        monkeypatch.setattr(
+            "loushang.coding.session.agent_session._execute_coding_compaction",
+            _reentrant_compact,
+        )
+
+        result = await asyncio.wait_for(session.compact(), timeout=2)
+
+        assert result.summary == "completed after rejected reentry"
+        await session.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_agent_session_compact_emits_error_event_on_failure(
+    tmp_path, monkeypatch
+) -> None:
+    from loushang.agent import Agent
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.transcript import CompactionPreparation
+
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="older context")],
+                timestamp=0.0,
+            )
+        )
+    )
+    assistant_id = asyncio.run(
+        manager.append_message(_assistant_text_message("recent reply"))
+    )
+
+    session = AgentSession(
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
+        session_manager=manager,
+        settings_manager=SettingsManager(
+            ControlConfig(
+                compaction=CompactionSettings(
+                    enabled=True, reserve_tokens=8192, keep_recent_tokens=1
+                )
+            )
         ),
         diagnostics_service=DiagnosticsService(),
     )
@@ -263,22 +585,38 @@ def test_agent_session_compact_emits_error_event_on_failure(tmp_path, monkeypatc
         del kwargs
         raise RuntimeError("boom")
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.prepare_compaction", _fake_prepare)
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _failing_compact)
+    monkeypatch.setattr(
+        "loushang.harness.transcript.compaction.prepare_turn_aware_compaction",
+        _fake_prepare,
+    )
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _failing_compact,
+    )
     session.subscribe(events.append)
 
     with pytest.raises(RuntimeError, match="boom"):
         asyncio.run(session.compact())
 
-    assert [entry.type for entry in manager.get_entries()] == ["message", "message"]
+    assert [entry.kind for entry in manager.get_entries()] == [
+        "agent.message",
+        "agent.message",
+    ]
     assert events[0]["type"] == "compaction_start"
     assert events[0]["reason"] == "manual"
+    assert events[0]["stage"] == "started"
+    assert events[0]["product_id"] == "coding"
+    assert events[0]["session_id"] == session.session_id
     assert events[0]["usage"]["reserve_tokens"] == 8192
     assert events[-1]["type"] == "compaction_end"
     assert events[-1]["reason"] == "manual"
     assert events[-1]["result"] is None
     assert events[-1]["aborted"] is False
     assert events[-1]["will_retry"] is False
+    assert events[-1]["stage"] == "failed"
+    assert events[-1]["product_id"] == "coding"
+    assert events[-1]["session_id"] == session.session_id
+    assert events[-1]["duration_ms"] >= 0
     assert events[-1]["usage_before"] == events[0]["usage"]
     assert events[-1]["usage_after"]["tokens"] == events[0]["usage"]["tokens"]
     assert events[-1]["error_message"] == "Compaction failed: boom"
@@ -287,31 +625,39 @@ def test_agent_session_compact_emits_error_event_on_failure(tmp_path, monkeypatc
     assert report.primary.code == "compaction_failed"
 
 
-def test_agent_session_compact_respects_extension_before_compact_cancellation(tmp_path) -> None:
+def test_agent_session_compact_respects_extension_before_compact_cancellation(
+    tmp_path,
+) -> None:
     from loushang.agent import Agent
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
         SettingsManager,
     )
-    from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.coding.extensions import (
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         SessionActionDecision,
     )
-    from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(
-        UserMessage(
-            role="user",
-            content=[TextPart(type="text", text="older context that should be compacted")],
-            timestamp=0.0,
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[
+                    TextPart(type="text", text="older context that should be compacted")
+                ],
+                timestamp=0.0,
+            )
         )
     )
-    manager.append_message(_assistant_text_message("recent reply"))
+    asyncio.run(manager.append_message(_assistant_text_message("recent reply")))
     diagnostics = DiagnosticsService()
     events: list[object] = []
 
@@ -322,10 +668,20 @@ def test_agent_session_compact_respects_extension_before_compact_cancellation(tm
         return SessionActionDecision(cancel=True)
 
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
         settings_manager=SettingsManager(
-            ControlConfig(compaction=CompactionSettings(enabled=True, reserve_tokens=8192, keep_recent_tokens=1))
+            ControlConfig(
+                compaction=CompactionSettings(
+                    enabled=True, reserve_tokens=8192, keep_recent_tokens=1
+                )
+            )
         ),
         diagnostics_service=diagnostics,
         extension_runner=ExtensionRunner(
@@ -340,10 +696,15 @@ def test_agent_session_compact_respects_extension_before_compact_cancellation(tm
     )
     session.subscribe(events.append)
 
-    with pytest.raises(RuntimeError, match="Compaction cancelled"):
+    from loushang.harness.transcript import CompactionAborted
+
+    with pytest.raises(CompactionAborted, match="Compaction cancelled"):
         asyncio.run(session.compact())
 
-    assert [entry.type for entry in manager.get_entries()] == ["message", "message"]
+    assert [entry.kind for entry in manager.get_entries()] == [
+        "agent.message",
+        "agent.message",
+    ]
     assert events[0]["type"] == "compaction_start"
     assert events[0]["reason"] == "manual"
     assert events[0]["usage"]["reserve_tokens"] == 8192
@@ -357,31 +718,39 @@ def test_agent_session_compact_respects_extension_before_compact_cancellation(tm
     assert diagnostics.get_last_error_report() is None
 
 
-def test_agent_session_compact_respects_extension_before_compact_result_override(tmp_path, monkeypatch) -> None:
+def test_agent_session_compact_respects_extension_before_compact_result_override(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.agent import Agent
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
         SettingsManager,
     )
-    from loushang.coding.extensions import (
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         SessionBeforeCompactResult,
     )
-    from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.harness.transcript import CompactionResult
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(
-        UserMessage(
-            role="user",
-            content=[TextPart(type="text", text="older context that should be compacted")],
-            timestamp=0.0,
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[
+                    TextPart(type="text", text="older context that should be compacted")
+                ],
+                timestamp=0.0,
+            )
         )
     )
-    manager.append_message(_assistant_text_message("recent reply"))
+    asyncio.run(manager.append_message(_assistant_text_message("recent reply")))
 
     called = False
 
@@ -392,7 +761,7 @@ def test_agent_session_compact_respects_extension_before_compact_result_override
         return SessionBeforeCompactResult(
             compaction=CompactionResult(
                 summary="extension summary",
-                first_kept_entry_id=manager.get_entries()[0].id,
+                first_kept_entry_id=manager.get_entries()[0].record_id,
                 tokens_before=123,
                 details={"source": "extension"},
             )
@@ -406,36 +775,59 @@ def test_agent_session_compact_respects_extension_before_compact_result_override
         raise RuntimeError("should not run")
 
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
         settings_manager=SettingsManager(
-            ControlConfig(compaction=CompactionSettings(enabled=True, reserve_tokens=8192, keep_recent_tokens=1))
+            ControlConfig(
+                compaction=CompactionSettings(
+                    enabled=True, reserve_tokens=8192, keep_recent_tokens=1
+                )
+            )
         ),
         extension_runner=ExtensionRunner(
-            [LoadedExtension(name="compact-hook", source_path=tmp_path / "compact_hook.py", hooks={"session_before_compact": [_before_compact]})]
+            [
+                LoadedExtension(
+                    name="compact-hook",
+                    source_path=tmp_path / "compact_hook.py",
+                    hooks={"session_before_compact": [_before_compact]},
+                )
+            ]
         ),
     )
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _failing_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _failing_compact,
+    )
     result = asyncio.run(session.compact())
 
     assert called
     assert compacted is False
     assert result.summary == "extension summary"
-    assert result.first_kept_entry_id == manager.get_entries()[0].id
+    assert result.first_kept_entry_id == manager.get_entries()[0].record_id
     assert result.tokens_before == 123
-    assert [entry.type for entry in manager.get_entries()] == ["message", "message", "compaction"]
+    assert [entry.kind for entry in manager.get_entries()] == [
+        "agent.message",
+        "agent.message",
+        "context.compaction_checkpoint",
+    ]
     compaction_entry = manager.get_entries()[-1]
-    assert compaction_entry.from_hook is True
-    assert compaction_entry.details == {
+    assert compaction_entry.payload.from_hook is True
+    assert compaction_entry.payload.details == {
         "source": "extension",
         "compactionPlan": {
             "previousCompactionId": None,
             "previousFirstKeptEntryId": None,
-            "firstKeptEntryId": manager.get_entries()[1].id,
+            "firstKeptEntryId": manager.get_entries()[1].record_id,
             "summarizedEntryIds": [],
-            "turnPrefixEntryIds": [manager.get_entries()[0].id],
-            "keptEntryIds": [manager.get_entries()[1].id],
+            "turnPrefixEntryIds": [manager.get_entries()[0].record_id],
+            "keptEntryIds": [manager.get_entries()[1].record_id],
             "isSplitTurn": True,
             "tokensBefore": 0,
             "keepRecentTokens": 1,
@@ -443,23 +835,29 @@ def test_agent_session_compact_respects_extension_before_compact_result_override
     }
 
 
-def test_agent_session_auto_compacts_after_agent_end_when_threshold_exceeded(tmp_path, monkeypatch) -> None:
+def test_agent_session_auto_compacts_after_agent_end_when_threshold_exceeded(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.agent import AbortSignal, Agent
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.transcript import CompactionResult
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(
-        UserMessage(
-            role="user",
-            content=[TextPart(type="text", text="older context")],
-            timestamp=0.0,
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="older context")],
+                timestamp=0.0,
+            )
         )
     )
 
@@ -484,12 +882,17 @@ def test_agent_session_auto_compacts_after_agent_end_when_threshold_exceeded(tmp
         ),
         session_manager=manager,
         settings_manager=SettingsManager(
-            ControlConfig(compaction=CompactionSettings(enabled=True, reserve_tokens=10, keep_recent_tokens=1))
+            ControlConfig(
+                compaction=CompactionSettings(
+                    enabled=True, reserve_tokens=10, keep_recent_tokens=1
+                )
+            )
         ),
     )
 
     events: list[object] = []
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="recent reply")],
         api="anthropic-messages",
@@ -517,39 +920,163 @@ def test_agent_session_auto_compacts_after_agent_end_when_threshold_exceeded(tmp
             tokens_before=preparation.tokens_before,
         )
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
     session.subscribe(events.append)
 
     async def scenario() -> None:
-        await session._handle_agent_event({"type": "message_end", "message": assistant}, AbortSignal())
-        await session._handle_agent_event({"type": "agent_end", "messages": [assistant]}, AbortSignal())
+        await session._composition.session_runtime.handle_agent_event(
+            {"type": "message_end", "message": assistant}, AbortSignal()
+        )
+        await session._composition.session_runtime.handle_agent_event(
+            {"type": "agent_end", "messages": [assistant]}, AbortSignal()
+        )
         await asyncio.sleep(0)
 
     asyncio.run(scenario())
 
-    assert any(entry.type == "compaction" for entry in manager.get_entries())
-    compaction_end = next(event for event in events if event["type"] == "compaction_end")
+    assert any(
+        entry.kind == "context.compaction_checkpoint" for entry in manager.get_entries()
+    )
+    compaction_end = next(
+        event for event in events if event["type"] == "compaction_end"
+    )
     assert compaction_end["reason"] == "threshold"
     assert compaction_end["will_retry"] is False
 
 
-def test_agent_session_auto_compaction_uses_compact_percent_threshold(tmp_path, monkeypatch) -> None:
+def test_agent_session_auto_compaction_uses_default_streaming_summarizer(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.agent import AbortSignal, Agent
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.transcript import summarization as summary_module
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(
-        UserMessage(
-            role="user",
-            content=[TextPart(type="text", text="older context")],
-            timestamp=0.0,
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="older context")],
+                timestamp=0.0,
+            )
+        )
+    )
+    model = Model(
+        id="tiny-stream-model",
+        name="Tiny Stream",
+        provider="faux",
+        endpoint="anthropic-messages",
+        capabilities=Capabilities(
+            reasoning=True,
+            stream=True,
+            input=("text",),
+            context_window=4_096,
+            max_tokens=64,
+        ),
+    )
+    session = AgentSession(
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": model,
+                "thinking_level": "off",
+            }
+        ),
+        session_manager=manager,
+        settings_manager=SettingsManager(
+            ControlConfig(
+                compaction=CompactionSettings(
+                    enabled=True, reserve_tokens=10, keep_recent_tokens=1
+                )
+            )
+        ),
+    )
+    events: list[object] = []
+    session.subscribe(events.append)
+    stream_calls: list[tuple[object, object, object | None]] = []
+    summary_message = _assistant_message("threshold stream summary")
+
+    class FakeEventStream:
+        async def result(self):
+            return summary_message
+
+    async def fake_stream(model, context, options=None):
+        stream_calls.append((model, context, options))
+        return FakeEventStream()
+
+    monkeypatch.setattr(summary_module, "stream", fake_stream)
+    assistant = _assistant_message(
+        "recent reply",
+        usage=Usage(
+            input=3_900,
+            output=100,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=4_000,
+            cost={},
+        ),
+        timestamp=1.0,
+    )
+
+    async def scenario() -> None:
+        await session._composition.session_runtime.handle_agent_event(
+            {"type": "message_end", "message": assistant}, AbortSignal()
+        )
+        await session._composition.session_runtime.handle_agent_event(
+            {"type": "agent_end", "messages": [assistant]}, AbortSignal()
+        )
+
+    asyncio.run(scenario())
+
+    assert len(stream_calls) == 1
+    assert all(call[0] is model for call in stream_calls)
+    checkpoint = next(
+        entry
+        for entry in manager.get_entries()
+        if entry.kind == "context.compaction_checkpoint"
+    )
+    assert "threshold stream summary" in checkpoint.payload.summary
+    compaction_end = next(
+        event for event in events if event["type"] == "compaction_end"
+    )
+    assert compaction_end["reason"] == "threshold"
+    assert compaction_end["stage"] == "committed"
+
+
+def test_agent_session_auto_compaction_uses_compact_percent_threshold(
+    tmp_path, monkeypatch
+) -> None:
+    from loushang.agent import AbortSignal, Agent
+    from loushang.coding.control import (
+        CompactionSettings,
+        ControlConfig,
+        SettingsManager,
+    )
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.transcript import CompactionResult
+
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="older context")],
+                timestamp=0.0,
+            )
         )
     )
 
@@ -587,6 +1114,7 @@ def test_agent_session_auto_compaction_uses_compact_percent_threshold(tmp_path, 
 
     events: list[object] = []
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="recent reply")],
         api="anthropic-messages",
@@ -614,22 +1142,35 @@ def test_agent_session_auto_compaction_uses_compact_percent_threshold(tmp_path, 
             tokens_before=preparation.tokens_before,
         )
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
     session.subscribe(events.append)
 
     async def scenario() -> None:
-        await session._handle_agent_event({"type": "message_end", "message": assistant}, AbortSignal())
-        await session._handle_agent_event({"type": "agent_end", "messages": [assistant]}, AbortSignal())
+        await session._composition.session_runtime.handle_agent_event(
+            {"type": "message_end", "message": assistant}, AbortSignal()
+        )
+        await session._composition.session_runtime.handle_agent_event(
+            {"type": "agent_end", "messages": [assistant]}, AbortSignal()
+        )
         await asyncio.sleep(0)
 
     asyncio.run(scenario())
 
-    assert any(entry.type == "compaction" for entry in manager.get_entries())
-    compaction_end = next(event for event in events if event["type"] == "compaction_end")
+    assert any(
+        entry.kind == "context.compaction_checkpoint" for entry in manager.get_entries()
+    )
+    compaction_end = next(
+        event for event in events if event["type"] == "compaction_end"
+    )
     assert compaction_end["reason"] == "threshold"
 
 
-def test_agent_session_auto_compaction_ignores_stale_assistant_usage_before_latest_compaction(tmp_path, monkeypatch) -> None:
+def test_agent_session_auto_compaction_ignores_stale_assistant_usage_before_latest_compaction(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.agent import Agent
     from loushang.ai import AssistantMessage, TextPart, Usage
     from loushang.coding.control import (
@@ -638,23 +1179,34 @@ def test_agent_session_auto_compaction_ignores_stale_assistant_usage_before_late
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     stale_assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="stale usage before compaction")],
         api="test",
         provider="test",
         model="test",
         response_id=None,
-        usage=Usage(input=95, output=5, cache_read=0, cache_write=0, total_tokens=100, cost={}),
+        usage=Usage(
+            input=95, output=5, cache_read=0, cache_write=0, total_tokens=100, cost={}
+        ),
         stop_reason="end_turn",
         error_message=None,
         timestamp=1.0,
     )
-    manager.append_message(stale_assistant)
-    manager.append_compaction(summary="summary", first_kept_entry_id=manager.get_entries()[0].id, tokens_before=100)
+    asyncio.run(manager.append_message(stale_assistant))
+    asyncio.run(
+        manager.append_compaction(
+            summary="summary",
+            first_kept_entry_id=manager.get_entries()[0].record_id,
+            tokens_before=100,
+        )
+    )
     events = []
     session = AgentSession(
         agent=Agent(
@@ -672,7 +1224,11 @@ def test_agent_session_auto_compaction_ignores_stale_assistant_usage_before_late
         ),
         session_manager=manager,
         settings_manager=SettingsManager(
-            ControlConfig(compaction=CompactionSettings(enabled=True, reserve_tokens=10, keep_recent_tokens=1))
+            ControlConfig(
+                compaction=CompactionSettings(
+                    enabled=True, reserve_tokens=10, keep_recent_tokens=1
+                )
+            )
         ),
     )
     session.subscribe(events.append)
@@ -680,7 +1236,10 @@ def test_agent_session_auto_compaction_ignores_stale_assistant_usage_before_late
     async def _unexpected_compact(**kwargs):
         raise AssertionError("stale assistant usage should not trigger compaction")
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _unexpected_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _unexpected_compact,
+    )
 
     result = asyncio.run(session.maybe_compact_after_turn(stale_assistant))
 
@@ -688,25 +1247,35 @@ def test_agent_session_auto_compaction_ignores_stale_assistant_usage_before_late
     assert events == []
 
 
-def test_agent_session_auto_compacts_error_message_using_last_successful_usage(tmp_path, monkeypatch) -> None:
+def test_agent_session_auto_compacts_error_message_using_last_successful_usage(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.agent import Agent
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.transcript import CompactionResult
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    user = UserMessage(role="user", content=[TextPart(type="text", text="hello")], timestamp=1.0)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    user = UserMessage(
+        role="user", content=[TextPart(type="text", text="hello")], timestamp=1.0
+    )
     successful = _assistant_message(
         "large successful response",
-        usage=Usage(input=90, output=5, cache_read=0, cache_write=0, total_tokens=95, cost={}),
+        usage=Usage(
+            input=90, output=5, cache_read=0, cache_write=0, total_tokens=95, cost={}
+        ),
         timestamp=2.0,
     )
-    next_user = UserMessage(role="user", content=[TextPart(type="text", text="next")], timestamp=3.0)
+    next_user = UserMessage(
+        role="user", content=[TextPart(type="text", text="next")], timestamp=3.0
+    )
     error = _assistant_message(
         "",
         stop_reason="error",
@@ -715,7 +1284,7 @@ def test_agent_session_auto_compacts_error_message_using_last_successful_usage(t
         timestamp=4.0,
     )
     for message in (user, successful, next_user, error):
-        manager.append_message(message)
+        asyncio.run(manager.append_message(message))
 
     session = AgentSession(
         agent=Agent(
@@ -733,7 +1302,11 @@ def test_agent_session_auto_compacts_error_message_using_last_successful_usage(t
         ),
         session_manager=manager,
         settings_manager=SettingsManager(
-            ControlConfig(compaction=CompactionSettings(enabled=True, reserve_tokens=10, keep_recent_tokens=1))
+            ControlConfig(
+                compaction=CompactionSettings(
+                    enabled=True, reserve_tokens=10, keep_recent_tokens=1
+                )
+            )
         ),
     )
     session.agent.state.set_messages([user, successful, next_user, error])
@@ -747,35 +1320,61 @@ def test_agent_session_auto_compacts_error_message_using_last_successful_usage(t
             tokens_before=preparation.tokens_before,
         )
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
     session.subscribe(events.append)
 
     result = asyncio.run(session.maybe_compact_after_turn(error))
 
     assert result is not None
-    compaction_end = next(event for event in events if event["type"] == "compaction_end")
+    compaction_end = next(
+        event for event in events if event["type"] == "compaction_end"
+    )
     assert compaction_end["reason"] == "threshold"
     assert compaction_end["will_retry"] is False
 
 
-def test_agent_session_compacts_before_prompt_when_previous_usage_crossed_threshold(tmp_path, monkeypatch) -> None:
+def test_agent_session_compacts_before_prompt_when_previous_usage_crossed_threshold(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.agent import Agent
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.transcript import CompactionResult
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="older context")], timestamp=0.0))
-    manager.append_message(
-        _assistant_message(
-            "large reply",
-            usage=Usage(input=90, output=5, cache_read=0, cache_write=0, total_tokens=95, cost={}),
-            timestamp=1.0,
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="older context")],
+                timestamp=0.0,
+            )
+        )
+    )
+    asyncio.run(
+        manager.append_message(
+            _assistant_message(
+                "large reply",
+                usage=Usage(
+                    input=90,
+                    output=5,
+                    cache_read=0,
+                    cache_write=0,
+                    total_tokens=95,
+                    cost={},
+                ),
+                timestamp=1.0,
+            )
         )
     )
     session = AgentSession(
@@ -794,7 +1393,11 @@ def test_agent_session_compacts_before_prompt_when_previous_usage_crossed_thresh
         ),
         session_manager=manager,
         settings_manager=SettingsManager(
-            ControlConfig(compaction=CompactionSettings(enabled=True, reserve_tokens=10, keep_recent_tokens=1))
+            ControlConfig(
+                compaction=CompactionSettings(
+                    enabled=True, reserve_tokens=10, keep_recent_tokens=1
+                )
+            )
         ),
     )
     calls: list[str] = []
@@ -812,13 +1415,18 @@ def test_agent_session_compacts_before_prompt_when_previous_usage_crossed_thresh
         calls.append("prompt")
         assert any(getattr(message, "role", None) == "user" for message in messages)
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
     monkeypatch.setattr(session.agent, "prompt", _fake_prompt)
 
     asyncio.run(session.prompt("next request"))
 
     assert calls == ["compact", "prompt"]
-    assert any(entry.type == "compaction" for entry in manager.get_entries())
+    assert any(
+        entry.kind == "context.compaction_checkpoint" for entry in manager.get_entries()
+    )
 
 
 @pytest.mark.parametrize(
@@ -842,15 +1450,34 @@ def test_agent_session_streaming_control_does_not_pre_prompt_compact(
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="older context")], timestamp=0.0))
-    manager.append_message(
-        _assistant_message(
-            "large reply",
-            usage=Usage(input=90, output=5, cache_read=0, cache_write=0, total_tokens=95, cost={}),
-            timestamp=1.0,
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="older context")],
+                timestamp=0.0,
+            )
+        )
+    )
+    asyncio.run(
+        manager.append_message(
+            _assistant_message(
+                "large reply",
+                usage=Usage(
+                    input=90,
+                    output=5,
+                    cache_read=0,
+                    cache_write=0,
+                    total_tokens=95,
+                    cost={},
+                ),
+                timestamp=1.0,
+            )
         )
     )
     session = AgentSession(
@@ -870,36 +1497,60 @@ def test_agent_session_streaming_control_does_not_pre_prompt_compact(
         ),
         session_manager=manager,
         settings_manager=SettingsManager(
-            ControlConfig(compaction=CompactionSettings(enabled=True, reserve_tokens=10, keep_recent_tokens=1))
+            ControlConfig(
+                compaction=CompactionSettings(
+                    enabled=True, reserve_tokens=10, keep_recent_tokens=1
+                )
+            )
         ),
     )
 
     async def _unexpected_compact(**kwargs):
         del kwargs
-        raise AssertionError("streaming control input must not trigger pre-prompt compaction")
+        raise AssertionError(
+            "streaming control input must not trigger pre-prompt compaction"
+        )
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _unexpected_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _unexpected_compact,
+    )
 
     asyncio.run(session.prompt("queued control", streaming_behavior=streaming_behavior))
 
-    assert [entry.type for entry in manager.get_entries()] == ["message", "message"]
+    assert [entry.kind for entry in manager.get_entries()] == [
+        "agent.message",
+        "agent.message",
+    ]
     assert session.get_steering_messages() == expected_steering
     assert session.get_follow_up_messages() == expected_follow_up
 
 
-def test_agent_session_threshold_auto_compaction_resumes_agent_level_queue(tmp_path, monkeypatch) -> None:
+def test_agent_session_threshold_auto_compaction_resumes_agent_level_queue(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.agent import Agent
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.transcript import CompactionResult
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="older context")], timestamp=0.0))
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="older context")],
+                timestamp=0.0,
+            )
+        )
+    )
     session = AgentSession(
         agent=Agent(
             initial_state={
@@ -916,17 +1567,28 @@ def test_agent_session_threshold_auto_compaction_resumes_agent_level_queue(tmp_p
         ),
         session_manager=manager,
         settings_manager=SettingsManager(
-            ControlConfig(compaction=CompactionSettings(enabled=True, reserve_tokens=10, keep_recent_tokens=1))
+            ControlConfig(
+                compaction=CompactionSettings(
+                    enabled=True, reserve_tokens=10, keep_recent_tokens=1
+                )
+            )
         ),
     )
-    queued = UserMessage(role="user", content=[TextPart(type="text", text="queued custom")], timestamp=2.0)
+    queued = UserMessage(
+        role="user",
+        content=[TextPart(type="text", text="queued custom")],
+        timestamp=2.0,
+    )
     session.agent.follow_up(queued)
     assistant = _assistant_message(
         "recent reply",
-        usage=Usage(input=90, output=5, cache_read=0, cache_write=0, total_tokens=95, cost={}),
+        usage=Usage(
+            input=90, output=5, cache_read=0, cache_write=0, total_tokens=95, cost={}
+        ),
         timestamp=1.0,
     )
     continue_runs = 0
+    continued = asyncio.Event()
 
     async def _fake_compact(**kwargs):
         preparation = kwargs["preparation"]
@@ -936,45 +1598,72 @@ def test_agent_session_threshold_auto_compaction_resumes_agent_level_queue(tmp_p
             tokens_before=preparation.tokens_before,
         )
 
-    async def _continue_run() -> None:
+    def _continue_run(
+        *, model_call_purpose: str = "continuation"
+    ) -> asyncio.Task[None]:
         nonlocal continue_runs
+        assert model_call_purpose == "continuation"
         continue_runs += 1
+        continued.set()
+        return asyncio.create_task(asyncio.sleep(0))
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
     monkeypatch.setattr(session.agent, "continue_run", _continue_run)
 
     async def scenario() -> None:
-        await session._handle_agent_event({"type": "message_end", "message": assistant}, signal=None)
-        await session._handle_agent_event({"type": "agent_end", "messages": [assistant]}, signal=None)
-        await asyncio.sleep(0)
+        await session._composition.session_runtime.handle_agent_event(
+            {"type": "message_end", "message": assistant}, session.agent.signal
+        )
+        await session._composition.session_runtime.handle_agent_event(
+            {"type": "agent_end", "messages": [assistant]}, session.agent.signal
+        )
+        await asyncio.wait_for(continued.wait(), timeout=1)
 
     asyncio.run(scenario())
 
     assert continue_runs == 1
 
 
-def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(tmp_path, monkeypatch) -> None:
-    from loushang.agent import AbortSignal, Agent
-    from loushang.coding.compaction import CompactionResult
+def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(
+    tmp_path, monkeypatch
+) -> None:
+    from loushang.agent import AbortSignal, Agent, synthetic_model_transport
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.transcript import CompactionResult
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(
-        UserMessage(
-            role="user",
-            content=[TextPart(type="text", text="older context")],
-            timestamp=0.0,
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="older context")],
+                timestamp=0.0,
+            )
         )
     )
 
+    continued = asyncio.Event()
+
+    @synthetic_model_transport
+    async def recovery_stream(model, context, options=None):
+        del model, context, options
+        continued.set()
+        return _stream_with_final_message(_assistant_text_message("recovered"))
+
     session = AgentSession(
         agent=Agent(
+            stream_fn=recovery_stream,
             initial_state={
                 "system_prompt": "",
                 "model": Model(
@@ -990,16 +1679,21 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(tmp_pa
                     ),
                 ),
                 "thinking_level": "off",
-            }
+            },
         ),
         session_manager=manager,
         settings_manager=SettingsManager(
-            ControlConfig(compaction=CompactionSettings(enabled=True, reserve_tokens=10, keep_recent_tokens=1))
+            ControlConfig(
+                compaction=CompactionSettings(
+                    enabled=True, reserve_tokens=10, keep_recent_tokens=1
+                )
+            )
         ),
     )
 
     events: list[object] = []
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="overflow error")],
         api="anthropic-messages",
@@ -1008,8 +1702,15 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(tmp_pa
         response_id=None,
         usage=_usage(),
         stop_reason="error",
-        error_message="input token count exceeds the maximum context window",
+        error_message="Provider request is too large.",
         timestamp=1.0,
+        error_info={
+            "code": "request_too_large",
+            "message": "Provider request is too large.",
+            "source": "provider",
+            "retryable": False,
+            "details": {"canonicalBytes": 900_000},
+        },
     )
 
     async def _fake_compact(**kwargs):
@@ -1020,46 +1721,62 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(tmp_pa
             tokens_before=preparation.tokens_before,
         )
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
-    continue_runs = 0
-
-    async def _continue_run() -> None:
-        nonlocal continue_runs
-        continue_runs += 1
-
-    monkeypatch.setattr(session, "continue_run", _continue_run)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
     session.subscribe(events.append)
 
     async def scenario() -> None:
-        await session._handle_agent_event({"type": "message_end", "message": assistant}, AbortSignal())
-        await session._handle_agent_event({"type": "agent_end", "messages": [assistant]}, AbortSignal())
-        await asyncio.sleep(0)
+        await session._composition.session_runtime.handle_agent_event(
+            {"type": "message_end", "message": assistant}, AbortSignal()
+        )
+        await session._composition.session_runtime.handle_agent_event(
+            {"type": "agent_end", "messages": [assistant]}, AbortSignal()
+        )
+        await asyncio.wait_for(continued.wait(), timeout=1)
+        await session.wait_for_idle()
 
     asyncio.run(scenario())
 
-    compaction_end = next(event for event in events if event["type"] == "compaction_end")
+    compaction_end = next(
+        event for event in events if event["type"] == "compaction_end"
+    )
     assert compaction_end["reason"] == "overflow"
     assert compaction_end["will_retry"] is True
-    assert continue_runs == 1
+    assert any(
+        isinstance(message, AssistantMessage)
+        and any(
+            isinstance(part, TextPart) and part.text == "recovered"
+            for part in message.content
+        )
+        for message in session.agent.state.messages
+    )
 
 
-def test_agent_session_overflow_recovery_is_limited_to_one_attempt(tmp_path, monkeypatch) -> None:
+def test_agent_session_overflow_recovery_is_limited_to_one_attempt(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.agent import AbortSignal, Agent
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
         SettingsManager,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.transcript import CompactionResult
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(
-        UserMessage(
-            role="user",
-            content=[TextPart(type="text", text="older context")],
-            timestamp=0.0,
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="older context")],
+                timestamp=0.0,
+            )
         )
     )
 
@@ -1084,12 +1801,17 @@ def test_agent_session_overflow_recovery_is_limited_to_one_attempt(tmp_path, mon
         ),
         session_manager=manager,
         settings_manager=SettingsManager(
-            ControlConfig(compaction=CompactionSettings(enabled=True, reserve_tokens=10, keep_recent_tokens=1))
+            ControlConfig(
+                compaction=CompactionSettings(
+                    enabled=True, reserve_tokens=10, keep_recent_tokens=1
+                )
+            )
         ),
     )
 
     events: list[object] = []
     assistant = AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="overflow error")],
         api="anthropic-messages",
@@ -1116,24 +1838,58 @@ def test_agent_session_overflow_recovery_is_limited_to_one_attempt(tmp_path, mon
 
     continue_runs = 0
 
-    async def _continue_run() -> None:
+    def _continue_run() -> asyncio.Task[None]:
         nonlocal continue_runs
         continue_runs += 1
+        return asyncio.create_task(asyncio.sleep(0))
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
-    monkeypatch.setattr(session, "continue_run", _continue_run)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
+    monkeypatch.setattr(
+        session._composition.session_runtime, "schedule_continue_run", _continue_run
+    )
     session.subscribe(events.append)
 
     async def scenario() -> None:
-        await session._handle_agent_event({"type": "message_end", "message": assistant}, AbortSignal())
-        await session._handle_agent_event({"type": "agent_end", "messages": [assistant]}, AbortSignal())
+        await session._composition.session_runtime.handle_agent_event(
+            {"type": "message_end", "message": assistant}, AbortSignal()
+        )
+        await session._composition.session_runtime.handle_agent_event(
+            {"type": "agent_end", "messages": [assistant]}, AbortSignal()
+        )
         await asyncio.sleep(0)
-        await session._handle_agent_event({"type": "agent_end", "messages": [assistant]}, AbortSignal())
+        second_assistant = AssistantMessage(
+            endpoint="test-endpoint",
+            role="assistant",
+            content=[TextPart(type="text", text="overflow after recovery")],
+            api="anthropic-messages",
+            provider="faux",
+            model="tiny-model",
+            response_id=None,
+            usage=_usage(),
+            stop_reason="error",
+            error_message="input token count exceeds the maximum context window",
+            timestamp=9_999_999_999_999.0,
+        )
+        await session._composition.session_runtime.handle_agent_event(
+            {"type": "message_end", "message": second_assistant}, AbortSignal()
+        )
+        await session._composition.session_runtime.handle_agent_event(
+            {"type": "agent_end", "messages": [second_assistant]}, AbortSignal()
+        )
 
     asyncio.run(scenario())
 
     compaction_ends = [event for event in events if event["type"] == "compaction_end"]
     assert compact_calls == 1
     assert continue_runs == 1
-    assert [event["reason"] for event in compaction_ends] == ["overflow"]
-    assert compaction_ends[-1]["result"] is not None
+    assert [event["reason"] for event in compaction_ends] == [
+        "overflow",
+        "overflow",
+    ]
+    assert compaction_ends[0]["result"] is not None
+    assert compaction_ends[0]["will_retry"] is True
+    assert compaction_ends[1]["result"] is None
+    assert compaction_ends[1]["will_retry"] is False

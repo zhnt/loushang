@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def test_skill_loader_discovers_and_toggles_skills(tmp_path) -> None:
-    from loushang.coding.skill import SkillLoader
+    from loushang.coding.resource_runtime import CodingSkillLoader as SkillLoader
 
     project = tmp_path / "project"
     skill_dir = project / "skills" / "review"
@@ -25,7 +25,7 @@ def test_skill_loader_discovers_and_toggles_skills(tmp_path) -> None:
 
 
 def test_skill_loader_accepts_initial_disabled_skills(tmp_path) -> None:
-    from loushang.coding.skill import SkillLoader
+    from loushang.coding.resource_runtime import CodingSkillLoader as SkillLoader
 
     skill_dir = tmp_path / "skills" / "review"
     skill_dir.mkdir(parents=True)
@@ -40,7 +40,7 @@ def test_skill_loader_accepts_initial_disabled_skills(tmp_path) -> None:
 
 def test_skill_loader_can_synchronize_disabled_skills_with_settings(tmp_path) -> None:
     from loushang.coding.control import SettingsManager
-    from loushang.coding.skill import SkillLoader
+    from loushang.coding.resource_runtime import CodingSkillLoader as SkillLoader
 
     skill_dir = tmp_path / "skills" / "review"
     skill_dir.mkdir(parents=True)
@@ -64,7 +64,7 @@ def test_skill_loader_can_synchronize_disabled_skills_with_settings(tmp_path) ->
 def test_skill_loader_load_missing_skill_raises_key_error(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.skill import SkillLoader
+    from loushang.coding.resource_runtime import CodingSkillLoader as SkillLoader
 
     loader = SkillLoader()
     loader.discover_skills(tmp_path)

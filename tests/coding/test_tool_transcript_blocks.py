@@ -22,11 +22,13 @@ def _project(
     is_error: bool = False,
     max_body_lines: int = 4,
 ):
-    from loushang.coding.tools import create_all_tool_definitions
-    from loushang.coding.ui.tool_blocks import ToolTranscriptProjector
+    from loushang.harness.tools.workspace import create_all_tool_definitions
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_tool_transcript_projection,
+    )
 
     definitions = create_all_tool_definitions()
-    projector = ToolTranscriptProjector(
+    projector = build_agent_tool_transcript_projection(
         tool_definition_resolver=definitions.get, max_body_lines=max_body_lines
     )
     snapshot = projector.remember_call(
@@ -152,14 +154,16 @@ def test_tool_transcript_block_uses_transcript_projection_for_raw_details() -> N
 
 def test_terminate_status_is_identical_for_live_and_replayed_tool_results() -> None:
     from loushang.ai import ToolResultMessage
-    from loushang.coding.ui.tool_blocks import ToolTranscriptProjector
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_tool_transcript_projection,
+    )
 
     result = AgentToolResult(
         content=[TextPart(type="text", text="done")],
         details={"ok": True},
         terminate=True,
     )
-    projector = ToolTranscriptProjector()
+    projector = build_agent_tool_transcript_projection()
     live = projector.project_result(
         {
             "type": "tool_execution_end",

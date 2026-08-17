@@ -25,54 +25,76 @@ on these owners rather than replacing their lower-level contracts.
 | Keep product | Coding-specific assembly, policy, storage, UI, or workflow. |
 | Never harness | Explicitly outside harness by subsystem boundary. |
 
-Classification defaults to Harness. `Keep product` entries require a named
-product-kernel reason; historical location or lack of a second consumer is not
-sufficient.
+Classification defaults to the correct shared owner. `Keep product` entries
+require a named product-kernel reason; historical location or lack of a second
+consumer is not sufficient. Shared code may belong to Harness, Channel,
+HarnessTUI, TUI, AI, Observability, Method, or Work according to its semantic
+boundary.
+
+## Current Long-Term Plan
+
+Future Coding consolidation follows the accepted
+[Coding To Shared-Layer Migration Plan](coding-shared-layer-migration-plan.md).
+That plan introduces the mandatory owner/duplicate rebaseline ledger and the
+current six delivery waves. The historical execution sections below remain a
+record of completed foundation waves; they are not a promise that their old
+module-level estimates remain unimplemented work.
+
+## Product Runtime Injection Planning
+
+The current ownership inventory remains authoritative for what has migrated
+and what still belongs to Coding. The implemented
+[Product Runtime Injection Architecture](product-runtime-injection/README.md)
+now provides a Product-neutral runtime-profile resolver, strict snapshot,
+factory registry, session sealing, and turn-boundary rebinding. Coding now
+adopts a product-owned plan for its selected file/memory store, current Agent
+transcript profile, and default compaction behavior. `SessionManager` binds
+those factories for create/load/fork and persists the resolved snapshot; Coding
+does not recreate selection, lifecycle, Native file codec, or file-layout
+mechanics. Coding still owns the `persist` and root-selection decisions,
+compaction prompt/model behavior, and all future OEM/extension admission
+policy. The implementation does not change the classification of unrelated
+entries.
 
 ## Current Package Inventory
 
 | Current module | Classification | Target / action |
 | --- | --- | --- |
-| `coding.commands` | Product adapter | `CommandDef` / `CommandEffect` remain under `loushang.harness.commands`; neutral descriptors, slash parsing, completion, alias/conflict resolution, precedence, catalog lookup, and ordered dispatch live under `loushang.harness.capabilities.commands`. Coding keeps concrete command definitions, source precedence policy, handlers, routing, diagnostics, resource projection, and UI. |
-| `coding.tools.types`, `schema`, `wrapper`, `registry`, `authoring`, `normalize` | Compatibility shim | Reusable tool definition, schema, normalization, wrapping, and registry mechanics live under `loushang.harness.tools`; Coding preserves accepted imports. |
-| `coding.tools.factory`, `coding.tools.builtins` | Split candidate | Harness owns reusable workspace-tool construction and neutral activation accounting/refresh mechanics. Coding keeps default pack membership, activation policy, policy injection, and product-tuned metadata. |
-| `coding.tools.presentation`, `rendering`, `builtin_renderers`, `output_preview` | Split candidate | Harness owns neutral presentation records and reusable workspace renderers/previews. Keep terminal/product projections and Coding protocol details in Coding. |
-| `coding.tools.truncate` | Compatibility shim | Neutral line/byte truncation and shared limits live in `loushang.harness.workspace.truncation`. Coding keeps grep line limits, product wording, detail projection, and camelCase compatibility aliases. |
-| `coding.tools.operations` | Compatibility shim | Operation protocols, sync-or-async result resolution, `LocalToolOperations`, and the default singleton live in `loushang.harness.workspace.operations`. Coding keeps normalization, Pi adapters, payload projection, and abort behavior. |
-| `coding.tools.path_utils` | Split candidate | Configurable resolution, current-user expansion, canonical identity, Unicode normalization, and optional platform/user-input variants live in `loushang.harness.workspace.paths`. Coding keeps `@` syntax, default correction policy, public wrappers, and camelCase aliases. |
-| `coding.tools.file_mutation_queue` | Compatibility shim | Canonical per-path mutation coordination lives in `loushang.harness.workspace.mutation_queue`. Coding paths re-export the harness functions and registry; the Pi-style camelCase alias stays coding-owned. |
-| `coding.tools.read`, `ls`, `find`, `grep`, `write`, `edit`, `edit_diff`, `bash`, `process`, `ignore`, `external_tools` | Compatibility shim | Reusable implementations live in `loushang.harness.tools.workspace`. Coding injects product metadata, policy/approval, activation, and compatibility projections. |
-| `coding.tools.policy` | Compatibility shim | Neutral policy-enforcement plumbing accepts an injected evaluator and Harness approval resolver. Coding retains risk classification and concrete `PolicyEngine` defaults. |
-| `coding.policy` | Product adapter | Approval contracts, headless resolvers, pending-request broker lifecycle, immutable policy subjects, command normalization, rules, matchers, evaluator chains, and sync/async validation live in `loushang.harness.approval` and `loushang.harness.policy`. Coding keeps risk rules, package trust defaults, allowlists, default decisions and wording, interactive payload projection, and compatibility methods. |
-| `coding.exec` | Compatibility shim | `ExecRequest`, `ExecResult`, output records, backend/update protocols, and `ExecService` live in `loushang.harness.workspace.exec`. Coding keeps the public compatibility path; policy, session cwd resolution, tool projection, and extension behavior remain product-owned. |
-| `coding.diagnostics.types`, `coding.diagnostics.service` | Compatibility shim | Diagnostic vocabulary, records, queries, summaries, startup-check contracts, and the bounded in-memory engine live in `loushang.harness.diagnostics`. Coding paths re-export the same Harness-owned objects. |
-| `coding.diagnostics.serialization`, `coding.diagnostics.problem_bridge`, concrete checks | Keep product | Keep camelCase payload projection, observability mapping, check selection, emission timing, remediation, session bridges, and CLI/TUI behavior in Coding. |
-| `loushang.resource.frontmatter`, `coding.frontmatter` | Compatibility shim | Parser records, errors, and behavior live in `loushang.harness.resources.frontmatter`. Legacy paths preserve object identity; coding and method internal consumers use the harness owner. |
-| `coding.source_info.SourceInfo`, `coding.extensions.types.SourceInfo` | Compatibility shim | `SourceInfo`, `SourceScope`, and `SourceOrigin` live in `loushang.harness.resources.source`. Coding command and extension paths preserve string and `Path` representations through the same harness class. Descriptor projection and executable identity remain in coding. |
-| `coding.loader.ResourceDiagnostic`, `coding.loader.types.ResourceDiagnostic` | Compatibility shim | The focused resource record lives in `loushang.harness.resources.diagnostics`. Coding compatibility paths preserve object identity; resource checks, message selection, emission timing, and remediation remain product-owned. |
-| Remaining `coding.loader.types` | Compatibility shim | Product-neutral prompt, skill, theme, and extension descriptors, source kinds, snapshots, bundles, and merge decisions live in `loushang.harness.resources.types`. Coding keeps compatibility aliases. |
-| `coding.prompt.types`, `coding.prompt.templates`, assembler/preflight | Product adapter | Prompt sections, prepared prompts, deterministic composition traces, and injectable template expansion live under `loushang.harness.capabilities.prompt`. Coding preserves compatibility imports and keeps system prompt text, section selection/order, skill XML, resource lookup and diagnostics, and runtime footer content. |
-| `coding.compaction.policy`, `coding.compaction.types.ContextUsageEstimate` | Compatibility shim | `CompactionBudget`, deterministic threshold accounting, and `ContextUsageEstimate` live in `loushang.harness.context`. Coding compatibility paths re-export the same Harness-owned objects. |
-| Remaining `coding.compaction.types`, `coding.session.context_usage` | Product adapter | Neutral context items, packing, strategies, coordinator lifecycle, salience, summary profiles, opaque-record turn/cut planning, split-turn/tool-result mechanics, previous-summary accounting, and checkpoint replay now live in Harness. Coding keeps compatibility records, message/aggregate token adapters, trigger decisions, exact prompts, model calls, content weights, and artifact projection. |
-| `coding.domain.types` | Split candidate | Use as input for future `loushang.harness.adapter` shapes. Generic request/result types must not contain first-class method fields; carry method/work refs as opaque metadata. |
-| `coding.session.types.RunState` | Compatibility shim | `RunState` lives in `loushang.harness.host.types`; Coding preserves the accepted session import with the same class identity. |
-| `coding.session.queue_controller`, `coding.session.session_event_bus` | Product adapter | Queue snapshots, `HostInputQueue`, `TurnInputQueue`, turn orchestration, and `OrderedEventBus` live in `loushang.harness.host`. Coding keeps AI message construction, preflight and delivery policy, logs, Product queue events, and its specialized session event bus. |
-| `coding.session.AgentSession`, controllers, `coding.runtime.AgentSessionRuntime` | Product adapter | `AgentSession` delegates run, turn, queue, retry, compaction single-flight, resource/extension lifecycle, command dispatch ordering, tool activation accounting, and abort/idle/dispose coordination to Harness. `AgentSessionRuntime` delegates its opaque current slot, operation transaction, replacement callback order, import staging, navigation abort scope, and scheduling to `loushang.harness.runtime`; conversation tree/fork/replay/catalog mechanics live in `loushang.harness.conversation`. Coding keeps controller policy/adapters, event schema, concrete messages and command handlers, tool defaults/materialization, transcript schema/codec, replacement decisions/events, path/import policy, index fields, and storage policy. |
-| `coding.event` | Keep product | Coding session event protocol and product projection stay coding. Agent owns tool-output event projection and strict failure semantics; Coding consumes that view and retains its field names, filtering, render enrichment, and RPC/print behavior. |
-| `coding.extensions.events`, `manifest`, `loader`, `contributions`, `wrapper` | Compatibility shim | Event declarations, manifest parsing, descriptor-driven loading, contribution projection, and tool wrapping live in `loushang.harness.extensions`. Coding paths preserve imports and inject Coding API/policy/legacy-event adapters. |
-| `coding.extensions.api`, `runner`, `types`, `policy`, `hooks` | Product adapter | Neutral records, registration, conflict resolution, stable route planning, observer/interceptor/reducer dispatch, resource contribution execution, binding storage/lifetimes, and generic bound/unbound runtime contexts live in Harness. Coding keeps typed model/thinking/command specialization, provider/UI callback injection, concrete permission defaults, Product result reducers, session decisions, and Agent tool-call adaptation. |
-| `coding.bootstrap` | Keep product | Product assembly. It may call harness engines but should not move. |
-| `coding.runtime` | Product adapter | Generic binding leases, runtime contexts, current-session transitions, serialized operation phases, uncommitted-candidate rollback, replacement callback ordering, exclusive import staging, navigation abort scopes, and coalesced scheduling live in `loushang.harness.runtime`. Coding keeps composition, cwd/session-file resolution and acceptance policy, concrete create/restore/fork/import/clone decisions, extension event projection, diagnostics codes, transcript semantics, package operations, and index content. |
-| `coding.ui` | Never harness | Product-owned TUI adapter and screen/controller state. Shared terminal primitives belong in `loushang.tui`, not harness. |
-| `coding.mode` | Keep product | Transitional print/RPC mode adapters stay coding until channel is implemented. RPC now uses an explicit transport projection for known dataclasses, paths, mappings, lists, and tuples while rejecting cycles, sets, arbitrary objects, `__dict__` discovery, non-finite floats, and `repr()` fallback. |
-| `coding.cli` | Keep product | Product CLI. It may expose harness-backed behavior but remains coding-owned. |
-| `coding.message` | Product adapter | Strict JSON lives in Protocol; AI codecs live in AI; custom-message dispatch/tool-output projection live in Agent; neutral conversation envelopes and `CommandExecutionRecord` live in Harness. Coding keeps its session header/entry variants, historical custom-message codecs and roles, message transforms, and compatibility imports. |
-| `coding.store` | Product adapter | File locking, strict JSONL, parent-linked repositories, branch/tree/fork/LCA/delta, checkpoint replay, catalog/query, and rebuildable indexes now live in Harness. Coding directly uses `ConversationRepository` and `ConversationCatalog`; it keeps transcript schemas/codecs, Product summary/search fields, labels, paths, naming, retention, recovery, and storage policy. Journal-offset projection checkpoints remain deferred. |
-| `coding.control` | Product adapter | Transactional ordered layers and persistence, `ConfigFieldSpec` / `SchemaConfigCodec`, scoped revisions and `ConfigChange` records, subscriptions, issue collection, injected-runner value resolution, and the explicit activation DAG live in `loushang.harness.config`. Coding keeps `ControlConfig`, fields, defaults, validation, paths, removed-setting compatibility, convenience APIs, diagnostic wording, effect selection/order/callbacks, provider registration, credential handling, model/auth interpretation, persisted selection policy, commands, and UI. Harness neither executes shell commands nor stores credentials; `ModelRegistry` and `AuthManager` do not move. |
-| `coding.package`, `coding.plugin`, `coding.resources`, `coding.skill` | Split candidate | Package source/manifest/materialization, standard roots/layout, registry/resolver, discovery, and skill-loading mechanisms now live under `loushang.harness.resources`. Coding keeps built-in content registration, compatibility convention activation, additional roots, trust/approval policy, settings/CLI projection, and compatibility facades. |
-| `coding.workflow` | Split candidate | Move a neutral workflow runner, step/result records, cancellation, and observer mechanics after resource and extension contracts stabilize. Keep Coding workflow definitions, prompts, artifact semantics, completion policy, and product test fixtures. |
-| `coding.platform` | Split candidate | Route neutral workspace/git and operating-system mechanisms to focused Harness modules when reusable. Keep product update/version policy and output guards in Coding; clipboard and terminal integration belong to Product/TUI rather than Harness. |
-| `coding.work_shell` | Keep product | Coding adapter to `loushang.work`; do not move into Harness or Work. The explicit `loushang.work.projection` bridge owns Agent-message and tool-event projection into strict `WorkEvent` payloads, while Coding keeps run/session wiring and product policy. |
+| `coding.commands` | Product adapter | `CommandDef` / `CommandEffect` remain under `loushang.harness.commands`; neutral descriptors, slash parsing, completion, alias/conflict resolution, precedence, catalog lookup, ordered dispatch, and ordered capability-pack composition live under `loushang.harness.capabilities`. Coding keeps concrete command definitions, source precedence policy, handlers, routing, diagnostics, resource projection, and UI. |
+| `coding.tools` | Removed | The complete facade is extinct. Reusable contracts, schema, normalization, registry, wrappers, workspace implementations, path/mutation, truncation (`loushang.harness.workspace.truncation`), renderers, and protocols are imported from Harness. No Coding compatibility or Pi-style aliases remain. |
+| `coding.tool_pack` | Product profile and service binding | Existing Harness workspace tool factories, `WorkspaceToolProfile`, contribution resolution, profile registration, availability, activation, and rebinding own the mechanisms. Coding keeps default seven-tool membership/order, descriptions and prompt snippets, and injection of Coding policy, approval, diagnostics, and execution services. |
+| removed `coding.policy` | Canonical split complete | Policy subjects/rules/matchers, command normalization, effect classification, permission profiles, default policy evaluation, approval lifecycle, retained grants, and workspace enforcement live in Harness. Coding selects the Harness evaluator/resolver/profile through bootstrap and CLI composition, and retains Product presentation wording and package/resource defaults. No Coding policy compatibility package remains. |
+| removed `coding.exec` | Removed | `ExecRequest`, `ExecResult`, output records, backend/update protocols, and `ExecService` are publicly imported from `loushang.harness.workspace.exec`. Policy, session cwd resolution, tool projection, and extension behavior remain product-owned. |
+| removed `coding.diagnostics.types`, `coding.diagnostics.service`, `coding.diagnostics.problem_bridge` | Removed | Diagnostic vocabulary, records, queries, summaries, startup-check contracts, the bounded in-memory engine, and the optional `ProblemRecord` bridge live under `loushang.harness.diagnostics`. Coding retains concrete checks, its `config` to `model` source policy, and presentation. |
+| `harness.diagnostics.serialization`, concrete checks | Shared mechanism + product checks | The shared serializer preserves the existing camelCase payload shape for RPC/CLI/SDK callers. Product-specific source classification, check selection, emission timing, remediation, and CLI/TUI behavior remain in Coding. `harness.session.SessionDiagnosticsRuntime` owns common session scope/filtering and Agent/Tool failure correlation. |
+| `loushang.resource.frontmatter`; removed `coding.frontmatter` | Canonical owner | Parser records, errors, and behavior live in `loushang.harness.resources.frontmatter`. The legacy top-level resource path preserves object identity; Coding and method import the Harness owner directly. |
+| removed `coding.source_info`; `SourceInfo` consumers | Canonical owner | `SourceInfo`, `SourceScope`, and `SourceOrigin` live in `loushang.harness.resources.source`. Runtime identity collection and formatting live in `loushang.foundation.observability.identity`; Coding supplies labels through `coding.diagnostics.profile`. |
+| removed `coding.loader`, `coding.loader.types` | Removed | Resource loaders emit the canonical `loushang.harness.diagnostics.types.DiagnosticDraft` through `loushang.harness.resources.diagnostics.resource_diagnostic`; neutral prompt, skill, theme, and extension descriptors, source kinds, snapshots, bundles, and merge decisions live in `loushang.harness.resources.types`. Consumers import those owners directly. |
+| removed `coding.prompt.types`, `coding.prompt.preflight`, and `coding.prompt.templates`; retained Coding assembler | Canonical owner / Product default binding | `PromptAssembly`, standard resource-aware assembly, the neutral Harness default prompt, and prompt/skill preflight live under `loushang.harness.capabilities.prompt_assembly` and `prompt_preflight`; prompt sections, deterministic traces, and injectable template expansion remain in `harness.capabilities.prompt`. Coding retains only `DEFAULT_CODING_SYSTEM_PROMPT` and the assembler that selects that Product default. |
+| removed `coding.compaction.policy`, generic `coding.compaction.types` | Removed | `CompactionBudget`, deterministic threshold accounting, `ContextUsageEstimate`, and standard transcript compaction records are imported directly from `loushang.harness.context` or `loushang.harness.transcript`. |
+| removed `coding.compaction.compaction`, `coding.compaction.branch_summarization`, `coding.compaction.types`, `coding.compaction.summary_quality`, `coding.session.context_usage`, `coding.session.compaction_controller`, and `coding.session.retry_controller` | Product adapter | `harness.transcript` owns Agent transcript token extraction/estimation, context usage snapshots and threshold decisions, turn-aware compaction plan/preparation/result/status, standard AI-backed compaction/turn-prefix/branch-summary execution, branch-delta selection, checkpoint commit/event lifecycle, overflow guard, retry classification/backoff/cancellation, and retry events. `harness.context` owns profile-driven summary evaluation and `SummaryResourceOperations`; a profile declares its resource-evidence tags, so `read` and `modified` are generic operations rather than Coding fields. `AgentSession` binds the Harness runtimes directly. Coding retains prompt/profile content, code file-operation decoration, extension hook translation, diagnostics wording, settings/default policy, and presentation. |
+| removed `coding.domain.types`; `coding.domain.app` | Canonical Method owner / Product profile | `loushang.method.MethodDomainRuntime` and its request/result/policy/profile contracts own Method discovery, selection, compilation, projection, step metadata, and prompt preparation. Coding's domain app only selects `domain="coding"` and its guidance template; it does not implement another Method runtime. |
+| `coding.session.types.RunState` | Compatibility shim | `RunState` lives in `loushang.harness.runtime.types`; Coding preserves the accepted session import with the same class identity. |
+| `coding.session.types.AgentSessionState`, `ContextUsage`, `SessionStats`, `TokenUsageTotals` | Compatibility shim | `harness.session.inspection` owns the product-neutral Agent/transcript observation values and `AgentSessionInspector`. Coding preserves its accepted imports and keeps Pi stats plus UI/RPC/HTML projection. |
+| removed `coding.session.export_html`, `coding.session.export_jsonl`, and `coding.session.introspection` | Harness profile / Product adapter | `harness.transcript.export` owns Conversation JSONL branch export, HTML document composition/assets, standard transcript-kind/tree/ANSI/Markdown/default-tool presentation, and the immutable export request/profile contracts. `harness.session.export` gathers the live `SessionFacade` snapshot and binds paths, theme, extension message renderer, and tool resolver without introducing an `transcript -> session` dependency. `AgentSessionInspector` owns shared statistics including transcript token totals. Coding retains command/API projection only. |
+| removed `coding.session.queue_controller`, `prompt_controller`, `agent_event_router`, `session_event_bus`, `extension_message_controller`, `extension_event_sink`, and `extension_hooks` | Harness profile / Product adapter | Queue snapshots live in `harness.events.session`; `HostInputQueue` and `TurnInputQueue` live in `harness.runtime`. `harness.session.SessionRuntime` is the single Agent-session owner for queue delivery, prompt ordering, Agent subscription/event routing, standard ApplicationMessage delivery/commit coordination, Host lifecycle, transcript-commit observation, and the ordered RuntimeEvent stream. `ExtensionInputRuntime`, `ExtensionAgentHookRuntime`, and `ExtensionAgentEventRuntime` live in the optional `harness.extensions.agent` profile, where typed input, control hooks, and observation-only lifecycle callbacks do not import Session. Coding injects AI message construction, preflight, Extension API argument mapping, retry, compaction, diagnostics, transcript, delivery policy, and its UI/RPC event projection adapter. |
+| removed `coding.session.session_diagnostics_bridge` | Harness profile / Product adapter | `harness.session.SessionDiagnosticsRuntime` owns common session scope filtering, extension-diagnostic synchronization, failed assistant/tool projection, and policy-denial correlation. Coding binds its active transcript scope and extension diagnostics port, then retains Product-specific diagnostic selection, wording, and presentation. |
+| `coding.session.AgentSession`, controllers, `coding.runtime.AgentSessionRuntime` | Product adapter | `harness.session.AgentProductSession` now binds `SessionFacade`, `SessionComposition`, diagnostics, commands, packages, extensions, transcript, retry, compaction, and lifecycle through the existing runtimes. Coding's `AgentSession` is a thin subclass that injects its capability profile, prompts, summary executors, changelog, clipboard, footer, and package-summary policy. The former Coding command/package controllers and other controller wrappers are removed rather than retained as facades. `harness.session.SessionOperationRuntime` supplies capability-grouped input, queue, lifecycle, identity, retry, and maintenance calls over the bound `SessionControlPort`. `harness.transcript.ProductTranscriptSession` owns the generic Product transcript-session wrapper. `harness.session.AgentSessionInspector` owns common state/context/statistics/fork-candidate observation; `harness.transcript.AgentTranscriptRetryRuntime` owns retry lifecycle. `harness.extensions.agent` owns the extension-to-Agent input, hook, and observation-only lifecycle profile. `harness.session.SessionLifecycleRuntime` owns the active session new/restore/fork/import/replacement/disposal transaction; `harness.session.AgentTranscriptSessionRuntime` composes that lifecycle transaction with transcript directory/index and current-reference resolution. Coding CLI, RPC, builtins, and extension replacement consume typed operation results; Pi-style lifecycle aliases are removed. The core Session/Runtime and extension contracts use snake_case. |
+| removed `coding.session.resource_refresh_controller` | Harness profile / Product adapter | `harness.session.SessionResourceRefreshRuntime` owns ordered prepare, reload, optional extension discovery, disabled-skill activation, bundle commit, prompt/tool rebuild, and contained refresh failure routing. Coding binds `CodingResourceLoader`, roots, settings, current extension runner, diagnostic wording, watcher trigger, and Coding extension-runtime refresh behavior. |
+| removed complete `coding.event` package | Canonical event owners | `harness.session.event_types` owns the shared Agent/session dictionary contracts; `harness.session.event_projection` owns standard views, render enrichment, stream shaping, selector mechanics, and snake_case serialization; `harness.session.runtime_event_views` owns RuntimeEvent-to-view shaping and delivery hints; `harness.events.recording_policy` owns transcript-write and cancellation policy. `loushang.channel` carries completed views as a separate runtime event family. Product/runtime mapping, Work projection, and final presentation remain in their existing Product, Work, or HarnessTUI owners; no Coding event facade or Pi/camelCase alias remains. |
+| removed complete `coding.extensions` package | Canonical Agent profile | Neutral declarations, manifest parsing, loading, routing, contribution projection, records, contexts, and runtime composition live in focused `loushang.harness.extensions` modules. `harness.extensions.agent` composes the existing core into the standard Agent API, permission policy, loader, runner, input, hook, lifecycle, and replacement profile. Coding injects live Product/session bindings, provider implementations, preferred-model policy, diagnostics wording, and transport/UI projection; it retains no Extension facade. Pi-style Extension UI aliases are removed; the snake_case context API is the sole extension API. |
+| `coding.bootstrap` | Product adapter | `harness.session.StandardAgentSessionConfigurationRuntime` owns standard startup-check, package-source, resource-root, resource, extension, cwd-audit, and model-layer effects over the existing activation graph. Coding retains factories, defaults, paths, concrete session/runtime construction, Extension construction, source-identity check, capability profiles, pack identifiers, and final Product choices. |
+| `coding.runtime` | Product adapter | Generic binding leases, runtime contexts, current-session transitions, serialized operation phases, uncommitted-candidate rollback, replacement callback ordering, exclusive import staging, navigation abort scopes, and coalesced scheduling live in Harness. `harness.session.SessionLifecycleRuntime` owns the common active-session new/restore/fork/import/replacement/disposal flow and default fork semantics; `harness.session.AgentTranscriptSessionRuntime` adds the standard Agent transcript directory/index and current-reference facade; `harness.session.ProductSessionRuntime` composes those owners through Product ports; `harness.session.resolve_fork_target` owns the reusable `at`/`before` grammar and parent selection. Coding keeps only its selected transcript/store binding, cwd/session-file acceptance adapter, user-message boundary predicate and payload projection, extension event mapping, diagnostics codes/scope, package operations, and index content. |
+| `coding.ui` | Product binding | `loushang.harnesstui.conversation.AgentScreenConversationApplicationBinding` and `AgentPlainConversationApplicationBinding` bind standard Agent history, event projection, status, queues, resume hints, trace events, and reverse cleanup to the existing screen/plain runners. `harness.session.footer` owns the reusable session footer state provider; HarnessTUI consumes prepared status without becoming a session dependency. Coding retains its screen app, surface manager, Product controller/action host, renderer, completion, copy, theme, and approval policy. Pure terminal primitives remain in `loushang.tui`. |
+| removed `coding.mode` | Canonical split complete | `harness.host.rpc` owns Product command JSONL parsing, routing, response framing, task settlement, and standard command groups. `harnesstui.conversation` owns plain/JSON output and Agent presentation binding. Channel separately owns `ChannelEnvelope` framing, correlation, cancellation, delivery, and the optional Work adapter; it is not the Product RPC framing owner. Coding injects only its Product plan, Work profile, domain vocabulary, renderer, event/diagnostic projections, and UI bindings through CLI/UI composition; no mode facade remains. |
+| `coding.cli` | Product binding | `harness.cli` owns the standard Agent grammar/value projection, two-pass application lifecycle, state/service/session-path preparation, extension-aware help bootstrap, informational early exits, runtime-builder invocation, launch projection, session resolution/listing, operation pack, prompt input, diagnostic export, prepared-turn lifecycle, and Agent session-host binding; Channel owns streams and disposal. Coding retains additive Method/Work syntax, Product profiles and policy callbacks, runner bindings, final renderer selection, and wording. |
+| `coding.message` | Migrated and removed | `harness.conversation` owns the neutral envelope, repository, replay, and opaque-record behavior. The optional `harness.transcript` profile owns standard Agent transcript payloads, codecs, state/context projection, the pure record factory, idempotent application-message commit, and an explicit Session v3 external importer. Native Product load accepts only the current format. Coding keeps only product presentation and orchestration policy. |
+| `coding.session_manager`; removed `coding.runtime_profile` and `coding.capability_plan` | Product adapter | `ConversationStore`, revision/CAS semantics, Memory/File backends, and the open Agent transcript service live in Harness. The Conversation JSONL Agent transcript codec, journal policy, lock, file layout, discovery, `FileConversationStore` assembly, standard session-facing commit/label/context operations, catalog summary/query/index/tree read model, lifecycle mechanics, and `AgentTranscriptSessionFactory` header/create/load/recent-resume/fork orchestration live in `harness.transcript`. `AgentTranscriptProfileRuntime` now composes the existing runtime resolver/binder with those transcript/store/compaction owners; `standard_capability_composition_plan` declares existing capability composition defaults. Coding's 38-line `product_plan` supplies stable IDs/defaults, while `SessionManager` retains root/persist decisions, restored-header validation, Product-only runtime capability access, and the public top-level name. The retired Coding implementations and `coding.store` package have no compatibility facade. Database/Redis providers and journal-offset projection checkpoints remain deferred. |
+| `coding.control` | Product adapter | Transactional ordered layers and persistence, `ConfigFieldSpec` / `SchemaConfigCodec`, scoped revisions and `ConfigChange` records, subscriptions, issue collection, injected-runner value resolution, and the explicit activation DAG live in `loushang.harness.config`. The optional `harness.config.agent` profile owns the standard Agent-product settings records, codecs, defaults, getters, setters, and collection mutations by composing those existing engines. Coding keeps settings paths, its command-backed value runner, `ModelRegistry`, Product-only policy and presentation. Harness never stores credentials; request authentication declarations and credential-to-header resolution remain AI-owned. |
+| removed `coding.package`, `coding.plugin`, `coding.skill`, `coding.package_projection`, and `coding.session.package_controller`; `coding.resources` | Canonical split complete / Product content | Package source/manifest/materialization, standard roots/layout, registry/resolver, discovery, skill-loading, structured package catalog, scoped source resolution, lifecycle summary, conflict diagnostics, install/update/remove/uninstall ordering, record projection, catalog fallback, and session package operations live under `loushang.harness.resources`. `ResourceLoaderProfile` and `ProfiledResourceLoader` bind Product defaults to the existing discovery engine. `coding.resource_runtime` declares only Coding's built-in content, `CLAUDE.md` convention, prompt assembly, package security policy, and summary/profile bindings. `coding.resources` retains built-in product content. No legacy import facades remain. |
+| `coding.workflow` | Thin Product adapter | `loushang.harness.scenario` owns workflow schema, parser, discovery, runner, cancellation, waiting, event patterns, result values, fake adapter, reporting/JSON formatting, CLI orchestration, read-only file assertions, and the injected command-runner protocol. Harness never executes a shell. Coding retains model-readiness/session activation and injects its existing approval-aware `ExecService` command policy. |
+| `coding.platform` | Canonical split complete | Git metadata is owned by `harness.workspace.git`; text and image clipboard capabilities are owned by `tui.clipboard` and `tui.clipboard_image`; the generic version-check engine is owned by `harness.cli.version_check`; reusable session footer state is owned by `harness.session.footer`. Coding retains its version endpoint/profile, changelog content, and Product diagnostic identity. Internal consumers use canonical paths and retired Coding facades are absent. |
+| removed `coding.work_shell`, `coding.work_runtime`, `coding.work_executor`, and `work.coding`; collapsed the old `coding.domain.work` owner | Canonical split complete | `harnesswork.integrations.session.SessionWorkRuntime` owns reusable session-turn execution over canonical `WorkRuntime`; `harnesswork.integrations.agent_session` owns standard Agent runtime-event fact projection and its runtime factory; `channel.adapters.harnesswork` owns Work-to-Channel operation binding. `coding.adapters.harnesswork` supplies only `CODING_WORK_PROFILE` and the thin Product factory. `loushang.method.MethodDomainRuntime` owns discovery/select/compile/project/prompt preparation, while `CodingDomainApp` injects `domain="coding"` and the Product guidance template. |
 
 ## Accelerated Dependency-First Execution
 
@@ -102,9 +124,9 @@ semantic branch. Ordered commits inside the branch should cover:
   scope/layout/precedence records, and built-in package descriptors;
 - filesystem and package discovery, deterministic catalog/merge/reload,
   materialization, registry/resolver, and `AGENTS.md` convention engines;
-- Coding compatibility imports and a reduced `DefaultResourceLoader` facade
-  that injects product roots, activation, trust, prompt projection, and UI
-  behavior.
+- a `coding.resource_runtime` product binding that injects Coding roots,
+  activation, trust, prompt projection, and UI behavior without re-exporting
+  Harness resource types.
 
 This is one capability batch, not separate slices for types, roots, manifests,
 materialization, loader, and shims. The batch is complete only when Coding no
@@ -140,6 +162,13 @@ failure-contained observer and input dispatch, resource contribution execution,
 and tool wrapping. Coding keeps permission defaults, activation choices,
 product handlers, model/provider bindings, session projection, specialized
 result reducers, and UI commands.
+
+The follow-on [Extension Context Runtime Boundary](extension-context-runtime-boundary.md)
+is also complete: Harness owns the standard extension context and lifecycle
+contracts while Coding's types are re-exports and internal consumers use the
+Harness owner directly. Pi-style Extension UI aliases have been removed in
+favor of the snake_case contract; event JSONL projection now uses the same
+snake_case field vocabulary.
 
 ### Wave 2 Follow-On: Control Plane Runtime
 
@@ -183,10 +212,14 @@ land with the contract or adapter they protect; they are not a separate waiting
 phase. Do not split records, protocols, codecs, or individual adapters into
 small merge units.
 
-Workflow execution mechanics remain a separate ownership decision within this
-wave. Do not move `coding.workflow` wholesale before reconciling its test-scenario
-semantics with the separate `loushang.method` and `loushang.work` layers. Moving
-`coding.message` wholesale is explicitly not part of this wave.
+The Scenario Runtime follow-on completed the workflow execution ownership
+decision without conflating test-scenario mechanics with `loushang.method` or
+`loushang.work`; see [Scenario Runtime Boundary](scenario-runtime-boundary.md).
+Harness owns the reusable runner while Product adapters retain input, command,
+artifact, and completion policy.
+The later Agent Transcript Profile wave completed this ownership transfer and
+removed `coding.message`; see
+[Agent Transcript Profile Boundary](agent-transcript-profile-boundary.md).
 
 ### Wave 4: Session And Runtime Consolidation
 
@@ -207,6 +240,13 @@ create/restore/fork/import/clone decisions, session files and projections,
 extension event/decision semantics, diagnostics wording, commands, Product
 controller adapters, control/model/auth, transcript semantics, channels, and UI.
 
+The active-session composition cutover is now explicit: `harness.session.ProductSessionRuntime` binds
+the existing lifecycle transaction, transcript directory/index runtime,
+and public lifecycle operation adapter through `ProductSessionRuntimePorts`.
+Coding's `AgentSessionRuntime` supplies its SessionManager, fork/cwd/error
+policy, diagnostics/index callbacks, extension hooks, and session builder; it
+does not directly assemble a second lifecycle or transcript-directory engine.
+
 Each wave may span several reviewable commits, but it should merge as one
 coherent ownership transfer. A wave is split only when a product boundary or
 independent validation boundary requires it.
@@ -214,7 +254,8 @@ independent validation boundary requires it.
 ### Wave 5: Product Capability Composition
 
 Status: product capability composition core implementation complete for
-integration into `lane/harness`; see
+integration into `lane/harness`. Coding's Product-only profile binding is also
+complete; see
 [Product Capability Composition Core Boundary](product-capability-composition-core.md).
 
 Harness now owns neutral command descriptors, catalogs, conflicts, completion,
@@ -226,8 +267,10 @@ those owners through compatibility adapters.
 Coding keeps command definitions and handlers, prompt content and resource
 projection, default tool packs and activation policy, Agent materialization,
 execution context, diagnostics, audit events, approval/risk policy, and UI.
-This wave composes capability mechanisms without introducing a universal
-Product manifest or moving model/auth/settings into Harness.
+Coding persists the resolved capability snapshot separately from its
+store/transcript `runtimeProfile` and validates it on persistent resume. This
+wave does not introduce a universal Product manifest, admit executable OEM or
+extension factories, or move model/auth/settings into Harness.
 
 ### Product Configuration Runtime
 
@@ -237,16 +280,17 @@ semantic branch `harness/product-configuration-runtime`; see
 
 Harness now owns transactional layered configuration, Product-injected schema
 mechanics, typed scopes and revisioned change records, value resolution with an
-injected runner, and explicit activation DAG ordering and reporting. Coding
-adopts those mechanisms while retaining `ControlConfig`, all field semantics,
-defaults, validation, paths, removed-setting compatibility, convenience APIs,
-diagnostic wording, and configuration effect order and callbacks.
+injected runner, and explicit activation DAG ordering and reporting. The
+optional `harness.config.agent` profile composes those owners into the standard
+Agent settings contract, including `ControlConfig`, common field semantics,
+defaults, validation, accessors, and mutations. Coding retains paths, its shell
+runner, diagnostic projection, and configuration effect callbacks.
 
 The activation runtime is neither a service locator nor a Product or extension
 manifest. Harness does not execute a shell or store credentials. `ModelRegistry`,
-`AuthManager`, provider registration, auth resolution, credential handling, and
-persisted model-selection behavior remain with their existing AI or Product
-owners.
+provider registration, and persisted model-selection behavior remain Product
+concerns. Request authentication declarations and credential-to-header
+resolution remain AI concerns; Coding does not add an authentication lifecycle.
 
 ## Completed And Accepted Capability History
 
@@ -295,11 +339,16 @@ Slice 2A routes coding runtime extension tool registration through neutral
 active-tool policy, prompt rebuilds, diagnostics mapping, session mutation, and
 concrete execution remain coding-owned.
 
-The reusable `ToolContext` now lives with the workspace tool pack after a
-Coding adapter and independent contract probe validated its shape. Keep
-`ExtensionRuntimeBindings`, `ToolController`, active-tool policy, prompt
-rebuilds, session mutation, and product model/diagnostic interpretation in
-Coding.
+The reusable `ToolContext` now lives in the Product-neutral
+`harness.tools.authoring` surface after a Coding adapter and independent
+contract probe validated its shape. Keep
+`ExtensionRuntimeBindings`, active-tool policy, prompt rebuilds, session
+mutation, and product model/diagnostic interpretation in Coding. The shared
+live capability application is split between `harness.capabilities.commands`,
+`harness.session.tool_runtime`, and `harness.session.bash`; Coding
+`ToolController` and `CommandController` bind Product policy and protocol
+behavior to those mechanisms. Harness `BashExecutionRuntime` owns the standard
+shell execution, abort, streaming, and transcript-recording path.
 
 ### Workspace Execution
 
@@ -386,10 +435,10 @@ for integration into `lane/harness`; see
 
 Purpose: avoid expanding `loushang.resource` as a broad top-level package.
 
-Frontmatter parsing now lives in `loushang.harness.resources.frontmatter`.
-`loushang.resource.frontmatter` and `loushang.coding.frontmatter` are
-compatibility shims, while coding and method internal consumers import the
-harness owner directly.
+Frontmatter parsing lives in `loushang.harness.resources.frontmatter`.
+`loushang.resource.frontmatter` remains a legacy top-level path, while
+`loushang.coding.frontmatter` is removed and Coding and method internal
+consumers import the Harness owner directly.
 
 Source metadata now lives in `loushang.harness.resources.source`, preserving
 adapter-selected string or `Path` representations. The neutral resource
@@ -417,6 +466,12 @@ Coding registers `loushang.coding.resources`, selects enabled conventions,
 add product roots and filters, apply trust/approval policy, and project the
 Harness resource snapshot into Coding prompts, sessions, commands, and UI.
 
+`PackageOperationsRuntime` now owns the shared package session lifecycle
+ordering, while `PackageCatalogDiagnosticsRecorder` records typed catalog
+diagnostics before Coding's Pi/CLI projection. Coding binds settings scope,
+source preparation, resource refresh, materializer policy, and its wire schema;
+see [Package Session Operations Boundary](package-session-operations-boundary.md).
+
 ### Slice 4: Context
 
 Status note: context budget and accounting implementation complete; later
@@ -433,10 +488,11 @@ Purpose: define shared context budget and packing contracts without moving
 coding compaction policy.
 
 `CompactionBudget`, deterministic percentage/reserve threshold accounting, and
-the `ContextUsageEstimate` result record now live under
-`loushang.harness.context`. Coding compatibility paths re-export the Harness
-owners, while Coding continues to estimate message tokens, adapt model context
-windows, build usage snapshots, and decide whether to compact.
+the `ContextUsageEstimate` result record live under `loushang.harness.context`.
+The optional `harness.transcript` profile owns Agent message token
+extraction/estimation, model context-window adaptation, usage snapshots, and
+threshold decisions. Coding injects its selected compaction policy and summary
+strategy rather than rebuilding the accounting.
 
 Context item refs, bundles, diagnostics, packing, standard compaction
 strategies, explainable salience signals, summary-profile mechanics, and the
@@ -454,12 +510,14 @@ Status: host runtime core implementation complete for integration into
 
 Purpose: let future products share idle/abort/dispose/queue contracts.
 
-Harness now owns host status/snapshots, driver-delegating lifecycle
+`harness.events` now owns host/session event facts and queue/retry results;
+`harness.runtime` owns host/run snapshots, driver-delegating lifecycle
 coordination, generic steering/follow-up queue and turn mechanics, retry and
-compaction single-flight state, ordered event mirroring, resource watch/refresh,
+compaction single-flight state, scoped runtime event sequencing and ordered
+mirroring, resource watch/refresh,
 extension lifecycle coordination, and session/navigation transactions. Coding
 uses those mechanisms while retaining `AgentSession`, Product controller policy
-and adapters, event schemas, persistence and replacement decisions, prompt
+and adapters, Product event schemas, storage composition and replacement decisions, prompt
 text, resource activation/projection, extension policy, and UI semantics.
 
 The independent reference driver and neutral queue/event fixtures satisfy the
@@ -487,20 +545,35 @@ bindings, specialized session/model/tool reducers, and UI projection remain
 Coding-owned. Product-neutral Harness tests provide the independent contract
 probe for the moved invocation shape.
 
+### Slice 7: Session Public Adapter Cull
+
+Status: implemented in the Harness lane.
+
+The common session surface now includes model/state inspection, settings and
+queue-mode binding, normalized application input, replacement callback
+plumbing, transcript export, provider-value parsing, tool coordination, and
+snake_case session statistics. These implementations live under
+`harness.session`, `harness.transcript`, and `harness.extensions`.
+Coding retains only model/provider policy callbacks, resource/package policy,
+compaction and branch semantics, command handlers, extension API wiring, and
+Product presentation. The former Coding session files are deleted rather than
+kept as forwarding facades.
+
 ## Guardrails
 
 - Do not add `loushang.harness` imports from `loushang.agent`.
 - Do not add product imports from `loushang.harness`.
 - Default reusable concrete implementations to Harness; keep only
   domain-specific tool semantics in products.
-- Freeze Product configuration semantics and credential ownership, not neutral
-  configuration mechanisms. `ControlConfig` fields, defaults, validation,
-  paths, removed-setting compatibility, convenience APIs, diagnostic wording,
-  and effect selection/order/callbacks remain Product-owned.
-- Do not route credentials, `ModelRegistry`, `AuthManager`, provider
-  registration, auth resolution, or persisted model selection through Harness.
-  Harness neither executes shell commands nor stores credentials; command-backed
-  values require an injected Product runner.
+- Keep Product-only configuration semantics in the Product, not standard Agent
+  settings or neutral configuration mechanisms. Coding retains paths,
+  Product-only overlays, diagnostic wording, and effect callbacks; common
+  `ControlConfig` fields, codecs, defaults, and accessors live in the optional
+  `harness.config.agent` profile.
+- Do not route `ModelRegistry`, provider registration, persisted model
+  selection, or AI request authentication through Harness. Harness neither
+  executes shell commands nor stores credentials; command-backed values require
+  an injected Product runner.
 - Do not move product prompt content, section selection/order, command
   definitions/handlers, or source precedence policy. Neutral template
   expansion, prompt composition, slash parsing, catalog, and dispatch mechanics

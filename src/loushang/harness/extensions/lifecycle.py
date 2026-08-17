@@ -21,6 +21,7 @@ BindRuntime = Callable[[B], object]
 InvalidateContexts = Callable[[str], object]
 EmitEvent = Callable[[object], object | Awaitable[object]]
 RefreshResources = Callable[[], object | Awaitable[object]]
+ReloadGeneration = Callable[[B], object | Awaitable[object]]
 RecordFailure = Callable[[ExtensionRuntimeOperation, Exception], None]
 SyncDiagnostics = Callable[[], object]
 
@@ -38,6 +39,7 @@ class ExtensionRuntimeCoordinator(Generic[B, S, R]):
     record_failure: RecordFailure
     sync_diagnostics: SyncDiagnostics
     invalidate_contexts_driver: InvalidateContexts | None = None
+    reload_generation: ReloadGeneration[B] | None = None
     _refreshing: bool = False
 
     @property
@@ -52,6 +54,20 @@ class ExtensionRuntimeCoordinator(Generic[B, S, R]):
         stale_context_message: str = "Runtime context is stale after reload.",
     ) -> bool:
         if reload:
+            if self.reload_generation is not None:
+                try:
+                    bindings = self.build_bindings()
+                except Exception as exc:
+                    self.record_failure("runtime_bind", exc)
+                    return False
+                try:
+                    refreshed = self.reload_generation(bindings)
+                    if inspect.isawaitable(refreshed):
+                        await refreshed
+                except Exception as exc:
+                    self.record_failure("resource_refresh", exc)
+                    return False
+                return await self._emit_start(event)
             self.invalidate_contexts(stale_context_message)
             try:
                 refreshed = self.refresh_resources()
@@ -62,6 +78,9 @@ class ExtensionRuntimeCoordinator(Generic[B, S, R]):
                 return False
         if not self.bind_bindings():
             return False
+        return await self._emit_start(event)
+
+    async def _emit_start(self, event: S) -> bool:
         try:
             emitted = self.emit_session_start(event)
             if inspect.isawaitable(emitted):

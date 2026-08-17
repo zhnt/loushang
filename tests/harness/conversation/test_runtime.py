@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -30,70 +31,13 @@ def _record(
         record_id=record_id,
         parent_id=parent_id,
         kind=kind,
+        payload_version=1,
         created_at="2026-07-13T00:00:00Z",
         payload=payload,
     )
 
 
-def _journal(path: Path):
-    from loushang.harness.conversation import (
-        ConversationHeader,
-        ConversationRecord,
-        FunctionalConversationHeaderCodec,
-        FunctionalConversationRecordCodec,
-    )
-    from loushang.harness.journal import JournalLoadPolicy, JsonlJournal
-
-    return JsonlJournal(
-        path,
-        header_codec=FunctionalConversationHeaderCodec[ConversationHeader](
-            encoder=lambda header: {
-                "type": "conversation",
-                "version": header.version,
-                "id": header.conversation_id,
-                "createdAt": header.created_at,
-                "parentId": header.parent_conversation_id,
-                "metadata": dict(header.metadata),
-            },
-            decoder=lambda value: ConversationHeader(
-                conversation_id=str(value["id"]),
-                version=int(value["version"]),
-                created_at=str(value["createdAt"]),
-                parent_conversation_id=(
-                    str(value["parentId"])
-                    if value.get("parentId") is not None
-                    else None
-                ),
-                metadata=dict(value.get("metadata", {})),
-            ),
-        ),
-        record_codec=FunctionalConversationRecordCodec[ConversationRecord[str]](
-            encoder=lambda record: {
-                "type": record.kind,
-                "id": record.record_id,
-                "parentId": record.parent_id,
-                "createdAt": record.created_at,
-                "payload": record.payload,
-                "metadata": dict(record.metadata),
-            },
-            decoder=lambda value: ConversationRecord(
-                record_id=str(value["id"]),
-                parent_id=(
-                    str(value["parentId"])
-                    if value.get("parentId") is not None
-                    else None
-                ),
-                kind=str(value["type"]),
-                created_at=str(value["createdAt"]),
-                payload=str(value["payload"]),
-                metadata=dict(value.get("metadata", {})),
-            ),
-        ),
-        load_policy=JournalLoadPolicy(header="required"),
-    )
-
-
-def _repository(*, header=None, records=(), journal=None):
+def _repository(*, header=None, records=()):
     from loushang.harness.conversation import ConversationRepository
 
     return ConversationRepository.create(
@@ -101,20 +45,15 @@ def _repository(*, header=None, records=(), journal=None):
         records=records,
         record_id=lambda record: record.record_id,
         parent_id=lambda record: record.parent_id,
-        journal=journal,
     )
 
 
-def test_conversation_repository_persists_branches_builds_tree_and_folds(
-    tmp_path: Path,
-) -> None:
+def test_conversation_repository_builds_branches_tree_and_folds() -> None:
     from loushang.harness.conversation import (
-        ConversationRepository,
         FunctionalConversationFolder,
     )
 
-    path = tmp_path / "conversation.jsonl"
-    repository = _repository(journal=_journal(path))
+    repository = _repository()
     repository.append(_record("root", None, "one"))
     repository.append(_record("left", "root", "two"))
     repository.branch("root")
@@ -136,23 +75,6 @@ def test_conversation_repository_persists_branches_builds_tree_and_folds(
     assert repository.fold_active(folder) == ["one", "three"]
     assert repository.fold_all(folder) == ["one", "two", "three"]
 
-    loaded = ConversationRepository.load(
-        _journal(path),
-        record_id=lambda record: record.record_id,
-        parent_id=lambda record: record.parent_id,
-    )
-    assert loaded.records == repository.records
-    assert loaded.leaf_id == "right"
-
-    read_only = ConversationRepository.load(
-        _journal(path),
-        record_id=lambda record: record.record_id,
-        parent_id=lambda record: record.parent_id,
-        writable=False,
-    )
-    assert read_only.path == path
-
-
 def test_conversation_repository_forks_only_the_selected_branch() -> None:
     repository = _repository(
         records=(
@@ -164,7 +86,6 @@ def test_conversation_repository_forks_only_the_selected_branch() -> None:
 
     forked = repository.fork(
         header=_header("forked"),
-        journal=None,
         leaf_id="left",
     )
 
@@ -210,142 +131,197 @@ class _Projection:
     message_count: int
 
 
-def _projection_index(path: Path):
-    from loushang.harness.journal import (
-        FunctionalProjectionCodec,
-        JsonProjectionIndex,
-    )
-
-    return JsonProjectionIndex(
-        path,
-        version=1,
-        items_key="conversations",
-        codec=FunctionalProjectionCodec(
-            encoder=lambda projection: {
-                "id": projection.conversation_id,
-                "text": projection.text,
-                "messageCount": projection.message_count,
-            },
-            decoder=lambda value: _Projection(
-                conversation_id=str(value["id"]),
-                text=str(value["text"]),
-                message_count=int(value["messageCount"]),
-            ),
-        ),
-        sort_key=lambda projection: projection.message_count,
-        reverse=True,
-        generated_at=lambda: "2026-07-13T00:00:00Z",
-    )
-
-
 def test_conversation_catalog_projects_indexes_and_queries(tmp_path: Path) -> None:
+    del tmp_path
     from loushang.harness.conversation import (
         ConversationCatalog,
+        ConversationKey,
+        ConversationProviderBinding,
         FunctionalConversationProjector,
+        MemoryConversationIndex,
+        MemoryConversationStore,
         ProjectionQuery,
     )
 
-    discovered = [
-        _repository(
-            header=_header("short"),
-            records=(_record("s1", None, "alpha"),),
-        ),
-        _repository(
-            header=_header("long"),
-            records=(
-                _record("l1", None, "alpha"),
-                _record("l2", "l1", "beta"),
-            ),
-        ),
-        _repository(
-            header=_header("other"),
-            records=(_record("o1", None, "gamma"),),
-        ),
-    ]
-    discovery_calls = 0
-
-    def discover():
-        nonlocal discovery_calls
-        discovery_calls += 1
-        return tuple(discovered)
-
     projector = FunctionalConversationProjector(
-        lambda header, records, leaf_id, source_path: _Projection(
+        lambda header, records, leaf_id, locator: _Projection(
             conversation_id=header.conversation_id,
             text=" ".join(record.payload for record in records),
             message_count=len(records),
         )
     )
-    catalog = ConversationCatalog(
-        discover=discover,
-        projector=projector,
-        index=_projection_index(tmp_path / "catalog.json"),
-    )
 
-    assert [item.conversation_id for item in catalog.refresh()] == [
-        "long",
-        "short",
-        "other",
-    ]
-    assert discovery_calls == 1
-    assert [item.conversation_id for item in catalog.list()] == [
-        "long",
-        "short",
-        "other",
-    ]
-    assert discovery_calls == 1
+    def query_items(query, items):
+        selected = query.apply(item.projection for item in items)
+        by_identity = {id(item.projection): item for item in items}
+        return tuple(by_identity[id(projection)] for projection in selected)
 
-    matches = catalog.query(
-        ProjectionQuery(
-            predicate=lambda item: "alpha" in item.text,
-            sort_key=lambda item: item.conversation_id,
-            limit=1,
+    async def scenario() -> None:
+        store = MemoryConversationStore(record_id=lambda record: record.record_id)
+        namespace = "test"
+        for conversation_id, records in (
+            ("short", (_record("s1", None, "alpha"),)),
+            (
+                "long",
+                (
+                    _record("l1", None, "alpha"),
+                    _record("l2", "l1", "beta"),
+                ),
+            ),
+            ("other", (_record("o1", None, "gamma"),)),
+        ):
+            await store.create(
+                ConversationKey(namespace, conversation_id),
+                _header(conversation_id),
+                records,
+                operation_id=f"create:{conversation_id}",
+            )
+        index = MemoryConversationIndex(query_items=query_items)
+        catalog = ConversationCatalog(
+            providers=(
+                ConversationProviderBinding("memory", namespace, store),
+            ),
+            projector=projector,
+            record_id=lambda record: record.record_id,
+            index=index,
+            query_items=query_items,
         )
-    )
-    assert [item.conversation_id for item in matches] == ["long"]
 
-    discovered.pop()
-    assert len(catalog.list()) == 3
-    assert len(catalog.list(refresh=True)) == 2
-    assert discovery_calls == 2
+        refreshed = await catalog.refresh()
+        assert refreshed.complete
+        assert {item.projection.conversation_id for item in refreshed.items} == {
+            "long",
+            "short",
+            "other",
+        }
+        matches = await catalog.list(
+            ProjectionQuery(
+                predicate=lambda item: "alpha" in item.text,
+                sort_key=lambda item: item.conversation_id,
+                limit=1,
+            )
+        )
+        assert [item.projection.conversation_id for item in matches.items] == ["long"]
+
+        other = ConversationKey(namespace, "other")
+        await store.delete(
+            other,
+            expected_revision=1,
+            operation_id="delete:other",
+        )
+        assert len((await catalog.list(ProjectionQuery())).items) == 3
+        assert len(
+            (await catalog.list(ProjectionQuery(), refresh=True)).items
+        ) == 2
+
+    asyncio.run(scenario())
 
 
 def test_conversation_catalog_projection_failure_policy_is_explicit() -> None:
     from loushang.harness.conversation import (
         ConversationCatalog,
+        ConversationKey,
+        ConversationProviderBinding,
         FunctionalConversationProjector,
+        MemoryConversationIndex,
+        MemoryConversationStore,
+        ProjectionQuery,
     )
 
-    discovered = (
-        _repository(header=_header("good"), records=()),
-        _repository(header=_header("bad"), records=()),
-    )
-
-    def project(header, records, leaf_id, source_path):
-        del records, leaf_id, source_path
+    def project(header, records, leaf_id, locator):
+        del records, leaf_id, locator
         if header.conversation_id == "bad":
             raise ValueError("bad projection")
         return header.conversation_id
 
-    projector = FunctionalConversationProjector(project)
-    with pytest.raises(ValueError, match="bad projection"):
-        ConversationCatalog(
-            discover=lambda: discovered,
-            projector=projector,
-        ).scan()
+    def query_items(query, items):
+        selected = query.apply(item.projection for item in items)
+        by_identity = {id(item.projection): item for item in items}
+        return tuple(by_identity[id(projection)] for projection in selected)
 
-    errors: list[tuple[str, str]] = []
-    compatible = ConversationCatalog(
-        discover=lambda: discovered,
-        projector=projector,
-        skip_projection_errors=True,
-        on_projection_error=lambda repository, error: errors.append(
-            (repository.header.conversation_id, str(error))
-        ),
+    async def scenario() -> None:
+        store = MemoryConversationStore()
+        namespace = "test"
+        await store.create(
+            ConversationKey(namespace, "good"),
+            _header("good"),
+            operation_id="create:good",
+        )
+        index = MemoryConversationIndex(query_items=query_items)
+        catalog = ConversationCatalog(
+            providers=(
+                ConversationProviderBinding("memory", namespace, store),
+            ),
+            projector=FunctionalConversationProjector(project),
+            record_id=lambda record: record.record_id,
+            index=index,
+            query_items=query_items,
+        )
+        first = await catalog.refresh()
+        assert first.complete
+        assert [item.projection for item in first.items] == ["good"]
+
+        await store.create(
+            ConversationKey(namespace, "bad"),
+            _header("bad"),
+            operation_id="create:bad",
+        )
+        partial = await catalog.refresh()
+        assert not partial.complete
+        assert [item.projection for item in partial.items] == ["good"]
+        assert partial.diagnostics[0].code == "conversation_projection_failed"
+        assert [item.projection for item in await index.query(ProjectionQuery())] == [
+            "good"
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_conversation_catalog_disambiguates_same_key_across_providers() -> None:
+    from loushang.harness.conversation import (
+        ConversationCatalog,
+        ConversationKey,
+        ConversationProviderBinding,
+        FunctionalConversationProjector,
+        MemoryConversationStore,
     )
 
-    assert compatible.scan() == ("good",)
-    assert errors == [("bad", "bad projection")]
+    async def scenario() -> None:
+        namespace = "shared"
+        key = ConversationKey(namespace, "same-id")
+        first = MemoryConversationStore()
+        second = MemoryConversationStore()
+        await first.create(
+            key,
+            _header("same-id"),
+            operation_id="create:first",
+        )
+        await second.create(
+            key,
+            _header("same-id"),
+            operation_id="create:second",
+        )
+        catalog = ConversationCatalog(
+            providers=(
+                ConversationProviderBinding("first", namespace, first),
+                ConversationProviderBinding("second", namespace, second),
+            ),
+            projector=FunctionalConversationProjector(
+                lambda header, records, leaf_id, locator: locator.provider_id
+            ),
+            record_id=lambda record: record.record_id,
+        )
+
+        result = await catalog.scan()
+
+        assert result.complete
+        assert {item.locator.provider_id for item in result.items} == {
+            "first",
+            "second",
+        }
+        assert {item.locator.key for item in result.items} == {key}
+
+    asyncio.run(scenario())
 
 
 def test_conversation_contracts_reject_invalid_identity_and_query_limits() -> None:

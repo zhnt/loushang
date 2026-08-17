@@ -1,20 +1,29 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
+from loushang.harness.conversation.index import (
+    ConversationIndex,
+    IndexedProjection,
+)
 from loushang.harness.conversation.ports import ConversationProjector
-from loushang.harness.conversation.repository import ConversationRepository
-from loushang.harness.journal import JsonProjectionIndex
+from loushang.harness.conversation.store import (
+    ConversationLocator,
+    ConversationProviderBinding,
+)
 
 H = TypeVar("H")
 R = TypeVar("R")
 P = TypeVar("P")
+Q = TypeVar("Q")
 
 
 @dataclass(frozen=True)
 class ProjectionQuery(Generic[P]):
+    """In-process collection helper, not a remote index query language."""
+
     predicate: Callable[[P], bool] | None = None
     sort_key: Callable[[P], Any] | None = None
     reverse: bool = False
@@ -42,64 +51,154 @@ class ProjectionQuery(Generic[P]):
         return tuple(selected)
 
 
-class ConversationCatalog(Generic[H, R, P]):
-    """Discover and project repositories, with an optional durable index cache."""
+@dataclass(frozen=True)
+class ConversationCatalogDiagnostic:
+    locator: ConversationLocator | None
+    code: str
+    message: str
+
+
+@dataclass(frozen=True)
+class ConversationCatalogResult(Generic[P]):
+    items: tuple[IndexedProjection[P], ...]
+    diagnostics: tuple[ConversationCatalogDiagnostic, ...] = ()
+
+    @property
+    def complete(self) -> bool:
+        return not self.diagnostics
+
+
+class ConversationCatalog(Generic[H, R, P, Q]):
+    """Federate authoritative Store providers into rebuildable projections."""
 
     def __init__(
         self,
         *,
-        discover: Callable[[], Iterable[ConversationRepository[H, R]]],
+        providers: Sequence[ConversationProviderBinding[H, R]],
         projector: ConversationProjector[H, R, P],
-        index: JsonProjectionIndex[P] | None = None,
-        skip_projection_errors: bool = False,
-        on_projection_error: (
-            Callable[[ConversationRepository[H, R], Exception], None] | None
+        record_id: Callable[[R], str],
+        index: ConversationIndex[P, Q] | None = None,
+        query_items: (
+            Callable[
+                [Q, Sequence[IndexedProjection[P]]],
+                Sequence[IndexedProjection[P]],
+            ]
+            | None
         ) = None,
+        page_size: int = 100,
+        publish_partial: bool = False,
     ) -> None:
-        self._discover = discover
+        provider_ids = [provider.provider_id for provider in providers]
+        if len(provider_ids) != len(set(provider_ids)):
+            raise ValueError("conversation provider ids must be unique")
+        if page_size < 1:
+            raise ValueError("conversation catalog page size must be positive")
+        self._providers = tuple(providers)
         self._projector = projector
+        self._record_id = record_id
         self._index = index
-        self._skip_projection_errors = skip_projection_errors
-        self._on_projection_error = on_projection_error
+        self._query_items = query_items
+        self._page_size = page_size
+        self._publish_partial = publish_partial
 
-    def scan(self) -> tuple[P, ...]:
-        projections: list[P] = []
-        for repository in self._discover():
-            try:
-                projections.append(self._project(repository))
-            except Exception as exc:
-                if not self._skip_projection_errors:
-                    raise
-                if self._on_projection_error is not None:
-                    self._on_projection_error(repository, exc)
-        return tuple(projections)
+    async def scan(self) -> ConversationCatalogResult[P]:
+        items: list[IndexedProjection[P]] = []
+        diagnostics: list[ConversationCatalogDiagnostic] = []
+        for provider in self._providers:
+            cursor: str | None = None
+            while True:
+                try:
+                    page = await provider.store.scan_page(
+                        provider.namespace,
+                        cursor=cursor,
+                        limit=self._page_size,
+                    )
+                except Exception as exc:
+                    diagnostics.append(
+                        ConversationCatalogDiagnostic(
+                            locator=None,
+                            code="provider_scan_failed",
+                            message=f"{provider.provider_id}: {exc}",
+                        )
+                    )
+                    break
+                diagnostics.extend(
+                    ConversationCatalogDiagnostic(
+                        locator=None,
+                        code=diagnostic.code,
+                        message=diagnostic.message,
+                    )
+                    for diagnostic in page.diagnostics
+                )
+                for head in page.heads:
+                    locator = ConversationLocator(provider.provider_id, head.key)
+                    try:
+                        load_result = await provider.store.load(head.key)
+                        snapshot = load_result.snapshot
+                        leaf_id = (
+                            self._record_id(snapshot.records[-1])
+                            if snapshot.records
+                            else None
+                        )
+                        projection = self._projector.project(
+                            header=snapshot.header,
+                            records=snapshot.records,
+                            leaf_id=leaf_id,
+                            locator=locator,
+                        )
+                        items.append(
+                            IndexedProjection(
+                                locator=locator,
+                                source_revision=snapshot.revision,
+                                projection=projection,
+                            )
+                        )
+                    except Exception as exc:
+                        diagnostics.append(
+                            ConversationCatalogDiagnostic(
+                                locator=locator,
+                                code="conversation_projection_failed",
+                                message=str(exc),
+                            )
+                        )
+                cursor = page.next_cursor
+                if cursor is None:
+                    break
+        return ConversationCatalogResult(tuple(items), tuple(diagnostics))
 
-    def refresh(self) -> tuple[P, ...]:
-        projections = self.scan()
-        if self._index is None:
-            return projections
-        return self._index.write(projections)
+    async def refresh(self) -> ConversationCatalogResult[P]:
+        result = await self.scan()
+        if self._index is not None and (result.complete or self._publish_partial):
+            await self._index.replace(result.items)
+        return result
 
-    def list(self, *, refresh: bool = False) -> tuple[P, ...]:
-        if self._index is None:
-            return self.scan()
-        return self._index.load_or_refresh(self.scan, refresh=refresh)
-
-    def query(
+    async def list(
         self,
-        query: ProjectionQuery[P] | None = None,
+        query: Q,
         *,
         refresh: bool = False,
-    ) -> tuple[P, ...]:
-        return (query or ProjectionQuery()).apply(self.list(refresh=refresh))
+    ) -> ConversationCatalogResult[P]:
+        if refresh or self._index is None:
+            result = await (self.refresh() if refresh else self.scan())
+            return self._apply_query(result, query)
+        return ConversationCatalogResult(tuple(await self._index.query(query)))
 
-    def _project(self, repository: ConversationRepository[H, R]) -> P:
-        return self._projector.project(
-            header=repository.header,
-            records=repository.records,
-            leaf_id=repository.leaf_id,
-            source_path=repository.path,
+    def _apply_query(
+        self,
+        result: ConversationCatalogResult[P],
+        query: Q,
+    ) -> ConversationCatalogResult[P]:
+        if self._query_items is None:
+            return result
+        return ConversationCatalogResult(
+            tuple(self._query_items(query, result.items)),
+            result.diagnostics,
         )
 
 
-__all__ = ["ConversationCatalog", "ProjectionQuery"]
+__all__ = [
+    "ConversationCatalog",
+    "ConversationCatalogDiagnostic",
+    "ConversationCatalogResult",
+    "ProjectionQuery",
+]

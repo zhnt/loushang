@@ -7,7 +7,7 @@ Status: accepted for `lane/harness`.
 This document defines product-neutral workspace path resolution, canonical path
 identity, optional user-input compatibility helpers, and per-path mutation
 coordination as `loushang.harness.workspace` responsibilities. Coding keeps its
-tool input syntax, default correction policy, and SDK compatibility aliases.
+tool input syntax and default correction policy.
 
 ## Path Engine Decision
 
@@ -31,20 +31,11 @@ Tilde expansion and caller-supplied `cwd` resolution are mechanisms. They do
 not grant filesystem access or choose an allowed workspace root. Product policy
 must validate the resolved path before a protected operation executes.
 
-## Coding Path Adapter
+## Product Path Policy
 
-`loushang.coding.tools.path_utils` remains the coding path policy adapter and
-accepted public import location. It keeps:
-
-- the Pi/coding `@` reference prefix;
-- coding's decision to enable Unicode-space normalization and user-input path
-  variants by default;
-- `expand_path`, `resolve_to_cwd`, `resolve_tool_path`, and `resolve_read_path`;
-- Pi-style camelCase aliases.
-
-The adapter delegates path expansion, relative resolution, candidate lookup,
-and canonicalization to harness. Existing coding behavior and error text remain
-unchanged.
+Coding's product tool pack chooses its accepted input syntax and any default
+normalizer or variant provider. The old `coding.tools.path_utils` adapter is
+removed; generic callers import the Harness path engine directly.
 
 ## Mutation Queue Decision
 
@@ -60,27 +51,17 @@ for one canonical absolute path while allowing different paths to progress
 independently. It does not decide which operations require serialization or
 whether a mutation is allowed.
 
-## Compatibility
+## Facade Removal
 
-Accepted coding paths remain available:
-
-```python
-from loushang.coding import withFileMutationQueue
-from loushang.coding.tools import with_file_mutation_queue
-from loushang.coding.tools.path_utils import resolve_tool_path
-```
-
-Coding mutation queue paths re-export the same harness-owned snake-case
-functions and lock registry. The camelCase alias remains coding-owned and
-points to the harness-owned runner. Coding path functions remain thin policy
-wrappers because their default behavior includes coding input semantics.
+`loushang.coding.tools` does not re-export path or mutation helpers. There are
+no Coding camelCase aliases; call sites use the concrete Harness API.
 
 ## Dependency Direction
 
 The target direction is:
 
 ```text
-coding path policy / concrete write and edit tools
+coding tool pack and path policy
   -> loushang.harness.workspace.paths
   -> loushang.harness.workspace.mutation_queue
   -> loushang.harness.workspace.operations
@@ -95,10 +76,10 @@ top-level `loushang.harness.__all__`.
 This migration does not:
 
 - define workspace roots, sandbox permissions, approval, or mutation policy;
-- move concrete read, write, edit, list, find, or grep tools;
+- choose concrete product tool membership;
 - make the `@` prefix a harness default;
 - make Unicode or platform correction helpers mandatory;
-- move Pi-style aliases into harness;
+- move Pi-style aliases into harness or Coding;
 - change coding path resolution order, queue concurrency, or cleanup behavior.
 
 ## Validation
@@ -108,8 +89,8 @@ The migration must prove:
 - current-user expansion and caller-supplied `cwd` resolution;
 - configurable normalizer and variant-provider ordering;
 - stable absolute canonical identity and relative-path rejection;
-- all coding path compatibility behaviors remain unchanged;
+- direct Harness callers preserve configured path behavior;
 - same-path serialization, different-path concurrency, and failure cleanup;
-- coding queue imports preserve function and registry identity;
+- direct Harness queue imports preserve function and registry identity;
 - write/edit monkeypatch behavior remains unchanged;
 - harness import boundaries and top-level export discipline still pass.

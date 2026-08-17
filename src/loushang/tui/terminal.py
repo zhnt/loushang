@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from dataclasses import replace as dataclass_replace
 from pathlib import Path
-from typing import Protocol, Sequence, TextIO, TypeVar, runtime_checkable
+from typing import Protocol, TextIO, TypeVar, runtime_checkable
 
 from loushang.tui.cell_width import _extract_control_sequence
 
@@ -175,6 +175,7 @@ class FakeScreen:
     size: TerminalSize
     visible_lines: tuple[str, ...]
     cell_styles: tuple[tuple[FakeCellStyle, ...], ...]
+    scrollback_lines: tuple[str, ...] = ()
     cursor_row: int = 0
     cursor_column: int = 0
     viewport_top: int = 0
@@ -203,6 +204,7 @@ class FakeScreen:
             size=size,
             visible_lines=lines,
             cell_styles=styles,
+            scrollback_lines=self.scrollback_lines,
             cursor_row=min(self.cursor_row, size.rows - 1),
             cursor_column=min(self.cursor_column, size.columns - 1),
             viewport_top=self.viewport_top,
@@ -235,10 +237,21 @@ class FakeScreen:
             return self._replace(cursor_column=0, autowrap_pending=False)
         if operation.kind == "clear_line":
             return self._set_line(self.cursor_row, "")._replace(autowrap_pending=False)
+        if operation.kind == "clear_from_cursor":
+            return self._clear_from_cursor()
         if operation.kind == "clear_screen":
-            return FakeScreen.empty(self.size)
+            cleared = FakeScreen.empty(self.size)
+            return cleared._replace(
+                scrollback_lines=self.scrollback_lines,
+                viewport_top=self.viewport_top,
+                scrollback_cleared=self.scrollback_cleared,
+            )
         if operation.kind == "clear_scrollback":
-            return self._replace(viewport_top=0, scrollback_cleared=True)
+            return self._replace(
+                scrollback_lines=(),
+                viewport_top=0,
+                scrollback_cleared=True,
+            )
         if operation.kind == "set_scroll_region":
             top = max(0, min(0 if operation.row is None else operation.row, self.size.rows - 1))
             bottom = max(top, min(top if operation.bottom is None else operation.bottom, self.size.rows - 1))
@@ -248,6 +261,7 @@ class FakeScreen:
                 size=self.size,
                 visible_lines=self.visible_lines,
                 cell_styles=self.cell_styles,
+                scrollback_lines=self.scrollback_lines,
                 cursor_row=self.cursor_row,
                 cursor_column=self.cursor_column,
                 viewport_top=self.viewport_top,
@@ -316,6 +330,7 @@ class FakeScreen:
                 size=self.size,
                 visible_lines=(*self.visible_lines[1:], ""),
                 cell_styles=(*self.cell_styles[1:], _empty_style_row(self.size.columns)),
+                scrollback_lines=(*self.scrollback_lines, self.visible_lines[0]),
                 cursor_row=self.size.rows - 1,
                 cursor_column=0,
                 viewport_top=self.viewport_top + 1,
@@ -338,6 +353,7 @@ class FakeScreen:
                 size=self.size,
                 visible_lines=(*self.visible_lines[1:], ""),
                 cell_styles=(*self.cell_styles[1:], _empty_style_row(self.size.columns)),
+                scrollback_lines=(*self.scrollback_lines, self.visible_lines[0]),
                 cursor_row=bottom,
                 cursor_column=0,
                 viewport_top=self.viewport_top + 1,
@@ -369,6 +385,25 @@ class FakeScreen:
         styles[row] = _empty_style_row(self.size.columns)
         return self._replace(visible_lines=tuple(lines), cell_styles=tuple(styles))
 
+    def _clear_from_cursor(self) -> FakeScreen:
+        lines = list(self.visible_lines)
+        styles = list(self.cell_styles)
+        lines[self.cursor_row] = lines[self.cursor_row][
+            : self.cursor_column
+        ].rstrip()
+        current_styles = list(styles[self.cursor_row])
+        for column in range(self.cursor_column, self.size.columns):
+            current_styles[column] = FakeCellStyle()
+        styles[self.cursor_row] = tuple(current_styles)
+        for row in range(self.cursor_row + 1, self.size.rows):
+            lines[row] = ""
+            styles[row] = _empty_style_row(self.size.columns)
+        return self._replace(
+            visible_lines=tuple(lines),
+            cell_styles=tuple(styles),
+            autowrap_pending=False,
+        )
+
     def _set_cell(self, row: int, column: int, char: str, style: FakeCellStyle) -> FakeScreen:
         lines = list(self.visible_lines)
         padded = lines[row].ljust(self.size.columns)
@@ -385,6 +420,7 @@ class FakeScreen:
         *,
         visible_lines: tuple[str, ...] | None = None,
         cell_styles: tuple[tuple[FakeCellStyle, ...], ...] | None = None,
+        scrollback_lines: tuple[str, ...] | None = None,
         cursor_row: int | None = None,
         cursor_column: int | None = None,
         viewport_top: int | None = None,
@@ -398,6 +434,7 @@ class FakeScreen:
             size=self.size,
             visible_lines=self.visible_lines if visible_lines is None else visible_lines,
             cell_styles=self.cell_styles if cell_styles is None else cell_styles,
+            scrollback_lines=self.scrollback_lines if scrollback_lines is None else scrollback_lines,
             cursor_row=self.cursor_row if cursor_row is None else cursor_row,
             cursor_column=self.cursor_column if cursor_column is None else cursor_column,
             viewport_top=self.viewport_top if viewport_top is None else viewport_top,

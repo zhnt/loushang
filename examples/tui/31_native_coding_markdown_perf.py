@@ -9,10 +9,18 @@ from collections import Counter
 from dataclasses import dataclass, field
 from io import StringIO
 from time import perf_counter
-from typing import Any, TextIO
+from typing import Any, TextIO, cast
 
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.screen_loop import run_screen_coding_tui
+from loushang.coding.ui.screen_input import (
+    CODING_CANCELLATION_MESSAGE,
+    CODING_INTERRUPTION_MESSAGE,
+    build_screen_input_router,
+)
+from loushang.harnesstui.conversation.screen_runner import (
+    ConversationInputRouterFactoryPort,
+    run_conversation_screen,
+)
 from loushang.tui import (
     PlaybackStep,
     ProcessTerminalPort,
@@ -302,7 +310,7 @@ async def run_interactive(
         session_label="manual",
     )
     app.set_status("type 1, 10, 100... /quit exits")
-    return await run_screen_coding_tui(
+    return await run_conversation_screen(
         app=app,
         stdin=stdin,
         stdout=stdout,
@@ -311,6 +319,12 @@ async def run_interactive(
         ),
         on_abort=lambda: None,
         should_exit=lambda text: text.strip() in {"/quit", "/exit", "q"},
+        input_router_factory=cast(
+            ConversationInputRouterFactoryPort,
+            build_screen_input_router,
+        ),
+        interruption_message=CODING_INTERRUPTION_MESSAGE,
+        cancellation_message=CODING_CANCELLATION_MESSAGE,
     )
 
 

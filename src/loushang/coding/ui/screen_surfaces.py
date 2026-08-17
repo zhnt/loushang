@@ -1,958 +1,127 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field, replace
-from typing import Any, Literal, Protocol
+from typing import Any
 
-from loushang.coding.commands.catalog import CodingCommandCatalog
-from loushang.coding.ui.command_list import (
-    coding_command_palette,
-    format_coding_commands,
-)
+from loushang.coding.continuity import bind_coding_continuity
+from loushang.coding.model_selection_tui import select_available_model
 from loushang.coding.ui.hotkeys import format_hotkeys
-from loushang.coding.ui.intent import (
-    CommandSelectIntent,
-    CommandsIntent,
-    HotkeysIntent,
-    ModelSelectIntent,
-    ModelsIntent,
-    SettingsIntent,
-    TerminalDiagnosticsIntent,
-    parse_prompt_intent,
-)
-from loushang.coding.ui.model import (
-    current_model_first,
-    get_session_model_selection,
-    iter_scoped_model_selections,
-    model_label_from_selection,
-)
-from loushang.coding.ui.model_list import (
-    ModelChoice,
-    available_model_choices,
-    current_model_choice_value,
-    format_available_models,
-    model_detail_descriptions_by_label,
-    select_available_model,
-)
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.settings_page import SettingsPageView
-from loushang.coding.ui.status_provider import CodingTuiStatusProvider
-from loushang.harness.commands import CommandDef, CommandKind
-from loushang.tui import (
-    ApprovalSurface,
-    CommandPalette,
-    CommandSurface,
-    CursorDeclaration,
-    FocusableMixin,
-    InfoPanel,
-    InputEvent,
-    InputIntent,
-    RenderConstraints,
-    RenderLine,
-    RenderResult,
-    SelectionSurface,
-    SelectItem,
-    Surface,
-    SurfaceHandle,
-    apply_theme_style,
+from loushang.coding.ui.settings_page import build_coding_settings_page
+from loushang.harness.session import SessionApprovalInteractionPort
+from loushang.harnesstui.conversation.agent_application import (
+    current_agent_runtime_session,
 )
-from loushang.tui.cell_width import truncate_to_width, wrap_cells
+from loushang.harnesstui.conversation.agent_surfaces import (
+    build_standard_agent_screen_surface_workflow_ports,
+)
+from loushang.harnesstui.selection.binding import (
+    SessionModelSelectorSurfaceProfile,
+)
+from loushang.harnesstui.status.provider import StatusProvider
+from loushang.harnesstui.surface.workflow import (
+    STANDARD_SCREEN_SURFACE_WORKFLOW_COPY,
+    ScreenSurfaceCommandCatalog,
+    ScreenSurfaceWorkflow,
+)
 
-ScreenSurfacePurpose = Literal[
-    "info", "model", "command", "settings", "dialog", "approval"
-]
-ScreenSurfacePresentation = Literal["bottom", "bottom-exclusive"]
-SurfaceEventKind = Literal["surface_submit", "surface_close"]
-SurfaceEventSource = Literal["model", "command", "settings", "dialog", "approval"]
-MODEL_SELECTOR_SELECTED_STYLE = {"color": 33, "bold": True}
+_CODING_MODEL_SELECTOR_PROFILE = SessionModelSelectorSurfaceProfile(
+    subtitle=(
+        "Choose a model for this session · legacy: "
+        "loushang --model <provider:model>"
+    ),
+    presentation="bottom-exclusive",
+)
 
 
-class ScreenCommandCatalog(Protocol):
-    def lookup(self, text: str) -> CommandDef | None: ...
+class ScreenSurfaceManager(ScreenSurfaceWorkflow):
+    """Coding product adapter over the shared surface interaction host."""
 
-    def commands(self) -> tuple[CommandDef, ...]: ...
-
-
-@dataclass(slots=True)
-class ScreenSurfaceView(FocusableMixin):
-    title: str
-    purpose: ScreenSurfacePurpose
-    content: Any
-    footer: str = "Enter to select - Esc to close"
-    subtitle: str = ""
-    presentation: ScreenSurfacePresentation = "bottom"
-    preferred_height: int | None = None
-    _last_content_start_row: int = field(default=0, init=False, repr=False)
-    _info_scroll_offset: int = field(default=0, init=False, repr=False)
-    _last_info_body_height: int = field(default=0, init=False, repr=False)
-    _last_info_body_line_count: int = field(default=0, init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        FocusableMixin.__init__(self)
+    def __init__(
+        self,
+        *,
+        app: ScreenCodingTuiApp,
+        session: Any,
+        runtime: Any | None = None,
+        status_provider: StatusProvider,
+        on_approval: Callable[[dict[str, Any]], Awaitable[bool | None]] | None = None,
+        approval_interaction_provider: (
+            Callable[[], SessionApprovalInteractionPort | None] | None
+        ) = None,
+        command_catalog: ScreenSurfaceCommandCatalog | None = None,
+    ) -> None:
+        self.session = session
+        self.runtime = runtime
+        self.status_provider = status_provider
+        continuity = bind_coding_continuity(runtime) if runtime is not None else None
+        ports = build_standard_agent_screen_surface_workflow_ports(
+            session,
+            runtime=runtime,
+            continuity_hub=continuity.hub if continuity is not None else None,
+            session_provider=self._current_session,
+            approval_interaction_provider=approval_interaction_provider,
+            select_model=lambda value: select_available_model(
+                self._current_session(),
+                query=value,
+            ),
+            set_model_label=lambda label: setattr(
+                app.state,
+                "model_label",
+                label,
+            ),
+            set_session_label=lambda label: setattr(
+                app.state,
+                "session_label",
+                label,
+            ),
+            set_permission_profile_label=lambda label: setattr(
+                app.state,
+                "permission_profile",
+                label,
+            ),
+            build_settings_content=self._build_settings_content,
+            terminal_diagnostics=self._terminal_diagnostics,
+            hotkeys=format_hotkeys,
+            request_render=app.request_render,
+            on_approval=on_approval,
+            command_catalog=command_catalog,
+            model_selector_profile=_CODING_MODEL_SELECTOR_PROFILE,
+        )
+        self.command_catalog = ports.command_catalog
+        super().__init__(
+            app=app,
+            ports=ports,
+            copy=STANDARD_SCREEN_SURFACE_WORKFLOW_COPY,
+        )
 
     @property
-    def exclusive_bottom(self) -> bool:
-        return self.presentation == "bottom-exclusive"
+    def coding_app(self) -> ScreenCodingTuiApp:
+        app = self.app
+        if not isinstance(app, ScreenCodingTuiApp):  # pragma: no cover - constructor
+            raise TypeError("Coding surface manager requires ScreenCodingTuiApp")
+        return app
 
-    def editor_input_target(self) -> object | None:
-        target = getattr(self.content, "editor_input_target", None)
-        return target() if callable(target) else None
-
-    def handle_input(self, event: InputEvent) -> InputIntent | None:
-        if self.purpose == "info":
-            if event.kind == "key" and event.key in {"enter", "space", "escape", "esc"}:
-                return InputIntent(kind="surface_close")
-            if event.kind == "key":
-                return self._handle_info_scroll_input(event.key)
-            return None
-        handler = getattr(self.content, "handle_input", None)
-        if callable(handler):
-            intent = _screen_input_intent_or_none(
-                handler(self._translate_content_input_event(event))
-            )
-            if intent is not None:
-                return intent
-        if event.kind == "key" and event.key in {"escape", "esc"}:
-            return InputIntent(kind="surface_close")
-        return None
-
-    def render(self, constraints: RenderConstraints) -> RenderResult:
-        width = constraints.width
-        lines = [truncate_to_width(self.title, max_width=width)]
-        cursor: CursorDeclaration | None = None
-        if self.subtitle:
-            lines.append(truncate_to_width(self.subtitle, max_width=width))
-        lines.append("")
-        reserved_footer_lines = 2 if self.footer else 0
-        body_constraints = RenderConstraints(
-            width=width,
-            max_height=max(
-                1, constraints.max_height - len(lines) - reserved_footer_lines
-            ),
-        )
-        if isinstance(self.content, InfoPanel):
-            body_lines: list[str] = []
-            for raw_line in self.content.text.splitlines():
-                body_lines.extend(wrap_cells(raw_line, width=width) or [""])
-            self._last_info_body_height = body_constraints.max_height
-            self._last_info_body_line_count = len(body_lines)
-            max_offset = self._max_info_scroll_offset()
-            self._info_scroll_offset = max(0, min(self._info_scroll_offset, max_offset))
-            visible_body_lines = body_lines[
-                self._info_scroll_offset : self._info_scroll_offset
-                + body_constraints.max_height
-            ]
-            body_start_row = len(lines)
-            lines.extend(visible_body_lines)
-            if visible_body_lines:
-                cursor = CursorDeclaration(
-                    row=body_start_row + len(visible_body_lines) - 1, column=0
-                )
-        else:
-            self._last_content_start_row = len(lines)
-            result = self.content.render(body_constraints)
-            lines.extend(line.text for line in result.lines)
-            if result.cursor is not None:
-                cursor_row = self._last_content_start_row + result.cursor.row
-                if cursor_row < constraints.max_height:
-                    cursor = CursorDeclaration(
-                        row=cursor_row, column=result.cursor.column
-                    )
-        footer = self._footer_text()
-        if footer and len(lines) < constraints.max_height:
-            if len(lines) + 1 < constraints.max_height:
-                lines.append("")
-            lines.append(truncate_to_width(footer, max_width=width))
-        return RenderResult.from_lines(
-            [RenderLine(line) for line in lines[: constraints.max_height]],
-            constraints=constraints,
-            cursor=cursor,
-        )
-
-    def _translate_content_input_event(self, event: InputEvent) -> InputEvent:
-        if event.kind != "mouse" or event.mouse_row is None:
-            return event
-        return replace(event, mouse_row=event.mouse_row - self._last_content_start_row)
-
-    def _handle_info_scroll_input(self, key: str) -> InputIntent | None:
-        page = max(1, self._last_info_body_height)
-        if key == "down":
-            return self._scroll_info(1)
-        if key == "up":
-            return self._scroll_info(-1)
-        if key == "pageDown":
-            return self._scroll_info(page)
-        if key == "pageUp":
-            return self._scroll_info(-page)
-        if key == "home":
-            return self._set_info_scroll(0)
-        if key == "end":
-            return self._set_info_scroll(self._max_info_scroll_offset())
-        return None
-
-    def _scroll_info(self, delta: int) -> InputIntent | None:
-        return self._set_info_scroll(self._info_scroll_offset + delta)
-
-    def _set_info_scroll(self, offset: int) -> InputIntent | None:
-        max_offset = self._max_info_scroll_offset()
-        next_offset = max(0, min(offset, max_offset))
-        if next_offset == self._info_scroll_offset:
-            return None
-        self._info_scroll_offset = next_offset
-        return InputIntent(kind="consumed", note="info_scroll")
-
-    def _max_info_scroll_offset(self) -> int:
-        return max(0, self._last_info_body_line_count - self._last_info_body_height)
-
-    def _footer_text(self) -> str:
-        if not self.footer:
-            return ""
-        if self.purpose == "info" and self._max_info_scroll_offset() > 0:
-            return f"Up/Down/Page to scroll - {self.footer}"
-        return self.footer
-
-
-@dataclass(frozen=True, slots=True)
-class SurfaceEvent:
-    kind: SurfaceEventKind
-    source: SurfaceEventSource | None = None
-    payload: Any = None
-
-
-@dataclass(slots=True)
-class ModelSelectorSurface:
-    all_items: tuple[SelectItem, ...]
-    scoped_items: tuple[SelectItem, ...] = ()
-    selected_value: str | None = None
-    max_visible: int = 10
-    _scope: Literal["all", "scoped"] = field(default="all", init=False)
-    _surface: SelectionSurface = field(init=False, repr=False)
-    _filter_text: str = field(default="", init=False, repr=False)
-    _pending_ordinal: str = field(default="", init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        if self.scoped_items:
-            self._scope = "scoped"
-        self._rebuild_surface()
-
-    def focus(self) -> None:
-        self._surface.focus()
-
-    def blur(self) -> None:
-        self._surface.blur()
-
-    def handle_input(self, event: InputEvent) -> InputIntent | None:
-        if event.kind == "text":
-            consumed, quick_select = self._handle_ordinal_text(event.text)
-            if consumed:
-                return quick_select
-        if event.kind == "key" and event.key == "enter" and self._pending_ordinal:
-            return self._select_pending_ordinal()
-        if event.kind == "key" and event.key == "tab" and self.scoped_items:
-            self._set_scope("all" if self._scope == "scoped" else "scoped")
-            return None
-        if event.kind == "key" and event.key == "right" and self.scoped_items:
-            self._set_scope("all")
-            return None
-        if event.kind == "key" and event.key == "left" and self.scoped_items:
-            self._set_scope("scoped")
-            return None
-        if event.kind != "text":
-            self._pending_ordinal = ""
-        intent = self._surface.handle_input(event)
-        self._filter_text = self._surface.filter_text
-        return _screen_input_intent_or_none(intent)
-
-    def render(self, constraints: RenderConstraints) -> RenderResult:
-        if not self.scoped_items:
-            return self._surface.render(constraints)
-        header = [RenderLine(self._scope_line()), RenderLine("")]
-        body_height = constraints.max_height - len(header)
-        if body_height <= 0:
-            return RenderResult.from_lines(
-                header[: constraints.max_height], constraints=constraints
-            )
-        body = self._surface.render(
-            RenderConstraints(
-                width=constraints.width,
-                max_height=body_height,
-                visible_height=constraints.visible_height,
-            )
-        )
-        cursor = (
-            replace(body.cursor, row=body.cursor.row + len(header))
-            if body.cursor is not None
-            else None
-        )
-        return RenderResult.from_lines(
-            [*header, *body.lines], constraints=constraints, cursor=cursor
-        )
-
-    def _rebuild_surface(self) -> None:
-        items = self.scoped_items if self._scope == "scoped" else self.all_items
-        selected_index = _selected_model_item_index(items, self.selected_value)
-        self._surface = SelectionSurface(
-            items,
-            max_visible=self.max_visible,
-            select_kind="select",
-            selected_index=selected_index,
-            empty_text="No matching models",
-            show_scroll_info=False,
-            selected_style=MODEL_SELECTOR_SELECTED_STYLE,
-            enable_search=True,
-            show_search_when_empty=False,
-            filter_mode="contains",
-        )
-        if self._filter_text:
-            self._surface.set_filter(self._filter_text)
-
-    def _set_scope(self, scope: Literal["all", "scoped"]) -> None:
-        if not self.scoped_items:
-            return
-        self._pending_ordinal = ""
-        self._filter_text = self._surface.filter_text
-        self._scope = scope
-        self._rebuild_surface()
-
-    def _scope_line(self) -> str:
-        if self._scope == "scoped":
-            scoped = apply_theme_style("scoped", MODEL_SELECTOR_SELECTED_STYLE)
-            return f"Scope: {scoped} | all"
-        all_models = apply_theme_style("all", MODEL_SELECTOR_SELECTED_STYLE)
-        return f"Scope: {all_models} | scoped"
-
-    def _handle_ordinal_text(self, text: str) -> tuple[bool, InputIntent | None]:
-        if (
-            self._surface.filter_text
-            or not text
-            or any(digit not in "0123456789" for digit in text)
-        ):
-            self._pending_ordinal = ""
-            return False, None
-        consumed = False
-        for digit in text:
-            digit_consumed, intent = self._handle_ordinal_digit(digit)
-            if not digit_consumed:
-                return consumed, None
-            consumed = True
-            if intent is not None:
-                return True, intent
-        return consumed, None
-
-    def _handle_ordinal_digit(self, digit: str) -> tuple[bool, InputIntent | None]:
-        items = self._current_items()
-        if not items:
-            self._pending_ordinal = ""
-            return False, None
-        if not self._pending_ordinal and digit == "0":
-            intent = self._select_ordinal(10)
-            return intent is not None, intent
-
-        candidate = f"{self._pending_ordinal}{digit}"
-        if not self._ordinal_is_possible(candidate, len(items)):
-            consumed = bool(self._pending_ordinal)
-            self._pending_ordinal = ""
-            return consumed, None
-
-        ordinal = int(candidate)
-        if 1 <= ordinal <= len(items) and not self._has_longer_ordinal_match(
-            candidate, len(items)
-        ):
-            self._pending_ordinal = ""
-            return True, self._select_ordinal(ordinal)
-
-        self._pending_ordinal = candidate
-        return True, None
-
-    def _select_pending_ordinal(self) -> InputIntent | None:
-        if not self._pending_ordinal:
-            return None
-        pending = self._pending_ordinal
-        self._pending_ordinal = ""
-        if not self._ordinal_is_possible(pending, len(self._current_items())):
-            return None
-        return self._select_ordinal(int(pending))
-
-    def _select_ordinal(self, ordinal: int) -> InputIntent | None:
-        index = ordinal - 1
-        items = self._current_items()
-        if index < 0 or index >= len(items):
-            return None
-        return InputIntent(kind="select", text=items[index].selected_value)
-
-    def _current_items(self) -> tuple[SelectItem, ...]:
-        return self.scoped_items if self._scope == "scoped" else self.all_items
-
-    @staticmethod
-    def _ordinal_is_possible(prefix: str, item_count: int) -> bool:
-        if not prefix:
-            return False
-        ordinal = int(prefix)
+    def _terminal_diagnostics(self) -> str:
+        provider = self.coding_app.terminal_diagnostics_provider
         return (
-            1 <= ordinal <= item_count
-            or ModelSelectorSurface._has_longer_ordinal_match(prefix, item_count)
-        )
-
-    @staticmethod
-    def _has_longer_ordinal_match(prefix: str, item_count: int) -> bool:
-        if not prefix or prefix.startswith("0"):
-            return False
-        prefix_length = len(prefix)
-        max_length = len(str(item_count))
-        for length in range(prefix_length + 1, max_length + 1):
-            lower = int(f"{prefix}{'0' * (length - prefix_length)}")
-            if lower <= item_count:
-                return True
-        return False
-
-
-@dataclass(slots=True)
-class ScreenSurfaceManager:
-    app: ScreenCodingTuiApp
-    session: Any
-    status_provider: CodingTuiStatusProvider
-    on_approval: Callable[[dict[str, Any]], Awaitable[bool | None]] | None = None
-    command_catalog: ScreenCommandCatalog | None = None
-    _handlers: dict[SurfaceEventSource, Callable[[Any], Awaitable[None]]] = field(
-        init=False, repr=False
-    )
-    _active_overlay_view: ScreenSurfaceView | None = None
-    _active_overlay_handle: SurfaceHandle | None = None
-    _approval_queue: list[ApprovalSurface] = field(default_factory=list, repr=False)
-    _approval_transitioning: bool = field(default=False, init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        self._handlers = {
-            "model": self._handle_model_submit,
-            "command": self._handle_command_submit,
-            "settings": self._handle_settings_submit,
-            "dialog": self._handle_dialog_submit,
-            "approval": self._handle_approval_submit,
-        }
-        if self.command_catalog is None:
-            self.command_catalog = CodingCommandCatalog(
-                session_commands=_session_commands_provider(self.session)
-            )
-
-    def is_local_command(self, text: str) -> bool:
-        return self._lookup_local_command(text) is not None
-
-    async def handle_text(self, text: str) -> int | None:
-        command = self._lookup_local_command(text)
-        if command is None:
-            return None
-        intent = parse_prompt_intent(text)
-        if command.name == "model" and isinstance(intent, ModelSelectIntent):
-            await self._handle_model_intent(intent)
-        elif command.name == "models" and isinstance(intent, ModelsIntent):
-            models_text = await format_available_models(
-                self.session, query=intent.query
-            )
-            self._open_info(
-                "Available Models",
-                _models_info_body(models_text),
-                presentation="bottom-exclusive",
-            )
-        elif command.name == "command" and isinstance(intent, CommandSelectIntent):
-            await self._handle_command_intent(intent)
-        elif command.name == "commands" and isinstance(intent, CommandsIntent):
-            self._open_info(
-                "Commands",
-                await format_coding_commands(
-                    self.session,
-                    query=intent.query,
-                    command_catalog=self._list_command_catalog(),
-                ),
-            )
-        elif command.name == "terminal" and isinstance(
-            intent, TerminalDiagnosticsIntent
-        ):
-            self._open_terminal_diagnostics()
-        elif command.name == "hotkeys" and isinstance(intent, HotkeysIntent):
-            self._open_info("Hotkeys", format_hotkeys())
-        elif command.name in {"settings", "config"} and isinstance(
-            intent, SettingsIntent
-        ):
-            await self._open_settings()
-        return None
-
-    def _lookup_local_command(self, text: str) -> CommandDef | None:
-        if self.command_catalog is None:
-            return None
-        command = self.command_catalog.lookup(text)
-        if command is None or command.kind is not CommandKind.LOCAL_UI:
-            return None
-        return command
-
-    def _list_command_catalog(self) -> CodingCommandCatalog | None:
-        return (
-            self.command_catalog
-            if isinstance(self.command_catalog, CodingCommandCatalog)
-            else None
-        )
-
-    async def handle_surface_intent(self, intent: InputIntent) -> int | None:
-        surface = self._current_surface()
-        if not isinstance(surface, ScreenSurfaceView):
-            return None
-
-        event = self._normalize_surface_intent(intent, surface)
-        if event is None:
-            return None
-        if event.kind == "surface_close":
-            self.close_surface()
-            return None
-        handler = self._handlers.get(event.source)
-        if handler is None:
-            return None
-        await handler(event.payload)
-        return None
-
-    def _normalize_surface_intent(
-        self, intent: InputIntent, surface: ScreenSurfaceView
-    ) -> SurfaceEvent | None:
-        if intent.kind in {"surface_close", "dialog_cancel"}:
-            if surface.purpose == "approval":
-                return _approval_surface_event(surface, approved=False)
-            return SurfaceEvent(kind="surface_close", source=None)
-        if surface.purpose == "model" and intent.kind in {"command", "select"}:
-            return SurfaceEvent(
-                kind="surface_submit", source="model", payload=intent.text
-            )
-        if surface.purpose == "command" and intent.kind in {"command", "select"}:
-            return SurfaceEvent(
-                kind="surface_submit", source="command", payload=intent.text
-            )
-        if surface.purpose == "settings" and intent.kind == "setting":
-            return SurfaceEvent(
-                kind="surface_submit",
-                source="settings",
-                payload={"id": intent.text, "value": intent.note},
-            )
-        if surface.purpose == "dialog" and intent.kind == "dialog_confirm":
-            return SurfaceEvent(kind="surface_submit", source="dialog")
-        if surface.purpose == "approval" and intent.kind in {"approve", "reject"}:
-            return _approval_surface_event(
-                surface,
-                approved=intent.kind == "approve",
-                note=intent.note,
-            )
-        return None
-
-    async def _handle_model_submit(self, payload: str) -> None:
-        try:
-            message = await select_available_model(self.session, query=payload)
-        except Exception as error:
-            self.app.set_status(_recoverable_surface_error(error))
-            return
-        self.close_surface()
-        await self._refresh_model_label()
-        self.app.set_status(message)
-
-    async def _handle_command_submit(self, payload: str) -> None:
-        command = payload.strip()
-        if command:
-            self.app.composer.set_text(command + (" " if " " not in command else ""))
-            self.app.set_status(f"Command selected: {command}")
-        self.close_surface()
-
-    async def _handle_settings_submit(self, payload: dict[str, str]) -> None:
-        surface = self._current_surface()
-        page = surface.content if isinstance(surface, ScreenSurfaceView) else None
-        apply_setting = getattr(page, "apply_setting", None)
-        if not callable(apply_setting):
-            return
-        result = await apply_setting(payload["id"], payload.get("value", ""))
-        if result.statusline_settings is not None:
-            self.app.set_statusline_settings(result.statusline_settings)
-        elif result.statusline_visible is not None:
-            self.app.set_statusline_visible(result.statusline_visible)
-        if result.refresh_model_label:
-            await self._refresh_model_label()
-        self.app.request_render("product")
-
-    async def _handle_dialog_submit(self, _payload: Any | None = None) -> None:
-        self.close_surface()
-
-    async def _handle_approval_submit(
-        self, payload: dict[str, Any] | None = None
-    ) -> None:
-        self._approval_transitioning = True
-        self.close_surface()
-        try:
-            accepted = True
-            if self.on_approval is not None:
-                accepted = await self.on_approval(payload or {}) is not False
-            if not accepted:
-                self.app.set_status("Approval request is no longer pending")
-            elif payload is not None and payload.get("approved"):
-                self.app.set_status(f"Action confirmed: {payload.get('action')}")
-            elif payload is not None:
-                self.app.set_status("Action rejected")
-        finally:
-            self._approval_transitioning = False
-            self._open_next_approval()
-
-    def close_surface(self) -> None:
-        if self._active_overlay_handle is not None:
-            self._active_overlay_handle.close("closed")
-        self._active_overlay_handle = None
-        self._active_overlay_view = None
-        self.app.active_surface = None
-
-    def clear_approval_surfaces(self) -> None:
-        self._approval_queue.clear()
-        current = self._current_surface()
-        if isinstance(current, ScreenSurfaceView) and current.purpose == "approval":
-            self.close_surface()
-
-    def dismiss_approval(self, action_id: str) -> None:
-        current = self._current_surface()
-        if (
-            isinstance(current, ScreenSurfaceView)
-            and current.purpose == "approval"
-            and getattr(current.content, "action_id", None) == action_id
-        ):
-            self.close_surface()
-            if not self._approval_transitioning:
-                self._open_next_approval()
-            return
-        self._approval_queue = [
-            approval
-            for approval in self._approval_queue
-            if approval.action_id != action_id
-        ]
-
-    async def _handle_model_intent(self, intent: ModelSelectIntent) -> None:
-        if intent.query.strip():
-            try:
-                message = await select_available_model(self.session, query=intent.query)
-            except Exception as error:
-                self.app.set_status(_recoverable_surface_error(error))
-            else:
-                await self._refresh_model_label()
-                self.app.set_status(message)
-            return
-        await self._open_model_selector()
-
-    async def _handle_command_intent(self, intent: CommandSelectIntent) -> None:
-        if intent.query.strip():
-            command = (
-                intent.query if intent.query.startswith("/") else f"/{intent.query}"
-            )
-            self.app.composer.set_text(command + " ")
-            self.app.set_status(f"Command selected: {command}")
-            return
-        self._open_palette(
-            "Commands",
-            await coding_command_palette(
-                self.session,
-                title="Commands",
-                command_catalog=self._list_command_catalog(),
-            ),
-            purpose="command",
-        )
-
-    def _open_palette(
-        self,
-        title: str,
-        palette: CommandPalette,
-        *,
-        purpose: Literal["model", "command"],
-    ) -> None:
-        surface = CommandSurface(_palette_items(palette), max_visible=8)
-        self._open_surface(
-            ScreenSurfaceView(title=title, purpose=purpose, content=surface)
-        )
-
-    async def _open_model_selector(self) -> None:
-        current_label = model_label_from_selection(
-            await get_session_model_selection(self.session)
-        )
-        choices = await available_model_choices(self.session)
-        current_value = await current_model_choice_value(self.session, choices=choices)
-        scoped_selections = await iter_scoped_model_selections(self.session)
-        descriptions = await model_detail_descriptions_by_label(self.session)
-        surface = ModelSelectorSurface(
-            all_items=tuple(
-                _model_choice_selector_items(choices, current_value=current_value)
-            ),
-            scoped_items=tuple(
-                _model_selector_items(
-                    scoped_selections,
-                    current_label=current_label,
-                    descriptions=descriptions,
-                )
-            ),
-            selected_value=current_value or current_label,
-            max_visible=10,
-        )
-        self._open_surface(
-            ScreenSurfaceView(
-                title="Select Model",
-                subtitle="Access legacy models by running loushang --model <provider/model>.",
-                purpose="model",
-                content=surface,
-                footer="  Press number or enter to confirm or esc to go back",
-                presentation="bottom-exclusive",
-            )
-        )
-
-    def _open_info(
-        self,
-        title: str,
-        text: str,
-        *,
-        presentation: ScreenSurfacePresentation = "bottom",
-    ) -> None:
-        self._open_surface(
-            ScreenSurfaceView(
-                title=title,
-                purpose="info",
-                content=InfoPanel.from_text(title=title, text=text, footer=""),
-                footer="Enter/Esc to close",
-                presentation=presentation,
-            )
-        )
-
-    def _open_terminal_diagnostics(self) -> None:
-        provider = self.app.terminal_diagnostics_provider
-        text = (
             provider()
             if provider is not None
             else "Terminal diagnostics are not available outside an active TUI session."
         )
-        self._open_info("Terminal", text)
 
-    async def _open_settings(self) -> None:
-        surface = await SettingsPageView.create(
-            session=self.session,
+    def _current_session(self) -> object:
+        if self.runtime is None:
+            return self.session
+        return current_agent_runtime_session(self.runtime, self.session)
+
+    async def _build_settings_content(self) -> object:
+        session = self._current_session()
+        return await build_coding_settings_page(
+            session=session,
             status_provider=self.status_provider,
-            settings_manager=getattr(self.session, "settings_manager", None),
-            session_settings=getattr(self.session, "settings_controller", None),
-            statusline_preview=self.app.statusline_preview_snapshot,
-        )
-        self._open_surface(
-            ScreenSurfaceView(
-                title="Settings",
-                purpose="settings",
-                content=surface,
-                footer="",
-                presentation="bottom-exclusive",
-                preferred_height=24,
-            )
+            settings_manager=getattr(session, "settings_manager", None),
+            statusline_preview=self.coding_app.statusline_preview_snapshot,
         )
 
-    def open_approval(
-        self, *, action: str, risk: str = "", action_id: str | None = None
-    ) -> None:
-        approval = ApprovalSurface(action=action, risk=risk, action_id=action_id)
-        current = self._current_surface()
-        if self._approval_transitioning or (
-            isinstance(current, ScreenSurfaceView) and current.purpose == "approval"
-        ):
-            self._approval_queue.append(approval)
-            return
-        self._open_approval_surface(approval)
 
-    def _open_approval_surface(self, approval: ApprovalSurface) -> None:
-        self._open_surface(
-            ScreenSurfaceView(
-                title="Approval",
-                purpose="approval",
-                content=approval,
-                footer="",
-                presentation="bottom-exclusive",
-            )
-        )
-
-    def _open_next_approval(self) -> None:
-        if self._approval_queue:
-            self._open_approval_surface(self._approval_queue.pop(0))
-
-    def _open_surface(self, view: ScreenSurfaceView) -> None:
-        self.close_surface()
-        surface_host = self.app.surface_host
-        if surface_host is None or view.exclusive_bottom:
-            self.app.active_surface = view
-            return
-        self.app.active_surface = None
-        self._active_overlay_view = view
-        self._active_overlay_handle = surface_host.open_surface(
-            Surface(
-                renderable=view,
-                focus_target=view,
-                presentation="overlay",
-                anchor="bottom-left",
-                width="100%",
-                max_height="80%",
-            )
-        )
-
-    def _current_surface(self) -> ScreenSurfaceView | Any | None:
-        return (
-            self._active_overlay_view
-            if self._active_overlay_view is not None
-            else self.app.active_surface
-        )
-
-    async def _refresh_model_label(self) -> None:
-        label = model_label_from_selection(
-            await get_session_model_selection(self.session)
-        )
-        if label is not None:
-            self.app.state.model_label = label
-
-
-def _approval_surface_event(
-    surface: ScreenSurfaceView,
-    *,
-    approved: bool,
-    note: str | None = None,
-) -> SurfaceEvent:
-    action_id = getattr(surface.content, "action_id", None)
-    action = getattr(surface.content, "action", None)
-    return SurfaceEvent(
-        kind="surface_submit",
-        source="approval",
-        payload={
-            "action_id": action_id,
-            "action": action,
-            "approved": approved,
-            "raw_note": note or action_id,
-        },
-    )
-
-
-def _palette_items(palette: CommandPalette) -> list[SelectItem]:
-    return [
-        SelectItem(
-            label=item.display_label(), value=item.value, description=item.description
-        )
-        for item in palette.items
-    ]
-
-
-def _model_selector_description(
-    label: str, *, current_label: str | None, descriptions: dict[str, str]
-) -> str:
-    if label == current_label:
-        return "current"
-    return descriptions.get(label, "")
-
-
-def _model_selector_items(
-    selections: list[Any],
-    *,
-    current_label: str | None,
-    descriptions: dict[str, str],
-) -> list[SelectItem]:
-    labels = current_model_first(
-        [
-            label
-            for selection in selections
-            if (label := model_label_from_selection(selection)) is not None
-        ],
-        current_label=current_label,
-        label_of=lambda label: label,
-    )
-    ordinal_width = max(2, len(f"{len(labels)}."))
-    items: list[SelectItem] = []
-    for index, label in enumerate(labels, start=1):
-        ordinal = f"{index}.".ljust(ordinal_width)
-        items.append(
-            SelectItem(
-                label=f"{ordinal} {label}",
-                value=label,
-                description=_model_selector_description(
-                    label, current_label=current_label, descriptions=descriptions
-                ),
-            )
-        )
-    return items
-
-
-def _model_choice_selector_items(
-    choices: list[ModelChoice],
-    *,
-    current_value: str | None,
-) -> list[SelectItem]:
-    ordinal_width = max(2, len(f"{len(choices)}."))
-    items: list[SelectItem] = []
-    for index, choice in enumerate(choices, start=1):
-        ordinal = f"{index}.".ljust(ordinal_width)
-        items.append(
-            SelectItem(
-                label=f"{ordinal} {choice.label}",
-                value=choice.value,
-                description=_model_choice_selector_description(
-                    choice, current_value=current_value
-                ),
-            )
-        )
-    return items
-
-
-def _model_choice_selector_description(
-    choice: ModelChoice, *, current_value: str | None
-) -> str:
-    parts: list[str] = []
-    if choice.value == current_value:
-        parts.append("current")
-    if choice.endpoint_id:
-        parts.append(f"endpoint: {choice.endpoint_id}")
-    if choice.region:
-        parts.append(f"region: {choice.region}")
-    if choice.lane:
-        parts.append(f"lane: {choice.lane}")
-    if choice.api:
-        parts.append(f"protocol: {choice.api}")
-    if choice.description:
-        parts.append(choice.description)
-    return " - ".join(parts)
-
-
-def _selected_model_item_index(
-    items: tuple[SelectItem, ...], selected_value: str | None
-) -> int:
-    if selected_value is None:
-        return 0
-    for index, item in enumerate(items):
-        if item.selected_value == selected_value:
-            return index
-    return 0
-
-
-def _recoverable_surface_error(error: Exception) -> str:
-    message = str(error).strip() or error.__class__.__name__
-    return f"Error: {message}"
-
-
-def _models_info_body(text: str) -> str:
-    prefix = "Available models:\n"
-    if text.startswith(prefix):
-        return text[len(prefix) :]
-    return text
-
-
-def _session_commands_provider(session: Any) -> Callable[[], Any] | None:
-    getter = getattr(session, "list_commands", None)
-    if not callable(getter):
-        return None
-    return getter
-
-
-def _screen_input_intent_or_none(result: object) -> InputIntent | None:
-    if isinstance(result, InputIntent):
-        return result
-    kind = getattr(result, "kind", None)
-    if not isinstance(kind, str):
-        return None
-    return InputIntent(
-        kind=kind,
-        text=str(getattr(result, "text", "")),
-        note=str(getattr(result, "note", "")),
-    )
-
-
-__all__ = ["ScreenSurfaceManager", "ScreenSurfaceView"]
+__all__ = ["ScreenSurfaceManager"]

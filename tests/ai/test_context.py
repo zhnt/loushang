@@ -12,6 +12,8 @@ from loushang.ai.context import (
     normalize_context,
     normalize_context_result,
 )
+from loushang.ai.errors import AIRequestValidationError
+from loushang.ai.tool.transform import MessagePairingError
 from loushang.ai.types import (
     AssistantMessage,
     Context,
@@ -21,9 +23,9 @@ from loushang.ai.types import (
     Tool,
     ToolCall,
     ToolResultMessage,
+    Usage,
     UserMessage,
 )
-from loushang.coding.tools import create_write_tool_definition
 
 
 def _usage() -> object:
@@ -35,11 +37,17 @@ def _usage() -> object:
 
 
 def _write_tool() -> Tool:
-    definition = create_write_tool_definition()
     return Tool(
-        name=definition.name,
-        description=definition.description,
-        parameters=definition.parameters,
+        name="write",
+        description="Write a file",
+        parameters={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "content": {"type": "string"},
+            },
+            "required": ["path", "content"],
+        },
     )
 
 
@@ -272,6 +280,7 @@ def test_normalize_context_uses_tuple_shell_and_copies_tool_parameters() -> None
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id=None,
         usage=_usage(),
@@ -333,12 +342,13 @@ def test_normalize_context_rejects_unknown_top_level_fields() -> None:
         normalize_context({"messages": [], "payload": {"x": 1}})
 
 
-def test_ensure_normalized_context_is_idempotent_for_normalized_context() -> None:
+def test_ensure_normalized_context_revalidates_normalized_context() -> None:
     normalized = normalize_context({"messages": []})
 
     ensured = ensure_normalized_context(normalized)
 
-    assert ensured is normalized
+    assert ensured == normalized
+    assert ensured is not normalized
     assert is_normalized_context(ensured) is True
 
 
@@ -370,6 +380,7 @@ def test_normalize_context_result_reports_missing_tool_result_repair() -> None:
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id=None,
         usage=_usage(),
@@ -398,6 +409,7 @@ def test_normalize_context_result_reports_tool_call_id_repairs() -> None:
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id=None,
         usage=_usage(),
@@ -447,6 +459,10 @@ def test_normalize_context_result_keeps_original_paths_after_system_messages() -
                 {
                     "role": "assistant",
                     "content": [{"type": "text", "text": "failed"}],
+                    "api": "openai-responses",
+                    "provider": "openai",
+                    "endpoint": "responses",
+                    "model": "gpt-test",
                     "stopReason": "error",
                     "errorMessage": "provider failed",
                 },
@@ -480,6 +496,7 @@ def test_normalize_context_result_skips_tool_diagnostics_for_dropped_error_assis
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id=None,
         usage=_usage(),
@@ -540,6 +557,7 @@ def test_normalize_context_result_skips_tool_diagnostics_for_aborted_boundary() 
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id=None,
         usage=_usage(),
@@ -599,6 +617,7 @@ def test_normalize_context_result_keeps_repair_paths_when_tool_ids_collide() -> 
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id=None,
         usage=_usage(),
@@ -677,6 +696,7 @@ def test_normalize_context_result_reports_cross_provider_downgrades_and_signatur
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id=None,
         usage=_usage(),
@@ -730,6 +750,62 @@ def test_normalize_context_result_reports_cross_provider_downgrades_and_signatur
     ]
 
 
+def test_normalize_context_propagates_target_endpoint_to_signature_coercion() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ThinkingPart(
+                type="thinking",
+                thinking="private reasoning",
+                thinking_signature="thinking-sig",
+            ),
+            TextPart(type="text", text="answer", text_signature="text-sig"),
+            ToolCall(
+                type="toolCall",
+                id="call_1",
+                name="calc",
+                arguments={"x": 1},
+                thought_signature="thought-sig",
+            ),
+        ],
+        api="openai-responses",
+        provider="openai",
+        endpoint="source-endpoint",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=1.0,
+    )
+    tool_result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="call_1",
+        tool_name="calc",
+        content=[TextPart(type="text", text="1")],
+        is_error=False,
+        timestamp=2.0,
+    )
+
+    normalized = normalize_context(
+        {"messages": [assistant, tool_result]},
+        model=SimpleNamespace(
+            api="openai-responses",
+            provider_id="openai",
+            endpoint_id="target-endpoint",
+            id="gpt-test",
+        ),
+    )
+
+    normalized_assistant = normalized.messages[0]
+    assert isinstance(normalized_assistant, AssistantMessage)
+    assert normalized_assistant.content == [
+        TextPart(type="text", text="private reasoning"),
+        TextPart(type="text", text="answer"),
+        ToolCall(type="toolCall", id="call_1", name="calc", arguments={"x": 1}),
+    ]
+
+
 def test_normalize_context_result_reports_dropped_thinking_blocks() -> None:
     assistant = AssistantMessage(
         role="assistant",
@@ -745,6 +821,7 @@ def test_normalize_context_result_reports_dropped_thinking_blocks() -> None:
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id=None,
         usage=_usage(),
@@ -787,7 +864,7 @@ def test_normalize_context_result_reports_dropped_thinking_blocks() -> None:
     ]
 
 
-def test_normalize_context_returns_existing_normalized_context_without_reprojection() -> None:
+def test_normalize_context_revalidates_existing_context_with_target_model() -> None:
     assistant = AssistantMessage(
         role="assistant",
         content=[
@@ -795,6 +872,7 @@ def test_normalize_context_returns_existing_normalized_context_without_reproject
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id=None,
         usage=_usage(),
@@ -821,21 +899,21 @@ def test_normalize_context_returns_existing_normalized_context_without_reproject
         ),
     )
 
-    assert reprojected is first
+    assert reprojected is not first
     next_assistant = reprojected.messages[0]
     next_tool_result = reprojected.messages[1]
     assert isinstance(next_assistant, AssistantMessage)
     assert isinstance(next_tool_result, ToolResultMessage)
     assert next_assistant.content[0] == ToolCall(
         type="toolCall",
-        id="call:1",
+        id="call_1",
         name="calc",
         arguments={"x": 1},
     )
-    assert next_tool_result.tool_call_id == "call:1"
+    assert next_tool_result.tool_call_id == "call_1"
 
 
-def test_ensure_normalized_context_returns_existing_normalized_context() -> None:
+def test_ensure_normalized_context_returns_revalidated_context() -> None:
     normalized = normalize_context(
         {"messages": []},
         model=SimpleNamespace(
@@ -847,13 +925,18 @@ def test_ensure_normalized_context_returns_existing_normalized_context() -> None
 
     ensured = ensure_normalized_context(
         normalized,
-        model=SimpleNamespace(provider_id="custom", id="gpt-test"),
+        model=SimpleNamespace(
+            api="openai-responses",
+            provider_id="custom",
+            id="gpt-test",
+        ),
     )
 
-    assert ensured is normalized
+    assert ensured == normalized
+    assert ensured is not normalized
 
 
-def test_normalize_context_does_not_renormalize_existing_context_for_pairing_mode() -> None:
+def test_normalize_context_revalidates_existing_context_for_pairing_mode() -> None:
     assistant = AssistantMessage(
         role="assistant",
         content=[
@@ -861,6 +944,7 @@ def test_normalize_context_does_not_renormalize_existing_context_for_pairing_mod
         ],
         api="openai-responses",
         provider="openai",
+        endpoint="test-endpoint",
         model="gpt-test",
         response_id=None,
         usage=_usage(),
@@ -870,7 +954,177 @@ def test_normalize_context_does_not_renormalize_existing_context_for_pairing_mod
     )
     repaired = normalize_context({"messages": [assistant]}, pairing_mode="repair")
 
-    assert normalize_context(repaired, pairing_mode="strict") is repaired
+    revalidated = normalize_context(repaired, pairing_mode="strict")
+
+    assert revalidated == repaired
+    assert revalidated is not repaired
+
+
+def test_normalized_context_does_not_bypass_strict_pairing() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[
+            ToolCall(type="toolCall", id="call_1", name="calc", arguments={"x": 1})
+        ],
+        api="openai-responses",
+        provider="openai",
+        endpoint="test-endpoint",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=1.0,
+    )
+    malformed = NormalizedContext(system_prompt=None, messages=(assistant,))
+
+    with pytest.raises(MessagePairingError, match="Missing tool result"):
+        normalize_context(malformed, pairing_mode="strict")
+
+    result = normalize_context_result(malformed, pairing_mode="repair")
+
+    assert len(result.context.messages) == 2
+    assert result.diagnostics[0].code == "missing_tool_result_repaired"
+
+
+@pytest.mark.parametrize("arguments", [None, "{}", [1], 1])
+def test_normalize_context_rejects_non_mapping_tool_arguments(
+    arguments: object,
+) -> None:
+    with pytest.raises(AIRequestValidationError, match="arguments must be a mapping"):
+        normalize_context(
+            {
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "toolCall",
+                                "id": "call_1",
+                                "name": "calc",
+                                "arguments": arguments,
+                            }
+                        ],
+                    }
+                ]
+            },
+            pairing_mode="repair",
+        )
+
+
+def test_normalized_context_rejects_typed_non_mapping_tool_arguments() -> None:
+    tool_call = ToolCall(
+        type="toolCall",
+        id="call_1",
+        name="calc",
+        arguments="{}",  # type: ignore[arg-type]
+    )
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[tool_call],
+        api="openai-responses",
+        provider="openai",
+        endpoint="test-endpoint",
+        model="gpt-test",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="toolUse",
+        error_message=None,
+        timestamp=1.0,
+    )
+
+    with pytest.raises(AIRequestValidationError, match="arguments must be a mapping"):
+        normalize_context(
+            NormalizedContext(system_prompt=None, messages=(assistant,)),
+            pairing_mode="repair",
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("isError", "false"), ("is_error", 0)],
+)
+def test_normalize_context_rejects_non_boolean_tool_result_flags(
+    field: str,
+    value: object,
+) -> None:
+    with pytest.raises(AIRequestValidationError, match="must be a boolean"):
+        normalize_context(
+            {
+                "messages": [
+                    {
+                        "role": "toolResult",
+                        "toolCallId": "call_1",
+                        "toolName": "calc",
+                        "content": [],
+                        field: value,
+                    }
+                ]
+            },
+            pairing_mode="repair",
+        )
+
+
+def test_normalize_context_rejects_non_boolean_redacted_flag() -> None:
+    with pytest.raises(AIRequestValidationError, match="redacted must be a boolean"):
+        normalize_context(
+            {
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "thinking",
+                                "thinking": "private",
+                                "redacted": "false",
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+
+
+@pytest.mark.parametrize("value", [True, -1, 1.5, float("nan"), float("inf")])
+def test_normalize_context_rejects_invalid_usage_token_counts(value: object) -> None:
+    with pytest.raises(AIRequestValidationError, match="non-negative integer"):
+        normalize_context(
+            {
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": [],
+                        "usage": {"input": value},
+                    }
+                ]
+            }
+        )
+
+
+def test_normalized_context_rejects_invalid_typed_usage() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[],
+        api="openai-responses",
+        provider="openai",
+        endpoint="test-endpoint",
+        model="gpt-test",
+        response_id=None,
+        usage=Usage(
+            input=-1,
+            output=0,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=0,
+            cost=None,
+        ),
+        stop_reason="stop",
+        error_message=None,
+        timestamp=1.0,
+    )
+
+    with pytest.raises(AIRequestValidationError, match="non-negative integer"):
+        normalize_context(NormalizedContext(system_prompt=None, messages=(assistant,)))
 
 
 def test_normalize_context_accepts_pi_style_assistant_and_tool_result_dicts() -> None:
@@ -894,7 +1148,8 @@ def test_normalize_context_accepts_pi_style_assistant_and_tool_result_dicts() ->
                         },
                     ],
                     "api": "openai-responses",
-                    "provider": "github-copilot",
+                    "provider": "custom-openai",
+                    "endpoint": "test-endpoint",
                     "model": "gpt-5",
                     "responseId": "resp_1",
                     "usage": {
@@ -994,6 +1249,7 @@ def test_normalize_context_preserves_unknown_usage_cost() -> None:
                     "content": [{"type": "text", "text": "hello"}],
                     "api": "openai-responses",
                     "provider": "openai",
+                    "endpoint": "test-endpoint",
                     "model": "gpt-4.1",
                     "responseId": "resp_1",
                     "usage": {
@@ -1048,6 +1304,7 @@ def test_normalize_context_rejects_invalid_usage_cost(
                     "content": [{"type": "text", "text": "hello"}],
                     "api": "openai-responses",
                     "provider": "openai",
+                    "endpoint": "test-endpoint",
                     "model": "gpt-4.1",
                     "usage": {
                         "input": 1,
@@ -1078,6 +1335,7 @@ def test_normalize_context_canonicalizes_usage_cost_aliases() -> None:
                     "content": [{"type": "text", "text": "hello"}],
                     "api": "openai-responses",
                     "provider": "openai",
+                    "endpoint": "test-endpoint",
                     "model": "gpt-4.1",
                     "usage": {
                         "input": 1,
@@ -1119,6 +1377,10 @@ def test_normalize_context_accepts_string_assistant_dict_content() -> None:
                 {
                     "role": "assistant",
                     "content": "Plain assistant text.",
+                    "api": "openai-responses",
+                    "provider": "openai",
+                    "endpoint": "responses",
+                    "model": "gpt-test",
                     "timestamp": 1,
                 },
             ],
@@ -1147,6 +1409,7 @@ def test_normalize_context_keeps_malformed_historical_tool_call_recoverable() ->
                     ],
                     api="anthropic-messages",
                     provider="moonshot",
+                    endpoint="test-endpoint",
                     model="kimi-for-coding",
                     response_id=None,
                     usage=_usage(),

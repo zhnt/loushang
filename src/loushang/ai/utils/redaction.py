@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 _SENSITIVE_KEYS = {
+    "accountid",
     "accesstoken",
     "apikey",
     "apitoken",
@@ -27,6 +28,7 @@ _SENSITIVE_KEYS = {
     "xgoogapikey",
 }
 _SENSITIVE_KEY_MARKERS = (
+    "accountid",
     "accesstoken",
     "apikey",
     "apitoken",
@@ -71,4 +73,9 @@ def is_sensitive_key(key: str) -> bool:
     return compacted.endswith("token") or compacted.endswith("tokens")
 
 
-__all__ = ["is_sensitive_key"]
+def is_header_container_key(key: str) -> bool:
+    compacted = "".join(char for char in key.lower() if char.isalnum())
+    return compacted == "headers" or compacted.endswith("headers")
+
+
+__all__ = ["is_header_container_key", "is_sensitive_key"]

@@ -1,5 +1,13 @@
 # Loushang Coding Component Inventory
 
+## Status
+
+Superseded as the current ownership inventory by the
+[Harness Current Owner Map](../harness/current-owner-map.md). It is retained to
+explain the original Coding decomposition and must not be used to infer current
+module ownership. Canonical terminology is defined by the
+[Product And OEM Glossary](../../glossary/loushang-product.md).
+
 ## Scope
 
 本文档给出 `loushang-coding` 的组件清单总表。
@@ -45,8 +53,8 @@
 | `loader` | resource | 资源发现与加载 |
 | `resources` | resource | coding resource descriptors 与加载结果 |
 | `extensions` | resource | 扩展 hook 运行层 |
-| `plugin` | resource | plugin bundle 管理与资源展开 |
-| `package` | resource | package/plugin lifecycle 与 source 管理 |
+| `plugin` | resource | manifest-backed contribution source identity、启停与资源根解析（通用 owner 已迁入 Harness） |
+| `package` | resource | Resource Package lifecycle、source 与物化；不拥有 Plugin identity（通用 owner 已迁入 Harness） |
 | `domain` | resource | coding domain request、method policy 与 prepared turn bridge |
 | `control` | support | settings / model 控制平面 |
 | `policy` | support | 权限与审批策略 |

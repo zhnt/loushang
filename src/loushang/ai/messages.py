@@ -9,6 +9,7 @@ from loushang.ai.diagnostics import (
     NormalizationDiagnostic,
     sort_normalization_diagnostics,
 )
+from loushang.ai.errors import AIRequestValidationError
 from loushang.ai.model.registry import resolve_model_api
 from loushang.ai.tool import (
     normalize_tool_call_id_for_model,
@@ -96,6 +97,7 @@ def normalize_messages_result(
                     message,
                     target_api=target_api,
                     target_provider=getattr(model, "provider_id", None),
+                    target_endpoint=getattr(model, "endpoint_id", None),
                     target_model=getattr(model, "id", None),
                     path=transformed_paths[index],
                 )
@@ -113,6 +115,47 @@ def normalize_messages_result(
 
 
 def canonicalize_message(message: object) -> object:
+    if isinstance(message, UserMessage):
+        if message.role != "user":
+            raise AIRequestValidationError(
+                f"Unsupported message role: {message.role!r}"
+            )
+        return message
+    if isinstance(message, AssistantMessage):
+        if message.role != "assistant":
+            raise AIRequestValidationError(
+                f"Unsupported message role: {message.role!r}"
+            )
+        return AssistantMessage(
+            role="assistant",
+            content=[_assistant_content_part(part) for part in message.content],
+            api=message.api,
+            provider=message.provider,
+            endpoint=message.endpoint,
+            model=message.model,
+            response_id=message.response_id,
+            usage=_usage_from_dict(message.usage),
+            stop_reason=message.stop_reason,
+            error_message=message.error_message,
+            timestamp=message.timestamp,
+            response_model=message.response_model,
+        )
+    if isinstance(message, ToolResultMessage):
+        if message.role != "toolResult":
+            raise AIRequestValidationError(
+                f"Unsupported message role: {message.role!r}"
+            )
+        if not isinstance(message.is_error, bool):
+            raise AIRequestValidationError("Tool result is_error must be a boolean")
+        return ToolResultMessage(
+            role="toolResult",
+            tool_call_id=message.tool_call_id,
+            tool_name=message.tool_name,
+            content=canonicalize_user_content(message.content),
+            is_error=message.is_error,
+            timestamp=message.timestamp,
+            details=message.details,
+        )
     if not isinstance(message, Mapping):
         return message
     message = dict(message)
@@ -163,6 +206,7 @@ def _assistant_message_from_dict(message: dict[str, Any]) -> AssistantMessage:
         ],
         api=str(message.get("api", "")),
         provider=str(message.get("provider", "")),
+        endpoint=str(message.get("endpoint", "")),
         model=str(message.get("model", "")),
         response_id=_optional_str(
             message.get("response_id", message.get("responseId"))
@@ -186,7 +230,7 @@ def _tool_result_message_from_dict(message: dict[str, Any]) -> ToolResultMessage
         tool_call_id=str(message.get("tool_call_id", message.get("toolCallId", ""))),
         tool_name=str(message.get("tool_name", message.get("toolName", ""))),
         content=content,  # type: ignore[arg-type]
-        is_error=bool(message.get("is_error", message.get("isError", False))),
+        is_error=_strict_aliased_bool(message, "is_error", "isError"),
         timestamp=_float_or_default(message.get("timestamp")),
         details=message.get("details"),
         terminate=message.get("terminate", False) is True,
@@ -206,15 +250,15 @@ def _assistant_content_part_from_dict(
             thinking_signature=_optional_str(
                 part.get("thinking_signature", part.get("thinkingSignature"))
             ),
-            redacted=bool(part.get("redacted", False)),
+            redacted=_strict_bool_field(part, "redacted"),
         )
     if part_type == "toolCall":
-        arguments = part.get("arguments")
+        arguments = _tool_arguments(part.get("arguments"))
         return ToolCall(
             type="toolCall",
             id=str(part.get("id", "")),
             name=str(part.get("name", "")),
-            arguments=arguments if isinstance(arguments, dict) else {},
+            arguments=arguments,
             thought_signature=_optional_str(
                 part.get("thought_signature", part.get("thoughtSignature"))
             ),
@@ -239,13 +283,26 @@ def _assistant_content_part(
 ) -> TextPart | ThinkingPart | ToolCall | ImagePart:
     if isinstance(part, Mapping):
         return _assistant_content_part_from_dict(dict(part))
-    if isinstance(part, (TextPart, ThinkingPart, ToolCall, ImagePart)):
+    if isinstance(part, ThinkingPart):
+        if not isinstance(part.redacted, bool):
+            raise AIRequestValidationError("Thinking part redacted must be a boolean")
+        return part
+    if isinstance(part, ToolCall):
+        return ToolCall(
+            type="toolCall",
+            id=part.id,
+            name=part.name,
+            arguments=_tool_arguments(part.arguments),
+            thought_signature=part.thought_signature,
+        )
+    if isinstance(part, (TextPart, ImagePart)):
         return part
     raise TypeError(f"Unsupported assistant content part type: {type(part)!r}")
 
 
 def _usage_from_dict(value: object) -> Usage:
     if isinstance(value, Usage):
+        _validate_usage(value)
         return value
     if not isinstance(value, Mapping):
         value = {}
@@ -254,12 +311,19 @@ def _usage_from_dict(value: object) -> Usage:
     cost_raw = value.get("cost")
     cost = _canonical_cost(cost_raw if isinstance(cost_raw, dict) else None)
     return Usage(
-        input=_int_or_default(value.get("input")),
-        output=_int_or_default(value.get("output")),
-        cache_read=_int_or_default(value.get("cache_read", value.get("cacheRead"))),
-        cache_write=_int_or_default(value.get("cache_write", value.get("cacheWrite"))),
-        total_tokens=_int_or_default(
-            value.get("total_tokens", value.get("totalTokens"))
+        input=_token_count_or_default(value.get("input"), "input"),
+        output=_token_count_or_default(value.get("output"), "output"),
+        cache_read=_token_count_or_default(
+            value.get("cache_read", value.get("cacheRead")),
+            "cacheRead",
+        ),
+        cache_write=_token_count_or_default(
+            value.get("cache_write", value.get("cacheWrite")),
+            "cacheWrite",
+        ),
+        total_tokens=_token_count_or_default(
+            value.get("total_tokens", value.get("totalTokens")),
+            "totalTokens",
         ),
         cost=cost,
     )
@@ -315,18 +379,77 @@ def _optional_str(value: object) -> str | None:
     return str(value)
 
 
-def _int_or_default(value: object, default: int = 0) -> int:
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, str | bytes | bytearray | int | float):
-        try:
-            return int(value)
-        except ValueError:
-            return default
-    try:
-        return int(cast(Any, value))
-    except (TypeError, ValueError):
+def _token_count_or_default(value: object, field_name: str, default: int = 0) -> int:
+    if value is None:
         return default
+    if isinstance(value, bool):
+        raise AIRequestValidationError(
+            f"Usage {field_name} must be a non-negative integer"
+        )
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, float) and isfinite(value) and value.is_integer():
+        parsed = int(value)
+    elif isinstance(value, str) and value.strip().isdecimal():
+        parsed = int(value.strip())
+    else:
+        raise AIRequestValidationError(
+            f"Usage {field_name} must be a non-negative integer"
+        )
+    if parsed < 0:
+        raise AIRequestValidationError(
+            f"Usage {field_name} must be a non-negative integer"
+        )
+    return parsed
+
+
+def _validate_usage(usage: Usage) -> None:
+    for field_name, value in (
+        ("input", usage.input),
+        ("output", usage.output),
+        ("cacheRead", usage.cache_read),
+        ("cacheWrite", usage.cache_write),
+        ("totalTokens", usage.total_tokens),
+    ):
+        _token_count_or_default(value, field_name)
+
+
+def _strict_aliased_bool(
+    value: Mapping[str, object],
+    key: str,
+    alias: str,
+    *,
+    default: bool = False,
+) -> bool:
+    if key in value:
+        raw = value[key]
+    elif alias in value:
+        raw = value[alias]
+    else:
+        return default
+    if not isinstance(raw, bool):
+        raise AIRequestValidationError(f"{alias} must be a boolean")
+    return raw
+
+
+def _strict_bool_field(
+    value: Mapping[str, object],
+    key: str,
+    *,
+    default: bool = False,
+) -> bool:
+    if key not in value:
+        return default
+    raw = value[key]
+    if not isinstance(raw, bool):
+        raise AIRequestValidationError(f"{key} must be a boolean")
+    return raw
+
+
+def _tool_arguments(value: object) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise AIRequestValidationError("Tool call arguments must be a mapping")
+    return dict(value)
 
 
 def _float_or_default(value: object, default: float = 0.0) -> float:

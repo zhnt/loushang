@@ -3,14 +3,13 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 from dataclasses import dataclass
-from typing import Deque
 
 from spike_types import AssistantMessage, AssistantMessageEvent
 
 
 class AssistantMessageEventStream:
     def __init__(self) -> None:
-        self._events: Deque[AssistantMessageEvent | _Sentinel] = deque()
+        self._events: deque[AssistantMessageEvent | _Sentinel] = deque()
         self._waiters: list[asyncio.Future[AssistantMessageEvent | _Sentinel]] = []
         self._result: AssistantMessage | None = None
         self._result_waiters: list[asyncio.Future[AssistantMessage]] = []

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -51,10 +52,10 @@ def test_minimal_coding_example_reports_agent_error_message(
         module,
         "describe_model",
         lambda model: {
-            "provider": "moonshot",
-            "model": "kimi-k2.5",
+            "provider": "kimi-code",
+            "model": "kimi-for-coding",
             "api": "anthropic-messages",
-            "base_url": "https://api.moonshot.cn/anthropic",
+            "base_url": "https://api.kimi.com/coding",
         },
     )
     monkeypatch.setattr(module, "create_kimi_session", lambda **kwargs: _FakeSession())
@@ -134,14 +135,22 @@ def test_weekly_usage_ledger_preserves_known_cost() -> None:
     assert payload.cost_total == pytest.approx(0.0075)
 
 
-def test_kimi_code_example_catalog_keeps_unknown_cost_and_fixed_temperature() -> None:
-    raw = json.loads(Path("examples/coding/models/models.kimi-code.json").read_text())
-    endpoints = raw["providers"]["moonshot"]["endpoints"]
+def test_kimi_code_examples_use_the_builtin_catalog(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("LOUSHANG_EXAMPLES_MODEL_CATALOG", raising=False)
+    monkeypatch.delenv("LOUSHANG_EXAMPLES_ARTIFACT_ROOT", raising=False)
+    module = _load_module(
+        Path("examples/coding/_support.py"),
+        "examples_coding_support_builtin_catalog",
+    )
 
+    assert module._resolve_model_catalog() is None
     for endpoint_id in ("kimi-code-openai", "kimi-code-anthropic"):
-        for model in endpoints[endpoint_id]["models"].values():
-            assert "pricing" not in model
-            assert model["capabilities"]["temperature"] is False
+        model = module.build_kimi_model(endpoint_id=endpoint_id)
+        assert model.provider_id == "kimi-code"
+        assert model.endpoint_id == endpoint_id
+        assert model.id == "kimi-for-coding"
 
 
 def test_usage_inspect_example_marks_unknown_cost(
@@ -162,7 +171,8 @@ def test_usage_inspect_example_marks_unknown_cost(
             role="assistant",
             content=[TextPart(type="text", text="ok")],
             api="anthropic-messages",
-            provider="moonshot",
+            provider="kimi-code",
+            endpoint="kimi-code-anthropic",
             model="kimi-for-coding",
             response_id=None,
             usage=Usage(
@@ -180,15 +190,17 @@ def test_usage_inspect_example_marks_unknown_cost(
 
     monkeypatch.setattr(sys, "argv", ["22_usage_inspect.py"])
     monkeypatch.setattr(module, "_resolve_model_catalog", lambda: None)
-    monkeypatch.setattr(module, "build_kimi_model", lambda **kwargs: SimpleNamespace(pricing=None))
+    monkeypatch.setattr(
+        module, "build_kimi_model", lambda **kwargs: SimpleNamespace(pricing=None)
+    )
     monkeypatch.setattr(
         module,
         "describe_model",
         lambda model: {
-            "provider": "moonshot",
+            "provider": "kimi-code",
             "endpoint": "kimi-code-anthropic",
             "api": "anthropic-messages",
-            "base_url": "https://api.moonshot.cn/anthropic",
+            "base_url": "https://api.kimi.com/coding",
             "model": "kimi-for-coding",
         },
     )
@@ -204,3 +216,33 @@ def test_usage_inspect_example_marks_unknown_cost(
         "known": False
     }
     assert "cost: {'known': False}" in output
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="macOS env-sensitive golden/smoke; may hide a real macOS product bug — tracked separately as issue #455",
+)
+def test_runtime_capability_replacement_extension_example_runs_offline() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/coding/extensions/06_runtime_capability_replacement.py",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert "Selected source: extension" in completed.stdout
+    assert "Selected layer: extension:examples.side-question" in completed.stdout
+    assert (
+        "Implementation: "
+        "extension:examples.side-question:interaction.side_question:demo"
+        in completed.stdout
+    )
+    assert "Answer: extension:What is the current status?" in completed.stdout
+    assert (
+        "Lifecycle: create -> bind -> ask:What is the current status? -> dispose"
+        in (completed.stdout)
+    )

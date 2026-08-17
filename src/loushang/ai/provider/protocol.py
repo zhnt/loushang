@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol, runtime_checkable
+from types import MappingProxyType
+from typing import Literal, Protocol, runtime_checkable
 
 from loushang.ai.context import NormalizedContext
 from loushang.ai.event_stream.raw_parts import RawPart
-from loushang.ai.model import Capabilities, EndpointRouting, EndpointTransport
+from loushang.ai.model import Model
 from loushang.ai.options import CallOptions
 
 ProviderContext = NormalizedContext
@@ -16,32 +17,63 @@ ProviderInvocationMode = Literal["complete", "stream"]
 
 @dataclass(frozen=True, slots=True)
 class ProviderRequest:
-    provider: str
-    endpoint: str | None
-    api: str
-    base_url: str | None
-    model: Any = None
-    context: ProviderContext = field(
-        default_factory=lambda: NormalizedContext(system_prompt=None)
-    )
-    options: ProviderOptions = None
-    region: str | None = None
-    candidate_base_urls: tuple[str, ...] = ()
-    headers: dict[str, str] = field(default_factory=dict)
-    defaults: dict[str, object] = field(default_factory=dict)
-    transport: EndpointTransport = field(default_factory=EndpointTransport)
-    routing: EndpointRouting = field(default_factory=EndpointRouting)
-    max_tokens: int | None = None
-    reasoning_effort: str | None = None
-    temperature: float | int | None = None
-    upstream_model_id: str | None = None
-    capabilities: Capabilities = field(default_factory=Capabilities)
-    adapter_config: object | None = None
+    model: Model
+    context: ProviderContext
+    options: ProviderOptions
+    base_url: str
+    headers: Mapping[str, str] = field(default_factory=dict, repr=False)
     mode: ProviderInvocationMode = "stream"
+    max_output_tokens: int | None = None
+    reasoning_effort: str | None = None
+    reasoning_enabled: bool | None = None
+    temperature: float | int | None = None
+    invocation_id: str | None = None
+    attempt: int = 1
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "headers", MappingProxyType(dict(self.headers)))
+        if not isinstance(self.model, Model):
+            raise TypeError("ProviderRequest.model must be Model")
+        if not isinstance(self.base_url, str) or not self.base_url.strip():
+            raise ValueError(
+                "ProviderRequest.base_url must be a resolved non-empty string"
+            )
+        if "{" in self.base_url or "}" in self.base_url:
+            raise ValueError("ProviderRequest.base_url contains an unresolved template")
+        if self.reasoning_enabled is not None and not isinstance(
+            self.reasoning_enabled, bool
+        ):
+            raise TypeError(
+                "ProviderRequest.reasoning_enabled must be a boolean or None"
+            )
+        if self.reasoning_enabled is False and self.reasoning_effort is not None:
+            raise ValueError(
+                "ProviderRequest.reasoning_effort must be None when reasoning is disabled"
+            )
+        if not isinstance(self.context, NormalizedContext):
+            raise TypeError("ProviderRequest.context must be NormalizedContext")
+        if self.invocation_id is not None and (
+            not isinstance(self.invocation_id, str) or not self.invocation_id
+        ):
+            raise ValueError("ProviderRequest.invocation_id must be non-empty or None")
+        if (
+            isinstance(self.attempt, bool)
+            or not isinstance(self.attempt, int)
+            or self.attempt < 1
+        ):
+            raise ValueError("ProviderRequest.attempt must be a positive integer")
+        if (
+            not self.model.provider_id
+            or not self.model.endpoint_id
+            or not self.model.api
+        ):
+            raise ValueError(
+                f"Model {self.model.id!r} is not bound to a concrete provider endpoint"
+            )
 
 
 @runtime_checkable
-class ApiProvider(Protocol):
+class APIAdapter(Protocol):
     api: str
 
     def invoke_raw(

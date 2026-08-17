@@ -2,8 +2,8 @@ import asyncio
 
 import pytest
 
-from loushang.coding.tools import file_mutation_queue
-from loushang.coding.tools.file_mutation_queue import (
+import loushang.harness.workspace.mutation_queue as file_mutation_queue
+from loushang.harness.workspace.mutation_queue import (
     run_with_file_mutation_queue,
     with_file_mutation_queue,
 )
@@ -55,7 +55,9 @@ def test_mutation_queue_uses_canonical_same_file_identity(tmp_path) -> None:
     assert events == ["first-start", "first-end", "second"]
 
 
-def test_mutation_queue_allows_different_files_to_progress_independently(tmp_path) -> None:
+def test_mutation_queue_allows_different_files_to_progress_independently(
+    tmp_path,
+) -> None:
     first = tmp_path / "a.txt"
     second = tmp_path / "b.txt"
     entered_first = asyncio.Event()
@@ -127,7 +129,9 @@ def test_run_with_file_mutation_queue_serializes_callback_operations(tmp_path) -
     async def run_both() -> tuple[str, str]:
         first_task = asyncio.create_task(run_with_file_mutation_queue(str(path), first))
         await entered_first.wait()
-        second_task = asyncio.create_task(run_with_file_mutation_queue(str(path), second))
+        second_task = asyncio.create_task(
+            run_with_file_mutation_queue(str(path), second)
+        )
         await asyncio.sleep(0.01)
         release_first.set()
         first_result, second_result = await asyncio.gather(first_task, second_task)
@@ -145,20 +149,21 @@ def test_run_with_file_mutation_queue_accepts_sync_callback(tmp_path) -> None:
     assert result == "sync-result"
 
 
-def test_pi_style_with_file_mutation_queue_alias_is_exported(tmp_path) -> None:
-    from loushang.coding import withFileMutationQueue as top_level_alias
-    from loushang.coding.tools import run_with_file_mutation_queue as exported_runner
-    from loushang.coding.tools import (
+def test_mutation_queue_uses_its_direct_harness_owner(tmp_path) -> None:
+    from loushang.harness.workspace.mutation_queue import (
+        run_with_file_mutation_queue as exported_runner,
+    )
+    from loushang.harness.workspace.mutation_queue import (
         with_file_mutation_queue as exported_context_manager,
     )
-    from loushang.coding.tools import withFileMutationQueue
 
     path = tmp_path / "note.txt"
 
-    assert withFileMutationQueue is exported_runner
-    assert top_level_alias is exported_runner
     assert exported_context_manager is with_file_mutation_queue
-    assert asyncio.run(withFileMutationQueue(str(path), lambda: "alias-result")) == "alias-result"
+    assert (
+        asyncio.run(exported_runner(str(path), lambda: "direct-result"))
+        == "direct-result"
+    )
 
 
 def test_run_with_file_mutation_queue_cleans_up_after_callback_error(tmp_path) -> None:

@@ -25,6 +25,7 @@ _CODEX_LIKE_DEFAULTS: dict[str, ThemeStyle] = {
     "workspace": {"foreground": "green"},
     "branch": {"foreground": "yellow"},
     "session": {"foreground": "bright_black"},
+    "permissions": {"foreground": "magenta"},
     "runtime.running": {"foreground": "green"},
     "runtime.idle": {"dim": True},
     "queue": {"foreground": "magenta"},

@@ -4,7 +4,7 @@ import asyncio
 
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-from loushang.coding.store import SessionManager
+from loushang.coding.session_manager import SessionManager
 
 
 def _model() -> Model:
@@ -18,11 +18,21 @@ def _model() -> Model:
 
 
 def _usage(total_tokens: int) -> Usage:
-    return Usage(input=total_tokens, output=0, cache_read=0, cache_write=0, total_tokens=total_tokens, cost={})
+    return Usage(
+        input=total_tokens,
+        output=0,
+        cache_read=0,
+        cache_write=0,
+        total_tokens=total_tokens,
+        cost={},
+    )
 
 
-def _assistant(*, total_tokens: int, stop_reason: str = "stop", timestamp: float = 1.0) -> AssistantMessage:
+def _assistant(
+    *, total_tokens: int, stop_reason: str = "stop", timestamp: float = 1.0
+) -> AssistantMessage:
     return AssistantMessage(
+        endpoint="test-endpoint",
         role="assistant",
         content=[TextPart(type="text", text="reply")],
         api="anthropic-messages",
@@ -37,7 +47,7 @@ def _assistant(*, total_tokens: int, stop_reason: str = "stop", timestamp: float
 
 
 def test_context_usage_snapshot_treats_length_usage_as_compactable() -> None:
-    from loushang.coding.session.context_usage import build_context_usage_snapshot
+    from loushang.harness.transcript import build_context_usage_snapshot
 
     snapshot = build_context_usage_snapshot(
         [_assistant(total_tokens=95, stop_reason="length")],
@@ -55,7 +65,7 @@ def test_context_usage_snapshot_treats_length_usage_as_compactable() -> None:
 
 
 def test_context_usage_snapshot_uses_compact_percent_threshold() -> None:
-    from loushang.coding.session.context_usage import build_context_usage_snapshot
+    from loushang.harness.transcript import build_context_usage_snapshot
 
     snapshot = build_context_usage_snapshot(
         [_assistant(total_tokens=85, stop_reason="stop")],
@@ -71,7 +81,7 @@ def test_context_usage_snapshot_uses_compact_percent_threshold() -> None:
 
 
 def test_context_usage_snapshot_exposes_compaction_budget_fields() -> None:
-    from loushang.coding.session.context_usage import build_context_usage_snapshot
+    from loushang.harness.transcript import build_context_usage_snapshot
 
     snapshot = build_context_usage_snapshot(
         [_assistant(total_tokens=85, stop_reason="stop")],
@@ -93,10 +103,16 @@ def test_context_usage_snapshot_exposes_compaction_budget_fields() -> None:
 
 def test_context_usage_snapshot_consumes_ai_usage_derived_from_raw_parts() -> None:
     from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
-    from loushang.coding.session.context_usage import build_context_usage_snapshot
+    from loushang.harness.transcript import build_context_usage_snapshot
 
     stream = AssistantMessageEventStream()
-    assembler = RawAssembler(stream=stream, api="test", provider="test", model="test-model")
+    assembler = RawAssembler(
+        stream=stream,
+        api="test",
+        provider="test",
+        endpoint="test-endpoint",
+        model="test-model",
+    )
     assembler.feed({"type": "response_start", "response_id": "resp-1"})
     assembler.feed({"type": "usage_delta", "input": 80, "output": 10, "cache_read": 1})
     assembler.feed({"type": "response_done"})
@@ -110,14 +126,32 @@ def test_context_usage_snapshot_consumes_ai_usage_derived_from_raw_parts() -> No
 
 
 def test_context_usage_snapshot_marks_pre_compaction_usage_stale(tmp_path) -> None:
-    from loushang.coding.session.context_usage import build_context_usage_snapshot
+    from loushang.harness.transcript import build_context_usage_snapshot
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="before")], timestamp=0.0))
-    manager.append_message(_assistant(total_tokens=95, timestamp=1.0))
-    first_kept_entry_id = manager.get_entries()[0].id
-    manager.append_compaction("summary", first_kept_entry_id, 95)
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="after")], timestamp=2.0))
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="before")],
+                timestamp=0.0,
+            )
+        )
+    )
+    asyncio.run(manager.append_message(_assistant(total_tokens=95, timestamp=1.0)))
+    first_kept_entry_id = manager.get_entries()[0].record_id
+    asyncio.run(manager.append_compaction("summary", first_kept_entry_id, 95))
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="after")],
+                timestamp=2.0,
+            )
+        )
+    )
 
     snapshot = build_context_usage_snapshot(
         manager.build_session_context().messages,

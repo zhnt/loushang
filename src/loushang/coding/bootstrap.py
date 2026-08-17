@@ -1,147 +1,108 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field, replace
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import replace
+from functools import partial
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal, cast
 
-from loushang.agent import Agent, AgentTool, StreamFn, ThinkingLevel
-from loushang.ai.model import Model
+from loushang.agent import Agent, StreamFn, ThinkingLevel
+from loushang.ai.model import Model, ModelSelection
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-from loushang.ai.types import Message, TextPart
-from loushang.coding.control import (
-    AuthManager,
-    ControlConfig,
-    ModelRegistry,
-    SettingsManager,
+from loushang.coding.capabilities import (
+    CODING_LSP_CAPABILITY,
+    coding_capability_mount_mode,
 )
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
 )
-from loushang.coding.extensions import ExtensionRunner
-from loushang.coding.extensions.types import SessionStartEvent
-from loushang.coding.loader import DefaultResourceLoader
-from loushang.coding.message import convert_to_llm
-from loushang.coding.package import GitPackageMaterializerBackend, PackageMaterializer
-from loushang.coding.package.source_manager import (
-    PackageSourceResolver,
-    package_source_scopes,
+from loushang.coding.diagnostics.profile import coding_runtime_identity
+from loushang.coding.lsp.discovery import (
+    coding_lsp_config_paths,
+    default_lsp_environment,
+    discover_lsp_catalog,
 )
-from loushang.coding.policy import InteractiveApprovalResolver
-from loushang.coding.prompt import assemble_prompt
+from loushang.coding.lsp.model import LspServerDefinition
+from loushang.coding.lsp.ports import WorkspaceTextReader
+from loushang.coding.lsp.runtime import (
+    CodingLspRuntime,
+    DeferredCodingLspRuntime,
+    bind_coding_lsp_runtime,
+)
+from loushang.coding.lsp.tool_pack import register_coding_lsp_tools
+from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE
+from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
+from loushang.coding.resource_runtime import (
+    CodingPackageMaterializer as PackageMaterializer,
+)
+from loushang.coding.resource_runtime import (
+    CodingResourceLoader as DefaultResourceLoader,
+)
 from loushang.coding.runtime import AgentSessionRuntime
+from loushang.coding.runtime_capability_admission import (
+    bind_coding_capability_composition_runtime,
+    bind_coding_side_question,
+)
+from loushang.coding.sandbox import bind_coding_sandbox_runtime
 from loushang.coding.session import AgentSession
-from loushang.coding.source_info import executable_source_identity
-from loushang.coding.store import SessionManager
-from loushang.coding.tools import ToolRegistry
-from loushang.coding.types import ModelSelection
-from loushang.harness.config import (
-    ConfigActivationRuntime,
-    ConfigActivationStep,
+from loushang.coding.session_manager import SessionManager
+from loushang.harness.approval import (
+    InteractiveApprovalResolver,
+    approval_actor_id,
 )
-from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.diagnostics.types import DiagnosticRecord, StartupCheckResult
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
-from loushang.harness.resources.layout import resolve_user_resource_roots
-from loushang.harness.resources.packages.roots import resolve_package_resource_roots
+from loushang.harness.bootstrap import (
+    create_standard_resource_bootstrap_runtime,
+)
+from loushang.harness.capabilities import (
+    CapabilityCompositionRuntime,
+    bind_capability_composition_runtime,
+)
+from loushang.harness.config.agent import SettingsManager
+from loushang.harness.diagnostics.types import StartupCheckResult
+from loushang.harness.extensions.agent import ExtensionRunner
+from loushang.harness.extensions.context import SessionStartEvent
+from loushang.harness.multiagent import DelegatedExecutionProfile
+from loushang.harness.policy import PolicyEvaluator
+from loushang.harness.resources.packages.materializer import (
+    GitPackageMaterializerBackend,
+    resolve_session_package_install_root,
+)
 from loushang.harness.resources.types import ResourceBundle
-from loushang.harness.tools.contribution import (
-    ToolContribution,
-    ToolResolutionResult,
-    resolve_tool_contributions,
+from loushang.harness.session import (
+    AgentProductConstructionBinding,
+    AgentSessionServices,
+    BootstrapServices,
+    CreateAgentSessionResult,
+    CwdBoundServicesAudit,
+    build_agent_product_session_runtime,
+    build_standard_agent_session_result,
+    create_standard_agent_bootstrap_services,
+    normalize_no_tools,
+    project_root_from_settings_base,
+    record_default_model_unavailable,
 )
+from loushang.harness.session import (
+    CwdBoundServicesAuditIssue as _CwdBoundServicesAuditIssue,
+)
+from loushang.harness.session import (
+    audit_cwd_bound_services as _audit_cwd_bound_services,
+)
+from loushang.harness.session import (
+    prepare_agent_session_services as prepare_standard_agent_session_services,
+)
+from loushang.harness.session.legacy_side_question import LegacySideQuestionBinding
+from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.process_hosting import ProcessExecutionScope
+from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+from loushang.harness.transcript import context_items_to_model_messages
 from loushang.harness.workspace.exec import ExecService
 
 AgentFactory = Callable[..., Agent]
 ServicesFactory = Callable[[str], "BootstrapServices"]
 NoToolsMode = Literal["all", "builtin"]
 ExtensionFlagValues = Mapping[str, bool | str]
-
-
-@dataclass(frozen=True)
-class BootstrapServices:
-    settings_manager: SettingsManager
-    model_registry: ModelRegistry
-    auth_manager: AuthManager
-    resource_loader: DefaultResourceLoader
-    diagnostics_service: DiagnosticsService
-    exec_service: ExecService = field(default_factory=ExecService)
-
-
-@dataclass(frozen=True)
-class CwdBoundServicesAuditIssue:
-    code: str
-    message: str
-    details: dict[str, object]
-    level: Literal["info", "warning", "error"] = "warning"
-
-
-@dataclass(frozen=True)
-class CwdBoundServicesAudit:
-    session_cwd: str
-    issues: list[CwdBoundServicesAuditIssue]
-
-    @property
-    def ok(self) -> bool:
-        return not self.issues
-
-
-@dataclass
-class _SessionConfigurationState:
-    services: BootstrapServices
-    settings: ControlConfig
-    session_manager: SessionManager
-    package_materializer: PackageMaterializer
-    extension_flag_values: ExtensionFlagValues | None
-    resource_bundle: ResourceBundle | None = None
-    extension_runner: ExtensionRunner | None = None
-    cwd_bound_services_audit: CwdBoundServicesAudit | None = None
-
-    @property
-    def session_id(self) -> str:
-        return self.session_manager.get_header().id
-
-
-@dataclass(frozen=True)
-class AgentSessionServices:
-    cwd: str
-    services: BootstrapServices
-    resource_bundle: ResourceBundle | None = None
-    extension_runner: ExtensionRunner | None = None
-    diagnostics: tuple[DiagnosticRecord, ...] = ()
-
-    @property
-    def settings_manager(self) -> SettingsManager:
-        return self.services.settings_manager
-
-    @property
-    def model_registry(self) -> ModelRegistry:
-        return self.services.model_registry
-
-    @property
-    def auth_manager(self) -> AuthManager:
-        return self.services.auth_manager
-
-    @property
-    def resource_loader(self) -> DefaultResourceLoader:
-        return self.services.resource_loader
-
-    @property
-    def diagnostics_service(self) -> DiagnosticsService:
-        return self.services.diagnostics_service
-
-    @property
-    def exec_service(self) -> ExecService:
-        return self.services.exec_service
-
-
-@dataclass(frozen=True)
-class CreateAgentSessionResult:
-    session: AgentSession
-    resource_bundle: ResourceBundle | None
-    diagnostics: tuple[DiagnosticRecord, ...]
-    cwd_bound_services_audit: CwdBoundServicesAudit | None = None
+CwdBoundServicesAuditIssue = _CwdBoundServicesAuditIssue
 
 
 def create_services(
@@ -149,28 +110,20 @@ def create_services(
     ai_model_registry: AiModelRegistry | None = None,
     resource_loader: DefaultResourceLoader | None = None,
     settings_manager: SettingsManager | None = None,
-    auth_manager: AuthManager | None = None,
     exec_service: ExecService | None = None,
     default_model: ModelSelection | None = None,
     thinking_level: ThinkingLevel = "off",
     system_prompt: str = "",
 ) -> BootstrapServices:
-    model_registry = ModelRegistry(ai_registry=ai_model_registry)
-    resolved_settings_manager = settings_manager or SettingsManager(
-        ControlConfig(
-            default_model=default_model,
-            thinking_level=thinking_level,
-            system_prompt=system_prompt,
-        )
-    )
-    return BootstrapServices(
-        settings_manager=resolved_settings_manager,
-        model_registry=model_registry,
-        auth_manager=auth_manager
-        or AuthManager(ai_registry=model_registry.ai_registry),
-        resource_loader=resource_loader or DefaultResourceLoader(),
-        diagnostics_service=DiagnosticsService(),
-        exec_service=exec_service or ExecService(),
+    return create_standard_agent_bootstrap_services(
+        resource_loader_factory=DefaultResourceLoader,
+        ai_model_registry=ai_model_registry,
+        resource_loader=resource_loader,
+        settings_manager=settings_manager,
+        exec_service=exec_service,
+        default_model=default_model,
+        thinking_level=thinking_level,
+        system_prompt=system_prompt,
     )
 
 
@@ -181,7 +134,6 @@ def create_agent_session_services(
     ai_model_registry: AiModelRegistry | None = None,
     resource_loader: DefaultResourceLoader | None = None,
     settings_manager: SettingsManager | None = None,
-    auth_manager: AuthManager | None = None,
     exec_service: ExecService | None = None,
     default_model: ModelSelection | None = None,
     thinking_level: ThinkingLevel = "off",
@@ -191,9 +143,7 @@ def create_agent_session_services(
     resource_loader_options: dict[str, object] | None = None,
     extension_flag_values: ExtensionFlagValues | None = None,
 ) -> AgentSessionServices:
-    resolved_cwd = Path(cwd).expanduser().resolve(strict=False)
-    resolved_services = services
-    if resolved_services is None:
+    def create_cwd_services(resolved_cwd: Path) -> BootstrapServices:
         resolved_settings_manager = settings_manager or SettingsManager(
             global_settings_path=Path(global_settings_path)
             if global_settings_path is not None
@@ -202,60 +152,41 @@ def create_agent_session_services(
             if project_settings_path is not None
             else default_project_settings_path(resolved_cwd),
         )
-        resolved_services = create_services(
+        return create_services(
             ai_model_registry=ai_model_registry,
             resource_loader=resource_loader,
             settings_manager=resolved_settings_manager,
-            auth_manager=auth_manager,
             exec_service=exec_service,
             default_model=default_model,
             thinking_level=thinking_level,
             system_prompt=system_prompt,
         )
-    elif any(
-        value is not None
-        for value in (
-            ai_model_registry,
-            resource_loader,
-            settings_manager,
-            auth_manager,
-            exec_service,
-            default_model,
-        )
-    ):
-        raise ValueError(
-            "service components cannot be overridden when services is provided"
-        )
 
-    _apply_resource_loader_options(
-        resolved_services.resource_loader, resource_loader_options
-    )
-    resource_bundle = resolved_services.resource_loader.discover_resources(resolved_cwd)
-    loader_diagnostics = tuple(resource_bundle.diagnostics)
-    extension_runner = ExtensionRunner(resource_bundle.extensions)
-    flag_diagnostics = _apply_extension_flag_values(
-        extension_runner, extension_flag_values
-    )
-    resource_bundle = extension_runner.discover_resources(resource_bundle)
-    diagnostics = tuple(
-        resolved_services.diagnostics_service.normalize_resource_diagnostic(
-            diagnostic,
-            phase="resource_loading",
-            source=source,
-        )
-        for source, source_diagnostics in (
-            ("loader", loader_diagnostics),
-            ("extensions", extension_runner.get_diagnostics()),
-            ("bootstrap", flag_diagnostics),
-        )
-        for diagnostic in source_diagnostics
-    )
-    return AgentSessionServices(
-        cwd=str(resolved_cwd),
-        services=resolved_services,
-        resource_bundle=resource_bundle,
-        extension_runner=extension_runner,
-        diagnostics=diagnostics,
+    return prepare_standard_agent_session_services(
+        cwd=cwd,
+        services=services,
+        create_services=create_cwd_services,
+        service_overrides={
+            "ai_model_registry": ai_model_registry,
+            "resource_loader": resource_loader,
+            "settings_manager": settings_manager,
+            "exec_service": exec_service,
+            "default_model": default_model,
+        },
+        build_resource_bootstrap=lambda resolved_services: (
+            create_standard_resource_bootstrap_runtime(
+                create_extension_runtime=lambda bundle: ExtensionRunner(
+                    bundle.extensions
+                ),
+                diagnostics_service=resolved_services.diagnostics_service,
+            )
+        ),
+        get_resource_loader=lambda resolved_services: resolved_services.resource_loader,
+        resource_loader_options=resource_loader_options,
+        configure_resource_loader=lambda loader, options: loader.set_runtime_options(
+            **dict(options)
+        ),
+        extension_flag_values=extension_flag_values,
     )
 
 
@@ -265,48 +196,24 @@ def audit_cwd_bound_services(
     services: BootstrapServices,
     resource_bundle: ResourceBundle | None = None,
 ) -> CwdBoundServicesAudit:
-    session_cwd = _resolve_for_audit(session_manager.get_cwd())
-    issues: list[CwdBoundServicesAuditIssue] = []
-    project_root = _settings_project_root(services.settings_manager)
-    if project_root is not None and not _path_is_at_or_under(session_cwd, project_root):
-        issues.append(
-            CwdBoundServicesAuditIssue(
-                code="settings_project_cwd_mismatch",
-                message=(
-                    "Project-scoped settings are bound to a different project root "
-                    "than the session cwd."
-                ),
-                details={
-                    "project_root": str(project_root),
-                    "session_cwd": str(session_cwd),
-                },
-            )
-        )
-    if resource_bundle is not None:
-        resource_cwd = _resolve_for_audit(resource_bundle.cwd)
-        if resource_cwd != session_cwd:
-            issues.append(
-                CwdBoundServicesAuditIssue(
-                    code="resource_bundle_cwd_mismatch",
-                    message="Resource bundle cwd does not match the session cwd.",
-                    details={
-                        "resource_cwd": str(resource_cwd),
-                        "session_cwd": str(session_cwd),
-                    },
-                )
-            )
-    return CwdBoundServicesAudit(session_cwd=str(session_cwd), issues=issues)
+    return _audit_cwd_bound_services(
+        session_cwd=session_manager.get_cwd(),
+        project_root=project_root_from_settings_base(
+            services.settings_manager.project_base_dir
+        ),
+        resource_cwd=resource_bundle.cwd if resource_bundle is not None else None,
+    )
 
 
-def create_agent_session(
+def _create_agent_session(
     *,
     session_manager: SessionManager,
     model: Model | ModelSelection | None = None,
     stream_fn: StreamFn | None = None,
     system_prompt: str | None = None,
     thinking_level: ThinkingLevel | None = None,
-    tools: list[AgentTool[Any]] | None = None,
-    tool_registry: ToolRegistry | None = None,
+    tools: list[ToolDefinition] | None = None,
+    tool_registry: WorkspaceToolRegistry | None = None,
     allowed_tool_names: list[str] | None = None,
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
@@ -317,463 +224,331 @@ def create_agent_session(
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     extension_flag_values: ExtensionFlagValues | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
+    tool_policy_evaluator: PolicyEvaluator | None = None,
+    enable_multiagent: bool = False,
+    sandbox_workspace_writable: bool = True,
+    delegated_execution_profile: DelegatedExecutionProfile | None = None,
+    lsp_definitions: Iterable[LspServerDefinition] = (),
+    lsp_baseline_environment: Mapping[str, str] | None = None,
+    lsp_read_text: WorkspaceTextReader | None = None,
 ) -> AgentSession:
+    enable_multiagent_tools = (
+        enable_multiagent
+        and allowed_tool_names is None
+        and normalize_no_tools(no_tools) is None
+    )
+    if delegated_execution_profile is not None:
+        if tuple(allowed_tool_names or ()) != delegated_execution_profile.allowed_tools:
+            raise ValueError(
+                "child allowed tools must match its delegated execution profile"
+            )
+        if (
+            approval_actor_id(approval_resolver)
+            != delegated_execution_profile.approval_actor_id
+        ):
+            raise ValueError(
+                "child approval actor must match its delegated execution profile"
+            )
     services = services or create_services()
-    settings = services.settings_manager.get_settings()
+    lsp_mode = coding_capability_mount_mode(
+        services.settings_manager,
+        CODING_LSP_CAPABILITY,
+    )
+    resolved_lsp_environment = (
+        dict(lsp_baseline_environment)
+        if lsp_baseline_environment is not None
+        else default_lsp_environment()
+    )
+    lsp_enabled_for_session = (
+        lsp_mode != "disabled" and normalize_no_tools(no_tools) != "all"
+    )
+    global_lsp_config, project_lsp_config = coding_lsp_config_paths(
+        services.settings_manager,
+        workspace_root=session_manager.get_cwd(),
+    )
+    resolved_lsp_definitions = (
+        discover_lsp_catalog(
+            workspace_root=session_manager.get_cwd(),
+            baseline_environment=resolved_lsp_environment,
+            explicit_definitions=tuple(lsp_definitions),
+            global_config_path=global_lsp_config,
+            project_config_path=project_lsp_config,
+        ).definitions
+        if lsp_enabled_for_session
+        else ()
+    )
+    lsp_slot = DeferredCodingLspRuntime() if lsp_enabled_for_session else None
+    # Restored sessions carry historical transcript.  A previous run may have
+    # been interrupted between a tool call and its result, leaving an unpaired
+    # toolCall in the transcript.  Force repair pairing for such sessions so
+    # resume recovers automatically instead of raising
+    # "Missing tool results before next message".  New sessions have no
+    # history and stay on the (global) default.
+    if len(session_manager.get_entries()) > 0:
+        base_factory = agent_factory
+
+        def _resume_agent_factory(**kwargs: object) -> Agent:
+            from loushang.ai.options import CallOptions
+
+            call_options = kwargs.get("call_options")
+            if call_options is None:
+                kwargs["call_options"] = CallOptions(pairing_mode="repair")
+            else:
+                kwargs["call_options"] = replace(
+                    cast(CallOptions, call_options), pairing_mode="repair"
+                )
+            return base_factory(**kwargs)
+
+        agent_factory = _resume_agent_factory
+    multiagent_types = None
+    resolved_append_system_prompt = tuple(append_system_prompt or ())
+    if enable_multiagent:
+        from loushang.coding.multiagent import (
+            coding_agent_types,
+            coding_multiagent_system_prompt,
+        )
+
+        multiagent_types = coding_agent_types()
+        if enable_multiagent_tools:
+            resolved_append_system_prompt = (
+                *resolved_append_system_prompt,
+                coding_multiagent_system_prompt(multiagent_types),
+            )
+    session_tool_registry = (
+        tool_registry.copy()
+        if (enable_multiagent_tools or lsp_slot is not None)
+        and tool_registry is not None
+        else tool_registry
+    )
+    construction_tools = tools
+    if lsp_slot is not None:
+        if session_tool_registry is None:
+            session_tool_registry = WorkspaceToolRegistry()
+            for definition in tools or ():
+                session_tool_registry.register_tool(definition)
+            if tools is not None:
+                construction_tools = None
+        register_coding_lsp_tools(
+            session_tool_registry,
+            runtime=lsp_slot,
+            mode=lsp_mode,
+        )
     resolved_package_materializer = (
         package_materializer or _default_package_materializer(session_manager)
     )
-    resolved_thinking = (
-        settings.thinking_level if thinking_level is None else thinking_level
-    )
-    session_id = session_manager.get_header().id
-    configuration = _activate_session_configuration(
-        settings=settings,
-        services=services,
-        session_manager=session_manager,
-        package_materializer=resolved_package_materializer,
-        extension_flag_values=extension_flag_values,
-    )
-    resource_bundle = _require_configured_resource_bundle(configuration)
-    extension_runner = _require_configured_extension_runner(configuration)
-    cwd_bound_services_audit = configuration.cwd_bound_services_audit
-    loader_system_prompt = _loader_system_prompt_override(services.resource_loader)
-    base_prompt = (
-        system_prompt
-        if system_prompt is not None
-        else loader_system_prompt
-        if loader_system_prompt is not None
-        else settings.system_prompt
-    )
-    append_fragments = [
-        *_loader_append_system_prompt(services.resource_loader),
-        *(append_system_prompt or ()),
-    ]
-    base_prompt = _append_system_prompt_fragments(base_prompt, append_fragments)
-    prompt_assembly = assemble_prompt(
-        base_prompt=base_prompt, resource_bundle=resource_bundle
-    )
-    resolved_prompt = prompt_assembly.system_prompt
-    resolved_model: Model | None
-    if model is None:
-        default_selection = settings.default_model
-        resolved_model = _resolve_default_model_candidate(
-            default_selection,
-            model_registry=services.model_registry,
+    session_id = session_manager.get_header().conversation_id
+
+    def _create_session(
+        capability_runtime: CapabilityCompositionRuntime,
+        side_question_binding: LegacySideQuestionBinding | None,
+        agent: Agent,
+        bundle: ResourceBundle,
+        extension_runner: ExtensionRunner,
+        registry: WorkspaceToolRegistry | None,
+        initial_active_tool_names: list[str] | None,
+        session_base_prompt: str,
+        session_no_tools_mode: NoToolsMode | None,
+    ) -> AgentSession:
+        base_exec_service = services.exec_service or ExecService()
+        sandbox_runtime = bind_coding_sandbox_runtime(
+            workspace_root=session_manager.get_cwd(),
+            writable_workspace=sandbox_workspace_writable,
+            settings=services.settings_manager.get_sandbox_settings(),
+            base_exec_service=base_exec_service,
             diagnostics_service=services.diagnostics_service,
             session_id=session_id,
-        )
-    elif isinstance(model, ModelSelection):
-        resolved_model = services.model_registry.build_model(model)
-    else:
-        resolved_model = model
-
-    no_tools_mode = _normalize_no_tools(no_tools)
-    resolved_tool_registry = tool_registry
-    allowed_tool_names_set = (
-        set(allowed_tool_names) if allowed_tool_names is not None else None
-    )
-    if no_tools_mode == "all":
-        allowed_tool_names_set = set()
-    if resolved_tool_registry is None and tools:
-        resolved_tool_registry = ToolRegistry()
-        for tool in tools:
-            resolved_tool_registry.register_tool(tool)
-
-    resource_bundle, resolved_tool_registry, extension_tool_diagnostics = (
-        _register_extension_tools(
-            extension_runner=extension_runner,
-            resource_bundle=resource_bundle,
-            tool_registry=resolved_tool_registry,
-        )
-    )
-    _record_resource_diagnostics(
-        diagnostics_service=services.diagnostics_service,
-        diagnostics=extension_tool_diagnostics,
-        phase="resource_loading",
-        source="bootstrap",
-        session_id=session_id,
-    )
-    if no_tools_mode == "all" and resolved_tool_registry is None:
-        resolved_tool_registry = ToolRegistry()
-    resolved_active_tool_names = _resolve_initial_active_tool_names(
-        active_tool_names=active_tool_names,
-        allowed_tool_names_set=allowed_tool_names_set,
-        no_tools_mode=no_tools_mode,
-        tool_registry=resolved_tool_registry,
-    )
-    initial_state: dict[str, object] = {
-        "system_prompt": resolved_prompt,
-        "thinking_level": resolved_thinking,
-        "tools": [],
-    }
-    if resolved_model is not None:
-        initial_state["model"] = resolved_model
-
-    agent_kwargs: dict[str, object] = {
-        "initial_state": initial_state,
-        "session_id": session_id,
-        "convert_to_llm": _convert_to_llm_with_block_images(services.settings_manager),
-        "steering_mode": settings.steering_mode,
-        "follow_up_mode": settings.follow_up_mode,
-        "thinking_budgets": settings.thinking_budgets,
-        "max_retry_delay_ms": settings.retry.provider_max_retry_delay_ms,
-    }
-    if stream_fn is not None:
-        agent_kwargs["stream_fn"] = stream_fn
-
-    agent = agent_factory(**agent_kwargs)
-    agent.session_id = session_id
-    session = AgentSession(
-        agent=agent,
-        session_manager=session_manager,
-        settings_manager=services.settings_manager,
-        model_registry=services.model_registry,
-        auth_manager=services.auth_manager,
-        resource_loader=services.resource_loader,
-        resource_bundle=resource_bundle,
-        extension_runner=extension_runner,
-        tool_registry=resolved_tool_registry,
-        allowed_tool_names=[] if no_tools_mode == "all" else allowed_tool_names,
-        active_tool_names=resolved_active_tool_names,
-        default_activate_new_tools=no_tools_mode != "all" and active_tool_names is None,
-        show_empty_tool_prompt=no_tools_mode == "all",
-        base_prompt=base_prompt,
-        diagnostics_service=services.diagnostics_service,
-        session_start_event=session_start_event,
-        package_materializer=resolved_package_materializer,
-        exec_service=services.exec_service,
-        approval_resolver=approval_resolver,
-    )
-    session.cwd_bound_services_audit = cwd_bound_services_audit
-    scoped_models = _scoped_models_from_enabled_patterns(
-        settings.enabled_models, services.model_registry
-    )
-    if scoped_models:
-        session.setScopedModels(scoped_models)
-    return session
-
-
-def _activate_session_configuration(
-    *,
-    settings: ControlConfig,
-    services: BootstrapServices,
-    session_manager: SessionManager,
-    package_materializer: PackageMaterializer,
-    extension_flag_values: ExtensionFlagValues | None,
-) -> _SessionConfigurationState:
-    state = _SessionConfigurationState(
-        services=services,
-        settings=settings,
-        session_manager=session_manager,
-        package_materializer=package_materializer,
-        extension_flag_values=extension_flag_values,
-    )
-    runtime = ConfigActivationRuntime(
-        (
-            ConfigActivationStep(
-                "startup_checks",
-                select=lambda config: config.package_roots,
-                apply=_activate_startup_checks,
+            execution_profile=(
+                delegated_execution_profile.execution_profile_ceiling
+                if delegated_execution_profile is not None
+                else None
             ),
-            ConfigActivationStep(
-                "package_sources",
-                select=lambda config: config.package_sources,
-                apply=_activate_package_sources,
-                depends_on=("startup_checks",),
-            ),
-            ConfigActivationStep(
-                "resource_roots",
-                select=lambda config: (
-                    config.package_roots,
-                    config.package_sources,
-                    config.plugin_sources,
-                    config.disabled_plugins,
-                    config.resource_roots,
+        )
+        lsp_runtime: CodingLspRuntime | None = None
+        lsp_session: AgentSession | None = None
+        if lsp_slot is not None:
+
+            async def emit_lsp_audit_event(event: Mapping[str, object]) -> None:
+                if lsp_session is None:
+                    raise RuntimeError("Coding LSP session is not yet bound")
+                await lsp_session.emit_product_tool_audit_event(event)
+
+            lsp_runtime = bind_coding_lsp_runtime(
+                workspace_root=session_manager.get_cwd(),
+                definitions=resolved_lsp_definitions,
+                process_launcher_binder=sandbox_runtime,
+                execution_scope=ProcessExecutionScope(
+                    policy_evaluator=tool_policy_evaluator,
+                    approval_resolver=approval_resolver,
+                    audit_sink=emit_lsp_audit_event,
+                    execution_profile_ceiling=getattr(
+                        sandbox_runtime.exec_service,
+                        "execution_profile",
+                        None,
+                    ),
                 ),
-                apply=_activate_resource_roots,
-                depends_on=("package_sources",),
-            ),
-            ConfigActivationStep(
-                "resources",
-                select=lambda config: config.disabled_skills,
-                apply=_activate_resources,
-                depends_on=("resource_roots",),
-            ),
-            ConfigActivationStep(
-                "extensions",
-                select=lambda config: (
-                    config.disabled_skills,
-                    config.disabled_plugins,
-                ),
-                apply=_activate_extensions,
-                depends_on=("resources",),
-            ),
-            ConfigActivationStep(
-                "cwd_audit",
-                select=lambda config: config.resource_roots,
-                apply=_activate_cwd_audit,
-                depends_on=("extensions",),
-            ),
-            ConfigActivationStep(
-                "model_registry",
-                select=lambda config: config.enabled_models,
-                apply=_activate_model_registry,
-                depends_on=("cwd_audit",),
-            ),
-        )
-    )
-    report = runtime.start(settings, state)
-    if report.failures:
-        raise report.failures[0].error
-    return state
-
-
-def _activate_startup_checks(
-    selection: object,
-    state: _SessionConfigurationState,
-) -> None:
-    del selection
-    _record_package_lockfile_diagnostics(
-        diagnostics_service=state.services.diagnostics_service,
-        materializer=state.package_materializer,
-        session_id=state.session_id,
-    )
-    _run_bootstrap_startup_checks(
-        diagnostics_service=state.services.diagnostics_service,
-        session_manager=state.session_manager,
-        package_roots=state.settings.package_roots,
-    )
-
-
-def _activate_package_sources(
-    selection: object,
-    state: _SessionConfigurationState,
-) -> None:
-    del selection
-    _resolve_configured_remote_packages(
-        materializer=state.package_materializer,
-        settings_manager=state.services.settings_manager,
-        diagnostics_service=state.services.diagnostics_service,
-        session_id=state.session_id,
-    )
-
-
-def _activate_resource_roots(
-    selection: object,
-    state: _SessionConfigurationState,
-) -> None:
-    del selection
-    services = state.services
-    settings = state.settings
-    set_package_roots = getattr(services.resource_loader, "set_package_roots", None)
-    if callable(set_package_roots):
-        package_resource_roots = resolve_package_resource_roots(
-            package_roots=settings.package_roots,
-            plugin_sources=settings.plugin_sources,
-            package_sources=settings.package_sources,
-            materializer=state.package_materializer,
-            package_source_scopes=package_source_scopes(services.settings_manager),
-            global_base_dir=services.settings_manager.global_base_dir,
-            project_base_dir=services.settings_manager.project_base_dir,
-            disabled_plugins=settings.disabled_plugins,
-            diagnostics_service=services.diagnostics_service,
-            session_id=state.session_id,
-        )
-        set_package_roots(package_resource_roots.roots, package_resource_roots.filters)
-    set_user_resource_roots = getattr(
-        services.resource_loader,
-        "set_user_resource_roots",
-        None,
-    )
-    if callable(set_user_resource_roots):
-        global_resource_roots = tuple(
-            services.settings_manager.get_global_settings().get(
-                "resource_roots",
-                (),
+                read_text=lsp_read_text or _read_lsp_workspace_text,
+                baseline_environment=resolved_lsp_environment,
             )
+            lsp_slot.bind(lsp_runtime)
+        child_session = AgentSession(
+            agent=agent,
+            session_manager=session_manager,
+            settings_manager=services.settings_manager,
+            model_registry=services.model_registry,
+            resource_loader=services.resource_loader,
+            resource_bundle=bundle,
+            extension_runner=extension_runner,
+            tool_registry=registry,
+            allowed_tool_names=[]
+            if session_no_tools_mode == "all"
+            else allowed_tool_names,
+            active_tool_names=initial_active_tool_names,
+            default_activate_new_tools=(
+                session_no_tools_mode != "all" and active_tool_names is None
+            ),
+            show_empty_tool_prompt=session_no_tools_mode == "all",
+            base_prompt=session_base_prompt,
+            diagnostics_service=services.diagnostics_service,
+            session_start_event=session_start_event,
+            package_materializer=resolved_package_materializer,
+            exec_service=sandbox_runtime.exec_service,
+            approval_resolver=approval_resolver,
+            tool_policy_evaluator=tool_policy_evaluator,
+            capability_runtime=capability_runtime,
+            side_question_binding=side_question_binding,
+            sandbox_runtime=sandbox_runtime,
+            lsp_runtime=lsp_runtime,
+            delegated_execution_profile=delegated_execution_profile,
         )
-        user_roots, explicit_roots = _resolve_user_resource_roots(
-            global_resource_roots,
-            global_base_dir=services.settings_manager.global_base_dir,
+        lsp_session = child_session
+        return child_session
+
+    result = _CODING_AGENT_PRODUCT_CONSTRUCTION.construct(
+        services=services,
+        package_materializer=resolved_package_materializer,
+        session_id=session_id,
+        cwd=session_manager.get_cwd(),
+        extension_flag_values=extension_flag_values,
+        explicit_system_prompt=system_prompt,
+        append_system_prompt=resolved_append_system_prompt,
+        model=model,
+        thinking_level=thinking_level,
+        tools=construction_tools,
+        tool_registry=session_tool_registry,
+        allowed_tool_names=allowed_tool_names,
+        active_tool_names=active_tool_names,
+        no_tools=no_tools,
+        stream_fn=stream_fn,
+        convert_to_llm=lambda messages: context_items_to_model_messages(
+            messages,
+            image_placeholder=(
+                "Image reading is disabled."
+                if services.settings_manager.get_block_images()
+                else None
+            ),
+        ),
+        agent_factory=agent_factory,
+        session_factory=_create_session,
+        on_default_model_unavailable=lambda selection, error, reason: (
+            record_default_model_unavailable(
+                selection,
+                error=error,
+                reason=reason,
+                diagnostics_service=services.diagnostics_service,
+                session_id=session_id,
+            )
+        ),
+        set_scoped_models=lambda session, scoped_models: session.set_scoped_models(
+            cast(list[dict[str, object]], scoped_models)
+        ),
+    )
+    result.session.cwd_bound_services_audit = (
+        result.configuration.cwd_bound_services_audit
+    )
+    if enable_multiagent:
+        from loushang.coding.multiagent import (
+            CodingSubagentFactory,
+            install_coding_multiagent_session,
         )
-        set_user_resource_roots(user_roots, explicit_roots=explicit_roots)
+        from loushang.coding.worktree import CodingGitWorktreeLeasePort
+
+        assert multiagent_types is not None
+        install_coding_multiagent_session(
+            result.session,
+            child_factory=CodingSubagentFactory(
+                session_dir=session_manager.get_session_dir(),
+                cwd=session_manager.get_cwd(),
+                tool_registry=(session_tool_registry or WorkspaceToolRegistry()),
+                default_model_provider=lambda: result.session.agent.model,
+                services=services,
+                approval_resolver=approval_resolver,
+                workspace_leases=CodingGitWorktreeLeasePort(
+                    cwd=session_manager.get_cwd(),
+                    exec_service=services.exec_service,
+                ),
+                runtime_builder=partial(
+                    _create_agent_session_runtime,
+                    stream_fn=stream_fn,
+                    agent_factory=agent_factory,
+                    tool_policy_evaluator=tool_policy_evaluator,
+                ),
+            ),
+            agent_types=multiagent_types,
+            register_tools=enable_multiagent_tools,
+        )
+    return result.session
 
 
-def _activate_resources(
-    selection: object,
-    state: _SessionConfigurationState,
-) -> None:
-    del selection
-    bundle = state.services.resource_loader.discover_resources(
-        state.session_manager.get_cwd()
-    )
-    bundle = _apply_disabled_skills(bundle, state.settings.disabled_skills)
-    _record_resource_diagnostics(
-        diagnostics_service=state.services.diagnostics_service,
-        diagnostics=bundle.diagnostics,
-        phase="resource_loading",
-        source="loader",
-        session_id=state.session_id,
-    )
-    state.resource_bundle = bundle
-
-
-def _activate_extensions(
-    selection: object,
-    state: _SessionConfigurationState,
-) -> None:
-    del selection
-    bundle = _require_configured_resource_bundle(state)
-    runner = ExtensionRunner(bundle.extensions)
-    flag_diagnostics = _apply_extension_flag_values(
-        runner,
-        state.extension_flag_values,
-    )
-    _record_resource_diagnostics(
-        diagnostics_service=state.services.diagnostics_service,
-        diagnostics=flag_diagnostics,
-        phase="resource_loading",
-        source="bootstrap",
-        session_id=state.session_id,
-    )
-    bundle = runner.discover_resources(bundle)
-    bundle = _apply_disabled_skills(bundle, state.settings.disabled_skills)
-    _record_resource_diagnostics(
-        diagnostics_service=state.services.diagnostics_service,
-        diagnostics=runner.get_diagnostics(),
-        phase="resource_loading",
-        source="extensions",
-        session_id=state.session_id,
-    )
-    state.resource_bundle = bundle
-    state.extension_runner = runner
-
-
-def _activate_cwd_audit(
-    selection: object,
-    state: _SessionConfigurationState,
-) -> None:
-    del selection
-    audit = audit_cwd_bound_services(
-        session_manager=state.session_manager,
-        services=state.services,
-        resource_bundle=_require_configured_resource_bundle(state),
-    )
-    _record_cwd_bound_services_audit(
-        diagnostics_service=state.services.diagnostics_service,
-        audit=audit,
-        session_id=state.session_id,
-    )
-    state.cwd_bound_services_audit = audit
-
-
-def _activate_model_registry(
-    selection: object,
-    state: _SessionConfigurationState,
-) -> None:
-    del selection
-    _reload_model_registry_with_project_layer(
-        state.services.model_registry,
-        resource_bundle=_require_configured_resource_bundle(state),
-        session_cwd=state.session_manager.get_cwd(),
-        auth_manager=state.services.auth_manager,
-    )
-
-
-def _require_configured_resource_bundle(
-    state: _SessionConfigurationState,
-) -> ResourceBundle:
-    if state.resource_bundle is None:
-        raise RuntimeError("Session resources have not been configured.")
-    return state.resource_bundle
-
-
-def _require_configured_extension_runner(
-    state: _SessionConfigurationState,
-) -> ExtensionRunner:
-    if state.extension_runner is None:
-        raise RuntimeError("Session extensions have not been configured.")
-    return state.extension_runner
-
-
-def _resolve_default_model_candidate(
-    selection: ModelSelection | None,
+def create_agent_session(
     *,
-    model_registry: ModelRegistry,
-    diagnostics_service: DiagnosticsService,
-    session_id: str,
-) -> Model | None:
-    if selection is None:
-        return None
-    try:
-        return model_registry.build_model(selection)
-    except (KeyError, ValueError) as error:
-        _record_default_model_unavailable(
-            selection,
-            error=error,
-            model_registry=model_registry,
-            diagnostics_service=diagnostics_service,
-            session_id=session_id,
-        )
-        return None
-
-
-def _record_default_model_unavailable(
-    selection: ModelSelection,
-    *,
-    error: Exception,
-    model_registry: ModelRegistry,
-    diagnostics_service: DiagnosticsService,
-    session_id: str,
-) -> None:
-    reason = _default_model_unavailable_reason(
-        selection,
-        error=error,
-        model_registry=model_registry,
+    session_manager: SessionManager,
+    model: Model | ModelSelection | None = None,
+    stream_fn: StreamFn | None = None,
+    system_prompt: str | None = None,
+    thinking_level: ThinkingLevel | None = None,
+    tools: list[ToolDefinition] | None = None,
+    tool_registry: WorkspaceToolRegistry | None = None,
+    allowed_tool_names: list[str] | None = None,
+    active_tool_names: list[str] | None = None,
+    no_tools: NoToolsMode | bool | None = None,
+    services: BootstrapServices | None = None,
+    agent_factory: AgentFactory = Agent,
+    session_start_event: SessionStartEvent | None = None,
+    package_materializer: PackageMaterializer | None = None,
+    append_system_prompt: list[str] | tuple[str, ...] | None = None,
+    extension_flag_values: ExtensionFlagValues | None = None,
+    approval_resolver: InteractiveApprovalResolver | None = None,
+    tool_policy_evaluator: PolicyEvaluator | None = None,
+    enable_multiagent: bool = False,
+    lsp_definitions: Iterable[LspServerDefinition] = (),
+    lsp_baseline_environment: Mapping[str, str] | None = None,
+    lsp_read_text: WorkspaceTextReader | None = None,
+) -> AgentSession:
+    return _create_agent_session(
+        session_manager=session_manager,
+        model=model,
+        stream_fn=stream_fn,
+        system_prompt=system_prompt,
+        thinking_level=thinking_level,
+        tools=tools,
+        tool_registry=tool_registry,
+        allowed_tool_names=allowed_tool_names,
+        active_tool_names=active_tool_names,
+        no_tools=no_tools,
+        services=services,
+        agent_factory=agent_factory,
+        session_start_event=session_start_event,
+        package_materializer=package_materializer,
+        append_system_prompt=append_system_prompt,
+        extension_flag_values=extension_flag_values,
+        approval_resolver=approval_resolver,
+        tool_policy_evaluator=tool_policy_evaluator,
+        enable_multiagent=enable_multiagent,
+        sandbox_workspace_writable=True,
+        lsp_definitions=lsp_definitions,
+        lsp_baseline_environment=lsp_baseline_environment,
+        lsp_read_text=lsp_read_text,
     )
-    selection_ref = (
-        f"{selection.provider}:{selection.endpoint_id}:{selection.model_id}"
-        if selection.endpoint_id
-        else f"{selection.provider}:{selection.model_id}"
-    )
-    message = f"Default model unavailable: {selection_ref}; using startup fallback."
-    diagnostics_service.record(
-        diagnostics_service.normalize_error(
-            code="default_model_unavailable",
-            error=message,
-            phase="startup",
-            source="model",
-            level="warning",
-            session_id=session_id,
-            details={
-                "provider": selection.provider,
-                "model_id": selection.model_id,
-                "endpoint_id": selection.endpoint_id,
-                "reason": reason,
-                "error": str(error),
-            },
-        )
-    )
-
-
-def _default_model_unavailable_reason(
-    selection: ModelSelection,
-    *,
-    error: Exception,
-    model_registry: ModelRegistry,
-) -> str:
-    if selection.endpoint_id:
-        endpoint = model_registry.ai_registry.get_endpoint(
-            selection.provider,
-            selection.endpoint_id,
-        )
-        if endpoint is None:
-            return "endpoint_unavailable"
-        return "missing"
-    if isinstance(error, ValueError):
-        return "ambiguous"
-    return "missing"
 
 
 def create_agent_session_from_services(
@@ -784,8 +559,8 @@ def create_agent_session_from_services(
     stream_fn: StreamFn | None = None,
     system_prompt: str | None = None,
     thinking_level: ThinkingLevel | None = None,
-    tools: list[AgentTool[Any]] | None = None,
-    tool_registry: ToolRegistry | None = None,
+    tools: list[ToolDefinition] | None = None,
+    tool_registry: WorkspaceToolRegistry | None = None,
     allowed_tool_names: list[str] | None = None,
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
@@ -794,6 +569,11 @@ def create_agent_session_from_services(
     package_materializer: PackageMaterializer | None = None,
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
+    tool_policy_evaluator: PolicyEvaluator | None = None,
+    enable_multiagent: bool = False,
+    lsp_definitions: Iterable[LspServerDefinition] = (),
+    lsp_baseline_environment: Mapping[str, str] | None = None,
+    lsp_read_text: WorkspaceTextReader | None = None,
 ) -> CreateAgentSessionResult:
     extension_flag_values = (
         agent_services.extension_runner.get_flag_values()
@@ -818,6 +598,11 @@ def create_agent_session_from_services(
         append_system_prompt=append_system_prompt,
         extension_flag_values=extension_flag_values,
         approval_resolver=approval_resolver,
+        tool_policy_evaluator=tool_policy_evaluator,
+        enable_multiagent=enable_multiagent,
+        lsp_definitions=lsp_definitions,
+        lsp_baseline_environment=lsp_baseline_environment,
+        lsp_read_text=lsp_read_text,
     )
 
 
@@ -828,8 +613,8 @@ def create_agent_session_result(
     stream_fn: StreamFn | None = None,
     system_prompt: str | None = None,
     thinking_level: ThinkingLevel | None = None,
-    tools: list[AgentTool[Any]] | None = None,
-    tool_registry: ToolRegistry | None = None,
+    tools: list[ToolDefinition] | None = None,
+    tool_registry: WorkspaceToolRegistry | None = None,
     allowed_tool_names: list[str] | None = None,
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
@@ -840,6 +625,11 @@ def create_agent_session_result(
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     extension_flag_values: ExtensionFlagValues | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
+    tool_policy_evaluator: PolicyEvaluator | None = None,
+    enable_multiagent: bool = False,
+    lsp_definitions: Iterable[LspServerDefinition] = (),
+    lsp_baseline_environment: Mapping[str, str] | None = None,
+    lsp_read_text: WorkspaceTextReader | None = None,
 ) -> CreateAgentSessionResult:
     resolved_services = services or create_services()
     session = create_agent_session(
@@ -860,560 +650,78 @@ def create_agent_session_result(
         append_system_prompt=append_system_prompt,
         extension_flag_values=extension_flag_values,
         approval_resolver=approval_resolver,
+        tool_policy_evaluator=tool_policy_evaluator,
+        enable_multiagent=enable_multiagent,
+        lsp_definitions=lsp_definitions,
+        lsp_baseline_environment=lsp_baseline_environment,
+        lsp_read_text=lsp_read_text,
     )
-    return CreateAgentSessionResult(
-        session=session,
+    return build_standard_agent_session_result(
+        session,
         resource_bundle=session.resource_bundle,
-        diagnostics=tuple(
-            resolved_services.diagnostics_service.get_diagnostics(
-                session_id=session.session_id
-            )
-        ),
+        diagnostics_service=resolved_services.diagnostics_service,
+        session_id=session.session_id,
         cwd_bound_services_audit=session.cwd_bound_services_audit,
     )
-
-
-def _apply_resource_loader_options(
-    resource_loader: DefaultResourceLoader,
-    options: dict[str, object] | None,
-) -> None:
-    if not options:
-        return
-    setter = getattr(resource_loader, "set_runtime_options", None)
-    if callable(setter):
-        setter(**options)
-
-
-def _apply_extension_flag_values(
-    extension_runner: ExtensionRunner,
-    flag_values: ExtensionFlagValues | None,
-) -> list[ResourceDiagnostic]:
-    if not flag_values:
-        return []
-
-    flags_by_name = {flag.name: flag for flag in extension_runner.get_flags()}
-    diagnostics: list[ResourceDiagnostic] = []
-    for raw_name, value in flag_values.items():
-        name = raw_name[2:] if raw_name.startswith("--") else raw_name
-        flag = flags_by_name.get(name)
-        if flag is None:
-            diagnostics.append(
-                ResourceDiagnostic(
-                    code="unknown_extension_flag",
-                    message=f"Unknown extension flag: --{name}",
-                    metadata={"flag": name},
-                )
-            )
-            continue
-        if flag.type == "string":
-            if not isinstance(value, str):
-                diagnostics.append(
-                    ResourceDiagnostic(
-                        code="extension_flag_value_required",
-                        message=f'Extension flag "--{name}" requires a value.',
-                        source_path=flag.source_info.path,
-                        metadata={"flag": name},
-                    )
-                )
-                continue
-            extension_runner.set_flag_value(name, value)
-            continue
-        extension_runner.set_flag_value(name, bool(value))
-    return diagnostics
 
 
 def _default_package_materializer(
     session_manager: SessionManager,
 ) -> PackageMaterializer:
-    session_dir = session_manager.get_session_dir()
-    if session_dir.name == "sessions":
-        install_root = session_dir.parent / "packages"
-    elif str(session_dir):
-        install_root = session_dir / "packages"
-    else:
-        install_root = Path(session_manager.get_cwd()) / ".loushang" / "packages"
     return PackageMaterializer(
-        install_root=install_root,
+        install_root=resolve_session_package_install_root(
+            session_dir=session_manager.get_session_dir(),
+            cwd=session_manager.get_cwd(),
+        ),
         backend=GitPackageMaterializerBackend(),
     )
 
 
-def _normalize_no_tools(no_tools: NoToolsMode | bool | None) -> NoToolsMode | None:
-    if no_tools is True:
-        return "all"
-    if no_tools in (False, None):
-        return None
-    if no_tools in {"all", "builtin"}:
-        return no_tools
-    raise ValueError("no_tools must be 'all', 'builtin', True, False, or None")
+def _read_lsp_workspace_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
 
 
-def _loader_system_prompt_override(resource_loader: object) -> str | None:
-    getter = getattr(resource_loader, "get_system_prompt_override", None)
-    if not callable(getter):
-        return None
-    value = getter()
-    return value if isinstance(value, str) else None
-
-
-def _loader_append_system_prompt(resource_loader: object) -> list[str]:
-    getter = getattr(resource_loader, "get_append_system_prompt_overrides", None)
-    if not callable(getter):
-        return []
-    values = getter()
-    if not isinstance(values, list | tuple):
-        return []
-    return [value for value in values if isinstance(value, str) and value.strip()]
-
-
-def _append_system_prompt_fragments(base_prompt: str, fragments: list[str]) -> str:
-    parts = (
-        [base_prompt.strip()]
-        if isinstance(base_prompt, str) and base_prompt.strip()
-        else []
-    )
-    parts.extend(
-        fragment.strip()
-        for fragment in fragments
-        if isinstance(fragment, str) and fragment.strip()
-    )
-    return "\n\n".join(parts)
-
-
-def _resolve_initial_active_tool_names(
-    *,
-    active_tool_names: list[str] | None,
-    allowed_tool_names_set: set[str] | None,
-    no_tools_mode: NoToolsMode | None,
-    tool_registry: ToolRegistry | None,
-) -> list[str] | None:
-    if no_tools_mode == "all":
-        return []
-    if active_tool_names is not None:
-        names = list(active_tool_names)
-    elif no_tools_mode == "builtin":
-        names = _non_builtin_tool_names(tool_registry)
-    else:
-        return None
-    if allowed_tool_names_set is not None:
-        return [name for name in names if name in allowed_tool_names_set]
-    return names
-
-
-def _non_builtin_tool_names(tool_registry: ToolRegistry | None) -> list[str]:
-    if tool_registry is None:
-        return []
-    builtin_names = {"bash", "read", "ls", "find", "grep", "write", "edit"}
-    return [
-        definition.name
-        for definition in tool_registry.list_enabled_definitions()
-        if definition.name not in builtin_names
-    ]
-
-
-def _reload_model_registry_with_project_layer(
-    model_registry: ModelRegistry,
-    *,
-    resource_bundle: ResourceBundle,
-    session_cwd: str,
-    auth_manager: AuthManager | None = None,
-) -> None:
-    project_root = (
-        resource_bundle.agents_path.parent
-        if resource_bundle.agents_path is not None
-        else Path(session_cwd)
-    )
-    project_models_dir = project_root / ".loushang" / "models"
-    if not project_models_dir.is_dir():
-        return
-    user_models_dir = Path.home() / ".loushang" / "models"
-    model_registry.reload(
-        user_dir=user_models_dir if user_models_dir.is_dir() else None,
-        project_dir=project_models_dir,
-    )
-    if auth_manager is not None:
-        auth_manager.ai_registry = model_registry.ai_registry
-
-
-def _resolve_user_resource_roots(
-    resource_roots: tuple[str, ...],
-    *,
-    global_base_dir: Path | None,
-) -> tuple[list[str], set[str]]:
-    roots, explicit = resolve_user_resource_roots(
-        resource_roots,
-        global_base_dir=global_base_dir,
-    )
-    return [str(root) for root in roots], {str(root) for root in explicit}
-
-
-def _resolve_for_audit(path: str | Path) -> Path:
-    return Path(path).expanduser().resolve(strict=False)
-
-
-def _settings_project_root(settings_manager: SettingsManager) -> Path | None:
-    project_base_dir = settings_manager.project_base_dir
-    if project_base_dir is None:
-        return None
-    resolved = _resolve_for_audit(project_base_dir)
-    return resolved.parent if resolved.name == ".loushang" else resolved
-
-
-def _path_is_at_or_under(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-    except ValueError:
-        return False
-    return True
-
-
-def _scoped_models_from_enabled_patterns(
-    patterns: tuple[str, ...] | None,
-    model_registry: ModelRegistry,
-) -> list[dict[str, object]]:
-    if not patterns:
-        return []
-    scoped_models: list[dict[str, object]] = []
-    for pattern in patterns:
-        model_name, thinking_level = _split_model_thinking_pattern(pattern)
-        selection = model_registry.get_model(model_name)
-        if selection is None:
-            continue
-        model_payload: dict[str, object] = {
-            "provider": selection.provider,
-            "model_id": selection.model_id,
-        }
-        if selection.endpoint_id:
-            model_payload["endpoint_id"] = selection.endpoint_id
-        scoped: dict[str, object] = {"model": model_payload}
-        if thinking_level is not None:
-            scoped["thinkingLevel"] = thinking_level
-        scoped_models.append(scoped)
-    return scoped_models
-
-
-def _split_model_thinking_pattern(pattern: str) -> tuple[str, ThinkingLevel | None]:
-    name, separator, suffix = pattern.rpartition(":")
-    if (
-        separator
-        and suffix in {"off", "minimal", "low", "medium", "high", "xhigh"}
-        and name
-    ):
-        return name, suffix
-    return pattern, None
-
-
-def _register_extension_tools(
-    *,
-    extension_runner: ExtensionRunner,
-    resource_bundle: ResourceBundle,
-    tool_registry: ToolRegistry | None,
-) -> tuple[ResourceBundle, ToolRegistry | None, list[ResourceDiagnostic]]:
-    extension_tools = extension_runner.list_tool_definitions()
-    if not extension_tools:
-        return resource_bundle, tool_registry, []
-    resolved_tool_registry = tool_registry
-    if resolved_tool_registry is None:
-        resolved_tool_registry = ToolRegistry()
-
-    resolution = _resolve_extension_tool_contributions(
-        extension_runner=extension_runner,
-        tool_registry=resolved_tool_registry,
-    )
-    conflict_diagnostics = _extension_tool_conflict_diagnostics(resolution)
-    diagnostics: list[ResourceDiagnostic] = list(conflict_diagnostics.values())
-    for contribution in _extension_tool_registration_contributions(
-        resolution, conflict_names=set(conflict_diagnostics)
-    ):
-        resolved_tool_registry.register_tool(
-            contribution.definition,
-            source_info=contribution.source_info,
-        )
-
-    if diagnostics:
-        resource_bundle = resource_bundle.merge(diagnostics=diagnostics)
-    return resource_bundle, resolved_tool_registry, diagnostics
-
-
-def _resolve_extension_tool_contributions(
-    *,
-    extension_runner: ExtensionRunner,
-    tool_registry: ToolRegistry,
-) -> ToolResolutionResult:
-    return resolve_tool_contributions(
-        (
-            *tool_registry.list_contributions(),
-            *_extension_tool_contributions(extension_runner),
-        ),
-        fail_on_errors=False,
+def _source_identity_startup_check(cwd: str) -> StartupCheckResult:
+    return StartupCheckResult(
+        name="executable_source_identity",
+        ok=True,
+        code="executable_source_identity",
+        level="info",
+        message="Executable and import source identity captured.",
+        source_path=Path(__file__).resolve(strict=False),
+        details=coding_runtime_identity(cwd=cwd),
     )
 
 
-def _extension_tool_registration_contributions(
-    resolution: ToolResolutionResult,
-    *,
-    conflict_names: set[str],
-) -> tuple[ToolContribution, ...]:
-    contributions: list[ToolContribution] = []
-    for contribution in resolution.contributions:
-        if not _is_extension_tool_contribution(contribution):
-            continue
-        if contribution.definition.name in conflict_names:
-            continue
-        contributions.append(contribution)
-    return tuple(contributions)
+_CODING_AGENT_PRODUCT_CONSTRUCTION = AgentProductConstructionBinding[
+    Agent,
+    AgentSession,
+    ExtensionRunner,
+](
+    default_system_prompt=DEFAULT_CODING_SYSTEM_PROMPT,
+    bind_capabilities=lambda: bind_capability_composition_runtime(
+        CODING_CAPABILITY_PROFILE
+    ),
+    create_extension_runtime=lambda bundle: ExtensionRunner(bundle.extensions),
+    source_identity_check=_source_identity_startup_check,
+    list_tool_definitions=lambda runner: runner.list_tool_definitions(),
+    get_tool_source_info=lambda runner, name: runner.get_tool_source_info(name),
+    bind_session_capabilities=bind_coding_capability_composition_runtime,
+    bind_session_side_question=bind_coding_side_question,
+    product_tool_pack_id="coding.registry",
+    extension_tool_pack_id="coding.extensions",
+)
 
 
-def _extension_tool_contributions(
-    extension_runner: ExtensionRunner,
-) -> tuple[ToolContribution, ...]:
-    return tuple(
-        ToolContribution(
-            definition,
-            source_info=extension_runner.get_tool_source_info(definition.name),
-            metadata={
-                "kind": "extension_tool",
-                "extension_tool": definition.name,
-            },
-        )
-        for definition in extension_runner.list_tool_definitions()
-    )
-
-
-def _extension_tool_conflict_diagnostics(
-    resolution: ToolResolutionResult,
-) -> dict[str, ResourceDiagnostic]:
-    conflicts: dict[str, ResourceDiagnostic] = {}
-    for diagnostic in resolution.diagnostics:
-        if diagnostic.code != "duplicate_tool":
-            continue
-        name = diagnostic.details.get("name")
-        if not isinstance(name, str):
-            continue
-        conflicts[name] = ResourceDiagnostic(
-            code="extension_tool_conflict",
-            message=f"Extension tool '{name}' conflicts with an existing registry tool.",
-        )
-    return conflicts
-
-
-def _is_extension_tool_contribution(contribution: ToolContribution) -> bool:
-    return contribution.metadata.get("kind") == "extension_tool"
-
-
-def _convert_to_llm_with_block_images(settings_manager: SettingsManager):
-    def _convert(messages) -> list[Message]:
-        converted = convert_to_llm(messages)
-        if not settings_manager.get_block_images():
-            return converted
-        return [_replace_images_with_placeholder(message) for message in converted]
-
-    return _convert
-
-
-def _replace_images_with_placeholder(message: Message) -> Message:
-    if getattr(message, "role", None) not in {"user", "toolResult"}:
-        return message
-    content = getattr(message, "content", None)
-    if not isinstance(content, list):
-        return message
-
-    placeholder = TextPart(type="text", text="Image reading is disabled.")
-    filtered: list[object] = []
-    for block in content:
-        if getattr(block, "type", None) == "image":
-            if not (
-                filtered
-                and isinstance(filtered[-1], TextPart)
-                and filtered[-1].text == placeholder.text
-            ):
-                filtered.append(placeholder)
-            continue
-        filtered.append(block)
-
-    if filtered == content:
-        return message
-    return replace(message, content=filtered)
-
-
-def _apply_disabled_skills(
-    resource_bundle: ResourceBundle,
-    disabled_skills: tuple[str, ...],
-) -> ResourceBundle:
-    if not disabled_skills:
-        return resource_bundle
-    disabled = {value for value in disabled_skills if value}
-    if not disabled:
-        return resource_bundle
-    return replace(
-        resource_bundle,
-        skills=[
-            replace(skill, enabled=False) if _skill_disabled(skill, disabled) else skill
-            for skill in resource_bundle.skills
-        ],
-    )
-
-
-def _record_package_lockfile_diagnostics(
-    *,
-    diagnostics_service: DiagnosticsService,
-    materializer: PackageMaterializer,
-    session_id: str | None,
-) -> None:
-    for diagnostic in materializer.get_lockfile_diagnostics():
-        diagnostics_service.capture_failure(
-            code=str(diagnostic.get("code") or "package_lockfile_unreadable"),
-            error=str(
-                diagnostic.get("message") or "Package lockfile could not be read."
-            ),
-            phase="startup",
-            source="bootstrap",
-            level="warning",
-            session_id=session_id,
-            source_path=Path(str(diagnostic["path"]))
-            if isinstance(diagnostic.get("path"), str)
-            else None,
-            details={
-                key: value
-                for key, value in diagnostic.items()
-                if key not in {"code", "message", "path"}
-            },
-        )
-
-
-def _resolve_configured_remote_packages(
-    *,
-    materializer: PackageMaterializer,
-    settings_manager: SettingsManager,
-    diagnostics_service: DiagnosticsService,
-    session_id: str,
-) -> None:
-    PackageSourceResolver(
-        settings_manager=settings_manager,
-        materializer=materializer,
-        diagnostics_service=diagnostics_service,
-        session_id=session_id,
-    ).resolve_configured_sources_sync(missing_source_action="install", phase="startup")
-
-
-def _skill_disabled(skill, disabled: set[str]) -> bool:
-    return any(
-        value in disabled
-        for value in (
-            getattr(skill, "name", None),
-            getattr(skill, "id", None),
-            getattr(skill, "canonical_name", None),
-            str(getattr(skill, "source_path", "")),
-        )
-    )
-
-
-def _run_bootstrap_startup_checks(
-    *,
-    diagnostics_service: DiagnosticsService,
-    session_manager: SessionManager,
-    package_roots: tuple[str, ...],
-) -> None:
-    cwd = session_manager.get_cwd()
-
-    def cwd_check() -> StartupCheckResult | None:
-        cwd_path = Path(cwd).expanduser()
-        if cwd_path.is_dir():
-            return None
-        return StartupCheckResult(
-            name="cwd",
-            ok=False,
-            code="cwd_unavailable",
-            level="warning",
-            message=f"Session cwd is not an available directory: {cwd_path}",
-            details={"cwd": str(cwd_path)},
-        )
-
-    def executable_source_identity_check() -> StartupCheckResult:
-        return StartupCheckResult(
-            name="executable_source_identity",
-            ok=True,
-            code="executable_source_identity",
-            level="info",
-            message="Executable and import source identity captured.",
-            source_path=Path(__file__).resolve(strict=False),
-            details=executable_source_identity(cwd=cwd),
-        )
-
-    checks = [cwd_check]
-    for root in package_roots:
-        checks.append(_package_root_check(root))
-    checks.append(executable_source_identity_check)
-
-    diagnostics_service.run_startup_checks(
-        checks,
-        session_id=session_manager.get_header().id,
-    )
-
-
-def _package_root_check(root: str) -> Callable[[], StartupCheckResult | None]:
-    def check() -> StartupCheckResult | None:
-        root_path = Path(root).expanduser()
-        if root_path.is_dir():
-            return None
-        return StartupCheckResult(
-            name="package_root",
-            ok=False,
-            code="package_root_unavailable",
-            level="warning",
-            message=f"Package root is not an available directory: {root_path}",
-            details={"package_root": str(root_path)},
-        )
-
-    return check
-
-
-def _record_resource_diagnostics(
-    *,
-    diagnostics_service: DiagnosticsService,
-    diagnostics: list[ResourceDiagnostic],
-    phase,
-    source,
-    session_id: str,
-) -> None:
-    diagnostics_service.record_many(
-        diagnostics_service.normalize_resource_diagnostic(
-            diagnostic,
-            phase=phase,
-            source=source,
-            session_id=session_id,
-        )
-        for diagnostic in diagnostics
-    )
-
-
-def _record_cwd_bound_services_audit(
-    *,
-    diagnostics_service: DiagnosticsService,
-    audit: CwdBoundServicesAudit,
-    session_id: str,
-) -> None:
-    for issue in audit.issues:
-        diagnostics_service.capture_failure(
-            code=issue.code,
-            error=issue.message,
-            phase="startup",
-            source="bootstrap",
-            level=issue.level,
-            session_id=session_id,
-            details=issue.details,
-        )
-
-
-def create_agent_session_runtime(
+def _create_agent_session_runtime(
     *,
     session_dir: Path,
     model: Model | ModelSelection | None = None,
     stream_fn: StreamFn | None = None,
     system_prompt: str | None = None,
     thinking_level: ThinkingLevel | None = None,
-    tools: list[AgentTool[Any]] | None = None,
-    tool_registry: ToolRegistry | None = None,
+    tools: list[ToolDefinition] | None = None,
+    tool_registry: WorkspaceToolRegistry | None = None,
     allowed_tool_names: list[str] | None = None,
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
@@ -1423,44 +731,106 @@ def create_agent_session_runtime(
     persist: bool = True,
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
+    tool_policy_evaluator: PolicyEvaluator | None = None,
+    enable_multiagent: bool = False,
+    sandbox_workspace_writable: bool = True,
+    delegated_execution_profile: DelegatedExecutionProfile | None = None,
+    lsp_definitions: Iterable[LspServerDefinition] = (),
+    lsp_baseline_environment: Mapping[str, str] | None = None,
+    lsp_read_text: WorkspaceTextReader | None = None,
 ) -> AgentSessionRuntime:
     fixed_services = services if services is not None else create_services()
-    runtime_diagnostics_service = fixed_services.diagnostics_service
-
-    def _session_factory(
-        session_manager: SessionManager,
-        *,
-        session_start_event: SessionStartEvent | None = None,
-    ) -> AgentSession:
-        session_services = (
-            services_factory(session_manager.get_cwd())
-            if services_factory is not None
-            else fixed_services
-        )
-        session = create_agent_session(
-            session_manager=session_manager,
-            model=model,
-            stream_fn=stream_fn,
-            system_prompt=system_prompt,
-            thinking_level=thinking_level,
-            tools=tools,
-            tool_registry=tool_registry,
-            allowed_tool_names=allowed_tool_names,
-            active_tool_names=active_tool_names,
-            no_tools=no_tools,
-            services=session_services,
-            agent_factory=agent_factory,
-            session_start_event=session_start_event,
-            append_system_prompt=append_system_prompt,
-            approval_resolver=approval_resolver,
-        )
-        if not persist:
-            session.agent.session_id = None
-        return session
-
-    return AgentSessionRuntime(
+    fixed_lsp_definitions = tuple(lsp_definitions)
+    fixed_lsp_environment = (
+        dict(lsp_baseline_environment) if lsp_baseline_environment is not None else None
+    )
+    return build_agent_product_session_runtime(
         session_dir=Path(session_dir),
-        session_factory=_session_factory,
+        runtime_factory=AgentSessionRuntime,
+        fixed_services=fixed_services,
+        build_session=lambda session_manager, session_services, start_event: (
+            _create_agent_session(
+                session_manager=cast(SessionManager, session_manager),
+                model=model,
+                stream_fn=stream_fn,
+                system_prompt=system_prompt,
+                thinking_level=thinking_level,
+                tools=tools,
+                tool_registry=tool_registry,
+                allowed_tool_names=allowed_tool_names,
+                active_tool_names=active_tool_names,
+                no_tools=no_tools,
+                services=session_services,
+                agent_factory=agent_factory,
+                session_start_event=cast(SessionStartEvent | None, start_event),
+                append_system_prompt=append_system_prompt,
+                approval_resolver=approval_resolver,
+                tool_policy_evaluator=tool_policy_evaluator,
+                enable_multiagent=enable_multiagent,
+                sandbox_workspace_writable=sandbox_workspace_writable,
+                delegated_execution_profile=delegated_execution_profile,
+                lsp_definitions=fixed_lsp_definitions,
+                lsp_baseline_environment=fixed_lsp_environment,
+                lsp_read_text=lsp_read_text,
+            )
+        ),
+        session_cwd=lambda manager: cast(SessionManager, manager).get_cwd(),
+        services_factory=services_factory,
         persist=persist,
-        diagnostics_service=runtime_diagnostics_service,
+        diagnostics_service=fixed_services.diagnostics_service,
+        on_non_persistent_session=lambda session: setattr(
+            session.agent,
+            "session_id",
+            None,
+        ),
+    )
+
+
+def create_agent_session_runtime(
+    *,
+    session_dir: Path,
+    model: Model | ModelSelection | None = None,
+    stream_fn: StreamFn | None = None,
+    system_prompt: str | None = None,
+    thinking_level: ThinkingLevel | None = None,
+    tools: list[ToolDefinition] | None = None,
+    tool_registry: WorkspaceToolRegistry | None = None,
+    allowed_tool_names: list[str] | None = None,
+    active_tool_names: list[str] | None = None,
+    no_tools: NoToolsMode | bool | None = None,
+    services: BootstrapServices | None = None,
+    services_factory: ServicesFactory | None = None,
+    agent_factory: AgentFactory = Agent,
+    persist: bool = True,
+    append_system_prompt: list[str] | tuple[str, ...] | None = None,
+    approval_resolver: InteractiveApprovalResolver | None = None,
+    tool_policy_evaluator: PolicyEvaluator | None = None,
+    enable_multiagent: bool = False,
+    lsp_definitions: Iterable[LspServerDefinition] = (),
+    lsp_baseline_environment: Mapping[str, str] | None = None,
+    lsp_read_text: WorkspaceTextReader | None = None,
+) -> AgentSessionRuntime:
+    return _create_agent_session_runtime(
+        session_dir=session_dir,
+        model=model,
+        stream_fn=stream_fn,
+        system_prompt=system_prompt,
+        thinking_level=thinking_level,
+        tools=tools,
+        tool_registry=tool_registry,
+        allowed_tool_names=allowed_tool_names,
+        active_tool_names=active_tool_names,
+        no_tools=no_tools,
+        services=services,
+        services_factory=services_factory,
+        agent_factory=agent_factory,
+        persist=persist,
+        append_system_prompt=append_system_prompt,
+        approval_resolver=approval_resolver,
+        tool_policy_evaluator=tool_policy_evaluator,
+        enable_multiagent=enable_multiagent,
+        sandbox_workspace_writable=True,
+        lsp_definitions=lsp_definitions,
+        lsp_baseline_environment=lsp_baseline_environment,
+        lsp_read_text=lsp_read_text,
     )

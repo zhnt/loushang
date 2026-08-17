@@ -1,11 +1,23 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 from loushang.agent.types import AgentTool
-from loushang.harness.approval import ApprovalResolver
+from loushang.harness.approval import (
+    ApprovalResolver,
+    HeadlessApprovalResolver,
+)
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.environment import HostEnvironment
+from loushang.harness.permissions import (
+    PermissionProfileCeiling,
+    PermissionProfilePolicyEvaluator,
+)
+from loushang.harness.policy_engine import PolicyEngine
+from loushang.harness.tools.authoring import ToolContext, ToolContextProvider
+from loushang.harness.tools.execution import ToolExecutionHost
 from loushang.harness.workspace.exec import ExecService
 from loushang.harness.workspace.operations import (
     EditOperations,
@@ -16,14 +28,15 @@ from loushang.harness.workspace.operations import (
     ToolOperations,
     WriteOperations,
 )
+from loushang.harness.workspace.shell import ShellSelection
 
+from .authorization import WorkspaceToolAuthorizationGateway
 from .bash import (
     BashOperations,
     BashSpawnHook,
     BashToolOptions,
     create_bash_tool_definition,
 )
-from .context import ToolContext, ToolContextProvider
 from .edit import EditToolOptions, create_edit_tool_definition
 from .external_tools import (
     ExternalToolDownloader,
@@ -38,16 +51,30 @@ from .grep import GrepToolOptions, create_grep_tool_definition
 from .ls import LsToolOptions, create_ls_tool_definition
 from .policy import ToolPolicyEvaluator
 from .read import ReadToolOptions, create_read_tool_definition
+from .shell import (
+    ShellToolOptions,
+    create_shell_tool_definition,
+)
 from .types import ToolDefinition
 from .wrapper import wrap_tool_definition
 from .write import WriteToolOptions, create_write_tool_definition
 
-ToolName = Literal["read", "bash", "edit", "write", "grep", "find", "ls"]
+ToolName = Literal[
+    "read",
+    "bash",
+    "shell",
+    "edit",
+    "write",
+    "grep",
+    "find",
+    "ls",
+]
 Tool = AgentTool[Any]
 ToolDef = ToolDefinition
 ALL_TOOL_NAMES: tuple[ToolName, ...] = (
     "read",
     "bash",
+    "shell",
     "edit",
     "write",
     "grep",
@@ -59,6 +86,40 @@ READ_ONLY_TOOL_NAMES: tuple[ToolName, ...] = ("read", "grep", "find", "ls")
 allToolNames: set[ToolName] = set(ALL_TOOL_NAMES)
 coreWorkspaceToolNames: set[ToolName] = set(CORE_WORKSPACE_TOOL_NAMES)
 readOnlyToolNames: set[ToolName] = set(READ_ONLY_TOOL_NAMES)
+
+
+def _identity_tool_definition(definition: ToolDefinition) -> ToolDefinition:
+    return definition
+
+
+@dataclass(frozen=True)
+class WorkspaceToolProfile:
+    """Product selections and definition decoration for workspace tools."""
+
+    profile_id: str
+    tool_names: tuple[ToolName, ...] = CORE_WORKSPACE_TOOL_NAMES
+    builtin_tool_names: tuple[ToolName, ...] = CORE_WORKSPACE_TOOL_NAMES
+    pack_id: str = "workspace.builtin"
+    decorate_definition: Callable[[ToolDefinition], ToolDefinition] = field(
+        default=_identity_tool_definition,
+        repr=False,
+        compare=False,
+    )
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.profile_id, str) or not self.profile_id:
+            raise ValueError("workspace tool profile id must be a non-empty string")
+        if not isinstance(self.pack_id, str) or not self.pack_id:
+            raise ValueError("workspace tool pack id must be a non-empty string")
+        tool_names = _validated_tool_names(self.tool_names, name="tool_names")
+        builtin_tool_names = _validated_tool_names(
+            self.builtin_tool_names,
+            name="builtin_tool_names",
+        )
+        if not callable(self.decorate_definition):
+            raise TypeError("workspace tool definition decorator must be callable")
+        object.__setattr__(self, "tool_names", tool_names)
+        object.__setattr__(self, "builtin_tool_names", builtin_tool_names)
 
 
 @dataclass(frozen=True)
@@ -77,8 +138,6 @@ class ToolsOptions:
     grep_operations: GrepOperations | None = None
     write_operations: WriteOperations | None = None
     edit_operations: EditOperations | None = None
-    policy_engine: ToolPolicyEvaluator | object | None = None
-    approval_resolver: ApprovalResolver | None = None
     exec_service: ExecService | None = None
     diagnostics_service: DiagnosticsService | None = None
     bash_operations: BashOperations | None = None
@@ -90,6 +149,111 @@ class ToolsOptions:
     external_tool_policy: ExternalToolPolicy | None = None
     allow_external_tool_downloads: bool = False
     require_external_tools: bool = False
+    shell: ShellToolOptions | None = None
+    shell_operations: BashOperations | None = None
+    host_environment: HostEnvironment | None = None
+
+
+@dataclass(frozen=True)
+class WorkspaceToolRuntimeSettings:
+    policy_engine: ToolPolicyEvaluator | None = None
+    approval_resolver: ApprovalResolver | None = None
+
+
+def workspace_tool_runtime_settings(
+    settings_manager: object | None,
+    *,
+    policy_factory: Callable[..., ToolPolicyEvaluator] = PolicyEngine,
+) -> WorkspaceToolRuntimeSettings:
+    """Resolve standard tool policy and headless approval settings."""
+
+    tool_settings = _tool_settings(settings_manager)
+    if tool_settings is None:
+        return WorkspaceToolRuntimeSettings(policy_engine=policy_factory())
+    policy_kwargs = {
+        "blocked_tools": _string_tuple(tool_settings, "blocked_tools"),
+        "ask_tools": _string_tuple(tool_settings, "ask_tools"),
+        "blocked_substrings": _string_tuple(tool_settings, "blocked_substrings"),
+        "ask_substrings": _string_tuple(tool_settings, "ask_substrings"),
+        "blocked_path_substrings": _string_tuple(
+            tool_settings, "blocked_path_substrings"
+        ),
+        "ask_path_substrings": _string_tuple(
+            tool_settings, "ask_path_substrings"
+        ),
+        "blocked_capabilities": _command_capability_rules(
+            tool_settings,
+            tools_field="blocked_tools",
+            capabilities_field="blocked_capabilities",
+        ),
+        "ask_capabilities": _command_capability_rules(
+            tool_settings,
+            tools_field="ask_tools",
+            capabilities_field="ask_capabilities",
+        ),
+    }
+    base_policy_engine = policy_factory(**policy_kwargs)
+    profile_getter = getattr(settings_manager, "get_permission_profile_id", None)
+    ceiling_getter = getattr(
+        settings_manager,
+        "get_permission_profile_ceiling",
+        None,
+    )
+    policy_engine = (
+        PermissionProfilePolicyEvaluator(
+            base_policy_engine,
+            profile_provider=profile_getter,
+            ceiling_provider=(
+                ceiling_getter
+                if callable(ceiling_getter)
+                else PermissionProfileCeiling
+            ),
+        )
+        if callable(profile_getter)
+        else base_policy_engine
+    )
+    approval_mode = getattr(tool_settings, "approval_mode", None)
+    approval_resolver = (
+        HeadlessApprovalResolver(
+            mode=approval_mode,
+            reason=getattr(tool_settings, "approval_reason", None),
+        )
+        if approval_mode is not None
+        else None
+    )
+    return WorkspaceToolRuntimeSettings(
+        policy_engine=policy_engine,
+        approval_resolver=approval_resolver,
+    )
+
+
+def _tool_settings(settings_manager: object | None) -> object | None:
+    get_tool_settings = getattr(settings_manager, "get_tool_settings", None)
+    if callable(get_tool_settings):
+        return get_tool_settings()
+    get_settings = getattr(settings_manager, "get_settings", None)
+    if callable(get_settings):
+        return getattr(get_settings(), "tools", None)
+    return None
+
+
+def _string_tuple(value: object, name: str) -> tuple[str, ...]:
+    items = getattr(value, name, ())
+    if not isinstance(items, list | tuple):
+        return ()
+    return tuple(item for item in items if isinstance(item, str))
+
+
+def _command_capability_rules(
+    settings: object,
+    *,
+    tools_field: str,
+    capabilities_field: str,
+) -> tuple[str, ...]:
+    configured = list(_string_tuple(settings, capabilities_field))
+    if "bash" in _string_tuple(settings, tools_field):
+        configured.append("workspace.command")
+    return tuple(dict.fromkeys(configured))
 
 
 def create_tool_definition(
@@ -100,57 +264,102 @@ def create_tool_definition(
         return create_read_tool_definition(
             options=options.read,
             operations=options.read_operations or options.operations,
-            policy_engine=options.policy_engine,
-            approval_resolver=options.approval_resolver,
         )
     if tool_name == "bash":
         return create_bash_tool_definition(
             options=options.bash,
-            policy_engine=options.policy_engine,
             exec_service=options.exec_service,
             diagnostics_service=options.diagnostics_service,
             operations=options.bash_operations,
             command_prefix=options.command_prefix,
             shell_path=options.shell_path,
             spawn_hook=options.spawn_hook,
-            approval_resolver=options.approval_resolver,
+        )
+    if tool_name == "shell":
+        return create_shell_tool_definition(
+            options=options.shell,
+            exec_service=options.exec_service,
+            diagnostics_service=options.diagnostics_service,
+            operations=options.shell_operations or options.bash_operations,
+            environment=options.host_environment,
+            selection=(
+                ShellSelection(path=options.shell_path)
+                if options.shell_path is not None
+                else None
+            ),
+            command_prefix=options.command_prefix,
         )
     if tool_name == "edit":
         return create_edit_tool_definition(
             options=options.edit,
             operations=options.edit_operations or options.operations,
-            policy_engine=options.policy_engine,
-            approval_resolver=options.approval_resolver,
         )
     if tool_name == "write":
         return create_write_tool_definition(
             options=options.write,
             operations=options.write_operations or options.operations,
-            policy_engine=options.policy_engine,
-            approval_resolver=options.approval_resolver,
         )
     if tool_name == "grep":
         return create_grep_tool_definition(
             options=_grep_options(options),
             operations=options.grep_operations or options.operations,
-            policy_engine=options.policy_engine,
-            approval_resolver=options.approval_resolver,
         )
     if tool_name == "find":
         return create_find_tool_definition(
             options=_find_options(options),
             operations=options.find_operations or options.operations,
-            policy_engine=options.policy_engine,
-            approval_resolver=options.approval_resolver,
         )
     if tool_name == "ls":
         return create_ls_tool_definition(
             options=options.ls,
             operations=options.ls_operations or options.operations,
-            policy_engine=options.policy_engine,
-            approval_resolver=options.approval_resolver,
         )
     raise ValueError(f"Unknown tool name: {tool_name}")
+
+
+def create_profiled_workspace_tool_definition(
+    profile: WorkspaceToolProfile,
+    tool_name: ToolName,
+    *,
+    options: ToolsOptions | None = None,
+) -> ToolDefinition:
+    """Create and decorate one definition selected by a Product profile."""
+
+    if tool_name not in (*profile.tool_names, *profile.builtin_tool_names):
+        raise ValueError(
+            f"workspace tool {tool_name!r} is not selected by {profile.profile_id!r}"
+        )
+    definition = profile.decorate_definition(
+        create_tool_definition(tool_name, options=options)
+    )
+    if not isinstance(definition, ToolDefinition):
+        raise TypeError("workspace tool decorator must return ToolDefinition")
+    if definition.name != tool_name:
+        raise ValueError("workspace tool decorator must preserve the tool name")
+    return definition
+
+
+def create_profiled_workspace_tool_definitions(
+    profile: WorkspaceToolProfile,
+    *,
+    options: ToolsOptions | None = None,
+    tool_names: Iterable[ToolName] | None = None,
+) -> list[ToolDefinition]:
+    """Create an ordered definition list for a Product workspace profile."""
+
+    selected = (
+        profile.tool_names
+        if tool_names is None
+        else _validated_tool_names(tool_names, name="tool_names")
+    )
+    return [
+        create_profiled_workspace_tool_definition(
+            profile,
+            tool_name,
+            options=options,
+        )
+        for tool_name in selected
+    ]
 
 
 def _find_options(options: ToolsOptions) -> FindToolOptions | None:
@@ -266,6 +475,11 @@ def create_tool(
 ) -> AgentTool[Any]:
     return wrap_tool_definition(
         create_tool_definition(tool_name, options=options),
+        execution_host=ToolExecutionHost(
+            WorkspaceToolAuthorizationGateway(
+                policy_evaluator=PolicyEngine(),
+            )
+        ),
         context_provider=_create_context_provider(
             cwd=cwd,
             options=options,
@@ -273,6 +487,46 @@ def create_tool(
             model=model,
         ),
     )
+
+
+def create_profiled_workspace_tools(
+    profile: WorkspaceToolProfile,
+    *,
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+    context_provider: ToolContextProvider | None = None,
+    model: object | None = None,
+) -> list[AgentTool[Any]]:
+    """Materialize the tools selected by a Product workspace profile."""
+
+    return [
+        create_tool(
+            tool_name,
+            cwd=cwd,
+            options=options,
+            context_provider=context_provider,
+            model=model,
+        )
+        for tool_name in profile.tool_names
+    ]
+
+
+def _validated_tool_names(
+    values: Iterable[ToolName],
+    *,
+    name: str,
+) -> tuple[ToolName, ...]:
+    if isinstance(values, str):
+        raise TypeError(f"{name} must be an iterable of tool names")
+    result = tuple(values)
+    if not result:
+        raise ValueError(f"{name} must not be empty")
+    unknown = tuple(value for value in result if value not in ALL_TOOL_NAMES)
+    if unknown:
+        raise ValueError(f"{name} contains unknown workspace tools: {unknown!r}")
+    if len(result) != len(set(result)):
+        raise ValueError(f"{name} must not repeat workspace tools")
+    return result
 
 
 def create_read_tool(
@@ -296,6 +550,22 @@ def create_bash_tool(
 ) -> AgentTool[Any]:
     return create_tool(
         "bash", cwd=cwd, options=options, context_provider=context_provider, model=model
+    )
+
+
+def create_shell_tool(
+    cwd: str | None = None,
+    options: ToolsOptions | None = None,
+    *,
+    context_provider: ToolContextProvider | None = None,
+    model: object | None = None,
+) -> AgentTool[Any]:
+    return create_tool(
+        "shell",
+        cwd=cwd,
+        options=options,
+        context_provider=context_provider,
+        model=model,
     )
 
 
@@ -449,6 +719,12 @@ def createBashTool(
     return create_bash_tool(cwd=cwd, options=options)
 
 
+def createShellTool(
+    cwd: str | None = None, options: ToolsOptions | None = None
+) -> AgentTool[Any]:
+    return create_shell_tool(cwd=cwd, options=options)
+
+
 def createEditTool(
     cwd: str | None = None, options: ToolsOptions | None = None
 ) -> AgentTool[Any]:
@@ -543,6 +819,7 @@ def _create_context_provider(
             cwd=cwd,
             diagnostics=diagnostics,
             model=model,
+            exec_service=options.exec_service if options is not None else None,
         )
 
     return _context_provider

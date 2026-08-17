@@ -1,94 +1,134 @@
 from __future__ import annotations
 
 import inspect
+from dataclasses import replace
 from typing import Any
+from uuid import uuid4
 
 from loushang.ai.context import NormalizedContext
+from loushang.ai.prepared_request import (
+    PreparedRequestAdapter,
+    invoke_prepared_request,
+)
 from loushang.ai.provider.protocol import ProviderRequest, ProviderRequestValidator
 from loushang.ai.provider.runtime import start_provider_runtime
 
 
-def validate_provider_invoke_raw_contract(provider: Any) -> None:
-    method = getattr(provider, "invoke_raw", None)
+def validate_api_adapter_invoke_raw_contract(adapter: Any) -> None:
+    method = getattr(adapter, "invoke_raw", None)
     if not callable(method):
-        raise TypeError("Provider missing required invoke_raw method")
+        raise TypeError("API adapter missing required invoke_raw method")
     try:
         signature = inspect.signature(method)
     except (TypeError, ValueError):
-        raise TypeError("Provider invoke_raw signature is not inspectable") from None
+        raise TypeError("API adapter invoke_raw signature is not inspectable") from None
 
     parameters = list(signature.parameters.values())
     if len(parameters) != 1:
-        raise TypeError("Provider invoke_raw must accept exactly one ProviderRequest")
+        raise TypeError(
+            "API adapter invoke_raw must accept exactly one ProviderRequest"
+        )
     parameter = parameters[0]
     if parameter.kind not in (
         inspect.Parameter.POSITIONAL_ONLY,
         inspect.Parameter.POSITIONAL_OR_KEYWORD,
     ):
-        raise TypeError("Provider invoke_raw request must be a positional parameter")
-    if parameter.name not in {"request", "provider_request"}:
-        raise TypeError("Provider invoke_raw parameter must be named request")
+        raise TypeError("API adapter invoke_raw request must be a positional parameter")
 
 
-def validate_provider_request_validator_contract(provider: Any) -> None:
-    method = getattr(provider, "validate_request", None)
+def validate_api_adapter_request_validator_contract(adapter: Any) -> None:
+    method = getattr(adapter, "validate_request", None)
     if method is None:
         return
     if not callable(method):
-        raise TypeError("Provider validate_request must be callable")
+        raise TypeError("API adapter validate_request must be callable")
     try:
         signature = inspect.signature(method)
     except (TypeError, ValueError):
-        raise TypeError("Provider validate_request signature is not inspectable") from None
+        raise TypeError(
+            "API adapter validate_request signature is not inspectable"
+        ) from None
 
     parameters = list(signature.parameters.values())
     if len(parameters) != 1:
-        raise TypeError("Provider validate_request must accept exactly one ProviderRequest")
+        raise TypeError(
+            "API adapter validate_request must accept exactly one ProviderRequest"
+        )
     parameter = parameters[0]
     if parameter.kind not in (
         inspect.Parameter.POSITIONAL_ONLY,
         inspect.Parameter.POSITIONAL_OR_KEYWORD,
     ):
-        raise TypeError("Provider validate_request request must be positional")
-    if parameter.name not in {"request", "provider_request"}:
-        raise TypeError("Provider validate_request parameter must be named request")
+        raise TypeError("API adapter validate_request request must be positional")
 
 
-def validate_provider_request(provider: Any, request: ProviderRequest) -> None:
-    validate_provider_request_validator_contract(provider)
-    if isinstance(provider, ProviderRequestValidator):
-        provider.validate_request(request)
+def validate_provider_request(adapter: Any, request: ProviderRequest) -> None:
+    if isinstance(adapter, ProviderRequestValidator):
+        adapter.validate_request(request)
 
 
-def _call_provider_raw_parts(
-    provider: Any,
+def _call_adapter_raw_parts(
+    adapter: Any,
     request: ProviderRequest,
 ):
     if not isinstance(request.context, NormalizedContext):
         raise TypeError("ProviderRequest.context must be NormalizedContext")
-    return provider.invoke_raw(request)
+    return adapter.invoke_raw(request)
 
 
-async def call_api_provider_stream(
-    provider: Any,
+async def call_api_adapter_stream(
+    adapter: Any,
     request: ProviderRequest,
 ):
-    invoke_raw_method = getattr(provider, "invoke_raw", None)
-    if request.api != provider.api:
+    invoke_raw_method = getattr(adapter, "invoke_raw", None)
+    if request.model.api != adapter.api:
         raise ValueError(
-            f"Mismatched api: provider={provider.api!r} request.api={request.api!r}"
+            f"Mismatched api: adapter={adapter.api!r} "
+            f"request.model.api={request.model.api!r}"
         )
     if not callable(invoke_raw_method):
-        raise TypeError("Provider missing required invoke_raw method")
-    validate_provider_invoke_raw_contract(provider)
+        raise TypeError("API adapter missing required invoke_raw method")
     if not isinstance(request.context, NormalizedContext):
         raise TypeError("ProviderRequest.context must be NormalizedContext")
+    if request.attempt != 1:
+        raise ValueError("ProviderRequest initial attempt must be 1")
+    committer = (
+        request.options.prepared_request_committer
+        if request.options is not None
+        else None
+    )
+    request_limits = (
+        request.options.request_limits if request.options is not None else None
+    )
+    uses_prepared_barrier = isinstance(adapter, PreparedRequestAdapter)
+    requires_prepared_barrier = committer is not None or request_limits is not None
+    if requires_prepared_barrier and not uses_prepared_barrier:
+        raise TypeError(
+            f"API adapter {adapter.api!r} does not implement the prepared-request barrier"
+        )
+
+    invocation_id = request.invocation_id or uuid4().hex
+    attempt = request.attempt - 1
+
+    def _raw_parts():
+        nonlocal attempt
+        attempt += 1
+        attempt_request = (
+            request
+            if request.invocation_id == invocation_id and request.attempt == attempt
+            else replace(
+                request,
+                invocation_id=invocation_id,
+                attempt=attempt,
+            )
+        )
+        if requires_prepared_barrier:
+            return invoke_prepared_request(adapter, attempt_request)
+        return _call_adapter_raw_parts(adapter, attempt_request)
+
     return start_provider_runtime(
-        lambda: _call_provider_raw_parts(
-            provider,
-            request,
-        ),
-        model=request.model,
+        _raw_parts,
         options=request.options,
         request=request,
+        invocation_id=invocation_id,
     )

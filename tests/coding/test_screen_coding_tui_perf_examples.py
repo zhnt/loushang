@@ -41,6 +41,7 @@ def test_markdown_perf_fixture_starts_a_new_block_every_twenty_lines() -> None:
     )
 
 
+@pytest.mark.tui_render_contract
 def test_markdown_perf_render_stats_do_not_iterate_render_lines(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -67,6 +68,7 @@ def test_markdown_perf_render_stats_do_not_iterate_render_lines(
     assert app.render_stats.last_line_count == 7
 
 
+@pytest.mark.tui_render_contract
 def test_markdown_perf_script_summary_retains_only_the_last_step() -> None:
     namespace = runpy.run_path(str(_EXAMPLE))
     summary_fields = {item.name for item in fields(namespace["ScriptRoundSummary"])}

@@ -6,10 +6,10 @@ Accepted
 
 ## Context
 
-`loushang-ai` 在早期设计中一度参考 `reference AI SDK`，倾向采用：
+`loushang-ai` 在早期设计中一度参考 `reference AI SDK`，倾向采用同步返回
+stream handle，并额外提供一层简化调用包装。
 
 - `stream(...) -> AssistantMessageEventStream`
-- `stream_simple(...) -> AssistantMessageEventStream`
 
 也就是同步返回 stream handle，再由调用方异步消费。
 
@@ -33,7 +33,7 @@ Accepted
 并且：
 
 - `complete()` 建立在 `await stream(); await result()` 之上
-- `ApiProvider` 协议也采用 async-start 形态
+- `APIAdapter` 协议也采用 async-start 形态
 
 ## Alternatives Considered
 
@@ -108,14 +108,14 @@ Accepted
 - `loushang-ai-component-interactions-v1.md`
 - `loushang-ai-streaming-and-cancellation.md`
 - `loushang-ai-provider-adapter-strategy.md`
-- `loushang-ai-api-provider-registry.md`
+- `loushang-ai-api-adapter-registry.md`
 
 ## Impacted Code
 
 - `src/loushang/ai/api/streaming.py`
 - `src/loushang/ai/api_registry.py`
-- `src/loushang/ai/providers/faux.py`
-- `src/loushang/ai/providers/anthropic.py`
+- `src/loushang/ai/protocols/faux.py`
+- `src/loushang/ai/protocols/anthropic_messages.py`
 
 ## Follow-up
 

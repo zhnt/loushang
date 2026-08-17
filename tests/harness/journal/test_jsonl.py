@@ -65,6 +65,54 @@ def test_header_journal_rewrite_append_and_load_round_trip(tmp_path: Path) -> No
     assert not list(path.parent.glob("*.tmp"))
 
 
+def test_journal_batch_append_preserves_order(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from loushang.harness.journal import (
+        JournalLoadPolicy,
+        append_jsonl_records,
+        load_jsonl,
+        write_jsonl,
+    )
+    from loushang.harness.journal import jsonl as jsonl_module
+
+    path = tmp_path / "records.jsonl"
+    write_jsonl(
+        path,
+        [],
+        record_codec=_RecordCodec(),
+        header=_Header("journal-1"),
+        header_codec=_HeaderCodec(),
+    )
+    sync_calls = 0
+
+    def count_sync(handle, durability) -> None:
+        nonlocal sync_calls
+        sync_calls += 1
+        handle.flush()
+
+    monkeypatch.setattr(jsonl_module, "_sync_handle", count_sync)
+
+    append_jsonl_records(
+        path,
+        [_Record("one", "alpha"), _Record("two", "beta")],
+        record_codec=_RecordCodec(),
+    )
+
+    snapshot = load_jsonl(
+        path,
+        record_codec=_RecordCodec(),
+        header_codec=_HeaderCodec(),
+        load_policy=JournalLoadPolicy(header="required"),
+    )
+    assert snapshot.records == (
+        _Record("one", "alpha"),
+        _Record("two", "beta"),
+    )
+    assert sync_calls == 1
+
+
 def test_format_profile_preserves_unicode_and_key_order(tmp_path: Path) -> None:
     from loushang.harness.journal import (
         PROCESS_LOCAL_JOURNAL,
@@ -88,8 +136,8 @@ def test_format_profile_preserves_unicode_and_key_order(tmp_path: Path) -> None:
 def test_journal_rejects_values_outside_strict_json_algebra(tmp_path: Path) -> None:
     import pytest
 
+    from loushang.foundation.json import JsonValueError
     from loushang.harness.journal import append_jsonl_record
-    from loushang.protocol import JsonValueError
 
     class UnsafeRecordCodec:
         def encode_record(self, record: _Record):
@@ -143,6 +191,40 @@ def test_skip_invalid_records_and_partial_tail_reports_provenance(
     ]
     assert [diagnostic.line_number for diagnostic in snapshot.diagnostics] == [2, 3]
     assert all(diagnostic.source_path == path for diagnostic in snapshot.diagnostics)
+
+
+def test_repair_partial_tail_atomically_removes_only_incomplete_line(
+    tmp_path: Path,
+) -> None:
+    from loushang.harness.journal import (
+        PROCESS_LOCAL_JOURNAL,
+        JournalLoadPolicy,
+        JsonlJournal,
+    )
+
+    path = tmp_path / "records.jsonl"
+    complete = '{"recordId":"one","text":"ok"}\n'
+    path.write_text(complete + '{"recordId":', encoding="utf-8")
+    journal = JsonlJournal(
+        path,
+        record_codec=_RecordCodec(),
+        durability=PROCESS_LOCAL_JOURNAL,
+        load_policy=JournalLoadPolicy(partial_tail="repair"),
+    )
+
+    snapshot = journal.load()
+    journal.append(_Record("two", "after repair"))
+    reloaded = journal.load()
+
+    assert snapshot.records == (_Record("one", "ok"),)
+    assert [diagnostic.code for diagnostic in snapshot.diagnostics] == [
+        "partial_journal_tail"
+    ]
+    assert path.read_text(encoding="utf-8").startswith(complete)
+    assert reloaded.records == (
+        _Record("one", "ok"),
+        _Record("two", "after repair"),
+    )
 
 
 def test_strict_load_raises_typed_file_error(tmp_path: Path) -> None:
@@ -212,8 +294,7 @@ def test_legacy_jsonl_line_parser_is_explicit_and_syntax_only() -> None:
     )
 
     parsed = parse_legacy_jsonl_line(
-        '{"nan":NaN,"positive":Infinity,"negative":-Infinity,'
-        '"text":"\\ud800"}\r\n'
+        '{"nan":NaN,"positive":Infinity,"negative":-Infinity,"text":"\\ud800"}\r\n'
     )
 
     assert parsed is not None

@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import asyncio
 
-from loushang.coding.session.extension_runtime_bindings import (
+from loushang.ai.model import ModelSelection
+from loushang.harness.extensions.runtime_bindings import (
     ExtensionRuntimeBindingFactory,
 )
-from loushang.coding.session.types import ContextUsage, ModelSelection
+from loushang.harness.session.inspection import ContextUsage
 
 
-def test_extension_runtime_binding_factory_wires_session_callbacks_and_ui_error_handler() -> None:
+def test_extension_runtime_binding_factory_wires_session_callbacks_and_ui_error_handler() -> (
+    None
+):
     calls: list[tuple[str, object]] = []
 
     class UiContext:
@@ -21,10 +24,24 @@ def test_extension_runtime_binding_factory_wires_session_callbacks_and_ui_error_
     async def _set_model(selection: ModelSelection) -> None:
         calls.append(("model", selection))
 
+    async def _append_entry(custom_type: str, data: object | None = None) -> None:
+        calls.append(("append", (custom_type, data)))
+
+    async def _set_session_name(name: str | None) -> None:
+        calls.append(("name", name))
+
+    async def _set_label(entry_id: str, label: str | None) -> None:
+        calls.append(("label", (entry_id, label)))
+
+    async def _set_thinking_level(level: str) -> None:
+        calls.append(("thinking", level))
+
     async def _send_message(message: object, options: object | None = None) -> None:
         calls.append(("message", (message, options)))
 
-    async def _send_user_message(content: object, options: object | None = None) -> None:
+    async def _send_user_message(
+        content: object, options: object | None = None
+    ) -> None:
         calls.append(("user", (content, options)))
 
     factory = ExtensionRuntimeBindingFactory(
@@ -33,17 +50,21 @@ def test_extension_runtime_binding_factory_wires_session_callbacks_and_ui_error_
         model_registry="registry",
         get_active_tool_names=lambda: ["read"],
         get_all_tools=lambda: ["read-tool"],
-        get_model_selection=lambda: ModelSelection(provider="faux", model_id="alpha"),
+        get_model_selection=lambda: ModelSelection(
+            endpoint_id="test-endpoint", provider="faux", model_id="alpha"
+        ),
         set_active_tools=_set_active_tools,
         set_model=_set_model,
-        register_tool=lambda tool, source_info=None: calls.append(("tool", (tool, source_info))),
-        append_entry=lambda custom_type, data=None: calls.append(("append", (custom_type, data))),
+        register_tool=lambda tool, source_info=None: calls.append(
+            ("tool", (tool, source_info))
+        ),
+        append_entry=_append_entry,
         send_message=_send_message,
         send_user_message=_send_user_message,
         get_signal=lambda: "signal",
-        set_session_name=lambda name: calls.append(("name", name)),
+        set_session_name=_set_session_name,
         get_session_name=lambda: "Demo",
-        set_label=lambda entry_id, label: calls.append(("label", (entry_id, label))),
+        set_label=_set_label,
         list_commands=lambda: ["cmd"],
         request_resource_refresh=lambda: calls.append(("refresh", None)),
         shutdown=lambda: calls.append(("shutdown", None)),
@@ -79,8 +100,10 @@ def test_extension_runtime_binding_factory_wires_session_callbacks_and_ui_error_
             reason="usage below threshold",
         ),
         get_thinking_level=lambda: "high",
-        set_thinking_level=lambda level: calls.append(("thinking", level)),
-        register_provider=lambda name, config: calls.append(("register", (name, config))),
+        set_thinking_level=_set_thinking_level,
+        register_provider=lambda name, config: calls.append(
+            ("register", (name, config))
+        ),
         unregister_provider=lambda name: calls.append(("unregister", name)),
         set_extension_status=lambda key, text: calls.append(("status", (key, text))),
         get_footer_data_provider=lambda: "footer",
@@ -88,10 +111,16 @@ def test_extension_runtime_binding_factory_wires_session_callbacks_and_ui_error_
         get_system_prompt=lambda: "system",
         wait_for_idle=lambda: asyncio.sleep(0),
         reload=lambda: asyncio.sleep(0),
-        navigate_tree=lambda target_id, options=None: asyncio.sleep(0, result={"target": target_id, "options": options}),
-        fork=lambda entry_id, options=None: asyncio.sleep(0, result={"entry": entry_id, "options": options}),
+        navigate_tree=lambda target_id, options=None: asyncio.sleep(
+            0, result={"target": target_id, "options": options}
+        ),
+        fork=lambda entry_id, options=None: asyncio.sleep(
+            0, result={"entry": entry_id, "options": options}
+        ),
         new_session=lambda options=None: asyncio.sleep(0, result={"options": options}),
-        switch_session=lambda path, options=None: asyncio.sleep(0, result={"path": path, "options": options}),
+        switch_session=lambda path, options=None: asyncio.sleep(
+            0, result={"path": path, "options": options}
+        ),
         get_ui_context=UiContext,
     )
 
@@ -102,7 +131,9 @@ def test_extension_runtime_binding_factory_wires_session_callbacks_and_ui_error_
     assert bindings.model_registry == "registry"
     assert bindings.get_active_tool_names() == ["read"]
     assert bindings.get_all_tools() == ["read-tool"]
-    assert bindings.get_model_selection() == ModelSelection(provider="faux", model_id="alpha")
+    assert bindings.get_model_selection() == ModelSelection(
+        endpoint_id="test-endpoint", provider="faux", model_id="alpha"
+    )
     assert bindings.get_signal() == "signal"
     assert bindings.is_idle() is False
     assert bindings.has_pending_messages() is True
@@ -142,7 +173,7 @@ def test_extension_runtime_binding_factory_wires_session_callbacks_and_ui_error_
     asyncio.run(bindings.set_active_tools(["bash"]))
     bindings.register_tool("dynamic-tool", {"source": "test"})
     asyncio.run(bindings.send_user_message("hi", {"deliverAs": "steer"}))
-    bindings.set_label("entry-1", "label")
+    asyncio.run(bindings.set_label("entry-1", "label"))
 
     assert calls == [
         ("error", {"message": "boom"}),

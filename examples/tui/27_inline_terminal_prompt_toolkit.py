@@ -218,7 +218,7 @@ class InlineTerminalAssistantDemo:
             self._finish_live_state("interrupted")
             await self._emit_transcript(f"\n─ Interrupted after {elapsed:.1f}s ─\n")
             return
-        except Exception as exc:  # noqa: BLE001 - demo intentionally shows concise UI errors.
+        except Exception as exc:
             elapsed = self._elapsed()
             self._finish_live_state("failed")
             await self._emit_transcript(self._format_error(exc, elapsed))

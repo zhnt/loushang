@@ -3,10 +3,24 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping
 from dataclasses import InitVar, dataclass, field
 from math import isfinite
+from types import MappingProxyType
 from typing import Literal, TypeAlias, cast
 
 Modality = Literal["text", "image"]
 ALLOWED_MODALITIES: tuple[Modality, ...] = ("text", "image")
+_REASONING_FORMATS = frozenset({"openai", "deepseek", "moonshot", "zai-thinking"})
+
+
+class _FrozenSequence(tuple[object, ...]):
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, (list, tuple)):
+            return tuple(self) == tuple(other)
+        return False
+
+    def __ne__(self, other: object) -> bool:
+        return not self == other
+
+    __hash__ = tuple.__hash__
 
 
 def _normalize_optional_bool_attrs(instance: object, *attrs: str) -> None:
@@ -21,32 +35,6 @@ def _normalize_optional_str_attrs(instance: object, *attrs: str) -> None:
         value = getattr(instance, attr)
         if value is not None and (not isinstance(value, str) or not value):
             raise ValueError(f"adapter config field must be a non-empty string: {attr}")
-
-
-def _normalize_optional_transport_str_attrs(instance: object, *attrs: str) -> None:
-    for attr in attrs:
-        value = getattr(instance, attr)
-        if value is not None and (not isinstance(value, str) or not value):
-            raise ValueError(f"transport field must be a non-empty string: {attr}")
-
-
-def _normalize_optional_transport_bool_attrs(instance: object, *attrs: str) -> None:
-    for attr in attrs:
-        value = getattr(instance, attr)
-        if value is not None and not isinstance(value, bool):
-            raise ValueError(f"transport field must be a boolean: {attr}")
-
-
-def _normalize_optional_transport_number_attrs(instance: object, *attrs: str) -> None:
-    for attr in attrs:
-        value = getattr(instance, attr)
-        if value is not None and (
-            isinstance(value, bool)
-            or not isinstance(value, int | float)
-            or not isfinite(value)
-            or value <= 0
-        ):
-            raise ValueError(f"transport field must be a positive number: {attr}")
 
 
 def _optional_bool_from_raw(raw: Mapping[str, object], key: str) -> bool | None:
@@ -72,51 +60,10 @@ def _optional_str_from_raw(raw: Mapping[str, object], key: str) -> str | None:
     raise ValueError(f"adapter config field must be a non-empty string: {key}")
 
 
-def _optional_transport_str_from_raw(
-    raw: Mapping[str, object],
-    key: str,
-) -> str | None:
-    if key not in raw:
-        return None
-    value = raw[key]
-    if isinstance(value, str) and value:
-        return value
-    raise ValueError(f"transport field must be a non-empty string: {key}")
-
-
-def _optional_transport_bool_from_raw(
-    raw: Mapping[str, object],
-    key: str,
-) -> bool | None:
-    if key not in raw:
-        return None
-    value = raw[key]
-    if isinstance(value, bool):
-        return value
-    raise ValueError(f"transport field must be a boolean: {key}")
-
-
-def _optional_transport_number_from_raw(
-    raw: Mapping[str, object],
-    key: str,
-) -> float | int | None:
-    if key not in raw:
-        return None
-    value = raw[key]
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int | float)
-        or not isfinite(value)
-        or value <= 0
-    ):
-        raise ValueError(f"transport field must be a positive number: {key}")
-    return value
-
-
 def _copy_raw_value(value: object) -> object:
     if isinstance(value, Mapping):
         return {key: _copy_raw_value(entry) for key, entry in value.items()}
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         return [_copy_raw_value(entry) for entry in value]
     return value
 
@@ -125,62 +72,21 @@ def _copy_raw_mapping(value: Mapping[str, object]) -> dict[str, object]:
     return {key: _copy_raw_value(entry) for key, entry in value.items()}
 
 
-def _deep_merge_raw_mapping(
-    base: Mapping[str, object],
-    override: Mapping[str, object],
-) -> dict[str, object]:
-    result = _copy_raw_mapping(base)
-    for key, value in override.items():
-        existing = result.get(key)
-        if isinstance(existing, Mapping) and isinstance(value, Mapping):
-            result[key] = _deep_merge_raw_mapping(existing, value)
-            continue
-        result[key] = _copy_raw_value(value)
-    return result
+def _freeze_raw_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {key: _freeze_raw_value(entry) for key, entry in value.items()}
+        )
+    if isinstance(value, (list, tuple)):
+        return _FrozenSequence(_freeze_raw_value(entry) for entry in value)
+    return value
 
 
-def _routing_request_overrides_from_raw(
-    raw: Mapping[str, object],
-) -> dict[str, dict[str, object]]:
-    if "requestOverrides" not in raw:
-        return {}
-    value = raw["requestOverrides"]
-    if not isinstance(value, Mapping):
-        raise ValueError("routing field must be an object: requestOverrides")
-    overrides: dict[str, dict[str, object]] = {}
-    for key, entry in value.items():
-        if not isinstance(key, str) or not key:
-            raise ValueError("routing requestOverrides keys must be non-empty strings")
-        if not isinstance(entry, Mapping):
-            raise ValueError(
-                "routing requestOverrides entries must be objects: "
-                f"requestOverrides.{key}"
-            )
-        overrides[key] = _copy_raw_mapping(entry)
-    return overrides
+def _freeze_raw_mapping(value: Mapping[str, object]) -> Mapping[str, object]:
+    return MappingProxyType(
+        {key: _freeze_raw_value(entry) for key, entry in value.items()}
+    )
 
-
-_EXTRA_BODY_RESERVED_KEYS = frozenset(
-    {
-        "model",
-        "messages",
-        "input",
-        "stream",
-        "tools",
-        "tool_choice",
-        "response_format",
-        "max_tokens",
-        "max_completion_tokens",
-        "max_output_tokens",
-        "temperature",
-        "reasoning",
-        "store",
-        "stream_options",
-        "extra_body",
-        "parallel_tool_calls",
-        "thinking",
-    }
-)
 
 OPENAI_COMPLETIONS_ADAPTER_KEYS = frozenset(
     {
@@ -191,72 +97,35 @@ OPENAI_COMPLETIONS_ADAPTER_KEYS = frozenset(
         "reasoningEffort",
         "reasoningEffortMap",
         "strictSchema",
-        "promptCacheKey",
-        "longCacheRetention",
-        "sessionAffinityHeaders",
-        "toolResultName",
-        "assistantAfterToolResult",
-        "thinkingAsText",
         "assistantReasoningContent",
-        "toolStream",
         "reasoningFormat",
-        "cacheControlFormat",
-        "extraBody",
     }
 )
 OPENAI_RESPONSES_ADAPTER_KEYS = frozenset(
     {
         "developerRole",
-        "assistantAfterToolResult",
+        "maxOutputTokens",
         "promptCacheKey",
         "longCacheRetention",
-        "sessionIdHeader",
-        "sessionAffinityHeaders",
     }
 )
 ANTHROPIC_MESSAGES_ADAPTER_KEYS = frozenset(
     {
         "fineGrainedTools",
         "interleavedThinking",
-        "sessionAffinityHeaders",
         "longCacheRetention",
+        "reasoningEffortMap",
+        "thinkingMode",
     }
 )
 
-
-def _json_safe_copy(value: object, path: str) -> object:
-    if value is None or isinstance(value, str | int | float | bool):
-        if isinstance(value, float) and not isfinite(value):
-            raise ValueError(f"adapter extraBody value must be JSON-safe: {path}")
-        return value
-    if isinstance(value, list):
-        return [_json_safe_copy(entry, f"{path}[]") for entry in value]
-    if isinstance(value, Mapping):
-        result: dict[str, object] = {}
-        for key, entry in value.items():
-            if not isinstance(key, str) or not key:
-                raise ValueError(f"adapter extraBody keys must be strings: {path}")
-            result[key] = _json_safe_copy(entry, f"{path}.{key}")
-        return result
-    raise ValueError(f"adapter extraBody value must be JSON-safe: {path}")
-
-
-def _extra_body_from_raw(raw: Mapping[str, object], key: str) -> dict[str, object]:
-    if key not in raw:
-        return {}
-    value = raw[key]
-    if not isinstance(value, Mapping):
-        raise ValueError(f"adapter config field must be an object: {key}")
-    result: dict[str, object] = {}
-    for entry_key, entry_value in value.items():
-        if not isinstance(entry_key, str) or not entry_key:
-            raise ValueError(f"adapter extraBody keys must be strings: {key}")
-        if entry_key in _EXTRA_BODY_RESERVED_KEYS:
-            raise ValueError(
-                f"adapter extraBody cannot override SDK field: {entry_key}"
-            )
-        result[entry_key] = _json_safe_copy(entry_value, f"{key}.{entry_key}")
-    return result
+_ANTHROPIC_THINKING_MODES = frozenset({"adaptive", "budgeted"})
+_ANTHROPIC_REASONING_LEVELS = frozenset(
+    {"minimal", "low", "medium", "high", "xhigh"}
+)
+_ANTHROPIC_REASONING_EFFORTS = frozenset(
+    {"low", "medium", "high", "xhigh", "max"}
+)
 
 
 def _string_or_none_dict_from_raw(
@@ -277,6 +146,34 @@ def _string_or_none_dict_from_raw(
                 f"adapter config field must be a string-or-null map: {key}"
             )
         result[entry_key] = entry_value
+    return result
+
+
+def _anthropic_reasoning_effort_map_from_raw(
+    raw: Mapping[str, object],
+) -> dict[str, str | None]:
+    return _validate_anthropic_reasoning_effort_map(
+        _string_or_none_dict_from_raw(raw, "reasoningEffortMap")
+    )
+
+
+def _validate_anthropic_reasoning_effort_map(
+    value: Mapping[str, str | None],
+) -> dict[str, str | None]:
+    result = dict(value)
+    invalid_keys = sorted(set(result).difference(_ANTHROPIC_REASONING_LEVELS))
+    invalid_values = sorted(
+        {
+            value
+            for value in result.values()
+            if value is not None and value not in _ANTHROPIC_REASONING_EFFORTS
+        }
+    )
+    if invalid_keys or invalid_values:
+        raise ValueError(
+            "adapter config reasoningEffortMap contains unsupported "
+            f"keys={invalid_keys} values={invalid_values}"
+        )
     return result
 
 
@@ -335,17 +232,8 @@ _OPENAI_COMPLETIONS_ATTR_TO_KEY = {
     "reasoning_effort": "reasoningEffort",
     "reasoning_effort_map": "reasoningEffortMap",
     "strict_schema": "strictSchema",
-    "prompt_cache_key": "promptCacheKey",
-    "long_cache_retention": "longCacheRetention",
-    "session_affinity_headers": "sessionAffinityHeaders",
-    "tool_result_name": "toolResultName",
-    "assistant_after_tool_result": "assistantAfterToolResult",
-    "thinking_as_text": "thinkingAsText",
     "assistant_reasoning_content": "assistantReasoningContent",
-    "tool_stream": "toolStream",
     "reasoning_format": "reasoningFormat",
-    "cache_control_format": "cacheControlFormat",
-    "extra_body": "extraBody",
 }
 _OPENAI_COMPLETIONS_DEFAULTS = {
     "store": True,
@@ -355,49 +243,38 @@ _OPENAI_COMPLETIONS_DEFAULTS = {
     "reasoningEffort": True,
     "reasoningEffortMap": {},
     "strictSchema": True,
-    "promptCacheKey": False,
-    "longCacheRetention": True,
-    "sessionAffinityHeaders": False,
-    "toolResultName": False,
-    "assistantAfterToolResult": False,
-    "thinkingAsText": False,
     "assistantReasoningContent": False,
-    "toolStream": False,
     "reasoningFormat": "openai",
-    "cacheControlFormat": None,
-    "extraBody": {},
 }
 
 
 _OPENAI_RESPONSES_ATTR_TO_KEY = {
     "developer_role": "developerRole",
-    "assistant_after_tool_result": "assistantAfterToolResult",
+    "max_output_tokens": "maxOutputTokens",
     "prompt_cache_key": "promptCacheKey",
     "long_cache_retention": "longCacheRetention",
-    "session_id_header": "sessionIdHeader",
-    "session_affinity_headers": "sessionAffinityHeaders",
 }
 _OPENAI_RESPONSES_DEFAULTS = {
     "developerRole": True,
-    "assistantAfterToolResult": False,
+    "maxOutputTokens": True,
     "promptCacheKey": True,
     "longCacheRetention": True,
-    "sessionIdHeader": True,
-    "sessionAffinityHeaders": False,
 }
 
 
 _ANTHROPIC_MESSAGES_ATTR_TO_KEY = {
     "fine_grained_tools": "fineGrainedTools",
     "interleaved_thinking": "interleavedThinking",
-    "session_affinity_headers": "sessionAffinityHeaders",
     "long_cache_retention": "longCacheRetention",
+    "reasoning_effort_map": "reasoningEffortMap",
+    "thinking_mode": "thinkingMode",
 }
-_ANTHROPIC_MESSAGES_DEFAULTS = {
+_ANTHROPIC_MESSAGES_DEFAULTS: dict[str, object] = {
     "fineGrainedTools": None,
     "interleavedThinking": None,
-    "sessionAffinityHeaders": False,
     "longCacheRetention": True,
+    "reasoningEffortMap": {},
+    "thinkingMode": "budgeted",
 }
 
 
@@ -408,19 +285,10 @@ class OpenAICompletionsConfig:
     streaming_usage: bool = True
     max_output_tokens_field: str = "max_completion_tokens"
     reasoning_effort: bool = True
-    reasoning_effort_map: dict[str, str | None] = field(default_factory=dict)
+    reasoning_effort_map: Mapping[str, str | None] = field(default_factory=dict)
     strict_schema: bool = True
-    prompt_cache_key: bool = False
-    long_cache_retention: bool = True
-    session_affinity_headers: bool = False
-    tool_result_name: bool = False
-    assistant_after_tool_result: bool = False
-    thinking_as_text: bool = False
     assistant_reasoning_content: bool = False
-    tool_stream: bool = False
     reasoning_format: str | None = "openai"
-    cache_control_format: str | None = None
-    extra_body: dict[str, object] = field(default_factory=dict)
     _explicit_keys: frozenset[str] | None = field(
         default=None,
         compare=False,
@@ -436,28 +304,21 @@ class OpenAICompletionsConfig:
             "streaming_usage",
             "reasoning_effort",
             "strict_schema",
-            "prompt_cache_key",
-            "long_cache_retention",
-            "session_affinity_headers",
-            "tool_result_name",
-            "assistant_after_tool_result",
-            "thinking_as_text",
             "assistant_reasoning_content",
-            "tool_stream",
         )
         _normalize_optional_str_attrs(
             self,
             "max_output_tokens_field",
             "reasoning_format",
-            "cache_control_format",
         )
-        object.__setattr__(
-            self, "reasoning_effort_map", dict(self.reasoning_effort_map)
-        )
+        if self.reasoning_format not in _REASONING_FORMATS:
+            raise ValueError(
+                f"unsupported reasoningFormat: {self.reasoning_format!r}"
+            )
         object.__setattr__(
             self,
-            "extra_body",
-            _extra_body_from_raw({"extraBody": self.extra_body}, "extraBody"),
+            "reasoning_effort_map",
+            MappingProxyType(dict(self.reasoning_effort_map)),
         )
         _set_explicit_adapter_keys(
             self,
@@ -492,49 +353,14 @@ class OpenAICompletionsConfig:
                 "reasoningEffortMap",
             ),
             strict_schema=_bool_from_raw(raw, "strictSchema", cls.strict_schema),
-            prompt_cache_key=_bool_from_raw(
-                raw,
-                "promptCacheKey",
-                cls.prompt_cache_key,
-            ),
-            long_cache_retention=_bool_from_raw(
-                raw,
-                "longCacheRetention",
-                cls.long_cache_retention,
-            ),
-            session_affinity_headers=_bool_from_raw(
-                raw,
-                "sessionAffinityHeaders",
-                cls.session_affinity_headers,
-            ),
-            tool_result_name=_bool_from_raw(
-                raw,
-                "toolResultName",
-                cls.tool_result_name,
-            ),
-            assistant_after_tool_result=_bool_from_raw(
-                raw,
-                "assistantAfterToolResult",
-                cls.assistant_after_tool_result,
-            ),
-            thinking_as_text=_bool_from_raw(
-                raw,
-                "thinkingAsText",
-                cls.thinking_as_text,
-            ),
             assistant_reasoning_content=_bool_from_raw(
                 raw,
                 "assistantReasoningContent",
                 cls.assistant_reasoning_content,
             ),
-            tool_stream=_bool_from_raw(raw, "toolStream", cls.tool_stream),
             reasoning_format=_optional_str_from_raw(raw, "reasoningFormat")
             if "reasoningFormat" in raw
             else cls.reasoning_format,
-            cache_control_format=_optional_str_from_raw(raw, "cacheControlFormat")
-            if "cacheControlFormat" in raw
-            else cls.cache_control_format,
-            extra_body=_extra_body_from_raw(raw, "extraBody"),
             _explicit_keys=frozenset(raw),
         )
 
@@ -546,30 +372,19 @@ class OpenAICompletionsConfig:
             "maxOutputTokensField": self.max_output_tokens_field,
             "reasoningEffort": self.reasoning_effort,
             "strictSchema": self.strict_schema,
-            "promptCacheKey": self.prompt_cache_key,
-            "longCacheRetention": self.long_cache_retention,
-            "sessionAffinityHeaders": self.session_affinity_headers,
-            "toolResultName": self.tool_result_name,
-            "assistantAfterToolResult": self.assistant_after_tool_result,
-            "thinkingAsText": self.thinking_as_text,
             "assistantReasoningContent": self.assistant_reasoning_content,
-            "toolStream": self.tool_stream,
         }
         _with_raw_value(raw, "reasoningEffortMap", dict(self.reasoning_effort_map))
         _with_raw_value(raw, "reasoningFormat", self.reasoning_format)
-        _with_raw_value(raw, "cacheControlFormat", self.cache_control_format)
-        _with_raw_value(raw, "extraBody", _copy_raw_mapping(self.extra_body))
         return raw
 
 
 @dataclass(frozen=True)
 class OpenAIResponsesConfig:
     developer_role: bool = True
-    assistant_after_tool_result: bool = False
+    max_output_tokens: bool = True
     prompt_cache_key: bool = True
     long_cache_retention: bool = True
-    session_id_header: bool = True
-    session_affinity_headers: bool = False
     _explicit_keys: frozenset[str] | None = field(
         default=None,
         compare=False,
@@ -581,11 +396,9 @@ class OpenAIResponsesConfig:
         _normalize_optional_bool_attrs(
             self,
             "developer_role",
-            "assistant_after_tool_result",
+            "max_output_tokens",
             "prompt_cache_key",
             "long_cache_retention",
-            "session_id_header",
-            "session_affinity_headers",
         )
         _set_explicit_adapter_keys(
             self,
@@ -600,10 +413,10 @@ class OpenAIResponsesConfig:
         _validate_adapter_keys(raw, OPENAI_RESPONSES_ADAPTER_KEYS)
         return cls(
             developer_role=_bool_from_raw(raw, "developerRole", cls.developer_role),
-            assistant_after_tool_result=_bool_from_raw(
+            max_output_tokens=_bool_from_raw(
                 raw,
-                "assistantAfterToolResult",
-                cls.assistant_after_tool_result,
+                "maxOutputTokens",
+                cls.max_output_tokens,
             ),
             prompt_cache_key=_bool_from_raw(
                 raw,
@@ -615,27 +428,15 @@ class OpenAIResponsesConfig:
                 "longCacheRetention",
                 cls.long_cache_retention,
             ),
-            session_id_header=_bool_from_raw(
-                raw,
-                "sessionIdHeader",
-                cls.session_id_header,
-            ),
-            session_affinity_headers=_bool_from_raw(
-                raw,
-                "sessionAffinityHeaders",
-                cls.session_affinity_headers,
-            ),
             _explicit_keys=frozenset(raw),
         )
 
     def to_raw(self) -> dict[str, object]:
         return {
             "developerRole": self.developer_role,
-            "assistantAfterToolResult": self.assistant_after_tool_result,
+            "maxOutputTokens": self.max_output_tokens,
             "promptCacheKey": self.prompt_cache_key,
             "longCacheRetention": self.long_cache_retention,
-            "sessionIdHeader": self.session_id_header,
-            "sessionAffinityHeaders": self.session_affinity_headers,
         }
 
 
@@ -643,8 +444,9 @@ class OpenAIResponsesConfig:
 class AnthropicMessagesConfig:
     fine_grained_tools: bool | None = None
     interleaved_thinking: bool | None = None
-    session_affinity_headers: bool = False
     long_cache_retention: bool = True
+    reasoning_effort_map: Mapping[str, str | None] = field(default_factory=dict)
+    thinking_mode: Literal["adaptive", "budgeted"] = "budgeted"
     _explicit_keys: frozenset[str] | None = field(
         default=None,
         compare=False,
@@ -657,8 +459,19 @@ class AnthropicMessagesConfig:
             self,
             "fine_grained_tools",
             "interleaved_thinking",
-            "session_affinity_headers",
             "long_cache_retention",
+        )
+        if self.thinking_mode not in _ANTHROPIC_THINKING_MODES:
+            raise ValueError(
+                f"unsupported Anthropic thinkingMode: {self.thinking_mode!r}"
+            )
+        reasoning_effort_map = _validate_anthropic_reasoning_effort_map(
+            self.reasoning_effort_map
+        )
+        object.__setattr__(
+            self,
+            "reasoning_effort_map",
+            MappingProxyType(reasoning_effort_map),
         )
         _set_explicit_adapter_keys(
             self,
@@ -678,26 +491,32 @@ class AnthropicMessagesConfig:
             interleaved_thinking=_optional_bool_from_raw(raw, "interleavedThinking")
             if "interleavedThinking" in raw
             else cls.interleaved_thinking,
-            session_affinity_headers=_bool_from_raw(
-                raw,
-                "sessionAffinityHeaders",
-                cls.session_affinity_headers,
-            ),
             long_cache_retention=_bool_from_raw(
                 raw,
                 "longCacheRetention",
                 cls.long_cache_retention,
+            ),
+            reasoning_effort_map=_anthropic_reasoning_effort_map_from_raw(raw),
+            thinking_mode=cast(
+                Literal["adaptive", "budgeted"],
+                (
+                    _optional_str_from_raw(raw, "thinkingMode")
+                    if "thinkingMode" in raw
+                    else cls.thinking_mode
+                ),
             ),
             _explicit_keys=frozenset(raw),
         )
 
     def to_raw(self) -> dict[str, object]:
         raw: dict[str, object] = {
-            "sessionAffinityHeaders": self.session_affinity_headers,
             "longCacheRetention": self.long_cache_retention,
         }
         _with_raw_value(raw, "fineGrainedTools", self.fine_grained_tools)
         _with_raw_value(raw, "interleavedThinking", self.interleaved_thinking)
+        _with_raw_value(raw, "reasoningEffortMap", dict(self.reasoning_effort_map))
+        if self._explicit_keys and "thinkingMode" in self._explicit_keys:
+            raw["thinkingMode"] = self.thinking_mode
         return raw
 
 
@@ -756,142 +575,151 @@ def merge_adapter_config(
 
 
 @dataclass(frozen=True)
-class EndpointTransport:
-    kind: str | None = None
-    stream: str | None = None
-    fallback: bool | None = None
-    timeout: float | int | None = None
+class OAuthConfig:
+    client_id: str
+    authorization_endpoint: str
+    token_endpoint: str
+    scopes: tuple[str, ...] = ()
+    redirect_uri: str | None = None
+    revocation_endpoint: str | None = None
+    token_endpoint_auth_method: str = "none"
 
     def __post_init__(self) -> None:
-        _normalize_optional_transport_str_attrs(self, "kind", "stream")
-        _normalize_optional_transport_bool_attrs(self, "fallback")
-        _normalize_optional_transport_number_attrs(self, "timeout")
-
-    @classmethod
-    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointTransport":
-        raw = raw or {}
-        return cls(
-            kind=_optional_transport_str_from_raw(raw, "kind"),
-            stream=_optional_transport_str_from_raw(raw, "stream"),
-            fallback=_optional_transport_bool_from_raw(raw, "fallback"),
-            timeout=_optional_transport_number_from_raw(raw, "timeout"),
-        )
-
-    def to_raw(self) -> dict[str, object]:
-        raw: dict[str, object] = {}
-        if self.kind is not None:
-            raw["kind"] = self.kind
-        if self.stream is not None:
-            raw["stream"] = self.stream
-        if self.fallback is not None:
-            raw["fallback"] = self.fallback
-        if self.timeout is not None:
-            raw["timeout"] = self.timeout
-        return raw
-
-
-@dataclass(frozen=True)
-class EndpointRouting:
-    request_overrides: dict[str, dict[str, object]] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        for key, value in self.request_overrides.items():
-            if not isinstance(key, str) or not key:
-                raise ValueError(
-                    "routing requestOverrides keys must be non-empty strings"
-                )
-            if not isinstance(value, Mapping):
-                raise ValueError(
-                    "routing requestOverrides entries must be objects: "
-                    f"requestOverrides.{key}"
-                )
+        for name in ("client_id", "authorization_endpoint", "token_endpoint"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"oauth {name} must be a non-empty string")
+            object.__setattr__(self, name, value.strip())
+        for name in ("redirect_uri", "revocation_endpoint"):
+            value = getattr(self, name)
+            if value is None:
+                continue
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"oauth {name} must be a non-empty string or None")
+            object.__setattr__(self, name, value.strip())
+        if (
+            not isinstance(self.token_endpoint_auth_method, str)
+            or not self.token_endpoint_auth_method.strip()
+        ):
+            raise ValueError(
+                "oauth token_endpoint_auth_method must be a non-empty string"
+            )
         object.__setattr__(
             self,
-            "request_overrides",
-            {
-                key: _copy_raw_mapping(value)
-                for key, value in self.request_overrides.items()
-            },
+            "token_endpoint_auth_method",
+            self.token_endpoint_auth_method.strip(),
         )
+        if not isinstance(self.scopes, tuple) or any(
+            not isinstance(scope, str) or not scope.strip() for scope in self.scopes
+        ):
+            raise ValueError("oauth scopes must contain non-empty strings")
+        normalized_scopes = tuple(scope.strip() for scope in self.scopes)
+        if len(set(normalized_scopes)) != len(normalized_scopes):
+            raise ValueError("oauth scopes must not contain duplicates")
+        object.__setattr__(self, "scopes", normalized_scopes)
 
     @classmethod
-    def from_raw(cls, raw: Mapping[str, object] | None) -> "EndpointRouting":
-        raw = raw or {}
-        return cls(request_overrides=_routing_request_overrides_from_raw(raw))
+    def from_raw(cls, raw: Mapping[str, object]) -> "OAuthConfig":
+        if not isinstance(raw, Mapping):
+            raise ValueError("oauth config must be an object")
+        return cls(
+            client_id=raw.get("client_id"),  # type: ignore[arg-type]
+            authorization_endpoint=raw.get("authorization_endpoint"),  # type: ignore[arg-type]
+            token_endpoint=raw.get("token_endpoint"),  # type: ignore[arg-type]
+            scopes=_as_str_tuple(raw.get("scopes")),
+            redirect_uri=_as_optional_str(raw.get("redirect_uri")),
+            revocation_endpoint=_as_optional_str(raw.get("revocation_endpoint")),
+            token_endpoint_auth_method=raw.get(  # type: ignore[arg-type]
+                "token_endpoint_auth_method",
+                "none",
+            ),
+        )
 
     def to_raw(self) -> dict[str, object]:
-        if not self.request_overrides:
-            return {}
-        return {
-            "requestOverrides": {
-                key: _copy_raw_mapping(value)
-                for key, value in self.request_overrides.items()
-            }
+        raw: dict[str, object] = {
+            "client_id": self.client_id,
+            "authorization_endpoint": self.authorization_endpoint,
+            "token_endpoint": self.token_endpoint,
         }
+        if self.scopes:
+            raw["scopes"] = list(self.scopes)
+        if self.redirect_uri is not None:
+            raw["redirect_uri"] = self.redirect_uri
+        if self.revocation_endpoint is not None:
+            raw["revocation_endpoint"] = self.revocation_endpoint
+        if self.token_endpoint_auth_method != "none":
+            raw["token_endpoint_auth_method"] = self.token_endpoint_auth_method
+        return raw
 
 
 @dataclass(frozen=True)
 class Auth:
     kind: str = "apiKey"
+    provider: str | None = None
+    oauth: OAuthConfig | None = None
     api_key_env: str | None = None
     api_key_envs: tuple[str, ...] = ()
     header: str = "Authorization"
     prefix: str = "Bearer "
-    extra_headers: dict[str, str] = field(default_factory=dict)
-    _explicit_keys: frozenset[str] | None = field(
-        default=None,
-        compare=False,
-        repr=False,
-    )
 
     def __post_init__(self) -> None:
-        if self._explicit_keys is not None:
-            object.__setattr__(self, "_explicit_keys", frozenset(self._explicit_keys))
-            return
-        explicit_keys = set()
-        if self.kind != "apiKey":
-            explicit_keys.add("kind")
-        if self.api_key_env is not None:
-            explicit_keys.add("apiKeyEnv")
-        if self.api_key_envs:
-            explicit_keys.add("apiKeyEnvs")
-        if self.header != "Authorization":
-            explicit_keys.add("header")
-        if self.prefix != "Bearer ":
-            explicit_keys.add("prefix")
-        if self.extra_headers:
-            explicit_keys.add("extraHeaders")
-        object.__setattr__(self, "_explicit_keys", frozenset(explicit_keys))
+        if self.kind not in {"apiKey", "oauth", "none"}:
+            raise ValueError(f"unsupported auth kind: {self.kind!r}")
+        if self.provider is not None and (
+            not isinstance(self.provider, str) or not self.provider
+        ):
+            raise ValueError("auth provider must be a non-empty string or None")
+        if self.oauth is not None and not isinstance(self.oauth, OAuthConfig):
+            raise TypeError("auth oauth must be OAuthConfig or None")
+        if self.oauth is not None and self.kind != "oauth":
+            raise ValueError("auth oauth config requires kind='oauth'")
+        if self.api_key_env is not None and (
+            not isinstance(self.api_key_env, str) or not self.api_key_env
+        ):
+            raise ValueError("auth api_key_env must be a non-empty string or None")
+        if not isinstance(self.api_key_envs, tuple) or any(
+            not isinstance(value, str) or not value for value in self.api_key_envs
+        ):
+            raise ValueError("auth api_key_envs must contain non-empty strings")
+        if len(set(self.api_key_envs)) != len(self.api_key_envs):
+            raise ValueError("auth api_key_envs must not contain duplicates")
+        if not isinstance(self.header, str) or not self.header:
+            raise ValueError("auth header must be a non-empty string")
+        if not isinstance(self.prefix, str):
+            raise ValueError("auth prefix must be a string")
 
     @classmethod
     def from_raw(cls, raw: Mapping[str, object] | None) -> "Auth | None":
         if not raw:
             return None
         return cls(
-            kind=str(raw.get("kind", "apiKey")),
+            kind=raw.get("kind", "apiKey"),  # type: ignore[arg-type]
+            provider=_as_optional_str(raw.get("provider")),
+            oauth=(
+                OAuthConfig.from_raw(cast(Mapping[str, object], raw["oauth"]))
+                if isinstance(raw.get("oauth"), Mapping)
+                else None
+            ),
             api_key_env=_as_optional_str(raw.get("apiKeyEnv")),
             api_key_envs=_as_str_tuple(raw.get("apiKeyEnvs")),
-            header=str(raw.get("header", "Authorization")),
-            prefix=str(raw.get("prefix", "Bearer ")),
-            extra_headers=_as_str_dict(raw.get("extraHeaders")),
-            _explicit_keys=frozenset(raw),
+            header=raw.get("header", "Authorization"),  # type: ignore[arg-type]
+            prefix=raw.get("prefix", "Bearer "),  # type: ignore[arg-type]
         )
 
     def to_raw(self) -> dict[str, object]:
-        explicit_keys = self._explicit_keys or frozenset()
-        raw: dict[str, object] = {}
-        if "kind" in explicit_keys or self.kind != "apiKey":
-            raw["kind"] = self.kind
+        raw: dict[str, object] = {"kind": self.kind}
+        if self.provider is not None:
+            raw["provider"] = self.provider
+        if self.oauth is not None:
+            raw["oauth"] = self.oauth.to_raw()
         if self.api_key_env is not None:
             raw["apiKeyEnv"] = self.api_key_env
         if self.api_key_envs:
             raw["apiKeyEnvs"] = list(self.api_key_envs)
-        if "header" in explicit_keys or self.header != "Authorization":
+        if self.header != "Authorization":
             raw["header"] = self.header
-        if "prefix" in explicit_keys or self.prefix != "Bearer ":
+        if self.prefix != "Bearer ":
             raw["prefix"] = self.prefix
-        if self.extra_headers:
-            raw["extraHeaders"] = dict(self.extra_headers)
         return raw
 
 
@@ -950,6 +778,36 @@ class Capabilities:
     attachment: bool = False
     temperature: bool = False
 
+    def __post_init__(self) -> None:
+        for attr in (
+            "reasoning",
+            "stream",
+            "tool_use",
+            "structured_output",
+            "attachment",
+            "temperature",
+        ):
+            if not isinstance(getattr(self, attr), bool):
+                raise ValueError(f"capability field must be a boolean: {attr}")
+        for attr in ("context_window", "max_tokens"):
+            value = getattr(self, attr)
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, int) or value <= 0
+            ):
+                raise ValueError(f"capability field must be a positive integer: {attr}")
+        for attr in ("input", "output"):
+            value = getattr(self, attr)
+            if not isinstance(value, (list, tuple)) or not value:
+                raise ValueError(
+                    f"capability field must be a non-empty modality sequence: {attr}"
+                )
+            if any(
+                not isinstance(modality, str) or modality not in ALLOWED_MODALITIES
+                for modality in value
+            ) or len(set(value)) != len(value):
+                raise ValueError(f"capability field has invalid modalities: {attr}")
+            object.__setattr__(self, attr, tuple(value))
+
     @property
     def supports_thinking(self) -> bool:
         return self.reasoning
@@ -969,16 +827,16 @@ class Capabilities:
         if isinstance(capabilities_raw, Mapping):
             raw = capabilities_raw
         return cls(
-            input=_parse_modalities(raw.get("input")),
-            output=_parse_modalities(raw.get("output")),
-            context_window=_as_optional_int(raw.get("contextWindow")),
-            max_tokens=_as_optional_int(raw.get("maxTokens")),
-            reasoning=bool(raw.get("reasoning", False)),
-            stream=bool(raw.get("stream", False)),
-            tool_use=bool(raw.get("toolUse", False)),
-            structured_output=bool(raw.get("structuredOutput", False)),
-            attachment=bool(raw.get("attachment", False)),
-            temperature=bool(raw.get("temperature", False)),
+            input=_parse_modalities(raw["input"]) if "input" in raw else ("text",),
+            output=(_parse_modalities(raw["output"]) if "output" in raw else ("text",)),
+            context_window=_positive_int_from_raw(raw, "contextWindow"),
+            max_tokens=_positive_int_from_raw(raw, "maxTokens"),
+            reasoning=_capability_bool_from_raw(raw, "reasoning"),
+            stream=_capability_bool_from_raw(raw, "stream"),
+            tool_use=_capability_bool_from_raw(raw, "toolUse"),
+            structured_output=_capability_bool_from_raw(raw, "structuredOutput"),
+            attachment=_capability_bool_from_raw(raw, "attachment"),
+            temperature=_capability_bool_from_raw(raw, "temperature"),
         )
 
     def to_raw(self) -> dict[str, object]:
@@ -1000,7 +858,34 @@ class Capabilities:
 
 @dataclass(frozen=True)
 class Defaults(Mapping[str, object]):
-    items_by_key: dict[str, object] = field(default_factory=dict)
+    items_by_key: Mapping[str, object] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for key in ("contextWindow", "maxTokens", "maxOutputTokens"):
+            if key not in self.items_by_key:
+                continue
+            value = self.items_by_key[key]
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"model default must be a positive integer: {key}")
+        if "temperature" in self.items_by_key:
+            temperature = self.items_by_key["temperature"]
+            if (
+                isinstance(temperature, bool)
+                or not isinstance(temperature, int | float)
+                or not isfinite(temperature)
+            ):
+                raise ValueError("model default must be a finite number: temperature")
+        if "reasoningEffort" in self.items_by_key:
+            reasoning_effort = self.items_by_key["reasoningEffort"]
+            if not isinstance(reasoning_effort, str) or not reasoning_effort.strip():
+                raise ValueError(
+                    "model default must be a non-empty string: reasoningEffort"
+                )
+        object.__setattr__(
+            self,
+            "items_by_key",
+            _freeze_raw_mapping(self.items_by_key),
+        )
 
     def __getitem__(self, key: str) -> object:
         return self.items_by_key[key]
@@ -1025,7 +910,7 @@ class Defaults(Mapping[str, object]):
         return cls(items_by_key=dict(raw or {}))
 
     def to_raw(self) -> dict[str, object]:
-        return dict(self.items_by_key)
+        return _copy_raw_mapping(self.items_by_key)
 
 
 @dataclass(frozen=True)
@@ -1041,6 +926,7 @@ class Model:
     lane: str | None = None
     preferred_endpoint: bool = False
     auth: Auth | None = None
+    headers: Mapping[str, str] = field(default_factory=dict, repr=False)
     name: str | None = None
     family: str | None = None
     alias: str | None = None
@@ -1051,11 +937,10 @@ class Model:
     pricing: Pricing | None = None
     adapter: AdapterConfig | None = None
     defaults: Defaults = field(default_factory=Defaults)
-    transport: EndpointTransport = field(default_factory=EndpointTransport)
-    routing: EndpointRouting = field(default_factory=EndpointRouting)
     upstream_id: str | None = None
 
     def __post_init__(self, provider: str | None, endpoint: str | None) -> None:
+        object.__setattr__(self, "headers", MappingProxyType(dict(self.headers)))
         if self.upstream_id is not None and (
             not isinstance(self.upstream_id, str) or not self.upstream_id.strip()
         ):
@@ -1146,12 +1031,6 @@ class Model:
             raw["auth"] = self.auth.to_raw()
         if self.upstream_id is not None:
             raw["upstreamId"] = self.upstream_id
-        transport_raw = self.transport.to_raw()
-        if transport_raw:
-            raw["transport"] = transport_raw
-        routing_raw = self.routing.to_raw()
-        if routing_raw:
-            raw["routing"] = routing_raw
         return {key: value for key, value in raw.items() if value is not None}
 
 
@@ -1169,13 +1048,14 @@ class Endpoint:
     preferred: bool = False
     docs: str | None = None
     auth: Auth | None = None
+    headers: Mapping[str, str] = field(default_factory=dict)
     defaults: Defaults = field(default_factory=Defaults)
-    models: dict[str, Model] = field(default_factory=dict)
+    models: Mapping[str, Model] = field(default_factory=dict)
     adapter: AdapterConfig | None = None
-    transport: EndpointTransport = field(default_factory=EndpointTransport)
-    routing: EndpointRouting = field(default_factory=EndpointRouting)
 
     def __post_init__(self, provider: str | None) -> None:
+        object.__setattr__(self, "models", MappingProxyType(dict(self.models)))
+        object.__setattr__(self, "headers", MappingProxyType(dict(self.headers)))
         if self._provider_key:
             return
         if provider is None:
@@ -1206,18 +1086,10 @@ class Provider:
     name: str | None = None
     website: str | None = None
     auth: Auth | None = None
-    endpoints: dict[str, Endpoint] = field(default_factory=dict)
-    _auth_scope_known: bool = field(default=False, compare=False, repr=False)
-    _explicit_endpoint_auth: frozenset[str] = field(
-        default_factory=frozenset,
-        compare=False,
-        repr=False,
-    )
-    _explicit_model_auth: frozenset[tuple[str, str]] = field(
-        default_factory=frozenset,
-        compare=False,
-        repr=False,
-    )
+    endpoints: Mapping[str, Endpoint] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "endpoints", MappingProxyType(dict(self.endpoints)))
 
     def get_endpoint(self, endpoint_id: str) -> Endpoint | None:
         return self.endpoints.get(endpoint_id)
@@ -1240,17 +1112,7 @@ class Provider:
     def to_raw(self) -> dict[str, object]:
         raw: dict[str, object] = {
             "endpoints": {
-                endpoint_id: _endpoint_to_raw(
-                    endpoint,
-                    provider_auth=self.auth,
-                    endpoint_auth_explicit=endpoint_id in self._explicit_endpoint_auth,
-                    model_auth_explicit={
-                        model_id
-                        for explicit_endpoint_id, model_id in self._explicit_model_auth
-                        if explicit_endpoint_id == endpoint_id
-                    },
-                    auth_scope_known=self._auth_scope_known,
-                )
+                endpoint_id: _endpoint_to_raw(endpoint)
                 for endpoint_id, endpoint in self.endpoints.items()
             }
         }
@@ -1265,28 +1127,12 @@ class Provider:
 
 def _endpoint_to_raw(
     endpoint: Endpoint,
-    *,
-    provider_auth: Auth | None = None,
-    endpoint_auth_explicit: bool = False,
-    model_auth_explicit: set[str] | frozenset[str] | None = None,
-    auth_scope_known: bool = False,
 ) -> dict[str, object]:
-    inherited_model_auth = endpoint.auth if endpoint.auth is not None else provider_auth
-    explicit_model_auth = model_auth_explicit or frozenset()
     raw: dict[str, object] = {
         "api": endpoint.api,
         "defaults": endpoint.defaults.to_raw(),
         "models": {
-            model_id: _model_to_raw(
-                model,
-                inherited_auth=inherited_model_auth,
-                auth_explicit=(
-                    model_id in explicit_model_auth
-                    if auth_scope_known
-                    else model.auth is not None
-                ),
-            )
-            for model_id, model in endpoint.models.items()
+            model_id: model.to_raw() for model_id, model in endpoint.models.items()
         },
     }
     if endpoint.name is not None:
@@ -1303,61 +1149,49 @@ def _endpoint_to_raw(
         raw["preferred"] = endpoint.preferred
     if endpoint.docs is not None:
         raw["docs"] = endpoint.docs
-    if endpoint.auth is not None and (
-        endpoint_auth_explicit or not auth_scope_known or endpoint.auth != provider_auth
-    ):
+    if endpoint.auth is not None:
         raw["auth"] = endpoint.auth.to_raw()
+    if endpoint.headers:
+        raw["headers"] = dict(endpoint.headers)
     if endpoint.adapter is not None:
         raw["adapter"] = endpoint.adapter.to_raw()
-    transport_raw = endpoint.transport.to_raw()
-    if transport_raw:
-        raw["transport"] = transport_raw
-    routing_raw = endpoint.routing.to_raw()
-    if routing_raw:
-        raw["routing"] = routing_raw
-    return raw
-
-
-def _model_to_raw(
-    model: Model,
-    *,
-    inherited_auth: Auth | None = None,
-    auth_explicit: bool = True,
-) -> dict[str, object]:
-    raw = model.to_raw()
-    if (
-        not auth_explicit
-        and inherited_auth is not None
-        and model.auth == inherited_auth
-    ):
-        raw.pop("auth", None)
     return raw
 
 
 def _parse_modalities(raw: object) -> tuple[Modality, ...]:
-    if isinstance(raw, str):
-        values = tuple(
-            value.strip()
-            for value in raw.split(",")
-            if value.strip() in ALLOWED_MODALITIES
-        )
-        return _coerce_modalities(values)
-    if isinstance(raw, (list, tuple)):
-        values = tuple(
-            value.strip()
+    if (
+        not isinstance(raw, list)
+        or not raw
+        or any(
+            not isinstance(value, str) or value not in ALLOWED_MODALITIES
             for value in raw
-            if isinstance(value, str) and value.strip() in ALLOWED_MODALITIES
         )
-        return _coerce_modalities(values)
-    return ("text",)
+        or len(set(raw)) != len(raw)
+    ):
+        raise ValueError("capability field has invalid modalities")
+    return cast(tuple[Modality, ...], tuple(raw))
+
+
+def _capability_bool_from_raw(raw: Mapping[str, object], key: str) -> bool:
+    if key not in raw:
+        return False
+    value = raw[key]
+    if not isinstance(value, bool):
+        raise ValueError(f"capability field must be a boolean: {key}")
+    return value
+
+
+def _positive_int_from_raw(raw: Mapping[str, object], key: str) -> int | None:
+    if key not in raw:
+        return None
+    value = raw[key]
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"capability field must be a positive integer: {key}")
+    return value
 
 
 def _as_optional_str(value: object) -> str | None:
     return value if isinstance(value, str) else None
-
-
-def _as_optional_int(value: object) -> int | None:
-    return value if isinstance(value, int) else None
 
 
 def _as_optional_number(value: object) -> float | int | None:
@@ -1370,44 +1204,10 @@ def _as_optional_number(value: object) -> float | int | None:
     )
 
 
-def _as_number(value: object) -> float | int:
-    return value if isinstance(value, int | float) else 0
-
-
-def _as_str_dict(value: object) -> dict[str, str]:
-    if not isinstance(value, Mapping):
-        return {}
-    result: dict[str, str] = {}
-    for key, entry in value.items():
-        if isinstance(key, str) and isinstance(entry, str):
-            result[key] = entry
-    return result
-
-
-def _as_optional_str_dict(value: object) -> dict[str, str | None]:
-    if not isinstance(value, Mapping):
-        return {}
-    result: dict[str, str | None] = {}
-    for key, entry in value.items():
-        if isinstance(key, str) and (entry is None or isinstance(entry, str)):
-            result[key] = entry
-    return result
-
-
-def _mapping_or_none(value: object) -> Mapping[str, object] | None:
-    return value if isinstance(value, Mapping) else None
-
-
 def _as_str_tuple(value: object) -> tuple[str, ...]:
     if not isinstance(value, (list, tuple)):
         return ()
     return tuple(item for item in value if isinstance(item, str) and item)
-
-
-def _coerce_modalities(values: tuple[str, ...]) -> tuple[Modality, ...]:
-    return tuple(
-        cast(Modality, value) for value in values if value in ALLOWED_MODALITIES
-    ) or ("text",)
 
 
 def build_endpoint_key(provider_id: str, endpoint_id: str) -> str:

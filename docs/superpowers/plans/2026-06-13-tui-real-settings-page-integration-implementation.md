@@ -283,7 +283,7 @@ Add tests:
 ```python
 import asyncio
 
-from loushang.coding.types import ModelSelection
+from loushang.ai.model import ModelSelection
 from loushang.coding.ui.settings_page import SettingsPageView
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 from loushang.tui import InputEvent, InputIntent, RenderConstraints, strip_control_sequences

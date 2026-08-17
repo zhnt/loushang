@@ -45,10 +45,15 @@ class CompactionCoordinator(Generic[R]):
         self._last_error: str | None = None
         self._aborted = False
         self._abort_driver: AbortDriver | None = None
+        self._active_task: asyncio.Task[object] | None = None
 
     @property
     def is_compacting(self) -> bool:
         return self._is_compacting
+
+    def owns_current_task(self) -> bool:
+        task = asyncio.current_task()
+        return task is not None and self._active_task is task
 
     def get_status(self) -> CompactionStatus[R]:
         return CompactionStatus(
@@ -68,7 +73,9 @@ class CompactionCoordinator(Generic[R]):
     ) -> R:
         if self._is_compacting:
             raise RuntimeError("Compaction already in progress")
+        task = asyncio.current_task()
         self._begin(reason=reason, abort_driver=abort_driver)
+        self._active_task = task
         try:
             result = await operation()
             self._last_result = result
@@ -81,12 +88,26 @@ class CompactionCoordinator(Generic[R]):
             self._last_error = str(exc)
             raise
         finally:
+            if self._active_task is task:
+                self._active_task = None
             self._finish()
 
     def abort(self) -> None:
+        if not self._is_compacting:
+            return
         self._aborted = True
         if self._abort_driver is not None:
             self._abort_driver()
+
+    async def wait(self) -> None:
+        """Join the active compaction without taking ownership of its result."""
+
+        task = self._active_task
+        if task is None or task.done():
+            return
+        if task is asyncio.current_task():
+            raise RuntimeError("cannot wait for compaction from its active task")
+        await asyncio.gather(task, return_exceptions=True)
 
     def _begin(
         self,

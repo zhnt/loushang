@@ -1,5 +1,9 @@
 # `domain`
 
+This note describes the current compatibility boundary. `CodingDomainApp` is a
+thin Coding profile over the canonical `loushang.method.MethodDomainRuntime`;
+it is not the independent DomainApp runtime used by older architecture drafts.
+
 ## Role
 
 - coding domain app integration boundary
@@ -104,6 +108,20 @@ parameters; it does not redefine their semantics.
 - `--method` is rejected in TUI and RPC paths until ARD-006 preconditions are met.
 - `--work-log` is supported for one-shot text/print/json prompts and rejected in TUI/RPC paths.
 - Fixed linear `MethodPlan` execution is represented as one prepared coding turn per step.
+
+## V3 Target Direction
+
+- Coding is the domain-specific Product. The target architecture does not add a
+  second `CodingDomainApp` runtime inside that Product.
+- The Coding Product Session binding owns lightweight conversation preparation;
+  its Work Preparer and Product Work Executor own structured Method/Work
+  preparation and execution binding.
+- The current `CodingDomainApp` facade may remain while CLI callers still use
+  `prepare_turns(...)`, but it must not acquire new Product routing, capability
+  activation, tool-policy, or Work lifecycle responsibilities.
+- Product capability requirements from a Method projection are resolved by the
+  Coding Product binding and enforced through Harness. They are not executed by
+  this compatibility facade.
 
 ## Reference Implementation Alignment
 

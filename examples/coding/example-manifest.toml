@@ -4,13 +4,13 @@ default_compaction_reserve_tokens = 256
 default_compaction_keep_recent_tokens = 256
 
 [profiles.coding_primary]
-provider = "moonshot"
-endpoint = "anthropic-messages"
+provider = "kimi-code"
+endpoint = "kimi-code-anthropic"
 model = "kimi-for-coding"
 
 [profiles.coding_tooling]
-provider = "moonshot"
-endpoint = "anthropic-messages"
+provider = "kimi-code"
+endpoint = "kimi-code-anthropic"
 model = "kimi-for-coding"
 
 [profiles.openai_frontier]
@@ -216,18 +216,6 @@ requires_api_key = true
 tags = ["coding", "toolset", "existing", "trace"]
 
 [[example]]
-id = "legacy-017"
-slug = "17_kimi_env_probe"
-title = "17_kimi_env_probe.py - 模型路由与 key 来源诊断"
-category = "sdk"
-description = "输出模型 catalog 解析结果、鉴权 key 来源、kimi-code endpoint 映射，快速排障。"
-runtime = "offline"
-entrypoint = "17_kimi_env_probe.py"
-model_profile = "coding_primary"
-requires_api_key = false
-tags = ["coding", "sdk", "existing", "debug", "diagnostics"]
-
-[[example]]
 id = "legacy-018"
 slug = "18_kimi_runtime_matrix.py"
 title = "18_kimi_runtime_matrix.py - endpoint 与错误码矩阵"
@@ -250,18 +238,6 @@ entrypoint = "19_session_store_check.py"
 model_profile = "coding_primary"
 requires_api_key = false
 tags = ["coding", "run", "offline", "existing", "session", "persist"]
-
-[[example]]
-id = "legacy-020"
-slug = "20_key_rotation.py"
-title = "20_key_rotation.py - key 切换恢复演练"
-category = "sdk"
-description = "离线演练 401 -> 认证恢复；可选执行 online 最小可重现。"
-runtime = "offline"
-entrypoint = "20_key_rotation.py"
-model_profile = "coding_primary"
-requires_api_key = false
-tags = ["coding", "sdk", "existing", "offline", "auth", "diagnostics", "ops"]
 
 [[example]]
 id = "legacy-021"
@@ -292,7 +268,7 @@ id = "legacy-023"
 slug = "23_kimi_weekly_usage_ledger.py"
 title = "23_kimi_weekly_usage_ledger.py - 周用量本地账本"
 category = "sdk"
-description = "调用后记录每次 usage 到本地 ledger，按本周窗口聚合输出累计消耗与剩余比例（可选提供周额度）。"
+description = "基于模型响应 usage 记录本地 ledger，按本周窗口聚合累计消耗与剩余比例（可选提供本地周预算）。"
 runtime = "online"
 entrypoint = "23_kimi_weekly_usage_ledger.py"
 model_profile = "coding_primary"

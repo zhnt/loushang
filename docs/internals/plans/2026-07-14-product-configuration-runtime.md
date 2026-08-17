@@ -55,11 +55,13 @@ Coding continues to own:
 - configuration diagnostic codes, messages, remediation, and presentation;
 - effect selection, dependency order, callbacks, context, services, and
   lifecycle decisions;
-- provider registration, model/auth interpretation, persisted model selection,
-  credentials, and credential policy.
+- provider registration and persisted model selection. Request authentication
+  interpretation remains AI-owned.
 
-`ModelRegistry` and `AuthManager` are explicitly outside this migration.
-Harness does not execute shell commands and does not store credentials.
+`ModelRegistry` is explicitly outside this migration. Request authentication
+declarations and credential-to-header resolution remain in AI; Coding does not
+own an authentication lifecycle. Harness does not execute shell commands and
+does not store credentials.
 
 ## Activation Constraints
 

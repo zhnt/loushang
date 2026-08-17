@@ -6,16 +6,16 @@ import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from pathlib import Path
 
-CORE_EXCLUDED_PREFIXES = ("auth/", "cli/", "contrib/", "providers/")
+CORE_EXCLUDED_PREFIXES = ("protocols/",)
 PRODUCTION_ADAPTER_FILES = frozenset({
-    "providers/anthropic.py",
-    "providers/openai_completions.py",
-    "providers/openai_responses.py",
+    "protocols/anthropic_messages.py",
+    "protocols/openai_chat_completions.py",
+    "protocols/openai_responses.py",
 })
 ADAPTER_AGGREGATE_FILES = PRODUCTION_ADAPTER_FILES | frozenset({
-    "providers/anthropic_base.py",
-    "providers/openai_responses_shared.py",
-    "providers/provider_helpers.py",
+    "protocols/_anthropic.py",
+    "protocols/_openai_responses.py",
+    "protocols/_helpers.py",
 })
 
 

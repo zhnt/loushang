@@ -47,10 +47,10 @@ message content, and constructing the record. Harness therefore does not import
 
 ## Coding Adapters
 
-`loushang.coding.compaction.policy` remains the accepted budget compatibility
-module. `loushang.coding.compaction.types` remains the accepted location for
-the usage-estimate compatibility import. Both re-export the same Harness-owned
-objects.
+The former `loushang.coding.compaction.policy` and generic
+`loushang.coding.compaction.types` facades are removed. Products import budget
+and usage records from `loushang.harness.context` and transcript maintenance
+records from `loushang.harness.transcript` directly.
 
 Coding internal consumers import the focused Harness owners directly:
 
@@ -58,10 +58,9 @@ Coding internal consumers import the focused Harness owners directly:
 - session context-usage assembly calls the Harness budget calculator;
 - the Coding message estimator constructs the Harness usage-estimate record.
 
-`loushang.coding.compaction` and top-level `loushang.coding` preserve their
-current public imports. Harness-owned classes and functions keep their Harness
-`__module__`; compatibility paths preserve imports, not duplicate
-implementations or Coding-owned identity.
+`loushang.coding.compaction` no longer re-exports Harness records. Products
+import Harness-owned classes and functions from their canonical owners; Coding
+keeps only its prompt/profile and output-quality policy.
 
 ## Coding-Owned Behavior
 
@@ -94,19 +93,20 @@ not import coding, method, work, TUI, AI, agent runtime, provider, or product
 packages. No context symbols are added to top-level
 `loushang.harness.__all__`.
 
-## Compatibility
+## Migration Result
 
-Accepted Coding imports remain available:
+The old Coding compatibility imports are intentionally removed. Product and
+extension authors import from the canonical owners:
 
 ```python
-from loushang.coding.compaction import CompactionBudget
-from loushang.coding.compaction import ContextUsageEstimate
-from loushang.coding.compaction import calculate_compaction_budget
+from loushang.harness.context import CompactionBudget
+from loushang.harness.context import ContextUsageEstimate
+from loushang.harness.context import calculate_compaction_budget
 ```
 
-Existing constructor fields, frozen-record behavior, threshold normalization,
+The record fields, frozen-record behavior, threshold normalization,
 explicit-value precedence, error behavior, and Coding estimator results remain
-unchanged.
+unchanged; only the ownership path changes.
 
 ## Validation
 
@@ -115,7 +115,7 @@ The migration must prove:
 - percentage and reserve thresholds preserve their current calculation;
 - invalid ranges preserve normalization behavior;
 - explicit values still override an optional settings object;
-- Coding compatibility paths share Harness object identity;
+- Product and Coding consumers import the canonical owners;
 - Coding token estimation returns the Harness-owned result record;
 - threshold decisions and context-usage snapshots remain unchanged;
 - Coding internal consumers use the Harness owners directly;

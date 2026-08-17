@@ -72,7 +72,7 @@ Composer selection playback should be run directly when changing composer input,
 selection, paste marker, completion, keybinding, or render-highlight behavior:
 
 ```bash
-uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner composer-selection-stress --artifacts /tmp/loushang-selection-playback --include-frames
+uv --cache-dir .uv-cache run --extra dev python scripts/run_tui_playback.py composer-selection-stress --artifacts /tmp/loushang-selection-playback --include-frames
 ```
 
 The trace should include `composer-selection-stress` as a passing scenario. Use
@@ -84,8 +84,8 @@ pending queue state, transcript viewport behavior, settings search, completion,
 or cross-feature input routing:
 
 ```bash
-uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner product-composed-interaction --artifacts /tmp/loushang-product-playback --include-frames
-uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner product-streaming-control-flow --artifacts /tmp/loushang-product-streaming-playback --include-frames
+uv --cache-dir .uv-cache run --extra dev python scripts/run_tui_playback.py product-composed-interaction --artifacts /tmp/loushang-product-playback --include-frames
+uv --cache-dir .uv-cache run --extra dev python scripts/run_tui_playback.py product-streaming-control-flow --artifacts /tmp/loushang-product-streaming-playback --include-frames
 ```
 
 The trace should include `product-composed-interaction` and
@@ -107,6 +107,56 @@ Examples:
 - extensions cannot receive TerminalPort
 - extensions receive normalized input events rather than raw terminal bytes
 - v1 prompt_toolkit modules are not on the new public API path
+
+### 5. Native Terminal Transport Tests
+
+Run the same test-only terminal driver contract over a POSIX PTY on Linux and
+ConPTY on Windows. These tests prove structured argv, cwd/environment handling,
+Unicode and VT transport, resize, exit status, large output drain, terminal
+query response, bounded timeout, process-tree termination, and idempotent
+cleanup. They do not claim exact final screen state; FakeTerminal/playback owns
+that evidence.
+
+The Windows backend calls the system ConPTY API through a test-only `ctypes`
+wrapper, explicitly selects ConPTY, and owns its pipes, HPCON, process handle,
+and lifecycle threads. It has no WinPTY fallback or Windows package dependency.
+Pywinpty versions 3.0.5 and
+2.0.15 were both rejected by the Windows lifecycle spike for pending writes,
+lost or corrupted output, and incomplete teardown. Both backends execute the
+shared real CLI `/quit` contract in
+`tests/coding/test_cli_terminal_contract.py`.
+
+tmux is a separate terminal-implementation integration. Its marker only proves
+pane history and scrollback behavior and must not be used as the Windows
+equivalent of ConPTY.
+
+Run the local collections with:
+
+```bash
+make test-tui-render-contract
+make test-tui-terminal-platform
+make test-tui-native
+```
+
+CI runs deterministic and platform jobs on fixed Ubuntu 24.04 and Windows
+Server 2022 runners, runs the shared native contract with
+`LOUSHANG_REQUIRED_TERMINAL_BACKEND=posix-pty|conpty`, and runs tmux in a
+separate fixed-Ubuntu required job. Each required job emits pytest XML and
+fails closed when the report is empty, skipped, failing, or records the wrong
+native backend.
+
+Both TUI workflows cancel superseded runs for the same ref. Every pytest job
+uses a bounded GitHub job timeout and `faulthandler_timeout=60`, so a stalled
+async lifecycle emits a Python stack before the runner deadline. The
+Harnesstui quality job also persists JUnit XML and passes it through the same
+fail-closed verifier. `tui-cross-platform-contracts` is the stable aggregate
+required-check context: it succeeds only after every Linux, Windows, native
+terminal, and tmux dependency succeeds.
+
+Deterministic screen-loop lifecycle recipes use `BlockingPromptController`
+for prompts that settle during abort. Its one-shot context requires the prompt
+to start, receive settlement from the abort callback, finish within a bounded
+deadline, and leave no active asyncio task when the recipe returns.
 
 ## Live Terminal Smoke Checklist
 

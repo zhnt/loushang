@@ -31,6 +31,7 @@ class _MutablePartialMessage:
     role: str
     api: str
     provider: str
+    endpoint: str
     model: str
     timestamp: float
     content: list[TextPart | ThinkingPart | ToolCall | ImagePart] = field(
@@ -57,6 +58,7 @@ class _MutablePartialMessage:
             content=list(self.content),
             api=self.api,
             provider=self.provider,
+            endpoint=self.endpoint,
             model=self.model,
             response_id=self.response_id,
             usage=self.usage,
@@ -71,6 +73,7 @@ def _create_initial_partial_message(model: Model) -> _MutablePartialMessage:
         role="assistant",
         api=resolve_model_api(model),
         provider=model.provider_id,
+        endpoint=model.endpoint_id,
         model=model.id,
         timestamp=time.time() * 1000,
     )

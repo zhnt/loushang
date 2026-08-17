@@ -1,13 +1,6 @@
-from loushang.coding.control.auth_manager import AuthManager, AuthResolution
-from loushang.coding.control.config_value import (
-    ConfigCommandResult,
-    ConfigValueResolver,
-    resolve_config_value,
-)
-from loushang.coding.control.model_registry import ModelRegistry
-from loushang.coding.control.settings_manager import SettingsError, SettingsManager
-from loushang.coding.control.types import (
+from loushang.harness.config.agent import (
     BranchSummarySettings,
+    CapabilityMountMode,
     CompactionSettings,
     ControlConfig,
     HeadlessApprovalMode,
@@ -17,6 +10,8 @@ from loushang.coding.control.types import (
     MethodSettings,
     QueueMode,
     RetrySettings,
+    SettingsError,
+    SettingsManager,
     StatusLineControlSettings,
     TerminalSettings,
     ToolSettings,
@@ -24,11 +19,8 @@ from loushang.coding.control.types import (
 )
 
 __all__ = [
-    "AuthManager",
-    "AuthResolution",
     "BranchSummarySettings",
-    "ConfigCommandResult",
-    "ConfigValueResolver",
+    "CapabilityMountMode",
     "CompactionSettings",
     "ControlConfig",
     "HeadlessApprovalMode",
@@ -36,7 +28,6 @@ __all__ = [
     "KeybindingValue",
     "MarkdownSettings",
     "MethodSettings",
-    "ModelRegistry",
     "QueueMode",
     "RetrySettings",
     "SettingsError",
@@ -45,5 +36,4 @@ __all__ = [
     "TerminalSettings",
     "ToolSettings",
     "WarningSettings",
-    "resolve_config_value",
 ]
