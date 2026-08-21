@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+PluginRevisionKind = Literal["git_commit", "python_version", "manifest_sha256"]
+
 
 @dataclass(frozen=True)
 class PluginManifest:
@@ -37,6 +39,23 @@ class ResolvedPluginPackage:
     package_root_relative: Path = Path(".")
     root_identity: tuple[int, int] | None = None
     package_root_identity: tuple[int, int] | None = None
+
+
+@dataclass(frozen=True)
+class PluginSourceBinding:
+    """Durable selection evidence for one configured Plugin source.
+
+    The revision fields are audit evidence from materialization or the manifest;
+    they do not represent a verified full-content handle or execution authority.
+    """
+
+    source: str
+    source_identity: str
+    source_kind: Literal["local", "remote"]
+    plugin_id: str
+    manifest_digest: str | None = None
+    revision: str | None = None
+    revision_kind: PluginRevisionKind | None = None
 
 
 @dataclass(frozen=True)

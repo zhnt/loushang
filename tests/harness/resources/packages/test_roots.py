@@ -12,6 +12,10 @@ from loushang.harness.resources.packages.materializer import (
 )
 from loushang.harness.resources.packages.roots import configure_resource_loader_roots
 from loushang.harness.resources.packages.source import PackageSourceConfig
+from loushang.harness.resources.plugins.types import (
+    PluginSourceBinding,
+    ResolvedPluginPackage,
+)
 
 
 @dataclass(frozen=True)
@@ -191,3 +195,10 @@ class _InstalledMaterializer:
 
     def get_record(self, source: str) -> PackageMaterializationRecord | None:
         return self._record if source == self._record.source else None
+
+    def bind_plugin_packages(
+        self,
+        packages: tuple[ResolvedPluginPackage, ...],
+    ) -> tuple[PluginSourceBinding, ...]:
+        del packages
+        return ()

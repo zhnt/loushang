@@ -506,6 +506,7 @@ def test_git_package_materializer_backend_clones_remote_plugin_source(tmp_path) 
         encoding="utf-8",
     )
     (source_repo / "package").mkdir()
+    (source_repo / "package" / ".keep").write_text("", encoding="utf-8")
     _run_git(["init"], cwd=source_repo)
     _run_git(["config", "user.email", "test@example.invalid"], cwd=source_repo)
     _run_git(["config", "user.name", "Test User"], cwd=source_repo)

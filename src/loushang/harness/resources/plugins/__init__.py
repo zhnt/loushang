@@ -13,7 +13,9 @@ from loushang.harness.resources.plugins.types import (
     InstalledPlugin,
     PluginManifest,
     PluginResolvedResources,
+    PluginRevisionKind,
     PluginSource,
+    PluginSourceBinding,
     ResolvedPluginPackage,
 )
 
@@ -67,8 +69,10 @@ __all__ = [
     "PluginManifestParser",
     "PluginRegistry",
     "PluginResolvedResources",
+    "PluginRevisionKind",
     "PluginResolver",
     "PluginSource",
+    "PluginSourceBinding",
     "ResolvedPluginPackage",
     "is_remote_plugin_source",
     "project_installed_plugin",

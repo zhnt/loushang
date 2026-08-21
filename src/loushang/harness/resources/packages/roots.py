@@ -19,7 +19,11 @@ from loushang.harness.resources.packages.source_resolver import (
     package_source_scopes,
 )
 from loushang.harness.resources.plugins import PluginManager
-from loushang.harness.resources.plugins.types import PluginSource
+from loushang.harness.resources.plugins.manifest import PluginManifestError
+from loushang.harness.resources.plugins.types import (
+    PluginSource,
+    ResolvedPluginPackage,
+)
 
 
 class ResourceRootSettingsSnapshot(Protocol):
@@ -136,6 +140,7 @@ def resolve_package_resource_roots(
     for configured_root in package_roots:
         _append_package_root(roots, configured_root)
     manager = PluginManager(disabled_plugins=disabled_plugins)
+    resolved_plugins: list[tuple[str, ResolvedPluginPackage]] = []
     for source in plugin_sources:
         if is_remote_package_source(source):
             record = materializer.get_record(source)
@@ -157,10 +162,7 @@ def resolve_package_resource_roots(
                         session_id=session_id,
                     )
                     continue
-                plugin = manager.add_resolved_plugin_package(package)
-                if plugin.enabled:
-                    for root in manager.resolver.resolve_resources(plugin).package_roots:
-                        _append_package_root(roots, root)
+                resolved_plugins.append((source, package))
             continue
         try:
             manifest = resolve_package_manifest(
@@ -184,6 +186,27 @@ def resolve_package_resource_roots(
                 session_id=session_id,
             )
             continue
+        resolved_plugins.append((source, package))
+    try:
+        materializer.bind_plugin_packages(
+            tuple(package for _, package in resolved_plugins)
+        )
+    except PluginManifestError as exc:
+        _record_plugin_identity_diagnostic(
+            diagnostics_service,
+            source=next(
+                (
+                    source
+                    for source, package in resolved_plugins
+                    if package.manifest_path == exc.path or package.root == exc.path
+                ),
+                str(exc.path),
+            ),
+            exc=exc,
+            session_id=session_id,
+        )
+        raise
+    for _, package in resolved_plugins:
         plugin = manager.add_resolved_plugin_package(package)
         if plugin.enabled:
             for root in manager.resolver.resolve_resources(plugin).package_roots:
@@ -250,6 +273,26 @@ def _record_plugin_source_diagnostic(
         level="warning",
         session_id=session_id,
         details={"plugin_source": source, "exception_type": type(exc).__name__},
+    )
+
+
+def _record_plugin_identity_diagnostic(
+    diagnostics_service: DiagnosticsService | None,
+    *,
+    source: str,
+    exc: PluginManifestError,
+    session_id: str | None,
+) -> None:
+    if diagnostics_service is None:
+        return
+    diagnostics_service.capture_failure(
+        code=exc.code,
+        error=exc,
+        phase="startup",
+        source="package",
+        level="warning",
+        session_id=session_id,
+        details={"plugin_source": source},
     )
 
 

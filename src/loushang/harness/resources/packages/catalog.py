@@ -23,7 +23,11 @@ from loushang.harness.resources.packages.source import (
     remote_package_name,
 )
 from loushang.harness.resources.plugins.manager import PluginManager
-from loushang.harness.resources.plugins.types import PluginSource
+from loushang.harness.resources.plugins.manifest import PluginManifestError
+from loushang.harness.resources.plugins.types import (
+    PluginSource,
+    ResolvedPluginPackage,
+)
 from loushang.harness.resources.types import PackageResourceSummary
 
 PackageCatalogKind = Literal["package_root", "plugin", "remote_package", "catalog"]
@@ -173,6 +177,7 @@ class PackageCatalogBuilder:
                     scope=scope,
                     cwd=cwd,
                     plugin_manager=manager,
+                    materializer=materializer,
                 )
             )
 
@@ -186,15 +191,17 @@ class PackageCatalogBuilder:
         scope: PackageCatalogScope,
         cwd: Path,
         plugin_manager: PluginManager,
+        materializer: PackageMaterializer | None,
     ) -> PackageCatalogEntry:
         manifest = resolve_package_manifest(
             source,
             plugin_source=PluginSource(path=Path(source).expanduser()),
         )
         package = manifest.resolved_plugin_package
+        binding_diagnostics = _plugin_binding_diagnostics(materializer, package)
         plugin = (
             plugin_manager.add_resolved_plugin_package(package)
-            if package is not None
+            if package is not None and not binding_diagnostics
             else None
         )
         if plugin is not None and plugin.enabled:
@@ -207,10 +214,22 @@ class PackageCatalogBuilder:
             package_root = manifest.package_root
         enabled = plugin.enabled if plugin is not None else False
         return PackageCatalogEntry(
-            name=plugin.manifest.name if plugin is not None else manifest.root.name,
+            name=(
+                plugin.manifest.name
+                if plugin is not None
+                else package.manifest.name
+                if package is not None
+                else manifest.root.name
+            ),
             kind="plugin",
             scope=scope,
-            version=(plugin.manifest.version or "") if plugin is not None else "",
+            version=(
+                plugin.manifest.version or ""
+                if plugin is not None
+                else package.manifest.version or ""
+                if package is not None
+                else ""
+            ),
             source=(
                 str(plugin.source.path)
                 if plugin is not None
@@ -223,7 +242,7 @@ class PackageCatalogBuilder:
                 if enabled
                 else empty_package_summary(package_root)
             ),
-            manifest_diagnostics=manifest.diagnostics,
+            manifest_diagnostics=(*manifest.diagnostics, *binding_diagnostics),
         )
 
     def remote_package_entry(
@@ -250,12 +269,17 @@ class PackageCatalogBuilder:
             installed=installed,
             plugin_source=plugin_source,
         )
+        binding_diagnostics = _plugin_binding_diagnostics(
+            materializer,
+            manifest.resolved_plugin_package,
+        )
         plugin = (
             plugin_manager.add_resolved_plugin_package(
                 manifest.resolved_plugin_package
             )
             if plugin_manager is not None
             and manifest.resolved_plugin_package is not None
+            and not binding_diagnostics
             else None
         )
         enabled = plugin.enabled if plugin is not None else installed
@@ -280,6 +304,8 @@ class PackageCatalogBuilder:
             name=(
                 plugin.manifest.name
                 if plugin is not None
+                else manifest.resolved_plugin_package.manifest.name
+                if manifest.resolved_plugin_package is not None
                 else remote_package_name(source)
             ),
             kind="remote_package",
@@ -287,6 +313,8 @@ class PackageCatalogBuilder:
             version=(
                 plugin.manifest.version or ""
                 if plugin is not None
+                else manifest.resolved_plugin_package.manifest.version or ""
+                if manifest.resolved_plugin_package is not None
                 else manifest.version
             ),
             source=source,
@@ -315,8 +343,27 @@ class PackageCatalogBuilder:
                 if path is not None and manifest.package_root != manifest.root
                 else None
             ),
-            manifest_diagnostics=manifest.diagnostics,
+            manifest_diagnostics=(*manifest.diagnostics, *binding_diagnostics),
         )
+
+
+def _plugin_binding_diagnostics(
+    materializer: PackageMaterializer | None,
+    package: ResolvedPluginPackage | None,
+) -> tuple[dict[str, object], ...]:
+    if materializer is None or package is None:
+        return ()
+    try:
+        materializer.validate_plugin_package(package)
+    except PluginManifestError as exc:
+        return (
+            {
+                "code": exc.code,
+                "message": str(exc),
+                "path": str(exc.path),
+            },
+        )
+    return ()
 
 
 def package_catalog_sources(

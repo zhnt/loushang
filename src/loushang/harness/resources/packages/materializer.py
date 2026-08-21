@@ -10,7 +10,7 @@ import subprocess
 import sys
 import urllib.parse
 import urllib.request
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -24,6 +24,13 @@ from loushang.harness.resources.packages.source import (
     is_remote_package_source,
     python_package_requirement,
     remote_package_name,
+)
+from loushang.harness.resources.plugins.manifest import PluginManifestError
+from loushang.harness.resources.plugins.types import (
+    PluginRevisionKind,
+    PluginSource,
+    PluginSourceBinding,
+    ResolvedPluginPackage,
 )
 
 
@@ -382,6 +389,8 @@ class PackageMaterializer:
         self.check_concurrency = max(1, int(check_concurrency))
         self.update_check_timeout_seconds = update_check_timeout_seconds
         self._records: dict[str, PackageMaterializationRecord] = {}
+        self._plugin_bindings: dict[str, PluginSourceBinding] = {}
+        self._plugin_binding_lock_error: str | None = None
         self._lockfile_diagnostics: list[dict[str, object]] = []
         self._load_lockfile()
 
@@ -389,6 +398,145 @@ class PackageMaterializer:
         self, callback: Callable[[PackageProgressEvent], None] | None
     ) -> None:
         self._progress_callback = callback
+
+    def bind_plugin_packages(
+        self,
+        packages: Sequence[ResolvedPluginPackage],
+    ) -> tuple[PluginSourceBinding, ...]:
+        """Atomically bind resolved descriptors without accepting Plugin renames."""
+
+        return self._bind_plugin_packages(packages, allow_plugin_id_change=False)
+
+    def rebind_plugin_packages(
+        self,
+        packages: Sequence[ResolvedPluginPackage],
+    ) -> tuple[PluginSourceBinding, ...]:
+        """Explicitly replace source identities after management authorization."""
+
+        return self._bind_plugin_packages(packages, allow_plugin_id_change=True)
+
+    def validate_plugin_package(self, package: ResolvedPluginPackage) -> None:
+        """Validate one descriptor against an existing binding without writing."""
+
+        self._assert_plugin_binding_lock_valid()
+        candidate = self._plugin_binding(package)
+        self._assert_plugin_binding(candidate, package)
+
+    def get_plugin_binding(
+        self,
+        source: str | Path | PluginSource,
+    ) -> PluginSourceBinding | None:
+        return self._plugin_bindings.get(_plugin_source_identity(source))
+
+    def forget_plugin_binding(self, source: str | Path | PluginSource) -> None:
+        key = _plugin_source_identity(source)
+        if key not in self._plugin_bindings:
+            return
+        previous = self._plugin_bindings
+        self._plugin_bindings = dict(previous)
+        self._plugin_bindings.pop(key, None)
+        try:
+            self._save_lockfile()
+        except Exception:
+            self._plugin_bindings = previous
+            raise
+
+    def _bind_plugin_packages(
+        self,
+        packages: Sequence[ResolvedPluginPackage],
+        *,
+        allow_plugin_id_change: bool,
+    ) -> tuple[PluginSourceBinding, ...]:
+        candidates = tuple(self._plugin_binding(package) for package in packages)
+        if not allow_plugin_id_change:
+            self._assert_plugin_binding_lock_valid()
+        next_bindings = dict(self._plugin_bindings)
+        for package, candidate in zip(packages, candidates, strict=True):
+            if not allow_plugin_id_change:
+                self._assert_plugin_binding(candidate, package, bindings=next_bindings)
+            next_bindings[candidate.source_identity] = candidate
+        if next_bindings == self._plugin_bindings and not (
+            allow_plugin_id_change and self._plugin_binding_lock_error is not None
+        ):
+            return candidates
+        previous = self._plugin_bindings
+        previous_lock_error = self._plugin_binding_lock_error
+        self._plugin_bindings = next_bindings
+        if allow_plugin_id_change:
+            self._plugin_binding_lock_error = None
+        try:
+            self._save_lockfile()
+        except Exception:
+            self._plugin_bindings = previous
+            self._plugin_binding_lock_error = previous_lock_error
+            raise
+        return candidates
+
+    def _assert_plugin_binding_lock_valid(self) -> None:
+        if self._plugin_binding_lock_error is None:
+            return
+        raise PluginManifestError(
+            self._plugin_binding_lock_error,
+            code="plugin_binding_lock_invalid",
+            path=self.lockfile_path,
+        )
+
+    def _record_plugin_binding_lock_error(self, *, code: str, message: str) -> None:
+        self._plugin_binding_lock_error = message
+        self._lockfile_diagnostics.append(
+            {
+                "code": code,
+                "message": message,
+                "path": str(self.lockfile_path),
+            }
+        )
+
+    def _assert_plugin_binding(
+        self,
+        candidate: PluginSourceBinding,
+        package: ResolvedPluginPackage,
+        *,
+        bindings: dict[str, PluginSourceBinding] | None = None,
+    ) -> None:
+        current = self._plugin_bindings if bindings is None else bindings
+        bound = current.get(candidate.source_identity)
+        if bound is None or bound.plugin_id == candidate.plugin_id:
+            return
+        raise PluginManifestError(
+            f"Plugin source identity changed from {bound.plugin_id!r} to "
+            f"{candidate.plugin_id!r}: {candidate.source}",
+            code="plugin_identity_changed",
+            path=package.manifest_path or package.root,
+        )
+
+    def _plugin_binding(
+        self,
+        package: ResolvedPluginPackage,
+    ) -> PluginSourceBinding:
+        source = package.source
+        source_value = _plugin_source_value(source)
+        revision: str | None = None
+        revision_kind: PluginRevisionKind | None = None
+        if source.kind == "remote" and source.url is not None:
+            record = self.get_record(source.url)
+            if record is not None and record.installed_commit:
+                revision = record.installed_commit
+                revision_kind = "git_commit"
+            elif record is not None and record.resolved_version:
+                revision = record.resolved_version
+                revision_kind = "python_version"
+        if revision is None and package.manifest_digest is not None:
+            revision = package.manifest_digest
+            revision_kind = "manifest_sha256"
+        return PluginSourceBinding(
+            source=source_value,
+            source_identity=_plugin_source_identity(source),
+            source_kind=source.kind,
+            plugin_id=package.manifest.name,
+            manifest_digest=package.manifest_digest,
+            revision=revision,
+            revision_kind=revision_kind,
+        )
 
     def prepare_remote_source(self, source: str) -> PackageMaterializationRecord:
         if not is_remote_package_source(source):
@@ -489,8 +637,25 @@ class PackageMaterializer:
         return removed
 
     def forget_remote_source(self, source: str) -> None:
-        self._records.pop(_record_key(source), None)
-        self._save_lockfile()
+        record_key = _record_key(source)
+        binding_key = _plugin_source_identity(source)
+        if (
+            record_key not in self._records
+            and binding_key not in self._plugin_bindings
+        ):
+            return
+        previous_records = self._records
+        previous_bindings = self._plugin_bindings
+        self._records = dict(previous_records)
+        self._plugin_bindings = dict(previous_bindings)
+        self._records.pop(record_key, None)
+        self._plugin_bindings.pop(binding_key, None)
+        try:
+            self._save_lockfile()
+        except Exception:
+            self._records = previous_records
+            self._plugin_bindings = previous_bindings
+            raise
 
     async def update_all_remote_sources(self) -> list[PackageMaterializationRecord]:
         if _package_offline_enabled():
@@ -834,6 +999,9 @@ class PackageMaterializer:
         except FileNotFoundError:
             return
         except Exception as exc:
+            self._plugin_binding_lock_error = (
+                f"Package lockfile cannot establish Plugin source identity: {exc}"
+            )
             self._lockfile_diagnostics.append(
                 {
                     "code": "package_lockfile_unreadable",
@@ -842,7 +1010,32 @@ class PackageMaterializer:
                 }
             )
             return
-        records = payload.get("packages") if isinstance(payload, dict) else None
+        if not isinstance(payload, dict):
+            self._record_plugin_binding_lock_error(
+                code="package_lockfile_invalid_plugin_bindings",
+                message="Package lockfile must be a JSON object.",
+            )
+            return
+        binding_section_present = "pluginBindings" in payload
+        lockfile_version = payload.get("version", 1)
+        if lockfile_version not in {1, 2}:
+            self._record_plugin_binding_lock_error(
+                code="package_lockfile_invalid_plugin_bindings",
+                message=f"Unsupported package lockfile version: {lockfile_version!r}.",
+            )
+        elif lockfile_version == 2 and not binding_section_present:
+            self._record_plugin_binding_lock_error(
+                code="package_lockfile_invalid_plugin_bindings",
+                message="Package lockfile v2 is missing pluginBindings.",
+            )
+        elif binding_section_present and lockfile_version != 2:
+            self._record_plugin_binding_lock_error(
+                code="package_lockfile_invalid_plugin_bindings",
+                message=(
+                    "Package lockfile pluginBindings requires lockfile version 2."
+                ),
+            )
+        records = payload.get("packages")
         if not isinstance(records, list):
             return
         for item in records:
@@ -912,6 +1105,34 @@ class PackageMaterializer:
                 if isinstance(item.get("installedDistributions"), list | tuple)
                 else (),
             )
+        bindings = payload.get("pluginBindings")
+        if bindings is None:
+            return
+        if not isinstance(bindings, list):
+            self._record_plugin_binding_lock_error(
+                code="package_lockfile_invalid_plugin_bindings",
+                message="Package lockfile pluginBindings must be a list.",
+            )
+            return
+        for item in bindings:
+            binding = _plugin_binding_from_json(item)
+            if binding is None:
+                self._record_plugin_binding_lock_error(
+                    code="package_lockfile_invalid_plugin_binding",
+                    message=(
+                        "Package lockfile contains an invalid Plugin source binding."
+                    ),
+                )
+                continue
+            if binding.source_identity in self._plugin_bindings:
+                self._record_plugin_binding_lock_error(
+                    code="package_lockfile_duplicate_plugin_binding",
+                    message=(
+                        "Package lockfile contains duplicate Plugin source bindings."
+                    ),
+                )
+                continue
+            self._plugin_bindings[binding.source_identity] = binding
 
     def _save_lockfile(self) -> None:
         self.lockfile_path.parent.mkdir(parents=True, exist_ok=True)
@@ -919,7 +1140,7 @@ class PackageMaterializer:
             f"{self.lockfile_path.name}.{id(self)}.tmp"
         )
         payload = {
-            "version": 1,
+            "version": 2,
             "trustedSources": sorted(
                 record.source
                 for record in self._records.values()
@@ -948,6 +1169,21 @@ class PackageMaterializer:
                 }
                 for record in self.list_records()
             ],
+            "pluginBindings": [
+                {
+                    "source": binding.source,
+                    "sourceIdentity": binding.source_identity,
+                    "sourceKind": binding.source_kind,
+                    "pluginId": binding.plugin_id,
+                    "manifestDigest": binding.manifest_digest,
+                    "revision": binding.revision,
+                    "revisionKind": binding.revision_kind,
+                }
+                for binding in sorted(
+                    self._plugin_bindings.values(),
+                    key=lambda value: value.source_identity,
+                )
+            ],
         }
         try:
             temp_path.write_text(
@@ -973,6 +1209,104 @@ def _git_clone_source(source: str) -> tuple[str, str | None]:
 
 def _record_key(source: str) -> str:
     return PackageSourceIdentity.parse(source).identity_key
+
+
+def _plugin_source_value(source: PluginSource) -> str:
+    if source.kind == "remote":
+        if source.url is None:
+            raise ValueError("Remote Plugin source requires a URL.")
+        return source.url
+    if source.path is None:
+        raise ValueError("Local Plugin source requires a path.")
+    return str(source.path.expanduser().resolve())
+
+
+def _plugin_source_identity(source: str | Path | PluginSource) -> str:
+    if isinstance(source, PluginSource):
+        if source.kind == "remote":
+            if source.url is None:
+                raise ValueError("Remote Plugin source requires a URL.")
+            return f"remote:{_record_key(source.url)}"
+        if source.path is None:
+            raise ValueError("Local Plugin source requires a path.")
+        path = source.path
+    elif isinstance(source, str) and is_remote_package_source(source):
+        return f"remote:{_record_key(source)}"
+    else:
+        path = Path(source)
+    return f"local:{path.expanduser().resolve()}"
+
+
+def _plugin_binding_from_json(value: object) -> PluginSourceBinding | None:
+    if not isinstance(value, dict):
+        return None
+    source = value.get("source")
+    source_identity = value.get("sourceIdentity")
+    source_kind = value.get("sourceKind")
+    plugin_id = value.get("pluginId")
+    if (
+        not isinstance(source, str)
+        or not source
+        or not isinstance(source_identity, str)
+        or not source_identity
+        or source_kind not in {"local", "remote"}
+        or not isinstance(plugin_id, str)
+        or not plugin_id
+        or plugin_id.strip() != plugin_id
+    ):
+        return None
+    remote_source = is_remote_package_source(source)
+    if remote_source != (source_kind == "remote"):
+        return None
+    if source_kind == "local" and str(Path(source).expanduser().resolve()) != source:
+        return None
+    source_descriptor = (
+        PluginSource(url=source, kind="remote")
+        if source_kind == "remote"
+        else PluginSource(path=Path(source))
+    )
+    try:
+        canonical_source_identity = _plugin_source_identity(source_descriptor)
+    except (TypeError, ValueError):
+        return None
+    if canonical_source_identity != source_identity:
+        return None
+    manifest_digest = value.get("manifestDigest")
+    revision = value.get("revision")
+    if (
+        manifest_digest is not None
+        and not isinstance(manifest_digest, str)
+        or revision is not None
+        and not isinstance(revision, str)
+    ):
+        return None
+    if manifest_digest is not None and not _is_sha256_digest(manifest_digest):
+        return None
+    revision_kind = value.get("revisionKind")
+    if revision_kind not in {
+        None,
+        "git_commit",
+        "python_version",
+        "manifest_sha256",
+    }:
+        return None
+    if (revision is None) != (revision_kind is None):
+        return None
+    if revision_kind == "manifest_sha256" and revision != manifest_digest:
+        return None
+    return PluginSourceBinding(
+        source=source,
+        source_identity=source_identity,
+        source_kind=source_kind,
+        plugin_id=plugin_id,
+        manifest_digest=manifest_digest,
+        revision=revision,
+        revision_kind=cast(PluginRevisionKind | None, revision_kind),
+    )
+
+
+def _is_sha256_digest(value: str) -> bool:
+    return len(value) == 64 and all(character in "0123456789abcdef" for character in value)
 
 
 def _origin_branch_from_ref(ref: str) -> str | None:

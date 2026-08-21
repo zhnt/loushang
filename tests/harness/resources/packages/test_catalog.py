@@ -18,6 +18,7 @@ from loushang.harness.resources.packages.materializer import (
 )
 from loushang.harness.resources.packages.projection import project_package_entry
 from loushang.harness.resources.packages.source import PackageSourceConfig
+from loushang.harness.resources.plugins.types import ResolvedPluginPackage
 from loushang.harness.resources.types import PackageResourceSummary
 
 
@@ -264,3 +265,6 @@ class _InstalledMaterializer:
 
     def get_record(self, source: str) -> PackageMaterializationRecord | None:
         return self._record if source == self._record.source else None
+
+    def validate_plugin_package(self, package: ResolvedPluginPackage) -> None:
+        del package
