@@ -25,6 +25,10 @@ from loushang.harness.resources.packages.source import (
     python_package_requirement,
     remote_package_name,
 )
+from loushang.harness.resources.plugins.dependencies import (
+    PluginDependencyClosureLock,
+    lock_plugin_dependency_closure,
+)
 from loushang.harness.resources.plugins.manifest import PluginManifestError
 from loushang.harness.resources.plugins.revisions import PluginRevisionStore
 from loushang.harness.resources.plugins.types import (
@@ -418,9 +422,22 @@ class PackageMaterializer:
         self,
         packages: Sequence[ResolvedPluginPackage],
     ) -> tuple[ResolvedPluginPackage, ...]:
-        """Publish source descriptors as verified content-addressed revisions."""
+        """Publish verified revisions with complete materialized dependency locks."""
 
-        return self._plugin_revision_store.publish_all(tuple(packages))
+        published = self._plugin_revision_store.publish_all(tuple(packages))
+        try:
+            return tuple(
+                replace(
+                    package,
+                    dependency_lock=self._plugin_dependency_lock(package),
+                )
+                for package in published
+            )
+        except Exception:
+            for package in published:
+                if package.revision_handle is not None:
+                    package.revision_handle.close()
+            raise
 
     def rebind_plugin_packages(
         self,
@@ -462,6 +479,7 @@ class PackageMaterializer:
         *,
         allow_plugin_id_change: bool,
     ) -> tuple[PluginSourceBinding, ...]:
+        self._assert_bindable_plugin_packages(packages)
         candidates = tuple(self._plugin_binding(package) for package in packages)
         if not allow_plugin_id_change:
             self._assert_plugin_binding_lock_valid()
@@ -486,6 +504,48 @@ class PackageMaterializer:
             self._plugin_binding_lock_error = previous_lock_error
             raise
         return candidates
+
+    def _assert_bindable_plugin_packages(
+        self,
+        packages: Sequence[ResolvedPluginPackage],
+    ) -> None:
+        for package in packages:
+            handle = package.revision_handle
+            content_digest = package.content_digest
+            if handle is None or content_digest is None:
+                raise PluginManifestError(
+                    f"Plugin source binding requires a published revision: "
+                    f"{package.root}",
+                    code="unverified_plugin_revision",
+                    path=package.root,
+                )
+            dependency_lock = package.dependency_lock
+            if dependency_lock is None:
+                raise PluginManifestError(
+                    "Plugin source binding requires a dependency closure lock: "
+                    f"{package.root}",
+                    code="unverified_plugin_dependency_closure",
+                    path=package.root,
+                )
+            if (
+                handle.root != package.root
+                or handle.content_digest != content_digest
+                or dependency_lock.package_content_digest != content_digest
+            ):
+                raise PluginManifestError(
+                    f"Plugin source binding revision evidence does not match: "
+                    f"{package.root}",
+                    code="invalid_plugin_revision_publication",
+                    path=package.root,
+                )
+            handle.verify()
+            if dependency_lock != self._plugin_dependency_lock(package):
+                raise PluginManifestError(
+                    "Plugin dependency closure does not match the published "
+                    f"revision: {package.root}",
+                    code="plugin_dependency_closure_changed",
+                    path=package.root,
+                )
 
     def _assert_plugin_binding_lock_valid(self) -> None:
         if self._plugin_binding_lock_error is None:
@@ -555,7 +615,92 @@ class PackageMaterializer:
             content_digest=package.content_digest,
             revision=revision,
             revision_kind=revision_kind,
+            dependency_lock=package.dependency_lock,
         )
+
+    def _plugin_dependency_lock(
+        self,
+        package: ResolvedPluginPackage,
+    ) -> PluginDependencyClosureLock:
+        content_digest = package.content_digest
+        if content_digest is None:
+            raise PluginManifestError(
+                f"Published Plugin package has no content digest: {package.root}",
+                code="unverified_plugin_revision",
+                path=package.root,
+            )
+        record: PackageMaterializationRecord | None = None
+        source_url = package.source.url
+        if package.source.kind == "remote" and source_url is not None:
+            record = self.get_record(source_url)
+            if is_python_package_source(source_url) and (
+                record is None
+                or record.lifecycle != "installed"
+                or not record.installed_distributions
+            ):
+                raise PluginManifestError(
+                    "Python Plugin package has no complete installed distribution "
+                    f"closure: {source_url}",
+                    code="plugin_dependency_closure_incomplete",
+                    path=package.root,
+                )
+        try:
+            actual_distributions = _python_distribution_metadata(
+                package.root,
+                record.name if record is not None else package.manifest.name,
+            )["distributions"]
+        except Exception as exc:
+            raise PluginManifestError(
+                f"Plugin dependency closure could not be read: {package.root}: {exc}",
+                code="invalid_plugin_dependency_closure",
+                path=package.root,
+            ) from exc
+        handle = package.revision_handle
+        if handle is None:
+            raise PluginManifestError(
+                f"Published Plugin package has no revision handle: {package.root}",
+                code="unverified_plugin_revision",
+                path=package.root,
+            )
+        handle.verify()
+        if (
+            source_url is not None
+            and is_python_package_source(source_url)
+            and record is not None
+        ):
+            try:
+                recorded_lock = lock_plugin_dependency_closure(
+                    package_content_digest=content_digest,
+                    installed_distributions=record.installed_distributions,
+                )
+                actual_lock = lock_plugin_dependency_closure(
+                    package_content_digest=content_digest,
+                    installed_distributions=actual_distributions,
+                )
+            except (TypeError, ValueError) as exc:
+                raise PluginManifestError(
+                    f"Invalid Plugin dependency closure: {package.root}: {exc}",
+                    code="invalid_plugin_dependency_closure",
+                    path=package.root,
+                ) from exc
+            if recorded_lock != actual_lock:
+                raise PluginManifestError(
+                    "Python Plugin installed distribution closure changed before "
+                    f"publication: {source_url}",
+                    code="plugin_dependency_closure_changed",
+                    path=package.root,
+                )
+        try:
+            return lock_plugin_dependency_closure(
+                package_content_digest=content_digest,
+                installed_distributions=actual_distributions,
+            )
+        except (TypeError, ValueError) as exc:
+            raise PluginManifestError(
+                f"Invalid Plugin dependency closure: {package.root}: {exc}",
+                code="invalid_plugin_dependency_closure",
+                path=package.root,
+            ) from exc
 
     def prepare_remote_source(self, source: str) -> PackageMaterializationRecord:
         if not is_remote_package_source(source):
@@ -658,10 +803,7 @@ class PackageMaterializer:
     def forget_remote_source(self, source: str) -> None:
         record_key = _record_key(source)
         binding_key = _plugin_source_identity(source)
-        if (
-            record_key not in self._records
-            and binding_key not in self._plugin_bindings
-        ):
+        if record_key not in self._records and binding_key not in self._plugin_bindings:
             return
         previous_records = self._records
         previous_bindings = self._plugin_bindings
@@ -1037,21 +1179,23 @@ class PackageMaterializer:
             return
         binding_section_present = "pluginBindings" in payload
         lockfile_version = payload.get("version", 1)
-        if lockfile_version not in {1, 2}:
+        if lockfile_version not in {1, 2, 3}:
             self._record_plugin_binding_lock_error(
                 code="package_lockfile_invalid_plugin_bindings",
                 message=f"Unsupported package lockfile version: {lockfile_version!r}.",
             )
-        elif lockfile_version == 2 and not binding_section_present:
-            self._record_plugin_binding_lock_error(
-                code="package_lockfile_invalid_plugin_bindings",
-                message="Package lockfile v2 is missing pluginBindings.",
-            )
-        elif binding_section_present and lockfile_version != 2:
+        elif lockfile_version in {2, 3} and not binding_section_present:
             self._record_plugin_binding_lock_error(
                 code="package_lockfile_invalid_plugin_bindings",
                 message=(
-                    "Package lockfile pluginBindings requires lockfile version 2."
+                    f"Package lockfile v{lockfile_version} is missing pluginBindings."
+                ),
+            )
+        elif binding_section_present and lockfile_version not in {2, 3}:
+            self._record_plugin_binding_lock_error(
+                code="package_lockfile_invalid_plugin_bindings",
+                message=(
+                    "Package lockfile pluginBindings requires lockfile version 2 or 3."
                 ),
             )
         records = payload.get("packages")
@@ -1134,7 +1278,10 @@ class PackageMaterializer:
             )
             return
         for item in bindings:
-            binding = _plugin_binding_from_json(item)
+            binding = _plugin_binding_from_json(
+                item,
+                require_dependency_lock=lockfile_version == 3,
+            )
             if binding is None:
                 self._record_plugin_binding_lock_error(
                     code="package_lockfile_invalid_plugin_binding",
@@ -1158,8 +1305,16 @@ class PackageMaterializer:
         temp_path = self.lockfile_path.with_name(
             f"{self.lockfile_path.name}.{id(self)}.tmp"
         )
+        lockfile_version = (
+            3
+            if all(
+                binding.dependency_lock is not None
+                for binding in self._plugin_bindings.values()
+            )
+            else 2
+        )
         payload = {
-            "version": 2,
+            "version": lockfile_version,
             "trustedSources": sorted(
                 record.source
                 for record in self._records.values()
@@ -1198,6 +1353,14 @@ class PackageMaterializer:
                     "contentDigest": binding.content_digest,
                     "revision": binding.revision,
                     "revisionKind": binding.revision_kind,
+                    **(
+                        {
+                            "dependencyLock": binding.dependency_lock.to_dict(),
+                            "dependencyLockDigest": binding.dependency_lock.digest,
+                        }
+                        if binding.dependency_lock is not None
+                        else {}
+                    ),
                 }
                 for binding in sorted(
                     self._plugin_bindings.values(),
@@ -1257,7 +1420,11 @@ def _plugin_source_identity(source: str | Path | PluginSource) -> str:
     return f"local:{path.expanduser().resolve()}"
 
 
-def _plugin_binding_from_json(value: object) -> PluginSourceBinding | None:
+def _plugin_binding_from_json(
+    value: object,
+    *,
+    require_dependency_lock: bool = False,
+) -> PluginSourceBinding | None:
     if not isinstance(value, dict):
         return None
     source = value.get("source")
@@ -1322,6 +1489,27 @@ def _plugin_binding_from_json(value: object) -> PluginSourceBinding | None:
         return None
     if revision_kind == "content_sha256" and revision != content_digest:
         return None
+    dependency_lock_value = value.get("dependencyLock")
+    dependency_lock_digest = value.get("dependencyLockDigest")
+    dependency_lock: PluginDependencyClosureLock | None = None
+    if require_dependency_lock and dependency_lock_value is None:
+        return None
+    if (dependency_lock_value is None) != (dependency_lock_digest is None):
+        return None
+    if dependency_lock_value is not None:
+        if not isinstance(dependency_lock_digest, str):
+            return None
+        try:
+            dependency_lock = PluginDependencyClosureLock.from_dict(
+                dependency_lock_value
+            )
+        except (TypeError, ValueError):
+            return None
+        if (
+            dependency_lock.digest != dependency_lock_digest
+            or dependency_lock.package_content_digest != content_digest
+        ):
+            return None
     return PluginSourceBinding(
         source=source,
         source_identity=source_identity,
@@ -1331,11 +1519,14 @@ def _plugin_binding_from_json(value: object) -> PluginSourceBinding | None:
         content_digest=content_digest,
         revision=revision,
         revision_kind=cast(PluginRevisionKind | None, revision_kind),
+        dependency_lock=dependency_lock,
     )
 
 
 def _is_sha256_digest(value: str) -> bool:
-    return len(value) == 64 and all(character in "0123456789abcdef" for character in value)
+    return len(value) == 64 and all(
+        character in "0123456789abcdef" for character in value
+    )
 
 
 def _origin_branch_from_ref(ref: str) -> str | None:

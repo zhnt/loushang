@@ -6,6 +6,12 @@ from loushang.harness.resources.plugins.authority import (
     PluginResolutionDiagnostic,
     PluginRuntimeResolution,
 )
+from loushang.harness.resources.plugins.dependencies import (
+    PLUGIN_DEPENDENCY_LOCK_FORMAT,
+    PluginDependencyClosureLock,
+    PluginPythonDistributionLock,
+    lock_plugin_dependency_closure,
+)
 from loushang.harness.resources.plugins.lifecycle import (
     is_remote_plugin_source,
     remote_plugin_name,
@@ -75,13 +81,16 @@ def _safe_plugin_string(value: object) -> str:
 
 __all__ = [
     "InstalledPlugin",
+    "PLUGIN_DEPENDENCY_LOCK_FORMAT",
     "PluginBindingStore",
     "PluginBindingValidator",
+    "PluginDependencyClosureLock",
     "PluginInspection",
     "PluginManager",
     "PluginManifest",
     "PluginManifestError",
     "PluginManifestParser",
+    "PluginPythonDistributionLock",
     "PluginRegistry",
     "PluginRevisionError",
     "PluginResolvedResources",
@@ -96,6 +105,7 @@ __all__ = [
     "ResolvedPluginPackage",
     "VerifiedRevisionHandle",
     "is_remote_plugin_source",
+    "lock_plugin_dependency_closure",
     "project_installed_plugin",
     "remote_plugin_name",
 ]

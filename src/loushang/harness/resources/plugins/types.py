@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
+    from loushang.harness.resources.plugins.dependencies import (
+        PluginDependencyClosureLock,
+    )
     from loushang.harness.resources.plugins.revisions import VerifiedRevisionHandle
 
 PluginRevisionKind = Literal[
@@ -36,7 +39,12 @@ class PluginSource:
 
 @dataclass(frozen=True)
 class ResolvedPluginPackage:
-    """Canonical inert descriptor produced by the one Plugin manifest parser."""
+    """Canonical inert descriptor advanced by parse and revision publication.
+
+    The parser leaves revision and dependency evidence empty. Runtime admission
+    accepts only the published form carrying both a verified revision handle
+    and a dependency closure lock.
+    """
 
     root: Path
     package_root: Path
@@ -48,6 +56,7 @@ class ResolvedPluginPackage:
     package_root_relative: Path = Path(".")
     root_identity: tuple[int, int] | None = None
     package_root_identity: tuple[int, int] | None = None
+    dependency_lock: PluginDependencyClosureLock | None = None
     revision_handle: VerifiedRevisionHandle | None = field(
         default=None,
         compare=False,
@@ -59,8 +68,8 @@ class ResolvedPluginPackage:
 class PluginSourceBinding:
     """Durable selection evidence for one configured Plugin source.
 
-    The revision fields are audit evidence from materialization or the manifest;
-    they do not represent a verified full-content handle or execution authority.
+    The revision and dependency fields are durable audit evidence. They do not
+    replace the live verified handle or grant execution authority.
     """
 
     source: str
@@ -71,6 +80,7 @@ class PluginSourceBinding:
     content_digest: str | None = None
     revision: str | None = None
     revision_kind: PluginRevisionKind | None = None
+    dependency_lock: PluginDependencyClosureLock | None = None
 
 
 @dataclass(frozen=True)

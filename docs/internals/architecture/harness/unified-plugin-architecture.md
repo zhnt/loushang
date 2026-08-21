@@ -1147,7 +1147,7 @@ object, and one effective projection path.
 | Area | Current Loushang position | Remaining gap or deliberate difference |
 | --- | --- | --- |
 | Typed Capability composition | Strong Planner/Binder/Runtime/Projector and exact registration ownership | Add owner eligibility/final admission, Product closure selection and owner-defined internal components; mount `coding.lsp` and `coding.arch` without Profile slots |
-| Package resolution | One manifest descriptor/parser and `PluginResolutionAuthority`; runtime sources publish verified revisions before atomic durable binding, while CLI/Catalog inventory inspection remains read-only | Locked dependency closure, executable-host consumption and retirement of registry-only compatibility APIs |
+| Package resolution | One manifest descriptor/parser and `PluginResolutionAuthority`; runtime sources publish verified revisions with a digest-bound materialized dependency closure before atomic durable binding, while CLI/Catalog inventory inspection remains read-only | Executable-host closure enforcement and retirement of registry-only compatibility APIs |
 | Plugin lifecycle | Enablement projects one `PackageResourceMount`; Resource discovery leases and revalidates verified revisions while owner lifecycles remain separate | Unified selection/provenance and retirement aggregation without replacing owners |
 | Declarations | Manifest and executable Extension registrations converge late | Versioned mutually exclusive IR and compatibility capture adapter |
 | Profiles/composition | Product/OEM Runtime Profiles already exist | Composition Sets compile once into a derived Product plan or existing authorized external layers, never a peer Profile |
@@ -1171,11 +1171,16 @@ The current UPA1 convergence seam is `PluginResolutionAuthority`. Its
 `inspect` operation parses and projects inventory without publishing, binding,
 or writing a lockfile. Its runtime operation accepts only successful
 inspections, publishes content-addressed revisions, verifies handle/digest and
-source lineage, then atomically binds the full batch. Startup roots, Package
-Catalog projection, Package manifest compatibility projection, and CLI Plugin
-listing use this seam. `PluginManager.add_plugin_source()` remains only as a
-registry-only compatibility adapter; it is not a production runtime admission
-path.
+source/dependency lineage, then atomically binds the full batch. The dependency
+lock binds the complete published tree digest to the normalized exact Python
+distribution set re-read from that frozen tree; Python materialization records
+must match that observed set. Package lockfile v3 persists the lock and its
+derived digest, while v2 remains readable only for explicit verified upgrade.
+This lock is distribution evidence, not a Capability dependency graph or
+permission to import. Startup roots, Package Catalog projection, Package
+manifest compatibility projection, and CLI Plugin listing use this seam.
+`PluginManager.add_plugin_source()` remains only as a registry-only
+compatibility adapter; it is not a production runtime admission path.
 
 ## Delivery Sequence
 

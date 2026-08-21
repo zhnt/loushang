@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,9 @@ from loushang.harness.resources.packages.materializer import (
     PackageMaterializer,
 )
 from loushang.harness.resources.packages.roots import resolve_package_resource_roots
+from loushang.harness.resources.plugins.dependencies import (
+    lock_plugin_dependency_closure,
+)
 from loushang.harness.resources.plugins.manifest import (
     PluginManifestError,
     PluginManifestParser,
@@ -29,25 +33,29 @@ def test_plugin_source_binding_survives_restart_and_rejects_implicit_rename(
 ) -> None:
     root = _plugin(tmp_path / "plugins" / "review", name="review-pack")
     materializer = PackageMaterializer(install_root=tmp_path / "installed")
-    [binding] = materializer.bind_plugin_packages((_descriptor(root),))
+    [binding] = materializer.bind_plugin_packages(
+        (_published_descriptor(materializer, root),)
+    )
 
     assert binding.plugin_id == "review-pack"
     assert binding.manifest_digest == _descriptor(root).manifest_digest
-    assert binding.revision == binding.manifest_digest
+    assert binding.content_digest is not None
+    assert binding.revision == binding.content_digest
+    assert binding.dependency_lock is not None
 
     restored = PackageMaterializer(install_root=tmp_path / "installed")
     assert restored.get_plugin_binding(root) == binding
-    lockfile = json.loads(
-        (tmp_path / "package-lock.json").read_text(encoding="utf-8")
-    )
-    assert lockfile["version"] == 2
+    lockfile = json.loads((tmp_path / "package-lock.json").read_text(encoding="utf-8"))
+    assert lockfile["version"] == 3
     assert lockfile["pluginBindings"] == [
         {
-            "contentDigest": None,
+            "contentDigest": binding.content_digest,
+            "dependencyLock": binding.dependency_lock.to_dict(),
+            "dependencyLockDigest": binding.dependency_lock.digest,
             "manifestDigest": binding.manifest_digest,
             "pluginId": "review-pack",
             "revision": binding.revision,
-            "revisionKind": "manifest_sha256",
+            "revisionKind": "content_sha256",
             "source": str(root.resolve()),
             "sourceIdentity": binding.source_identity,
             "sourceKind": "local",
@@ -58,7 +66,7 @@ def test_plugin_source_binding_survives_restart_and_rejects_implicit_rename(
     before = (tmp_path / "package-lock.json").read_bytes()
 
     with pytest.raises(PluginManifestError) as caught:
-        restored.bind_plugin_packages((_descriptor(root),))
+        restored.bind_plugin_packages((_published_descriptor(restored, root),))
 
     assert caught.value.code == "plugin_identity_changed"
     assert restored.get_plugin_binding(root) == binding
@@ -98,6 +106,10 @@ def test_remote_plugin_binding_uses_materialized_revision_and_normalized_source(
     [published] = materializer.publish_plugin_packages((package,))
     [binding] = materializer.bind_plugin_packages((published,))
 
+    assert published.dependency_lock is not None
+    assert published.dependency_lock.package_content_digest == published.content_digest
+    assert published.dependency_lock.python_distributions == ()
+    assert binding.dependency_lock == published.dependency_lock
     assert binding.revision == "abc123"
     assert binding.revision_kind == "git_commit"
     assert binding.content_digest == published.content_digest
@@ -107,13 +119,300 @@ def test_remote_plugin_binding_uses_materialized_revision_and_normalized_source(
     assert restored.get_plugin_binding(equivalent) == binding
 
 
+def test_plugin_binding_rejects_unpublished_mutable_descriptor(
+    tmp_path: Path,
+) -> None:
+    root = _plugin(tmp_path / "plugins" / "review", name="review-pack")
+    materializer = PackageMaterializer(install_root=tmp_path / "installed")
+
+    with pytest.raises(PluginManifestError) as caught:
+        materializer.bind_plugin_packages((_descriptor(root),))
+
+    assert caught.value.code == "unverified_plugin_revision"
+    assert materializer.get_plugin_binding(root) is None
+    assert materializer.lockfile_path.exists() is False
+
+
+def test_plugin_binding_revalidates_dependency_closure_from_published_tree(
+    tmp_path: Path,
+) -> None:
+    root = _plugin(tmp_path / "plugins" / "review", name="review-pack")
+    _write_python_dist(root, name="review-dependency", version="1.2.3")
+    materializer = PackageMaterializer(install_root=tmp_path / "installed")
+    [published] = materializer.publish_plugin_packages((_descriptor(root),))
+    assert published.content_digest is not None
+    fabricated = replace(
+        published,
+        dependency_lock=lock_plugin_dependency_closure(
+            package_content_digest=published.content_digest,
+            installed_distributions=(),
+        ),
+    )
+
+    with pytest.raises(PluginManifestError) as caught:
+        materializer.bind_plugin_packages((fabricated,))
+
+    assert caught.value.code == "plugin_dependency_closure_changed"
+    assert materializer.get_plugin_binding(root) is None
+
+
+def test_v3_plugin_binding_rejects_missing_dependency_lock_on_restart(
+    tmp_path: Path,
+) -> None:
+    root = _plugin(tmp_path / "plugins" / "review", name="review-pack")
+    materializer = PackageMaterializer(install_root=tmp_path / "installed")
+    materializer.bind_plugin_packages((_published_descriptor(materializer, root),))
+    lockfile = materializer.lockfile_path
+    payload = json.loads(lockfile.read_text(encoding="utf-8"))
+    [binding] = payload["pluginBindings"]
+    binding.pop("dependencyLock")
+    binding.pop("dependencyLockDigest")
+    lockfile.write_text(json.dumps(payload), encoding="utf-8")
+
+    restored = PackageMaterializer(install_root=tmp_path / "installed")
+
+    assert restored.get_plugin_binding(root) is None
+    assert restored.get_lockfile_diagnostics()[0]["code"] == (
+        "package_lockfile_invalid_plugin_binding"
+    )
+    with pytest.raises(PluginManifestError) as caught:
+        restored.bind_plugin_packages((_published_descriptor(restored, root),))
+    assert caught.value.code == "plugin_binding_lock_invalid"
+
+
+def test_v2_plugin_binding_requires_verified_upgrade_to_v3(tmp_path: Path) -> None:
+    root = _plugin(tmp_path / "plugins" / "review", name="review-pack")
+    descriptor = _descriptor(root)
+    lockfile = tmp_path / "package-lock.json"
+    lockfile.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "packages": [],
+                "pluginBindings": [
+                    {
+                        "source": str(root.resolve()),
+                        "sourceIdentity": f"local:{root.resolve()}",
+                        "sourceKind": "local",
+                        "pluginId": "review-pack",
+                        "manifestDigest": descriptor.manifest_digest,
+                        "contentDigest": None,
+                        "revision": descriptor.manifest_digest,
+                        "revisionKind": "manifest_sha256",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    materializer = PackageMaterializer(install_root=tmp_path / "installed")
+
+    legacy = materializer.get_plugin_binding(root)
+    assert legacy is not None
+    assert legacy.dependency_lock is None
+
+    [upgraded] = materializer.bind_plugin_packages(
+        (_published_descriptor(materializer, root),)
+    )
+
+    assert upgraded.dependency_lock is not None
+    assert upgraded.content_digest is not None
+    assert json.loads(lockfile.read_text(encoding="utf-8"))["version"] == 3
+    restored = PackageMaterializer(install_root=tmp_path / "installed")
+    assert restored.get_plugin_binding(root) == upgraded
+
+
+def test_v2_plugin_binding_stays_v2_until_all_bindings_are_verified(
+    tmp_path: Path,
+) -> None:
+    root = _plugin(tmp_path / "plugins" / "review", name="review-pack")
+    descriptor = _descriptor(root)
+    lockfile = tmp_path / "package-lock.json"
+    lockfile.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "packages": [],
+                "pluginBindings": [
+                    {
+                        "source": str(root.resolve()),
+                        "sourceIdentity": f"local:{root.resolve()}",
+                        "sourceKind": "local",
+                        "pluginId": "review-pack",
+                        "manifestDigest": descriptor.manifest_digest,
+                        "contentDigest": None,
+                        "revision": descriptor.manifest_digest,
+                        "revisionKind": "manifest_sha256",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    materializer = PackageMaterializer(install_root=tmp_path / "installed")
+
+    materializer.prepare_remote_source("https://github.com/acme/other-pack.git")
+
+    payload = json.loads(lockfile.read_text(encoding="utf-8"))
+    assert payload["version"] == 2
+    restored = PackageMaterializer(install_root=tmp_path / "installed")
+    assert restored.get_plugin_binding(root) == materializer.get_plugin_binding(root)
+
+
+def test_python_plugin_binding_locks_complete_installed_distribution_closure(
+    tmp_path: Path,
+) -> None:
+    source = "pypi:acme-review-pack==1.2.3"
+
+    def backend(
+        record: PackageMaterializationRecord,
+    ) -> PackageMaterializationRecord:
+        record.target_path.mkdir(parents=True)
+        _write_manifest(record.target_path, name="review-pack")
+        _write_python_dist(
+            record.target_path,
+            name="acme-review-pack",
+            version="1.2.3",
+        )
+        _write_python_dist(
+            record.target_path,
+            name="Transitive_Dep",
+            version="4.5.6",
+        )
+        return record.with_lifecycle("installed").with_python_state(
+            installer="uv",
+            resolved_name="acme-review-pack",
+            resolved_version="1.2.3",
+            installed_distributions=(
+                "transitive-dep==4.5.6",
+                "acme-review-pack==1.2.3",
+            ),
+        )
+
+    materializer = PackageMaterializer(
+        install_root=tmp_path / "installed",
+        python_backend=backend,
+        security_policy=_AllowPolicy(),
+    )
+    record = materializer.materialize_remote_source_sync(source)
+    package = PluginManifestParser().parse(
+        record.target_path,
+        source=PluginSource(
+            path=record.target_path,
+            url=source,
+            kind="remote",
+        ),
+    )
+
+    [published] = materializer.publish_plugin_packages((package,))
+    [binding] = materializer.bind_plugin_packages((published,))
+
+    assert published.dependency_lock is not None
+    assert [
+        (item.name, item.version)
+        for item in published.dependency_lock.python_distributions
+    ] == [
+        ("acme-review-pack", "1.2.3"),
+        ("transitive-dep", "4.5.6"),
+    ]
+    assert binding.dependency_lock == published.dependency_lock
+    restored = PackageMaterializer(install_root=tmp_path / "installed")
+    assert restored.get_plugin_binding(source) == binding
+
+
+def test_python_plugin_publication_rejects_missing_distribution_closure(
+    tmp_path: Path,
+) -> None:
+    source = "pypi:acme-review-pack==1.2.3"
+
+    def backend(
+        record: PackageMaterializationRecord,
+    ) -> PackageMaterializationRecord:
+        record.target_path.mkdir(parents=True)
+        _write_manifest(record.target_path, name="review-pack")
+        return record.with_lifecycle("installed").with_python_state(
+            installer="uv",
+            resolved_name="acme-review-pack",
+            resolved_version="1.2.3",
+            installed_distributions=(),
+        )
+
+    materializer = PackageMaterializer(
+        install_root=tmp_path / "installed",
+        python_backend=backend,
+        security_policy=_AllowPolicy(),
+    )
+    record = materializer.materialize_remote_source_sync(source)
+    package = PluginManifestParser().parse(
+        record.target_path,
+        source=PluginSource(
+            path=record.target_path,
+            url=source,
+            kind="remote",
+        ),
+    )
+
+    with pytest.raises(PluginManifestError) as caught:
+        materializer.publish_plugin_packages((package,))
+
+    assert caught.value.code == "plugin_dependency_closure_incomplete"
+
+
+def test_python_plugin_publication_rejects_distribution_record_tree_drift(
+    tmp_path: Path,
+) -> None:
+    source = "pypi:acme-review-pack==1.2.3"
+
+    def backend(
+        record: PackageMaterializationRecord,
+    ) -> PackageMaterializationRecord:
+        record.target_path.mkdir(parents=True)
+        _write_manifest(record.target_path, name="review-pack")
+        _write_python_dist(
+            record.target_path,
+            name="acme-review-pack",
+            version="1.2.3",
+        )
+        return record.with_lifecycle("installed").with_python_state(
+            installer="uv",
+            resolved_name="acme-review-pack",
+            resolved_version="1.2.3",
+            installed_distributions=(
+                "acme-review-pack==1.2.3",
+                "missing-transitive==4.5.6",
+            ),
+        )
+
+    materializer = PackageMaterializer(
+        install_root=tmp_path / "installed",
+        python_backend=backend,
+        security_policy=_AllowPolicy(),
+    )
+    record = materializer.materialize_remote_source_sync(source)
+    package = PluginManifestParser().parse(
+        record.target_path,
+        source=PluginSource(
+            path=record.target_path,
+            url=source,
+            kind="remote",
+        ),
+    )
+
+    with pytest.raises(PluginManifestError) as caught:
+        materializer.publish_plugin_packages((package,))
+
+    assert caught.value.code == "plugin_dependency_closure_changed"
+
+
 def test_plugin_source_rebind_is_explicit_and_persistent(tmp_path: Path) -> None:
     root = _plugin(tmp_path / "plugins" / "review", name="review-pack")
     materializer = PackageMaterializer(install_root=tmp_path / "installed")
-    materializer.bind_plugin_packages((_descriptor(root),))
+    materializer.bind_plugin_packages((_published_descriptor(materializer, root),))
     _write_manifest(root, name="renamed-pack")
 
-    [rebound] = materializer.rebind_plugin_packages((_descriptor(root),))
+    [rebound] = materializer.rebind_plugin_packages(
+        (_published_descriptor(materializer, root),)
+    )
 
     assert rebound.plugin_id == "renamed-pack"
     restored = PackageMaterializer(install_root=tmp_path / "installed")
@@ -123,21 +422,25 @@ def test_plugin_source_rebind_is_explicit_and_persistent(tmp_path: Path) -> None
 def test_same_plugin_identity_can_advance_its_bound_revision(tmp_path: Path) -> None:
     root = _plugin(tmp_path / "plugins" / "review", name="review-pack", version="1")
     materializer = PackageMaterializer(install_root=tmp_path / "installed")
-    [initial] = materializer.bind_plugin_packages((_descriptor(root),))
+    [initial] = materializer.bind_plugin_packages(
+        (_published_descriptor(materializer, root),)
+    )
     _write_manifest(root, name="review-pack", version="2")
 
-    [updated] = materializer.bind_plugin_packages((_descriptor(root),))
+    [updated] = materializer.bind_plugin_packages(
+        (_published_descriptor(materializer, root),)
+    )
 
     assert updated.plugin_id == initial.plugin_id
     assert updated.manifest_digest != initial.manifest_digest
-    assert updated.revision == updated.manifest_digest
+    assert updated.revision == updated.content_digest
     assert materializer.get_plugin_binding(root) == updated
 
 
 def test_plugin_source_binding_can_be_explicitly_forgotten(tmp_path: Path) -> None:
     root = _plugin(tmp_path / "plugins" / "review", name="review-pack")
     materializer = PackageMaterializer(install_root=tmp_path / "installed")
-    materializer.bind_plugin_packages((_descriptor(root),))
+    materializer.bind_plugin_packages((_published_descriptor(materializer, root),))
 
     materializer.forget_plugin_binding(root)
 
@@ -183,7 +486,7 @@ def test_plugin_source_binding_rejects_noncanonical_lockfile_identity(
         }
     ]
     with pytest.raises(PluginManifestError) as caught:
-        materializer.bind_plugin_packages((_descriptor(root),))
+        materializer.bind_plugin_packages((_published_descriptor(materializer, root),))
     assert caught.value.code == "plugin_binding_lock_invalid"
 
 
@@ -204,7 +507,9 @@ def test_explicit_rebind_repairs_invalid_plugin_binding_lock_section(
     )
     materializer = PackageMaterializer(install_root=tmp_path / "installed")
 
-    [binding] = materializer.rebind_plugin_packages((_descriptor(root),))
+    [binding] = materializer.rebind_plugin_packages(
+        (_published_descriptor(materializer, root),)
+    )
 
     assert binding.plugin_id == "review-pack"
     restored = PackageMaterializer(install_root=tmp_path / "installed")
@@ -224,7 +529,7 @@ def test_version_two_lockfile_cannot_silently_omit_plugin_bindings(
     materializer = PackageMaterializer(install_root=tmp_path / "installed")
 
     with pytest.raises(PluginManifestError) as caught:
-        materializer.bind_plugin_packages((_descriptor(root),))
+        materializer.bind_plugin_packages((_published_descriptor(materializer, root),))
 
     assert caught.value.code == "plugin_binding_lock_invalid"
     assert materializer.get_lockfile_diagnostics()[0]["message"] == (
@@ -237,7 +542,7 @@ def test_explicit_rebind_rewrites_lock_when_valid_binding_preceded_invalid_entry
 ) -> None:
     root = _plugin(tmp_path / "plugins" / "review", name="review-pack")
     initial = PackageMaterializer(install_root=tmp_path / "installed")
-    [binding] = initial.bind_plugin_packages((_descriptor(root),))
+    [binding] = initial.bind_plugin_packages((_published_descriptor(initial, root),))
     lockfile = tmp_path / "package-lock.json"
     payload = json.loads(lockfile.read_text(encoding="utf-8"))
     payload["pluginBindings"].append({"invalid": True})
@@ -245,7 +550,9 @@ def test_explicit_rebind_rewrites_lock_when_valid_binding_preceded_invalid_entry
     materializer = PackageMaterializer(install_root=tmp_path / "installed")
 
     assert materializer.get_plugin_binding(root) == binding
-    [repaired] = materializer.rebind_plugin_packages((_descriptor(root),))
+    [repaired] = materializer.rebind_plugin_packages(
+        (_published_descriptor(materializer, root),)
+    )
 
     assert repaired == binding
     restored = PackageMaterializer(install_root=tmp_path / "installed")
@@ -257,12 +564,10 @@ def test_plugin_source_binding_batch_rejects_without_partial_revision_advance(
     tmp_path: Path,
 ) -> None:
     first = _plugin(tmp_path / "plugins" / "first", name="first-pack", version="1")
-    second = _plugin(
-        tmp_path / "plugins" / "second", name="second-pack", version="1"
-    )
+    second = _plugin(tmp_path / "plugins" / "second", name="second-pack", version="1")
     materializer = PackageMaterializer(install_root=tmp_path / "installed")
     initial = materializer.bind_plugin_packages(
-        (_descriptor(first), _descriptor(second))
+        materializer.publish_plugin_packages((_descriptor(first), _descriptor(second)))
     )
 
     _write_manifest(first, name="first-pack", version="2")
@@ -270,7 +575,9 @@ def test_plugin_source_binding_batch_rejects_without_partial_revision_advance(
 
     with pytest.raises(PluginManifestError, match="second-pack.*renamed-pack"):
         materializer.bind_plugin_packages(
-            (_descriptor(first), _descriptor(second))
+            materializer.publish_plugin_packages(
+                (_descriptor(first), _descriptor(second))
+            )
         )
 
     assert materializer.get_plugin_binding(first) == initial[0]
@@ -318,13 +625,13 @@ def test_catalog_reports_persisted_identity_drift_without_rebinding(
 ) -> None:
     root = _plugin(tmp_path / "plugins" / "review", name="review-pack")
     materializer = PackageMaterializer(install_root=tmp_path / "installed")
-    binding = materializer.bind_plugin_packages((_descriptor(root),))[0]
+    binding = materializer.bind_plugin_packages(
+        (_published_descriptor(materializer, root),)
+    )[0]
     _write_manifest(root, name="renamed-pack")
 
     [entry] = PackageCatalogBuilder(summary_provider=_summary).collect(
-        sources=PackageCatalogSources(
-            plugin_sources=((str(root), "project"),)
-        ),
+        sources=PackageCatalogSources(plugin_sources=((str(root), "project"),)),
         cwd=tmp_path,
         materializer=materializer,
     )
@@ -354,8 +661,25 @@ def _write_manifest(root: Path, *, name: str, version: str = "1") -> None:
     )
 
 
+def _write_python_dist(target: Path, *, name: str, version: str) -> None:
+    dist_info_name = f"{name.replace('-', '_')}-{version}.dist-info"
+    dist_info = target / dist_info_name
+    dist_info.mkdir(parents=True, exist_ok=True)
+    (dist_info / "METADATA").write_text(
+        f"Name: {name}\nVersion: {version}\n",
+        encoding="utf-8",
+    )
+
+
 def _descriptor(root: Path):
     return PluginManifestParser().parse(root)
+
+
+def _published_descriptor(
+    materializer: PackageMaterializer,
+    root: Path,
+):
+    return materializer.publish_plugin_packages((_descriptor(root),))[0]
 
 
 def _summary(

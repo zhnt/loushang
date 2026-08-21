@@ -282,10 +282,19 @@ def _verify_published_packages(
                 code="unverified_plugin_revision",
                 path=package.root,
             )
+        dependency_lock = package.dependency_lock
+        if dependency_lock is None:
+            raise PluginManifestError(
+                "Plugin revision publisher returned no dependency closure lock: "
+                f"{package.root}",
+                code="unverified_plugin_dependency_closure",
+                path=package.root,
+            )
         if (
             handle.root != package.root
             or handle.content_digest != package.content_digest
             or package.manifest.root != package.root
+            or dependency_lock.package_content_digest != package.content_digest
         ):
             raise PluginManifestError(
                 f"Plugin revision handle does not match the published package: "
@@ -312,6 +321,7 @@ def _assert_binding_lineage(
             binding.plugin_id != package.manifest.name
             or binding.source_kind != package.source.kind
             or binding.source != _source_value(package.source)
+            or binding.dependency_lock != package.dependency_lock
         ):
             raise PluginManifestError(
                 "Plugin binding store changed source or Plugin identity: "

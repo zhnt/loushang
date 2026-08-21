@@ -96,6 +96,21 @@ def test_runtime_resolution_rejects_missing_durable_binding(tmp_path: Path) -> N
     assert store.events == ["publish", "bind"]
 
 
+def test_runtime_resolution_rejects_missing_dependency_closure_before_binding(
+    tmp_path: Path,
+) -> None:
+    root = _plugin(tmp_path / "plugins" / "review-pack")
+    authority = PluginResolutionAuthority()
+    inspection = authority.inspect(PluginSource(path=root))
+    store = _MissingDependencyLockStore(tmp_path / "revisions")
+
+    with pytest.raises(PluginManifestError) as caught:
+        authority.publish_runtime((inspection,), binding_store=store)
+
+    assert caught.value.code == "unverified_plugin_dependency_closure"
+    assert store.events == ["publish"]
+
+
 def _plugin(root: Path) -> Path:
     root.mkdir(parents=True)
     (root / "plugin.json").write_text(
@@ -160,3 +175,14 @@ class _MissingBindingStore(_RecordingBindingStore):
         del packages
         self.events.append("bind")
         return ()
+
+
+class _MissingDependencyLockStore(_RecordingBindingStore):
+    def publish_plugin_packages(
+        self,
+        packages: tuple[ResolvedPluginPackage, ...],
+    ) -> tuple[ResolvedPluginPackage, ...]:
+        return tuple(
+            replace(package, dependency_lock=None)
+            for package in super().publish_plugin_packages(packages)
+        )

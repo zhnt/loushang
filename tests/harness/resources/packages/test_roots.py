@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
@@ -19,6 +19,9 @@ from loushang.harness.resources.packages.roots import (
     resolve_package_resource_roots,
 )
 from loushang.harness.resources.packages.source import PackageSourceConfig
+from loushang.harness.resources.plugins.dependencies import (
+    lock_plugin_dependency_closure,
+)
 from loushang.harness.resources.plugins.revisions import (
     PluginRevisionError,
     PluginRevisionStore,
@@ -375,6 +378,7 @@ class _InstalledMaterializer:
                 plugin_id=package.manifest.name,
                 manifest_digest=package.manifest_digest,
                 content_digest=package.content_digest,
+                dependency_lock=package.dependency_lock,
             )
             for package in packages
         )
@@ -383,4 +387,13 @@ class _InstalledMaterializer:
         self,
         packages: tuple[ResolvedPluginPackage, ...],
     ) -> tuple[ResolvedPluginPackage, ...]:
-        return self._revision_store.publish_all(packages)
+        return tuple(
+            replace(
+                package,
+                dependency_lock=lock_plugin_dependency_closure(
+                    package_content_digest=package.content_digest or "",
+                    installed_distributions=(),
+                ),
+            )
+            for package in self._revision_store.publish_all(packages)
+        )
