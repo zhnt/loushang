@@ -285,14 +285,6 @@ def _has_extension_selection(profile: ResolvedRuntimeProfile) -> bool:
     )
 
 
-def stage_coding_resource_composition_candidate(
-    extension_runtime: ExtensionRunner,
-) -> StagedResourceCompositionCandidate:
-    """Bind Coding's final Session profile after Extension discovery."""
-
-    return resolve_coding_capability_profile(extension_runtime.active_extensions).bind()
-
-
 def bind_coding_side_question(
     extension_runtime: ExtensionRunner,
 ) -> LegacySideQuestionBinding:
@@ -353,7 +345,6 @@ __all__ = [
     "CodingExtensionDeclarationPreflight",
     "CodingCapabilityProfileResolution",
     "SIDE_QUESTION_RUNTIME_PERMISSION",
-    "stage_coding_resource_composition_candidate",
     "bind_coding_side_question",
     "resolve_coding_capability_profile",
 ]

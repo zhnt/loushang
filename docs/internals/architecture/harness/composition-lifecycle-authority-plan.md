@@ -2,20 +2,19 @@
 
 ## Status
 
-Accepted next-stage delivery plan. Independent source review confirmed that
-the required revisions are closed. This document authorizes the CLA0-CLA8
-delivery sequence, but it does not change the implemented current owner map or
-authorize a second composition framework. Source and implemented boundary
-documents remain authoritative for present behavior until each corresponding
-CLA slice lands.
+Implemented delivery plan. CLA0-CLA8 are complete for issue
+[#453](https://github.com/zhnt/loushang/issues/453). This document records the
+delivery sequence; it does not authorize a second composition framework.
+Source, executable architecture gates, the generated catalog, and implemented
+boundary documents remain authoritative for present behavior.
 
 The completed [Capability Runtime Convergence Plan](capability-runtime-convergence-plan.md)
 established owned registrations, Capability Definition / Provider / Consumer
 seams, Mount Graph mechanics, effective-runtime diagnostics, and model-input
 reconstruction. The generated
 [Harness Capability Catalog](capability-catalog.md) is the source-backed seam
-inventory. This plan addresses the next problem exposed by that work: several
-owners still construct or publish adjacent parts of one Product runtime.
+inventory. This plan addressed the next problem exposed by that work: several
+owners constructed or published adjacent parts of one Product runtime.
 
 The accepted boundaries remain:
 
@@ -25,21 +24,20 @@ The accepted boundaries remain:
 - [Session And Model-Call Closure Boundary](session-model-call-closure-boundary.md); and
 - [Effective Runtime Diagnostics Boundary](effective-runtime-diagnostics-boundary.md).
 
-Acceptance of this delivery plan does not silently amend those implemented
-contracts. CLA2 must revise the Session/model-call boundary when Model Input
-starts receiving the current Profile fingerprint independently of the Mount
-snapshot. CLA4 must revise the effective-runtime diagnostics boundary when the
-view gains a scoped source-publication reference and versioned skew
-dispositions. Each revision ships with the corresponding JSON compatibility
-and regression tests; neither behavior change is described as current source.
+Delivery did not silently amend those implemented contracts. CLA2 revised the
+Session/model-call boundary when Model Input began receiving the current
+Profile fingerprint independently of the Mount snapshot. CLA4 revised the
+effective-runtime diagnostics boundary when the view gained a scoped
+source-publication reference and versioned skew dispositions. Each revision
+shipped with its corresponding JSON compatibility and regression tests.
 
 ## Decision Summary
 
-The next stage converges **one publication authority per owned live object**.
+The completed stage converges **one publication authority per owned live object**.
 It does not create one global publication point for Profile, Mount,
 Registration, Extension, Resource, and Model Input facts.
 
-The target rules are:
+The implemented rules are:
 
 1. `RuntimeProfileResolver` remains the authority for deterministic fine-grained
    selection facts.
@@ -58,11 +56,11 @@ The target rules are:
    Extension/resource provenance is linked into those facts rather than being
    promoted automatically to a redundant fifth global clock.
 
-The first production slice is `harness.resources`, preceded by moving the
-existing `harness.model_input` graph ownership to the Session composition root.
-`harness.workspace` remains an independent production-mount follow-up unless a
-concrete Resource Consumer dependency is first accepted. The resource slice
-does not migrate all Session capabilities at once.
+Delivery began with `harness.resources`, after moving existing
+`harness.model_input` graph ownership to the Session composition root. Later
+slices production-mounted `harness.session` and optional `harness.workspace`
+through declared dependencies without turning fine-grained Profile slots into
+top-level graph nodes.
 
 ## Why Another Layer Is Not The Answer
 
@@ -936,18 +934,24 @@ Implemented CLA7d evidence:
 
 ### CLA8: Legacy Authority Closure
 
-- remove or freeze old peer construction paths;
-- remove the unused `stage_coding_resource_composition_candidate` late-binder
-  factory (`coding/runtime_capability_admission.py`): it has zero production
-  or test callers because the managed path late-selects the final Extension
-  profile through `resolve_session_capability_profile` and
-  `StagedResourceCompositionCandidate.select_final_profile`; the CLA0 baseline
-  AUTH-03/ENTRY-01 rows still describe the older two-candidate late-binder
-  behavior and must be revised together with that removal;
-- extend the CLA4 `RuntimeProfileBinder` prohibition as later slots migrate;
-- delete compatibility properties only after supported Product callers move;
-- update the generated catalog and current owner map; and
-- run long-lived cleanup, restart, projection, and reconstruction tests.
+Status: implemented.
+
+- removed the unused `stage_coding_resource_composition_candidate` factory and
+  the `AgentProductConstructionBinding.bind_session_capabilities` callback;
+- reduced managed Product construction to one root-owned
+  `StagedResourceCompositionCandidate`: admitted Extension facts are selected
+  in place through `resolve_session_capability_profile` and
+  `select_final_profile`, then the candidate transfers to the Session Graph;
+- extended the executable authority gate to reject the removed factory,
+  callback, and peer composition-runtime symbol while retaining an exact
+  allowlist for every `RuntimeProfileBinder` construction site;
+- revised the CLA0 AUTH/ENTRY/SLOT/ORDER inventory, current owner map, and
+  Harness index to describe the implemented post-CLA8 topology;
+- verified the generated catalog still reports the four production-mounted
+  Session graph seams without introducing a duplicate authority; and
+- covered successful single-candidate handoff, construction-failure cleanup,
+  source-generation restart/rollback, projection, and reconstruction through
+  focused lifecycle tests and the Harness integration gate.
 
 ## Non-Normative Workload Estimate
 
@@ -1005,17 +1009,17 @@ Product smoke behavior, `git diff --check`, Ruff for changed Python, and
 
 ## Completion Criteria And Expected Architectural Effect
 
-The next stage is complete when `harness.resources` and existing model-input
-preparation share one Session-owned graph lifecycle;
-the standard Product path no longer exposes a peer-owning
-`CapabilityCompositionRuntime`; Extension content refresh retains an honest
-independent source clock; and all effective model-visible facts remain
+The CLA stage is complete: `harness.model_input`, `harness.resources`,
+`harness.session`, and optional `harness.workspace` share one Session-owned
+graph lifecycle; the standard Product path has no peer-owning composition
+runtime or late second-candidate binder; Extension content refresh retains an
+independent source clock; and effective model-visible facts remain
 reconstructible.
 
 As a non-normative planning heuristic, that milestone may move the overall
 Harness architecture from the current high-eight range to roughly `9.1-9.3`,
 chiefly through reduced duplicate construction, clearer replacement boundaries,
 and a smaller compatibility surface. This estimate is not an acceptance gate.
-Reaching `9.4+` additionally requires the later Session Bundle, Extension
-bridge evidence, a second Product composition, and long-running operational
-proof. Lifecycle convergence alone does not justify a `9.6` claim.
+Reaching `9.4+` additionally requires broader Extension bridge evidence, a
+second Product composition, and long-running operational proof. Lifecycle
+convergence alone does not justify a `9.6` claim.

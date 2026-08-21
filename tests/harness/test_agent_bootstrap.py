@@ -438,101 +438,6 @@ def test_agent_product_construction_binding_compiles_research_policy(
     assert session_capabilities == [capability_runtime]
 
 
-def test_agent_product_construction_late_binds_session_capabilities_and_disposes_bootstrap(
-    monkeypatch,
-) -> None:
-    calls: list[str] = []
-    bootstrap_capabilities = cast(
-        Any,
-        SimpleNamespace(
-            skill_activation="bootstrap-skills",
-            activate_resources=lambda bundle: bundle,
-            prompt_section_composer="bootstrap-prompts",
-            tool_pack_composer="bootstrap-tools",
-            dispose=lambda: calls.append("dispose:bootstrap"),
-        ),
-    )
-    session_capabilities = cast(
-        Any,
-        SimpleNamespace(dispose=lambda: calls.append("dispose:session")),
-    )
-    side_question_binding = cast(
-        Any,
-        SimpleNamespace(dispose=lambda: calls.append("dispose:side-question")),
-    )
-
-    def construct(_self, request):
-        request.session_factory(
-            object(),
-            object(),
-            "extensions",
-            None,
-            None,
-            "prompt",
-            None,
-        )
-        return SimpleNamespace(session="session")
-
-    monkeypatch.setattr(
-        bootstrap_construction_module.AgentProductConstructionRuntime,
-        "construct",
-        construct,
-    )
-    services = BootstrapServices(
-        settings_manager=SimpleNamespace(
-            get_settings=lambda: SimpleNamespace(thinking_level="off")
-        ),
-        model_registry=object(),
-        resource_loader=object(),
-        diagnostics_service=object(),
-    )
-    bound_sessions: list[object] = []
-    binding = AgentProductConstructionBinding[
-        object,
-        object,
-        object,
-    ](
-        default_system_prompt="research",
-        bind_capabilities=lambda: bootstrap_capabilities,
-        bind_session_capabilities=lambda extensions: (
-            calls.append(f"bind:{extensions}") or session_capabilities
-        ),
-        bind_session_side_question=lambda _extensions: side_question_binding,
-        create_extension_runtime=lambda bundle: bundle,
-        source_identity_check=lambda _cwd: cast(Any, None),
-        list_tool_definitions=lambda _runtime: (),
-        get_tool_source_info=lambda _runtime, _name: None,
-    )
-
-    binding.construct(
-        services=services,
-        package_materializer=cast(Any, "materializer"),
-        session_id="session",
-        cwd="/research",
-        extension_flag_values=None,
-        explicit_system_prompt=None,
-        append_system_prompt=(),
-        model=None,
-        thinking_level=None,
-        tools=None,
-        tool_registry=None,
-        allowed_tool_names=None,
-        active_tool_names=None,
-        no_tools=None,
-        stream_fn=None,
-        convert_to_llm=lambda value: value,
-        agent_factory=lambda **_kwargs: object(),
-        session_factory=lambda capabilities, *_args: (
-            bound_sessions.append(capabilities) or object()
-        ),
-        on_default_model_unavailable=lambda *_args: None,
-        set_scoped_models=lambda *_args: None,
-    )
-
-    assert bound_sessions == [session_capabilities]
-    assert calls == ["bind:extensions", "dispose:bootstrap"]
-
-
 def test_agent_product_construction_resolves_final_profile_without_rebinding_resources(
     monkeypatch,
 ) -> None:
@@ -632,24 +537,25 @@ def test_agent_product_construction_resolves_final_profile_without_rebinding_res
     assert calls == [("resolve", "extensions"), ("select", final_profile)]
 
 
-def test_agent_product_construction_disposes_late_bound_capabilities_on_failure(
+def test_agent_product_construction_disposes_single_candidate_on_failure(
     monkeypatch,
 ) -> None:
-    calls: list[str] = []
-    bootstrap_capabilities = cast(
-        Any,
-        SimpleNamespace(
-            skill_activation="bootstrap-skills",
-            activate_resources=lambda bundle: bundle,
-            prompt_section_composer="bootstrap-prompts",
-            tool_pack_composer="bootstrap-tools",
-            dispose=lambda: calls.append("dispose:bootstrap"),
-        ),
-    )
-    session_capabilities = cast(
-        Any,
-        SimpleNamespace(dispose=lambda: calls.append("dispose:session")),
-    )
+    calls: list[object] = []
+    final_profile = object()
+
+    class StagedCapabilities:
+        skill_activation = "bootstrap-skills"
+        activate_resources = staticmethod(lambda bundle: bundle)
+        prompt_section_composer = "bootstrap-prompts"
+        tool_pack_composer = "bootstrap-tools"
+
+        def select_final_profile(self, profile: object) -> None:
+            calls.append(("select", profile))
+
+        def dispose(self) -> None:
+            calls.append("dispose:candidate")
+
+    staged = StagedCapabilities()
     side_question_binding = cast(
         Any,
         SimpleNamespace(dispose=lambda: calls.append("dispose:side-question")),
@@ -686,8 +592,10 @@ def test_agent_product_construction_disposes_late_bound_capabilities_on_failure(
         object,
     ](
         default_system_prompt="research",
-        bind_capabilities=lambda: bootstrap_capabilities,
-        bind_session_capabilities=lambda _extensions: session_capabilities,
+        bind_capabilities=cast(Any, lambda: staged),
+        resolve_session_capability_profile=lambda extensions: (
+            calls.append(("resolve", extensions)) or cast(Any, final_profile)
+        ),
         bind_session_side_question=lambda _extensions: side_question_binding,
         create_extension_runtime=lambda bundle: bundle,
         source_identity_check=lambda _cwd: cast(Any, None),
@@ -723,108 +631,10 @@ def test_agent_product_construction_disposes_late_bound_capabilities_on_failure(
         )
 
     assert calls == [
+        ("resolve", "extensions"),
+        ("select", final_profile),
         "dispose:side-question",
-        "dispose:session",
-        "dispose:bootstrap",
-    ]
-
-
-def test_agent_product_construction_disposes_session_if_bootstrap_cleanup_fails(
-    monkeypatch,
-) -> None:
-    calls: list[str] = []
-
-    def dispose_bootstrap() -> None:
-        calls.append("dispose:bootstrap")
-        raise RuntimeError("bootstrap cleanup failed")
-
-    bootstrap_capabilities = cast(
-        Any,
-        SimpleNamespace(
-            skill_activation="bootstrap-skills",
-            activate_resources=lambda bundle: bundle,
-            prompt_section_composer="bootstrap-prompts",
-            tool_pack_composer="bootstrap-tools",
-            dispose=dispose_bootstrap,
-        ),
-    )
-    session_capabilities = cast(
-        Any,
-        SimpleNamespace(dispose=lambda: calls.append("dispose:session")),
-    )
-    side_question_binding = cast(
-        Any,
-        SimpleNamespace(dispose=lambda: calls.append("dispose:side-question")),
-    )
-
-    def construct(_self, request):
-        request.session_factory(
-            object(),
-            object(),
-            "extensions",
-            None,
-            None,
-            "prompt",
-            None,
-        )
-        return SimpleNamespace(session="session")
-
-    monkeypatch.setattr(
-        bootstrap_construction_module.AgentProductConstructionRuntime,
-        "construct",
-        construct,
-    )
-    services = BootstrapServices(
-        settings_manager=SimpleNamespace(
-            get_settings=lambda: SimpleNamespace(thinking_level="off")
-        ),
-        model_registry=object(),
-        resource_loader=object(),
-        diagnostics_service=object(),
-    )
-    binding = AgentProductConstructionBinding[
-        object,
-        object,
-        object,
-    ](
-        default_system_prompt="research",
-        bind_capabilities=lambda: bootstrap_capabilities,
-        bind_session_capabilities=lambda _extensions: session_capabilities,
-        bind_session_side_question=lambda _extensions: side_question_binding,
-        create_extension_runtime=lambda bundle: bundle,
-        source_identity_check=lambda _cwd: cast(Any, None),
-        list_tool_definitions=lambda _runtime: (),
-        get_tool_source_info=lambda _runtime, _name: None,
-    )
-
-    with pytest.raises(RuntimeError, match="bootstrap cleanup failed"):
-        binding.construct(
-            services=services,
-            package_materializer=cast(Any, "materializer"),
-            session_id="session",
-            cwd="/research",
-            extension_flag_values=None,
-            explicit_system_prompt=None,
-            append_system_prompt=(),
-            model=None,
-            thinking_level=None,
-            tools=None,
-            tool_registry=None,
-            allowed_tool_names=None,
-            active_tool_names=None,
-            no_tools=None,
-            stream_fn=None,
-            convert_to_llm=lambda value: value,
-            agent_factory=lambda **_kwargs: object(),
-            session_factory=lambda _capabilities, *_args: object(),
-            on_default_model_unavailable=lambda *_args: None,
-            set_scoped_models=lambda *_args: None,
-        )
-
-    assert calls == [
-        "dispose:bootstrap",
-        "dispose:side-question",
-        "dispose:session",
+        "dispose:candidate",
     ]
 
 

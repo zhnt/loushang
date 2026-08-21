@@ -33,13 +33,14 @@ planning, work event persistence, or AI provider behavior.
   Definition/Provider/Consumer separation, composed Profile/Mount/registration
   projection, and reconstruction of model-visible inputs from committed facts.
 - [Capability Composition Lifecycle Authority Plan](composition-lifecycle-authority-plan.md)
-  defines the accepted next-stage convergence of Profile, Mount, Registration,
+  records the completed CLA0-CLA8 convergence of Profile, Mount, Registration,
   and Extension/Resource construction authority around one publisher per owned
   live object while preserving independent fact clocks.
 - [Composition Lifecycle Authority CLA0 Baseline](composition-lifecycle-authority-cla0-baseline.md)
-  freezes the current construction/publication owners, supported entrypoint
+  retains the executable inventory shape, revised through CLA8, for current
+  construction/publication owners, supported entrypoint
   counts, Profile-slot handoff classes, Binder ordering, and production
-  construction allowlists before lifecycle convergence changes behavior.
+  construction allowlists.
 - [Capability Runtime Convergence PR0 Baseline](capability-runtime-convergence-pr0-baseline.md)
   freezes the mutable-surface, compatibility, model-call, package-owner, and
   lifecycle-fault evidence that later convergence PRs must preserve or revise.
@@ -54,7 +55,7 @@ planning, work event persistence, or AI provider behavior.
   fixes PR9's four-clock composed view, explicit skew, explain, JSON, and diff
   semantics while retaining the existing graph projector as the only projector.
 - [Continuity Stable Reference Boundary](continuity-stable-reference-boundary.md)
-  is the proposed CLA7d design boundary for the process-owned typed stable
+  defines the implemented CLA7d process-owned typed stable
   continuity reference and the explicit Session-before-continuity shutdown
   order; the graph `stable_reference` binding remains fail-closed.
 - [Refactoring Principles](refactoring-principles.md) defines the evidence and
@@ -90,15 +91,14 @@ description.
   model-input reconstruction. It does not override implemented source or
   accepted boundary documents.
 - [Capability Composition Lifecycle Authority Plan](composition-lifecycle-authority-plan.md)
-  is the accepted follow-on delivery plan for a Session-owned graph, the
-  `harness.resources` vertical slice, and contraction of duplicate live
-  construction paths; workspace production mounting remains an independent
-  follow-up. Its
+  records the completed CLA0-CLA8 delivery of a Session-owned graph,
+  production-mounted Resources/Session/Workspace slices, and contraction of
+  duplicate live construction paths. Its
   [independent review brief](composition-lifecycle-authority-review-brief.md)
   can be given to reviewers without prior conversation context.
 - [Composition Lifecycle Authority CLA0 Baseline](composition-lifecycle-authority-cla0-baseline.md)
-  is the executable zero-behavior-change inventory for that accepted plan and
-  distinguishes current repeated construction from cleanup leakage.
+  is the executable inventory for that plan, revised through CLA8 to freeze the
+  single-candidate authority and forbid removed peer construction paths.
 - [Capability Runtime Convergence PR0 Baseline](capability-runtime-convergence-pr0-baseline.md)
   is the executable pre-change inventory for that sequence. It records current
   compatibility and assigns each future contract to one package owner.

@@ -443,9 +443,6 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         Sequence[ToolDefinition],
     ]
     get_tool_source_info: Callable[[StandardExtensionT, str], object | None]
-    bind_session_capabilities: (
-        Callable[[StandardExtensionT], StagedResourceCompositionCandidate] | None
-    ) = None
     product_tool_pack_id: str = "product.registry"
     extension_tool_pack_id: str = "product.extensions"
     bind_session_side_question: (
@@ -515,7 +512,6 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
         bootstrap_capability_handles = _root_owned_resource_handles(
             bootstrap_capability_runtime
         )
-        session_capability_runtimes: list[StagedResourceCompositionCandidate] = []
         session_side_question_bindings: list[LegacySideQuestionBinding] = []
 
         def create_session(
@@ -531,14 +527,6 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                 bootstrap_capability_runtime.select_final_profile(
                     self.resolve_session_capability_profile(extension_runtime)
                 )
-                capability_runtime = bootstrap_capability_runtime
-            else:
-                capability_runtime = (
-                    self.bind_session_capabilities(extension_runtime)
-                    if self.bind_session_capabilities is not None
-                    else bootstrap_capability_runtime
-                )
-            session_capability_runtimes.append(capability_runtime)
             side_question_binding = (
                 self.bind_session_side_question(extension_runtime)
                 if self.bind_session_side_question is not None
@@ -564,7 +552,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                     session_factory,
                 )
                 return legacy_factory(
-                    capability_runtime,
+                    bootstrap_capability_runtime,
                     agent,
                     bundle,
                     extension_runtime,
@@ -592,7 +580,7 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
             )
             assert side_question_binding is not None
             return factory_with_side_question(
-                capability_runtime,
+                bootstrap_capability_runtime,
                 side_question_binding,
                 agent,
                 bundle,
@@ -673,15 +661,6 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                         "final Session side-question cleanup also failed: "
                         f"{cleanup_error}"
                     )
-            for capability_runtime in reversed(session_capability_runtimes):
-                if capability_runtime is bootstrap_capability_runtime:
-                    continue
-                try:
-                    capability_runtime.dispose()
-                except BaseException as cleanup_error:
-                    error.add_note(
-                        f"final Session capability cleanup also failed: {cleanup_error}"
-                    )
             try:
                 bootstrap_capability_runtime.dispose()
             except BaseException as cleanup_error:
@@ -690,31 +669,6 @@ class AgentProductConstructionBinding(Generic[AgentT, SessionT, StandardExtensio
                 )
             raise
 
-        if session_capability_runtimes and (
-            session_capability_runtimes[-1] is not bootstrap_capability_runtime
-        ):
-            try:
-                bootstrap_capability_runtime.dispose()
-            except BaseException as error:
-                for side_question_binding in reversed(session_side_question_bindings):
-                    try:
-                        side_question_binding.dispose()
-                    except BaseException as cleanup_error:
-                        error.add_note(
-                            "final Session side-question cleanup also failed: "
-                            f"{cleanup_error}"
-                        )
-                for capability_runtime in reversed(session_capability_runtimes):
-                    if capability_runtime is bootstrap_capability_runtime:
-                        continue
-                    try:
-                        capability_runtime.dispose()
-                    except BaseException as cleanup_error:
-                        error.add_note(
-                            "final Session capability cleanup also failed: "
-                            f"{cleanup_error}"
-                        )
-                raise
         return result
 
 

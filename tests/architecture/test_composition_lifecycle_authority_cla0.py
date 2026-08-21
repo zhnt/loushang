@@ -26,6 +26,11 @@ EXTENSION_PREFLIGHT_PATHS = (
     Path("src/loushang/harness/extensions/session_runtime.py"),
     Path("src/loushang/harness/session/resource_refresh.py"),
 )
+CLA8_FORBIDDEN_LEGACY_AUTHORITY_SYMBOLS = (
+    "CapabilityCompositionRuntime",
+    "bind_session_capabilities",
+    "stage_coding_resource_composition_candidate",
+)
 
 REQUIRED_ROWS = {
     "AUTH": 15,
@@ -327,6 +332,15 @@ def test_graph_and_profile_construction_sites_match_cla0_allowlist() -> None:
         assert _construction_sites(symbol) == Counter(expected)
 
 
+def test_cla8_legacy_peer_authority_paths_are_absent() -> None:
+    source = "\n".join(
+        path.read_text(encoding="utf-8") for path in sorted(SOURCE_ROOT.rglob("*.py"))
+    )
+
+    for symbol in CLA8_FORBIDDEN_LEGACY_AUTHORITY_SYMBOLS:
+        assert symbol not in source
+
+
 def test_composition_binding_entrypoint_families_match_cla0_allowlist() -> None:
     assert _construction_sites("stage_resource_composition_candidate") == Counter(
         EXPECTED_COMPOSITION_BIND_CALLERS
@@ -386,7 +400,7 @@ def test_current_entrypoint_construction_counts_are_frozen() -> None:
     ]
     assert managed_calls.count("bind_capabilities") == 1
     assert managed_calls.count("_root_owned_resource_handles") == 1
-    assert managed_calls.count("bind_session_capabilities") == 1
+    assert managed_calls.count("bind_session_capabilities") == 0
     assert managed_calls.count("resolve_session_capability_profile") == 1
     assert managed_calls.count("bind_session_side_question") == 1
 

@@ -70,7 +70,14 @@ retirement semantics. A second focused Session Consumer routes resource,
 skill, prompt, Tool-pack, and Command-pack calls through the declared Resources
 dependency; the old direct Resources Consumer captures are no longer a
 production path. Process-scoped continuity remains outside the Session Graph
-until its separate stable-reference contract is accepted.
+and is exposed through the accepted, typed `StableContinuityReference` issued
+by the one focused `ContinuityHub` owner.
+
+CLA8 closes the legacy peer-authority path. Managed Product construction binds
+one root-owned Resource candidate before Extension discovery, attaches final
+admitted Profile facts to that same candidate, and transfers it once to the
+Session Graph. The former late candidate factory and construction callback no
+longer exist, and executable architecture gates forbid their return.
 
 The Workspace Bundle receives only Product-admitted, root-bounded filesystem
 operations and an already-authorized process launcher. Coding constructs one
