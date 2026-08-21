@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources._loader_discovery import (
@@ -33,6 +30,7 @@ from loushang.harness.resources._loader_types import (
     DEFAULT_CONTEXT_FILE_NAMES,
     _SourceDiscovery,
 )
+from loushang.harness.resources.packages.mounts import PackageResourceMount
 from loushang.harness.resources.types import (
     ExtensionDescriptor,
     PromptFragmentDescriptor,
@@ -42,17 +40,11 @@ from loushang.harness.resources.types import (
     ThemeDescriptor,
 )
 
-if TYPE_CHECKING:
-    from loushang.harness.resources.packages.source import PackageSourceConfig
-
 
 @dataclass(frozen=True)
 class _ResourceDiscoveryRequest:
     cwd: Path
-    package_roots: tuple[Path, ...] = ()
-    package_source_filters: Mapping[Path, PackageSourceConfig] = field(
-        default_factory=dict
-    )
+    package_mounts: tuple[PackageResourceMount, ...] = ()
     user_resource_roots: tuple[Path, ...] = ()
     explicit_user_roots: frozenset[Path] = frozenset()
     additional_extension_paths: tuple[Path, ...] = ()
@@ -71,14 +63,18 @@ class _ResourceDiscoveryRequest:
     def __post_init__(self) -> None:
         object.__setattr__(
             self,
-            "package_source_filters",
-            MappingProxyType(dict(self.package_source_filters)),
+            "package_mounts",
+            tuple(self.package_mounts),
         )
         object.__setattr__(
             self,
             "explicit_user_roots",
             frozenset(self.explicit_user_roots),
         )
+
+    @property
+    def package_roots(self) -> tuple[Path, ...]:
+        return tuple(mount.root for mount in self.package_mounts if mount.enabled)
 
 
 @dataclass(frozen=True)
@@ -164,8 +160,7 @@ def _discover_snapshot(request: _ResourceDiscoveryRequest) -> ResourceSnapshot:
     )
     external = _apply_resource_switches(
         _discover_external_package_resources(
-            request.package_roots,
-            package_source_filters=request.package_source_filters,
+            request.package_mounts,
         ),
         no_prompts=request.no_prompt_templates,
         no_skills=request.no_skills,
@@ -272,7 +267,6 @@ def _discover_snapshot(request: _ResourceDiscoveryRequest) -> ResourceSnapshot:
         diagnostics=tuple(diagnostics),
         merge_decisions=tuple(merge_decisions),
     )
-
 
 def _source_kinds_for(
     package_roots: tuple[Path, ...],

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping
+from collections.abc import Collection
+from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources._loader_discovery_filesystem import (
@@ -19,15 +19,13 @@ from loushang.harness.resources._loader_package_policy import (
 )
 from loushang.harness.resources._loader_types import _SOURCE_LABEL, _SourceDiscovery
 from loushang.harness.resources.diagnostics import resource_diagnostic
+from loushang.harness.resources.packages.mounts import PackageResourceMount
 from loushang.harness.resources.types import (
     ExtensionDescriptor,
     PromptFragmentDescriptor,
     SkillDescriptor,
     ThemeDescriptor,
 )
-
-if TYPE_CHECKING:
-    from loushang.harness.resources.packages.source import PackageSourceConfig
 
 
 def _discover_user_global_resources(
@@ -139,9 +137,7 @@ def _discover_project_resources(root: Path) -> _SourceDiscovery:
 
 
 def _discover_external_package_resources(
-    package_roots: tuple[Path, ...],
-    *,
-    package_source_filters: Mapping[Path, PackageSourceConfig] | None = None,
+    package_mounts: tuple[PackageResourceMount, ...],
 ) -> _SourceDiscovery:
     prompts: list[PromptFragmentDescriptor] = []
     skills: list[SkillDescriptor] = []
@@ -149,7 +145,10 @@ def _discover_external_package_resources(
     themes: list[ThemeDescriptor] = []
     diagnostics: list[DiagnosticDraft] = []
 
-    for index, root in enumerate(package_roots):
+    for index, mount in enumerate(package_mounts):
+        if not mount.enabled:
+            continue
+        root = mount.root
         if not root.exists():
             diagnostics.append(
                 _package_root_diagnostic(
@@ -170,6 +169,7 @@ def _discover_external_package_resources(
             source_scope="package",
             source_label=_SOURCE_LABEL["external_package"],
             source_root_order=index,
+            text_reader=mount.read_text,
         )
         package_skills, skill_diagnostics = _discover_skills_from_dir(
             root / "skills",
@@ -177,6 +177,7 @@ def _discover_external_package_resources(
             source_scope="package",
             source_label=_SOURCE_LABEL["external_package"],
             source_root_order=index,
+            text_reader=mount.read_text,
         )
         package_extensions, extension_diagnostics = _discover_extensions_from_dir(
             root / "extensions",
@@ -191,8 +192,9 @@ def _discover_external_package_resources(
             source_scope="package",
             source_label=_SOURCE_LABEL["external_package"],
             source_root_order=index,
+            text_reader=mount.read_text,
         )
-        package_filter = (package_source_filters or {}).get(root)
+        package_filter = mount.source_filter
         if package_filter is not None:
             package_prompts = _filter_package_descriptors(
                 package_prompts, root=root, patterns=package_filter.prompts
@@ -206,6 +208,41 @@ def _discover_external_package_resources(
             package_themes = _filter_package_descriptors(
                 package_themes, root=root, patterns=package_filter.themes
             )
+        package_prompts = [
+            replace(
+                descriptor,
+                revision_ref=mount.reference(descriptor.source_path),
+            )
+            for descriptor in package_prompts
+        ]
+        package_skills = [
+            replace(
+                descriptor,
+                revision_ref=mount.reference(descriptor.source_path),
+            )
+            for descriptor in package_skills
+        ]
+        package_extensions = [
+            replace(
+                descriptor,
+                revision_ref=mount.reference(
+                    descriptor.entry_path or descriptor.source_path
+                ),
+            )
+            for descriptor in package_extensions
+        ]
+        package_themes = [
+            replace(
+                descriptor,
+                revision_ref=mount.reference(
+                    descriptor.source_path,
+                    kind=(
+                        "directory" if descriptor.source_path.is_dir() else "file"
+                    ),
+                ),
+            )
+            for descriptor in package_themes
+        ]
         prompts.extend(package_prompts)
         skills.extend(package_skills)
         extensions.extend(package_extensions)

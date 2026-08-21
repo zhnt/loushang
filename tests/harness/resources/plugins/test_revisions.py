@@ -36,6 +36,8 @@ def test_revision_store_publishes_content_addressed_snapshot_and_keeps_source_id
     assert handle.verify() is None
     with handle.open_file("resources/prompts/review.md") as stream:
         assert stream.read() == b"review v1"
+    assert handle.entry_kind("resources") == "directory"
+    assert handle.entry_kind("resources/prompts/review.md") == "file"
 
 
 def test_published_revision_isolated_from_later_source_changes(tmp_path: Path) -> None:
@@ -198,6 +200,9 @@ def test_closed_revision_handle_rejects_use(tmp_path: Path) -> None:
         handle.verify()
 
     assert caught.value.code == "plugin_revision_handle_closed"
+    with pytest.raises(PluginRevisionError) as entry_caught:
+        handle.entry_kind("resources/prompts/review.md")
+    assert entry_caught.value.code == "plugin_revision_handle_closed"
 
 
 def _plugin(root: Path) -> Path:

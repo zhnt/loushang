@@ -1147,8 +1147,8 @@ object, and one effective projection path.
 | Area | Current Loushang position | Remaining gap or deliberate difference |
 | --- | --- | --- |
 | Typed Capability composition | Strong Planner/Binder/Runtime/Projector and exact registration ownership | Add owner eligibility/final admission, Product closure selection and owner-defined internal components; mount `coding.lsp` and `coding.arch` without Profile slots |
-| Package resolution | Resource-oriented source registry/materialization | Immutable descriptor, mandatory digest/lock, one manifest parser, stable scope inventory |
-| Plugin lifecycle | Enablement resolves roots; owner lifecycles are separate | Unified selection/provenance and retirement aggregation without replacing owners |
+| Package resolution | One manifest descriptor/parser, persistent source binding, content-addressed revision publication and verified Package mounts | Locked dependency closure, executable-host consumption and complete public-entry route exclusivity |
+| Plugin lifecycle | Enablement projects one `PackageResourceMount`; Resource discovery leases and revalidates verified revisions while owner lifecycles remain separate | Unified selection/provenance and retirement aggregation without replacing owners |
 | Declarations | Manifest and executable Extension registrations converge late | Versioned mutually exclusive IR and compatibility capture adapter |
 | Profiles/composition | Product/OEM Runtime Profiles already exist | Composition Sets compile once into a derived Product plan or existing authorized external layers, never a peer Profile |
 | Events/hooks | Extension routing exists | Owner-qualified catalog, transactional outbox/cold-read schema policy, explicit dispatch modes and public SDK |

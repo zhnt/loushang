@@ -11,7 +11,7 @@ from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import BinaryIO
+from typing import BinaryIO, Literal, cast
 
 from loushang.harness.resources.plugins.manifest import PluginManifestParser
 from loushang.harness.resources.plugins.types import ResolvedPluginPackage
@@ -114,6 +114,22 @@ class VerifiedRevisionHandle:
                 path=self.root / logical_path,
             )
         return io.BytesIO(data)
+
+    def entry_kind(
+        self,
+        relative_path: str | PurePosixPath,
+    ) -> Literal["file", "directory"]:
+        self._require_root_fd()
+        logical_path = _logical_relative_path(relative_path, root=self.root)
+        expected = self._entries.get(logical_path.as_posix())
+        if expected is None or expected.kind not in {"file", "directory"}:
+            raise PluginRevisionError(
+                "Plugin revision entry is not declared by the verified tree: "
+                f"{logical_path}",
+                code="invalid_plugin_revision_path",
+                path=self.root / logical_path,
+            )
+        return cast(Literal["file", "directory"], expected.kind)
 
     def close(self) -> None:
         root_fd = self._root_fd

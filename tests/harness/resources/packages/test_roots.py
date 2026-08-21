@@ -13,15 +13,13 @@ from loushang.harness.resources.packages.materializer import (
     PackageMaterializer,
     resolve_session_package_install_root,
 )
+from loushang.harness.resources.packages.mounts import PackageResourceMount
 from loushang.harness.resources.packages.roots import (
     configure_resource_loader_roots,
     resolve_package_resource_roots,
 )
 from loushang.harness.resources.packages.source import PackageSourceConfig
-from loushang.harness.resources.plugins.revisions import (
-    PluginRevisionError,
-    VerifiedRevisionHandle,
-)
+from loushang.harness.resources.plugins.revisions import PluginRevisionError
 from loushang.harness.resources.plugins.types import (
     PluginSourceBinding,
     ResolvedPluginPackage,
@@ -51,20 +49,17 @@ class _SettingsManager:
 
 class _Loader:
     def __init__(self) -> None:
+        self.mounts: tuple[PackageResourceMount, ...] = ()
         self.package_roots: tuple[str, ...] = ()
         self.user_roots: tuple[Path, ...] = ()
         self.explicit_roots: frozenset[Path] = frozenset()
 
-    def set_package_roots(
+    def set_package_mounts(
         self,
-        roots: tuple[str, ...],
-        filters: dict[Path, PackageSourceConfig],
-        *,
-        revision_handles: tuple[VerifiedRevisionHandle, ...] = (),
+        mounts: tuple[PackageResourceMount, ...],
     ) -> None:
-        assert filters == {}
-        self.package_roots = roots
-        self.revision_handles = revision_handles
+        self.mounts = mounts
+        self.package_roots = tuple(str(mount.root) for mount in mounts if mount.enabled)
 
     def set_user_resource_roots(
         self,
@@ -94,6 +89,7 @@ def test_configure_resource_loader_roots_binds_standard_settings(tmp_path) -> No
 
     resource_root = (global_base / "resources").resolve()
     assert result.roots == (str(package_root.resolve()),)
+    assert loader.mounts == result.mounts
     assert loader.package_roots == result.roots
     assert resource_root in loader.user_roots
     assert loader.explicit_roots == frozenset({resource_root})
@@ -123,6 +119,8 @@ def test_materialized_remote_plugin_disabled_by_manifest_is_not_mounted(
     )
 
     assert resolved.roots == ()
+    [mount] = resolved.mounts
+    assert mount.enabled is False
 
 
 def test_invalid_materialized_remote_plugin_records_manifest_diagnostic(
@@ -188,11 +186,24 @@ def test_invalid_local_plugin_records_same_manifest_diagnostic(
 
 def test_configured_plugin_mount_uses_leased_content_addressed_snapshot(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = tmp_path / "plugins" / "review-pack"
     prompt = root / "prompts" / "review.md"
     prompt.parent.mkdir(parents=True)
     prompt.write_text("review v1", encoding="utf-8")
+    skill = root / "skills" / "review" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text(
+        "---\nname: review\ndescription: Review changes.\n---\n\nReview.",
+        encoding="utf-8",
+    )
+    extension = root / "extensions" / "review.py"
+    extension.parent.mkdir()
+    extension.write_text("", encoding="utf-8")
+    theme = root / "themes" / "dark.json"
+    theme.parent.mkdir()
+    theme.write_text("{}", encoding="utf-8")
     (root / "plugin.json").write_text(
         json.dumps({"name": "review-pack"}),
         encoding="utf-8",
@@ -210,6 +221,8 @@ def test_configured_plugin_mount_uses_leased_content_addressed_snapshot(
     )
 
     [mounted_root] = resolved.roots
+    [mount] = resolved.mounts
+    assert mount.verified is True
     assert Path(mounted_root).parent.name == "sha256"
     assert len(resolved.revision_handles) == 1
     binding = materializer.get_plugin_binding(root)
@@ -217,8 +230,35 @@ def test_configured_plugin_mount_uses_leased_content_addressed_snapshot(
     assert binding.content_digest == resolved.revision_handles[0].content_digest
     assert binding.revision_kind == "content_sha256"
     prompt.write_text("review v2", encoding="utf-8")
+    mounted_files = {
+        Path(mounted_root) / "prompts" / "review.md",
+        Path(mounted_root) / "skills" / "review" / "SKILL.md",
+        Path(mounted_root) / "themes" / "dark.json",
+    }
+    original_read_text = Path.read_text
+
+    def reject_path_reopen(
+        path: Path,
+        encoding: str | None = None,
+        errors: str | None = None,
+    ) -> str:
+        if path in mounted_files:
+            raise AssertionError("verified Package resources must use the mount reader")
+        return original_read_text(path, encoding=encoding, errors=errors)
+
+    monkeypatch.setattr(Path, "read_text", reject_path_reopen)
     bundle = loader.discover_resources(tmp_path)
     assert [descriptor.text for descriptor in bundle.prompts] == ["review v1"]
+    assert bundle.prompts[0].revision_ref is not None
+    assert bundle.prompts[0].revision_ref.content_digest == mount.content_digest
+    assert bundle.prompts[0].revision_ref.relative_path == "prompts/review.md"
+    assert bundle.skills[0].revision_ref is not None
+    assert bundle.skills[0].revision_ref.relative_path == "skills/review/SKILL.md"
+    assert bundle.extensions[0].revision_ref is not None
+    assert bundle.extensions[0].revision_ref.relative_path == "extensions/review.py"
+    assert bundle.themes[0].revision_ref is not None
+    assert bundle.themes[0].revision_ref.relative_path == "themes/dark.json"
+    assert bundle.themes[0].content == "{}"
     handle = resolved.revision_handles[0]
     loader.close()
     assert handle.closed is True

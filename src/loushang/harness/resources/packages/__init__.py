@@ -43,6 +43,7 @@ if TYPE_CHECKING:
         package_offline_enabled,
         resolve_session_package_install_root,
     )
+    from loushang.harness.resources.packages.mounts import PackageResourceMount
     from loushang.harness.resources.packages.operations import (
         PackageMaterializerPort,
         PackageMaterializerProvider,
@@ -103,6 +104,7 @@ _EXPORT_MODULES = {
     "PackageMaterializer": "loushang.harness.resources.packages.materializer",
     "PackageMaterializerBackend": "loushang.harness.resources.packages.materializer",
     "PackageMaterializerPort": "loushang.harness.resources.packages.operations",
+    "PackageResourceMount": "loushang.harness.resources.packages.mounts",
     "PackageMaterializerProvider": "loushang.harness.resources.packages.operations",
     "PackageOperationsRuntime": "loushang.harness.resources.packages.operations",
     "PackageProgressEvent": "loushang.harness.resources.packages.materializer",

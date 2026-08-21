@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
 
@@ -10,6 +10,7 @@ from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources.layout import resolve_user_resource_roots
 from loushang.harness.resources.packages.manifest import resolve_package_manifest
 from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.packages.mounts import PackageResourceMount
 from loushang.harness.resources.packages.source import (
     PackageSourceConfig,
     is_remote_package_source,
@@ -57,12 +58,9 @@ class ResourceRootSettingsManager(Protocol):
 
 
 class ResourceRootLoader(Protocol):
-    def set_package_roots(
+    def set_package_mounts(
         self,
-        package_roots: Sequence[str | Path] | None,
-        package_source_filters: Mapping[str | Path, PackageSourceConfig] | None = None,
-        *,
-        revision_handles: Sequence[VerifiedRevisionHandle] = (),
+        mounts: Sequence[PackageResourceMount],
     ) -> None: ...
 
     def set_user_resource_roots(
@@ -75,13 +73,30 @@ class ResourceRootLoader(Protocol):
 
 @dataclass(frozen=True)
 class ResolvedPackageResourceRoots:
-    roots: tuple[str, ...] = ()
-    filters: dict[Path, PackageSourceConfig] = field(default_factory=dict)
-    revision_handles: tuple[VerifiedRevisionHandle, ...] = field(
-        default=(),
-        compare=False,
-        repr=False,
-    )
+    mounts: tuple[PackageResourceMount, ...] = ()
+
+    @property
+    def roots(self) -> tuple[str, ...]:
+        return tuple(str(mount.root) for mount in self.mounts if mount.enabled)
+
+    @property
+    def filters(self) -> dict[Path, PackageSourceConfig]:
+        return {
+            mount.root: mount.source_filter
+            for mount in self.mounts
+            if mount.enabled and mount.source_filter is not None
+        }
+
+    @property
+    def revision_handles(self) -> tuple[VerifiedRevisionHandle, ...]:
+        handles: list[VerifiedRevisionHandle] = []
+        seen: set[int] = set()
+        for mount in self.mounts:
+            handle = mount.revision_handle
+            if handle is not None and id(handle) not in seen:
+                handles.append(handle)
+                seen.add(id(handle))
+        return tuple(handles)
 
 
 def configure_resource_loader_roots(
@@ -108,18 +123,10 @@ def configure_resource_loader_roots(
         diagnostics_service=diagnostics_service,
         session_id=session_id,
     )
-    package_source_filters: dict[str | Path, PackageSourceConfig] = {
-        root: config for root, config in resolved.filters.items()
-    }
     try:
-        resource_loader.set_package_roots(
-            resolved.roots,
-            package_source_filters,
-            revision_handles=resolved.revision_handles,
-        )
+        resource_loader.set_package_mounts(resolved.mounts)
     except Exception:
-        for handle in resolved.revision_handles:
-            handle.close()
+        _close_mounts(resolved.mounts)
         raise
     configured_global_roots = settings_manager.get_global_settings().get(
         "resource_roots",
@@ -155,10 +162,12 @@ def resolve_package_resource_roots(
     diagnostics_service: DiagnosticsService | None = None,
     session_id: str | None = None,
 ) -> ResolvedPackageResourceRoots:
-    roots: list[str] = []
-    filters: dict[Path, PackageSourceConfig] = {}
+    mounts: list[PackageResourceMount] = []
     for configured_root in package_roots:
-        _append_package_root(roots, configured_root)
+        _upsert_package_mount(
+            mounts,
+            PackageResourceMount(root=Path(configured_root)),
+        )
     manager = PluginManager(disabled_plugins=disabled_plugins)
     resolved_plugins: list[tuple[str, ResolvedPluginPackage]] = []
     for source in plugin_sources:
@@ -238,8 +247,18 @@ def resolve_package_resource_roots(
             plugin = manager.add_resolved_plugin_package(package)
             if plugin.enabled:
                 resolved_resources = manager.resolver.resolve_resources(plugin)
-                for root in resolved_resources.package_roots:
-                    _append_package_root(roots, root)
+                root = resolved_resources.package_roots[0]
+            else:
+                root = package.package_root
+            _upsert_package_mount(
+                mounts,
+                PackageResourceMount(
+                    root=root,
+                    enabled=plugin.enabled,
+                    content_digest=package.content_digest,
+                    revision_handle=package.revision_handle,
+                ),
+            )
     except Exception:
         for handle in revision_handles:
             handle.close()
@@ -259,23 +278,55 @@ def resolve_package_resource_roots(
                     global_base_dir=global_base_dir,
                     project_base_dir=project_base_dir,
                 )
-            _append_package_root(roots, resolved_root)
-            filters[Path(resolved_root).expanduser().resolve()] = package_source
+            _upsert_package_mount(
+                mounts,
+                PackageResourceMount(
+                    root=Path(resolved_root),
+                    source_filter=package_source,
+                ),
+            )
     except Exception:
         for handle in revision_handles:
             handle.close()
         raise
-    return ResolvedPackageResourceRoots(
-        roots=tuple(roots),
-        filters=filters,
-        revision_handles=revision_handles,
-    )
+    return ResolvedPackageResourceRoots(mounts=tuple(mounts))
 
 
-def _append_package_root(roots: list[str], root: str | Path) -> None:
-    normalized = str(Path(root).expanduser().resolve())
-    if normalized not in roots:
-        roots.append(normalized)
+def _upsert_package_mount(
+    mounts: list[PackageResourceMount],
+    candidate: PackageResourceMount,
+) -> None:
+    for index, current in enumerate(mounts):
+        if current.root != candidate.root:
+            continue
+        if current.verified and candidate.verified:
+            if current.content_digest != candidate.content_digest:
+                raise ValueError(
+                    f"Package mount root has conflicting revisions: {current.root}"
+                )
+            if current.revision_handle is not candidate.revision_handle:
+                candidate.close()
+            base = current
+        elif candidate.verified:
+            base = candidate
+        else:
+            base = current
+        mounts[index] = replace(
+            base,
+            source_filter=candidate.source_filter or current.source_filter,
+            enabled=current.enabled or candidate.enabled,
+        )
+        return
+    mounts.append(candidate)
+
+
+def _close_mounts(mounts: Sequence[PackageResourceMount]) -> None:
+    closed: set[int] = set()
+    for mount in mounts:
+        handle = mount.revision_handle
+        if handle is not None and id(handle) not in closed:
+            handle.close()
+            closed.add(id(handle))
 
 
 def _plugin_source_for_error(
