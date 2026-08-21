@@ -298,13 +298,21 @@ class AgentTranscriptFileLayout:
         return None
 
     def scan_paths(self, namespace: str) -> tuple[Path, ...]:
+        return tuple(
+            path
+            for path in self.scan_candidate_paths(namespace)
+            if _is_conversation_jsonl_candidate(path)
+        )
+
+    def scan_candidate_paths(self, namespace: str) -> tuple[Path, ...]:
+        """Discover possible transcripts without opening their contents."""
+
         if namespace != self.namespace or not self.root.is_dir():
             return ()
         return tuple(
             path
             for path in sorted(self.root.glob("*.jsonl"))
             if not path.name.endswith("-export.jsonl")
-            and _is_conversation_jsonl_candidate(path)
         )
 
     def has_transcript_modified_after(self, modified_at_ns: int) -> bool:

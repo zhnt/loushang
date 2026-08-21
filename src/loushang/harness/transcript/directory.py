@@ -35,7 +35,7 @@ from loushang.harness.transcript.session_catalog import (
 )
 
 IndexRefreshFailureRecorder = Callable[[Exception, bool], None]
-IndexMaintenance = Literal["repair", "refresh", "refresh_all"]
+IndexMaintenance = Literal["bounded_refresh", "repair", "refresh", "refresh_all"]
 
 _MAX_INDEX_TRAVERSALS = 8
 _INDEX_TRAVERSAL_TTL = 900.0
@@ -55,6 +55,7 @@ class SessionIndexPage:
     index_generation: str
     query_snapshot: str
     restart_required: bool = False
+    bounded_fallback: bool = False
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,9 @@ class _SessionIndexTraversal:
     index_generation: str
     query_snapshot: str
     expires_at: float
+    index_state: ConversationIndexState = "fresh"
+    bounded_fallback: bool = False
+    ignored_authority: Path | None = None
 
 
 class AgentTranscriptDirectoryRuntime:
@@ -136,6 +140,11 @@ class AgentTranscriptDirectoryRuntime:
         self._last_session_index_refresh = monotonic()
         return summaries
 
+    def refresh_bounded_session_index(self) -> list[SessionSummary]:
+        summaries = self.session_catalog.refresh_bounded_index()
+        self._last_session_index_refresh = monotonic()
+        return summaries
+
     def refresh_all_session_indexes(self) -> list[SessionSummary]:
         summaries = refresh_all_agent_transcript_session_indexes(
             self.session_dir.parent
@@ -164,6 +173,7 @@ class AgentTranscriptDirectoryRuntime:
         *,
         cursor: str | None = None,
         limit: int = 25,
+        ignore_authority: str | Path | None = None,
     ) -> SessionIndexPage:
         """Return a bounded, non-rebuilding page from an immutable traversal.
 
@@ -178,18 +188,42 @@ class AgentTranscriptDirectoryRuntime:
             return self._continue_session_index_page(cursor=cursor, limit=limit)
 
         requested = replace(query or SessionQuery(), limit=None)
-        snapshot = self.session_catalog.try_query_index_snapshot(requested)
+        ignored_authority = (
+            Path(ignore_authority).expanduser().resolve(strict=False)
+            if ignore_authority is not None
+            else None
+        )
+        snapshot = self.session_catalog.try_query_index_snapshot(
+            requested,
+            ignore_modified_paths=(ignored_authority,)
+            if ignored_authority is not None
+            else (),
+        )
         if snapshot.index_state != "fresh":
-            self._request_session_index_refresh_from_running_loop()
             visible_state: ConversationIndexState = (
                 "stale" if snapshot.index_state == "stale" else "unavailable"
             )
-            return SessionIndexPage(
-                items=(),
-                has_more=False,
+            bounded = self.session_catalog.bounded_index_snapshot(requested)
+            token = secrets.token_urlsafe(18)
+            traversal = _SessionIndexTraversal(
+                items=bounded.items,
+                index_generation=f"bounded:{snapshot.index_generation}",
+                query_snapshot=token,
+                expires_at=monotonic() + _INDEX_TRAVERSAL_TTL,
                 index_state=visible_state,
-                index_generation=snapshot.index_generation,
-                query_snapshot=snapshot.query_snapshot,
+                bounded_fallback=True,
+                ignored_authority=ignored_authority,
+            )
+            with self._index_traversal_lock:
+                self._evict_index_traversals()
+                self._index_traversals[token] = traversal
+                while len(self._index_traversals) > _MAX_INDEX_TRAVERSALS:
+                    self._index_traversals.popitem(last=False)
+            return self._session_index_page(
+                traversal,
+                token=token,
+                start=0,
+                limit=limit,
             )
 
         token = secrets.token_urlsafe(18)
@@ -198,6 +232,7 @@ class AgentTranscriptDirectoryRuntime:
             index_generation=snapshot.index_generation,
             query_snapshot=token,
             expires_at=monotonic() + _INDEX_TRAVERSAL_TTL,
+            ignored_authority=ignored_authority,
         )
         with self._index_traversal_lock:
             self._evict_index_traversals()
@@ -231,15 +266,19 @@ class AgentTranscriptDirectoryRuntime:
         """Schedule one best-effort index refresh after Product state changes."""
 
         self._session_index_flush.delay_seconds = self.session_index_flush_delay
-        self._session_index_flush.schedule(
-            "refresh_all" if all_sessions else "refresh"
-        )
+        self._session_index_flush.schedule("refresh_all" if all_sessions else "refresh")
 
     def request_session_index_repair(self) -> None:
         """Schedule an incremental local repair, with full rebuild as fallback."""
 
         self._session_index_flush.delay_seconds = self.session_index_flush_delay
         self._session_index_flush.schedule("repair")
+
+    def request_bounded_session_index_refresh(self) -> None:
+        """Schedule a complete head/tail index rebuild off the listing path."""
+
+        self._session_index_flush.delay_seconds = self.session_index_flush_delay
+        self._session_index_flush.schedule("bounded_refresh")
 
     def request_session_index_refresh_if_due(
         self,
@@ -265,6 +304,8 @@ class AgentTranscriptDirectoryRuntime:
                 await asyncio.to_thread(self.refresh_all_session_indexes)
             elif maintenance == "refresh":
                 await asyncio.to_thread(self.refresh_session_index)
+            elif maintenance == "bounded_refresh":
+                await asyncio.to_thread(self.refresh_bounded_session_index)
             else:
                 await asyncio.to_thread(self.repair_session_index)
         except Exception as exc:
@@ -295,7 +336,19 @@ class AgentTranscriptDirectoryRuntime:
                 query_snapshot=token,
                 restart_required=True,
             )
-        current = self.session_catalog.try_query_index_snapshot(SessionQuery(limit=1))
+        if traversal.bounded_fallback:
+            return self._session_index_page(
+                traversal,
+                token=token,
+                start=start,
+                limit=limit,
+            )
+        current = self.session_catalog.try_query_index_snapshot(
+            SessionQuery(limit=1),
+            ignore_modified_paths=(traversal.ignored_authority,)
+            if traversal.ignored_authority is not None
+            else (),
+        )
         if (
             current.index_state != "fresh"
             or current.index_generation != traversal.index_generation
@@ -340,9 +393,10 @@ class AgentTranscriptDirectoryRuntime:
                 )
             ),
             has_more=end < len(traversal.items),
-            index_state="fresh",
+            index_state=traversal.index_state,
             index_generation=traversal.index_generation,
             query_snapshot=traversal.query_snapshot,
+            bounded_fallback=traversal.bounded_fallback,
         )
 
     def _evict_index_traversals(self) -> None:
@@ -355,21 +409,17 @@ class AgentTranscriptDirectoryRuntime:
         for token in expired:
             self._index_traversals.pop(token, None)
 
-    def _request_session_index_refresh_from_running_loop(self) -> None:
-        """Queue repair only when a Host loop can keep it off the read path."""
-
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return
-        self.request_session_index_repair()
-
 
 def _merge_index_maintenance(
     left: IndexMaintenance,
     right: IndexMaintenance,
 ) -> IndexMaintenance:
-    priority = {"repair": 0, "refresh": 1, "refresh_all": 2}
+    priority = {
+        "bounded_refresh": 0,
+        "repair": 1,
+        "refresh": 2,
+        "refresh_all": 3,
+    }
     return left if priority[left] >= priority[right] else right
 
 

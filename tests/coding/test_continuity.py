@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -50,8 +51,10 @@ class _Runtime(AgentTranscriptDirectoryRuntime):
         self.prepared: list[str] = []
         self.restored: list[str] = []
         self.deleted: list[str] = []
+        self.aborted: list[str] = []
         self.current_session: object | None = None
         self.current_session_ref: str | None = None
+        self.on_prepare: Callable[[], None] | None = None
 
     def get_current_session(self) -> object | None:
         return self.current_session
@@ -66,6 +69,8 @@ class _Runtime(AgentTranscriptDirectoryRuntime):
     ) -> object:
         reference = str(session_id)
         self.prepared.append(reference)
+        if self.on_prepare is not None:
+            self.on_prepare()
         runtime = self
 
         class _Candidate:
@@ -74,7 +79,7 @@ class _Runtime(AgentTranscriptDirectoryRuntime):
                 return {"current": reference}
 
             async def abort(self) -> None:
-                return None
+                runtime.aborted.append(reference)
 
         return _Candidate()
 
@@ -127,7 +132,43 @@ def test_coding_provider_projects_common_summary_preview_and_activation(
     asyncio.run(scenario())
 
 
-def test_coding_prepare_treats_current_session_as_noop(tmp_path: Path) -> None:
+def test_coding_fingerprinted_exact_target_skips_preload_authority_replay(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from loushang.harness.transcript import AgentTranscriptSessionCatalog
+
+    runtime = _Runtime(tmp_path)
+    transcript = tmp_path / "session-1.jsonl"
+    write_agent_transcript_export(
+        transcript,
+        _header("session-1"),
+        [_record("record-1", "Resume once")],
+    )
+    runtime.refresh_session_index()
+    composition = bind_coding_continuity(runtime)
+
+    def reject_full_preload(self, locator):
+        del self, locator
+        raise AssertionError("fingerprinted selection must not replay authority")
+
+    monkeypatch.setattr(
+        AgentTranscriptSessionCatalog,
+        "load_authoritative_revision",
+        reject_full_preload,
+    )
+
+    async def scenario() -> None:
+        page = await composition.hub.query(ContinuityQuery(page_size=10))
+        lease = await composition.hub.prepare(page.items[0].target)
+        await lease.abort()
+        assert runtime.prepared == [str(transcript)]
+        await shutdown_coding_continuity(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_coding_provider_excludes_current_session_from_resume(tmp_path: Path) -> None:
     runtime = _Runtime(tmp_path)
     transcript = tmp_path / "session-1.jsonl"
     write_agent_transcript_export(
@@ -143,14 +184,42 @@ def test_coding_prepare_treats_current_session_as_noop(tmp_path: Path) -> None:
 
     async def scenario() -> None:
         page = await composition.hub.query(ContinuityQuery(page_size=10))
-        lease = await composition.hub.prepare(page.items[0].target)
-        result = await lease.consume()
-
-        assert result.previous is current
-        assert result.current is current
-        assert result.changed is False
+        assert page.items == ()
         assert runtime.prepared == []
         assert runtime.restored == []
+        await shutdown_coding_continuity(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_coding_provider_does_not_stale_index_for_active_session_appends(
+    tmp_path: Path,
+) -> None:
+    runtime = _Runtime(tmp_path)
+    active = tmp_path / "active.jsonl"
+    history = tmp_path / "history.jsonl"
+    write_agent_transcript_export(
+        active,
+        _header("active"),
+        [_record("active-record", "Current prompt")],
+    )
+    write_agent_transcript_export(
+        history,
+        _header("history"),
+        [_record("history-record", "Resume me")],
+    )
+    runtime.refresh_session_index()
+    index_mtime = runtime.session_catalog.index_path.stat().st_mtime_ns
+    os.utime(active, ns=(index_mtime + 1, index_mtime + 1))
+    runtime.current_session = object()
+    runtime.current_session_ref = str(active)
+    composition = bind_coding_continuity(runtime)
+
+    async def scenario() -> None:
+        page = await composition.hub.query(ContinuityQuery(page_size=10))
+        assert [item.target.opaque_id for item in page.items] == ["history"]
+        assert page.aggregate_index_state == "fresh"
+        assert page.provider_diagnostics == ()
         await shutdown_coding_continuity(runtime)
 
     asyncio.run(scenario())
@@ -177,7 +246,9 @@ def test_coding_provider_deletes_only_a_fresh_noncurrent_target(tmp_path: Path) 
     asyncio.run(scenario())
 
 
-def test_coding_provider_refuses_to_delete_current_session(tmp_path: Path) -> None:
+def test_coding_provider_cannot_delete_an_excluded_current_session(
+    tmp_path: Path,
+) -> None:
     runtime = _Runtime(tmp_path)
     transcript = tmp_path / "session-1.jsonl"
     write_agent_transcript_export(
@@ -191,8 +262,7 @@ def test_coding_provider_refuses_to_delete_current_session(tmp_path: Path) -> No
 
     async def scenario() -> None:
         page = await composition.hub.query(ContinuityQuery(page_size=10))
-        with pytest.raises(ValueError, match="currently active"):
-            await composition.hub.delete(page.items[0].target)
+        assert page.items == ()
         assert transcript.exists() is True
         await shutdown_coding_continuity(runtime)
 
@@ -229,7 +299,7 @@ def test_coding_prepare_revalidates_selected_transcript_revision(
     asyncio.run(scenario())
 
 
-def test_coding_provider_rebuilds_stale_index_before_listing_changed_session(
+def test_coding_provider_uses_bounded_preview_for_a_stale_index(
     tmp_path: Path,
 ) -> None:
     runtime = _Runtime(tmp_path)
@@ -256,21 +326,22 @@ def test_coding_provider_rebuilds_stale_index_before_listing_changed_session(
 
     async def scenario() -> None:
         stale = await composition.hub.query(ContinuityQuery(page_size=10))
-        assert stale.items == ()
+        assert len(stale.items) == 1
         assert stale.aggregate_index_state == "stale"
-
-        await runtime.drain_session_index_flush()
-        refreshed = await composition.hub.query(ContinuityQuery(page_size=10))
-        assert len(refreshed.items) == 1
-        assert refreshed.items[0].target.revision == "2"
-        lease = await composition.hub.prepare(refreshed.items[0].target)
+        assert stale.provider_diagnostics[0].code == (
+            "coding_continuity_bounded_catalog"
+        )
+        lease = await composition.hub.prepare(stale.items[0].target)
         await lease.abort()
+        await runtime.drain_session_index_flush()
+        rebuilt = await composition.hub.query(ContinuityQuery(page_size=10))
+        assert rebuilt.aggregate_index_state == "fresh"
         await shutdown_coding_continuity(runtime)
 
     asyncio.run(scenario())
 
 
-def test_coding_provider_reports_missing_index_without_authority_scan(
+def test_coding_provider_reports_bounded_catalog_when_index_is_missing(
     tmp_path: Path,
 ) -> None:
     runtime = _Runtime(tmp_path)
@@ -284,12 +355,75 @@ def test_coding_provider_reports_missing_index_without_authority_scan(
     async def scenario() -> None:
         page = await composition.hub.query(ContinuityQuery(page_size=10))
 
-        assert page.items == ()
+        assert len(page.items) == 1
+        assert page.items[0].title == "Not scanned by query"
         assert page.aggregate_index_state == "rebuilding"
         assert page.provider_diagnostics[0].code == (
-            "coding_continuity_index_not_ready"
+            "coding_continuity_bounded_catalog"
         )
         assert not runtime.session_catalog.index_path.exists()
+        await runtime.drain_session_index_flush()
+        rebuilt = await composition.hub.query(ContinuityQuery(page_size=10))
+        assert rebuilt.aggregate_index_state == "fresh"
+        lease = await composition.hub.prepare(page.items[0].target)
+        await lease.consume()
+        assert runtime.restored == [str(tmp_path / "session-1.jsonl")]
+        await shutdown_coding_continuity(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_coding_prepare_revalidates_bounded_catalog_file_identity(
+    tmp_path: Path,
+) -> None:
+    runtime = _Runtime(tmp_path)
+    transcript = tmp_path / "session-1.jsonl"
+    write_agent_transcript_export(
+        transcript,
+        _header("session-1"),
+        [_record("record-1", "Bounded target")],
+    )
+    composition = bind_coding_continuity(runtime)
+
+    async def scenario() -> None:
+        page = await composition.hub.query(ContinuityQuery(page_size=10))
+        assert len(page.items) == 1
+        with transcript.open("a", encoding="utf-8") as handle:
+            handle.write("\n")
+
+        with pytest.raises(StaleContinuityTargetError, match="changed"):
+            await composition.hub.prepare(page.items[0].target)
+        assert runtime.prepared == []
+        await runtime.drain_session_index_flush()
+        await shutdown_coding_continuity(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_coding_prepare_aborts_when_bounded_file_changes_during_prepare(
+    tmp_path: Path,
+) -> None:
+    runtime = _Runtime(tmp_path)
+    transcript = tmp_path / "session-1.jsonl"
+    write_agent_transcript_export(
+        transcript,
+        _header("session-1"),
+        [_record("record-1", "Bounded target")],
+    )
+    composition = bind_coding_continuity(runtime)
+
+    def mutate() -> None:
+        with transcript.open("a", encoding="utf-8") as handle:
+            handle.write("\n")
+
+    async def scenario() -> None:
+        page = await composition.hub.query(ContinuityQuery(page_size=10))
+        runtime.on_prepare = mutate
+
+        with pytest.raises(StaleContinuityTargetError, match="being prepared"):
+            await composition.hub.prepare(page.items[0].target)
+        assert runtime.prepared == [str(transcript)]
+        assert runtime.aborted == [str(transcript)]
         await runtime.drain_session_index_flush()
         await shutdown_coding_continuity(runtime)
 
