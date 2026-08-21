@@ -166,7 +166,11 @@ class PackageCatalogBuilder:
                 )
                 continue
             plugin = manager.add_plugin_source(source)
-            package_root = plugin.manifest.package_root or plugin.manifest.root
+            package_root = (
+                plugin.resolved_package.package_root
+                if plugin.resolved_package is not None
+                else plugin.manifest.package_root or plugin.manifest.root
+            )
             summary = (
                 empty_package_summary(package_root)
                 if not plugin.enabled

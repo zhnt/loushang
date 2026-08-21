@@ -5,6 +5,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from loushang.harness.resources.plugins.manifest import (
+    PluginManifestError,
+    PluginManifestParser,
+)
+from loushang.harness.resources.plugins.types import ResolvedPluginPackage
+
 
 @dataclass(frozen=True)
 class PackageManifestInfo:
@@ -13,18 +19,53 @@ class PackageManifestInfo:
     manifest_path: Path | None = None
     version: str = ""
     diagnostics: tuple[dict[str, object], ...] = ()
+    resolved_plugin_package: ResolvedPluginPackage | None = None
 
 
 def resolve_package_manifest(
-    root: str | Path, *, installed: bool = True
+    root: str | Path,
+    *,
+    installed: bool = True,
+    resolved_plugin_package: ResolvedPluginPackage | None = None,
 ) -> PackageManifestInfo:
     package_root = Path(root).expanduser().resolve()
-    if not installed or not package_root.is_dir():
+    if not installed:
+        return PackageManifestInfo(root=package_root, package_root=package_root)
+    if resolved_plugin_package is not None:
+        if resolved_plugin_package.root != package_root:
+            raise ValueError(
+                "Resolved plugin package root does not match package manifest root: "
+                f"{resolved_plugin_package.root} != {package_root}"
+            )
+        return _project_plugin_package(resolved_plugin_package)
+    if not package_root.is_dir():
         return PackageManifestInfo(root=package_root, package_root=package_root)
 
     manifest_path = _manifest_path(package_root)
     if manifest_path is None:
         return PackageManifestInfo(root=package_root, package_root=package_root)
+    if manifest_path.name == "plugin.json":
+        try:
+            descriptor = PluginManifestParser().parse(package_root)
+        except PluginManifestError as exc:
+            code = (
+                "unreadable_package_manifest"
+                if exc.code == "unreadable_plugin_manifest"
+                else "invalid_package_manifest"
+            )
+            return PackageManifestInfo(
+                root=package_root,
+                package_root=package_root,
+                manifest_path=exc.path,
+                diagnostics=(
+                    {
+                        "code": code,
+                        "message": str(exc),
+                        "path": str(exc.path),
+                    },
+                ),
+            )
+        return _project_plugin_package(descriptor)
 
     try:
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -78,6 +119,18 @@ def resolve_package_manifest(
         manifest_path=manifest_path,
         version=version,
         diagnostics=diagnostics,
+    )
+
+
+def _project_plugin_package(
+    descriptor: ResolvedPluginPackage,
+) -> PackageManifestInfo:
+    return PackageManifestInfo(
+        root=descriptor.root,
+        package_root=descriptor.package_root,
+        manifest_path=descriptor.manifest_path,
+        version=descriptor.manifest.version or "",
+        resolved_plugin_package=descriptor,
     )
 
 

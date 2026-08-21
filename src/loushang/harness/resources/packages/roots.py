@@ -153,9 +153,8 @@ def resolve_package_resource_roots(
             )
             continue
         if plugin.enabled:
-            _append_package_root(
-                roots, plugin.manifest.package_root or plugin.manifest.root
-            )
+            for root in manager.resolver.resolve_resources(plugin).package_roots:
+                _append_package_root(roots, root)
     for package_source in package_sources:
         if is_remote_package_source(package_source.source):
             record = materializer.get_record(package_source.source)

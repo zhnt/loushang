@@ -15,7 +15,7 @@ README_PATH = Path("docs/internals/architecture/harness/README.md")
 SOURCE_ROOT = Path("src/loushang")
 EXPECTED_PLUGIN_JSON_STATIC_SITES = {
     Path("src/loushang/harness/resources/packages/manifest.py"),
-    Path("src/loushang/harness/resources/plugins/resolver.py"),
+    Path("src/loushang/harness/resources/plugins/manifest.py"),
 }
 PLUGIN_PACKAGE_BOUNDARY_ROOTS = (
     Path("src/loushang/harness/resources/plugins"),
@@ -23,8 +23,8 @@ PLUGIN_PACKAGE_BOUNDARY_ROOTS = (
 )
 EXPECTED_MANIFEST_BOUNDARY_SINK_SITES = {
     (
-        Path("src/loushang/harness/resources/plugins/resolver.py"),
-        "PluginResolver._read_manifest",
+        Path("src/loushang/harness/resources/plugins/manifest.py"),
+        "PluginManifestParser.parse",
     ),
     (
         Path("src/loushang/harness/resources/packages/manifest.py"),
@@ -937,6 +937,17 @@ def test_current_plugin_manifest_name_sites_are_a_baseline_inventory() -> None:
     assert _static_string_sites(synthetic, "plugin.json") == {
         Path("third_parser.py")
     }
+
+
+def test_plugin_manifest_has_one_parser_and_one_resolved_descriptor_authority() -> None:
+    sources = _source_texts()
+
+    assert _class_sites(sources, "PluginManifestParser") == (
+        Path("src/loushang/harness/resources/plugins/manifest.py"),
+    )
+    assert _class_sites(sources, "ResolvedPluginPackage") == (
+        Path("src/loushang/harness/resources/plugins/types.py"),
+    )
 
 
 def test_current_package_manifest_boundary_sinks_use_qualified_allowlist() -> None:

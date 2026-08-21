@@ -1,23 +1,52 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import Any
 
 from loushang.harness.resources.plugins.lifecycle import (
     is_remote_plugin_source,
     remote_plugin_name,
 )
+from loushang.harness.resources.plugins.manifest import PluginManifestParser
 from loushang.harness.resources.plugins.types import (
     InstalledPlugin,
     PluginManifest,
     PluginResolvedResources,
     PluginSource,
+    ResolvedPluginPackage,
 )
 
 
 class PluginResolver:
     """Resolve local plugin directories into resource-loader package roots."""
+
+    def __init__(
+        self,
+        *,
+        manifest_parser: PluginManifestParser | None = None,
+    ) -> None:
+        self._manifest_parser = manifest_parser or PluginManifestParser()
+
+    def resolve_package(
+        self,
+        source: PluginSource | str | Path,
+    ) -> ResolvedPluginPackage:
+        """Resolve one local source through the canonical manifest authority."""
+
+        plugin_source = (
+            source
+            if isinstance(source, PluginSource)
+            else _plugin_source_from_input(source)
+        )
+        if plugin_source.kind == "remote":
+            raise ValueError(
+                "Remote plugin sources must be materialized before manifest resolution."
+            )
+        if plugin_source.path is None:
+            raise ValueError("Local plugin source requires a path.")
+        return self._manifest_parser.parse(
+            plugin_source.path,
+            source=plugin_source,
+        )
 
     def resolve_plugin(self, source: PluginSource | str | Path) -> InstalledPlugin:
         plugin_source = (
@@ -43,65 +72,24 @@ class PluginResolver:
             )
         if plugin_source.path is None:
             raise ValueError("Local plugin source requires a path.")
-        root = plugin_source.path.expanduser().resolve()
-        manifest = self._read_manifest(root, source_enabled=plugin_source.enabled)
+        resolved_package = self.resolve_package(plugin_source)
+        manifest = resolved_package.manifest
         return InstalledPlugin(
             manifest=manifest,
-            source=PluginSource(path=root, enabled=plugin_source.enabled),
+            source=resolved_package.source,
             enabled=plugin_source.enabled and manifest.enabled,
+            resolved_package=resolved_package,
         )
 
     def resolve_resources(self, plugin: InstalledPlugin) -> PluginResolvedResources:
         if not plugin.enabled:
             return PluginResolvedResources(plugin=plugin, package_roots=())
-        package_root = plugin.manifest.package_root or plugin.manifest.root
-        return PluginResolvedResources(plugin=plugin, package_roots=(package_root,))
-
-    def _read_manifest(self, root: Path, *, source_enabled: bool) -> PluginManifest:
-        if not root.is_dir():
-            raise FileNotFoundError(f"Plugin source is not a directory: {root}")
-
-        manifest_path = root / "plugin.json"
-        if not manifest_path.is_file():
-            return PluginManifest(
-                name=root.name, root=root, enabled=source_enabled, package_root=root
-            )
-
-        try:
-            raw = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            raise ValueError(
-                f"Invalid plugin manifest JSON: {manifest_path}: {exc.msg}"
-            ) from exc
-        if not isinstance(raw, dict):
-            raise ValueError(f"Plugin manifest must be a JSON object: {manifest_path}")
-
-        name = _string_value(raw.get("name")) or root.name
-        version = _string_value(raw.get("version"))
-        enabled = bool(raw.get("enabled", True)) and source_enabled
-        package_root = _package_root(root, raw)
-        return PluginManifest(
-            name=name,
-            root=root,
-            version=version,
-            enabled=enabled,
-            package_root=package_root,
-            metadata=dict(raw),
+        package_root = (
+            plugin.resolved_package.package_root
+            if plugin.resolved_package is not None
+            else plugin.manifest.package_root or plugin.manifest.root
         )
-
-
-def _package_root(root: Path, raw: dict[str, Any]) -> Path:
-    value = raw.get("packageRoot", raw.get("package_root", "."))
-    if not isinstance(value, str) or not value:
-        return root
-    return (root / value).expanduser().resolve()
-
-
-def _string_value(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-    normalized = value.strip()
-    return normalized or None
+        return PluginResolvedResources(plugin=plugin, package_roots=(package_root,))
 
 
 def _plugin_source_from_input(source: str | Path) -> PluginSource:

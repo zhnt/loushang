@@ -3,6 +3,10 @@ from loushang.harness.resources.plugins.lifecycle import (
     remote_plugin_name,
 )
 from loushang.harness.resources.plugins.manager import PluginManager
+from loushang.harness.resources.plugins.manifest import (
+    PluginManifestError,
+    PluginManifestParser,
+)
 from loushang.harness.resources.plugins.registry import PluginRegistry
 from loushang.harness.resources.plugins.resolver import PluginResolver
 from loushang.harness.resources.plugins.types import (
@@ -10,6 +14,7 @@ from loushang.harness.resources.plugins.types import (
     PluginManifest,
     PluginResolvedResources,
     PluginSource,
+    ResolvedPluginPackage,
 )
 
 
@@ -58,10 +63,13 @@ __all__ = [
     "InstalledPlugin",
     "PluginManager",
     "PluginManifest",
+    "PluginManifestError",
+    "PluginManifestParser",
     "PluginRegistry",
     "PluginResolvedResources",
     "PluginResolver",
     "PluginSource",
+    "ResolvedPluginPackage",
     "is_remote_plugin_source",
     "project_installed_plugin",
     "remote_plugin_name",
