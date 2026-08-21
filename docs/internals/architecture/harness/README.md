@@ -36,6 +36,10 @@ planning, work event persistence, or AI provider behavior.
   records the completed CLA0-CLA8 convergence of Profile, Mount, Registration,
   and Extension/Resource construction authority around one publisher per owned
   live object while preserving independent fact clocks.
+- [Unified Plugin Architecture](unified-plugin-architecture.md) defines the
+  target single-path Source/Declaration/Plan/Binding/Projection system that
+  makes Coding base, LSP, Arch, OEM, and external contributions selectable
+  Plugins without replacing the typed Capability Graph or its publishers.
 - [Composition Lifecycle Authority CLA0 Baseline](composition-lifecycle-authority-cla0-baseline.md)
   retains the executable inventory shape, revised through CLA8, for current
   construction/publication owners, supported entrypoint
@@ -96,6 +100,9 @@ description.
   duplicate live construction paths. Its
   [independent review brief](composition-lifecycle-authority-review-brief.md)
   can be given to reviewers without prior conversation context.
+- [Unified Plugin Architecture](unified-plugin-architecture.md) defines one
+  manifest parser, immutable declaration and plan, owner-preserving generation
+  commit, and one effective projection for first-party and external Plugins.
 - [Composition Lifecycle Authority CLA0 Baseline](composition-lifecycle-authority-cla0-baseline.md)
   is the executable inventory for that plan, revised through CLA8 to freeze the
   single-candidate authority and forbid removed peer construction paths.
