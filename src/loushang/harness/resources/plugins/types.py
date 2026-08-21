@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-PluginRevisionKind = Literal["git_commit", "python_version", "manifest_sha256"]
+if TYPE_CHECKING:
+    from loushang.harness.resources.plugins.revisions import VerifiedRevisionHandle
+
+PluginRevisionKind = Literal[
+    "git_commit",
+    "python_version",
+    "manifest_sha256",
+    "content_sha256",
+]
 
 
 @dataclass(frozen=True)
@@ -36,9 +44,15 @@ class ResolvedPluginPackage:
     source: PluginSource
     manifest_path: Path | None = None
     manifest_digest: str | None = None
+    content_digest: str | None = None
     package_root_relative: Path = Path(".")
     root_identity: tuple[int, int] | None = None
     package_root_identity: tuple[int, int] | None = None
+    revision_handle: VerifiedRevisionHandle | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
 
 
 @dataclass(frozen=True)
@@ -54,6 +68,7 @@ class PluginSourceBinding:
     source_kind: Literal["local", "remote"]
     plugin_id: str
     manifest_digest: str | None = None
+    content_digest: str | None = None
     revision: str | None = None
     revision_kind: PluginRevisionKind | None = None
 
@@ -70,3 +85,4 @@ class InstalledPlugin:
 class PluginResolvedResources:
     plugin: InstalledPlugin
     package_roots: tuple[Path, ...]
+    revision_handle: VerifiedRevisionHandle | None = None

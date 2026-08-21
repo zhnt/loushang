@@ -26,6 +26,7 @@ from loushang.harness.resources.packages.source import (
     remote_package_name,
 )
 from loushang.harness.resources.plugins.manifest import PluginManifestError
+from loushang.harness.resources.plugins.revisions import PluginRevisionStore
 from loushang.harness.resources.plugins.types import (
     PluginRevisionKind,
     PluginSource,
@@ -372,6 +373,7 @@ class PackageMaterializer:
         check_concurrency: int = 4,
         update_check_timeout_seconds: float = 10.0,
         progress_callback: Callable[[PackageProgressEvent], None] | None = None,
+        plugin_revision_root: str | Path | None = None,
     ) -> None:
         self.install_root = Path(install_root).expanduser().resolve()
         self.lockfile_path = (
@@ -385,6 +387,11 @@ class PackageMaterializer:
             security_policy or _DenyUnconfiguredPackageSourcePolicy()
         )
         self._progress_callback = progress_callback
+        self._plugin_revision_store = PluginRevisionStore(
+            plugin_revision_root
+            if plugin_revision_root is not None
+            else self.install_root.parent / "plugin-revisions"
+        )
         self.update_concurrency = max(1, int(update_concurrency))
         self.check_concurrency = max(1, int(check_concurrency))
         self.update_check_timeout_seconds = update_check_timeout_seconds
@@ -406,6 +413,14 @@ class PackageMaterializer:
         """Atomically bind resolved descriptors without accepting Plugin renames."""
 
         return self._bind_plugin_packages(packages, allow_plugin_id_change=False)
+
+    def publish_plugin_packages(
+        self,
+        packages: Sequence[ResolvedPluginPackage],
+    ) -> tuple[ResolvedPluginPackage, ...]:
+        """Publish source descriptors as verified content-addressed revisions."""
+
+        return self._plugin_revision_store.publish_all(tuple(packages))
 
     def rebind_plugin_packages(
         self,
@@ -525,7 +540,10 @@ class PackageMaterializer:
             elif record is not None and record.resolved_version:
                 revision = record.resolved_version
                 revision_kind = "python_version"
-        if revision is None and package.manifest_digest is not None:
+        if revision is None and package.content_digest is not None:
+            revision = package.content_digest
+            revision_kind = "content_sha256"
+        elif revision is None and package.manifest_digest is not None:
             revision = package.manifest_digest
             revision_kind = "manifest_sha256"
         return PluginSourceBinding(
@@ -534,6 +552,7 @@ class PackageMaterializer:
             source_kind=source.kind,
             plugin_id=package.manifest.name,
             manifest_digest=package.manifest_digest,
+            content_digest=package.content_digest,
             revision=revision,
             revision_kind=revision_kind,
         )
@@ -1176,6 +1195,7 @@ class PackageMaterializer:
                     "sourceKind": binding.source_kind,
                     "pluginId": binding.plugin_id,
                     "manifestDigest": binding.manifest_digest,
+                    "contentDigest": binding.content_digest,
                     "revision": binding.revision,
                     "revisionKind": binding.revision_kind,
                 }
@@ -1272,15 +1292,20 @@ def _plugin_binding_from_json(value: object) -> PluginSourceBinding | None:
     if canonical_source_identity != source_identity:
         return None
     manifest_digest = value.get("manifestDigest")
+    content_digest = value.get("contentDigest")
     revision = value.get("revision")
     if (
         manifest_digest is not None
         and not isinstance(manifest_digest, str)
+        or content_digest is not None
+        and not isinstance(content_digest, str)
         or revision is not None
         and not isinstance(revision, str)
     ):
         return None
     if manifest_digest is not None and not _is_sha256_digest(manifest_digest):
+        return None
+    if content_digest is not None and not _is_sha256_digest(content_digest):
         return None
     revision_kind = value.get("revisionKind")
     if revision_kind not in {
@@ -1288,11 +1313,14 @@ def _plugin_binding_from_json(value: object) -> PluginSourceBinding | None:
         "git_commit",
         "python_version",
         "manifest_sha256",
+        "content_sha256",
     }:
         return None
     if (revision is None) != (revision_kind is None):
         return None
     if revision_kind == "manifest_sha256" and revision != manifest_digest:
+        return None
+    if revision_kind == "content_sha256" and revision != content_digest:
         return None
     return PluginSourceBinding(
         source=source,
@@ -1300,6 +1328,7 @@ def _plugin_binding_from_json(value: object) -> PluginSourceBinding | None:
         source_kind=source_kind,
         plugin_id=plugin_id,
         manifest_digest=manifest_digest,
+        content_digest=content_digest,
         revision=revision,
         revision_kind=cast(PluginRevisionKind | None, revision_kind),
     )

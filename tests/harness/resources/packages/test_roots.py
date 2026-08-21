@@ -4,14 +4,24 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.materializer import (
     PackageMaterializationRecord,
     PackageMaterializer,
     resolve_session_package_install_root,
 )
-from loushang.harness.resources.packages.roots import configure_resource_loader_roots
+from loushang.harness.resources.packages.roots import (
+    configure_resource_loader_roots,
+    resolve_package_resource_roots,
+)
 from loushang.harness.resources.packages.source import PackageSourceConfig
+from loushang.harness.resources.plugins.revisions import (
+    PluginRevisionError,
+    VerifiedRevisionHandle,
+)
 from loushang.harness.resources.plugins.types import (
     PluginSourceBinding,
     ResolvedPluginPackage,
@@ -49,9 +59,12 @@ class _Loader:
         self,
         roots: tuple[str, ...],
         filters: dict[Path, PackageSourceConfig],
+        *,
+        revision_handles: tuple[VerifiedRevisionHandle, ...] = (),
     ) -> None:
         assert filters == {}
         self.package_roots = roots
+        self.revision_handles = revision_handles
 
     def set_user_resource_roots(
         self,
@@ -173,6 +186,103 @@ def test_invalid_local_plugin_records_same_manifest_diagnostic(
     assert record.details["plugin_source"] == str(root)
 
 
+def test_configured_plugin_mount_uses_leased_content_addressed_snapshot(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "plugins" / "review-pack"
+    prompt = root / "prompts" / "review.md"
+    prompt.parent.mkdir(parents=True)
+    prompt.write_text("review v1", encoding="utf-8")
+    (root / "plugin.json").write_text(
+        json.dumps({"name": "review-pack"}),
+        encoding="utf-8",
+    )
+    loader = ResourceLoader(user_resource_roots=())
+    materializer = PackageMaterializer(install_root=tmp_path / "installed")
+
+    resolved = configure_resource_loader_roots(
+        resource_loader=loader,
+        settings_manager=_SettingsManager(
+            _Settings(package_roots=(), plugin_sources=(str(root),)),
+            tmp_path / "global",
+        ),
+        materializer=materializer,
+    )
+
+    [mounted_root] = resolved.roots
+    assert Path(mounted_root).parent.name == "sha256"
+    assert len(resolved.revision_handles) == 1
+    binding = materializer.get_plugin_binding(root)
+    assert binding is not None
+    assert binding.content_digest == resolved.revision_handles[0].content_digest
+    assert binding.revision_kind == "content_sha256"
+    prompt.write_text("review v2", encoding="utf-8")
+    bundle = loader.discover_resources(tmp_path)
+    assert [descriptor.text for descriptor in bundle.prompts] == ["review v1"]
+    handle = resolved.revision_handles[0]
+    loader.close()
+    assert handle.closed is True
+    with pytest.raises(PluginRevisionError) as caught:
+        loader.discover_resources(tmp_path)
+    assert caught.value.code == "plugin_revision_handle_closed"
+
+
+def test_resource_loader_rejects_changed_published_plugin_revision(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "plugins" / "review-pack"
+    root.mkdir(parents=True)
+    (root / "plugin.json").write_text(
+        json.dumps({"name": "review-pack"}),
+        encoding="utf-8",
+    )
+    loader = ResourceLoader(user_resource_roots=())
+    resolved = configure_resource_loader_roots(
+        resource_loader=loader,
+        settings_manager=_SettingsManager(
+            _Settings(package_roots=(), plugin_sources=(str(root),)),
+            tmp_path / "global",
+        ),
+        materializer=PackageMaterializer(install_root=tmp_path / "installed"),
+    )
+    manifest = Path(resolved.roots[0]) / "plugin.json"
+    manifest.chmod(0o644)
+    manifest.write_text(json.dumps({"name": "tampered"}), encoding="utf-8")
+
+    with pytest.raises(PluginRevisionError) as caught:
+        loader.discover_resources(tmp_path)
+
+    assert caught.value.code == "plugin_revision_changed"
+
+
+def test_unsafe_plugin_revision_diagnostic_retains_configured_source(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "plugins" / "review-pack"
+    root.mkdir(parents=True)
+    (root / "plugin.json").write_text(
+        json.dumps({"name": "review-pack"}),
+        encoding="utf-8",
+    )
+    (root / "linked.txt").symlink_to(tmp_path / "outside.txt")
+    diagnostics = DiagnosticsService()
+
+    with pytest.raises(PluginRevisionError) as caught:
+        resolve_package_resource_roots(
+            package_roots=(),
+            plugin_sources=(str(root),),
+            package_sources=(),
+            materializer=PackageMaterializer(install_root=tmp_path / "installed"),
+            diagnostics_service=diagnostics,
+            session_id="session-1",
+        )
+
+    assert caught.value.code == "unsafe_plugin_revision_entry"
+    [record] = diagnostics.get_last_diagnostics()
+    assert record.code == "unsafe_plugin_revision_entry"
+    assert record.details["plugin_source"] == str(root)
+
+
 def test_session_package_install_root_follows_session_layout(tmp_path) -> None:
     assert resolve_session_package_install_root(
         session_dir=tmp_path / "sessions",
@@ -202,3 +312,9 @@ class _InstalledMaterializer:
     ) -> tuple[PluginSourceBinding, ...]:
         del packages
         return ()
+
+    def publish_plugin_packages(
+        self,
+        packages: tuple[ResolvedPluginPackage, ...],
+    ) -> tuple[ResolvedPluginPackage, ...]:
+        return packages

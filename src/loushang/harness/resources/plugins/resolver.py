@@ -110,9 +110,18 @@ class PluginResolver:
                 code="unresolved_plugin_package",
                 path=plugin.manifest.root,
             )
+        handle = plugin.resolved_package.revision_handle
+        if handle is not None:
+            handle.verify()
         package = self._manifest_parser.revalidate(plugin.resolved_package)
+        if handle is not None:
+            handle.verify()
         package_root = package.package_root
-        return PluginResolvedResources(plugin=plugin, package_roots=(package_root,))
+        return PluginResolvedResources(
+            plugin=plugin,
+            package_roots=(package_root,),
+            revision_handle=package.revision_handle,
+        )
 
 
 def _plugin_source_from_input(source: str | Path) -> PluginSource:

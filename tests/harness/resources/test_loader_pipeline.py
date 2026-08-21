@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import MappingProxyType
 
+import pytest
+
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources._loader_pipeline import (
     _ResourceDiscoveries,
@@ -170,3 +172,38 @@ def test_resource_loader_passes_one_immutable_discovery_request(
     assert request.built_in_resource_packages == ("loushang.builtin",)
     assert request.context_file_names == ("PROJECT.md",)
     assert request.project_resource_root == workspace.resolve() / ".loushang"
+
+
+def test_resource_loader_does_not_commit_snapshot_when_revision_changes_during_discovery(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import loushang.harness.resources.loader as loader_module
+
+    class RevisionHandle:
+        def __init__(self) -> None:
+            self.verifications = 0
+            self.closed = False
+
+        def verify(self) -> None:
+            self.verifications += 1
+            if self.verifications > 1:
+                raise RuntimeError("revision changed")
+
+        def close(self) -> None:
+            self.closed = True
+
+    loader = ResourceLoader(user_resource_roots=())
+    loader.discover_resources(tmp_path)
+    previous = loader.get_resource_snapshot()
+    handle = RevisionHandle()
+    loader.set_package_roots((), revision_handles=(handle,))  # type: ignore[arg-type]
+    candidate = ResourceSnapshot(cwd=tmp_path / "candidate")
+    monkeypatch.setattr(loader_module, "_discover_snapshot", lambda request: candidate)
+
+    with pytest.raises(RuntimeError, match="revision changed"):
+        loader.discover_resources(tmp_path)
+
+    assert loader.get_resource_snapshot() is previous
+    loader.close()
+    assert handle.closed is True

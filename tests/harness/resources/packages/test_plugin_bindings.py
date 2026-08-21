@@ -43,6 +43,7 @@ def test_plugin_source_binding_survives_restart_and_rejects_implicit_rename(
     assert lockfile["version"] == 2
     assert lockfile["pluginBindings"] == [
         {
+            "contentDigest": None,
             "manifestDigest": binding.manifest_digest,
             "pluginId": "review-pack",
             "revision": binding.revision,
@@ -94,10 +95,12 @@ def test_remote_plugin_binding_uses_materialized_revision_and_normalized_source(
         ),
     )
 
-    [binding] = materializer.bind_plugin_packages((package,))
+    [published] = materializer.publish_plugin_packages((package,))
+    [binding] = materializer.bind_plugin_packages((published,))
 
     assert binding.revision == "abc123"
     assert binding.revision_kind == "git_commit"
+    assert binding.content_digest == published.content_digest
     equivalent = "git+https://github.com/acme/review-pack"
     assert materializer.get_plugin_binding(equivalent) == binding
     restored = PackageMaterializer(install_root=tmp_path / "installed")

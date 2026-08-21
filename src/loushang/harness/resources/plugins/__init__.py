@@ -9,6 +9,11 @@ from loushang.harness.resources.plugins.manifest import (
 )
 from loushang.harness.resources.plugins.registry import PluginRegistry
 from loushang.harness.resources.plugins.resolver import PluginResolver
+from loushang.harness.resources.plugins.revisions import (
+    PluginRevisionError,
+    PluginRevisionStore,
+    VerifiedRevisionHandle,
+)
 from loushang.harness.resources.plugins.types import (
     InstalledPlugin,
     PluginManifest,
@@ -68,12 +73,15 @@ __all__ = [
     "PluginManifestError",
     "PluginManifestParser",
     "PluginRegistry",
+    "PluginRevisionError",
     "PluginResolvedResources",
     "PluginRevisionKind",
+    "PluginRevisionStore",
     "PluginResolver",
     "PluginSource",
     "PluginSourceBinding",
     "ResolvedPluginPackage",
+    "VerifiedRevisionHandle",
     "is_remote_plugin_source",
     "project_installed_plugin",
     "remote_plugin_name",

@@ -20,6 +20,10 @@ from loushang.harness.resources.packages.source_resolver import (
 )
 from loushang.harness.resources.plugins import PluginManager
 from loushang.harness.resources.plugins.manifest import PluginManifestError
+from loushang.harness.resources.plugins.revisions import (
+    PluginRevisionError,
+    VerifiedRevisionHandle,
+)
 from loushang.harness.resources.plugins.types import (
     PluginSource,
     ResolvedPluginPackage,
@@ -57,6 +61,8 @@ class ResourceRootLoader(Protocol):
         self,
         package_roots: Sequence[str | Path] | None,
         package_source_filters: Mapping[str | Path, PackageSourceConfig] | None = None,
+        *,
+        revision_handles: Sequence[VerifiedRevisionHandle] = (),
     ) -> None: ...
 
     def set_user_resource_roots(
@@ -71,6 +77,11 @@ class ResourceRootLoader(Protocol):
 class ResolvedPackageResourceRoots:
     roots: tuple[str, ...] = ()
     filters: dict[Path, PackageSourceConfig] = field(default_factory=dict)
+    revision_handles: tuple[VerifiedRevisionHandle, ...] = field(
+        default=(),
+        compare=False,
+        repr=False,
+    )
 
 
 def configure_resource_loader_roots(
@@ -100,7 +111,16 @@ def configure_resource_loader_roots(
     package_source_filters: dict[str | Path, PackageSourceConfig] = {
         root: config for root, config in resolved.filters.items()
     }
-    resource_loader.set_package_roots(resolved.roots, package_source_filters)
+    try:
+        resource_loader.set_package_roots(
+            resolved.roots,
+            package_source_filters,
+            revision_handles=resolved.revision_handles,
+        )
+    except Exception:
+        for handle in resolved.revision_handles:
+            handle.close()
+        raise
     configured_global_roots = settings_manager.get_global_settings().get(
         "resource_roots",
         (),
@@ -187,53 +207,98 @@ def resolve_package_resource_roots(
             )
             continue
         resolved_plugins.append((source, package))
+    published_plugins: tuple[ResolvedPluginPackage, ...] = ()
     try:
-        materializer.bind_plugin_packages(
+        published_plugins = materializer.publish_plugin_packages(
             tuple(package for _, package in resolved_plugins)
         )
-    except PluginManifestError as exc:
+        materializer.bind_plugin_packages(published_plugins)
+    except (PluginManifestError, PluginRevisionError) as exc:
         _record_plugin_identity_diagnostic(
             diagnostics_service,
-            source=next(
-                (
-                    source
-                    for source, package in resolved_plugins
-                    if package.manifest_path == exc.path or package.root == exc.path
-                ),
-                str(exc.path),
+            source=_plugin_source_for_error(
+                resolved_plugins,
+                published_plugins,
+                error_path=exc.path,
             ),
             exc=exc,
             session_id=session_id,
         )
+        for package in published_plugins:
+            if package.revision_handle is not None:
+                package.revision_handle.close()
         raise
-    for _, package in resolved_plugins:
-        plugin = manager.add_resolved_plugin_package(package)
-        if plugin.enabled:
-            for root in manager.resolver.resolve_resources(plugin).package_roots:
-                _append_package_root(roots, root)
-    for package_source in package_sources:
-        if is_remote_package_source(package_source.source):
-            record = materializer.get_record(package_source.source)
-            if record is None or record.lifecycle != "installed":
-                continue
-            resolved_root = resolve_package_manifest(record.target_path).package_root
-        else:
-            scope = (package_source_scopes or {}).get(package_source.source)
-            resolved_root = _resolve_local_package_source(
-                package_source.source,
-                scope=scope,
-                global_base_dir=global_base_dir,
-                project_base_dir=project_base_dir,
-            )
-        _append_package_root(roots, resolved_root)
-        filters[Path(resolved_root).expanduser().resolve()] = package_source
-    return ResolvedPackageResourceRoots(roots=tuple(roots), filters=filters)
+    revision_handles = tuple(
+        package.revision_handle
+        for package in published_plugins
+        if package.revision_handle is not None
+    )
+    try:
+        for package in published_plugins:
+            plugin = manager.add_resolved_plugin_package(package)
+            if plugin.enabled:
+                resolved_resources = manager.resolver.resolve_resources(plugin)
+                for root in resolved_resources.package_roots:
+                    _append_package_root(roots, root)
+    except Exception:
+        for handle in revision_handles:
+            handle.close()
+        raise
+    try:
+        for package_source in package_sources:
+            if is_remote_package_source(package_source.source):
+                record = materializer.get_record(package_source.source)
+                if record is None or record.lifecycle != "installed":
+                    continue
+                resolved_root = resolve_package_manifest(record.target_path).package_root
+            else:
+                scope = (package_source_scopes or {}).get(package_source.source)
+                resolved_root = _resolve_local_package_source(
+                    package_source.source,
+                    scope=scope,
+                    global_base_dir=global_base_dir,
+                    project_base_dir=project_base_dir,
+                )
+            _append_package_root(roots, resolved_root)
+            filters[Path(resolved_root).expanduser().resolve()] = package_source
+    except Exception:
+        for handle in revision_handles:
+            handle.close()
+        raise
+    return ResolvedPackageResourceRoots(
+        roots=tuple(roots),
+        filters=filters,
+        revision_handles=revision_handles,
+    )
 
 
 def _append_package_root(roots: list[str], root: str | Path) -> None:
     normalized = str(Path(root).expanduser().resolve())
     if normalized not in roots:
         roots.append(normalized)
+
+
+def _plugin_source_for_error(
+    resolved_plugins: list[tuple[str, ResolvedPluginPackage]],
+    published_plugins: tuple[ResolvedPluginPackage, ...],
+    *,
+    error_path: Path,
+) -> str:
+    candidates = published_plugins or tuple(
+        package for _, package in resolved_plugins
+    )
+    for (source, _), package in zip(resolved_plugins, candidates, strict=True):
+        if _path_belongs_to(error_path, package.root):
+            return source
+    return str(error_path)
+
+
+def _path_belongs_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
 
 
 def _resolve_local_package_source(
@@ -280,7 +345,7 @@ def _record_plugin_identity_diagnostic(
     diagnostics_service: DiagnosticsService | None,
     *,
     source: str,
-    exc: PluginManifestError,
+    exc: PluginManifestError | PluginRevisionError,
     session_id: str | None,
 ) -> None:
     if diagnostics_service is None:

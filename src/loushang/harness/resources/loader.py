@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -38,6 +39,7 @@ from loushang.harness.resources.types import (
 
 if TYPE_CHECKING:
     from loushang.harness.resources.packages.source import PackageSourceConfig
+    from loushang.harness.resources.plugins.revisions import VerifiedRevisionHandle
 
 SystemPromptAssembler = Callable[[str | None, ResourceBundle], str | None]
 
@@ -72,6 +74,13 @@ def _resolve_prompt_input(source: str | None, *, cwd: Path) -> str | None:
         return candidate.read_text(encoding="utf-8")
     except OSError:
         return source
+
+
+def _verify_plugin_revisions(
+    handles: Sequence[VerifiedRevisionHandle],
+) -> None:
+    for handle in handles:
+        handle.verify()
 
 
 @dataclass(frozen=True)
@@ -130,6 +139,7 @@ class ResourceLoader:
     ) -> None:
         self._snapshot: ResourceSnapshot | None = None
         self._package_roots = _normalize_package_roots(package_roots)
+        self._plugin_revision_handles: tuple[VerifiedRevisionHandle, ...] = ()
         self._package_source_filters = _normalize_package_source_filters(
             package_source_filters
         )
@@ -180,11 +190,23 @@ class ResourceLoader:
         self,
         package_roots: Sequence[str | Path] | None,
         package_source_filters: Mapping[str | Path, PackageSourceConfig] | None = None,
+        *,
+        revision_handles: Sequence[VerifiedRevisionHandle] = (),
     ) -> None:
-        self._package_roots = _normalize_package_roots(package_roots)
-        self._package_source_filters = _normalize_package_source_filters(
+        normalized_roots = _normalize_package_roots(package_roots)
+        normalized_filters = _normalize_package_source_filters(
             package_source_filters
         )
+        next_handles = tuple(revision_handles)
+        _verify_plugin_revisions(next_handles)
+        previous_handles = self._plugin_revision_handles
+        self._package_roots = normalized_roots
+        self._package_source_filters = normalized_filters
+        self._plugin_revision_handles = next_handles
+        retained = {id(handle) for handle in next_handles}
+        for handle in previous_handles:
+            if id(handle) not in retained:
+                handle.close()
 
     def set_user_resource_roots(
         self,
@@ -255,6 +277,7 @@ class ResourceLoader:
         self._append_system_prompt_sources = tuple(append_system_prompt or ())
 
     def discover_resources(self, cwd: str | Path) -> ResourceBundle:
+        _verify_plugin_revisions(self._plugin_revision_handles)
         target = Path(cwd)
         workspace_root = self._workspace_root or target
         project_resource_root = (
@@ -282,6 +305,7 @@ class ResourceLoader:
             project_resource_root=project_resource_root,
         )
         snapshot = _discover_snapshot(request)
+        _verify_plugin_revisions(self._plugin_revision_handles)
         self._snapshot = snapshot
         self._resolved_system_prompt = _resolve_prompt_input(
             self._system_prompt_source, cwd=Path(cwd)
@@ -292,6 +316,14 @@ class ResourceLoader:
             if (resolved := _resolve_prompt_input(source, cwd=Path(cwd))) is not None
         )
         return snapshot.to_bundle()
+
+    def close(self) -> None:
+        for handle in self._plugin_revision_handles:
+            handle.close()
+
+    def __del__(self) -> None:
+        with suppress(Exception):
+            self.close()
 
     def reload_resources(self, cwd: str | Path | None = None) -> ResourceBundle:
         if cwd is not None:
