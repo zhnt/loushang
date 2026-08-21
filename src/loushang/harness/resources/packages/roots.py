@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Protocol
 
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources.layout import resolve_user_resource_roots
 from loushang.harness.resources.packages.manifest import resolve_package_manifest
 from loushang.harness.resources.packages.materializer import PackageMaterializer
@@ -149,6 +150,12 @@ def resolve_package_resource_roots(
                 )
                 package = manifest.resolved_plugin_package
                 if package is None:
+                    _record_plugin_manifest_diagnostics(
+                        diagnostics_service,
+                        source=source,
+                        diagnostics=manifest.diagnostics,
+                        session_id=session_id,
+                    )
                     continue
                 plugin = manager.add_resolved_plugin_package(package)
                 if plugin.enabled:
@@ -230,4 +237,37 @@ def _record_plugin_source_diagnostic(
         level="warning",
         session_id=session_id,
         details={"plugin_source": source, "exception_type": type(exc).__name__},
+    )
+
+
+def _record_plugin_manifest_diagnostics(
+    diagnostics_service: DiagnosticsService | None,
+    *,
+    source: str,
+    diagnostics: tuple[dict[str, object], ...],
+    session_id: str | None,
+) -> None:
+    if diagnostics_service is None:
+        return
+    drafts: list[DiagnosticDraft] = []
+    for diagnostic in diagnostics:
+        code = diagnostic.get("code")
+        message = diagnostic.get("message")
+        path = diagnostic.get("path")
+        if not isinstance(code, str) or not isinstance(message, str):
+            continue
+        drafts.append(
+            DiagnosticDraft(
+                code=code,
+                message=message,
+                source_path=Path(path) if isinstance(path, str) else None,
+                details={"plugin_source": source},
+            )
+        )
+    diagnostics_service.record_drafts(
+        drafts,
+        phase="startup",
+        source="package",
+        session_id=session_id,
+        level="warning",
     )

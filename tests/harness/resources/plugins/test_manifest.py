@@ -203,6 +203,97 @@ def test_plugin_manifest_parser_rejects_non_boolean_enabled(
     assert caught.value.code == "invalid_plugin_manifest"
 
 
+@pytest.mark.parametrize("field", ["name", "version"])
+@pytest.mark.parametrize("value", [7, "", "   ", None, [], {}])
+def test_plugin_manifest_parser_rejects_invalid_identity_fields(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    root = tmp_path / "review-pack"
+    root.mkdir()
+    (root / "plugin.json").write_text(
+        json.dumps({field: value}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PluginManifestError) as caught:
+        PluginManifestParser().parse(root)
+
+    assert caught.value.code == "invalid_plugin_manifest"
+
+
+def test_plugin_manifest_parser_rejects_conflicting_package_root_aliases(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "review-pack"
+    root.mkdir()
+    (root / "plugin.json").write_text(
+        json.dumps({"packageRoot": "one", "package_root": "two"}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PluginManifestError) as caught:
+        PluginManifestParser().parse(root)
+
+    assert caught.value.code == "invalid_plugin_manifest"
+
+
+def test_plugin_manifest_parser_normalizes_compatible_package_root_alias(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "review-pack"
+    resources = root / "resources"
+    resources.mkdir(parents=True)
+    (root / "plugin.json").write_text(
+        json.dumps({"package_root": "resources"}),
+        encoding="utf-8",
+    )
+
+    resolved = PluginManifestParser().parse(root)
+
+    assert resolved.package_root == resources.resolve()
+    assert resolved.manifest.metadata == {"packageRoot": "resources"}
+
+
+def test_package_manifest_view_projects_package_root_symlink_loop_as_diagnostic(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "review-pack"
+    root.mkdir()
+    (root / "loop").symlink_to("loop")
+    manifest_path = root / "plugin.json"
+    manifest_path.write_text(
+        json.dumps({"name": "review-pack", "packageRoot": "loop"}),
+        encoding="utf-8",
+    )
+
+    resolved = resolve_package_manifest(root)
+
+    assert resolved.resolved_plugin_package is None
+    assert resolved.manifest_path == manifest_path.resolve()
+    assert resolved.diagnostics[0]["code"] == "invalid_package_manifest"
+
+
+def test_resource_package_view_projects_package_root_symlink_loop_as_diagnostic(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "resource-pack"
+    root.mkdir()
+    (root / "loop").symlink_to("loop")
+    manifest_path = root / "loushang-package.json"
+    manifest_path.write_text(
+        json.dumps({"name": "resource-pack", "packageRoot": "loop"}),
+        encoding="utf-8",
+    )
+
+    resolved = resolve_package_manifest(root)
+
+    assert resolved.package_root == root.resolve()
+    assert resolved.manifest_path == manifest_path.resolve()
+    assert resolved.diagnostics[0]["code"] == "invalid_package_manifest"
+
+
 def test_package_manifest_view_projects_canonical_plugin_parser_error(
     tmp_path: Path,
 ) -> None:

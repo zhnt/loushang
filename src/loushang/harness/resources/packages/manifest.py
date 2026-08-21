@@ -177,7 +177,15 @@ def _package_root_from_manifest(
                 manifest_path, "Package packageRoot must be relative."
             ),
         )
-    resolved = (root / relative).resolve()
+    try:
+        resolved = (root / relative).resolve()
+    except (OSError, RuntimeError) as exc:
+        return root, (
+            _invalid_package_root_diagnostic(
+                manifest_path,
+                f"Package packageRoot could not be resolved: {exc}",
+            ),
+        )
     try:
         resolved.relative_to(root)
     except ValueError:

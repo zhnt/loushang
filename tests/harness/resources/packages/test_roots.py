@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.resources.packages.materializer import (
     PackageMaterializationRecord,
     PackageMaterializer,
@@ -105,6 +106,37 @@ def test_materialized_remote_plugin_disabled_by_manifest_is_not_mounted(
     )
 
     assert resolved.roots == ()
+
+
+def test_invalid_materialized_remote_plugin_records_manifest_diagnostic(
+    tmp_path: Path,
+) -> None:
+    from loushang.harness.resources.packages.roots import (
+        resolve_package_resource_roots,
+    )
+
+    source = "https://packages.example.invalid/review-pack.git"
+    root = tmp_path / "packages" / "review-pack"
+    root.mkdir(parents=True)
+    manifest_path = root / "plugin.json"
+    manifest_path.write_text(json.dumps({"name": 7}), encoding="utf-8")
+    materializer = _InstalledMaterializer(source=source, target_path=root)
+    diagnostics = DiagnosticsService()
+
+    resolved = resolve_package_resource_roots(
+        package_roots=(),
+        plugin_sources=(source,),
+        package_sources=(),
+        materializer=materializer,  # type: ignore[arg-type]
+        diagnostics_service=diagnostics,
+        session_id="session-1",
+    )
+
+    assert resolved.roots == ()
+    [record] = diagnostics.get_last_diagnostics()
+    assert record.code == "invalid_package_manifest"
+    assert record.source_path == manifest_path.resolve()
+    assert record.details["plugin_source"] == source
 
 
 def test_session_package_install_root_follows_session_layout(tmp_path) -> None:

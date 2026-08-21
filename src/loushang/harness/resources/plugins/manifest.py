@@ -31,7 +31,15 @@ class PluginManifestParser:
         *,
         source: PluginSource | None = None,
     ) -> ResolvedPluginPackage:
-        resolved_root = Path(root).expanduser().resolve()
+        unresolved_root = Path(root).expanduser()
+        try:
+            resolved_root = unresolved_root.resolve()
+        except (OSError, RuntimeError) as exc:
+            raise PluginManifestError(
+                f"Plugin source path could not be resolved: {unresolved_root}: {exc}",
+                code="invalid_plugin_manifest",
+                path=unresolved_root,
+            ) from exc
         if not resolved_root.is_dir():
             raise FileNotFoundError(
                 f"Plugin source is not a directory: {resolved_root}"
@@ -92,13 +100,26 @@ class PluginManifestParser:
             payload,
         )
         enabled = _enabled_value(payload, resolved_manifest_path)
+        name = _manifest_string(
+            payload,
+            "name",
+            resolved_manifest_path,
+            default=resolved_root.name,
+        )
+        version = _manifest_string(
+            payload,
+            "version",
+            resolved_manifest_path,
+            default=None,
+        )
+        assert name is not None
         manifest = PluginManifest(
-            name=_string_value(payload.get("name")) or resolved_root.name,
+            name=name,
             root=resolved_root,
-            version=_string_value(payload.get("version")),
+            version=version,
             enabled=enabled,
             package_root=package_root,
-            metadata=_freeze_mapping(payload),
+            metadata=_canonical_metadata(payload, name=name, version=version),
         )
         return ResolvedPluginPackage(
             root=resolved_root,
@@ -159,7 +180,14 @@ class PluginManifestParser:
                 )
 
         candidate = package.root / package.package_root_relative
-        resolved_candidate = candidate.resolve()
+        try:
+            resolved_candidate = candidate.resolve()
+        except (OSError, RuntimeError) as exc:
+            raise PluginManifestError(
+                f"Plugin packageRoot could not be revalidated: {candidate}: {exc}",
+                code="plugin_package_changed",
+                path=candidate,
+            ) from exc
         try:
             resolved_candidate.relative_to(package.root)
         except ValueError:
@@ -198,7 +226,23 @@ def _package_root(
     manifest_path: Path,
     payload: Mapping[str, object],
 ) -> tuple[Path, Path]:
-    value = payload.get("packageRoot", payload.get("package_root", "."))
+    camel_present = "packageRoot" in payload
+    snake_present = "package_root" in payload
+    if (
+        camel_present
+        and snake_present
+        and payload["packageRoot"] != payload["package_root"]
+    ):
+        raise PluginManifestError(
+            f"Plugin packageRoot aliases must have the same value: {manifest_path}",
+            code="invalid_plugin_manifest",
+            path=manifest_path,
+        )
+    value = (
+        payload["packageRoot"]
+        if camel_present
+        else payload.get("package_root", ".")
+    )
     if value in (None, ""):
         return root, Path(".")
     if not isinstance(value, str):
@@ -214,7 +258,14 @@ def _package_root(
             code="invalid_plugin_manifest",
             path=manifest_path,
         )
-    resolved = (root / relative).resolve()
+    try:
+        resolved = (root / relative).resolve()
+    except (OSError, RuntimeError) as exc:
+        raise PluginManifestError(
+            f"Plugin packageRoot could not be resolved: {manifest_path}: {exc}",
+            code="invalid_plugin_manifest",
+            path=manifest_path,
+        ) from exc
     try:
         resolved.relative_to(root)
     except ValueError as exc:
@@ -256,11 +307,47 @@ def _raise_changed(path: Path, message: str) -> None:
     )
 
 
-def _string_value(value: object) -> str | None:
+def _manifest_string(
+    payload: Mapping[str, object],
+    field: str,
+    manifest_path: Path,
+    *,
+    default: str | None,
+) -> str | None:
+    if field not in payload:
+        return default
+    value = payload[field]
     if not isinstance(value, str):
-        return None
+        raise PluginManifestError(
+            f"Plugin {field} must be a non-empty string: {manifest_path}",
+            code="invalid_plugin_manifest",
+            path=manifest_path,
+        )
     normalized = value.strip()
-    return normalized or None
+    if not normalized:
+        raise PluginManifestError(
+            f"Plugin {field} must be a non-empty string: {manifest_path}",
+            code="invalid_plugin_manifest",
+            path=manifest_path,
+        )
+    return normalized
+
+
+def _canonical_metadata(
+    payload: Mapping[str, object],
+    *,
+    name: str,
+    version: str | None,
+) -> Mapping[str, object]:
+    normalized = dict(payload)
+    if "name" in normalized:
+        normalized["name"] = name
+    if "version" in normalized:
+        normalized["version"] = version
+    if "package_root" in normalized:
+        alias = normalized.pop("package_root")
+        normalized.setdefault("packageRoot", alias)
+    return _freeze_mapping(normalized)
 
 
 def _freeze_mapping(value: Mapping[str, object]) -> Mapping[str, object]:
