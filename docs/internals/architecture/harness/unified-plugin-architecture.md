@@ -1147,9 +1147,9 @@ object, and one effective projection path.
 | Area | Current Loushang position | Remaining gap or deliberate difference |
 | --- | --- | --- |
 | Typed Capability composition | Strong Planner/Binder/Runtime/Projector and exact registration ownership | Add owner eligibility/final admission, Product closure selection and owner-defined internal components; mount `coding.lsp` and `coding.arch` without Profile slots |
-| Package resolution | One manifest descriptor/parser and `PluginResolutionAuthority`; runtime sources publish verified revisions with a digest-bound materialized dependency closure before atomic durable binding, while CLI/Catalog inventory inspection remains read-only | Executable-host closure enforcement and retirement of registry-only compatibility APIs |
+| Package resolution | `ResolvedPluginPackage`, `VerifiedPluginRevision`, and `PublishedPluginPackage` make parse/revision/runtime states distinct; `PluginResolutionAuthority` publishes dependency-locked revisions before atomic durable binding, while CLI/Catalog inspection remains read-only | Executable-host closure enforcement and final removal of module-level compatibility adapters |
 | Plugin lifecycle | Enablement projects one `PackageResourceMount`; Resource discovery leases and revalidates verified revisions while owner lifecycles remain separate | Unified selection/provenance and retirement aggregation without replacing owners |
-| Declarations | Manifest and executable Extension registrations converge late | Versioned mutually exclusive IR and compatibility capture adapter |
+| Declarations | A strict v1 inert `ContributionIndex`, serializable `PluginDeclaration`, approval subject, and one-use `PluginSelectionResolver.preflight/finalize` slice exists for synthetic `capability_provider` candidates | Remaining declaration kinds, durable Approval-owner decision consumption, Extension capture adapter, and owner admission/binding |
 | Profiles/composition | Product/OEM Runtime Profiles already exist | Composition Sets compile once into a derived Product plan or existing authorized external layers, never a peer Profile |
 | Events/hooks | Extension routing exists | Owner-qualified catalog, transactional outbox/cold-read schema policy, explicit dispatch modes and public SDK |
 | Agent definitions | Agent runtime/session composition exists | First-class `agent_definition` contribution and Product Agent Host admission/persistence |
@@ -1179,8 +1179,27 @@ derived digest, while v2 remains readable only for explicit verified upgrade.
 This lock is distribution evidence, not a Capability dependency graph or
 permission to import. Startup roots, Package Catalog projection, Package
 manifest compatibility projection, and CLI Plugin listing use this seam.
-`PluginManager.add_plugin_source()` remains only as a registry-only
-compatibility adapter; it is not a production runtime admission path.
+`PluginManager` remains only as a non-runnable inventory compatibility adapter
+and `PluginResolver.resolve_resources()` rejects runtime use. Neither is
+exported from the public Plugin package surface; the module-level adapters
+remain temporarily importable for migration tests only.
+
+The first UPA2 slice is deliberately inert and narrow. A strict
+`contributionIndex` v1 currently reserves only synthetic
+`capability_provider`/`in_process` declarations. It validates contained static
+entrypoint locators and JSON-only security configuration without importing the
+entrypoint. `PluginSelectionResolver.preflight()` exact-matches published
+packages, durable source bindings, Product/scope/policy selection, trust facts,
+authority ceilings, and digest-bound execution decisions.
+`finalize()` consumes its reservation token exactly once, requires one matching
+strict `PluginDeclaration` per selected reservation, and emits a deterministic
+candidate fingerprint over the revision, dependency lock, approval subject,
+declaration, Product, scope, and policy facts. Unused reservations have an
+explicit rollback path, and the execution approval subject is itself versioned.
+This slice does not load the entrypoint, consume a durable Approval-owner
+decision, admit a Capability,
+construct a Provider, or publish a Graph. Those remain UPA2/UPA3 work rather
+than being inferred from a positive preflight.
 
 ## Delivery Sequence
 

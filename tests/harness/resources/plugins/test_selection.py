@@ -1,0 +1,292 @@
+from __future__ import annotations
+
+import json
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+
+from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.plugins.authority import (
+    PluginResolutionAuthority,
+    PluginRuntimeResolution,
+)
+from loushang.harness.resources.plugins.declarations import PluginDeclaration
+from loushang.harness.resources.plugins.selection import (
+    PluginContributionRef,
+    PluginExecutionDecisionRecord,
+    PluginSelectionError,
+    PluginSelectionPlan,
+    PluginSelectionResolver,
+    PluginSourceTrust,
+    build_execution_approval_subject,
+)
+from loushang.harness.resources.plugins.types import PluginSource
+
+
+def test_preflight_and_finalize_are_inert_and_reservations_are_one_use(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    package = runtime.packages[0]
+    binding = runtime.bindings[0]
+    contribution = package.contribution_index.items[0]
+    plan = _plan(binding.source_identity)
+    subject = build_execution_approval_subject(
+        package,
+        contribution,
+        plan=plan,
+        source_trust=plan.source_trust[0],
+        binding=binding,
+    )
+    changed_subject = build_execution_approval_subject(
+        package,
+        contribution,
+        plan=replace(plan, policy_revision="policy-2"),
+        source_trust=plan.source_trust[0],
+        binding=binding,
+    )
+    assert changed_subject.digest != subject.digest
+    decision = PluginExecutionDecisionRecord(
+        decision_id="decision-1",
+        subject_digest=subject.digest,
+        policy_revision=plan.policy_revision,
+        disposition="approved",
+    )
+    resolver = PluginSelectionResolver()
+
+    preflight = resolver.preflight(
+        runtime.packages,
+        bindings=runtime.bindings,
+        plan=plan,
+        decisions=(decision,),
+    )
+    declaration = PluginDeclaration(
+        plugin_id="review-pack",
+        contribution_id="review-provider",
+        kind="capability_provider",
+        owner="coding.lsp",
+        reservation_fingerprint=contribution.fingerprint,
+        payload={
+            "capabilityId": "coding.lsp",
+            "providerId": "review-lsp",
+            "version": "1",
+        },
+    )
+    assert PluginDeclaration.from_dict(declaration.to_dict()) == declaration
+
+    selection = resolver.finalize(preflight, (declaration,))
+
+    assert len(selection.candidates) == 1
+    assert selection.candidates[0].decision_id == "decision-1"
+    assert len(selection.candidates[0].fingerprint) == 64
+    assert (package.root / "imported.txt").exists() is False
+    with pytest.raises(PluginSelectionError) as caught:
+        resolver.finalize(preflight, (declaration,))
+    assert caught.value.code == "plugin_preflight_consumed"
+
+    rolled_back = resolver.preflight(
+        runtime.packages,
+        bindings=runtime.bindings,
+        plan=plan,
+        decisions=(decision,),
+    )
+    resolver.rollback(rolled_back)
+    with pytest.raises(PluginSelectionError) as caught:
+        resolver.finalize(rolled_back, (declaration,))
+    assert caught.value.code == "plugin_preflight_consumed"
+    runtime.close()
+
+
+def test_preflight_rejects_disabled_plugin_without_importing_code(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path, enabled=False)
+    binding = runtime.bindings[0]
+    resolver = PluginSelectionResolver()
+
+    with pytest.raises(PluginSelectionError) as caught:
+        resolver.preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=_plan(binding.source_identity),
+            decisions=(),
+        )
+
+    assert caught.value.code == "selected_plugin_disabled"
+    assert (runtime.packages[0].root / "imported.txt").exists() is False
+    runtime.close()
+
+
+def test_preflight_requires_exact_approval_subject_and_binding(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    package = runtime.packages[0]
+    binding = runtime.bindings[0]
+    plan = _plan(binding.source_identity)
+    contribution = package.contribution_index.items[0]
+    subject = build_execution_approval_subject(
+        package,
+        contribution,
+        plan=plan,
+        source_trust=plan.source_trust[0],
+        binding=binding,
+    )
+    stale_decision = PluginExecutionDecisionRecord(
+        decision_id="stale",
+        subject_digest=subject.digest,
+        policy_revision="policy-previous",
+        disposition="approved",
+    )
+
+    with pytest.raises(PluginSelectionError) as caught:
+        PluginSelectionResolver().preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=plan,
+            decisions=(),
+        )
+    assert caught.value.code == "plugin_execution_approval_required"
+
+    with pytest.raises(PluginSelectionError) as caught:
+        PluginSelectionResolver().preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=plan,
+            decisions=(stale_decision,),
+        )
+    assert caught.value.code == "plugin_execution_denied"
+
+    with pytest.raises(PluginSelectionError) as caught:
+        PluginSelectionResolver().preflight(
+            runtime.packages,
+            bindings=(),
+            plan=plan,
+            decisions=(),
+        )
+    assert caught.value.code == "plugin_selection_package_mismatch"
+    assert (package.root / "imported.txt").exists() is False
+    runtime.close()
+
+
+def test_finalize_fails_closed_on_missing_or_changed_declaration(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    package = runtime.packages[0]
+    binding = runtime.bindings[0]
+    plan = _plan(binding.source_identity)
+    contribution = package.contribution_index.items[0]
+    subject = build_execution_approval_subject(
+        package,
+        contribution,
+        plan=plan,
+        source_trust=plan.source_trust[0],
+        binding=binding,
+    )
+    decision = PluginExecutionDecisionRecord(
+        decision_id="decision-1",
+        subject_digest=subject.digest,
+        policy_revision=plan.policy_revision,
+        disposition="approved",
+    )
+    resolver = PluginSelectionResolver()
+    preflight = resolver.preflight(
+        runtime.packages,
+        bindings=runtime.bindings,
+        plan=plan,
+        decisions=(decision,),
+    )
+
+    with pytest.raises(PluginSelectionError) as caught:
+        resolver.finalize(preflight, ())
+    assert caught.value.code == "plugin_declaration_reservation_mismatch"
+    with pytest.raises(PluginSelectionError) as caught:
+        resolver.finalize(preflight, ())
+    assert caught.value.code == "plugin_preflight_consumed"
+    runtime.close()
+
+
+def test_declaration_ir_rejects_callable_payload() -> None:
+    with pytest.raises(ValueError):
+        PluginDeclaration(
+            plugin_id="review-pack",
+            contribution_id="review-provider",
+            kind="capability_provider",
+            owner="coding.lsp",
+            reservation_fingerprint="a" * 64,
+            payload={"factory": lambda: None},
+        )
+    with pytest.raises(ValueError):
+        PluginDeclaration.from_dict(
+            {
+                "pluginId": "review-pack",
+                "contributionId": "review-provider",
+                "kind": "capability_provider",
+                "owner": "coding.lsp",
+                "reservationFingerprint": "a" * 64,
+                "payload": {},
+                "irVersion": 1,
+                "unknown": True,
+            }
+        )
+
+
+def _runtime(tmp_path: Path, *, enabled: bool = True) -> PluginRuntimeResolution:
+    root = tmp_path / "review-pack"
+    root.mkdir()
+    (root / "provider.py").write_text(
+        "from pathlib import Path\n"
+        "Path(__file__).with_name('imported.txt').write_text('imported')\n",
+        encoding="utf-8",
+    )
+    (root / "plugin.json").write_text(
+        json.dumps(
+            {
+                "name": "review-pack",
+                "enabled": enabled,
+                "contributionIndex": {
+                    "version": 1,
+                    "items": [
+                        {
+                            "id": "review-provider",
+                            "kind": "capability_provider",
+                            "owner": "coding.lsp",
+                            "entrypoint": "provider.py:declare",
+                            "executionModel": "in_process",
+                            "requestedAuthorities": ["process"],
+                            "configuration": {"mode": "review"},
+                            "required": True,
+                        }
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    authority = PluginResolutionAuthority()
+    inspection = authority.inspect(PluginSource(path=root))
+    materializer = PackageMaterializer(install_root=tmp_path / "installed")
+    return authority.publish_runtime((inspection,), binding_store=materializer)
+
+
+def _plan(source_identity: str) -> PluginSelectionPlan:
+    return PluginSelectionPlan(
+        product_id="coding",
+        scope_id="workspace:test",
+        policy_revision="policy-1",
+        selected_plugin_ids=("review-pack",),
+        selected_contributions=(
+            PluginContributionRef("review-pack", "review-provider"),
+        ),
+        source_trust=(
+            PluginSourceTrust(
+                plugin_id="review-pack",
+                source_identity=source_identity,
+                trust_class="host-equivalent-local",
+                trusted=True,
+            ),
+        ),
+        allowed_authorities=("process",),
+    )

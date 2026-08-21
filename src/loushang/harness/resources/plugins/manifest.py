@@ -6,6 +6,7 @@ from hashlib import sha256
 from pathlib import Path
 from types import MappingProxyType
 
+from loushang.harness.resources.plugins.declarations import PluginContributionIndex
 from loushang.harness.resources.plugins.types import (
     PluginManifest,
     PluginSource,
@@ -113,6 +114,11 @@ class PluginManifestParser:
             default=None,
         )
         assert name is not None
+        contribution_index = _contribution_index(
+            payload,
+            root=resolved_root,
+            manifest_path=resolved_manifest_path,
+        )
         manifest = PluginManifest(
             name=name,
             root=resolved_root,
@@ -131,6 +137,7 @@ class PluginManifestParser:
             package_root_relative=package_root_relative,
             root_identity=root_identity,
             package_root_identity=_path_identity(package_root),
+            contribution_index=contribution_index,
         )
 
     def revalidate(self, package: ResolvedPluginPackage) -> ResolvedPluginPackage:
@@ -354,6 +361,55 @@ def _canonical_metadata(
         alias = normalized.pop("package_root")
         normalized.setdefault("packageRoot", alias)
     return _freeze_mapping(normalized)
+
+
+def _contribution_index(
+    payload: Mapping[str, object],
+    *,
+    root: Path,
+    manifest_path: Path,
+) -> PluginContributionIndex:
+    value = payload.get("contributionIndex")
+    if value is None:
+        return PluginContributionIndex()
+    try:
+        index = PluginContributionIndex.from_dict(value)
+    except (TypeError, ValueError) as exc:
+        raise PluginManifestError(
+            f"Invalid Plugin contribution index: {manifest_path}: {exc}",
+            code="invalid_plugin_contribution_index",
+            path=manifest_path,
+        ) from exc
+    for reservation in index.items:
+        logical_path = Path(*reservation.entrypoint_path.parts)
+        candidate = root / logical_path
+        try:
+            resolved = candidate.resolve(strict=True)
+            resolved.relative_to(root)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise PluginManifestError(
+                "Plugin contribution entrypoint must stay inside the package: "
+                f"{candidate}",
+                code="invalid_plugin_contribution_entrypoint",
+                path=candidate,
+            ) from exc
+        if not resolved.is_file() or _path_uses_symlink(root, logical_path):
+            raise PluginManifestError(
+                "Plugin contribution entrypoint must be a contained regular file: "
+                f"{candidate}",
+                code="invalid_plugin_contribution_entrypoint",
+                path=candidate,
+            )
+    return index
+
+
+def _path_uses_symlink(root: Path, relative: Path) -> bool:
+    current = root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            return True
+    return False
 
 
 def _freeze_mapping(value: Mapping[str, object]) -> Mapping[str, object]:

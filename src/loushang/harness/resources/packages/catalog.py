@@ -206,9 +206,7 @@ class PackageCatalogBuilder:
             if package is not None and not manifest_diagnostics
             else None
         )
-        if plugin is not None and plugin.enabled:
-            package_root = plugin_authority.resolve_resources(plugin).package_roots[0]
-        elif package is not None:
+        if package is not None:
             package_root = package.package_root
         else:
             package_root = configured_root
@@ -298,12 +296,7 @@ class PackageCatalogBuilder:
         enabled = plugin.enabled if plugin is not None else installed
         if plugin_authority is not None and plugin is None:
             enabled = False
-        if plugin is not None and plugin.enabled:
-            assert plugin_authority is not None
-            resolved_resources = plugin_authority.resolve_resources(plugin)
-            summary_root = resolved_resources.package_roots[0]
-        else:
-            summary_root = manifest_package_root if path is not None else manifest_root
+        summary_root = manifest_package_root if path is not None else manifest_root
         summary = (
             empty_package_summary(summary_root)
             if path is None or not enabled or not summary_root.is_dir()

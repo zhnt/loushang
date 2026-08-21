@@ -128,7 +128,7 @@ def test_plugin_binding_rejects_unpublished_mutable_descriptor(
     with pytest.raises(PluginManifestError) as caught:
         materializer.bind_plugin_packages((_descriptor(root),))
 
-    assert caught.value.code == "unverified_plugin_revision"
+    assert caught.value.code == "unpublished_plugin_package"
     assert materializer.get_plugin_binding(root) is None
     assert materializer.lockfile_path.exists() is False
 

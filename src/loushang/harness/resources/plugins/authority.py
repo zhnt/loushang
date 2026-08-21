@@ -13,7 +13,9 @@ from loushang.harness.resources.plugins.types import (
     PluginResolvedResources,
     PluginSource,
     PluginSourceBinding,
+    PublishedPluginPackage,
     ResolvedPluginPackage,
+    VerifiedPluginRevision,
 )
 
 
@@ -29,11 +31,11 @@ class PluginBindingStore(Protocol):
     def publish_plugin_packages(
         self,
         packages: Sequence[ResolvedPluginPackage],
-    ) -> tuple[ResolvedPluginPackage, ...]: ...
+    ) -> tuple[PublishedPluginPackage, ...]: ...
 
     def bind_plugin_packages(
         self,
-        packages: Sequence[ResolvedPluginPackage],
+        packages: Sequence[PublishedPluginPackage],
     ) -> tuple[PluginSourceBinding, ...]: ...
 
 
@@ -77,7 +79,7 @@ class PluginInspection:
 
 @dataclass(frozen=True)
 class PluginRuntimeResolution:
-    packages: tuple[ResolvedPluginPackage, ...]
+    packages: tuple[PublishedPluginPackage, ...]
     plugins: tuple[InstalledPlugin, ...]
     bindings: tuple[PluginSourceBinding, ...]
 
@@ -85,7 +87,7 @@ class PluginRuntimeResolution:
         closed: set[int] = set()
         for package in self.packages:
             handle = package.revision_handle
-            if handle is not None and id(handle) not in closed:
+            if id(handle) not in closed:
                 handle.close()
                 closed.add(id(handle))
 
@@ -106,10 +108,6 @@ class PluginResolutionAuthority:
     ) -> None:
         self._resolver = resolver or PluginResolver()
         self._disabled_plugins = frozenset(disabled_plugins)
-
-    @property
-    def resolver(self) -> PluginResolver:
-        return self._resolver
 
     def inspect(
         self,
@@ -183,7 +181,7 @@ class PluginResolutionAuthority:
             assert inspection.package is not None
             packages.append(inspection.package)
 
-        published: tuple[ResolvedPluginPackage, ...] = ()
+        published: tuple[PublishedPluginPackage, ...] = ()
         try:
             published = tuple(binding_store.publish_plugin_packages(packages))
             _assert_published_lineage(tuple(packages), published)
@@ -202,7 +200,7 @@ class PluginResolutionAuthority:
         )
 
     def resolve_resources(self, plugin: InstalledPlugin) -> PluginResolvedResources:
-        return self._resolver.resolve_resources(plugin)
+        return self._resolver._resolve_published_resources(plugin)
 
 
 def _failed_inspection(
@@ -242,7 +240,7 @@ def _source_path(source: PluginSource) -> Path:
 
 def _assert_published_lineage(
     inspected: tuple[ResolvedPluginPackage, ...],
-    published: tuple[ResolvedPluginPackage, ...],
+    published: tuple[PublishedPluginPackage, ...],
 ) -> None:
     if len(inspected) != len(published):
         path = inspected[0].root if inspected else Path()
@@ -252,36 +250,48 @@ def _assert_published_lineage(
             path=path,
         )
     for before, after in zip(inspected, published, strict=True):
-        if before.source != after.source or before.manifest.name != after.manifest.name:
+        before_manifest = before.manifest
+        after_manifest = after.manifest
+        if (
+            before.source != after.source
+            or before_manifest.name != after_manifest.name
+            or before_manifest.version != after_manifest.version
+            or before_manifest.enabled != after_manifest.enabled
+            or before_manifest.metadata != after_manifest.metadata
+            or before.manifest_digest != after.manifest_digest
+            or before.package_root_relative != after.package_root_relative
+            or before.contribution_index != after.contribution_index
+        ):
             raise PluginManifestError(
-                "Plugin revision publisher changed source or Plugin identity: "
+                "Plugin revision publisher changed resolved Plugin semantics: "
                 f"{before.root}",
                 code="invalid_plugin_revision_publication",
                 path=before.root,
             )
 
 
-def _close_packages(packages: Sequence[ResolvedPluginPackage]) -> None:
+def _close_packages(packages: Sequence[object]) -> None:
     closed: set[int] = set()
     for package in packages:
+        if not isinstance(package, VerifiedPluginRevision):
+            continue
         handle = package.revision_handle
-        if handle is not None and id(handle) not in closed:
+        if id(handle) not in closed:
             handle.close()
             closed.add(id(handle))
 
 
 def _verify_published_packages(
-    packages: Sequence[ResolvedPluginPackage],
+    packages: Sequence[PublishedPluginPackage],
 ) -> None:
     for package in packages:
-        handle = package.revision_handle
-        if handle is None or package.content_digest is None:
+        if not isinstance(package, PublishedPluginPackage):
             raise PluginManifestError(
-                f"Plugin revision publisher returned an unverified package: "
-                f"{package.root}",
-                code="unverified_plugin_revision",
+                f"Plugin publisher returned an unpublished package: {package.root}",
+                code="unpublished_plugin_package",
                 path=package.root,
             )
+        handle = package.revision_handle
         dependency_lock = package.dependency_lock
         if dependency_lock is None:
             raise PluginManifestError(
@@ -306,7 +316,7 @@ def _verify_published_packages(
 
 
 def _assert_binding_lineage(
-    packages: Sequence[ResolvedPluginPackage],
+    packages: Sequence[PublishedPluginPackage],
     bindings: Sequence[PluginSourceBinding],
 ) -> None:
     if len(packages) != len(bindings):

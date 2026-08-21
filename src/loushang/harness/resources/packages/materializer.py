@@ -35,7 +35,9 @@ from loushang.harness.resources.plugins.types import (
     PluginRevisionKind,
     PluginSource,
     PluginSourceBinding,
+    PublishedPluginPackage,
     ResolvedPluginPackage,
+    VerifiedPluginRevision,
 )
 
 
@@ -412,7 +414,7 @@ class PackageMaterializer:
 
     def bind_plugin_packages(
         self,
-        packages: Sequence[ResolvedPluginPackage],
+        packages: Sequence[PublishedPluginPackage],
     ) -> tuple[PluginSourceBinding, ...]:
         """Atomically bind resolved descriptors without accepting Plugin renames."""
 
@@ -421,13 +423,13 @@ class PackageMaterializer:
     def publish_plugin_packages(
         self,
         packages: Sequence[ResolvedPluginPackage],
-    ) -> tuple[ResolvedPluginPackage, ...]:
+    ) -> tuple[PublishedPluginPackage, ...]:
         """Publish verified revisions with complete materialized dependency locks."""
 
         published = self._plugin_revision_store.publish_all(tuple(packages))
         try:
             return tuple(
-                replace(
+                PublishedPluginPackage.from_verified_revision(
                     package,
                     dependency_lock=self._plugin_dependency_lock(package),
                 )
@@ -435,13 +437,12 @@ class PackageMaterializer:
             )
         except Exception:
             for package in published:
-                if package.revision_handle is not None:
-                    package.revision_handle.close()
+                package.revision_handle.close()
             raise
 
     def rebind_plugin_packages(
         self,
-        packages: Sequence[ResolvedPluginPackage],
+        packages: Sequence[PublishedPluginPackage],
     ) -> tuple[PluginSourceBinding, ...]:
         """Explicitly replace source identities after management authorization."""
 
@@ -451,7 +452,13 @@ class PackageMaterializer:
         """Validate one descriptor against an existing binding without writing."""
 
         self._assert_plugin_binding_lock_valid()
-        candidate = self._plugin_binding(package)
+        candidate = PluginSourceBinding(
+            source=_plugin_source_value(package.source),
+            source_identity=_plugin_source_identity(package.source),
+            source_kind=package.source.kind,
+            plugin_id=package.manifest.name,
+            manifest_digest=package.manifest_digest,
+        )
         self._assert_plugin_binding(candidate, package)
 
     def get_plugin_binding(
@@ -475,7 +482,7 @@ class PackageMaterializer:
 
     def _bind_plugin_packages(
         self,
-        packages: Sequence[ResolvedPluginPackage],
+        packages: Sequence[PublishedPluginPackage],
         *,
         allow_plugin_id_change: bool,
     ) -> tuple[PluginSourceBinding, ...]:
@@ -507,26 +514,19 @@ class PackageMaterializer:
 
     def _assert_bindable_plugin_packages(
         self,
-        packages: Sequence[ResolvedPluginPackage],
+        packages: Sequence[PublishedPluginPackage],
     ) -> None:
         for package in packages:
+            if not isinstance(package, PublishedPluginPackage):
+                raise PluginManifestError(
+                    "Plugin source binding requires a published package: "
+                    f"{package.root}",
+                    code="unpublished_plugin_package",
+                    path=package.root,
+                )
             handle = package.revision_handle
             content_digest = package.content_digest
-            if handle is None or content_digest is None:
-                raise PluginManifestError(
-                    f"Plugin source binding requires a published revision: "
-                    f"{package.root}",
-                    code="unverified_plugin_revision",
-                    path=package.root,
-                )
             dependency_lock = package.dependency_lock
-            if dependency_lock is None:
-                raise PluginManifestError(
-                    "Plugin source binding requires a dependency closure lock: "
-                    f"{package.root}",
-                    code="unverified_plugin_dependency_closure",
-                    path=package.root,
-                )
             if (
                 handle.root != package.root
                 or handle.content_digest != content_digest
@@ -586,7 +586,7 @@ class PackageMaterializer:
 
     def _plugin_binding(
         self,
-        package: ResolvedPluginPackage,
+        package: PublishedPluginPackage,
     ) -> PluginSourceBinding:
         source = package.source
         source_value = _plugin_source_value(source)
@@ -600,12 +600,9 @@ class PackageMaterializer:
             elif record is not None and record.resolved_version:
                 revision = record.resolved_version
                 revision_kind = "python_version"
-        if revision is None and package.content_digest is not None:
+        if revision is None:
             revision = package.content_digest
             revision_kind = "content_sha256"
-        elif revision is None and package.manifest_digest is not None:
-            revision = package.manifest_digest
-            revision_kind = "manifest_sha256"
         return PluginSourceBinding(
             source=source_value,
             source_identity=_plugin_source_identity(source),
@@ -620,15 +617,9 @@ class PackageMaterializer:
 
     def _plugin_dependency_lock(
         self,
-        package: ResolvedPluginPackage,
+        package: VerifiedPluginRevision,
     ) -> PluginDependencyClosureLock:
         content_digest = package.content_digest
-        if content_digest is None:
-            raise PluginManifestError(
-                f"Published Plugin package has no content digest: {package.root}",
-                code="unverified_plugin_revision",
-                path=package.root,
-            )
         record: PackageMaterializationRecord | None = None
         source_url = package.source.url
         if package.source.kind == "remote" and source_url is not None:
@@ -656,12 +647,6 @@ class PackageMaterializer:
                 path=package.root,
             ) from exc
         handle = package.revision_handle
-        if handle is None:
-            raise PluginManifestError(
-                f"Published Plugin package has no revision handle: {package.root}",
-                code="unverified_plugin_revision",
-                path=package.root,
-            )
         handle.verify()
         if (
             source_url is not None

@@ -58,6 +58,154 @@ def test_plugin_manifest_parser_returns_authority_bound_descriptor(
         resolved.manifest.metadata["name"] = "changed"  # type: ignore[index]
 
 
+def test_plugin_manifest_parser_builds_inert_contribution_index(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "review-pack"
+    root.mkdir()
+    (root / "provider.py").write_text(
+        "raise AssertionError('manifest parsing must not import Plugin code')\n",
+        encoding="utf-8",
+    )
+    (root / "plugin.json").write_text(
+        json.dumps(
+            {
+                "name": "review-pack",
+                "contributionIndex": {
+                    "version": 1,
+                    "items": [
+                        {
+                            "id": "review-provider",
+                            "kind": "capability_provider",
+                            "owner": "coding.lsp",
+                            "entrypoint": "provider.py:declare",
+                            "executionModel": "in_process",
+                            "requestedAuthorities": ["process", "workspace.read"],
+                            "configuration": {"mode": "review"},
+                            "required": True,
+                        }
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    resolved = PluginManifestParser().parse(root)
+
+    [reservation] = resolved.contribution_index.items
+    assert reservation.contribution_id == "review-provider"
+    assert reservation.owner == "coding.lsp"
+    assert reservation.requested_authorities == ("process", "workspace.read")
+    assert len(resolved.contribution_index.fingerprint) == 64
+    assert (root / "imported.txt").exists() is False
+    with pytest.raises(TypeError):
+        reservation.configuration["mode"] = "changed"  # type: ignore[index]
+
+
+def test_plugin_manifest_parser_rejects_unknown_contribution_schema(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "review-pack"
+    root.mkdir()
+    (root / "provider.py").write_text("pass\n", encoding="utf-8")
+    (root / "plugin.json").write_text(
+        json.dumps(
+            {
+                "contributionIndex": {
+                    "version": 1,
+                    "items": [
+                        {
+                            "id": "review-provider",
+                            "kind": "tool_pack",
+                            "owner": "coding.lsp",
+                            "entrypoint": "provider.py:declare",
+                            "executionModel": "in_process",
+                            "requestedAuthorities": [],
+                            "configuration": {},
+                            "required": True,
+                        }
+                    ],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PluginManifestError) as caught:
+        PluginManifestParser().parse(root)
+
+    assert caught.value.code == "invalid_plugin_contribution_index"
+
+
+def test_plugin_manifest_parser_rejects_missing_contribution_entrypoint(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "review-pack"
+    root.mkdir()
+    (root / "plugin.json").write_text(
+        json.dumps(
+            {
+                "contributionIndex": {
+                    "version": 1,
+                    "items": [
+                        {
+                            "id": "review-provider",
+                            "kind": "capability_provider",
+                            "owner": "coding.lsp",
+                            "entrypoint": "missing.py:declare",
+                            "executionModel": "in_process",
+                            "requestedAuthorities": [],
+                            "configuration": {},
+                            "required": True,
+                        }
+                    ],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PluginManifestError) as caught:
+        PluginManifestParser().parse(root)
+
+    assert caught.value.code == "invalid_plugin_contribution_entrypoint"
+
+
+def test_plugin_manifest_parser_rejects_duplicate_contribution_reservations(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "review-pack"
+    root.mkdir()
+    (root / "provider.py").write_text("pass\n", encoding="utf-8")
+    reservation = {
+        "id": "review-provider",
+        "kind": "capability_provider",
+        "owner": "coding.lsp",
+        "entrypoint": "provider.py:declare",
+        "executionModel": "in_process",
+        "requestedAuthorities": [],
+        "configuration": {},
+        "required": True,
+    }
+    (root / "plugin.json").write_text(
+        json.dumps(
+            {
+                "contributionIndex": {
+                    "version": 1,
+                    "items": [reservation, reservation],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PluginManifestError) as caught:
+        PluginManifestParser().parse(root)
+
+    assert caught.value.code == "invalid_plugin_contribution_index"
+
+
 def test_plugin_and_package_views_reuse_one_resolved_descriptor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -104,7 +252,7 @@ def test_plugin_and_package_views_reuse_one_resolved_descriptor(
     with pytest.raises(PluginManifestError) as caught:
         resolver.resolve_resources(plugin)
 
-    assert caught.value.code == "plugin_package_changed"
+    assert caught.value.code == "plugin_runtime_authority_required"
 
 
 def test_disabled_plugin_projects_effective_state_without_reparsing(
@@ -370,7 +518,7 @@ def test_resolver_rejects_package_root_replaced_after_resolution(
     with pytest.raises(PluginManifestError) as caught:
         resolver.resolve_resources(plugin)
 
-    assert caught.value.code == "plugin_package_changed"
+    assert caught.value.code == "plugin_runtime_authority_required"
 
 
 def test_resolver_rejects_enabled_plugin_without_canonical_descriptor(
@@ -386,7 +534,7 @@ def test_resolver_rejects_enabled_plugin_without_canonical_descriptor(
     with pytest.raises(PluginManifestError) as caught:
         PluginResolver().resolve_resources(plugin)
 
-    assert caught.value.code == "unresolved_plugin_package"
+    assert caught.value.code == "plugin_runtime_authority_required"
 
 
 def test_materialized_remote_source_identity_is_bound_to_descriptor(

@@ -14,7 +14,10 @@ from types import MappingProxyType
 from typing import BinaryIO, Literal, cast
 
 from loushang.harness.resources.plugins.manifest import PluginManifestParser
-from loushang.harness.resources.plugins.types import ResolvedPluginPackage
+from loushang.harness.resources.plugins.types import (
+    ResolvedPluginPackage,
+    VerifiedPluginRevision,
+)
 
 _TREE_DIGEST_FORMAT = b"loushang.plugin-tree/v1\0"
 _IGNORED_ROOT_ENTRIES = frozenset({".git"})
@@ -165,7 +168,7 @@ class PluginRevisionStore:
         self.root = Path(root).expanduser().resolve()
         self.revision_root = self.root / "sha256"
 
-    def publish(self, package: ResolvedPluginPackage) -> ResolvedPluginPackage:
+    def publish(self, package: ResolvedPluginPackage) -> VerifiedPluginRevision:
         PluginManifestParser().revalidate(package)
         self.revision_root.mkdir(parents=True, exist_ok=True)
         quarantine = Path(
@@ -194,7 +197,7 @@ class PluginRevisionStore:
             )
             try:
                 handle.verify()
-                return _project_published_package(
+                return _project_verified_revision(
                     package,
                     published_root=published_root,
                     content_digest=content_digest,
@@ -223,15 +226,14 @@ class PluginRevisionStore:
     def publish_all(
         self,
         packages: tuple[ResolvedPluginPackage, ...],
-    ) -> tuple[ResolvedPluginPackage, ...]:
-        published: list[ResolvedPluginPackage] = []
+    ) -> tuple[VerifiedPluginRevision, ...]:
+        published: list[VerifiedPluginRevision] = []
         try:
             for package in packages:
                 published.append(self.publish(package))
         except Exception:
             for package in published:
-                if package.revision_handle is not None:
-                    package.revision_handle.close()
+                package.revision_handle.close()
             raise
         return tuple(published)
 
@@ -482,13 +484,13 @@ def _tree_digest(entries: dict[str, _RevisionEntry]) -> str:
     return digest.hexdigest()
 
 
-def _project_published_package(
+def _project_verified_revision(
     package: ResolvedPluginPackage,
     *,
     published_root: Path,
     content_digest: str,
     handle: VerifiedRevisionHandle,
-) -> ResolvedPluginPackage:
+) -> VerifiedPluginRevision:
     package_root = published_root / package.package_root_relative
     manifest_path = (
         published_root / "plugin.json" if package.manifest_path is not None else None
@@ -498,15 +500,18 @@ def _project_published_package(
         root=published_root,
         package_root=package_root,
     )
-    return replace(
-        package,
+    return VerifiedPluginRevision(
         root=published_root,
         package_root=package_root,
         manifest=manifest,
+        source=package.source,
         manifest_path=manifest_path,
-        content_digest=content_digest,
+        manifest_digest=package.manifest_digest,
+        package_root_relative=package.package_root_relative,
         root_identity=_path_identity(published_root),
         package_root_identity=_path_identity(package_root),
+        contribution_index=package.contribution_index,
+        content_digest=content_digest,
         revision_handle=handle,
     )
 

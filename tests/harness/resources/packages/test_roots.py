@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -28,6 +28,7 @@ from loushang.harness.resources.plugins.revisions import (
 )
 from loushang.harness.resources.plugins.types import (
     PluginSourceBinding,
+    PublishedPluginPackage,
     ResolvedPluginPackage,
 )
 
@@ -363,7 +364,7 @@ class _InstalledMaterializer:
 
     def bind_plugin_packages(
         self,
-        packages: tuple[ResolvedPluginPackage, ...],
+        packages: tuple[PublishedPluginPackage, ...],
     ) -> tuple[PluginSourceBinding, ...]:
         return tuple(
             PluginSourceBinding(
@@ -386,12 +387,12 @@ class _InstalledMaterializer:
     def publish_plugin_packages(
         self,
         packages: tuple[ResolvedPluginPackage, ...],
-    ) -> tuple[ResolvedPluginPackage, ...]:
+    ) -> tuple[PublishedPluginPackage, ...]:
         return tuple(
-            replace(
+            PublishedPluginPackage.from_verified_revision(
                 package,
                 dependency_lock=lock_plugin_dependency_closure(
-                    package_content_digest=package.content_digest or "",
+                    package_content_digest=package.content_digest,
                     installed_distributions=(),
                 ),
             )

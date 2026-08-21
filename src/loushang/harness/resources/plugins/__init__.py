@@ -6,6 +6,13 @@ from loushang.harness.resources.plugins.authority import (
     PluginResolutionDiagnostic,
     PluginRuntimeResolution,
 )
+from loushang.harness.resources.plugins.declarations import (
+    PLUGIN_CONTRIBUTION_INDEX_VERSION,
+    PLUGIN_DECLARATION_IR_VERSION,
+    PluginContributionIndex,
+    PluginContributionReservation,
+    PluginDeclaration,
+)
 from loushang.harness.resources.plugins.dependencies import (
     PLUGIN_DEPENDENCY_LOCK_FORMAT,
     PluginDependencyClosureLock,
@@ -16,17 +23,30 @@ from loushang.harness.resources.plugins.lifecycle import (
     is_remote_plugin_source,
     remote_plugin_name,
 )
-from loushang.harness.resources.plugins.manager import PluginManager
 from loushang.harness.resources.plugins.manifest import (
     PluginManifestError,
     PluginManifestParser,
 )
 from loushang.harness.resources.plugins.registry import PluginRegistry
-from loushang.harness.resources.plugins.resolver import PluginResolver
 from loushang.harness.resources.plugins.revisions import (
     PluginRevisionError,
     PluginRevisionStore,
     VerifiedRevisionHandle,
+)
+from loushang.harness.resources.plugins.selection import (
+    PLUGIN_EXECUTION_APPROVAL_SUBJECT_VERSION,
+    PluginContributionCandidate,
+    PluginContributionRef,
+    PluginDeclarationReservation,
+    PluginExecutionApprovalSubject,
+    PluginExecutionDecisionRecord,
+    PluginPreflight,
+    PluginSelection,
+    PluginSelectionError,
+    PluginSelectionPlan,
+    PluginSelectionResolver,
+    PluginSourceTrust,
+    build_execution_approval_subject,
 )
 from loushang.harness.resources.plugins.types import (
     InstalledPlugin,
@@ -35,7 +55,9 @@ from loushang.harness.resources.plugins.types import (
     PluginRevisionKind,
     PluginSource,
     PluginSourceBinding,
+    PublishedPluginPackage,
     ResolvedPluginPackage,
+    VerifiedPluginRevision,
 )
 
 
@@ -81,16 +103,28 @@ def _safe_plugin_string(value: object) -> str:
 
 __all__ = [
     "InstalledPlugin",
+    "PLUGIN_CONTRIBUTION_INDEX_VERSION",
+    "PLUGIN_DECLARATION_IR_VERSION",
     "PLUGIN_DEPENDENCY_LOCK_FORMAT",
+    "PLUGIN_EXECUTION_APPROVAL_SUBJECT_VERSION",
     "PluginBindingStore",
     "PluginBindingValidator",
+    "PluginContributionCandidate",
+    "PluginContributionIndex",
+    "PluginContributionRef",
+    "PluginContributionReservation",
+    "PluginDeclaration",
+    "PluginDeclarationReservation",
     "PluginDependencyClosureLock",
     "PluginInspection",
-    "PluginManager",
+    "PluginExecutionApprovalSubject",
+    "PluginExecutionDecisionRecord",
     "PluginManifest",
     "PluginManifestError",
     "PluginManifestParser",
     "PluginPythonDistributionLock",
+    "PluginPreflight",
+    "PublishedPluginPackage",
     "PluginRegistry",
     "PluginRevisionError",
     "PluginResolvedResources",
@@ -98,12 +132,18 @@ __all__ = [
     "PluginResolutionDiagnostic",
     "PluginRevisionKind",
     "PluginRevisionStore",
-    "PluginResolver",
     "PluginSource",
     "PluginSourceBinding",
     "PluginRuntimeResolution",
+    "PluginSelection",
+    "PluginSelectionError",
+    "PluginSelectionPlan",
+    "PluginSelectionResolver",
+    "PluginSourceTrust",
     "ResolvedPluginPackage",
+    "VerifiedPluginRevision",
     "VerifiedRevisionHandle",
+    "build_execution_approval_subject",
     "is_remote_plugin_source",
     "lock_plugin_dependency_closure",
     "project_installed_plugin",

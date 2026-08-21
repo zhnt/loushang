@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from loushang.harness.resources.plugins.authority import PluginResolutionAuthority
@@ -16,6 +17,8 @@ from loushang.harness.resources.plugins.types import (
 
 
 class PluginManager:
+    """Legacy inventory registry that never grants runtime resource access."""
+
     def __init__(
         self,
         *,
@@ -23,15 +26,15 @@ class PluginManager:
         registry: PluginRegistry | None = None,
         disabled_plugins: list[str] | tuple[str, ...] | None = None,
     ) -> None:
-        self.resolver = resolver or PluginResolver()
+        self._resolver = resolver or PluginResolver()
         self._resolution_authority = PluginResolutionAuthority(
-            resolver=self.resolver,
+            resolver=self._resolver,
         )
         self.registry = registry or PluginRegistry()
         self._sources: dict[Path, PluginSource] = {}
         self._remote_sources: dict[str, PluginSource] = {}
         self._source_plugin_ids: dict[tuple[str, str], str] = {}
-        self._bound_plugins: dict[tuple[str, str], InstalledPlugin] = {}
+        self._inventory_plugins: dict[tuple[str, str], InstalledPlugin] = {}
         self._disabled_plugins = set(disabled_plugins or ())
 
     def add_plugin_source(
@@ -49,7 +52,7 @@ class PluginManager:
             inspection.raise_for_error()
             assert inspection.plugin is not None
             plugin = inspection.plugin
-            return self._register_bound_plugin(source, plugin)
+            return self._register_inventory_plugin(source, plugin)
         source = PluginSource(path=Path(path).expanduser(), enabled=enabled)
         inspection = self._resolution_authority.inspect(source)
         inspection.raise_for_error()
@@ -60,11 +63,11 @@ class PluginManager:
         self,
         package: ResolvedPluginPackage,
     ) -> InstalledPlugin:
-        """Register one descriptor while applying Product disable state once."""
+        """Register one descriptor as non-runnable compatibility inventory."""
 
         source = package.source
         plugin = self.project_resolved_plugin_package(package)
-        return self._register_bound_plugin(source, plugin)
+        return self._register_inventory_plugin(source, plugin)
 
     def project_resolved_plugin_package(
         self,
@@ -79,12 +82,12 @@ class PluginManager:
             source = self._remote_sources.get(path)
             if source is None:
                 return None
-            return self._remove_bound_source(source)
+            return self._remove_inventory_source(source)
         source_path = Path(path).expanduser().resolve()
         source = self._sources.get(source_path)
         if source is None:
             return None
-        return self._remove_bound_source(source)
+        return self._remove_inventory_source(source)
 
     def enable_plugin(self, name: str) -> InstalledPlugin:
         return self._set_plugin_enabled(name, True)
@@ -112,7 +115,8 @@ class PluginManager:
             self._assert_source_identity(source, remote_plugin.manifest.name)
             prepared.append((source, remote_plugin))
         return [
-            self._register_bound_plugin(source, plugin) for source, plugin in prepared
+            self._register_inventory_plugin(source, plugin)
+            for source, plugin in prepared
         ]
 
     def list_plugins(self) -> list[InstalledPlugin]:
@@ -135,15 +139,23 @@ class PluginManager:
         plugin = self.registry.get_plugin(name)
         if plugin is None:
             raise KeyError(name)
-        return self.resolver.resolve_resources(plugin)
+        raise PluginManifestError(
+            "PluginManager is inventory-only; runtime resources require "
+            "PluginResolutionAuthority.",
+            code="plugin_manager_inventory_only",
+            path=plugin.manifest.root,
+        )
 
     def resolve_package_roots(self) -> tuple[Path, ...]:
-        roots: list[Path] = []
-        for plugin in self.registry.list_enabled_plugins():
-            if plugin.source.kind == "remote" and plugin.source.path is None:
-                continue
-            roots.extend(self.resolver.resolve_resources(plugin).package_roots)
-        return tuple(roots)
+        plugins = self.registry.list_plugins()
+        if not plugins:
+            return ()
+        raise PluginManifestError(
+            "PluginManager is inventory-only; runtime package roots require "
+            "PluginResolutionAuthority.",
+            code="plugin_manager_inventory_only",
+            path=plugins[0].manifest.root,
+        )
 
     def _set_plugin_enabled(self, name: str, enabled: bool) -> InstalledPlugin:
         plugin = self.registry.get_plugin(name)
@@ -174,7 +186,7 @@ class PluginManager:
                 self._disabled_plugins.discard(name)
             else:
                 self._disabled_plugins.add(name)
-            return self._register_bound_plugin(source, updated)
+            return self._register_inventory_plugin(source, updated)
         inspection = self._resolution_authority.inspect(source)
         inspection.raise_for_error()
         assert inspection.package is not None
@@ -186,11 +198,16 @@ class PluginManager:
             self._disabled_plugins.add(name)
         return self.add_resolved_plugin_package(package)
 
-    def _register_bound_plugin(
+    def _register_inventory_plugin(
         self,
         source: PluginSource,
         plugin: InstalledPlugin,
     ) -> InstalledPlugin:
+        plugin = replace(
+            plugin,
+            source=replace(plugin.source, enabled=False),
+            enabled=False,
+        )
         key = _source_key(source)
         self._assert_source_identity(source, plugin.manifest.name)
         registered = self.registry.register(plugin)
@@ -201,38 +218,45 @@ class PluginManager:
             assert source.path is not None
             self._sources[source.path] = source
         self._source_plugin_ids[key] = plugin.manifest.name
-        self._bound_plugins[key] = plugin
+        self._inventory_plugins[key] = plugin
         return registered
 
     def _project_resolved_package(
         self,
         package: ResolvedPluginPackage,
     ) -> InstalledPlugin:
-        source = package.source
-        return self.resolver.project_package(
+        # Compatibility inventory preserves configured source state on the
+        # descriptor, but it never projects that state as runtime enablement.
+        projected = self._resolver.project_package(
             package,
-            source_enabled=(
-                source.enabled and package.manifest.name not in self._disabled_plugins
-            ),
+            source_enabled=False,
+        )
+        return replace(
+            projected,
+            source=replace(projected.source, enabled=False),
+            enabled=False,
         )
 
     def _assert_source_identity(self, source: PluginSource, plugin_id: str) -> None:
         key = _source_key(source)
-        bound_id = self._source_plugin_ids.get(key)
-        if bound_id is None or bound_id == plugin_id:
+        existing_id = self._source_plugin_ids.get(key)
+        if existing_id is None or existing_id == plugin_id:
             return
         path = source.path or Path(source.url or "")
         raise PluginManifestError(
-            f"Plugin source identity changed from {bound_id!r} to {plugin_id!r}: "
+            f"Plugin source identity changed from {existing_id!r} to {plugin_id!r}: "
             f"{path}",
             code="plugin_identity_changed",
             path=path,
         )
 
-    def _remove_bound_source(self, source: PluginSource) -> InstalledPlugin | None:
+    def _remove_inventory_source(
+        self,
+        source: PluginSource,
+    ) -> InstalledPlugin | None:
         key = _source_key(source)
         plugin_id = self._source_plugin_ids.pop(key, None)
-        removed = self._bound_plugins.pop(key, None)
+        removed = self._inventory_plugins.pop(key, None)
         if source.kind == "remote":
             assert source.url is not None
             self._remote_sources.pop(source.url, None)
@@ -248,7 +272,7 @@ class PluginManager:
                 (
                     (candidate_key, candidate)
                     for candidate_key, candidate in reversed(
-                        self._bound_plugins.items()
+                        self._inventory_plugins.items()
                     )
                     if self._source_plugin_ids.get(candidate_key) == plugin_id
                 ),
@@ -260,7 +284,7 @@ class PluginManager:
                     replacement = self._project_resolved_package(
                         replacement.resolved_package
                     )
-                    self._bound_plugins[replacement_key] = replacement
+                    self._inventory_plugins[replacement_key] = replacement
                 self.registry.register(replacement)
         return removed
 

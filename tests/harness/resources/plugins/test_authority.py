@@ -8,6 +8,10 @@ import pytest
 
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.plugins.authority import PluginResolutionAuthority
+from loushang.harness.resources.plugins.declarations import (
+    PluginContributionIndex,
+    PluginContributionReservation,
+)
 from loushang.harness.resources.plugins.manifest import PluginManifestError
 from loushang.harness.resources.plugins.types import (
     PluginSource,
@@ -68,6 +72,21 @@ def test_runtime_resolution_rejects_publisher_identity_change_before_binding(
     assert store.events == ["publish"]
 
 
+def test_runtime_resolution_rejects_publisher_contribution_change_before_binding(
+    tmp_path: Path,
+) -> None:
+    root = _plugin(tmp_path / "plugins" / "review-pack")
+    authority = PluginResolutionAuthority()
+    inspection = authority.inspect(PluginSource(path=root))
+    store = _ContributionChangingBindingStore(tmp_path / "revisions")
+
+    with pytest.raises(PluginManifestError) as caught:
+        authority.publish_runtime((inspection,), binding_store=store)
+
+    assert caught.value.code == "invalid_plugin_revision_publication"
+    assert store.events == ["publish"]
+
+
 def test_runtime_resolution_rejects_unverified_publication_before_binding(
     tmp_path: Path,
 ) -> None:
@@ -79,7 +98,7 @@ def test_runtime_resolution_rejects_unverified_publication_before_binding(
     with pytest.raises(PluginManifestError) as caught:
         authority.publish_runtime((inspection,), binding_store=store)
 
-    assert caught.value.code == "unverified_plugin_revision"
+    assert caught.value.code == "unpublished_plugin_package"
     assert store.events == ["publish"]
 
 
@@ -96,19 +115,23 @@ def test_runtime_resolution_rejects_missing_durable_binding(tmp_path: Path) -> N
     assert store.events == ["publish", "bind"]
 
 
-def test_runtime_resolution_rejects_missing_dependency_closure_before_binding(
+def test_published_package_type_rejects_missing_dependency_closure(
     tmp_path: Path,
 ) -> None:
     root = _plugin(tmp_path / "plugins" / "review-pack")
     authority = PluginResolutionAuthority()
     inspection = authority.inspect(PluginSource(path=root))
-    store = _MissingDependencyLockStore(tmp_path / "revisions")
+    assert inspection.package is not None
+    store = PackageMaterializer(
+        install_root=tmp_path / "installed",
+        plugin_revision_root=tmp_path / "revisions",
+    )
+    [published] = store.publish_plugin_packages((inspection.package,))
 
-    with pytest.raises(PluginManifestError) as caught:
-        authority.publish_runtime((inspection,), binding_store=store)
+    with pytest.raises(ValueError, match="dependency lock"):
+        replace(published, dependency_lock=None)
 
-    assert caught.value.code == "unverified_plugin_dependency_closure"
-    assert store.events == ["publish"]
+    published.revision_handle.close()
 
 
 def _plugin(root: Path) -> Path:
@@ -158,6 +181,31 @@ class _IdentityChangingBindingStore(_RecordingBindingStore):
         )
 
 
+class _ContributionChangingBindingStore(_RecordingBindingStore):
+    def publish_plugin_packages(
+        self,
+        packages: tuple[ResolvedPluginPackage, ...],
+    ) -> tuple[ResolvedPluginPackage, ...]:
+        [package] = super().publish_plugin_packages(packages)
+        return (
+            replace(
+                package,
+                contribution_index=PluginContributionIndex(
+                    items=(
+                        PluginContributionReservation(
+                            contribution_id="forged-provider",
+                            kind="capability_provider",
+                            owner="coding.lsp",
+                            entrypoint="forged.py:declare",
+                            execution_model="in_process",
+                            requested_authorities=(),
+                        ),
+                    )
+                ),
+            ),
+        )
+
+
 class _UnverifiedBindingStore(_RecordingBindingStore):
     def publish_plugin_packages(
         self,
@@ -175,14 +223,3 @@ class _MissingBindingStore(_RecordingBindingStore):
         del packages
         self.events.append("bind")
         return ()
-
-
-class _MissingDependencyLockStore(_RecordingBindingStore):
-    def publish_plugin_packages(
-        self,
-        packages: tuple[ResolvedPluginPackage, ...],
-    ) -> tuple[ResolvedPluginPackage, ...]:
-        return tuple(
-            replace(package, dependency_lock=None)
-            for package in super().publish_plugin_packages(packages)
-        )
