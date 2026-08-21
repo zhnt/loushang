@@ -199,6 +199,16 @@ selections, allowed override sources, and configuration.
 A Product Runtime Plan does not contain factories, credentials, plugin
 discovery, or live objects.
 
+### Plugin Composition Set
+
+A Product-owned, data-only, reusable list of Plugin selections and default
+namespaced configuration that a Product Runtime Plan or OEM Profile may expand.
+
+A Plugin Composition Set is not a Product Profile, OEM Profile, Runtime
+Profile, Capability Bundle, or live generation. It cannot contain callables,
+credentials, mounted Providers, or authority beyond the selecting Product/OEM
+ceiling.
+
 ### Resolved Runtime Profile
 
 The deterministic result of applying admitted Product, OEM, extension, and
@@ -603,6 +613,24 @@ A Plugin runs under Product and OEM activation and trust policy. It does not own
 the Product lifecycle, select the Active Product, or acquire execution authority
 merely by being installed. A Plugin is the manifest-backed identity and
 activation boundary, not the installed bytes or materialized directory itself.
+
+Manifest parsing is inert. If a Plugin has an executable declaration
+entrypoint, Product/OEM enablement, source trust, immutable content identity,
+scope, security-relevant configuration, and execution approval are decided
+before that entrypoint is imported or launched. Final contribution admission
+still belongs to the exact Capability, Extension, Resource, Agent, event, or
+other owner.
+
+### Agent Definition
+
+A data-only Product contribution describing an Agent role and references to
+admitted prompts, model policy, Tool/Skill selectors, memory policy, isolation
+policy, and optionally a named Plugin Composition Set.
+
+An Agent Definition does not create an Agent during discovery, declaration, or
+binding. The Product Agent Host admits it and either joins the parent Product
+Session composition or creates an explicit child Product Session when a
+different composition is requested.
 
 ### Extension
 

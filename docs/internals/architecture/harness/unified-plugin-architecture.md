@@ -2,8 +2,9 @@
 
 ## Status
 
-Target architecture, revised after independent boundary, reference-parity, and
-lifecycle/security review. The existing Capability Graph, Runtime Profile,
+Target architecture, revised to address two rounds of independent boundary,
+reference-parity, and lifecycle/security findings; this revision is pending
+re-review. The existing Capability Graph, Runtime Profile,
 Registration Scope, Extension/Resource generation, Effective Runtime, Resource
 Package, and Plugin source-management runtimes remain authoritative while this
 migration is incomplete. This document does not claim that `coding.lsp`,
@@ -37,9 +38,11 @@ The target relationship is:
 Plugin Source
   -> immutable Materialized Package Revision
   -> authority-bound Resolved Plugin Package
+  -> inert Plugin Preflight Decision
   -> immutable Plugin Declaration
-  -> Resolved Plugin Selection Set
-  -> existing Runtime Profile layers + owner-specific plans
+  -> owner-specific Candidate Sets
+  -> existing Runtime Profile layers + Product Capability Provider resolution
+  -> owner-specific Admission Records and plans
   -> independent Graph / Extension / Resource owner generations
   -> existing Effective Runtime view + separate Plugin inventory
 ```
@@ -62,8 +65,10 @@ framework's object model:
   Plugin context;
 - installation, enablement, scope, policy, dependency, refresh, and repair are
   explicit management states;
-- every effect belongs to an exact reversible owner generation, while Sessions
-  and Agents pin the model-visible composition they actually used.
+- every reversible live registration belongs to an exact owner generation;
+  irreversible external effects are admitted, recorded, and compensated by
+  their domain owner rather than being described as rollbackable;
+- Sessions and Agents pin the model-visible composition they actually used.
 
 Loushang deliberately remains stricter than a universal service-context Plugin
 runtime:
@@ -85,8 +90,11 @@ changes.
 1. Plugin identity is not a Capability Graph node. Plugin provenance is a
    selection fact attached to owner-controlled contributions.
 2. `RuntimeCapabilityGraphBinder` remains the only Capability Graph publisher.
-3. `RuntimeProfileResolver` remains the final selector of Product runtime slots
-   and variation; the Graph Planner validates an already unique Provider set.
+3. `RuntimeProfileResolver` remains the final selector of Bundle-private
+   Product runtime slots and variation. A Product-owned
+   `ProductCapabilityProviderResolver` is the sole selector of top-level
+   `CapabilityBundleProvider` candidates; the Graph Planner validates its
+   already unique Provider set.
 4. `RuntimeCapabilityGraphProjector` remains the only Graph/effective-runtime
    projector and retains the four-clock contract.
 5. Every manifest format has one parser. In particular, `plugin.json` has one
@@ -98,10 +106,12 @@ changes.
 7. Every live registration remains owned by its exact Capability, Extension,
    Resource, Tool, or other `RegistrationOwner` and owner generation. A Plugin
    may aggregate retirement handles but never becomes the Registration owner.
-8. A Product or OEM Profile selects Plugins and authority ceilings; Plugins do
-   not select themselves or widen their own authority.
-9. Installed code is inert. The state relation is
-   `installed != enabled != selected != admitted != mounted`.
+8. A Product Runtime Plan or OEM Profile selects Plugins and authority
+   ceilings; Plugins do not select themselves or widen their own authority.
+9. Installed code is inert. Parsing a manifest or recording inventory never
+   imports Python or launches a process. The state relation is
+   `installed != enabled != preflight-approved != declared != requested !=
+   owner-admitted != mounted`.
 10. Built-in Plugins use the same resolution, declaration, selection,
     owner-binding, inventory, and retirement contracts as external Plugins.
     Only their source resolver and trust provenance differ.
@@ -117,10 +127,12 @@ changes.
 | Plugin Source | A configured built-in, local, materialized, or registry-backed location. | None |
 | Materialized Package Revision | Immutable/content-identified bytes from which resolution and execution occur. | Package cache owner |
 | Resolved Plugin Package | Inert descriptor containing Plugin identity, version, digest, source authority, root, manifest, and typed locators. | None |
-| Plugin Definition | Trusted authoring entrypoint that produces a declaration without publishing effects. | Declaration only |
-| Plugin Declaration | Immutable versioned tagged union of contributions, requirements, configuration schema, requested authorities, and factories. | None |
-| Plugin Composition Set | Ordered reusable Plugin selections and default configuration expanded by a Product/OEM Profile. It is not another Profile or Capability Bundle. | None |
-| Resolved Plugin Selection Set | Pure result of package availability, enablement, Product/OEM admission, contribution filters, and provenance resolution. | Selection input only |
+| Plugin Preflight Decision | Pure Product/OEM decision over manifest facts that determines whether executable declaration is allowed. | Permission to evaluate one digest-bound declaration entrypoint only |
+| Plugin Definition | Host-equivalent trusted authoring entrypoint evaluated only after executable preflight. | Declaration evaluation only; never registration or activation |
+| Plugin Declaration | Immutable serializable versioned tagged union of contributions, requirements, configuration schema, requested authorities, and factory/entrypoint references; never live callables. | None |
+| Plugin Composition Set | Ordered reusable Plugin selections and default configuration expanded by a Product Runtime Plan or OEM Profile. It is not another Profile or Capability Bundle. | None |
+| Resolved Plugin Candidate Set | Pure result containing Product-selected Plugins and owner-requested contributions after preflight/declaration; it never claims final owner admission. | Candidate input only |
+| Resolved Capability Provider Set | Product-owned pure result containing one selected `CapabilityBundleProvider` metadata value and one matching binding specification per top-level Capability. | Graph planning/binding input only |
 | Plugin Instance Revision | One selected Plugin descriptor/configuration at a concrete scope. It references owner generations but owns no Mount or foreign registration. | Provenance and direct-host lifetime only |
 | Owner Generation | Capability Graph, Extension, Resource, Tool, external-service, or other owner-controlled generation. | Existing owner |
 | Plugin Retirement Set | Read-only aggregation of exact owner retirement handles/results for one Plugin revision. | Coordination only |
@@ -166,7 +178,8 @@ mutation, or Product activation. The resolved descriptor contains at least:
 - canonical Plugin ID, version, source kind, source identity, immutable content
   digest/revision, and locked dependency closure;
 - an authority-qualified immutable package root and typed resource locators;
-- the parsed canonical manifest, declaration-IR version, and engine range;
+- the parsed canonical manifest, inert contribution index, declaration-IR
+  version, and engine range;
 - trust provenance, execution model, requested authorities, and compatibility;
 - structured diagnostics for broken, mutable, unsupported, or untrusted
   packages.
@@ -193,8 +206,12 @@ not survive downstream.
 All executable contributions, including local development Plugins, require a
 content digest. Bind/import/launch revalidates that identity. A local source
 change invalidates the plan and approval; it never causes previously approved
-paths to execute changed bytes. Approval identity includes Plugin ID,
-Contribution ID, content digest, requested authorities, and execution model.
+paths to execute changed bytes. The manifest's inert contribution index must
+contain every executable contribution ID, kind, entrypoint locator, execution
+model, requested authority ceiling, and security-relevant configuration field
+needed to decide whether evaluating its declaration is permissible. It is not
+a second contribution declaration: the later declaration must match it exactly
+or fail closed.
 
 Remote dependencies are disabled until the resolver can produce an immutable
 lock over the complete dependency closure. Source trust is not transitive.
@@ -202,15 +219,55 @@ Materialized revisions remain reference-counted while selected, running, or
 required for configured cold resume.
 
 Discovery records broken packages rather than silently dropping them. A
-Product/OEM Profile that requires a broken Plugin fails before activation; an
-unselected broken Plugin remains visible in inventory diagnostics.
+Product Runtime Plan/OEM Profile that requires a broken Plugin fails before
+activation; an unselected broken Plugin remains visible in inventory
+diagnostics.
 
-### 2. Declare once
+### 2. Preflight, then declare once
+
+Executable declaration has a mandatory pure preflight. The same narrow
+`PluginSelectionResolver` exposes two non-overlapping operations:
+
+1. `preflight(packages, profile, overlays)` resolves installed/enabled/required
+   state, immutable dependency locks, engine compatibility, source trust,
+   Product/OEM Plugin and contribution allowlists, runtime scope, and the
+   package-level execution approval subject using only inert manifest facts;
+2. `finalize(preflight, declarations)` validates declaration/index identity,
+   applies Product-selected contribution enable/deny/order/config requests, and
+   emits owner-specific candidates. It does not make final owner admission or
+   conflict decisions.
+
+Only a digest-bound package with a positive preflight decision may evaluate an
+executable declaration. Disabled, unselected, incompatible, untrusted, denied,
+or unapproved packages are never imported and never launched. If information
+required to make preflight is available only by executing code, that package is
+invalid for in-process declaration; discovery must move to an accepted isolated
+worker or the information must move into the inert manifest.
+
+There are two explicit approval subjects:
+
+- `PluginExecutionApprovalSubject` gates declaration import or service launch
+  and binds Plugin ID, package digest, complete dependency-lock digest,
+  execution model, immutable entrypoint, source/trust provenance, Product ID,
+  tenant/workspace/installation scope identity, the ambient-host-authority bit,
+  normalized security-relevant configuration fingerprint, and the maximum
+  requested authority ceiling;
+- `ContributionActivationApprovalSubject` gates final binding and additionally
+  binds Contribution ID, owner/scope, selected Provider or host identity,
+  requested authorities, and the final effective grants returned by the owner.
+
+Security-relevant configuration includes executable/argv, endpoint/transport,
+working-directory or workspace locator, behavior mode, sandbox profile, and
+credential-reference identity. Changing any subject field invalidates the
+approval. Secret material is never part of either subject. Products that use
+action-level approval may still require a fresh decision for individual
+effects; package approval never silently substitutes for action policy.
 
 The declaration phase converts one resolved descriptor into one immutable,
-versioned `PluginDeclaration`. It may import a host-trusted in-process Plugin
-Definition from the verified revision, but it must not publish effects.
-Resource-only and declarative external-service Plugins need no Python import.
+versioned `PluginDeclaration` after positive preflight. It may import a
+host-equivalent-trusted in-process Plugin Definition from the verified
+revision, but it must not publish effects. Resource-only and declarative
+external-service Plugins need no Python import.
 
 A candidate internal authoring seam is:
 
@@ -222,22 +279,26 @@ class PluginDefinition(Protocol):
     ) -> PluginDeclaration: ...
 ```
 
-`PluginDeclarationContext` exposes immutable package locators, validated
+`PluginDeclarationContext` exposes immutable package locators, preflighted
 configuration input, engine features, and declaration builders. It does not
 expose registries, live Providers, a Session, credentials, or arbitrary
 services. For host-trusted in-process Python this is an authoring discipline,
-not a security sandbox.
+not a security sandbox. The returned IR contains only strict serializable data
+and verified locator/factory references; a callable captured in the IR is a
+schema violation.
 
 The declaration IR is a mutually exclusive tagged union:
 
 | Declaration kind | Meaning | Sole binding owner |
 | --- | --- | --- |
-| `capability_provider` | Provider candidate/factory for an owner-defined Capability. | Capability owner through Runtime Profile and Graph Binder |
+| `capability_provider` | Data-only Provider metadata plus a verified factory/disposer reference for an owner-defined top-level Capability. | Product Capability Provider resolver, then Graph Binder |
 | `resource_item` | Prompt, Skill, theme, asset, method, or raw source descriptor. | Resource generation owner |
 | `tool_pack` | Typed Tool pack referencing any required source items. | Owning Capability Bundle Tool facet |
 | `command_pack` | Typed Command pack referencing any required source items. | Owning Capability Bundle Command facet |
+| `event_definition` | Owner-qualified, versioned event contract in a namespace the Product/Capability owner granted to the contributor. | Product/Capability domain Event Definition catalog |
 | `event_subscription` | Typed observer over an admitted Event Definition. | Extension/event owner |
 | `interceptor` | Ordered typed interceptor/decorator/reducer/first-match contribution. | Extension/router owner |
+| `agent_definition` | Typed Agent role referencing prompts, model policy, Tool/Skill selectors, memory policy, and an optional named Composition Set. | Product Agent Host |
 | `presentation` | Renderer, shortcut, flag, or UI contribution. | Presentation/Extension owner |
 | `external_service` | Declarative MCP, LSP-server, or other process/transport service. | Kind-specific service host |
 | `configuration_schema` | Namespaced settings, defaults, sensitivity, and refresh policy. | Product configuration runtime |
@@ -248,26 +309,49 @@ Tool schemas and other file-backed declarations. The compiler rejects an
 identity emitted by more than one manifest, resource, Extension, or executable
 entrypoint path and reports both provenance records.
 
-Typed event/hook support is not hidden behind a generic `register_*` bag.
+Typed event/hook support is not hidden behind a generic `register_*` bag. A
+Product/Capability domain owns an `EventDefinitionCatalog`; it may contribute
+built-in definitions or admit an `event_definition` only inside a namespace
+explicitly delegated to that Plugin. The catalog is the sole definition and
+version authority. Subscriptions can only reference its admitted snapshot.
 `EventDefinition` is owner-qualified and versioned, and states:
 
 - payload schema/codec and compatible version range;
 - live versus durable ownership;
 - process, tenant, workspace, Session, turn, or Channel routing scope;
-- broadcast, ordered interception, reduction, or first-match semantics;
-- deterministic ordering, error containment, delegation, cancellation, and
-  timeout policy.
+- exactly one dispatch mode: awaited serial broadcast, awaited parallel
+  broadcast, ordered interception, reduction, or first-match;
+- duplicate-subscription identity and suppression rules;
+- deterministic ordering, result aggregation, error containment, delegation,
+  cancellation, per-listener/whole-dispatch timeout, and late-result policy.
 
 Durable events are committed by their domain owner before live dispatch. A
-Plugin subscription never becomes the durable event authority. The existing
-Extension observer/interceptor/reducer/first-match routes are reused as the
-binding implementation.
+Plugin subscription never becomes the durable event authority. There is no
+unspecified `broadcast` mode and no fire-and-forget callback hidden behind an
+awaited contract. The existing Extension `observe` route maps initially to
+awaited serial broadcast; interceptor, reducer, and first-match routes retain
+their explicit modes. Awaited parallel broadcast requires a distinct owner
+implementation and conformance tests before use.
+
+An `agent_definition` is declarative and does not create an Agent while being
+bound. The Product Agent Host admits it, resolves its referenced
+Resource/Tool/Skill facts from owner snapshots, and persists its definition ID,
+composition request, and model-visible material. Starting an Agent then joins
+the parent Session composition or creates the explicit child Product Session
+required by its Composition Set. Agent definitions cannot mutate parent
+selection or introduce a side-channel Profile.
 
 The current Extension `register_*` authoring API becomes a compatibility
 adapter. During declaration compilation it captures typed calls into a private
 builder and freezes the same tagged IR without mutating a live registry.
-Binding later realizes those declarations under exact owner scopes. New SDK
-code returns declarations directly.
+Binding later realizes those declarations under exact owner scopes. For a
+canonical Plugin, calling a declaration-forming `register_*` after IR freeze or
+owner publication fails closed. A dynamic declaration change must prepare a
+new owner generation; it is never appended to the published Plugin revision.
+The existing post-publication one-entry scopes remain temporarily available to
+legacy non-Plugin Extensions only, are inventoried as a migration surface, and
+must not be used by the canonical Plugin adapter. New SDK code returns
+declarations directly.
 
 The IR is frozen before the public SDK:
 
@@ -281,28 +365,57 @@ The IR is frozen before the public SDK:
 
 ### Existing Profile And Selection Authority
 
-There is no new Plugin Profile resolver. Product/OEM Profiles expand Plugin
-Composition Sets and supply Plugin-selection/configuration overlays. A narrow
-`PluginSelectionResolver` performs only:
+There is no new Plugin Profile resolver. Product Runtime Plans and OEM Profiles
+expand Plugin Composition Sets and supply Plugin-selection/configuration
+overlays. A narrow `PluginSelectionResolver` owns only the preflight/finalize
+split above. Its
+final output says which Plugins Product policy selected and which contribution
+candidates they request. It never labels a contribution `admitted`, chooses a
+live Provider, or resolves an owner-specific conflict.
 
-1. installed/enabled/required state resolution;
-2. source, digest, compatibility, and Product/OEM admission;
-3. contribution-level enable/deny/order/config/authority filtering;
-4. declaration dependency closure and provenance;
-5. conversion of admitted runtime candidates into legal existing
-   `RuntimeProfileLayer` inputs and owner-specific resource/Extension inputs.
+Top-level Capability Providers have an explicit Product-owned seam that is not
+a Runtime Profile slot:
 
-`RuntimeProfileResolver` remains the sole final selector for Product runtime
-slots and variation semantics. Owner-specific contribution resolvers remain
-sole conflict authorities for aggregate resources, Tools, Commands, events,
-and presentation. `RuntimeCapabilityGraphPlanner` receives one already selected
-Provider per Capability and only validates contracts, facets, authority,
-dependencies, scope, and DAG order.
+```text
+capability_provider declaration
+  -> data-only CapabilityProviderCandidate(metadata + factory reference)
+  -> ProductCapabilityProviderResolver
+  -> ResolvedCapabilityProviderSet
+       - one CapabilityBundleProvider metadata value per Capability
+       - one matching CapabilityProviderBindingSpec per selected Provider
+  -> RuntimeCapabilityGraphPlanner(metadata only)
+  -> Capability Component Host verifies the selected revision and resolves the
+     spec into one CapabilityBundleProviderBinding
+  -> RuntimeCapabilityGraphBinder(plan + matching bindings)
+```
 
-Plugin is provenance, not a new Runtime Profile source rank. Each emitted layer
-uses the authority that selected it: Product, OEM, Extension, or Session. The
-Plugin ID, contribution ID, and digest remain structured provenance on that
-selection rather than altering precedence.
+`ProductCapabilityProviderResolver` is pure and is the sole top-level Provider
+selection/admission authority. It receives Product baseline candidates plus
+eligible OEM/Plugin candidates, Product roots/definitions, explicit selection
+rules, scope, compatibility and authority ceilings. It rejects zero/multiple
+Providers where the Product requires exactly one and emits structured owner
+admission records. It does not import a factory or construct a Provider.
+`CapabilityProviderBindingSpec` holds only the selected immutable locator,
+factory/disposer reference, normalized binding inputs and approval subject; the
+Component Host resolves the callable only after final activation approval.
+Metadata and binding specs must have an exact `(capability_id, provider_id,
+implementation_version, digest)` match or binding fails before construction.
+
+`RuntimeProfileResolver` remains the sole final selector for Bundle-private
+Product runtime slots and variation semantics. A top-level Capability ID such
+as `coding.lsp` is never used as a Runtime Profile slot. Other owner-specific
+contribution resolvers remain sole admission/conflict authorities for aggregate
+resources, Tools, Commands, Event Definitions/subscriptions, Agent Definitions,
+and presentation. Each returns an immutable `OwnerContributionAdmissionRecord`
+containing requested/admitted/rejected identities and policy provenance.
+`RuntimeCapabilityGraphPlanner` receives the already unique Provider metadata
+set and only validates contracts, facets, authority, dependencies, scope, and
+DAG order.
+
+Plugin is provenance, not a new Runtime Profile source rank. Each emitted
+Bundle-private layer uses the authority that selected it: Product, OEM,
+Extension, or Session. The Plugin ID, contribution ID, and digest remain
+structured provenance on that selection rather than altering precedence.
 
 Plugin-to-Plugin runtime service lookup is forbidden. A distribution dependency
 guarantees an immutable package revision is available and selected; runtime
@@ -324,11 +437,15 @@ transaction over unrelated owners.
 For a new Session, the existing composition root is the visibility boundary:
 
 ```text
-resolve Plugin selections and declarations
+resolve packages and inert preflight decisions
+  -> evaluate only preflight-approved declarations
+  -> compile owner-specific candidate sets
   -> create one root-owned StagedResourceCompositionCandidate
   -> discover data-only Extension/Resource contributions
-  -> RuntimeProfileResolver selects final slots
-  -> attach final Profile facts to the same Resource candidate
+  -> RuntimeProfileResolver selects final Bundle-private slots
+  -> ProductCapabilityProviderResolver selects top-level Provider metadata/specs
+  -> Graph Planner validates metadata and Component Hosts resolve approved bindings
+  -> attach final Profile/Provider facts to the same Resource candidate
   -> transfer that candidate once to the Session-owned Graph Binder
   -> bind final Graph and existing owner generations
   -> capture typed Consumers
@@ -351,8 +468,21 @@ Every owner retains its exact `RegistrationOwner` and `RegistrationScope`:
 `PluginRetirementSet` contains only opaque owner retirement handles, owner and
 generation references, contribution IDs, and redacted outcomes. It does not
 capture `RegistrationScope`, publish, deactivate leases, or dispose foreign
-owners itself. Removing a Plugin asks each owner to produce a new composition;
-the old owner generation then follows its normal retirement lifecycle.
+owners itself.
+
+Disable/remove has one unambiguous lifecycle:
+
+- selection changes affect every subsequently created Session immediately;
+- an active Session may apply a single-owner change only through that owner's
+  already accepted live transaction;
+- an active Session whose change affects a Capability Provider, dependency,
+  authority, process topology, or more than one owner records
+  `restart_required` and does not ask any affected owner to recompose;
+- after a permitted single-owner commit, its replaced generation drains under
+  that owner; after `restart_required`, old owner generations remain pinned
+  until the active Session exits normally;
+- the Plugin layer aggregates the resulting owner references and retirement
+  outcomes but never triggers a second retirement.
 
 Existing Session refresh follows an intentionally conservative rule:
 
@@ -362,6 +492,15 @@ Existing Session refresh follows an intentionally conservative rule:
 | Extension-only change that preserves Graph inputs | Existing Extension/Resource generation transaction |
 | Private turn-refreshable facet | Existing owner turn-refresh contract |
 | Capability Provider, dependency, authority, process topology, or multi-owner change | `restart_required` or a new Session |
+
+Trusted in-process Python has an additional v1 boundary: changing its package
+digest is Product-Host `restart_required`. A new revision cannot coexist in the
+same interpreter with an old revision unless a separately accepted
+digest-qualified import realm proves module namespace, `sys.modules`, native
+extension, dependency environment, singleton, and disposer isolation. Until
+then the Product Host drains Sessions using the old revision and restarts
+before importing the new one. Resource/declarative or isolated-service
+revisions may coexist when their own owner contracts permit it.
 
 There is no sequential Graph/Extension/Resource publish followed by snapshot
 restoration. Publication of an owner generation is its linearization point.
@@ -409,17 +548,29 @@ A separate `PluginInventoryProjector` may report package-management facts only:
 
 - Plugin ID, version, source authority, digest/revision, trust/execution model,
   and installation scope;
-- installed, enabled, selected, admitted, disabled, broken, or removal-pending
-  state;
-- requested/granted cooperative facets and enforceable authorities;
-- declared, filtered, admitted, and rejected contribution identities;
+- directly owned installed, enabled, preflight-approved, declared, requested,
+  disabled, broken, or removal-pending state;
+- requested cooperative facets/authorities plus references to owner-recorded
+  effective grants;
+- declared and filtered contribution identities plus references to
+  owner-recorded admitted/rejected identities;
 - configuration provenance with secret material redacted;
 - exact references to Runtime Profile selections and owner generations;
 - materialization, compatibility, retirement, and repair diagnostics.
 
-It never labels a Capability mounted, reconstructs effective Tool/Resource
-state, or supplies a model-facing view. CLI, RPC, and UI combine this inventory
-with the existing Effective Runtime view without rebuilding either authority.
+Its input is an immutable `PluginInventorySnapshot` with its own monotonic
+package/selection inventory revision. That snapshot stores package and
+preflight facts directly and only opaque references to already-published
+Runtime Profile snapshots, `OwnerContributionAdmissionRecord` values, owner
+generation snapshots, and retirement results. It never joins live mutable
+registries or upgrades `requested` to `admitted` by inference. Cross-owner skew
+is represented by the referenced owner revisions, not hidden behind a synthetic
+atomic generation.
+
+The projector never labels a Capability mounted, reconstructs effective
+Tool/Resource state, or supplies a model-facing view. CLI, RPC, and UI combine
+this inventory with the existing Effective Runtime view without rebuilding
+either authority.
 
 ### Model-Visible Persistence
 
@@ -441,19 +592,32 @@ the owner generations and complete input facts captured at its commit seam.
 ## Composition Sets, Overlays, And Fine-Grained Policy
 
 A Plugin Composition Set is a reusable list of Plugin selections and defaults
-expanded by an existing Product or OEM Profile. It is not a live object and not
-a second Profile. Stable selection and contribution IDs allow an authorized
-overlay to:
+expanded by an existing Product Runtime Plan or OEM Profile. It is not a live
+object and not a second Profile. Stable selection and contribution IDs allow
+an authorized overlay to:
 
 - insert, require, enable, or disable a Plugin selection;
 - pin/replace a source revision subject to trust policy;
 - enable/deny/order one contribution without disabling the entire Plugin;
 - patch namespaced configuration and authority requests;
-- require reapproval when digest, execution model, or authority changes.
+- invalidate the applicable execution/activation approval whenever any bound
+  digest, dependency lock, execution model, source/trust, scope,
+  security-relevant configuration, requested authority, or effective grant
+  changes.
 
 Unknown IDs, duplicate IDs at one layer, ambiguous contribution selection, and
 invalid patches fail before effects. Runtime state never persists back into a
 source manifest, Composition Set, Product Profile, or OEM Profile.
+
+An explicit user mention such as a Codex-style `plugin://...` token is a
+turn-scoped request, not installation, enablement, or authority. The Product
+input parser resolves it to stable Plugin/contribution IDs; the existing
+Resource/Tool owner may project only contributions already admitted and pinned
+by the Session. A mention that requires a new Plugin, owner generation, or
+authority returns a structured unavailable/`restart_required` diagnostic. The
+Model Input commit records the mention, resolution provenance, and exact
+injected prompt/Skill/Tool material, so replay does not rerun current Plugin
+selection.
 
 ## Scope, Membership, Leases, And Reclamation
 
@@ -475,8 +639,8 @@ Agent is a composition membership boundary, not a new Capability scope in v1:
 - a live Agent atomically joins its parent Session's resolved selection and
   package-revision leases at creation;
 - a subagent inherits the same selection by default;
-- a preset requesting a different composition must create an explicit child
-  Product Session/Graph through the Product Host;
+- an admitted `agent_definition` requesting a different Composition Set must
+  create an explicit child Product Session/Graph through the Product Host;
 - a child cannot mutate its parent's selection;
 - cold resume uses persisted Profile/selection/digest facts and fails with a
   repair diagnostic when a locked revision is unavailable.
@@ -497,11 +661,16 @@ ACTIVE -> DRAINING -> RETIRED
   or return `restart_required`;
 - Session/Agent membership holds package-revision leases; turns, Tool tasks,
   and external-service calls hold their applicable owner/facet leases;
+- every owner generation, disposer, external-service shutdown record, and
+  retryable cleanup task that may reopen package bytes or entrypoints holds its
+  own package-revision lease until cleanup reaches a terminal result;
 - release is idempotent and cancellation-safe;
 - shutdown blocks new acquisition, waits for held leases, and keeps failed
   cleanup visible/retryable;
-- cache reclamation occurs only after runtime, running Session, configured cold
-  resume, and lockfile references all reach zero.
+- `DRAINING -> RETIRED` and cache reclamation occur only after acquisition
+  counts, running Session/Agent membership, owner-generation/cleanup leases,
+  configured cold-resume references, and lockfile references all reach zero;
+  a retryable cleanup failure therefore retains its revision.
 
 Owner generations continue using their own lease/invalidation rules. A Plugin
 join count never substitutes for Capability or Extension leases.
@@ -523,13 +692,17 @@ Execution models are explicit:
 Workspace, user, or OEM code that is not trusted as host-equivalent cannot use
 in-process Python. It must remain resource/declarative or run through an
 accepted isolated worker. Diagnostics distinguish cooperative facet grants
-from enforceable sandbox/host grants.
+from enforceable sandbox/host grants. Even host-equivalent code is never
+imported merely because it is installed: source trust and the complete
+`PluginExecutionApprovalSubject` must pass inert preflight first.
 
 Security contracts include:
 
 - immutable/content-addressed executable revisions and bind-time digest checks;
 - containment and no mutable-path re-open after validation;
-- hash- and authority-bound approval;
+- execution and activation approvals bound to hash, dependency lock,
+  security-relevant configuration, source/trust, scope, requested ceiling, and
+  final effective authority as applicable;
 - source policy before materialization and again before activation;
 - locked dependency closure and no transitive registry trust;
 - execution-time revalidation for policy/approval-controlled actions;
@@ -568,7 +741,8 @@ The initial first-party decomposition is:
 | `coding.lsp.default` | LSP admission, supervisor/document runtime, semantic tools, and diagnostics | Provides `coding.lsp`, requiring narrow `harness.workspace` read/process facets |
 | `coding.arch.default` | Repository analyzers, architecture facts, queries, and tools | Provides `coding.arch`, requiring `harness.workspace` and optionally consuming `coding.lsp` |
 
-Suggested Product Profiles are:
+Suggested named Coding Composition Sets, selected by the Product Runtime Plan
+or OEM Profile rather than a new Product Profile type, are:
 
 | Profile | Selections |
 | --- | --- |
@@ -581,8 +755,10 @@ mode/discovery/deferred-runtime/process-launch/Tool pre-binding chain:
 
 ```text
 coding.lsp.default declaration
-  -> Runtime Profile candidate for coding.lsp
+  -> CapabilityProviderCandidate for coding.lsp
+  -> ProductCapabilityProviderResolver selects one metadata/binding spec pair
   -> requirement on harness.workspace(read, process.launch)
+  -> Capability Component Host resolves the approved factory reference
   -> one selected Provider factory receives typed facets
   -> Graph Binder mounts one coding.lsp Bundle
   -> Bundle exposes semantic runtime + tools + diagnostics
@@ -597,9 +773,13 @@ call. They are not registered earlier against a deferred LSP object.
 | --- | --- | --- |
 | `plugin.json` parsing | `PluginManifestParser` | Package catalog or Component Host reparsing |
 | Source bytes/path authority | immutable `ResolvedPluginPackage` locators | Raw mutable path joining in consumers |
-| Plugin selection/admission | Product/OEM Profile plus `PluginSelectionResolver` | Self-enable in Plugin code |
-| Runtime slot/variation selection | `RuntimeProfileResolver` and owner variation policy | Plugin resolver choosing a live Provider |
+| Plugin executable preflight and candidate selection | Product Runtime Plan/OEM Profile plus two-phase `PluginSelectionResolver` | Import-before-preflight or self-enable in Plugin code |
+| Top-level Capability Provider selection | Product-owned `ProductCapabilityProviderResolver` | Runtime Profile slot or Plugin code choosing a live Provider |
+| Bundle-private slot/variation selection | `RuntimeProfileResolver` and owner variation policy | Top-level Capability ID masquerading as a slot |
+| Final contribution admission | Exact owner resolver and `OwnerContributionAdmissionRecord` | Plugin inventory inferring admission |
 | Contribution declaration | versioned tagged `PluginDeclaration` compiler | Manifest/resource/runtime duplicate identities |
+| Agent Definition admission/binding | Product Agent Host | Resource loader or Plugin directly creating an Agent |
+| Event Definition contract | Product/Capability domain Event Definition catalog | Subscription inventing an event or dispatch mode |
 | Capability DAG validation | `RuntimeCapabilityGraphPlanner` | Plugin dependency graph as a service graph |
 | Capability publication | `RuntimeCapabilityGraphBinder` | Plugin runtime publishing Mounts |
 | Registration ownership | exact owner `RegistrationScope` | Root Plugin scope capturing foreign leases |
@@ -611,24 +791,26 @@ call. They are not registered earlier against a deferred LSP object.
 | Retirement | each exact owner; Plugin aggregates handles/results only | Plugin directly disposing foreign scopes |
 
 Multiple source adapters and typed Component Hosts are allowed. There is still
-one normalized descriptor, one declaration identity, one final selection owner,
-one binding owner per live object, and one effective projection path.
+one normalized descriptor, one declaration identity, one preflight owner, one
+final admission authority per contribution kind, one binding owner per live
+object, and one effective projection path.
 
 ## Current Gap And Reference Trade-Offs
 
 | Area | Current Loushang position | Remaining gap or deliberate difference |
 | --- | --- | --- |
-| Typed Capability composition | Strong Planner/Binder/Runtime/Projector and exact registration ownership | Mount `coding.lsp` and `coding.arch`; feed candidates through Runtime Profile |
+| Typed Capability composition | Strong Planner/Binder/Runtime/Projector and exact registration ownership | Add Product-owned top-level Provider resolver; mount `coding.lsp` and `coding.arch` without treating them as Runtime Profile slots |
 | Package resolution | Resource-oriented source registry/materialization | Immutable descriptor, mandatory digest/lock, one manifest parser, stable scope inventory |
 | Plugin lifecycle | Enablement resolves roots; owner lifecycles are separate | Unified selection/provenance and retirement aggregation without replacing owners |
 | Declarations | Manifest and executable Extension registrations converge late | Versioned mutually exclusive IR and compatibility capture adapter |
 | Profiles/composition | Product/OEM Runtime Profiles already exist | Composition Sets must compile into existing Profile layers, not a peer Profile |
-| Events/hooks | Extension routing exists | Public typed Event Definition/subscription/interceptor SDK and compatibility mapping |
-| Scoping | Six runtime scopes exist | Agent membership inheritance, child-Session presets, and cold-resume locks |
+| Events/hooks | Extension routing exists | Owner-qualified Event Definition catalog, explicit dispatch modes, public subscription/interceptor SDK, and compatibility mapping |
+| Agent definitions | Agent runtime/session composition exists | First-class `agent_definition` contribution and Product Agent Host admission/persistence |
+| Scoping | Six runtime scopes exist | Agent membership inheritance, child-Session Composition Sets, and cold-resume locks |
 | Refresh/HMR | Owner transactions and restart-required boundaries are strong | No universal dependency-triggered Plugin reload; cross-owner live HMR is intentionally deferred |
 | Fine-grained policy | Product/Extension admission exists | Contribution-level enable/deny/order/config/authority and hash-bound approval |
 | Private Plugin state | No unified Plugin data contract | Scoped data facet, quota, migration, preservation, and final deletion semantics |
-| Operations | Package/plugin commands and diagnostics exist | One installed/enabled/selected/admitted inventory plus explain/diff/repair |
+| Operations | Package/plugin commands and diagnostics exist | One installed/enabled/preflight/declared/requested inventory that references, but never infers, owner admission/effectiveness |
 | Ecosystem surfaces | Coding-centric integrations | Stable SDK, external host, MCP/ACP/JSON-RPC and multi-Product adapters in later waves |
 | Model-visible persistence | Complete committed Model Input is a Loushang strength | Preserve inline facts; add Plugin provenance only |
 
@@ -662,18 +844,24 @@ implementation.
 - keep registry-backed dependencies disabled until complete locks exist;
 - migrate built-in, local, and materialized sources through the same result.
 
-### UPA2: Versioned Declare And Select Once
+### UPA2: Inert Preflight, Versioned Declaration, And Candidate Selection
 
-- add the tagged declaration IR, internal `PluginDefinition`, Composition Sets,
-  `PluginSelectionResolver`, contribution selectors, policy ceilings, and
-  fingerprints;
-- compile candidates into existing Runtime Profile and owner-specific inputs;
-- define typed event/hook contributions and the Extension capture adapter;
+- implement the inert contribution index and the preflight/finalize operations
+  of `PluginSelectionResolver`; prove denied/disabled code is never imported;
+- add both approval-subject schemas, the serializable tagged declaration IR,
+  internal `PluginDefinition`, Composition Sets, contribution selectors,
+  policy ceilings, and security fingerprints;
+- compile only requested candidates into existing Bundle-private Runtime
+  Profile and owner-specific inputs;
+- define Event Definition/subscription/interceptor and Agent Definition
+  contributions plus the fail-closed Extension capture adapter;
 - add schema/engine/feature negotiation fixtures before public SDK exposure.
 
 ### UPA3: Owner-Preserving Bind, Lease, And Inventory
 
 - bind through the existing CLA single-candidate and Graph path;
+- add `ProductCapabilityProviderResolver`, matching metadata/binding specs, and
+  exact Product-owned top-level Provider admission records;
 - add Plugin Instance Revision, exact-owner retirement aggregation, package
   revision leases, `ACTIVE/DRAINING/RETIRED`, and Agent membership inheritance;
 - add package/selection inventory references without another effective
@@ -684,7 +872,8 @@ implementation.
 ### UPA4: LSP Vertical Slice
 
 - package the default LSP implementation as a first-party Plugin;
-- mount `coding.lsp` through Runtime Profile and the Session Graph;
+- select `coding.lsp` through `ProductCapabilityProviderResolver` and mount it
+  through the Session Graph; Runtime Profile remains Bundle-private;
 - remove deferred LSP/process/Tool pre-binding paths;
 - prove alternate Provider selection, startup rollback, restart reconstruction,
   complete Model Input facts, and owner-correct disposal.
@@ -699,7 +888,7 @@ implementation.
 
 ### UPA6: Base Coding Composition
 
-- define `coding.base` and minimal/standard/architecture Product Profiles;
+- define `coding.base` and minimal/standard/architecture Composition Sets;
 - move only optional Coding contributions, preserving Kernel-owned domain and
   safety semantics;
 - delete duplicate CLI registrations and hard-coded capability defaults after
@@ -729,21 +918,34 @@ The architecture is complete only when these statements are executable:
 
 - `plugin.json` is parsed once and Package/Plugin consumers share identical
   immutable locator/containment semantics;
-- every executable contribution is digest-bound from approval through bind;
+- disabled, denied, incompatible, or unapproved executable packages are never
+  imported, and every executed declaration has a persisted positive preflight;
+- execution and activation approvals are bound to digest, dependency lock,
+  source/trust, scope, security configuration, and effective grants;
 - built-in and external Plugins produce the same descriptor/declaration shapes;
-- two Product/OEM Profiles select different Plugins through existing Runtime
-  Profile layers without Product code branches;
+- two Product Runtime Plan/OEM Profile combinations select different Plugins;
+  Bundle-private contributions flow through existing Runtime Profile layers
+  without Product code branches;
 - contribution kinds are mutually exclusive and a duplicate command/tool/event
   identity fails with both provenance records;
+- an `agent_definition` has one Product Agent Host admission/binding path and a
+  different Composition Set creates a child Product Session rather than
+  mutating its parent;
+- every Event Definition has one owner/version and every dispatch has an
+  explicit awaited mode, ordering, timeout, failure, and aggregation contract;
 - an alternate `coding.lsp` Provider is selected without changing Session, CLI,
-  or Tool implementation code;
+  or Tool implementation code, and no `coding.lsp` Runtime Profile slot exists;
 - a failed/cancelled unpublished Session candidate leaks no owner registration;
 - multi-owner live changes return `restart_required` rather than exposing mixed
   or retroactively restored generations;
-- disabling a Plugin causes exact owners to recompose/retire once, while the
-  Plugin layer only aggregates handles/results;
+- disabling a Plugin affects new Sessions immediately; a permitted single-owner
+  active change recomposes that owner once, while an active multi-owner change
+  performs no partial recompose and returns `restart_required`;
 - acquisition cannot race `ACTIVE -> DRAINING -> RETIRED`, shutdown blocks new
-  joins, and retained revisions are reclaimed only after all references end;
+  joins, and retained revisions are reclaimed only after Session, owner,
+  cleanup, cold-resume, and lock references end;
+- trusted in-process Python digest changes are restart-only until a tested
+  digest-qualified import realm exists;
 - restart and source deletion still replay the complete committed Model Input;
 - in-process Python is always reported as host-equivalent trust, never as
   sandbox-isolated authority;
