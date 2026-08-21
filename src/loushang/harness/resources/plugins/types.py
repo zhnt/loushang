@@ -34,6 +34,9 @@ class ResolvedPluginPackage:
     source: PluginSource
     manifest_path: Path | None = None
     manifest_digest: str | None = None
+    package_root_relative: Path = Path(".")
+    root_identity: tuple[int, int] | None = None
+    package_root_identity: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True)

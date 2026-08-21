@@ -18,6 +18,7 @@ from loushang.harness.resources.packages.source_resolver import (
     package_source_scopes,
 )
 from loushang.harness.resources.plugins import PluginManager
+from loushang.harness.resources.plugins.types import PluginSource
 
 
 class ResourceRootSettingsSnapshot(Protocol):
@@ -138,9 +139,21 @@ def resolve_package_resource_roots(
         if is_remote_package_source(source):
             record = materializer.get_record(source)
             if record is not None and record.lifecycle == "installed":
-                _append_package_root(
-                    roots, resolve_package_manifest(record.target_path).package_root
+                manifest = resolve_package_manifest(
+                    record.target_path,
+                    plugin_source=PluginSource(
+                        path=record.target_path,
+                        url=source,
+                        kind="remote",
+                    ),
                 )
+                package = manifest.resolved_plugin_package
+                if package is None:
+                    continue
+                plugin = manager.add_resolved_plugin_package(package)
+                if plugin.enabled:
+                    for root in manager.resolver.resolve_resources(plugin).package_roots:
+                        _append_package_root(roots, root)
             continue
         try:
             plugin = manager.add_plugin_source(source)

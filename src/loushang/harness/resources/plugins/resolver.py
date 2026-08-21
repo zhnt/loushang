@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from loushang.harness.resources.plugins.lifecycle import (
     is_remote_plugin_source,
     remote_plugin_name,
 )
-from loushang.harness.resources.plugins.manifest import PluginManifestParser
+from loushang.harness.resources.plugins.manifest import (
+    PluginManifestError,
+    PluginManifestParser,
+)
 from loushang.harness.resources.plugins.types import (
     InstalledPlugin,
     PluginManifest,
@@ -37,7 +41,7 @@ class PluginResolver:
             if isinstance(source, PluginSource)
             else _plugin_source_from_input(source)
         )
-        if plugin_source.kind == "remote":
+        if plugin_source.kind == "remote" and plugin_source.path is None:
             raise ValueError(
                 "Remote plugin sources must be materialized before manifest resolution."
             )
@@ -48,13 +52,35 @@ class PluginResolver:
             source=plugin_source,
         )
 
+    def project_package(
+        self,
+        resolved_package: ResolvedPluginPackage,
+        *,
+        source_enabled: bool | None = None,
+    ) -> InstalledPlugin:
+        """Project effective installed state without reparsing the package."""
+
+        enabled = (
+            resolved_package.source.enabled
+            if source_enabled is None
+            else source_enabled
+        )
+        source = replace(resolved_package.source, enabled=enabled)
+        package = replace(resolved_package, source=source)
+        return InstalledPlugin(
+            manifest=package.manifest,
+            source=source,
+            enabled=enabled and package.manifest.enabled,
+            resolved_package=package,
+        )
+
     def resolve_plugin(self, source: PluginSource | str | Path) -> InstalledPlugin:
         plugin_source = (
             source
             if isinstance(source, PluginSource)
             else _plugin_source_from_input(source)
         )
-        if plugin_source.kind == "remote":
+        if plugin_source.kind == "remote" and plugin_source.path is None:
             url = plugin_source.url or ""
             name = remote_plugin_name(url)
             manifest = PluginManifest(
@@ -73,22 +99,20 @@ class PluginResolver:
         if plugin_source.path is None:
             raise ValueError("Local plugin source requires a path.")
         resolved_package = self.resolve_package(plugin_source)
-        manifest = resolved_package.manifest
-        return InstalledPlugin(
-            manifest=manifest,
-            source=resolved_package.source,
-            enabled=plugin_source.enabled and manifest.enabled,
-            resolved_package=resolved_package,
-        )
+        return self.project_package(resolved_package)
 
     def resolve_resources(self, plugin: InstalledPlugin) -> PluginResolvedResources:
         if not plugin.enabled:
             return PluginResolvedResources(plugin=plugin, package_roots=())
-        package_root = (
-            plugin.resolved_package.package_root
-            if plugin.resolved_package is not None
-            else plugin.manifest.package_root or plugin.manifest.root
-        )
+        if plugin.resolved_package is None:
+            raise PluginManifestError(
+                f"Enabled plugin has no canonical resolved package: "
+                f"{plugin.manifest.root}",
+                code="unresolved_plugin_package",
+                path=plugin.manifest.root,
+            )
+        package = self._manifest_parser.revalidate(plugin.resolved_package)
+        package_root = package.package_root
         return PluginResolvedResources(plugin=plugin, package_roots=(package_root,))
 
 

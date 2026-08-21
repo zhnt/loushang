@@ -23,6 +23,7 @@ from loushang.harness.resources.packages.source import (
     remote_package_name,
 )
 from loushang.harness.resources.plugins.manager import PluginManager
+from loushang.harness.resources.plugins.types import PluginSource
 from loushang.harness.resources.types import PackageResourceSummary
 
 PackageCatalogKind = Literal["package_root", "plugin", "remote_package", "catalog"]
@@ -162,15 +163,18 @@ class PackageCatalogBuilder:
                         scope=scope,
                         cwd=cwd,
                         materializer=materializer,
+                        plugin_manager=manager,
                     )
                 )
                 continue
             plugin = manager.add_plugin_source(source)
-            package_root = (
-                plugin.resolved_package.package_root
-                if plugin.resolved_package is not None
-                else plugin.manifest.package_root or plugin.manifest.root
-            )
+            if plugin.enabled:
+                resources = manager.resolver.resolve_resources(plugin)
+                package_root = resources.package_roots[0]
+            elif plugin.resolved_package is not None:
+                package_root = plugin.resolved_package.package_root
+            else:
+                package_root = plugin.manifest.root
             summary = (
                 empty_package_summary(package_root)
                 if not plugin.enabled
@@ -200,29 +204,64 @@ class PackageCatalogBuilder:
         cwd: Path | None = None,
         materializer: PackageMaterializer | None = None,
         package_source: PackageSourceConfig | None = None,
+        plugin_manager: PluginManager | None = None,
     ) -> PackageCatalogEntry:
         record = materializer.get_record(source) if materializer is not None else None
         lifecycle = record.lifecycle if record is not None else "remote_registered"
         path = record.target_path if record is not None else None
-        manifest = resolve_package_manifest(
-            path or Path(), installed=lifecycle == "installed"
+        installed = lifecycle == "installed"
+        plugin_source = (
+            PluginSource(path=path, url=source, kind="remote")
+            if plugin_manager is not None and path is not None and installed
+            else None
         )
-        summary_root = manifest.package_root if path is not None else manifest.root
+        manifest = resolve_package_manifest(
+            path or Path(),
+            installed=installed,
+            plugin_source=plugin_source,
+        )
+        plugin = (
+            plugin_manager.add_resolved_plugin_package(
+                manifest.resolved_plugin_package
+            )
+            if plugin_manager is not None
+            and manifest.resolved_plugin_package is not None
+            else None
+        )
+        enabled = plugin.enabled if plugin is not None else installed
+        if plugin_manager is not None and plugin is None:
+            enabled = False
+        if plugin is not None and plugin.enabled:
+            assert plugin_manager is not None
+            resolved_resources = plugin_manager.resolver.resolve_resources(plugin)
+            summary_root = resolved_resources.package_roots[0]
+        else:
+            summary_root = (
+                manifest.package_root if path is not None else manifest.root
+            )
         summary = (
             empty_package_summary(summary_root)
-            if path is None or lifecycle != "installed" or not summary_root.is_dir()
+            if path is None or not enabled or not summary_root.is_dir()
             else self._summary_provider(
                 summary_root, cwd or summary_root, package_source
             )
         )
         return PackageCatalogEntry(
-            name=remote_package_name(source),
+            name=(
+                plugin.manifest.name
+                if plugin is not None
+                else remote_package_name(source)
+            ),
             kind="remote_package",
             scope=scope,
-            version=manifest.version,
+            version=(
+                plugin.manifest.version or ""
+                if plugin is not None
+                else manifest.version
+            ),
             source=source,
             path=path,
-            enabled=lifecycle == "installed",
+            enabled=enabled,
             summary=summary,
             lifecycle=lifecycle,
             security=record.security if record is not None else "allowed",

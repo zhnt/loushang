@@ -9,7 +9,10 @@ from loushang.harness.resources.plugins.manifest import (
     PluginManifestError,
     PluginManifestParser,
 )
-from loushang.harness.resources.plugins.types import ResolvedPluginPackage
+from loushang.harness.resources.plugins.types import (
+    PluginSource,
+    ResolvedPluginPackage,
+)
 
 
 @dataclass(frozen=True)
@@ -27,6 +30,7 @@ def resolve_package_manifest(
     *,
     installed: bool = True,
     resolved_plugin_package: ResolvedPluginPackage | None = None,
+    plugin_source: PluginSource | None = None,
 ) -> PackageManifestInfo:
     package_root = Path(root).expanduser().resolve()
     if not installed:
@@ -40,32 +44,14 @@ def resolve_package_manifest(
         return _project_plugin_package(resolved_plugin_package)
     if not package_root.is_dir():
         return PackageManifestInfo(root=package_root, package_root=package_root)
+    if plugin_source is not None:
+        return _resolve_plugin_manifest(package_root, source=plugin_source)
 
     manifest_path = _manifest_path(package_root)
     if manifest_path is None:
         return PackageManifestInfo(root=package_root, package_root=package_root)
     if manifest_path.name == "plugin.json":
-        try:
-            descriptor = PluginManifestParser().parse(package_root)
-        except PluginManifestError as exc:
-            code = (
-                "unreadable_package_manifest"
-                if exc.code == "unreadable_plugin_manifest"
-                else "invalid_package_manifest"
-            )
-            return PackageManifestInfo(
-                root=package_root,
-                package_root=package_root,
-                manifest_path=exc.path,
-                diagnostics=(
-                    {
-                        "code": code,
-                        "message": str(exc),
-                        "path": str(exc.path),
-                    },
-                ),
-            )
-        return _project_plugin_package(descriptor)
+        return _resolve_plugin_manifest(package_root)
 
     try:
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -134,10 +120,38 @@ def _project_plugin_package(
     )
 
 
+def _resolve_plugin_manifest(
+    root: Path,
+    *,
+    source: PluginSource | None = None,
+) -> PackageManifestInfo:
+    try:
+        descriptor = PluginManifestParser().parse(root, source=source)
+    except PluginManifestError as exc:
+        code = (
+            "unreadable_package_manifest"
+            if exc.code == "unreadable_plugin_manifest"
+            else "invalid_package_manifest"
+        )
+        return PackageManifestInfo(
+            root=root,
+            package_root=root,
+            manifest_path=exc.path,
+            diagnostics=(
+                {
+                    "code": code,
+                    "message": str(exc),
+                    "path": str(exc.path),
+                },
+            ),
+        )
+    return _project_plugin_package(descriptor)
+
+
 def _manifest_path(root: Path) -> Path | None:
     for filename in ("loushang-package.json", "plugin.json"):
         path = root / filename
-        if path.is_file():
+        if path.is_file() or path.is_symlink():
             return path
     return None
 

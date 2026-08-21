@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
 from loushang.harness.resources.packages.materializer import (
+    PackageMaterializationRecord,
     PackageMaterializer,
     resolve_session_package_install_root,
 )
@@ -79,6 +81,32 @@ def test_configure_resource_loader_roots_binds_standard_settings(tmp_path) -> No
     assert loader.explicit_roots == frozenset({resource_root})
 
 
+def test_materialized_remote_plugin_disabled_by_manifest_is_not_mounted(
+    tmp_path: Path,
+) -> None:
+    from loushang.harness.resources.packages.roots import (
+        resolve_package_resource_roots,
+    )
+
+    source = "https://packages.example.invalid/review-pack.git"
+    root = tmp_path / "packages" / "review-pack"
+    root.mkdir(parents=True)
+    (root / "plugin.json").write_text(
+        json.dumps({"name": "review-pack", "enabled": False}),
+        encoding="utf-8",
+    )
+    materializer = _InstalledMaterializer(source=source, target_path=root)
+
+    resolved = resolve_package_resource_roots(
+        package_roots=(),
+        plugin_sources=(source,),
+        package_sources=(),
+        materializer=materializer,  # type: ignore[arg-type]
+    )
+
+    assert resolved.roots == ()
+
+
 def test_session_package_install_root_follows_session_layout(tmp_path) -> None:
     assert resolve_session_package_install_root(
         session_dir=tmp_path / "sessions",
@@ -88,3 +116,16 @@ def test_session_package_install_root_follows_session_layout(tmp_path) -> None:
         session_dir=tmp_path / "custom-session",
         cwd=tmp_path / "project",
     ) == tmp_path / "custom-session" / "packages"
+
+
+class _InstalledMaterializer:
+    def __init__(self, *, source: str, target_path: Path) -> None:
+        self._record = PackageMaterializationRecord(
+            source=source,
+            name=target_path.name,
+            lifecycle="installed",
+            target_path=target_path,
+        )
+
+    def get_record(self, source: str) -> PackageMaterializationRecord | None:
+        return self._record if source == self._record.source else None

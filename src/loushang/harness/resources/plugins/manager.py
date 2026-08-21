@@ -9,6 +9,7 @@ from loushang.harness.resources.plugins.types import (
     InstalledPlugin,
     PluginResolvedResources,
     PluginSource,
+    ResolvedPluginPackage,
 )
 
 
@@ -35,12 +36,31 @@ class PluginManager:
             return self.registry.register(self.resolver.resolve_plugin(source))
         source_path = Path(path).expanduser().resolve()
         source = PluginSource(path=source_path, enabled=enabled)
-        self._sources[source_path] = source
-        plugin = self.resolver.resolve_plugin(source)
-        if plugin.manifest.name in self._disabled_plugins:
-            plugin = self.resolver.resolve_plugin(
-                PluginSource(path=source_path, enabled=False)
-            )
+        return self.add_resolved_plugin_package(
+            self.resolver.resolve_package(source)
+        )
+
+    def add_resolved_plugin_package(
+        self,
+        package: ResolvedPluginPackage,
+    ) -> InstalledPlugin:
+        """Register one descriptor while applying Product disable state once."""
+
+        source = package.source
+        if source.kind == "remote":
+            if source.url is None:
+                raise ValueError("Materialized remote plugin requires a source URL.")
+            self._remote_sources[source.url] = source
+        else:
+            if source.path is None:
+                raise ValueError("Local plugin source requires a path.")
+            self._sources[source.path] = source
+        plugin = self.resolver.project_package(
+            package,
+            source_enabled=(
+                source.enabled and package.manifest.name not in self._disabled_plugins
+            ),
+        )
         return self.registry.register(plugin)
 
     def remove_plugin_source(self, path: str | Path) -> InstalledPlugin | None:
@@ -66,16 +86,17 @@ class PluginManager:
     def refresh_plugins(self) -> list[InstalledPlugin]:
         refreshed: list[InstalledPlugin] = []
         for source in list(self._sources.values()):
-            plugin = self.resolver.resolve_plugin(source)
-            if plugin.manifest.name in self._disabled_plugins:
-                plugin = self.resolver.resolve_plugin(
-                    PluginSource(path=source.path, enabled=False)
-                )
-            self.registry.register(plugin)
+            plugin = self.add_resolved_plugin_package(
+                self.resolver.resolve_package(source)
+            )
             refreshed.append(plugin)
         for source in list(self._remote_sources.values()):
-            plugin = self.resolver.resolve_plugin(source)
-            self.registry.register(plugin)
+            if source.path is None:
+                plugin = self.registry.register(self.resolver.resolve_plugin(source))
+            else:
+                plugin = self.add_resolved_plugin_package(
+                    self.resolver.resolve_package(source)
+                )
             refreshed.append(plugin)
         return refreshed
 
@@ -104,7 +125,7 @@ class PluginManager:
     def resolve_package_roots(self) -> tuple[Path, ...]:
         roots: list[Path] = []
         for plugin in self.registry.list_enabled_plugins():
-            if plugin.source.kind == "remote":
+            if plugin.source.kind == "remote" and plugin.source.path is None:
                 continue
             roots.extend(self.resolver.resolve_resources(plugin).package_roots)
         return tuple(roots)
@@ -118,6 +139,7 @@ class PluginManager:
             if source_url is None:
                 raise ValueError(f"remote plugin {name!r} has no source URL")
             source = PluginSource(
+                path=plugin.source.path,
                 url=source_url,
                 kind="remote",
                 enabled=enabled,
@@ -133,5 +155,9 @@ class PluginManager:
             self._disabled_plugins.discard(name)
         else:
             self._disabled_plugins.add(name)
-        updated = self.resolver.resolve_plugin(source)
-        return self.registry.register(updated)
+        if source.path is None:
+            updated = self.resolver.resolve_plugin(source)
+            return self.registry.register(updated)
+        return self.add_resolved_plugin_package(
+            self.resolver.resolve_package(source)
+        )

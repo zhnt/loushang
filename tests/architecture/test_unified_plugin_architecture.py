@@ -27,6 +27,10 @@ EXPECTED_MANIFEST_BOUNDARY_SINK_SITES = {
         "PluginManifestParser.parse",
     ),
     (
+        Path("src/loushang/harness/resources/plugins/manifest.py"),
+        "PluginManifestParser.revalidate",
+    ),
+    (
         Path("src/loushang/harness/resources/packages/manifest.py"),
         "resolve_package_manifest",
     ),
