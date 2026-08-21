@@ -209,6 +209,11 @@ Profile, Capability Bundle, or live generation. It cannot contain callables,
 credentials, mounted Providers, or authority beyond the selecting Product/OEM
 ceiling.
 
+Product-owned selections compile once into the defaults of a derived
+`ProductRuntimePlan` with Plugin provenance; they are not supplied as an
+external Product layer. OEM, Extension, and Session selections retain their
+existing admitted layer paths, after which `RuntimeProfileResolver` runs once.
+
 ### Resolved Runtime Profile
 
 The deterministic result of applying admitted Product, OEM, extension, and
@@ -449,6 +454,24 @@ A factory, adapter, or live implementation that can satisfy a Capability Slot
 after discovery, admission, and resolution. A provider does not acquire
 authority merely by being installed or discovered.
 
+For a top-level complete-Bundle replacement, the Capability owner first grants
+eligibility and later performs final admission over the fully normalized
+candidate and effective grants. Product policy selects only among those final
+admissions. The candidate fingerprint includes its declaration, configuration,
+dependency/source/scope and target Capability Definition facts; Provider ID and
+version alone are not sufficient authority or resume identity.
+
+### Capability Component
+
+A typed contribution aggregated inside an existing Capability Bundle under a
+versioned owner-defined schema, such as one language-server route inside
+`coding.lsp` or one analyzer inside `coding.arch`.
+
+The exact Capability owner defines component identity, conflicts, ordering,
+facets, refresh and disposal, then publishes the admitted set in one owner
+generation. A Capability Component cannot replace the complete Bundle, publish
+a Graph Mount, or mutate a live Bundle registry.
+
 ### Override
 
 An umbrella term for an allowed variation of a Product or platform default.
@@ -620,6 +643,17 @@ scope, security-relevant configuration, and execution approval are decided
 before that entrypoint is imported or launched. Final contribution admission
 still belongs to the exact Capability, Extension, Resource, Agent, event, or
 other owner.
+
+### Plugin Management Service
+
+The sole Product-scoped coordinator for Plugin installation, enablement,
+updates, repair, removal, and final data deletion. Every CLI, RPC, UI, SDK, ACP,
+or JSON-RPC adapter submits the same typed, idempotent, revision-checked command
+and observes its durable operation status.
+
+The service coordinates Package, configuration, selection, and exact owner
+transactions but does not replace their parsing, admission, publication,
+retirement, or projection authority.
 
 ### Agent Definition
 

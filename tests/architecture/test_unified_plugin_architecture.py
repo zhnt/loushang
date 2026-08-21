@@ -75,7 +75,27 @@ EXPECTED_EXTENSION_DECLARATION_METHODS = {
     "register_shortcut",
     "register_message_renderer",
 }
-EXPECTED_EXTENSION_LIVE_SINK_INVENTORY = {
+EXPECTED_LIVE_BINDING_SINK_INVENTORY = {
+    (
+        Path("src/loushang/coding/arch/tool_pack.py"),
+        "register_coding_arch_tools",
+        "register_tool",
+    ),
+    (
+        Path("src/loushang/coding/bootstrap.py"),
+        "_create_agent_session",
+        "register_tool",
+    ),
+    (
+        Path("src/loushang/coding/lsp/tool_pack.py"),
+        "register_coding_lsp_tools",
+        "register_tool",
+    ),
+    (
+        Path("src/loushang/harness/bootstrap.py"),
+        "register_extension_tools",
+        "register_tool",
+    ),
     (
         Path("src/loushang/harness/extensions/api.py"),
         "ExtensionContributionAPI._register_runtime_tool",
@@ -124,6 +144,56 @@ EXPECTED_EXTENSION_LIVE_SINK_INVENTORY = {
     (
         Path("src/loushang/harness/extensions/runtime_bindings.py"),
         "ExtensionRuntimeBindingFactory.build",
+        "register_tool",
+    ),
+    (
+        Path("src/loushang/harness/runtime/context.py"),
+        "BoundProductRuntimeContext.register_tool",
+        "bind_tool",
+    ),
+    (
+        Path("src/loushang/harness/runtime/context.py"),
+        "BoundProductRuntimeContext.register_tool",
+        "register_tool",
+    ),
+    (
+        Path("src/loushang/harness/session/bootstrap_construction.py"),
+        "_register_workspace_tool",
+        "register_tool",
+    ),
+    (
+        Path("src/loushang/harness/session/tool_runtime.py"),
+        "SessionToolRuntime.bind_runtime_tool",
+        "bind_tool",
+    ),
+    (
+        Path("src/loushang/harness/session/tool_runtime.py"),
+        "SessionToolRuntime.register_runtime_tool",
+        "register_tool",
+    ),
+    (
+        Path("src/loushang/harness/tools/agent_delegate.py"),
+        "AgentDelegateToolPack.register",
+        "register_tool",
+    ),
+    (
+        Path("src/loushang/harness/tools/multiagent.py"),
+        "MultiAgentToolPack.register",
+        "register_tool",
+    ),
+    (
+        Path("src/loushang/harness/tools/workspace/registry.py"),
+        "WorkspaceToolRegistry._copy_contributions",
+        "register_tool",
+    ),
+    (
+        Path("src/loushang/harness/tools/workspace/registry.py"),
+        "WorkspaceToolRegistry.register_profile",
+        "register_tool",
+    ),
+    (
+        Path("src/loushang/harness/tools/workspace/registry.py"),
+        "WorkspaceToolRegistry.register_tool",
         "register_tool",
     ),
 }
@@ -239,10 +309,40 @@ def _qualified_functions(
     return tuple(visitor.functions)
 
 
+class _CodeUnitNodeVisitor(ast.NodeVisitor):
+    """Collect executable nodes without crossing a nested code-unit boundary."""
+
+    def __init__(self) -> None:
+        self.nodes: list[ast.AST] = []
+
+    def generic_visit(self, node: ast.AST) -> None:
+        self.nodes.append(node)
+        super().generic_visit(node)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        del node
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        del node
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        del node
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        del node
+
+
+def _code_unit_nodes(body: list[ast.stmt]) -> tuple[ast.AST, ...]:
+    visitor = _CodeUnitNodeVisitor()
+    for statement in body:
+        visitor.visit(statement)
+    return tuple(visitor.nodes)
+
+
 def _import_aliases(tree: ast.Module) -> tuple[set[str], set[str]]:
     json_modules = {"json"}
     json_decoders: set[str] = set()
-    for node in tree.body:
+    for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name in {"json", "orjson"}:
@@ -254,6 +354,40 @@ def _import_aliases(tree: ast.Module) -> tuple[set[str], set[str]]:
     return json_modules, json_decoders
 
 
+def _is_manifest_boundary_sink(
+    nodes: tuple[ast.AST, ...],
+    *,
+    json_modules: set[str],
+    json_decoders: set[str],
+) -> bool:
+    calls = tuple(node for node in nodes if isinstance(node, ast.Call))
+    reads_file = any(
+        (
+            isinstance(call.func, ast.Attribute)
+            and call.func.attr in {"read_text", "read_bytes", "open"}
+        )
+        or (
+            isinstance(call.func, ast.Name)
+            and call.func.id in {"open", "read_text", "read_bytes"}
+        )
+        for call in calls
+    )
+    parses_json = any(
+        (
+            isinstance(call.func, ast.Attribute)
+            and isinstance(call.func.value, ast.Name)
+            and call.func.value.id in json_modules
+            and call.func.attr in {"load", "loads"}
+        )
+        or (
+            isinstance(call.func, ast.Name)
+            and call.func.id in json_decoders
+        )
+        for call in calls
+    )
+    return reads_file or parses_json
+
+
 def _manifest_boundary_sink_sites(
     sources: Mapping[Path, str],
 ) -> set[tuple[Path, str]]:
@@ -263,49 +397,175 @@ def _manifest_boundary_sink_sites(
             continue
         tree = ast.parse(source, filename=str(path))
         json_modules, json_decoders = _import_aliases(tree)
+        if _is_manifest_boundary_sink(
+            _code_unit_nodes(tree.body),
+            json_modules=json_modules,
+            json_decoders=json_decoders,
+        ):
+            sites.add((path, "<module>"))
         for qualified, function in _qualified_functions(source, filename=path):
-            calls = tuple(
-                node for node in ast.walk(function) if isinstance(node, ast.Call)
-            )
-            reads_file = any(
-                (
-                    isinstance(call.func, ast.Attribute)
-                    and call.func.attr in {"read_text", "read_bytes", "open"}
-                )
-                or (
-                    isinstance(call.func, ast.Name)
-                    and call.func.id in {"open", "read_text", "read_bytes"}
-                )
-                for call in calls
-            )
-            parses_json = any(
-                (
-                    isinstance(call.func, ast.Attribute)
-                    and isinstance(call.func.value, ast.Name)
-                    and call.func.value.id in json_modules
-                    and call.func.attr in {"load", "loads"}
-                )
-                or (
-                    isinstance(call.func, ast.Name)
-                    and call.func.id in json_decoders
-                )
-                for call in calls
-            )
-            if reads_file or parses_json:
+            if _is_manifest_boundary_sink(
+                _code_unit_nodes(function.body),
+                json_modules=json_modules,
+                json_decoders=json_decoders,
+            ):
                 sites.add((path, qualified))
     return sites
 
 
-def _contains_sensitive_attribute(node: ast.AST, attributes: frozenset[str]) -> bool:
+def _receiver_looks_like_graph_state(
+    node: ast.AST,
+    *,
+    allow_self: bool,
+    receiver_aliases: set[str],
+) -> bool:
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name):
+            lowered = child.id.lower()
+            if child.id in receiver_aliases:
+                return True
+            if allow_self and lowered == "self":
+                return True
+            if lowered != "self" and (
+                "graph" in lowered or "runtime" in lowered
+            ):
+                return True
+        elif isinstance(child, ast.Attribute):
+            lowered = child.attr.lower()
+            if "graph" in lowered or lowered in {"runtime", "_runtime"}:
+                return True
+    return False
+
+
+def _graph_receiver_aliases(
+    nodes: tuple[ast.AST, ...],
+    *,
+    allow_self: bool,
+) -> set[str]:
+    aliases = {
+        child.id
+        for node in nodes
+        for child in ast.walk(node)
+        if isinstance(child, ast.Name)
+        and (
+            "graph" in child.id.lower()
+            or "runtime" in child.id.lower()
+            or (allow_self and child.id == "self")
+        )
+    }
+    changed = True
+    while changed:
+        changed = False
+        for node in nodes:
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            value = node.value
+            if value is None or not any(
+                isinstance(child, ast.Name) and child.id in aliases
+                for child in ast.walk(value)
+            ):
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id not in aliases:
+                    aliases.add(target.id)
+                    changed = True
+    return aliases
+
+
+def _contains_sensitive_attribute(
+    node: ast.AST,
+    attributes: frozenset[str],
+    *,
+    allow_self: bool,
+    receiver_aliases: set[str],
+) -> bool:
     return any(
-        isinstance(child, ast.Attribute) and child.attr in attributes
+        isinstance(child, ast.Attribute)
+        and child.attr in attributes
+        and _receiver_looks_like_graph_state(
+            child.value,
+            allow_self=allow_self,
+            receiver_aliases=receiver_aliases,
+        )
         for child in ast.walk(node)
     )
 
 
-def _function_mutates_private_graph_state(
-    function: ast.FunctionDef | ast.AsyncFunctionDef,
+def _sensitive_container_aliases(
+    nodes: tuple[ast.AST, ...],
     attributes: frozenset[str],
+    *,
+    allow_self: bool,
+    receiver_aliases: set[str],
+) -> set[str]:
+    aliases: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for node in nodes:
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            value = node.value
+            if value is None:
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
+            aliases_sensitive = _contains_sensitive_attribute(
+                value,
+                attributes,
+                allow_self=allow_self,
+                receiver_aliases=receiver_aliases,
+            ) or (isinstance(value, ast.Name) and value.id in aliases)
+            if not aliases_sensitive:
+                continue
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id not in aliases:
+                    aliases.add(target.id)
+                    changed = True
+    return aliases
+
+
+def _contains_sensitive_mutation_target(
+    node: ast.AST,
+    *,
+    attributes: frozenset[str],
+    aliases: set[str],
+    allow_self: bool,
+    receiver_aliases: set[str],
+) -> bool:
+    children = tuple(ast.walk(node))
+    return any(
+        (
+            isinstance(child, ast.Attribute)
+            and child.attr in attributes
+            and _receiver_looks_like_graph_state(
+                child.value,
+                allow_self=allow_self,
+                receiver_aliases=receiver_aliases,
+            )
+        )
+        or (
+            isinstance(child, ast.Subscript)
+            and isinstance(child.slice, ast.Constant)
+            and child.slice.value in attributes
+            and _receiver_looks_like_graph_state(
+                child.value,
+                allow_self=allow_self,
+                receiver_aliases=receiver_aliases,
+            )
+        )
+        for child in children
+    ) or (
+        not isinstance(node, ast.Name)
+        and any(isinstance(child, ast.Name) and child.id in aliases for child in children)
+    )
+
+
+def _function_mutates_private_graph_state(
+    function: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef,
+    attributes: frozenset[str],
+    *,
+    allow_self: bool,
 ) -> bool:
     mutation_methods = {
         "__setitem__",
@@ -319,7 +579,15 @@ def _function_mutates_private_graph_state(
         "setdefault",
         "update",
     }
-    for node in ast.walk(function):
+    nodes = _code_unit_nodes(function.body)
+    receiver_aliases = _graph_receiver_aliases(nodes, allow_self=allow_self)
+    aliases = _sensitive_container_aliases(
+        nodes,
+        attributes,
+        allow_self=allow_self,
+        receiver_aliases=receiver_aliases,
+    )
+    for node in nodes:
         targets: tuple[ast.AST, ...] = ()
         if isinstance(node, ast.Assign):
             targets = tuple(node.targets)
@@ -329,28 +597,82 @@ def _function_mutates_private_graph_state(
             targets = (node.target,)
         elif isinstance(node, (ast.Delete,)):
             targets = tuple(node.targets)
-        if any(_contains_sensitive_attribute(target, attributes) for target in targets):
+        if any(
+            _contains_sensitive_mutation_target(
+                target,
+                attributes=attributes,
+                aliases=aliases,
+                allow_self=allow_self,
+                receiver_aliases=receiver_aliases,
+            )
+            for target in targets
+        ):
             return True
         if not isinstance(node, ast.Call):
             continue
+        if isinstance(node.func, ast.Name) and node.func.id in {"setattr", "delattr"}:
+            receiver = node.args[0] if node.args else None
+            if (
+                receiver is not None
+                and _receiver_looks_like_graph_state(
+                    receiver,
+                    allow_self=allow_self,
+                    receiver_aliases=receiver_aliases,
+                )
+                and any(
+                    isinstance(argument, ast.Constant)
+                    and argument.value in attributes
+                    for argument in node.args[1:]
+                )
+            ):
+                return True
         if (
-            (
-                isinstance(node.func, ast.Name)
-                and node.func.id in {"setattr", "delattr"}
-            )
-            or (
-                isinstance(node.func, ast.Attribute)
-                and node.func.attr in {"__setattr__", "__delattr__"}
-            )
-        ) and any(
-            isinstance(argument, ast.Constant) and argument.value in attributes
-            for argument in node.args[1:2]
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"__setattr__", "__delattr__"}
         ):
-            return True
+            receiver = (
+                node.args[0]
+                if isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "object"
+                and node.args
+                else node.func.value
+            )
+            if _receiver_looks_like_graph_state(
+                receiver,
+                allow_self=allow_self,
+                receiver_aliases=receiver_aliases,
+            ) and any(
+                isinstance(argument, ast.Constant) and argument.value in attributes
+                for argument in node.args
+            ):
+                return True
         if (
             isinstance(node.func, ast.Attribute)
             and node.func.attr in mutation_methods
-            and _contains_sensitive_attribute(node.func.value, attributes)
+            and (
+                _contains_sensitive_attribute(
+                    node.func.value,
+                    attributes,
+                    allow_self=allow_self,
+                    receiver_aliases=receiver_aliases,
+                )
+                or (
+                    isinstance(node.func.value, ast.Name)
+                    and node.func.value.id in aliases
+                )
+                or (
+                    _receiver_looks_like_graph_state(
+                        node.func.value,
+                        allow_self=allow_self,
+                        receiver_aliases=receiver_aliases,
+                    )
+                    and any(
+                        isinstance(child, ast.Constant)
+                        and child.value in attributes
+                        for child in ast.walk(node)
+                    )
+                )
+            )
         ):
             return True
     return False
@@ -364,12 +686,24 @@ def _graph_private_mutation_sites(
     )
     sites: set[tuple[Path, str]] = set()
     for path, source in sources.items():
-        if "harness/capabilities/graph_" not in path.as_posix():
+        if not path.is_relative_to(SOURCE_ROOT):
             continue
         if not any(attribute in source for attribute in attributes):
             continue
+        allow_self = "harness/capabilities/graph_" in path.as_posix()
+        tree = ast.parse(source, filename=str(path))
+        if _function_mutates_private_graph_state(
+            tree,
+            attributes,
+            allow_self=allow_self,
+        ):
+            sites.add((path, "<module>"))
         for qualified, function in _qualified_functions(source, filename=path):
-            if _function_mutates_private_graph_state(function, attributes):
+            if _function_mutates_private_graph_state(
+                function,
+                attributes,
+                allow_self=allow_self,
+            ):
                 sites.add((path, qualified))
     return sites
 
@@ -387,7 +721,37 @@ def _class_method_names(source: str, class_name: str) -> set[str]:
     raise AssertionError(f"missing class: {class_name}")
 
 
-def _extension_live_sink_inventory(
+def _live_sink_tokens(
+    nodes: tuple[ast.AST, ...],
+    tokens: frozenset[str],
+) -> set[str]:
+    found: set[str] = set()
+    for node in nodes:
+        if isinstance(node, ast.Attribute) and node.attr in tokens:
+            found.add(node.attr)
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in {"getattr", "hasattr"}
+        ):
+            found.update(
+                argument.value
+                for argument in node.args[1:]
+                if isinstance(argument, ast.Constant)
+                and isinstance(argument.value, str)
+                and argument.value in tokens
+            )
+        elif (
+            isinstance(node, ast.Subscript)
+            and isinstance(node.slice, ast.Constant)
+            and isinstance(node.slice.value, str)
+            and node.slice.value in tokens
+        ):
+            found.add(node.slice.value)
+    return found
+
+
+def _live_binding_sink_inventory(
     sources: Mapping[Path, str],
 ) -> set[tuple[Path, str, str]]:
     tokens = frozenset(
@@ -407,23 +771,19 @@ def _extension_live_sink_inventory(
     )
     inventory: set[tuple[Path, str, str]] = set()
     for path, source in sources.items():
-        if "harness/extensions/" not in path.as_posix():
+        if not path.is_relative_to(SOURCE_ROOT):
             continue
         if not any(token in source for token in tokens):
             continue
+        tree = ast.parse(source, filename=str(path))
+        for token in _live_sink_tokens(_code_unit_nodes(tree.body), tokens):
+            inventory.add((path, "<module>", token))
         for qualified, function in _qualified_functions(source, filename=path):
-            for node in ast.walk(function):
-                token: str | None = None
-                if isinstance(node, ast.Attribute) and node.attr in tokens:
-                    token = node.attr
-                elif (
-                    isinstance(node, ast.Constant)
-                    and isinstance(node.value, str)
-                    and node.value in tokens
-                ):
-                    token = node.value
-                if token is not None:
-                    inventory.add((path, qualified, token))
+            for token in _live_sink_tokens(
+                _code_unit_nodes(function.body),
+                tokens,
+            ):
+                inventory.add((path, qualified, token))
     return inventory
 
 
@@ -488,8 +848,13 @@ def test_top_level_capability_provider_selection_is_not_a_profile_slot() -> None
 
     assert "ProductCapabilityProviderResolver" in architecture
     assert "CapabilityProviderEligibilityGrant" in architecture
+    assert "CapabilityProviderAdmissionRecord" in architecture
     assert "CapabilityProviderBindingSpec" in architecture
-    assert "one owner-eligible CapabilityBundleProvider metadata value" in architecture
+    assert "one owner-admitted `CapabilityBundleProvider` metadata value" in architecture
+    assert "CapabilityProviderCandidateFingerprint" in architecture
+    assert "deterministically selects the complete transitive" in architecture
+    assert "ProductCompositionCompiler" in architecture
+    assert "never supplied as an external `source=\"product\"` layer" in architecture
     assert "A top-level Capability ID such\nas `coding.lsp` is never used" in architecture
     assert "Runtime Profile candidate for coding.lsp" not in architecture
     assert "Top-level Provider facts remain\nseparate data" in architecture
@@ -508,6 +873,11 @@ def test_owner_admission_agent_event_and_disable_contracts_are_explicit() -> Non
     assert "A durable interceptor/reducer/first-match declaration is invalid" in (
         architecture
     )
+    assert "must atomically append its delivery\noutbox" in architecture
+    assert "an unknown `required` fact fails closed" in architecture
+    assert "one-use declaration reservation" in architecture
+    assert "`capability_component`" in architecture
+    assert "CapabilityComponentDefinition" in architecture
     assert "Agent fields have one authority each" in architecture
     assert "calling a declaration-forming `register_*` after IR freeze" in architecture
     assert "performs no partial recompose and returns `restart_required`" in architecture
@@ -516,8 +886,13 @@ def test_owner_admission_agent_event_and_disable_contracts_are_explicit() -> Non
 def test_revision_retention_and_python_import_realm_are_closed_for_v1() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
 
-    assert "owner-generation/cleanup leases" in architecture
-    assert "a retryable cleanup failure therefore retains its revision" in architecture
+    assert "Plugin Instance Revisions alone use the execution-state machine" in (
+        architecture
+    )
+    assert "Materialized Package Revision has a separate cache lifecycle" in (
+        architecture
+    )
+    assert "write-\nahead lease handoff" in architecture
     assert "SessionPluginMembershipLease" in architecture
     assert "AgentPluginMembershipLease" in architecture
     assert "REVOKING" in architecture
@@ -526,9 +901,14 @@ def test_revision_retention_and_python_import_realm_are_closed_for_v1() -> None:
         architecture
     )
     assert "digest-qualified import realm" in architecture
-    assert "process-wide import-closure ledger" in architecture
+    assert "process-wide import-realm gate" in architecture
+    assert "`RESERVED -> LOADING -> LOADED`" in architecture
     assert "VerifiedRevisionHandle" in architecture
     assert "data-generation/schema" in architecture
+    assert "`UPDATE_STAGED`, then `MIGRATING`" in architecture
+    assert "PluginManagementService" in architecture
+    assert "MCP is intentionally static-surface-only in v1" in architecture
+    assert "ExecutionUseReservation" in architecture
 
 
 def test_unified_plugin_architecture_preserves_existing_runtime_authorities() -> None:
@@ -590,6 +970,10 @@ def test_current_package_manifest_boundary_sinks_use_qualified_allowlist() -> No
             "    with path.open() as stream:\n"
             "        return decode(stream)\n"
         ),
+        Path("src/loushang/harness/resources/packages/module_parse.py"): (
+            "import json as codec\n"
+            "payload = codec.loads(path.read_text())\n"
+        ),
     }
     assert _manifest_boundary_sink_sites(synthetic) == {
         (
@@ -608,6 +992,10 @@ def test_current_package_manifest_boundary_sinks_use_qualified_allowlist() -> No
             Path("src/loushang/harness/resources/packages/stream.py"),
             "parse",
         ),
+        (
+            Path("src/loushang/harness/resources/packages/module_parse.py"),
+            "<module>",
+        ),
     }
 
 
@@ -619,14 +1007,29 @@ def test_current_graph_private_mutations_use_qualified_owner_allowlist() -> None
         Path("src/loushang/harness/capabilities/graph_alias.py"): (
             "def alias_write(graph, candidate):\n"
             "    graph._snapshot = candidate\n"
+            "def receiver_alias_write(runtime, candidate):\n"
+            "    target = runtime\n"
+            "    target._snapshot = candidate\n"
             "def nested_write(self, nodes):\n"
             "    self._runtime._nodes['new'] = nodes\n"
             "def setattr_write(runtime, candidate):\n"
             "    setattr(runtime, '_snapshot', candidate)\n"
             "def dunder_write(runtime, candidate):\n"
             "    object.__setattr__(runtime, '_snapshot', candidate)\n"
+            "def bound_dunder_write(runtime, candidate):\n"
+            "    runtime.__setattr__('_snapshot', candidate)\n"
             "def container_write(runtime, nodes):\n"
             "    runtime._nodes.update(nodes)\n"
+            "def container_alias_write(runtime, nodes):\n"
+            "    registry = runtime._nodes\n"
+            "    registry.update(nodes)\n"
+        ),
+        Path("src/loushang/harness/rogue_graph_write.py"): (
+            "def outside_graph_module(runtime, candidate):\n"
+            "    runtime._snapshot = candidate\n"
+        ),
+        Path("src/loushang/harness/rogue_graph_module.py"): (
+            "graph_runtime._snapshot = candidate\n"
         )
     }
     assert _graph_private_mutation_sites(synthetic) == {
@@ -640,6 +1043,10 @@ def test_current_graph_private_mutations_use_qualified_owner_allowlist() -> None
         ),
         (
             Path("src/loushang/harness/capabilities/graph_alias.py"),
+            "receiver_alias_write",
+        ),
+        (
+            Path("src/loushang/harness/capabilities/graph_alias.py"),
             "setattr_write",
         ),
         (
@@ -650,10 +1057,26 @@ def test_current_graph_private_mutations_use_qualified_owner_allowlist() -> None
             Path("src/loushang/harness/capabilities/graph_alias.py"),
             "container_write",
         ),
+        (
+            Path("src/loushang/harness/capabilities/graph_alias.py"),
+            "bound_dunder_write",
+        ),
+        (
+            Path("src/loushang/harness/capabilities/graph_alias.py"),
+            "container_alias_write",
+        ),
+        (
+            Path("src/loushang/harness/rogue_graph_write.py"),
+            "outside_graph_module",
+        ),
+        (
+            Path("src/loushang/harness/rogue_graph_module.py"),
+            "<module>",
+        ),
     }
 
 
-def test_current_extension_declaration_and_live_sink_inventory_is_frozen() -> None:
+def test_current_extension_declaration_and_live_binding_inventory_is_frozen() -> None:
     sources = _source_texts()
     api_path = Path("src/loushang/harness/extensions/api.py")
 
@@ -662,8 +1085,8 @@ def test_current_extension_declaration_and_live_sink_inventory_is_frozen() -> No
         "ExtensionContributionAPI",
     ) == EXPECTED_EXTENSION_DECLARATION_METHODS
     assert (
-        _extension_live_sink_inventory(sources)
-        == EXPECTED_EXTENSION_LIVE_SINK_INVENTORY
+        _live_binding_sink_inventory(sources)
+        == EXPECTED_LIVE_BINDING_SINK_INVENTORY
     )
     synthetic = {
         Path("src/loushang/harness/extensions/late.py"): (
@@ -676,9 +1099,16 @@ def test_current_extension_declaration_and_live_sink_inventory_is_frozen() -> No
             "    binder(tool)\n"
             "def new_kind(bindings, policy):\n"
             "    bindings.bind_policy(policy)\n"
-        )
+        ),
+        Path("src/loushang/harness/outside_extension.py"): (
+            "def outside(bindings, policy):\n"
+            "    bindings.bind_policy(policy)\n"
+        ),
+        Path("src/loushang/harness/module_binding.py"): (
+            "bindings.bind_tool(tool)\n"
+        ),
     }
-    assert _extension_live_sink_inventory(synthetic) == {
+    assert _live_binding_sink_inventory(synthetic) == {
         (
             Path("src/loushang/harness/extensions/late.py"),
             "direct",
@@ -698,6 +1128,16 @@ def test_current_extension_declaration_and_live_sink_inventory_is_frozen() -> No
             Path("src/loushang/harness/extensions/late.py"),
             "new_kind",
             "bind_policy",
+        ),
+        (
+            Path("src/loushang/harness/outside_extension.py"),
+            "outside",
+            "bind_policy",
+        ),
+        (
+            Path("src/loushang/harness/module_binding.py"),
+            "<module>",
+            "bind_tool",
         ),
     }
 
