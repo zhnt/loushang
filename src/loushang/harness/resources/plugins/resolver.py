@@ -66,12 +66,11 @@ class PluginResolver:
             else source_enabled
         )
         source = replace(resolved_package.source, enabled=enabled)
-        package = replace(resolved_package, source=source)
         return InstalledPlugin(
-            manifest=package.manifest,
+            manifest=resolved_package.manifest,
             source=source,
-            enabled=enabled and package.manifest.enabled,
-            resolved_package=package,
+            enabled=enabled and resolved_package.manifest.enabled,
+            resolved_package=resolved_package,
         )
 
     def resolve_plugin(self, source: PluginSource | str | Path) -> InstalledPlugin:

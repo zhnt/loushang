@@ -49,12 +49,7 @@ class PluginManager:
         """Register one descriptor while applying Product disable state once."""
 
         source = package.source
-        plugin = self.resolver.project_package(
-            package,
-            source_enabled=(
-                source.enabled and package.manifest.name not in self._disabled_plugins
-            ),
-        )
+        plugin = self._project_resolved_package(package)
         return self._register_bound_plugin(source, plugin)
 
     def remove_plugin_source(self, path: str | Path) -> InstalledPlugin | None:
@@ -76,24 +71,26 @@ class PluginManager:
         return self._set_plugin_enabled(name, False)
 
     def refresh_plugins(self) -> list[InstalledPlugin]:
-        refreshed: list[InstalledPlugin] = []
+        prepared: list[tuple[PluginSource, InstalledPlugin]] = []
         for source in list(self._sources.values()):
-            plugin = self.add_resolved_plugin_package(
-                self.resolver.resolve_package(source)
-            )
-            refreshed.append(plugin)
+            package = self.resolver.resolve_package(source)
+            plugin = self._project_resolved_package(package)
+            self._assert_source_identity(source, plugin.manifest.name)
+            prepared.append((source, plugin))
         for source in list(self._remote_sources.values()):
-            if source.path is None:
-                plugin = self._register_bound_plugin(
-                    source,
-                    self.resolver.resolve_plugin(source),
-                )
-            else:
-                plugin = self.add_resolved_plugin_package(
+            plugin = (
+                self.resolver.resolve_plugin(source)
+                if source.path is None
+                else self._project_resolved_package(
                     self.resolver.resolve_package(source)
                 )
-            refreshed.append(plugin)
-        return refreshed
+            )
+            self._assert_source_identity(source, plugin.manifest.name)
+            prepared.append((source, plugin))
+        return [
+            self._register_bound_plugin(source, plugin)
+            for source, plugin in prepared
+        ]
 
     def list_plugins(self) -> list[InstalledPlugin]:
         return self.registry.list_plugins()
@@ -178,6 +175,18 @@ class PluginManager:
         self._bound_plugins[key] = plugin
         return registered
 
+    def _project_resolved_package(
+        self,
+        package: ResolvedPluginPackage,
+    ) -> InstalledPlugin:
+        source = package.source
+        return self.resolver.project_package(
+            package,
+            source_enabled=(
+                source.enabled and package.manifest.name not in self._disabled_plugins
+            ),
+        )
+
     def _assert_source_identity(self, source: PluginSource, plugin_id: str) -> None:
         key = _source_key(source)
         bound_id = self._source_plugin_ids.get(key)
@@ -206,9 +215,9 @@ class PluginManager:
         current = self.registry.get_plugin(plugin_id)
         if current is not None and _source_key(current.source) == key:
             self.registry.unregister(plugin_id)
-            replacement = next(
+            replacement_entry = next(
                 (
-                    candidate
+                    (candidate_key, candidate)
                     for candidate_key, candidate in reversed(
                         self._bound_plugins.items()
                     )
@@ -216,7 +225,13 @@ class PluginManager:
                 ),
                 None,
             )
-            if replacement is not None:
+            if replacement_entry is not None:
+                replacement_key, replacement = replacement_entry
+                if replacement.resolved_package is not None:
+                    replacement = self._project_resolved_package(
+                        replacement.resolved_package
+                    )
+                    self._bound_plugins[replacement_key] = replacement
                 self.registry.register(replacement)
         return removed
 

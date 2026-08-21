@@ -43,7 +43,19 @@ def resolve_package_manifest(
             )
         return _project_plugin_package(resolved_plugin_package)
     if not package_root.is_dir():
-        return PackageManifestInfo(root=package_root, package_root=package_root)
+        return PackageManifestInfo(
+            root=package_root,
+            package_root=package_root,
+            diagnostics=(
+                {
+                    "code": "plugin_source_unresolved",
+                    "message": f"Plugin source is not a directory: {package_root}",
+                    "path": str(package_root),
+                },
+            )
+            if plugin_source is not None
+            else (),
+        )
     if plugin_source is not None:
         return _resolve_plugin_manifest(package_root, source=plugin_source)
 
@@ -192,6 +204,13 @@ def _package_root_from_manifest(
         return root, (
             _invalid_package_root_diagnostic(
                 manifest_path, "Package packageRoot must stay inside the package root."
+            ),
+        )
+    if not resolved.is_dir():
+        return root, (
+            _invalid_package_root_diagnostic(
+                manifest_path,
+                "Package packageRoot must be an existing directory.",
             ),
         )
     return resolved, ()

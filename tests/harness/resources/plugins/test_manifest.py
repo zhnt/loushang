@@ -130,6 +130,9 @@ def test_disabled_plugin_projects_effective_state_without_reparsing(
     plugin = PluginManager(disabled_plugins=("review-pack",)).add_plugin_source(root)
 
     assert plugin.enabled is False
+    assert plugin.source.enabled is False
+    assert plugin.resolved_package is not None
+    assert plugin.resolved_package.source.enabled is True
     assert plugin.manifest.enabled is True
     assert reads == [manifest_path]
 
@@ -175,6 +178,28 @@ def test_plugin_manifest_parser_rejects_package_root_escape(
     root.mkdir()
     (root / "plugin.json").write_text(
         json.dumps({"name": "review-pack", "packageRoot": package_root}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PluginManifestError) as caught:
+        PluginManifestParser().parse(root)
+
+    assert caught.value.code == "invalid_plugin_manifest"
+    assert caught.value.path == (root / "plugin.json").resolve()
+
+
+@pytest.mark.parametrize("package_root_kind", ["missing", "file"])
+def test_plugin_manifest_parser_requires_package_root_directory(
+    tmp_path: Path,
+    package_root_kind: str,
+) -> None:
+    root = tmp_path / "review-pack"
+    root.mkdir()
+    package_root = root / "resources"
+    if package_root_kind == "file":
+        package_root.write_text("not a directory", encoding="utf-8")
+    (root / "plugin.json").write_text(
+        json.dumps({"name": "review-pack", "packageRoot": "resources"}),
         encoding="utf-8",
     )
 

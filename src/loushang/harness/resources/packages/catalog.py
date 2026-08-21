@@ -167,34 +167,64 @@ class PackageCatalogBuilder:
                     )
                 )
                 continue
-            plugin = manager.add_plugin_source(source)
-            if plugin.enabled:
-                resources = manager.resolver.resolve_resources(plugin)
-                package_root = resources.package_roots[0]
-            elif plugin.resolved_package is not None:
-                package_root = plugin.resolved_package.package_root
-            else:
-                package_root = plugin.manifest.root
-            summary = (
-                empty_package_summary(package_root)
-                if not plugin.enabled
-                else self._summary_provider(package_root, cwd, None)
-            )
             entries.append(
-                PackageCatalogEntry(
-                    name=plugin.manifest.name,
-                    kind="plugin",
+                self._local_plugin_entry(
+                    source=source,
                     scope=scope,
-                    version=plugin.manifest.version or "",
-                    source=str(plugin.source.path),
-                    path=package_root,
-                    enabled=plugin.enabled,
-                    summary=summary,
+                    cwd=cwd,
+                    plugin_manager=manager,
                 )
             )
 
         entries.extend(load_package_catalog(catalog_path))
         return mark_package_conflicts(entries)
+
+    def _local_plugin_entry(
+        self,
+        *,
+        source: str,
+        scope: PackageCatalogScope,
+        cwd: Path,
+        plugin_manager: PluginManager,
+    ) -> PackageCatalogEntry:
+        manifest = resolve_package_manifest(
+            source,
+            plugin_source=PluginSource(path=Path(source).expanduser()),
+        )
+        package = manifest.resolved_plugin_package
+        plugin = (
+            plugin_manager.add_resolved_plugin_package(package)
+            if package is not None
+            else None
+        )
+        if plugin is not None and plugin.enabled:
+            package_root = plugin_manager.resolver.resolve_resources(
+                plugin
+            ).package_roots[0]
+        elif package is not None:
+            package_root = package.package_root
+        else:
+            package_root = manifest.package_root
+        enabled = plugin.enabled if plugin is not None else False
+        return PackageCatalogEntry(
+            name=plugin.manifest.name if plugin is not None else manifest.root.name,
+            kind="plugin",
+            scope=scope,
+            version=(plugin.manifest.version or "") if plugin is not None else "",
+            source=(
+                str(plugin.source.path)
+                if plugin is not None
+                else str(manifest.root)
+            ),
+            path=package_root,
+            enabled=enabled,
+            summary=(
+                self._summary_provider(package_root, cwd, None)
+                if enabled
+                else empty_package_summary(package_root)
+            ),
+            manifest_diagnostics=manifest.diagnostics,
+        )
 
     def remote_package_entry(
         self,

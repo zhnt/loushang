@@ -50,6 +50,29 @@ def test_catalog_builds_local_plugin_entries_and_marks_version_conflicts(
     assert entries[0].conflict_diagnostics[0].code == "package_version_conflict"
 
 
+def test_catalog_keeps_invalid_local_plugin_as_broken_inventory(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "plugins" / "review-pack"
+    root.mkdir(parents=True)
+    manifest_path = root / "plugin.json"
+    manifest_path.write_text(json.dumps({"name": 7}), encoding="utf-8")
+
+    entries = PackageCatalogBuilder(summary_provider=_summary).collect(
+        sources=PackageCatalogSources(
+            plugin_sources=((str(root), "merged"),),
+        ),
+        cwd=tmp_path,
+    )
+
+    assert len(entries) == 1
+    assert entries[0].name == "review-pack"
+    assert entries[0].enabled is False
+    assert entries[0].summary.prompt_count == 0
+    assert entries[0].manifest_diagnostics[0]["code"] == "invalid_package_manifest"
+    assert entries[0].manifest_diagnostics[0]["path"] == str(manifest_path.resolve())
+
+
 def test_catalog_projects_prepared_remote_source_without_product_policy(
     tmp_path: Path,
 ) -> None:

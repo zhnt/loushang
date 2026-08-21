@@ -163,7 +163,10 @@ def resolve_package_resource_roots(
                         _append_package_root(roots, root)
             continue
         try:
-            plugin = manager.add_plugin_source(source)
+            manifest = resolve_package_manifest(
+                source,
+                plugin_source=PluginSource(path=Path(source).expanduser()),
+            )
         except Exception as exc:
             _record_plugin_source_diagnostic(
                 diagnostics_service,
@@ -172,6 +175,16 @@ def resolve_package_resource_roots(
                 session_id=session_id,
             )
             continue
+        package = manifest.resolved_plugin_package
+        if package is None:
+            _record_plugin_manifest_diagnostics(
+                diagnostics_service,
+                source=source,
+                diagnostics=manifest.diagnostics,
+                session_id=session_id,
+            )
+            continue
+        plugin = manager.add_resolved_plugin_package(package)
         if plugin.enabled:
             for root in manager.resolver.resolve_resources(plugin).package_roots:
                 _append_package_root(roots, root)

@@ -274,6 +274,12 @@ def _package_root(
             code="invalid_plugin_manifest",
             path=manifest_path,
         ) from exc
+    if not resolved.is_dir():
+        raise PluginManifestError(
+            f"Plugin packageRoot must be an existing directory: {manifest_path}",
+            code="invalid_plugin_manifest",
+            path=manifest_path,
+        )
     return resolved, resolved.relative_to(root)
 
 

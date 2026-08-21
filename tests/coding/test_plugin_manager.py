@@ -148,11 +148,56 @@ def test_plugin_manager_preserves_each_source_binding_for_shared_identity(
     latest = manager.add_plugin_source(second)
 
     assert manager.get_plugin("shared") == latest
+    disabled = manager.disable_plugin("shared")
+    assert disabled.enabled is False
 
     removed = manager.remove_plugin_source(second)
 
-    assert removed == latest
-    assert manager.get_plugin("shared") == original
+    assert removed == disabled
+    restored = manager.get_plugin("shared")
+    assert restored is not None
+    assert restored.manifest == original.manifest
+    assert restored.enabled is False
+
+
+def test_plugin_manager_refresh_is_atomic_when_later_source_changes_identity(
+    tmp_path,
+) -> None:
+    from loushang.harness.resources.plugins import PluginManager
+    from loushang.harness.resources.plugins.manifest import PluginManifestError
+
+    first = tmp_path / "plugins" / "first"
+    second = tmp_path / "plugins" / "second"
+    first.mkdir(parents=True)
+    second.mkdir(parents=True)
+    (first / "plugin.json").write_text(
+        json.dumps({"name": "first", "version": "1.0.0"}),
+        encoding="utf-8",
+    )
+    (second / "plugin.json").write_text(
+        json.dumps({"name": "second", "version": "1.0.0"}),
+        encoding="utf-8",
+    )
+    manager = PluginManager()
+    manager.add_plugin_source(first)
+    manager.add_plugin_source(second)
+    (first / "plugin.json").write_text(
+        json.dumps({"name": "first", "version": "2.0.0"}),
+        encoding="utf-8",
+    )
+    (second / "plugin.json").write_text(
+        json.dumps({"name": "renamed", "version": "2.0.0"}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PluginManifestError) as caught:
+        manager.refresh_plugins()
+
+    assert caught.value.code == "plugin_identity_changed"
+    assert {
+        plugin.manifest.name: plugin.manifest.version
+        for plugin in manager.list_plugins()
+    } == {"first": "1.0.0", "second": "1.0.0"}
 
 
 def test_plugin_manager_tracks_https_remote_sources_without_local_resolution() -> None:
