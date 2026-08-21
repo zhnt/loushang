@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from loushang.harness.resources.plugins.authority import PluginResolutionAuthority
 from loushang.harness.resources.plugins.lifecycle import is_remote_plugin_source
 from loushang.harness.resources.plugins.manifest import PluginManifestError
 from loushang.harness.resources.plugins.registry import PluginRegistry
@@ -23,6 +24,9 @@ class PluginManager:
         disabled_plugins: list[str] | tuple[str, ...] | None = None,
     ) -> None:
         self.resolver = resolver or PluginResolver()
+        self._resolution_authority = PluginResolutionAuthority(
+            resolver=self.resolver,
+        )
         self.registry = registry or PluginRegistry()
         self._sources: dict[Path, PluginSource] = {}
         self._remote_sources: dict[str, PluginSource] = {}
@@ -33,14 +37,24 @@ class PluginManager:
     def add_plugin_source(
         self, path: str | Path, *, enabled: bool = True
     ) -> InstalledPlugin:
+        """Compatibility adapter for unbound registry-only callers.
+
+        Production runtime composition must use ``PluginResolutionAuthority``
+        so descriptors are published and durably bound before registration.
+        """
+
         if isinstance(path, str) and is_remote_plugin_source(path):
             source = PluginSource(url=path, kind="remote", enabled=enabled)
-            plugin = self.resolver.resolve_plugin(source)
+            inspection = self._resolution_authority.inspect(source)
+            inspection.raise_for_error()
+            assert inspection.plugin is not None
+            plugin = inspection.plugin
             return self._register_bound_plugin(source, plugin)
         source = PluginSource(path=Path(path).expanduser(), enabled=enabled)
-        return self.add_resolved_plugin_package(
-            self.resolver.resolve_package(source)
-        )
+        inspection = self._resolution_authority.inspect(source)
+        inspection.raise_for_error()
+        assert inspection.package is not None
+        return self.add_resolved_plugin_package(inspection.package)
 
     def add_resolved_plugin_package(
         self,
@@ -49,8 +63,16 @@ class PluginManager:
         """Register one descriptor while applying Product disable state once."""
 
         source = package.source
-        plugin = self._project_resolved_package(package)
+        plugin = self.project_resolved_plugin_package(package)
         return self._register_bound_plugin(source, plugin)
+
+    def project_resolved_plugin_package(
+        self,
+        package: ResolvedPluginPackage,
+    ) -> InstalledPlugin:
+        """Project Product disable state without parsing or registration."""
+
+        return self._project_resolved_package(package)
 
     def remove_plugin_source(self, path: str | Path) -> InstalledPlugin | None:
         if isinstance(path, str) and is_remote_plugin_source(path):
@@ -73,23 +95,24 @@ class PluginManager:
     def refresh_plugins(self) -> list[InstalledPlugin]:
         prepared: list[tuple[PluginSource, InstalledPlugin]] = []
         for source in list(self._sources.values()):
-            package = self.resolver.resolve_package(source)
+            inspection = self._resolution_authority.inspect(source)
+            inspection.raise_for_error()
+            assert inspection.package is not None
+            package = inspection.package
             plugin = self._project_resolved_package(package)
             self._assert_source_identity(source, plugin.manifest.name)
             prepared.append((source, plugin))
         for source in list(self._remote_sources.values()):
-            plugin = (
-                self.resolver.resolve_plugin(source)
-                if source.path is None
-                else self._project_resolved_package(
-                    self.resolver.resolve_package(source)
-                )
-            )
-            self._assert_source_identity(source, plugin.manifest.name)
-            prepared.append((source, plugin))
+            inspection = self._resolution_authority.inspect(source)
+            inspection.raise_for_error()
+            remote_plugin = inspection.plugin
+            if inspection.package is not None:
+                remote_plugin = self._project_resolved_package(inspection.package)
+            assert remote_plugin is not None
+            self._assert_source_identity(source, remote_plugin.manifest.name)
+            prepared.append((source, remote_plugin))
         return [
-            self._register_bound_plugin(source, plugin)
-            for source, plugin in prepared
+            self._register_bound_plugin(source, plugin) for source, plugin in prepared
         ]
 
     def list_plugins(self) -> list[InstalledPlugin]:
@@ -142,14 +165,20 @@ class PluginManager:
                 raise ValueError(f"local plugin {name!r} has no source path")
             source = PluginSource(path=source_path, enabled=enabled)
         if source.path is None:
-            updated = self.resolver.resolve_plugin(source)
+            inspection = self._resolution_authority.inspect(source)
+            inspection.raise_for_error()
+            assert inspection.plugin is not None
+            updated = inspection.plugin
             self._assert_source_identity(source, updated.manifest.name)
             if enabled:
                 self._disabled_plugins.discard(name)
             else:
                 self._disabled_plugins.add(name)
             return self._register_bound_plugin(source, updated)
-        package = self.resolver.resolve_package(source)
+        inspection = self._resolution_authority.inspect(source)
+        inspection.raise_for_error()
+        assert inspection.package is not None
+        package = inspection.package
         self._assert_source_identity(source, package.manifest.name)
         if enabled:
             self._disabled_plugins.discard(name)

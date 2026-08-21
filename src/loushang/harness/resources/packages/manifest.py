@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from loushang.harness.resources.plugins.manifest import (
-    PluginManifestError,
-    PluginManifestParser,
+from loushang.harness.resources.plugins.authority import (
+    PluginResolutionAuthority,
+    PluginResolutionDiagnostic,
 )
 from loushang.harness.resources.plugins.types import (
     PluginSource,
@@ -137,27 +138,41 @@ def _resolve_plugin_manifest(
     *,
     source: PluginSource | None = None,
 ) -> PackageManifestInfo:
-    try:
-        descriptor = PluginManifestParser().parse(root, source=source)
-    except PluginManifestError as exc:
-        code = (
-            "unreadable_package_manifest"
-            if exc.code == "unreadable_plugin_manifest"
-            else "invalid_package_manifest"
-        )
+    inspection = PluginResolutionAuthority().inspect(source or PluginSource(path=root))
+    if inspection.package is None:
+        diagnostics = project_plugin_diagnostics(inspection.diagnostics)
         return PackageManifestInfo(
             root=root,
             package_root=root,
-            manifest_path=exc.path,
-            diagnostics=(
-                {
-                    "code": code,
-                    "message": str(exc),
-                    "path": str(exc.path),
-                },
+            manifest_path=(
+                inspection.diagnostics[0].path if inspection.diagnostics else None
             ),
+            diagnostics=diagnostics,
         )
-    return _project_plugin_package(descriptor)
+    return _project_plugin_package(inspection.package)
+
+
+def _package_plugin_diagnostic_code(code: str) -> str:
+    if code == "unreadable_plugin_manifest":
+        return "unreadable_package_manifest"
+    if code == "invalid_plugin_manifest":
+        return "invalid_package_manifest"
+    return code
+
+
+def project_plugin_diagnostics(
+    diagnostics: Sequence[PluginResolutionDiagnostic],
+) -> tuple[dict[str, object], ...]:
+    """Project Plugin diagnostics into the Package inventory vocabulary."""
+
+    return tuple(
+        {
+            "code": _package_plugin_diagnostic_code(diagnostic.code),
+            "message": diagnostic.message,
+            "path": str(diagnostic.path),
+        }
+        for diagnostic in diagnostics
+    )
 
 
 def _manifest_path(root: Path) -> Path | None:

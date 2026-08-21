@@ -8,7 +8,10 @@ from typing import Protocol
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources.layout import resolve_user_resource_roots
-from loushang.harness.resources.packages.manifest import resolve_package_manifest
+from loushang.harness.resources.packages.manifest import (
+    project_plugin_diagnostics,
+    resolve_package_manifest,
+)
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.packages.mounts import PackageResourceMount
 from loushang.harness.resources.packages.source import (
@@ -19,16 +22,17 @@ from loushang.harness.resources.packages.source_resolver import (
     configured_package_sources,
     package_source_scopes,
 )
-from loushang.harness.resources.plugins import PluginManager
+from loushang.harness.resources.plugins.authority import (
+    PluginInspection,
+    PluginResolutionAuthority,
+    PluginRuntimeResolution,
+)
 from loushang.harness.resources.plugins.manifest import PluginManifestError
 from loushang.harness.resources.plugins.revisions import (
     PluginRevisionError,
     VerifiedRevisionHandle,
 )
-from loushang.harness.resources.plugins.types import (
-    PluginSource,
-    ResolvedPluginPackage,
-)
+from loushang.harness.resources.plugins.types import PluginSource
 
 
 class ResourceRootSettingsSnapshot(Protocol):
@@ -168,85 +172,66 @@ def resolve_package_resource_roots(
             mounts,
             PackageResourceMount(root=Path(configured_root)),
         )
-    manager = PluginManager(disabled_plugins=disabled_plugins)
-    resolved_plugins: list[tuple[str, ResolvedPluginPackage]] = []
+    authority = PluginResolutionAuthority(disabled_plugins=disabled_plugins)
+    resolved_plugins: list[tuple[str, PluginInspection]] = []
     for source in plugin_sources:
         if is_remote_package_source(source):
             record = materializer.get_record(source)
             if record is not None and record.lifecycle == "installed":
-                manifest = resolve_package_manifest(
-                    record.target_path,
-                    plugin_source=PluginSource(
+                inspection = authority.inspect(
+                    PluginSource(
                         path=record.target_path,
                         url=source,
                         kind="remote",
-                    ),
+                    )
                 )
-                package = manifest.resolved_plugin_package
-                if package is None:
+                if not inspection.runtime_ready:
                     _record_plugin_manifest_diagnostics(
                         diagnostics_service,
                         source=source,
-                        diagnostics=manifest.diagnostics,
+                        diagnostics=project_plugin_diagnostics(inspection.diagnostics),
                         session_id=session_id,
                     )
                     continue
-                resolved_plugins.append((source, package))
+                resolved_plugins.append((source, inspection))
             continue
-        try:
-            manifest = resolve_package_manifest(
-                source,
-                plugin_source=PluginSource(path=Path(source).expanduser()),
-            )
-        except Exception as exc:
-            _record_plugin_source_diagnostic(
-                diagnostics_service,
-                source=source,
-                exc=exc,
-                session_id=session_id,
-            )
-            continue
-        package = manifest.resolved_plugin_package
-        if package is None:
+        inspection = authority.inspect(PluginSource(path=Path(source).expanduser()))
+        if not inspection.runtime_ready:
             _record_plugin_manifest_diagnostics(
                 diagnostics_service,
                 source=source,
-                diagnostics=manifest.diagnostics,
+                diagnostics=project_plugin_diagnostics(inspection.diagnostics),
                 session_id=session_id,
             )
             continue
-        resolved_plugins.append((source, package))
-    published_plugins: tuple[ResolvedPluginPackage, ...] = ()
+        resolved_plugins.append((source, inspection))
+    runtime_resolution: PluginRuntimeResolution | None = None
     try:
-        published_plugins = materializer.publish_plugin_packages(
-            tuple(package for _, package in resolved_plugins)
+        runtime_resolution = authority.publish_runtime(
+            tuple(inspection for _, inspection in resolved_plugins),
+            binding_store=materializer,
         )
-        materializer.bind_plugin_packages(published_plugins)
     except (PluginManifestError, PluginRevisionError) as exc:
         _record_plugin_identity_diagnostic(
             diagnostics_service,
             source=_plugin_source_for_error(
                 resolved_plugins,
-                published_plugins,
+                exc=exc,
                 error_path=exc.path,
             ),
             exc=exc,
             session_id=session_id,
         )
-        for package in published_plugins:
-            if package.revision_handle is not None:
-                package.revision_handle.close()
         raise
-    revision_handles = tuple(
-        package.revision_handle
-        for package in published_plugins
-        if package.revision_handle is not None
-    )
+    assert runtime_resolution is not None
     try:
-        for package in published_plugins:
-            plugin = manager.add_resolved_plugin_package(package)
+        for package, plugin in zip(
+            runtime_resolution.packages,
+            runtime_resolution.plugins,
+            strict=True,
+        ):
             if plugin.enabled:
-                resolved_resources = manager.resolver.resolve_resources(plugin)
+                resolved_resources = authority.resolve_resources(plugin)
                 root = resolved_resources.package_roots[0]
             else:
                 root = package.package_root
@@ -260,8 +245,7 @@ def resolve_package_resource_roots(
                 ),
             )
     except Exception:
-        for handle in revision_handles:
-            handle.close()
+        runtime_resolution.close()
         raise
     try:
         for package_source in package_sources:
@@ -269,7 +253,9 @@ def resolve_package_resource_roots(
                 record = materializer.get_record(package_source.source)
                 if record is None or record.lifecycle != "installed":
                     continue
-                resolved_root = resolve_package_manifest(record.target_path).package_root
+                resolved_root = resolve_package_manifest(
+                    record.target_path
+                ).package_root
             else:
                 scope = (package_source_scopes or {}).get(package_source.source)
                 resolved_root = _resolve_local_package_source(
@@ -286,8 +272,7 @@ def resolve_package_resource_roots(
                 ),
             )
     except Exception:
-        for handle in revision_handles:
-            handle.close()
+        runtime_resolution.close()
         raise
     return ResolvedPackageResourceRoots(mounts=tuple(mounts))
 
@@ -330,15 +315,18 @@ def _close_mounts(mounts: Sequence[PackageResourceMount]) -> None:
 
 
 def _plugin_source_for_error(
-    resolved_plugins: list[tuple[str, ResolvedPluginPackage]],
-    published_plugins: tuple[ResolvedPluginPackage, ...],
+    resolved_plugins: list[tuple[str, PluginInspection]],
     *,
+    exc: Exception,
     error_path: Path,
 ) -> str:
-    candidates = published_plugins or tuple(
-        package for _, package in resolved_plugins
-    )
-    for (source, _), package in zip(resolved_plugins, candidates, strict=True):
+    attributed_source = getattr(exc, "plugin_source", None)
+    if isinstance(attributed_source, str) and attributed_source:
+        return attributed_source
+    for source, inspection in resolved_plugins:
+        package = inspection.package
+        if package is None:
+            continue
         if _path_belongs_to(error_path, package.root):
             return source
     return str(error_path)
@@ -370,26 +358,6 @@ def _resolve_local_package_source(
     if base is None:
         return path.resolve()
     return (Path(base).expanduser() / path).resolve()
-
-
-def _record_plugin_source_diagnostic(
-    diagnostics_service: DiagnosticsService | None,
-    *,
-    source: str,
-    exc: Exception,
-    session_id: str | None,
-) -> None:
-    if diagnostics_service is None:
-        return
-    diagnostics_service.capture_failure(
-        code="plugin_source_unresolved",
-        error=exc,
-        phase="startup",
-        source="bootstrap",
-        level="warning",
-        session_id=session_id,
-        details={"plugin_source": source, "exception_type": type(exc).__name__},
-    )
 
 
 def _record_plugin_identity_diagnostic(

@@ -19,7 +19,10 @@ from loushang.harness.resources.packages.roots import (
     resolve_package_resource_roots,
 )
 from loushang.harness.resources.packages.source import PackageSourceConfig
-from loushang.harness.resources.plugins.revisions import PluginRevisionError
+from loushang.harness.resources.plugins.revisions import (
+    PluginRevisionError,
+    PluginRevisionStore,
+)
 from loushang.harness.resources.plugins.types import (
     PluginSourceBinding,
     ResolvedPluginPackage,
@@ -324,14 +327,20 @@ def test_unsafe_plugin_revision_diagnostic_retains_configured_source(
 
 
 def test_session_package_install_root_follows_session_layout(tmp_path) -> None:
-    assert resolve_session_package_install_root(
-        session_dir=tmp_path / "sessions",
-        cwd=tmp_path / "project",
-    ) == tmp_path / "packages"
-    assert resolve_session_package_install_root(
-        session_dir=tmp_path / "custom-session",
-        cwd=tmp_path / "project",
-    ) == tmp_path / "custom-session" / "packages"
+    assert (
+        resolve_session_package_install_root(
+            session_dir=tmp_path / "sessions",
+            cwd=tmp_path / "project",
+        )
+        == tmp_path / "packages"
+    )
+    assert (
+        resolve_session_package_install_root(
+            session_dir=tmp_path / "custom-session",
+            cwd=tmp_path / "project",
+        )
+        == tmp_path / "custom-session" / "packages"
+    )
 
 
 class _InstalledMaterializer:
@@ -342,6 +351,9 @@ class _InstalledMaterializer:
             lifecycle="installed",
             target_path=target_path,
         )
+        self._revision_store = PluginRevisionStore(
+            target_path.parent / ".plugin-revisions"
+        )
 
     def get_record(self, source: str) -> PackageMaterializationRecord | None:
         return self._record if source == self._record.source else None
@@ -350,11 +362,25 @@ class _InstalledMaterializer:
         self,
         packages: tuple[ResolvedPluginPackage, ...],
     ) -> tuple[PluginSourceBinding, ...]:
-        del packages
-        return ()
+        return tuple(
+            PluginSourceBinding(
+                source=(
+                    package.source.url
+                    if package.source.kind == "remote"
+                    else str(package.source.path)
+                )
+                or "",
+                source_identity=f"{package.source.kind}:{package.manifest.name}",
+                source_kind=package.source.kind,
+                plugin_id=package.manifest.name,
+                manifest_digest=package.manifest_digest,
+                content_digest=package.content_digest,
+            )
+            for package in packages
+        )
 
     def publish_plugin_packages(
         self,
         packages: tuple[ResolvedPluginPackage, ...],
     ) -> tuple[ResolvedPluginPackage, ...]:
-        return packages
+        return self._revision_store.publish_all(packages)

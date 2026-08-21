@@ -1,3 +1,11 @@
+from loushang.harness.resources.plugins.authority import (
+    PluginBindingStore,
+    PluginBindingValidator,
+    PluginInspection,
+    PluginResolutionAuthority,
+    PluginResolutionDiagnostic,
+    PluginRuntimeResolution,
+)
 from loushang.harness.resources.plugins.lifecycle import (
     is_remote_plugin_source,
     remote_plugin_name,
@@ -38,9 +46,7 @@ def project_installed_plugin(plugin: object) -> dict[str, object]:
     )
     return {
         "name": _safe_plugin_string(_safe_plugin_getattr(manifest, "name", "")),
-        "version": _safe_plugin_string(
-            _safe_plugin_getattr(manifest, "version", "")
-        ),
+        "version": _safe_plugin_string(_safe_plugin_getattr(manifest, "version", "")),
         "path": "" if source_kind == "remote" else _safe_plugin_string(source_value),
         "source": _safe_plugin_string(source_value),
         "kind": source_kind if isinstance(source_kind, str) else "local",
@@ -66,8 +72,12 @@ def _safe_plugin_string(value: object) -> str:
         except Exception:
             return ""
 
+
 __all__ = [
     "InstalledPlugin",
+    "PluginBindingStore",
+    "PluginBindingValidator",
+    "PluginInspection",
     "PluginManager",
     "PluginManifest",
     "PluginManifestError",
@@ -75,11 +85,14 @@ __all__ = [
     "PluginRegistry",
     "PluginRevisionError",
     "PluginResolvedResources",
+    "PluginResolutionAuthority",
+    "PluginResolutionDiagnostic",
     "PluginRevisionKind",
     "PluginRevisionStore",
     "PluginResolver",
     "PluginSource",
     "PluginSourceBinding",
+    "PluginRuntimeResolution",
     "ResolvedPluginPackage",
     "VerifiedRevisionHandle",
     "is_remote_plugin_source",

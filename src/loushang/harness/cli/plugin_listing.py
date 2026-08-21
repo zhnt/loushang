@@ -4,8 +4,14 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 
-from loushang.harness.resources.plugins import PluginManager, project_installed_plugin
+from loushang.harness.resources.plugins import (
+    PluginResolutionAuthority,
+    PluginSource,
+    is_remote_plugin_source,
+    project_installed_plugin,
+)
 
 
 class PluginListingError(RuntimeError):
@@ -20,10 +26,23 @@ def list_plugin_records(settings_manager: object | None) -> list[dict[str, objec
         settings = get_settings()
         plugin_sources = getattr(settings, "plugin_sources", ())
         disabled_plugins = getattr(settings, "disabled_plugins", ())
-        manager = PluginManager(disabled_plugins=tuple(disabled_plugins))
+        authority = PluginResolutionAuthority(disabled_plugins=tuple(disabled_plugins))
+        plugins_by_name = {}
         for source in plugin_sources:
-            manager.add_plugin_source(source)
-        return [project_installed_plugin(plugin) for plugin in manager.list_plugins()]
+            plugin_source = (
+                PluginSource(url=source, kind="remote")
+                if is_remote_plugin_source(source)
+                else PluginSource(path=Path(source).expanduser())
+            )
+            inspection = authority.inspect(plugin_source)
+            inspection.raise_for_error()
+            if inspection.plugin is None:
+                raise ValueError(f"Plugin source could not be inspected: {source}")
+            plugins_by_name[inspection.plugin.manifest.name] = inspection.plugin
+        return [
+            project_installed_plugin(plugins_by_name[name])
+            for name in sorted(plugins_by_name)
+        ]
     except Exception as error:
         raise PluginListingError(str(error)) from error
 
