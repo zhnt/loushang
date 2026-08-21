@@ -632,6 +632,12 @@ binding. The Product Agent Host admits it and either joins the parent Product
 Session composition or creates an explicit child Product Session when a
 different composition is requested.
 
+It may reference optional admitted prompts, model/effort requests,
+Tool/Skill/MCP selectors, stricter permission/isolation modes, memory facets,
+background policy and limits, but cannot widen Product ceilings. Hooks remain
+Event/Extension contributions, and the initial user prompt belongs to the spawn
+request and committed Model Input rather than the reusable Agent Definition.
+
 ### Extension
 
 Executable or declarative optional behavior contributed through a defined

@@ -21,7 +21,7 @@ PLUGIN_PACKAGE_BOUNDARY_ROOTS = (
     Path("src/loushang/harness/resources/plugins"),
     Path("src/loushang/harness/resources/packages"),
 )
-EXPECTED_JSON_FILE_READER_FUNCTION_SITES = {
+EXPECTED_MANIFEST_BOUNDARY_SINK_SITES = {
     (
         Path("src/loushang/harness/resources/plugins/resolver.py"),
         "PluginResolver._read_manifest",
@@ -42,12 +42,90 @@ EXPECTED_JSON_FILE_READER_FUNCTION_SITES = {
         Path("src/loushang/harness/resources/packages/catalog.py"),
         "load_package_catalog",
     ),
+    (
+        Path("src/loushang/harness/resources/packages/materializer.py"),
+        "_pypi_latest_version_result",
+    ),
 }
-EXPECTED_GRAPH_RUNTIME_EXTERNAL_WRITE_SITES = {
-    Path("src/loushang/harness/capabilities/graph_binding.py"),
+EXPECTED_GRAPH_PRIVATE_MUTATION_SITES = {
+    (
+        Path("src/loushang/harness/capabilities/graph_runtime.py"),
+        "RuntimeCapabilityGraphRuntime.__init__",
+    ),
+    (
+        Path("src/loushang/harness/capabilities/graph_binding.py"),
+        "RuntimeCapabilityGraphBinder.bind",
+    ),
+    (
+        Path("src/loushang/harness/capabilities/graph_binding.py"),
+        "RuntimeCapabilityGraphBinder.dispose",
+    ),
+    (
+        Path("src/loushang/harness/capabilities/graph_binding.py"),
+        "_publish_registration_inventory",
+    ),
 }
-EXPECTED_EXTENSION_LIVE_DECLARATION_MUTATION_SITES = {
-    Path("src/loushang/harness/extensions/api.py"),
+EXPECTED_EXTENSION_DECLARATION_METHODS = {
+    "on",
+    "register_tool",
+    "register_policy",
+    "register_approval",
+    "register_command",
+    "register_flag",
+    "register_shortcut",
+    "register_message_renderer",
+}
+EXPECTED_EXTENSION_LIVE_SINK_INVENTORY = {
+    (
+        Path("src/loushang/harness/extensions/api.py"),
+        "ExtensionContributionAPI._register_runtime_tool",
+        "bind_tool",
+    ),
+    (
+        Path("src/loushang/harness/extensions/api.py"),
+        "ExtensionContributionAPI._register_runtime_tool",
+        "register_tool",
+    ),
+    (
+        Path("src/loushang/harness/extensions/api.py"),
+        "ExtensionContributionAPI.register_tool",
+        "_register_runtime_tool",
+    ),
+    (
+        Path("src/loushang/harness/extensions/loader.py"),
+        "_adapt_legacy_extension_object",
+        "on",
+    ),
+    (
+        Path("src/loushang/harness/extensions/loader.py"),
+        "_adapt_legacy_extension_object",
+        "register_tool",
+    ),
+    (
+        Path("src/loushang/harness/extensions/runner.py"),
+        "ExtensionRunner._bind_declared_tools",
+        "bind_tool",
+    ),
+    (
+        Path("src/loushang/harness/extensions/runner.py"),
+        "ExtensionRunner._bindings_for_activation",
+        "bind_tool",
+    ),
+    (
+        Path("src/loushang/harness/extensions/runner.py"),
+        "ExtensionRunner._supports_staged_activation",
+        "bind_tool",
+    ),
+    (
+        Path("src/loushang/harness/extensions/runtime_bindings.py"),
+        "ExtensionRuntimeBindingFactory.build",
+        "bind_tool",
+    ),
+    (
+        Path("src/loushang/harness/extensions/runtime_bindings.py"),
+        "ExtensionRuntimeBindingFactory.build",
+        "register_tool",
+    ),
 }
 EXPECTED_AUTHORITY_CLASS_SITES = {
     "RuntimeProfileResolver": Path(
@@ -122,74 +200,12 @@ def _static_string_sites(sources: Mapping[Path, str], value: str) -> set[Path]:
     return sites
 
 
-def _external_attribute_write_sites(
-    sources: Mapping[Path, str],
-    *,
-    receiver: str,
-    attributes: frozenset[str],
-) -> set[Path]:
-    sites: set[Path] = set()
-    for path, source in sources.items():
-        if not any(f"{receiver}.{attribute}" in source for attribute in attributes):
-            continue
-        tree = ast.parse(source, filename=str(path))
-        for node in ast.walk(tree):
-            targets: tuple[ast.AST, ...] = ()
-            if isinstance(node, ast.Assign):
-                targets = tuple(node.targets)
-            elif isinstance(node, ast.AnnAssign):
-                targets = (node.target,)
-            elif isinstance(node, ast.AugAssign):
-                targets = (node.target,)
-            if any(
-                isinstance(target, ast.Attribute)
-                and isinstance(target.value, ast.Name)
-                and target.value.id == receiver
-                and target.attr in attributes
-                for target in targets
-            ):
-                sites.add(path)
-    return sites
-
-
-def _attribute_call_sites(
-    sources: Mapping[Path, str],
-    attributes: frozenset[str],
-) -> set[Path]:
-    return {
-        path
-        for path, source in sources.items()
-        if any(f".{attribute}(" in source for attribute in attributes)
-        if any(
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr in attributes
-            for node in ast.walk(ast.parse(source, filename=str(path)))
-        )
-    }
-
-
-def _is_json_file_reader(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    calls = tuple(child for child in ast.walk(node) if isinstance(child, ast.Call))
-    reads_file = any(
-        isinstance(call.func, ast.Attribute)
-        and call.func.attr in {"read_text", "read_bytes"}
-        for call in calls
-    )
-    parses_json = any(
-        isinstance(call.func, ast.Attribute)
-        and isinstance(call.func.value, ast.Name)
-        and call.func.value.id == "json"
-        and call.func.attr in {"load", "loads"}
-        for call in calls
-    )
-    return reads_file and parses_json
-
-
-class _JsonFileReaderVisitor(ast.NodeVisitor):
+class _QualifiedFunctionVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         self.scope: list[str] = []
-        self.functions: set[str] = set()
+        self.functions: list[
+            tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]
+        ] = []
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         self.scope.append(node.name)
@@ -206,26 +222,209 @@ class _JsonFileReaderVisitor(ast.NodeVisitor):
         self,
         node: ast.FunctionDef | ast.AsyncFunctionDef,
     ) -> None:
-        if _is_json_file_reader(node):
-            self.functions.add(".".join((*self.scope, node.name)))
+        qualified = ".".join((*self.scope, node.name))
+        self.functions.append((qualified, node))
         self.scope.append(node.name)
         self.generic_visit(node)
         self.scope.pop()
 
 
-def _json_file_reader_function_sites(
+def _qualified_functions(
+    source: str,
+    *,
+    filename: Path,
+) -> tuple[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef], ...]:
+    visitor = _QualifiedFunctionVisitor()
+    visitor.visit(ast.parse(source, filename=str(filename)))
+    return tuple(visitor.functions)
+
+
+def _import_aliases(tree: ast.Module) -> tuple[set[str], set[str]]:
+    json_modules = {"json"}
+    json_decoders: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in {"json", "orjson"}:
+                    json_modules.add(alias.asname or alias.name)
+        elif isinstance(node, ast.ImportFrom) and node.module in {"json", "orjson"}:
+            for alias in node.names:
+                if alias.name in {"load", "loads"}:
+                    json_decoders.add(alias.asname or alias.name)
+    return json_modules, json_decoders
+
+
+def _manifest_boundary_sink_sites(
     sources: Mapping[Path, str],
 ) -> set[tuple[Path, str]]:
     sites: set[tuple[Path, str]] = set()
     for path, source in sources.items():
         if not any(path.is_relative_to(root) for root in PLUGIN_PACKAGE_BOUNDARY_ROOTS):
             continue
-        if "json." not in source or ".read_" not in source:
-            continue
-        visitor = _JsonFileReaderVisitor()
-        visitor.visit(ast.parse(source, filename=str(path)))
-        sites.update((path, function) for function in visitor.functions)
+        tree = ast.parse(source, filename=str(path))
+        json_modules, json_decoders = _import_aliases(tree)
+        for qualified, function in _qualified_functions(source, filename=path):
+            calls = tuple(
+                node for node in ast.walk(function) if isinstance(node, ast.Call)
+            )
+            reads_file = any(
+                (
+                    isinstance(call.func, ast.Attribute)
+                    and call.func.attr in {"read_text", "read_bytes", "open"}
+                )
+                or (
+                    isinstance(call.func, ast.Name)
+                    and call.func.id in {"open", "read_text", "read_bytes"}
+                )
+                for call in calls
+            )
+            parses_json = any(
+                (
+                    isinstance(call.func, ast.Attribute)
+                    and isinstance(call.func.value, ast.Name)
+                    and call.func.value.id in json_modules
+                    and call.func.attr in {"load", "loads"}
+                )
+                or (
+                    isinstance(call.func, ast.Name)
+                    and call.func.id in json_decoders
+                )
+                for call in calls
+            )
+            if reads_file or parses_json:
+                sites.add((path, qualified))
     return sites
+
+
+def _contains_sensitive_attribute(node: ast.AST, attributes: frozenset[str]) -> bool:
+    return any(
+        isinstance(child, ast.Attribute) and child.attr in attributes
+        for child in ast.walk(node)
+    )
+
+
+def _function_mutates_private_graph_state(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    attributes: frozenset[str],
+) -> bool:
+    mutation_methods = {
+        "__setitem__",
+        "append",
+        "clear",
+        "discard",
+        "extend",
+        "insert",
+        "pop",
+        "remove",
+        "setdefault",
+        "update",
+    }
+    for node in ast.walk(function):
+        targets: tuple[ast.AST, ...] = ()
+        if isinstance(node, ast.Assign):
+            targets = tuple(node.targets)
+        elif isinstance(node, ast.AnnAssign):
+            targets = (node.target,)
+        elif isinstance(node, ast.AugAssign):
+            targets = (node.target,)
+        elif isinstance(node, (ast.Delete,)):
+            targets = tuple(node.targets)
+        if any(_contains_sensitive_attribute(target, attributes) for target in targets):
+            return True
+        if not isinstance(node, ast.Call):
+            continue
+        if (
+            (
+                isinstance(node.func, ast.Name)
+                and node.func.id in {"setattr", "delattr"}
+            )
+            or (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr in {"__setattr__", "__delattr__"}
+            )
+        ) and any(
+            isinstance(argument, ast.Constant) and argument.value in attributes
+            for argument in node.args[1:2]
+        ):
+            return True
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr in mutation_methods
+            and _contains_sensitive_attribute(node.func.value, attributes)
+        ):
+            return True
+    return False
+
+
+def _graph_private_mutation_sites(
+    sources: Mapping[Path, str],
+) -> set[tuple[Path, str]]:
+    attributes = frozenset(
+        {"_generation", "_nodes", "_snapshot", "_registration_inventory"}
+    )
+    sites: set[tuple[Path, str]] = set()
+    for path, source in sources.items():
+        if "harness/capabilities/graph_" not in path.as_posix():
+            continue
+        if not any(attribute in source for attribute in attributes):
+            continue
+        for qualified, function in _qualified_functions(source, filename=path):
+            if _function_mutates_private_graph_state(function, attributes):
+                sites.add((path, qualified))
+    return sites
+
+
+def _class_method_names(source: str, class_name: str) -> set[str]:
+    tree = ast.parse(source)
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            return {
+                child.name
+                for child in node.body
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and (child.name == "on" or child.name.startswith("register_"))
+            }
+    raise AssertionError(f"missing class: {class_name}")
+
+
+def _extension_live_sink_inventory(
+    sources: Mapping[Path, str],
+) -> set[tuple[Path, str, str]]:
+    tokens = frozenset(
+        {
+            *EXPECTED_EXTENSION_DECLARATION_METHODS,
+            "_register_runtime_tool",
+            "bind_approval",
+            "bind_command",
+            "bind_event",
+            "bind_flag",
+            "bind_handler",
+            "bind_message_renderer",
+            "bind_policy",
+            "bind_shortcut",
+            "bind_tool",
+        }
+    )
+    inventory: set[tuple[Path, str, str]] = set()
+    for path, source in sources.items():
+        if "harness/extensions/" not in path.as_posix():
+            continue
+        if not any(token in source for token in tokens):
+            continue
+        for qualified, function in _qualified_functions(source, filename=path):
+            for node in ast.walk(function):
+                token: str | None = None
+                if isinstance(node, ast.Attribute) and node.attr in tokens:
+                    token = node.attr
+                elif (
+                    isinstance(node, ast.Constant)
+                    and isinstance(node.value, str)
+                    and node.value in tokens
+                ):
+                    token = node.value
+                if token is not None:
+                    inventory.add((path, qualified, token))
+    return inventory
 
 
 def _class_sites(
@@ -278,6 +477,9 @@ def test_executable_declaration_is_gated_by_inert_preflight() -> None:
     assert "are never imported and never launched" in architecture
     assert "PluginExecutionApprovalSubject" in architecture
     assert "ContributionActivationApprovalSubject" in architecture
+    assert "PluginApprovalDecisionRecord" in architecture
+    assert "consume_execution_decision(subject, decision_id)" in architecture
+    assert "Revocation linearizes against consumption" in architecture
     assert "security-relevant configuration fingerprint" in architecture
 
 
@@ -285,21 +487,28 @@ def test_top_level_capability_provider_selection_is_not_a_profile_slot() -> None
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
 
     assert "ProductCapabilityProviderResolver" in architecture
+    assert "CapabilityProviderEligibilityGrant" in architecture
     assert "CapabilityProviderBindingSpec" in architecture
-    assert "one CapabilityBundleProvider metadata value per Capability" in architecture
+    assert "one owner-eligible CapabilityBundleProvider metadata value" in architecture
     assert "A top-level Capability ID such\nas `coding.lsp` is never used" in architecture
     assert "Runtime Profile candidate for coding.lsp" not in architecture
+    assert "Top-level Provider facts remain\nseparate data" in architecture
+    assert "never carries a\n`ResolvedCapabilityProviderSet`" in architecture
 
 
 def test_owner_admission_agent_event_and_disable_contracts_are_explicit() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
 
     assert "OwnerContributionAdmissionRecord" in architecture
-    assert "never labels a contribution `admitted`" in architecture
+    assert "never labels a contribution\n`admitted`" in architecture
     assert "`agent_definition`" in architecture
     assert "Product Agent Host" in architecture
     assert "EventDefinitionCatalog" in architecture
-    assert "awaited serial broadcast" in architecture
+    assert "`durable_fact` after domain commit" in architecture
+    assert "A durable interceptor/reducer/first-match declaration is invalid" in (
+        architecture
+    )
+    assert "Agent fields have one authority each" in architecture
     assert "calling a declaration-forming `register_*` after IR freeze" in architecture
     assert "performs no partial recompose and returns `restart_required`" in architecture
 
@@ -309,10 +518,17 @@ def test_revision_retention_and_python_import_realm_are_closed_for_v1() -> None:
 
     assert "owner-generation/cleanup leases" in architecture
     assert "a retryable cleanup failure therefore retains its revision" in architecture
+    assert "SessionPluginMembershipLease" in architecture
+    assert "AgentPluginMembershipLease" in architecture
+    assert "REVOKING" in architecture
+    assert "PluginCleanupJournal" in architecture
     assert "changing its package\ndigest is Product-Host `restart_required`" in (
         architecture
     )
     assert "digest-qualified import realm" in architecture
+    assert "process-wide import-closure ledger" in architecture
+    assert "VerifiedRevisionHandle" in architecture
+    assert "data-generation/schema" in architecture
 
 
 def test_unified_plugin_architecture_preserves_existing_runtime_authorities() -> None:
@@ -327,7 +543,7 @@ def test_unified_plugin_architecture_preserves_existing_runtime_authorities() ->
     assert "never becomes the Registration owner" in architecture
 
 
-def test_current_plugin_manifest_reader_baseline_detects_static_aliases() -> None:
+def test_current_plugin_manifest_name_sites_are_a_baseline_inventory() -> None:
     sources = _source_texts()
 
     assert _static_string_sites(sources, "plugin.json") == EXPECTED_PLUGIN_JSON_STATIC_SITES
@@ -343,56 +559,146 @@ def test_current_plugin_manifest_reader_baseline_detects_static_aliases() -> Non
     }
 
 
-def test_current_package_json_reader_sinks_reject_an_indirect_parser() -> None:
+def test_current_package_manifest_boundary_sinks_use_qualified_allowlist() -> None:
     sources = _source_texts()
 
     assert (
-        _json_file_reader_function_sites(sources)
-        == EXPECTED_JSON_FILE_READER_FUNCTION_SITES
+        _manifest_boundary_sink_sites(sources)
+        == EXPECTED_MANIFEST_BOUNDARY_SINK_SITES
     )
     synthetic = {
+        Path("src/loushang/harness/resources/plugins/read_helper.py"): (
+            "def read_text(path):\n"
+            "    with path.open() as stream:\n"
+            "        return stream.read()\n"
+        ),
         Path("src/loushang/harness/resources/plugins/indirect.py"): (
+            "from json import loads as decode\n"
             "from names import PLUGIN_MANIFEST\n"
+            "from .read_helper import read_text\n"
             "def parse(root):\n"
-            "    return json.loads((root / PLUGIN_MANIFEST).read_text())\n"
-        )
+            "    return decode(read_text(root / PLUGIN_MANIFEST))\n"
+        ),
+        Path("src/loushang/harness/resources/packages/alias.py"): (
+            "import orjson as codec\n"
+            "def parse(path):\n"
+            "    return codec.loads(path.read_bytes())\n"
+        ),
+        Path("src/loushang/harness/resources/packages/stream.py"): (
+            "from json import load as decode\n"
+            "def parse(path):\n"
+            "    with path.open() as stream:\n"
+            "        return decode(stream)\n"
+        ),
     }
-    assert _json_file_reader_function_sites(synthetic) == {
+    assert _manifest_boundary_sink_sites(synthetic) == {
         (
             Path("src/loushang/harness/resources/plugins/indirect.py"),
             "parse",
-        )
+        ),
+        (
+            Path("src/loushang/harness/resources/plugins/read_helper.py"),
+            "read_text",
+        ),
+        (
+            Path("src/loushang/harness/resources/packages/alias.py"),
+            "parse",
+        ),
+        (
+            Path("src/loushang/harness/resources/packages/stream.py"),
+            "parse",
+        ),
     }
 
 
-def test_current_graph_publication_baseline_rejects_external_runtime_writes() -> None:
+def test_current_graph_private_mutations_use_qualified_owner_allowlist() -> None:
     sources = _source_texts()
-    graph_state = frozenset({"_nodes", "_snapshot", "_registration_inventory"})
 
-    assert _external_attribute_write_sites(
-        sources,
-        receiver="runtime",
-        attributes=graph_state,
-    ) == EXPECTED_GRAPH_RUNTIME_EXTERNAL_WRITE_SITES
-    synthetic = {Path("second_publisher.py"): "runtime._snapshot = candidate\n"}
-    assert _external_attribute_write_sites(
-        synthetic,
-        receiver="runtime",
-        attributes=graph_state,
-    ) == {Path("second_publisher.py")}
+    assert _graph_private_mutation_sites(sources) == EXPECTED_GRAPH_PRIVATE_MUTATION_SITES
+    synthetic = {
+        Path("src/loushang/harness/capabilities/graph_alias.py"): (
+            "def alias_write(graph, candidate):\n"
+            "    graph._snapshot = candidate\n"
+            "def nested_write(self, nodes):\n"
+            "    self._runtime._nodes['new'] = nodes\n"
+            "def setattr_write(runtime, candidate):\n"
+            "    setattr(runtime, '_snapshot', candidate)\n"
+            "def dunder_write(runtime, candidate):\n"
+            "    object.__setattr__(runtime, '_snapshot', candidate)\n"
+            "def container_write(runtime, nodes):\n"
+            "    runtime._nodes.update(nodes)\n"
+        )
+    }
+    assert _graph_private_mutation_sites(synthetic) == {
+        (
+            Path("src/loushang/harness/capabilities/graph_alias.py"),
+            "alias_write",
+        ),
+        (
+            Path("src/loushang/harness/capabilities/graph_alias.py"),
+            "nested_write",
+        ),
+        (
+            Path("src/loushang/harness/capabilities/graph_alias.py"),
+            "setattr_write",
+        ),
+        (
+            Path("src/loushang/harness/capabilities/graph_alias.py"),
+            "dunder_write",
+        ),
+        (
+            Path("src/loushang/harness/capabilities/graph_alias.py"),
+            "container_write",
+        ),
+    }
 
 
-def test_current_extension_live_declaration_mutation_baseline_is_frozen() -> None:
+def test_current_extension_declaration_and_live_sink_inventory_is_frozen() -> None:
     sources = _source_texts()
-    mutation_methods = frozenset({"_register_runtime_tool"})
+    api_path = Path("src/loushang/harness/extensions/api.py")
 
-    assert _attribute_call_sites(
-        sources,
-        mutation_methods,
-    ) == EXPECTED_EXTENSION_LIVE_DECLARATION_MUTATION_SITES
-    synthetic = {Path("late_plugin.py"): "api._register_runtime_tool(tool)\n"}
-    assert _attribute_call_sites(synthetic, mutation_methods) == {
-        Path("late_plugin.py")
+    assert _class_method_names(
+        sources[api_path],
+        "ExtensionContributionAPI",
+    ) == EXPECTED_EXTENSION_DECLARATION_METHODS
+    assert (
+        _extension_live_sink_inventory(sources)
+        == EXPECTED_EXTENSION_LIVE_SINK_INVENTORY
+    )
+    synthetic = {
+        Path("src/loushang/harness/extensions/late.py"): (
+            "def direct(bindings, tool):\n"
+            "    bindings.bind_tool(tool)\n"
+            "def reflected(bindings, tool):\n"
+            "    getattr(bindings, 'bind_tool')(tool)\n"
+            "def saved(bindings, tool):\n"
+            "    binder = bindings.bind_tool\n"
+            "    binder(tool)\n"
+            "def new_kind(bindings, policy):\n"
+            "    bindings.bind_policy(policy)\n"
+        )
+    }
+    assert _extension_live_sink_inventory(synthetic) == {
+        (
+            Path("src/loushang/harness/extensions/late.py"),
+            "direct",
+            "bind_tool",
+        ),
+        (
+            Path("src/loushang/harness/extensions/late.py"),
+            "reflected",
+            "bind_tool",
+        ),
+        (
+            Path("src/loushang/harness/extensions/late.py"),
+            "saved",
+            "bind_tool",
+        ),
+        (
+            Path("src/loushang/harness/extensions/late.py"),
+            "new_kind",
+            "bind_policy",
+        ),
     }
 
 
