@@ -43,10 +43,11 @@ planning, work event persistence, or AI provider behavior.
   existing registration and projection authorities.
 - [Unified Plugin Authoring Primitives Delivery Plan](plugin-authoring-primitives-delivery-plan.md)
   prioritizes the internal Definition / Provider / Consumer authoring bridge,
-  versions and groups document/in-process declaration sources, separates
-  preflight gates from decoded/evaluated evidence, keeps Resource/Tool/Command
-  contributions orthogonal to Capability Providers, and then proceeds through
-  durable execution approval, owner admission, and LSP production proof.
+  versions and groups document/in-process declaration sources, separates a
+  proposal/pending/fresh-accept protocol from decoded/evaluated evidence, gives
+  the Coordinator one finalize/abort/expire transition, keeps Resource/Tool/
+  Command contributions orthogonal to Capability Providers, and then proceeds
+  through durable execution approval, owner admission, and LSP production proof.
   Skill-provider convergence remains subordinate and the stable public SDK
   stays gated by the broader production combination evidence.
 - [Unified Plugin Lifecycle And Coding Pluginization Delivery Plan](plugin-lifecycle-coding-pluginization-plan.md)

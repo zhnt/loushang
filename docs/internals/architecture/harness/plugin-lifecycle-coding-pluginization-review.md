@@ -16,8 +16,8 @@ the implementation reviews through `8a3c94fd`; see the
 after issue attachment and independent review. This review does not approve the
 security, lifecycle, production cutover, or public SDK slices as one batch.
 
-The two proposed sequencing revisions are justified but require architecture-
-owner acceptance before their source implementation:
+The two sequencing revisions are now accepted in the authoritative UPA delivery
+order:
 
 1. move the minimum durable `PluginManagementService` control core before the
    `coding.base` production cutover, while leaving rich management projections,
@@ -29,7 +29,7 @@ This review found nine high-priority risks. The plan includes their required
 corrections; none requires a second Graph, Resource runtime, Profile resolver,
 approval store, registration owner, or effective projector.
 
-## PLC1B Documentation Remediation
+## PLC1B First Documentation Remediation
 
 Three independent read-only reviews of the PLC1B documentation increment found
 no P0 but rejected it as an implementation freeze because several P1 contracts
@@ -39,7 +39,7 @@ requirements:
 1. one `PluginDeclarationSourceGroup` owns an exact sorted reservation closure,
    closes over every index entry sharing its source, is decoded/evaluated once,
    and all non-overlapping groups join before one preflight finalization;
-2. reservation `data_only`/`execution_preflight` gates are distinct from final
+2. group-owned `data_only`/`execution_preflight` gates are distinct from final
    `document_decoded`/`in_process_evaluated` evidence, executable evidence
    requires the durable group consumption receipt, and non-accepted preflight
    outcomes create no token, reservation, or group;
@@ -58,8 +58,39 @@ requirements:
 8. PAP4R makes the Resource/Tool/Command bridge explicit, while PAP8 source
    implementation remains PLC8 work.
 
-This section records remediation, not approval. A fresh independent review of
-the remediated diff is still required before PLC1B-1 source work begins.
+This section records the first remediation, not approval. A fresh three-agent
+review of `7b2062bd` completed and produced the second remediation below.
+
+## PLC1B Second Documentation Remediation
+
+Three new independent read-only reviews of `de7006d5..7b2062bd` again found no
+P0, but all rejected the PLC1B-1 freeze. Their shared and independently verified
+P1 corrections are now incorporated:
+
+1. `preflight()` builds a non-authoritative proposal; pending exposes only
+   canonical subjects, and approval is followed by a fresh full revalidation
+   before accepted groups/reservations/token exist;
+2. only `PluginDeclarationSourceGroup` owns the group gate; reservations retain
+   only its immutable ID/fingerprint;
+3. PLC1B proves document-only single finalization, while mixed document/in-
+   process input aborts `execution_not_consumed` with zero finalization; the
+   successful mixed proof moves to PLC3;
+4. Definition/Builder returns declarations only, and the Host evaluator/
+   coordinator exclusively attaches evidence and constructs a Batch;
+5. the accepted aggregate has only `FINALIZED`, `ABORTED` and `EXPIRED`
+   terminals; later-group failure never revives a consumed decision;
+6. Candidate `decision_id` becomes strict tagged evidence, group execution
+   subject advances to v2 with v1 rejection, and canonical JSON matches the
+   actual `ensure_ascii=True` encoder;
+7. the document envelope, locator-stage boundary and declaration/runtime source
+   type names are frozen precisely;
+8. UPA now normatively orders LSP, Base and Arch; Tool ownership no longer uses
+   a Tool/Resource joint owner; and
+9. the Product Consumer requirement set preserves per-Consumer constraints and
+   provenance instead of performing an undefined lossy merge.
+
+This remediation also requires fresh independent review before PLC1B-1 source
+work begins; it does not self-approve the implementation freeze.
 
 ## Review Scope
 
@@ -157,14 +188,18 @@ compatibility skew.
 arms that produce the same tagged IR v2. Within one preflight context,
 selecting any contribution closes its group over every index entry sharing the
 exact source/revision; the group binds its gate, sorted closure and
-configuration-map fingerprint. `data_only` carries no
+configuration-map fingerprint, while reservations retain only the group
+fingerprint. Pending exposes proposed subjects only; approval is followed by a
+fresh full preflight before an accepted group exists. `data_only` carries no
 execution subject, while `execution_preflight` carries one positive group
 decision. Those gates do not become final evidence: document decoding emits
 `document_decoded`, executable evaluation emits `in_process_evaluated` bound to
 the durable group receipt, and an unconsumed positive decision cannot form a
-candidate. A coordinator processes each group once and finalizes the complete
-preflight once. Declaration source kind remains separate from any contributed
-factory/service execution model.
+candidate. A coordinator processes each group once and owns the aggregate
+terminal transition. PLC1B finalizes complete document-only input once and
+aborts mixed input with zero finalization; PLC3 owns the successful mixed path.
+Declaration source kind remains separate from any contributed factory/service
+execution model.
 
 ### P0-06 — Kernel Prompt must remain truthful without Plugins
 
@@ -438,24 +473,31 @@ independent review and the missing tracking issue is attached:
 2. exact parser, source-open, declaration, selection and live-publication sites
    are recorded without broad allowlists;
 3. runtime-only v2 is the one canonical index/IR path and draft v1 fails closed;
-4. exact source groups, gate/evidence transition, revision-root locator base and
-   single-finalization coordinator are frozen;
-5. the existing Provider codec remains inert and separates declaration source
+4. proposal/pending/fresh revalidation produces no accepted state before the
+   fully accepted arm, and only SourceGroup owns its gate;
+5. exact source groups, gate/evidence transition, revision-root locator base and
+   Coordinator-owned aggregate terminal protocol are frozen;
+6. PLC1B mixed-source fails with one abort/zero finalize while PLC3 owns its
+   successful join/finalize proof;
+7. Candidate evidence, execution-subject v2/v1 rejection and canonical byte
+   encoding are frozen without nullable decision peers;
+8. the existing Provider codec remains inert and separates declaration source
    from contributed factory/disposer execution model;
-6. the document source model cannot import code, while unconsumed in-process
+9. the document source model cannot import code, while unconsumed in-process
    Builder output cannot form a batch or candidate;
-7. direct self-requirement fails in the codec and transitive cycles remain with
+10. direct self-requirement fails in the codec and transitive cycles remain with
    the existing Graph Planner;
-8. the `coding.base` shadow fixture stops before owner/Host normalization,
+11. the `coding.base` shadow fixture stops before owner/Host normalization,
    admission or publication;
-9. no stable public SDK symbol is exported and no Graph, Resource, Tool,
+12. no stable public SDK symbol is exported and no Graph, Resource, Tool,
    Command, Extension or Session behavior changes;
-10. targeted Plugin and architecture tests plus `git diff --check` pass; and
-11. rollback requires no live-state cleanup or data migration.
+13. targeted Plugin and architecture tests plus `git diff --check` pass; and
+14. rollback requires no live-state cleanup or data migration.
 
 ## Review Conclusion
 
-The combined plan is coherent after the sequencing corrections. The common
+The combined plan is coherent after the sequencing corrections but remains
+subject to the fresh independent documentation gate above. The common
 lifecycle is the platform priority; `coding.base` is the Resource and Product
 composition acceptance sample; `coding.lsp` is the executable Provider/Graph
 acceptance sample; and `coding.arch` is the second-Provider and optional-

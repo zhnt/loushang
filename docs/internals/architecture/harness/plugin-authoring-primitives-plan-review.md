@@ -113,12 +113,15 @@ and distinguishes a document `data_only` gate from an in-process
 authority. Those gates are not final evidence: document decoding emits
 `document_decoded`, while PAP2/PAP3 must produce `in_process_evaluated` bound to
 one durable group consumption receipt before candidate finalization. The Plugin
-subsystem does not own another approval store.
+subsystem does not own another approval store. The second PLC1B documentation
+review further requires pending to expose proposed subjects only, a fresh full
+preflight after approval, one group-owned gate, Host-only Batch/evidence
+construction, and one Coordinator-owned finalize/abort/expire transition.
 
 ### P0-03 — Stable public SDK cannot precede production combination evidence
 
-**Evidence.** The UPA delivery sequence places public SDK publication after the
-LSP, Architecture, and Base Coding slices. The initial draft of this delivery
+**Evidence.** The accepted UPA delivery sequence places public SDK publication
+after the LSP, Base, and Architecture Coding slices. The initial draft of this delivery
 plan allowed PAP7 after only a synthetic fixture and LSP.
 
 **Risk.** A stable API could freeze Provider-only assumptions before Resource
@@ -126,8 +129,8 @@ composition, a second Capability, optional dependencies, and Product
 Composition Sets prove the declaration IR and feature negotiation.
 
 **Correction applied.** PAP7 may maintain an internal SDK candidate, but stable
-`loushang.plugin` exports require the existing UPA5 `coding.arch` and UPA6
-`coding.base` evidence or a separately accepted UPA revision.
+`loushang.plugin` exports require the accepted UPA5 `coding.base` and UPA6
+`coding.arch` evidence.
 
 ### P0-04 — The source baseline is not currently architecture-test green
 

@@ -85,7 +85,7 @@ def declare(plugin):
             provider_id="org.loushang.coding-lsp/default",
             implementation_version=1,
             contract=1,
-            facets=("semantic", "tools", "diagnostics"),
+            facets=("semantic", "tool-runtime", "diagnostics"),
             requirements=(workspace,),
             factory="provider.py:create_provider",
             disposer="provider.py:dispose_provider",
@@ -217,22 +217,39 @@ cohesion, but their semantics and ownership must not be merged.
   fields and binds one canonical source fingerprint. All source and Resource
   locators are revision-root-relative and are opened only through
   `VerifiedRevisionHandle`; `packageRoot` never creates a second locator base.
-- `PluginDeclarationSourceGroup`: one package/revision, source fingerprint,
-  Product/scope/policy context, gate kind, sorted reservation closure, and
+- `PluginPreflightProposal`: non-authoritative recomputed Product/scope/policy/
+  trust context plus the complete canonical tuple of source proposals. It has no
+  identity usable by finalization and is never stored for resume.
+- `PluginDeclarationSourceProposal`: non-authoritative preflight value over one
+  package revision and `declaration_source_fingerprint`, complete proposed index
+  closure, effective configuration map, authority ceiling and optional proposed
+  execution subject. It is never a group, gate, reservation or active token.
+- `PluginDeclarationSourceGroup`: one package/revision,
+  `declaration_source_fingerprint`,
+  Product/scope/policy context, one owned `PluginDeclarationGate`, sorted
+  reservation closure, and
   canonical group-configuration fingerprint over the per-reservation map. A
-  reservation belongs to exactly one group; the same source identity cannot be
-  split across multiple groups in one preflight. If any contribution from a
-  source is selected, the closure contains every index entry for that source;
-  later Product selection may emit only its selected candidate subset.
+  reservation belongs to exactly one group; the same declaration-source
+  fingerprint cannot be split across multiple groups in one preflight. If any
+  contribution from a source is selected, the closure contains every index
+  entry for that source; later Product selection may emit only its selected
+  candidate subset.
 - `PluginDeclarationGate`: strict `data_only`/`execution_preflight` union over
   a source group's shared package/contribution/source/context facts. Only the
   executable arm carries one positive group-level
   `PluginExecutionApprovalSubject` and decision reference; pending/denied
-  outcomes produce no accepted preflight token, reservation, or group.
+  outcomes produce no accepted preflight token, reservation, or group. The
+  group is its only structural owner; reservations carry only its immutable
+  ID/fingerprint and never copy subject/decision/gate facts.
 - `PluginPreflightOutcome`: strict `accepted`/`pending_approval`/`denied`/
   `rejected` union. Only `accepted` carries an active token and source groups;
   pending may expose canonical proposed subjects, and every non-accepted arm
   carries diagnostics but no reservation, gate, or finalizable preflight.
+- `PluginPreflightAggregateState`: strict `ACTIVE`/`FINALIZED`/`ABORTED`/
+  `EXPIRED` state owned by the Coordinator. Only `ACTIVE` may finalize or abort;
+  repeated/concurrent terminal calls return one typed terminal error and never
+  replay candidates. Tokens are process/instance-revision bound, non-resumable,
+  and orphaned `ACTIVE` tokens become `EXPIRED` during restart recovery.
 - `PluginDeclarationDocument`: strict document-envelope v1 containing one or
   more source-local v2 declarations. It carries no Product/scope/group/
   approval facts; the coordinator matches its complete declaration identity
@@ -241,11 +258,14 @@ cohesion, but their semantics and ownership must not be merged.
   `in_process_evaluated` union. The first binds verified document bytes/schema
   and the second binds a durable execution consumption receipt.
 - `PluginDeclarationBatch`: exact group declarations plus source-appropriate
-  evidence; a positive but unconsumed execution decision cannot form one.
+  Host-attached evidence; a Definition or Builder cannot construct one, and a
+  positive but unconsumed execution decision cannot form one.
 - `PluginDeclarationCoordinator`: partitions one accepted preflight by exact
-  source identity, decodes or evaluates each group once, rejects overlapping/
-  extra/missing declarations, joins all completed batches, and calls selection
-  finalization once.
+  declaration-source fingerprint, decodes or evaluates each group once, rejects
+  overlapping/extra/missing declarations, joins all completed batches, and
+  calls selection finalization once. It exclusively owns the active token and
+  aborts it exactly once on failure, cancellation, missing evidence or finalize
+  rejection.
 - `PluginContributionSemanticFingerprint`: compiler-owned v1 diagnostic over
   SHA-256 of the existing strict canonical-JSON encoding of domain separator,
   kind, owner, owner-qualified payload-schema ID/version, identity-sorted pinned
@@ -262,8 +282,8 @@ cohesion, but their semantics and ownership must not be merged.
   one matching declaration per reservation in that group, rejects a different
   source/gate or overlapping closure, and freezes after `build()`.
 - `PluginDefinition`: internal Protocol whose `declare()` returns one frozen
-  declaration batch for its group via the builder. It receives no registries or
-  live services.
+  `tuple[PluginDeclaration, ...]` for its group via the builder. It receives no
+  registries or live services and cannot create evidence or a Batch.
 
 ### Approval and evaluation layer
 
@@ -274,6 +294,11 @@ cohesion, but their semantics and ownership must not be merged.
   group subject, decision, complete reservation closure, policy/source-trust
   revisions, revocation epoch, expiry, instance revision, and one consumption
   transition.
+- `PluginExecutionApprovalSubject` v2: one group-level subject replacing the
+  draft v1 per-contribution schema. `PluginExecutionDecisionRecord` also becomes
+  v2 with `subjectSchemaVersion: 2`. Old subject and unversioned decision shapes
+  fail their separate exact unsupported-version diagnostics and are never
+  reinterpreted.
 - `ContributionActivationApprovalSubject`: independent complete activation
   subject over admitted candidate, package/dependency/source trust, contributed
   runtime/factory/service locators, configuration, Product/owner/scope/instance,
@@ -286,6 +311,11 @@ cohesion, but their semantics and ownership must not be merged.
 
 ### Owner admission and Product selection layer
 
+- `PluginContributionCandidate`: removes the current unconditional
+  `decision_id` and carries source-group identity plus strict
+  `PluginDeclarationEvidence` copied exactly from its validated Batch. Document
+  candidates serialize no execution fields; executable
+  decision identity exists only inside receipt evidence.
 - `CapabilityProviderCandidateFingerprint`: canonical identity over definition,
   declaration, normalized Provider metadata, configuration, source/dependency
   revision, Product/scope, and requested authority.
@@ -302,7 +332,9 @@ cohesion, but their semantics and ownership must not be merged.
 - `ProductCapabilityConsumerRequirementSet`: one Product-owned immutable union
   of mandatory Product roots and normalized Tool/Command requirements returned
   by exact owner admission. It is the only external-Consumer input to Provider
-  closure selection.
+  closure selection. It preserves canonically sorted per-Consumer requirements
+  and admission provenance rather than synthesizing one merged requirement per
+  Capability.
 
 The initial Capability owner implementation may be a Product-owned explicit
 allowlist/codec for `coding.lsp`; it must still produce the generic grant and
@@ -331,19 +363,25 @@ plugin.json
   -> PluginSelectionResolver.preflight()
        inert manifest facts only
        no import
-       exact PluginDeclarationSourceGroups
+       PluginPreflightProposal + exact source proposals
+       accepted directly when every selected source is data_only
+       OR pending_approval(proposed subjects only; no token/group/reservation)
+          -> Approval owner records decisions
+          -> fresh PluginSelectionResolver.preflight()
+             revalidate revision/trust/policy/scope/config/decisions
+             accepted(active token + exact PluginDeclarationSourceGroups)
   -> data_only group
        VerifiedRevisionHandle.open_file(revision-root-relative locator)
        strict PluginDeclarationDocument decoder
        document_decoded evidence
      OR execution_preflight group
-       Approval owner issues/retains one group decision
        consume current decision atomically
        PluginDefinitionEvaluator imports exact verified entrypoint once
-       source-group-bound declaration builder only
-       in_process_evaluated receipt evidence
+       Definition/Builder returns declarations only
+       Host attaches in_process_evaluated receipt evidence
   -> PluginDeclarationCoordinator
        join every non-overlapping source-evidenced batch
+       abort active token exactly once on failure/cancellation
   -> PluginSelectionResolver.finalize()
        exact full-preflight reservation consumption once
        PluginContributionCandidate
@@ -496,25 +534,36 @@ Scope:
 - bind source kind and canonical source fingerprint into reservation and
   declaration provenance; every locator is revision-root-relative and may be
   opened only through `VerifiedRevisionHandle`;
+- distinguish `package_source_identity` (installation/trust provenance) from
+  `declaration_source_fingerprint` (package-internal grouping), and rename the
+  contributed factory/service enum to `PluginContributionExecutionModel` so it
+  cannot be reused as a declaration-source kind;
 - group by exact source/revision within one preflight context; selecting any
   contribution closes the proposed group over every index entry sharing that
   source, one source group is decoded or evaluated once, one reservation
   belongs to one group, and a package may contain several distinct document and
   in-process groups;
-- replace the reservation's unconditional execution subject/decision fields
-  with source-neutral context plus one strict `data_only` or
-  `execution_preflight` gate union; document declarations never carry a fake
-  execution approval;
+- remove the reservation's unconditional execution subject/decision fields;
+  the accepted source group alone owns one strict `data_only` or
+  `execution_preflight` gate, while its reservations reference only the group
+  fingerprint. Document declarations never carry a fake execution approval;
 - return the strict preflight outcome union and atomically materialize groups/
   one-use reservations only when every selected source is data-only or has a
   positive executable decision;
+- advance `PluginExecutionApprovalSubject` to group-level v2 and fail closed on
+  the draft per-contribution v1 subject schema; advance the decision record to
+  v2 with an exact subject-schema-version field and reject its current
+  unversioned draft;
 - distinguish the preflight gate from final `document_decoded` or
   `in_process_evaluated` evidence; PLC1B can finalize document batches, while
   in-process Builder output without the PLC3 receipt fails
   `execution_not_consumed` before batch or candidate creation;
-- add the inert `PluginDeclarationCoordinator` and document decoder so mixed-
-  source packages join complete, non-overlapping batches and invoke
-  `PluginSelectionResolver.finalize()` exactly once;
+- add the inert `PluginDeclarationCoordinator` and document decoder. PLC1B
+  finalizes document-only one/multi-group preflights exactly once; a mixed
+  document/in-process preflight proves routing/no-import, aborts with
+  `execution_not_consumed`, and invokes `finalize()` zero times;
+- replace candidate `decision_id` with strict group/evidence provenance and add
+  the `ACTIVE -> FINALIZED|ABORTED|EXPIRED` aggregate protocol;
 - add strict `resource_item`, `tool_pack`, and `command_pack` declaration
   payloads while retaining the existing `capability_provider` arm;
 - model Skill, prompt, method, theme, asset, and raw source as owner-versioned
@@ -550,12 +599,17 @@ Exit gate:
   immutable package revision, reservation, Product/scope, and configuration;
 - v1 index/IR input fails with an exact unsupported-version diagnostic; v2
   index/IR and document-envelope v1 have stable canonical round trips;
-- same-source multi-contribution, same-package multi-source, mixed document/
-  in-process, overlapping, missing, extra and duplicate group fixtures prove
-  one decode/evaluation per group and one finalization per preflight;
+- same-source multi-contribution and same-package document multi-source fixtures
+  prove one decode per group and one finalization per preflight;
+- mixed document/in-process fixtures prove exact grouping, zero import, typed
+  `execution_not_consumed`, one aggregate abort and zero finalization; PLC3 owns
+  the successful mixed-source evaluation/join/finalize fixture;
 - document finalization carries `document_decoded` evidence without an
   execution subject/decision/receipt, while in-process Builder output cannot
   form a batch until PLC3 supplies exact group-level receipt evidence;
+- document candidate serialization contains no subject/decision/receipt field,
+  and draft subject/decision record v1 shapes fail with their separate exact
+  unsupported-version diagnostics;
 - declaration source kind and contributed factory/disposer/service execution
   model are separately fingerprinted and cannot substitute for one another;
 - every new payload has strict canonical JSON round-trip and negative fixtures
@@ -590,12 +644,15 @@ Scope:
 
 - define the Plugin execution subject adapter under the existing Approval
   owner; one subject binds one exact in-process source group and its complete
-  sorted reservation closure, not one arbitrary contribution;
+  sorted reservation closure, not one arbitrary contribution or contributed-
+  runtime launch;
 - persist issue/approve/deny/consume/revoke facts with expected revision,
   expiry, revocation epoch, source-trust revision, and actor/source provenance;
 - implement atomic one-shot consumption and idempotent query/recovery;
-- persist `ExecutionUseReservation` before import/launch start and define
-  recovery for `CONSUMED_NOT_STARTED`, `STARTING`, and `STARTED`;
+- persist `ExecutionUseReservation` before declaration import start and define
+  recovery for `CONSUMED_NOT_STARTED`; factory/service launch remains solely
+  under activation approval and the exact component/service Host's
+  `STARTING`/`STARTED` containment protocol;
 - keep UI/presentation and Product wording as adapters over the Approval owner;
 - remove the current ability to treat an arbitrary in-memory
   `PluginExecutionDecisionRecord` as execution authority. It may remain an inert
@@ -636,6 +693,12 @@ Scope:
 - emit `in_process_evaluated` evidence bound to the complete consumption receipt
   and let the coordinator join all source groups before one exact
   declaration/index finalization;
+- return only frozen declarations from Definition/Builder; the trusted
+  evaluator validates them and alone attaches receipt evidence to construct the
+  executable Batch;
+- on any group failure/cancellation, abort the aggregate once; a previously
+  consumed decision remains consumed and retry requires a fresh preflight and
+  decision;
 - record declaration provenance and evaluation diagnostics without leaking
   paths, environment values, secrets, or raw exceptions.
 
@@ -654,6 +717,10 @@ Exit gate:
 - disabled/denied code is observably never imported;
 - source mutation after publication cannot affect evaluation;
 - undeclared transitive imports and conflicting locked closures fail closed;
+- document/in-process mixed-source success evaluates each executable group once,
+  joins the complete evidence set and finalizes exactly once;
+- a later-group failure after decision consumption aborts the aggregate once,
+  publishes no candidate, and cannot reuse that decision on retry;
 - evaluation cannot publish any registry, registration, Resource, or Mount;
 - definition failure consumes no second decision on retry.
 
@@ -705,6 +772,11 @@ Scope:
 - make `ProductCompositionCompiler` combine mandatory Product roots and those
   admitted external-Consumer requirements into one immutable
   `ProductCapabilityConsumerRequirementSet` before PAP4 Provider selection;
+- preserve every normalized requirement with Tool/Command owner, contribution
+  and admission provenance; required entries extend roots and are conjunctive,
+  optional-only entries require an explicit satisfied/unsatisfied Product
+  decision (`satisfied` adds the root, `unsatisfied` adds no root/view), and
+  incompatible required constraints fail without lossy merging;
 - pass only resulting root Capability IDs and the complete selected Provider
   set to the existing `RuntimeCapabilityGraphPlanner`, which remains the sole
   transitive-cycle validator;
@@ -718,6 +790,9 @@ Exit gate:
 
 - a required Tool/Command Capability requirement deterministically extends
   Provider roots or fails before any owner publication;
+- same-Capability requirements retain deterministic ordering and every
+  provenance record; required/optional, contract, facet and binding semantics
+  are evaluated per entry rather than overwritten by a last-writer merge;
 - contract/facet mismatch is diagnosed before Graph construction;
 - no Tool, Command, Plugin, or catalog code looks up a Provider by Plugin ID or
   ambient container;
@@ -825,7 +900,7 @@ attempt to roll an active Mount generation backward.
 
 ### PAP7: SDK Stabilization And Author Conformance
 
-Prerequisite: the existing UPA5 `coding.arch` and UPA6 `coding.base` production
+Prerequisite: the accepted UPA5 `coding.base` and UPA6 `coding.arch` production
 slices are complete, or an accepted UPA revision explicitly changes that gate.
 The public SDK must not be declared stable after only a synthetic fixture and
 one LSP implementation. Before the prerequisite is met, this slice may maintain
@@ -944,7 +1019,15 @@ Binder, and Session publication seams are the completion evidence.
 - declaration not reserved, reserved twice, or reservation left unconsumed;
 - same source with multiple reservations, one package with multiple sources,
   mixed document/in-process groups, and overlapping group closures;
-- draft v1 index/IR presented to the runtime-only v2 parser;
+- approval granted after a pending proposal while revision/trust/policy/config
+  changes before the mandatory fresh preflight;
+- draft v1 index/IR and per-contribution execution-subject v1 presented to the
+  runtime-only v2 parsers;
+- document candidate serialization attempts to retain an empty/nullable
+  decision field;
+- concurrent finalize/abort/expire and later-group failure after one execution
+  decision is consumed;
+- CJK/combining-form semantic fingerprints and an unpaired surrogate payload;
 - executable Builder output carrying only a positive decision reference and no
   current consumption receipt;
 - Definition tries to return a callable or access a registry;
@@ -952,6 +1035,8 @@ Binder, and Session publication seams are the completion evidence.
 - consume/revoke and consume/crash races;
 - Product attempts to admit an owner-rejected candidate;
 - admitted Tool/Command requirement omitted from Product Capability roots;
+- incompatible same-Capability required constraints and optional-only Consumer
+  requirements without an explicit satisfied/unsatisfied decision;
 - owner admission expires between selection and activation;
 - selected metadata and binding spec disagree;
 - factory returns wrong facets or fails after staged registrations;

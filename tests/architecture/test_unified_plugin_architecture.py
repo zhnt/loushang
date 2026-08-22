@@ -1029,6 +1029,10 @@ def test_plugin_classification_is_multidimensional_and_non_authoritative() -> No
     assert "does not become a Graph node or a Capability-generation registration" in (
         capability_lifecycle
     )
+    assert "Resource owner resolves\nResource identities and bytes only" in (
+        capability_lifecycle
+    )
+    assert "Tool owner exclusively owns\n`tool_pack` admission" in capability_lifecycle
 
 
 def test_plc1b_declaration_plan_and_pap_crosswalk_are_explicit() -> None:
@@ -1049,12 +1053,22 @@ def test_plc1b_declaration_plan_and_pap_crosswalk_are_explicit() -> None:
     assert "closes its proposed reservation group over every index entry" in (
         lifecycle_plan
     )
-    assert "same source cannot be split across groups" in lifecycle_plan
+    assert "same declaration source cannot be split across groups" in lifecycle_plan
     assert "`document_decoded` and\n  `in_process_evaluated`" in lifecycle_plan
     assert "rejects in-process finalization as `execution_not_consumed`" in (
         lifecycle_plan
     )
-    assert "invoke finalization once for the preflight" in lifecycle_plan
+    assert "mixed document/in-process fixtures prove exact partitioning" in (
+        lifecycle_plan
+    )
+    assert "one aggregate abort and zero finalization" in lifecycle_plan
+    assert "successful mixed evaluation/join/single-finalization is a PLC3 exit gate" in (
+        lifecycle_plan
+    )
+    assert "candidate `decision_id` with strict source-group/evidence provenance" in (
+        lifecycle_plan
+    )
+    assert "`ACTIVE -> FINALIZED|ABORTED|EXPIRED`" in lifecycle_plan
     assert "Transitive cycles are deferred to the existing Graph\n  Planner" in (
         lifecycle_plan
     )
@@ -1075,10 +1089,31 @@ def test_plc1b_declaration_plan_and_pap_crosswalk_are_explicit() -> None:
     )
 
 
+def test_plc1b_versioned_bytes_and_delivery_order_are_frozen() -> None:
+    architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
+    lifecycle_plan = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
+
+    assert "`allow_nan=False`, `ensure_ascii=True`" in architecture
+    assert "performs no Unicode normalization" in architecture
+    assert "rejects unpaired\nsurrogates before hashing" in architecture
+    assert '"documentVersion": 1' in architecture
+    assert "strictly sorted by `(pluginId, contributionId)`" in architecture
+    assert "different from the complete indexed source closure fails" in architecture
+    assert "mutable-root `resolve(strict=True)` remains only a pre-publication" in (
+        lifecycle_plan
+    )
+    assert architecture.index("### UPA4: LSP Vertical Slice") < architecture.index(
+        "### UPA5: Base Coding Composition"
+    )
+    assert architecture.index("### UPA5: Base Coding Composition") < architecture.index(
+        "### UPA6: Architecture Vertical Slice"
+    )
+
+
 def test_executable_declaration_is_gated_by_inert_preflight() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
 
-    assert architecture.index("Plugin Preflight Decision") < architecture.index(
+    assert architecture.index("Plugin Preflight Proposal") < architecture.index(
         "Plugin Definition"
     )
     assert (
@@ -1090,23 +1125,42 @@ def test_executable_declaration_is_gated_by_inert_preflight() -> None:
     assert "PluginExecutionApprovalSubject" in architecture
     assert "ContributionActivationApprovalSubject" in architecture
     assert "PluginPreflightOutcome" in architecture
-    assert "one positive execution subject/decision\n   reference for the whole" in (
-        architecture
-    )
+    assert "PluginPreflightProposal" in architecture
+    assert "calls `preflight()` again" in architecture
+    assert "there is no mutable proposal to resume" in architecture
+    assert "A group alone owns exactly one `PluginDeclarationGate`" in architecture
+    assert "no copied gate, subject, decision or nullable peer fields" in architecture
     assert "Reservation gate and completed declaration evidence are different" in (
         architecture
     )
     assert "A positive decision reference alone cannot become a candidate" in (
         architecture
     )
-    assert "carry no\nreservation, gate, active token" in architecture
-    assert "atomically materialize the accepted groups" in architecture
+    assert "Non-accepted arms carry no accepted group,\nreservation, gate, active token" in (
+        architecture
+    )
+    assert "atomically create one active token" in architecture
+    assert "PluginExecutionApprovalSubject` v2" in architecture
+    assert "unsupported_plugin_execution_approval_subject_version" in architecture
+    assert "`subjectSchemaVersion: 2`" in architecture
+    assert "unsupported_plugin_execution_decision_record_version" in architecture
+    assert "ACTIVE -> FINALIZED" in architecture
+    assert "ACTIVE -> ABORTED" in architecture
+    assert "ACTIVE -> EXPIRED" in architecture
+    assert "calls `finalize()` zero times" in architecture
+    assert "Definition returns the analogous complete frozen declaration" in architecture
+    assert "sequence for its exact group" in architecture
+    assert "removes the current unconditional `decision_id`" in architecture
+    assert "serialize no execution subject, decision or receipt field" in architecture
     assert "is an independent complete subject" in architecture
     assert "PluginApprovalDecisionRecord" in architecture
     assert "consume_execution_decision(subject, decision_id)" in architecture
     assert "Revocation linearizes against consumption" in architecture
     assert "normalized group security-configuration\n  fingerprint" in architecture
     assert "Security-relevant configuration includes" in architecture
+    assert "factory execution, owner bind and external-service launch are\nauthorized only" in (
+        architecture
+    )
 
 
 def test_top_level_capability_provider_selection_is_not_a_profile_slot() -> None:
@@ -1116,6 +1170,9 @@ def test_top_level_capability_provider_selection_is_not_a_profile_slot() -> None
     assert "ProductCapabilityConsumerRequirementSet" in architecture
     assert "sole bridge into\n`ProductCapabilityProviderResolver`" in architecture
     assert "not a third\nTool-to-Provider locator" in architecture
+    assert "does not collapse same-Capability entries" in architecture
+    assert "optional-only" in architecture
+    assert "entry never silently creates a root" in architecture
     assert "CapabilityProviderEligibilityGrant" in architecture
     assert "CapabilityProviderAdmissionRecord" in architecture
     assert "CapabilityProviderBindingSpec" in architecture

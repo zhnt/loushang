@@ -81,7 +81,7 @@ The accepted target top-level Harness Capability IDs are:
 | Capability ID | Bundle boundary | Representative internal facets |
 | --- | --- | --- |
 | `harness.workspace` | Product-neutral workspace access and authorized execution | read, list, search, write, edit, authorized process launch |
-| `harness.resources` | Resource discovery, activation, and capability-item composition | resource runtime, prompt sections, skill activation, tool packs, command packs |
+| `harness.resources` | Resource discovery, activation, and capability-item composition | resource runtime, prompt sections, skill activation, source-item lookup, admitted Tool/Command pack snapshot references |
 | `harness.session` | Product-neutral Session, transcript, context, interaction, and continuity mechanics | conversation store, transcript profile, compaction, side question, continuity providers |
 
 This is the accepted top-level Capability budget, not a claim that every row is
@@ -109,6 +109,12 @@ tool-runtime support facet, but a separately selected model-visible
 definition/contribution owner. Such a sibling `tool_pack` consumes the mounted
 Capability facet and becomes visible only with the usable Product Session; it
 does not become a Graph node or a Capability-generation registration.
+The `harness.resources` Tool/Command pack facets are read-only composition
+references to exact owner-admitted snapshots. The Resource owner resolves
+Resource identities and bytes only; it does not admit Tool schemas, create Tool
+generations, or register model-visible Tools. The Tool owner exclusively owns
+`tool_pack` admission, `ToolDefinition`, schema, generation, registration and
+retirement; the Command/Presentation owner has the analogous Command boundary.
 
 ## Dependencies And Facet Views
 
