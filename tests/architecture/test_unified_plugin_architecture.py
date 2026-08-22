@@ -352,11 +352,13 @@ PRE_SDK_PRIVATE_PLUGIN_SYMBOLS = frozenset(
     {
         "CapabilityComponentHost",
         "PluginContext",
+        "PluginContributionSemanticFingerprint",
         "PluginDeclarationBuilder",
         "PluginDefinition",
         "PluginDefinitionEvaluator",
         "PluginManagementService",
         "ProductCapabilityProviderResolver",
+        "compile_plugin_contribution_semantic_fingerprint",
     }
 )
 INERT_PLUGIN_FORBIDDEN_IMPORT_PREFIXES = (
@@ -1628,6 +1630,7 @@ def test_plc1b_contract_freezes_no_self_reference_and_exact_v2_records() -> None
         "c24ebbab018030bda115eee4257003ef8ac86423faa480fe158bce31fc0377b7",
         "cfa8e2bbeb73cc55c4e67149c4d6bc0b452b7d93c9d76bfa2bb610a3ebd330fb",
         "bab38106e94908a0e7385da2c5576aa3ce0898348a0521aec1c83d3d8732fb3c",
+        "4f2924b72efe84918324a0b37a3c70921b6584a8c390d343bd702d9791e4e1b1",
     )
     for golden_digest in golden_digests:
         assert golden_digest in contract
@@ -2123,6 +2126,82 @@ def test_tool_and_command_packs_share_one_inert_catalog_consumer_primitive() -> 
         in normalized_contract
     )
     assert "## PLC1B-3 Regression Gate" in contract
+
+
+def test_semantic_fingerprint_is_one_inert_compiler_owned_diagnostic() -> None:
+    from loushang.harness.plugin_authoring.semantic_fingerprint import (
+        PLUGIN_CONTRIBUTION_SEMANTIC_FINGERPRINT_VERSION,
+        PluginContributionSemanticFingerprint,
+        compile_plugin_contribution_semantic_fingerprint,
+    )
+
+    assert PLUGIN_CONTRIBUTION_SEMANTIC_FINGERPRINT_VERSION == 1
+    assert tuple(
+        field.name for field in fields(PluginContributionSemanticFingerprint)
+    ) == ("digest", "canonical_bytes", "_record")
+    assert tuple(
+        inspect.signature(
+            compile_plugin_contribution_semantic_fingerprint
+        ).parameters
+    ) == ("declaration",)
+    assert not hasattr(public_plugins, "PluginContributionSemanticFingerprint")
+    assert not hasattr(
+        public_plugins,
+        "compile_plugin_contribution_semantic_fingerprint",
+    )
+
+    source_texts = _source_texts()
+    semantic_path = Path(
+        "src/loushang/harness/plugin_authoring/semantic_fingerprint.py"
+    )
+    semantic_source = source_texts[semantic_path]
+    assert semantic_source.count(
+        "def compile_plugin_contribution_semantic_fingerprint("
+    ) == 1
+    assert "StrictPluginJsonCodec.encode(record)" in semantic_source
+    assert "sha256(canonical_bytes).hexdigest()" in semantic_source
+    assert "unicodedata" not in semantic_source
+    assert "import json" not in semantic_source
+    for forbidden in (
+        "RegistrationScope",
+        "WorkspaceToolRegistry",
+        "RuntimeCapabilityGraphPlanner",
+        "RuntimeCapabilityGraphBinder",
+        "SessionFacade",
+        "ModelInput",
+        "McpSurfaceGeneration",
+    ):
+        assert forbidden not in semantic_source
+    for runtime_path in (
+        Path("src/loushang/harness/plugin_authoring/coordinator.py"),
+        Path("src/loushang/harness/plugin_authoring/host.py"),
+        Path("src/loushang/harness/resources/plugins/selection.py"),
+    ):
+        assert "semantic_fingerprint" not in source_texts[runtime_path]
+
+    fixture_root = Path(
+        "tests/harness/resources/plugins/fixtures/coding_base_shadow"
+    )
+    assert {
+        path.relative_to(fixture_root).as_posix()
+        for path in fixture_root.rglob("*")
+        if path.is_file()
+    } == {
+        "declarations/plugin.json",
+        "plugin.json",
+        "prompts/standard.md",
+        "skills/standard/SKILL.md",
+    }
+    assert not (fixture_root / "definition.py").exists()
+    declaration_bytes = (fixture_root / "declarations/plugin.json").read_bytes()
+    assert not declaration_bytes.endswith(b"\n")
+
+    contract = PLC1B_CONTRACT_PATH.read_text(encoding="utf-8")
+    assert "## Contribution Semantic Fingerprint v1" in contract
+    assert "The declaration compiler is its sole\nconstructor" in contract
+    assert "<Declaration owner>.tool-pack" in contract
+    assert "<Declaration owner>.command-pack" in contract
+    assert "## PLC1B-4 Regression Gate" in contract
 
 
 def test_executable_declaration_is_gated_by_inert_preflight() -> None:

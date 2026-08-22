@@ -12,8 +12,11 @@
   [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md). PLC1A's
   inert typed Capability Provider codec and reservation-bound builder are
   implemented at `2ebac237`, review-hardened through `8a3c94fd`, and recorded
-  in the [PLC1A baseline](plugin-lifecycle-plc1a-baseline.md). PLC1B and later
-  slices remain unimplemented.
+  in the [PLC1A baseline](plugin-lifecycle-plc1a-baseline.md). PLC1B-1 through
+  PLC1B-4 are implemented on the current delivery branch: source-union and
+  Host composition, inert Resource/Tool/Command payloads, the compiler-owned
+  semantic fingerprint, and the document-backed `coding.base` shadow are
+  complete. PLC2 and later slices remain unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, and later Skill adoption.
@@ -28,14 +31,14 @@
 - Detailed Provider-authoring work remains specified by the
   [Unified Plugin Authoring Primitives Delivery Plan](plugin-authoring-primitives-delivery-plan.md).
 - The [PLC1B Contract](plugin-declaration-foundation-plc1b-contract.md)
-  normatively freezes PLC1B-1 wire records, fingerprint layers, attempt identity,
-  aggregate claims and version diagnostics.
+  normatively freezes PLC1B wire records, kind payloads, fingerprint layers,
+  attempt identity, aggregate claims and version diagnostics.
 - Review: [Unified Plugin Lifecycle And Coding Pluginization Review](plugin-lifecycle-coding-pluginization-review.md).
 
-This document is a coordinating plan. It does not claim that document-backed
-Plugin declarations, owner admission bridges, executable Plugin evaluation,
-Plugin management control, or Coding Plugin cutovers are already implemented;
-PLC1A stops at frozen authoring IR.
+This document is a coordinating plan. PLC1B claims only document-backed frozen
+declarations and inert shadow parity. It does not claim owner admission,
+executable Plugin evaluation, Plugin management control, live Resource/Tool/
+Command publication, or any Coding Plugin production cutover.
 
 ## Executive Decision
 

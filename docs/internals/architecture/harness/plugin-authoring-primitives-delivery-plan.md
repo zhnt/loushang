@@ -8,10 +8,11 @@
   chain and the first inert UPA2 `capability_provider` preflight/finalize slice.
 - Delivery status: PAP0/PLC0 is implemented locally at `25cfc170` and the inert
   PAP1/PLC1A authoring slice is implemented at `2ebac237` and review-hardened at
-  `8a3c94fd`; see the [PLC1A baseline](plugin-lifecycle-plc1a-baseline.md). No
-  public Plugin SDK, executable Plugin Definition evaluator, Capability owner
-  admission bridge, or Plugin-sourced Capability bind is claimed as
-  implemented by this document.
+  `8a3c94fd`; see the [PLC1A baseline](plugin-lifecycle-plc1a-baseline.md).
+  PAP1B/PLC1B is implemented through its inert `coding.base` shadow proof on
+  the current delivery branch. No public Plugin SDK, executable Plugin
+  Definition evaluator, Capability owner admission bridge, or Plugin-sourced
+  Capability bind is claimed as implemented by this document.
 - Review status: self-reviewed in
   [Plugin Authoring Primitives Plan Review](plugin-authoring-primitives-plan-review.md).
   The implemented source-changing slice remains local and still requires an

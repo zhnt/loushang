@@ -12,7 +12,9 @@ apply.
 The final narrow freeze review accepted the PLC1B-1 core contract at `3f53a5af`
 with zero P0/P1. The later inert payload slices extend that same source,
 reservation, evidence, and Candidate foundation regression-first; they do not
-reopen its authority model.
+reopen its authority model. PLC1B-1 through PLC1B-4 are implemented on the
+current delivery branch; the contract still grants no later lifecycle or live
+owner authority.
 
 PLC1B remains internal and inert. It adds no public Plugin SDK, import path,
 owner admission, live Resource/Tool/Command publication, Capability binding,
@@ -554,9 +556,72 @@ The Candidate sentinel canonical bytes are:
 Their SHA-256 is
 `bab38106e94908a0e7385da2c5576aa3ce0898348a0521aec1c83d3d8732fb3c`.
 
-The general `PluginContributionSemanticFingerprint` remains the separate
-pre-owner/pre-Host conformance diagnostic defined by UPA. It does not replace
-any identity in this table.
+## Contribution Semantic Fingerprint v1
+
+`PluginContributionSemanticFingerprint` is the separate pre-owner/pre-Host
+conformance diagnostic defined by UPA. The declaration compiler is its sole
+constructor. Callers provide one `PluginDeclaration`; they cannot separately
+supply a schema identity, schema version, catalog identity, catalog revision,
+or already-normalized payload. The compiler first decodes through the one
+strict kind-specific payload codec, exact-matches its owner facts, and then
+re-encodes that typed payload before hashing.
+
+Version 1 hashes the strict canonical JSON bytes of exactly this logical
+record (shown structurally rather than as golden canonical bytes):
+
+```text
+{
+  "catalogRevisions": [],
+  "domain": "loushang.plugin-contribution-semantic/v1",
+  "kind": "resource_item",
+  "owner": "resources.prompt",
+  "payload": {},
+  "payloadSchema": {"id": "loushang.resource.prompt", "version": 1}
+}
+```
+
+The empty objects are illustrative typed-value positions, not permissive
+payloads. The exact projection is:
+
+| Contribution kind | `payloadSchema` | `catalogRevisions` |
+| --- | --- | --- |
+| `resource_item` | exact payload `schemaId` and `schemaVersion`, under the exact-matched Resource owner namespace | `[]` |
+| `tool_pack` | `<Declaration owner>.tool-pack`, version equal to payload `payloadVersion` | one entry derived from exact payload `catalogId`/`catalogRevision` |
+| `command_pack` | `<Declaration owner>.command-pack`, version equal to payload `payloadVersion` | one entry derived from exact payload `catalogId`/`catalogRevision` |
+| `capability_provider` | `<Declaration owner>.capability-provider`, version equal to payload `payloadVersion` | `[]` |
+
+Catalog records have exactly `catalog` and positive-integer `revision`, are
+identity-sorted, and reject duplicate identities. Empty catalog use is always
+the literal empty list. Schema and catalog facts therefore cannot drift from
+the payload through a peer argument. The algorithm uses the existing strict
+canonical JSON encoder: sorted keys, compact separators, `allow_nan: false`,
+`ensure_ascii: true`, UTF-8 hashing, and no Unicode normalization.
+
+For the fixed CJK Resource payload whose locator is `prompts/编码.md`, canonical
+bytes are:
+
+```json
+{"catalogRevisions":[],"domain":"loushang.plugin-contribution-semantic/v1","kind":"resource_item","owner":"resources.prompt","payload":{"locator":"prompts/\u7f16\u7801.md","locatorKind":"file","mediaType":"text/markdown","ownerNamespace":"resources.prompt","payloadVersion":1,"resourceKind":"prompt","schemaId":"loushang.resource.prompt","schemaVersion":1},"payloadSchema":{"id":"loushang.resource.prompt","version":1}}
+```
+
+Their SHA-256 is
+`4f2924b72efe84918324a0b37a3c70921b6584a8c390d343bd702d9791e4e1b1`.
+Otherwise identical locators containing precomposed `café` and combining
+`cafe\u0301` hash respectively to
+`ca6d0cda904d6289148c26acb48996a90dcfea9012b98ab4002bd3c7b5072928` and
+`df8f5399b527fa31a2a99fac3e7fb61e04ec057ed92a1fb2e7114f767c8d1023`.
+An unpaired surrogate fails the strict declaration-data boundary before any
+semantic digest can be produced.
+
+This diagnostic excludes the Declaration's `pluginId`/`contributionId`
+envelope fields, package revision, declaration source, reservation, execution
+evidence, Product/scope and admission facts. Exact semantic fields already
+inside a typed payload remain part of that payload; the compiler does not strip
+or reinterpret them. The diagnostic grants no identity, compatibility,
+selection, approval, owner admission, catalog resolution, binding, or
+execution authority and does not replace any fingerprint in the table above.
+Complete Declaration and Candidate fingerprints remain source/reservation/
+evidence-bound.
 
 ## Preflight Context, Attempts, And Ownership
 
@@ -1141,3 +1206,30 @@ PLC1B-3 additionally proves:
 7. a Capability Provider payload explicitly requiring its own Capability fails
    before owner admission, while transitive cycle detection remains solely with
    the existing Graph Planner.
+
+## PLC1B-4 Regression Gate
+
+PLC1B-4 additionally proves:
+
+1. one repository fixture is a canonical, document-backed `coding.base`
+   package with exactly two optional Resource descriptors, one
+   `coding.builtin` Tool pack reference and one standard Session Command pack
+   reference; every contribution is `data_only`, authority-free and shares one
+   exact document source closure;
+2. the Tool and Command declarations pin their owner-controlled catalog
+   identities and positive revisions, while prompt and Skill Resources pin
+   contained locators plus owner-controlled schema identities and revisions;
+3. hand-authored typed IR, Host-decoded document Candidates, and the internal
+   reservation-bound Builder produce byte-equal strict payloads and equal
+   `PluginContributionSemanticFingerprint` v1 digests for every contribution;
+4. document and in-process Builder Declaration fingerprints remain different,
+   and separate Host attempts retain distinct evidence-bound Candidate
+   fingerprints even when declaration semantics are unchanged;
+5. CJK fixed bytes/digest, precomposed-versus-combining distinction, and
+   unpaired-surrogate rejection freeze the semantic codec's Unicode behavior;
+6. the semantic compiler derives kind schema and catalog-revision projections
+   only from strict typed payloads; no caller-supplied peer projection can be
+   forged, and the diagnostic never enters selection or owner admission; and
+7. resolving or deleting the shadow requires no Tool/Command registration,
+   Resource generation/publication, Definition import, Provider lookup, Graph
+   planning/binding, Session/Model Input effect, disposer or live-state cleanup.
