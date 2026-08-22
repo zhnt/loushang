@@ -129,6 +129,11 @@ effective configuration/trust input, and replaces the close/finalize race with
 explicit open/closing states. PAP2 must create consumption plus its use
 reservation in one Approval transaction and linearize execution start against
 aggregate close before any executable source is admitted.
+The fifth review closes the remaining exactness gap: Index owns the independent
+contributed model; Provider v2 freezes nullable disposer and removes redundant
+configuration digest; codecs share one counted strict decoder; expiry and worker
+completion are owner-driven; and PLC3 start permission linearizes before the
+atomic Approval consume/use transaction with exact boot/realm recovery facts.
 
 ### P0-03 — Stable public SDK cannot precede production combination evidence
 

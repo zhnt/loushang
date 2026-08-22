@@ -63,7 +63,10 @@ no Unicode normalization
 
 Strict decoding rejects a UTF-8 BOM, duplicate object keys, unknown or omitted
 fields, boolean values in integer fields, NaN/Infinity, unpaired Unicode
-surrogates, nullable peer fields, and a non-supported version or union tag.
+surrogates, null unless that exact schema field explicitly permits it, and a
+non-supported version or union tag. In particular, nullable alternatives cannot
+stand in for a tagged union arm; the Provider payload's required `disposer`
+field is the explicit `SymbolReference v2 | null` exception.
 `PluginDeclarationDocument` bytes must equal their canonical re-encoding; thus
 whitespace, key-order, escape, or trailing-newline variants are not alternate
 accepted encodings. `documentBytesDigest` is SHA-256 of those exact verified
@@ -72,10 +75,24 @@ identities and never substitute for the bytes digest.
 
 The PLC1B engine ceilings are part of this version: one declaration document is
 at most 4,194,304 bytes, contains at most 1,024 declarations, and has JSON
-nesting depth at most 64. The strict manifest boundary applies duplicate-key
+nesting depth at most 64, counting the root object as depth 1 and incrementing
+once for each entered object or array. The strict manifest boundary applies duplicate-key
 detection before extracting `contributions`; typed Index/Source codec errors
 retain their exact diagnostic instead of being collapsed into a generic
 manifest error. These are hard safety ceilings, not Product configuration.
+
+One private low-level `StrictPluginJsonCodec` in
+`loushang.harness.resources.plugins._strict_json` owns UTF-8/BOM/constant/
+duplicate-key/depth decoding and canonical re-encoding. `PluginManifestParser`
+uses it with canonical-byte equality disabled, then passes the decoded Index to
+the strict Index codec. `PluginDeclarationDocumentCodec`, colocated with the
+low-level declaration records under `resources.plugins`, uses the same primitive
+with canonical-byte equality required. The higher
+`PluginDeclarationCoordinator` imports neither `json` nor a decoder: its one
+document-group read is exactly one receiver-qualified
+`VerifiedRevisionHandle.open_file()` call, after which it calls
+`PluginDeclarationDocumentCodec.decode_bytes()`. It never calls `Path.open`,
+`read_text`, `read_bytes`, or another byte helper.
 
 ## Exact PLC1B Wire Records
 
@@ -119,12 +136,26 @@ objects with these fields:
 | `symbol` | non-empty canonical symbol string |
 | `symbolReferenceVersion` | integer `2` |
 
-The payload retains the exact v1 top-level field names `bindingInputs`,
-`configurationFingerprint`, `disposer`, `factory`, `payloadVersion`, and
-`provider`, but requires `payloadVersion: 2` and v2 symbol references. Neither
-the payload nor either symbol reference contains `packageDigest`. Host
+The payload v2 has exactly:
+
+| Key | Type/value |
+| --- | --- |
+| `bindingInputs` | strict JSON object exactly equal to the selected Index item's package-default `configuration` |
+| `disposer` | required key; exact SymbolReference v2 object or JSON `null` |
+| `factory` | exact SymbolReference v2 object |
+| `payloadVersion` | integer `2` |
+| `provider` | exact `CapabilityBundleProvider` owner-schema object |
+
+V2 removes the redundant v1 `configurationFingerprint`: the domain-wrapped
+`reservationFingerprint` already binds package-default configuration, while
+`configurationMapFingerprint` separately binds Product-effective configuration
+after publication. Missing `disposer`, a null `factory`, or a null/unknown peer
+field fails the exact diagnostics below. Neither the payload nor either symbol
+reference contains `packageDigest`. Host
 validation binds every reference to the selected package's exact content digest
-and contributed execution model before a resolved-symbol view can exist. The
+and the Index item's `contributionExecutionModel` before a resolved-symbol view
+can exist. This is structural provenance validation only; symbol resolution,
+callable loading and import remain deferred to the Component Host. The
 unpublished payload/symbol-reference v1 shapes fail closed; no source-kind-
 specific decoder or compatibility alias remains.
 
@@ -136,6 +167,7 @@ sorted by contribution `id`, contains no duplicate ID, and each item has exactly
 | Key | Type |
 | --- | --- |
 | `configuration` | strict JSON object containing no secret material |
+| `contributionExecutionModel` | exact `"data_only"` or `"in_process"` contributed-runtime tag; `capability_provider` requires `"in_process"` |
 | `declarationSource` | exact `PluginDeclarationSource` v1 object |
 | `id` | canonical contribution ID |
 | `kind` | supported contribution-kind tag |
@@ -149,6 +181,12 @@ second stored peer field. The item fingerprint becomes the v2
 `indexFingerprint` is a Host-derived inspection/conformance identity for the
 exact envelope; it is not stored inside the Index, used as a reservation, or
 accepted in place of item-level validation.
+
+`contributionExecutionModel` is the package security envelope's independent
+authority. It is not inferred from `declarationSource.kind` or copied from an
+owner payload. Capability Provider factory/disposer references must exact-match
+it; thus a document source may safely declare an in-process Provider factory
+without making document decoding executable.
 
 ### `PluginDeclaration` v2
 
@@ -207,7 +245,7 @@ The strict field constraints are:
 
 | Key | Type/value |
 | --- | --- |
-| `ambientHostAuthority` | boolean |
+| `ambientHostAuthority` | boolean derived from the accepted execution posture; PLC1B `in_process` Subject is `true` |
 | `allowedAuthorityCeiling` | sorted unique list of non-empty authority strings |
 | `configurationMapFingerprint` | lowercase SHA-256 |
 | `dependencyLockDigest` | lowercase SHA-256 |
@@ -305,6 +343,16 @@ accepted attempt cannot become a candidate in a later one. A document Candidate
 dataclass/projection contains no subject, decision, execution-use, or receipt
 field; PLC1B adds no Candidate wire codec.
 
+Candidate construction is private to Resolver finalization and enforces all of
+these invariants before hashing: the package ref content digest equals Evidence
+`packageContentDigest`; Evidence was created for the same claimed
+SourceGroup/attempt/reservation closure and exact verified Batch; the
+Declaration fingerprint is a member of that Batch's validated declaration set;
+and Candidate `sourceGroupFingerprint` is derived only from that Evidence, not a
+peer caller value. Owner admission receives this trusted process-local
+projection; no public constructor may combine package A, declaration A, and
+evidence B.
+
 ## Exact Fingerprint Inputs
 
 Every digest below is lowercase SHA-256 of the strict canonical bytes for one
@@ -358,14 +406,22 @@ only a hash-profile sentinel and does not claim Capability-owner admission:
 
 Their SHA-256 is
 `2fe5d856380b78228e5d3baeb5227598e19268f403c4765e12e99e2567381217`.
-The complete Subject sentinel canonical bytes are:
+The executable Source wrapper used by the Subject sentinel has canonical bytes:
 
 ```json
-{"domain":"loushang.plugin-execution-approval-subject/v2","subject":{"allowedAuthorityCeiling":["process.launch"],"ambientHostAuthority":false,"configurationMapFingerprint":"1111111111111111111111111111111111111111111111111111111111111111","dependencyLockDigest":"2222222222222222222222222222222222222222222222222222222222222222","entrypoint":"definition.py:define","instanceRevisionRef":{"instanceId":"coding.lsp@product","pluginId":"coding.lsp","revision":1},"packageContentDigest":"3333333333333333333333333333333333333333333333333333333333333333","packageSourceIdentity":"registry:example","pluginId":"coding.lsp","policyRevision":"policy-1","productId":"coding","requestedAuthorities":["process.launch"],"reservationClosureFingerprint":"4444444444444444444444444444444444444444444444444444444444444444","schemaVersion":2,"scopeId":"workspace","sourceDescriptorFingerprint":"aec4eb58e83e5b4ee53392eee1881c358f75ca6c3d202c56c348a657edac6595","sourceTrustClass":"registry_signed","sourceTrustPolicyRevision":"trust-1"}}
+{"domain":"loushang.plugin-declaration-source-descriptor/v1","source":{"entrypoint":"definition.py:define","kind":"in_process","sourceVersion":1}}
 ```
 
 Their SHA-256 is
-`abc18ae8cf63b0a828accb4638fa389229c0f352db09c0238d0f815771d731bf`.
+`c24ebbab018030bda115eee4257003ef8ac86423faa480fe158bce31fc0377b7`.
+The complete, cross-field-valid Subject sentinel canonical bytes are:
+
+```json
+{"domain":"loushang.plugin-execution-approval-subject/v2","subject":{"allowedAuthorityCeiling":["process.launch"],"ambientHostAuthority":true,"configurationMapFingerprint":"1111111111111111111111111111111111111111111111111111111111111111","dependencyLockDigest":"2222222222222222222222222222222222222222222222222222222222222222","entrypoint":"definition.py:define","instanceRevisionRef":{"instanceId":"coding.lsp@product","pluginId":"coding.lsp","revision":1},"packageContentDigest":"3333333333333333333333333333333333333333333333333333333333333333","packageSourceIdentity":"registry:example","pluginId":"coding.lsp","policyRevision":"policy-1","productId":"coding","requestedAuthorities":["process.launch"],"reservationClosureFingerprint":"4444444444444444444444444444444444444444444444444444444444444444","schemaVersion":2,"scopeId":"workspace","sourceDescriptorFingerprint":"c24ebbab018030bda115eee4257003ef8ac86423faa480fe158bce31fc0377b7","sourceTrustClass":"registry_signed","sourceTrustPolicyRevision":"trust-1"}}
+```
+
+Their SHA-256 is
+`cfa8e2bbeb73cc55c4e67149c4d6bc0b452b7d93c9d76bfa2bb610a3ebd330fb`.
 The Candidate sentinel canonical bytes are:
 
 ```json
@@ -381,9 +437,10 @@ any identity in this table.
 
 ## Preflight Context, Attempts, And Ownership
 
-PLC1B introduces the pure data `PluginPreflightContextV1` with exact fields
-`contextVersion: 1`, `productId`, `scopeId`, `policyRevision`, and a Plugin-ID-
-sorted non-empty tuple of exact `PluginInstanceRevisionRef` values. The Product
+PLC1B introduces the pure data `PluginPreflightContextV1` with exactly
+`contextVersion: 1`, non-empty string `productId`, `scopeId`, and
+`policyRevision`, plus `instanceRevisionRefs`: a Plugin-ID-sorted non-empty
+tuple of exact `PluginInstanceRevisionRef` values. The Product
 composition input supplies exactly one ref for every selected Plugin ID and no
 extra ref; duplicate Plugin IDs, instance IDs, or refs fail closed. The exact
 sort key is `(pluginId, instanceId, revision)`. PLC1B validates complete
@@ -392,12 +449,15 @@ same identity durable and owns its lifecycle without changing its meaning or
 fingerprint.
 
 `PluginSelectionPlanV2` is the sole Product authority passed to `preflight()`.
-It owns exactly one Context rather than peer `productId`/`scopeId`/policy
-arguments, the selected Plugin/contribution refs, one
-`PluginSourceTrustSnapshotV1` per selected Plugin, one
-`PluginEffectiveConfigurationSetV1`, and the allowed authority ceiling. A trust
-snapshot has exact fields `pluginId`, `packageSourceIdentity`,
-`sourceTrustClass`, `sourceTrustPolicyRevision`, and boolean `trusted`; it must
+Its frozen process-local dataclass has exactly `planVersion: 2`, `context`,
+`selectedPluginIds`, `selectedContributions`, `sourceTrustSnapshots`,
+`effectiveConfigurationSet`, and `allowedAuthorityCeiling`. Plugin IDs and the
+authority ceiling are sorted unique non-empty string tuples; contributions are
+strictly `(pluginId, contributionId)`-sorted exact refs. It owns exactly one
+Context rather than peer `productId`/`scopeId`/policy arguments. A
+`PluginSourceTrustSnapshotV1` has exactly `trustSnapshotVersion: 1`, `pluginId`,
+`packageSourceIdentity`, `sourceTrustClass`, `sourceTrustPolicyRevision`, and
+boolean `trusted`; it must
 exact-match the published binding and completely cover the selected set. Only
 `trusted: true` may reach `pending_approval` or `accepted`; an untrusted source
 is `rejected` before decision lookup.
@@ -411,26 +471,37 @@ cover the Plan. SourceProposals are strictly unique and sorted by
 split or repeated.
 
 The Product configuration owner performs all defaults, OEM/Product overrides,
-deletes, and secret resolution policy before preflight. PLC1B receives only the
-already-resolved frozen `PluginEffectiveConfigurationSetV1`: version `1` plus
-exact entries `{configuration, contributionId, pluginId}` strictly sorted by
-`(pluginId, contributionId)` and exactly covering the proposed reservation
-closure. PLC1B validates and hashes this map; it has no overlay or merge
-algorithm and accepts no peer `overlays` argument. A secret value never enters
-this map. The only secret-bearing marker is the exact tagged reference
+deletes, sensitivity classification, and secret resolution policy before
+preflight. PLC1B receives only the already-resolved frozen
+`PluginEffectiveConfigurationSetV1` with exactly
+`configurationSetVersion: 1` and `entries`. Each entry has exactly
+`configuration`, `contributionId`, and `pluginId`; entries are strictly sorted
+by `(pluginId, contributionId)` and exactly cover the proposed reservation
+closure. PLC1B validates and hashes this map; it has no overlay, delete, merge,
+or sensitivity-classification algorithm and accepts no peer `overlays`
+argument. A secret value never enters this map. At any nesting depth, an object
+containing `$secretRef` must contain only that key, whose value is the exact
+tagged reference
 `{"$secretRef":{"authorityClass":...,"providerId":...,"referenceId":...,
 "rotationEpoch":...,"secretReferenceVersion":1}}`, where the first three
 values are non-empty strings and `rotationEpoch` is a non-negative non-boolean
-integer. Unknown/extra secret-reference fields, a resolved secret value, or an
-untagged value identified as secret by Product metadata fails
-`invalid_plugin_effective_configuration`; secret bytes never enter a digest or
+integer. PLC1B rejects malformed tagged references but cannot infer whether an
+ordinary JSON string is sensitive. The Product configuration owner must reject
+raw values at schema-sensitive paths before constructing the Set; the PLC1B
+integration fixture proves that owner handoff, while PLC1B fixtures prove only
+tag structure and that no resolved secret reaches its input, digest, or
 diagnostic.
 
 Preflight has the single logical signature
 `preflight(packages, bindings, plan, decision_lookup)`. The
 `PluginExecutionDecisionLookupPort` is an Approval-owner read-only lookup by the
 exact Subject v2/`subjectDigest`; callers cannot supply a tuple or map of
-decisions. Before PAP2, the production `PendingOnlyPluginExecutionDecisionLookup`
+decisions. Its strict result is `missing` or `current(DecisionRecordV2)`. The
+Approval owner projects exactly one latest effective, unexpired, unrevoked,
+unconsumed record for that Subject; owner corruption yielding multiple current
+records is `rejected`, an effective denial is `denied`, and an already-consumed
+approval is `missing` rather than reusable. Before PAP2, the production
+`PendingOnlyPluginExecutionDecisionLookup`
 returns only missing/pending and therefore no executable source can produce an
 accepted token. A private test double may return a strict Decision v2 view only
 to prove pending/denied routing and the PLC1B mixed-source abort fence; it owns
@@ -445,7 +516,7 @@ wire schemas. Their exact field ownership is:
 | `PluginPreflightProposal` | exact authoritative Plan plus `(pluginId, sourceDescriptorFingerprint)`-sorted SourceProposals; no use ID, terminal handle, group, reservation, or gate |
 | `PluginDeclarationSourceProposal` | published package ref, exact Source descriptor/fingerprint, complete contribution-ID-sorted Index closure, Product-owned effective configuration entries/fingerprint, exact trust snapshot, requested/allowed authorities, and strict `sourceDisposition = data_only | execution_subject(subject)`; it owns no accepted Gate |
 | `PluginPreflightOutcome` | `accepted(AcceptedPluginPreflight)`; `pending_approval(subjects, diagnostics)`; `denied(diagnostics)`; or `rejected(diagnostics)`, with no nullable peer fields |
-| `AcceptedPluginPreflight` | `preflightUseId`, host epoch, monotonic deadline, exact Context, identity-sorted SourceGroups, and opaque internal terminal handle |
+| `AcceptedPluginPreflight` | `preflightUseId`, `hostBootId` (also typed locally as `hostEpoch`), monotonic deadline, exact Context, identity-sorted SourceGroups, and opaque internal terminal handle |
 | `PluginDeclarationSourceGroup` | use ID, group ID/fingerprint, package ref, Source descriptor/fingerprint, Context/instance ref, complete closure/fingerprint, effective configuration/fingerprint, trust/authority facts, and one Gate |
 | `PluginDeclarationGate` | `data_only` with no subject/decision, or `execution_preflight` with exactly one Subject v2 and Decision v2 view |
 | `PluginDeclarationReservation` | package/contribution/reservation identity and only its group ID/fingerprint reference; no copied Gate, subject, decision, or evidence |
@@ -466,10 +537,14 @@ followed by another full call, never mutation or resume of a proposal.
 
 Only `accepted` creates:
 
-- a cryptographically random, non-reused `preflightUseId` encoded as 48
-  lowercase hexadecimal characters;
-- one process `hostEpoch` and monotonic `expiresAt` deadline;
+- a cryptographically random `preflightUseId` encoded as 48 lowercase
+  hexadecimal characters, collision-checked against active and retained
+  tombstone IDs in the current boot;
+- one 32-lowercase-hex `hostBootId` (the process-local `hostEpoch` is this same
+  value, never a second identity) and monotonic `expiresAt` deadline;
 - one internal terminal handle;
+- one process-owner expiry task/reaper registered before the accepted value can
+  become visible;
 - exact attempt-bound SourceGroups; and
 - one-use reservations that carry only `sourceGroupId` and
   `sourceGroupFingerprint` references.
@@ -478,7 +553,7 @@ The accepted SourceGroup exclusively owns its `data_only` or
 `execution_preflight` gate. The stable group fingerprint excludes the attempt
 nonce; the group ID, evidence, Batch, and Candidate bind the attempt. Finalize
 requires every evidence `preflightUseId` and `sourceGroupId` to match the current
-ACTIVE token and atomically marks those evidence uses terminal. Mismatch fails
+ACTIVE_OPEN token and atomically marks those evidence uses terminal. Mismatch fails
 `plugin_declaration_evidence_attempt_mismatch`.
 
 ## Aggregate Claim And Terminal Protocol
@@ -492,11 +567,15 @@ aggregate: ACTIVE_OPEN -> CLOSING_ABORT -> ABORTED
 group:     PENDING -> CLAIMED -> COMPLETED | FAILED
 
 claim(group, now):
-  one lock/CAS checks ACTIVE_OPEN and now < expiresAt
-  marks PENDING -> CLAIMED and increments in_flight atomically
+  one lock/CAS checks ACTIVE_OPEN
+  if now >= expiresAt, CAS to CLOSING_EXPIRE and join/help close
+  otherwise
+    marks PENDING -> CLAIMED and increments in_flight atomically
+    returns one opaque PluginGroupClaimLease to the execution unit
 
-settle(group):
-  one lock/CAS marks CLAIMED -> COMPLETED | FAILED
+settle(claim_lease, actual_worker_completion):
+  only the execution unit's shielded completion/finally may settle
+  one lock/CAS marks CLAIMED -> COMPLETED | FAILED exactly once
   decrements in_flight atomically
 
 finalize(now):
@@ -507,15 +586,20 @@ finalize(now):
 
 abort or expire:
   CAS ACTIVE_OPEN -> CLOSING_ABORT | CLOSING_EXPIRE
-  reject every new group claim and decision consumption
-  cancel/settle every CLAIMED group
-  when in_flight == 0, complete the selected closing state to its terminal
+  reject every new group claim and execution-start permit
+  request cancellation of every CLAIMED group; closer never settles for worker
+  wait for each claim lease's actual completion acknowledgement
+  only when in_flight == 0, complete closing state to its terminal
 ```
 
 PLC1B processes document groups serially but uses this same claim interface.
 PLC3 may add concurrent executable groups without adding a second state owner.
-Once close begins, a late completion is recorded for diagnostics and cannot
-form evidence accepted by finalize. `now >= expiresAt` is expired; a finalize at
+Once close begins, a late result is discarded for publication and recorded for
+diagnostics, while its execution unit must still acknowledge physical exit and
+settle its own claim. Cancellation request is not completion: a cancellation-
+resistant worker delays the terminal; an isolated worker may acknowledge only
+after confirmed process termination. A closer cannot decrement on its behalf.
+`now >= expiresAt` is expired; a finalize at
 the equality edge cannot win. Closing and finalize never race through a shared
 generic `ACTIVE` state: only `ACTIVE_OPEN` is a legal predecessor for either
 transition. A finalize CAS loser destroys its private staged candidates and
@@ -528,29 +612,29 @@ expiry. Before the deadline, the first successful closing CAS fixes abort
 versus expiry reason. Closing is
 help-completable and shielded from caller cancellation: later terminal callers
 join/help the same close until all claims settle and the terminal tombstone is
-installed. No Approval callback executes while the aggregate lock is held.
-PLC3/PAP2 must make decision consumption and
-`ExecutionUseReservation(CONSUMED_NOT_STARTED)` one Approval-owner transaction,
-then linearize its attempt/group execution-start lease against close using the
-documented global lock order. A consumption record additionally carries
-`importRealmId` and `hostBootId`; clean-process restart cannot inherit a
-possibly-started realm.
+installed. The Coordinator also requests abort/expiry in a shielded `finally`,
+but the process-owner reaper is authoritative if cancellation occurs after
+acceptance and before Coordinator handoff, or if the internal handle is dropped.
+No Approval callback executes while the aggregate lock is held.
 
 The Coordinator is the only caller of terminal operations; the Resolver's
 private terminal port owns CAS and retains terminal tombstones through the
-current host epoch. Repeated or racing calls deterministically return
+current host boot. During `CLOSING_*`, claim returns `preflight_closing`, while
+finalize/abort/expire joins the close and then returns the exact terminal result.
+Repeated or racing calls deterministically return
 `preflight_already_finalized`, `preflight_already_aborted`, or
 `preflight_expired`. Monotonic time is authoritative for an in-process deadline;
-wall-clock expiry is diagnostic only. Any token from a prior host epoch returns
+wall-clock expiry is diagnostic only. Any token from a prior host boot returns
 `preflight_expired`; PLC1B does not add a durable aggregate store. PLC2 may
 persist management/audit projections but cannot become a peer terminal owner.
 
 The process owner enforces `maxActiveAttempts = 1024`,
-`maxTerminalTombstones = 8192` per host epoch, and
+`maxTerminalTombstones = 8192` per host boot, and
 `maxAttemptLifetimeSeconds = 300`. It compacts only unreferenced terminal
 tombstones, never an active/closing attempt; ID collision checks cover both
-active state and retained tombstones. Capacity exhaustion rejects before an
-accepted token is published.
+active state and retained tombstones. After compaction, uniqueness relies on
+192-bit random collision resistance rather than an unbounded historical ID set.
+Capacity exhaustion rejects before an accepted token is published.
 
 ## PLC1B Executable Boundary
 
@@ -581,16 +665,89 @@ before Plugin preflight; Session close does not erase installation/workspace
 decisions. The exact execution selection view above is projected from its
 generic decision record.
 
-Decision consumption creates a unique `executionUseId` bound to
-`preflightUseId` and `sourceGroupId`. The durable use state is:
+The executable worker first owns a `PluginGroupClaimLease`, then requests one
+opaque `PluginExecutionStartPermit` from the aggregate lock. This permit is the
+start linearization point:
+
+- if `ACTIVE_OPEN` wins before close/deadline, the permit is issued and close
+  may subsequently enter `CLOSING_*` but must wait for this in-flight worker;
+- if close/deadline wins first, no permit is issued, no Approval transaction or
+  loader call is legal, and the worker settles its claim as failed; and
+- the aggregate lock is released before any Approval call. The logical order is
+  aggregate start permit, then Approval transaction, then Plugin-instance
+  lifecycle, then import-realm gate. The Approval transaction commits and
+  releases before later lifecycle/import locks; those later locks may nest only
+  in the stated order.
+
+After a permit wins, one Approval-owner transaction consumes the decision and
+creates its exact durable `ExecutionUseReservation` in
+`CONSUMED_NOT_STARTED`. A close that begins afterward does not revoke the
+already-issued permit or reject this permitted consumption; it waits for actual
+worker completion. `ExecutionUseReservation` v1 has exactly:
 
 ```text
-CONSUMED_NOT_STARTED -> STARTING -> EVALUATED
-                                -> FAILED_AFTER_START
+decisionId
+executionUseId
+executionUseVersion
+hostBootId
+importRealmId
+instanceRevisionRef
+policyRevision
+preflightUseId
+revocationEpoch
+sourceGroupId
+sourceTrustPolicyRevision
+state
+subjectDigest
+```
+
+`executionUseVersion` is integer `1`; `executionUseId` is fresh 48-lowercase-
+hex; `hostBootId` is the accepted attempt's 32-lowercase-hex boot identity;
+`importRealmId` is a fresh 32-lowercase-hex interpreter/import-ledger realm
+identity unique within that boot; revisions/IDs/digests exact-match the
+Decision, Subject, attempt and group; `revocationEpoch` is a non-negative non-
+boolean integer. Its durable state is:
+
+```text
+CONSUMED_NOT_STARTED -> CANCELLED_BEFORE_START
+                     -> STARTING -> EVALUATED
+                                 -> FAILED_AFTER_START
 ```
 
 `STARTING` commits before invoking the loader. Recovery treats `STARTING` and
 `FAILED_AFTER_START` as possibly executed and marks the import realm polluted.
+An external `hostBootId` in `CONSUMED_NOT_STARTED` can only transition to
+`CANCELLED_BEFORE_START`; it is never resumed. A permit winner that crashes
+before creating a use leaves no durable consumption; one that crashes after the
+transaction but before `STARTING` is reconciled to that same before-start
+terminal. `hostEpoch` is only the process-local typed name for `hostBootId`, and
+the two must never diverge; `importRealmId` is subordinate to one boot and is not
+an epoch alias.
+
+Only an exact current-realm `EVALUATED` use constructs
+`PluginExecutionConsumptionReceipt` v1 with exactly:
+
+```text
+decisionId
+executionUseId
+hostBootId
+importRealmId
+instanceRevisionRef
+policyRevision
+preflightUseId
+receiptVersion
+revocationEpoch
+sourceGroupId
+sourceTrustPolicyRevision
+state
+subjectDigest
+```
+
+`receiptVersion` is integer `1` and `state` is exact `"EVALUATED"`; all other
+fields exact-match the terminal Reservation. Both Reservation and Receipt
+therefore carry `hostBootId` and `importRealmId`; the receipt is embedded in
+`in_process_evaluated` Evidence and its fingerprint.
+
 An explicit retry requires a fresh preflight, fresh decision, and clean Host
 restart unless a separately accepted idempotent re-evaluation contract exists.
 Only `EVALUATED` can produce `in_process_evaluated` evidence. A failed preflight
@@ -622,6 +779,36 @@ unsupported_plugin_execution_decision_record_version
 unsupported_plugin_declaration_evidence_version
 ```
 
+## Exact Non-Version Diagnostics
+
+The finite non-version codes are:
+
+```text
+plugin_declaration_invalid_utf8
+plugin_declaration_utf8_bom
+plugin_declaration_invalid_json
+plugin_declaration_invalid_json_constant
+plugin_declaration_duplicate_json_key
+plugin_declaration_json_depth_exceeded
+plugin_declaration_document_too_large
+plugin_declaration_document_too_many_declarations
+plugin_declaration_exact_field_mismatch
+plugin_declaration_field_type_mismatch
+unsupported_plugin_declaration_source_kind
+unsupported_plugin_contribution_kind
+unsupported_plugin_contribution_execution_model
+unsupported_plugin_declaration_evidence_kind
+plugin_contribution_index_unsorted
+duplicate_plugin_contribution_identity
+plugin_declaration_document_unsorted
+duplicate_plugin_declaration_identity
+plugin_declaration_cross_field_mismatch
+plugin_declaration_closure_mismatch
+plugin_declaration_noncanonical_bytes
+plugin_declaration_evidence_attempt_mismatch
+invalid_plugin_effective_configuration
+```
+
 Decode priority is deterministic: UTF-8/BOM/JSON/duplicate-key failure first;
 then a present version discriminator's strict integer type and supported value;
 then union tag; then exact field set and field types; then cross-field/closure
@@ -636,13 +823,24 @@ Decision is `unsupported_plugin_execution_decision_record_version`; and an
 Evidence with supported `evidenceVersion` but wrong `documentSchemaVersion` is
 `unsupported_plugin_declaration_document_version`.
 
+Nested order is also fixed. Index envelope/version precedes item field/type,
+contribution kind/model, then nested Source version/kind/cross-field checks;
+order/duplicate/closure checks follow successful item decoding. Generic
+Declaration decoding precedes owner payload decoding. Capability Provider
+payload version precedes its field set/types, then Provider metadata, required
+factory, and finally required nullable disposer. A missing disposer is
+`plugin_declaration_exact_field_mismatch`; `disposer: null` is valid; a null
+factory is `plugin_declaration_field_type_mismatch`.
+
 An unknown union tag is not a version error and uses its record-specific
-`unsupported_*_kind` diagnostic. Known `in_process_evaluated` evidence in PLC1B
+exact finite `unsupported_*_kind` diagnostic above. Known
+`in_process_evaluated` evidence in PLC1B
 fails `unsupported_plugin_declaration_evidence_kind` before any executable field
 can be accepted. Exact-field mismatch, duplicate key, noncanonical bytes,
 closure mismatch, and evidence-attempt mismatch remain separate diagnostics.
 The manifest parser preserves these typed codec codes and never replaces them
-with `invalid_plugin_contribution_index`.
+with `invalid_plugin_contribution_index`: `PluginManifestError.code` is the
+unchanged nested code and its path adds manifest location only.
 
 ## PLC1B-1 Regression Gate
 
@@ -654,7 +852,9 @@ Implementation begins regression-first and must prove:
 2. a real document-backed `capability_provider` package with payload/symbol-
    reference v2 can be written, content-addressed, published, decoded and bound
    by the Host to the exact package digest without any package byte containing
-   `packageDigest`; both unpublished v1 shapes fail their exact version code;
+   `packageDigest`; its Index independently binds
+   `contributionExecutionModel`; absent/present disposer v2 fixtures are exact;
+   and both unpublished v1 shapes fail their exact version code;
 3. duplicate keys, BOM, NaN/Infinity, noncanonical bytes, CJK escapes,
    normalization-form distinction, and unpaired surrogates fail or hash exactly
    as specified;
@@ -665,22 +865,32 @@ Implementation begins regression-first and must prove:
    sources preserve complete declaration closure while candidate selection may
    emit a subset;
 6. effective configuration fixtures cover Product override/delete/missing/extra
-   entries, stable map ordering, secret-reference rotation, and raw-secret
-   rejection without putting secret bytes in hashes or diagnostics;
-7. each document source is read exactly once only through
-   `VerifiedRevisionHandle.open_file()`, while manifest/Index duplicate keys and
-   unsorted items preserve their exact codec diagnostics;
+   entries, stable map ordering, secret-reference rotation, malformed tagged
+   references, and Product-owner raw-secret rejection before PLC1B handoff,
+   without putting secret bytes in PLC1B hashes or diagnostics;
+7. each document source is read exactly once only through the Coordinator's
+   receiver-qualified `VerifiedRevisionHandle.open_file()`, the sole low-level
+   strict JSON primitive serves manifest/document codecs, and manifest/Index
+   duplicate keys and unsorted items preserve their exact diagnostics;
 8. claim/settle/finalize/abort/expire barriers cover deadline equality,
    close-versus-claim, close-versus-finalize, caller cancellation, CAS-loser
-   candidate destruction, foreign/fake handle rejection, active/tombstone ID
-   collision, capacity, and exact terminal diagnostics;
+   candidate destruction, cancellation-resistant worker completion, accepted-
+   before-handoff cancellation, reaper-driven expiry, dropped handles,
+   foreign/fake handle rejection, active/tombstone ID collision, capacity, and
+   exact terminal diagnostics;
 9. old evidence cannot cross `preflightUseId`, and a document candidate cannot
    carry any execution peer field;
 10. a mixed PLC1B package, accepted only by the private routing test double, has
     zero import, zero executable declaration ingress, one abort, and zero
     finalization; and
 11. architecture scans cover `resources.plugins`, `resources.packages`, and
-    `plugin_authoring`; they freeze the one document `open_file()` callpoint and
-    prove old public subject/finalize/rollback exports, a second JSON decoder,
-    a second Subject builder, non-Coordinator terminal calls, and reservation-
-    owned gates are absent.
+    `plugin_authoring`; call-expression counts freeze exactly one Coordinator
+    document `open_file()` and one strict decode primitive, reject `Path` reads
+    or `JSONDecoder.decode`, and prove old public subject/finalize/rollback
+    exports, a second decoder, Subject builder, non-Coordinator terminal caller,
+    or reservation-owned gate is absent; and
+12. PAP2/PLC3 barrier fixtures (before executable ingress is enabled) cover
+    permit-before-close, close-before-permit, close between permit/Approval/
+    `STARTING`, `CANCELLED_BEFORE_START` recovery, transaction atomicity, exact
+    boot/realm receipt fields, and no loader call without both permit and
+    committed `STARTING`.

@@ -25,7 +25,7 @@ order:
 2. move production `coding.base` after `coding.lsp` and before `coding.arch`,
    while keeping the stable SDK gated on LSP, Base and Arch evidence.
 
-The initial review found nine high-priority risks; four later PLC1B review
+The initial review found nine high-priority risks; five later PLC1B review
 rounds found additional declaration, evidence and lifecycle freeze gaps. The
 plan and normative PLC1B Contract include their required corrections. None
 requires a second Graph, Resource runtime, Profile resolver, Plugin-owned
@@ -167,6 +167,39 @@ unsafe implementations. This remediation incorporates their combined blockers:
 This fourth remediation still does not self-approve PLC1B-1. Source migration
 may begin only after a narrow independent freeze review reports no P0/P1 and a
 tracking issue is attached.
+
+## PLC1B Fifth Documentation Remediation
+
+Three independent read-only reviews of immutable baseline `0b770267` all
+returned `NOT READY` with no P0. The package-digest fixed point was closed, but
+the reviewers found remaining P1 implementation ambiguity. This remediation
+incorporates their blockers:
+
+1. Index v2 independently owns `contributionExecutionModel`; Provider payload
+   v2 removes its redundant configuration fingerprint and freezes required
+   factory plus required nullable disposer, while Host symbol validation remains
+   structural and defers loading;
+2. the Subject golden fixture now uses its matching in-process Source digest;
+   Candidate construction exact-matches package/evidence/Batch/group membership;
+   Product owns raw-secret classification; and every non-version codec failure
+   has one finite diagnostic code and nested priority;
+3. manifest and DeclarationDocument schemas share one low-level strict JSON
+   primitive, Coordinator owns exactly one verified document read, and
+   architecture inventories count concrete calls so a second read/decoder in an
+   already-allowed function is detected;
+4. deadline claims atomically enter expiry, a process-owner reaper is installed
+   before accepted publication, only the actual execution unit may settle its
+   claim lease, and close waits for physical completion rather than treating a
+   cancellation request as completion; and
+5. PLC3 execution requires an aggregate start permit before the atomic Approval
+   consume/use transaction, adds `CANCELLED_BEFORE_START`, freezes exact
+   Reservation/Receipt boot and realm fields, and makes `hostEpoch` the local
+   typed name for the same `hostBootId` rather than a third identity.
+
+This fifth remediation is not self-approval. The next review, if requested,
+should be narrowly limited to these five corrected boundaries; PLC1B-1 source
+migration remains blocked until it reports zero P0/P1 and a tracking issue is
+attached.
 
 ## Review Scope
 

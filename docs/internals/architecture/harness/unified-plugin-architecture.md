@@ -224,6 +224,13 @@ loushang-package.json -> PackageManifestParser -> ResolvedResourcePackage
 ResolvedPluginPackage -> Package/Resource views without another file read
 ```
 
+Manifest and DeclarationDocument schema codecs share the one private
+`resources.plugins._strict_json.StrictPluginJsonCodec`; only the latter enables
+canonical-byte equality. The higher Coordinator performs one verified-handle
+read and calls the low-level document codec, never a second JSON or Path read.
+Architecture inventories count concrete read/decode call expressions, not just
+filenames or qualified functions.
+
 The current `resources.plugins.resolver` and
 `resources.packages.manifest` handling of `plugin.json` must converge on one
 parser. Compatibility aliases normalize into the canonical descriptor and do
@@ -234,7 +241,8 @@ content digest. Bind/import/launch revalidates that identity. A local source
 change invalidates the plan and approval; it never causes previously approved
 paths to execute changed bytes. The manifest's inert contribution index must
 contain every contribution ID, kind, exact declaration-source reference,
-requested authority ceiling, and security-relevant configuration field needed
+independent contributed-runtime execution model, requested authority ceiling,
+and security-relevant configuration field needed
 to decide whether decoding or evaluating its declaration is permissible. The
 declaration-source record carries the document locator/schema or executable
 Definition entrypoint/source kind. Each contribution item is a security envelope and one-use
@@ -290,7 +298,8 @@ Coordinator-only terminal transitions:
    only;
 3. only when every selected source is data-only or has a matching current
    positive decision does `accepted` atomically create one active token with a
-   new `preflightUseId`, host epoch and monotonic deadline,
+   new `preflightUseId`, `hostBootId` (also the local `hostEpoch`) and monotonic
+   deadline,
    immutable `PluginDeclarationSourceGroup` values and their one-use
    reservations. A group alone owns exactly one `PluginDeclarationGate`:
    `data_only` or `execution_preflight` with the group-level subject and
@@ -338,8 +347,8 @@ There are two explicit approval subjects:
   including Plugin/package/dependency identity, source descriptor, entrypoint,
   reservation closure, source/trust provenance, Product/scope and pure-data
   Plugin Instance Revision reference, policy, normalized group security-
-  configuration fingerprint, ambient-host-authority bit, and unioned requested-
-  authority ceiling. The former v1 single-
+  configuration fingerprint, ambient-host-authority bit, unioned requested
+  authorities, and Product allowed-authority ceiling. The former v1 single-
   contribution subject fails after PLC1B with
   `unsupported_plugin_execution_approval_subject_version`. The execution
   decision record also advances to v2 and independently records
@@ -379,33 +388,41 @@ not a Plugin-owned store or a second decision fact.
 
 Proposed data-only sources require only inert policy checks. Executable
 proposals follow the fresh-call protocol above; Approval recording never
-mutates a proposal into a group. Immediately before declaration import, the
-execution coordinator calls the Approval owner to
+mutates a proposal into a group. After claiming the group, the execution worker
+must win one aggregate-owned `PluginExecutionStartPermit` while the attempt is
+still `ACTIVE_OPEN` and before its deadline. Close winning first forbids both
+consumption and loader entry; permit winning first makes close wait for the
+worker's real completion. Only then does the worker call the Approval owner to
 `consume_execution_decision(subject, decision_id)`. That operation atomically:
 
 - recomputes the subject over the verified revision and current scope/config;
 - rechecks current source trust, policy revisions, expiry and revocation epoch;
 - verifies any retained grant/rule is still live;
 - marks a one-shot decision consumed; and
-- returns an immutable consumption receipt used by the declaration record.
+- creates the matching `ExecutionUseReservation(CONSUMED_NOT_STARTED)` in the
+  same transaction.
 
-Plugin execution uses one lock order: Approval decision transaction, then
-Plugin-instance lifecycle gate, then the process-wide import-realm gate when
-applicable. The execution coordinator acquires only in that order; the Approval
-owner exposes the decision transaction but invokes no lifecycle callback, and
-no code may enter the lifecycle gate and then call Approval. Revocation follows
-the same order and increments the decision/instance revocation epoch before it
-can enter `REVOKING`.
+Plugin execution uses one logical order: aggregate start permit, Approval
+decision transaction, Plugin-instance lifecycle gate, then the process-wide
+import-realm gate when applicable. The aggregate lock is released before the
+Approval call; the Approval transaction commits/releases before later locks;
+and Plugin-instance/import-realm locks may nest only in that order. The Approval
+owner invokes no lifecycle/aggregate callback, and no code may enter a later
+gate and then call an earlier owner. Revocation follows the Approval/lifecycle
+portion of the same order and increments the decision/instance revocation epoch
+before it can enter `REVOKING`.
 
 Under those gates, declaration consumption first persists an
 `ExecutionUseReservation` with subject, decision, instance revision,
-`preflightUseId`, `sourceGroupId`, a unique `executionUseId`, epoch and
-`CONSUMED_NOT_STARTED`. Before invoking the loader it durably moves to
+`preflightUseId`, `sourceGroupId`, a unique `executionUseId`, epoch,
+`hostBootId`, exact `importRealmId` and `CONSUMED_NOT_STARTED`. Before invoking the loader it durably moves to
 `STARTING`; successful evaluation moves to `EVALUATED`, while an exception or
 cancellation after start moves to `FAILED_AFTER_START`. The verified handle is
 handed to the loader without an await or mutable-path reopen. Recovery treats
 `STARTING` and `FAILED_AFTER_START` as possibly executed and the in-process
-import realm as polluted; retry requires a fresh decision and clean Host unless
+import realm as polluted. A different boot's `CONSUMED_NOT_STARTED` becomes
+`CANCELLED_BEFORE_START` and is never resumed. Only current-boot/current-realm
+`EVALUATED` creates the exact receipt carrying both IDs; retry requires a fresh decision and clean Host unless
 a separate idempotent re-evaluation contract is accepted. A future isolated
 declaration-evaluator process requires a new explicit declaration-source arm
 and containment protocol; it cannot reuse a contributed-runtime launch
@@ -460,13 +477,19 @@ ACTIVE_OPEN -> CLOSING_EXPIRE -> EXPIRED
 The Coordinator exclusively owns terminal use of the token through the
 Resolver's private CAS port. Each group is `PENDING -> CLAIMED -> COMPLETED |
 FAILED`; the state check, group claim and in-flight increment are one atomic
-step. Finalize privately stages candidates and may CAS only from `ACTIVE_OPEN`,
+step and returns an opaque claim lease. A claim at/after the deadline atomically
+enters `CLOSING_EXPIRE` and joins close. Finalize privately stages candidates and may CAS only from `ACTIVE_OPEN`,
 before the monotonic deadline, with every group completed and zero in-flight
 work; candidates escape only after that CAS wins. Abort/expiry first CAS into
-one explicit closing state, close new claims and decision consumption, cancel
-or settle claimed work, and reach the terminal only at zero in-flight work. The
+one explicit closing state, close new claims/start permits, request cancellation
+of claimed work, and reach the terminal only after each execution unit's
+shielded completion acknowledges physical exit and settles its own lease. The
+closer never decrements on a worker's behalf. The
 first closing reason wins, close is help-completable and shielded from caller
-cancellation, and a finalize CAS loser destroys its staged candidates. Any
+cancellation, and a finalize CAS loser destroys its staged candidates. A
+process-owner monotonic reaper is installed before accepted state becomes
+visible, so dropped handles or cancellation before Coordinator handoff still
+expire. Any
 decode/evaluation failure, missing evidence, cancellation or finalize
 validation error requests abort; timeout requests expiry. A concurrent or
 repeated finalize/abort returns the deterministic
@@ -475,8 +498,9 @@ typed terminal error `preflight_already_finalized`,
 candidates. An execution decision consumed before a later group failure remains
 consumed for audit and cannot be reused; retry starts from a fresh preflight and
 requires a fresh current decision. Active tokens are process/instance-revision
-bound and non-resumable. A monotonic deadline governs the current host epoch;
-any prior-host-epoch token fails as `preflight_expired`. PLC1B retains bounded
+bound and non-resumable. A monotonic deadline governs the current `hostBootId`;
+the process-local `hostEpoch` is that same identity, and any prior-boot token
+fails as `preflight_expired`. PLC1B retains bounded
 process-local terminal tombstones and adds no durable aggregate store. The target
 replaces the current public-looking `rollback()` choice with this one
 Coordinator-owned abort transition.
@@ -533,7 +557,11 @@ violation.
 Package-internal Capability Provider payload/symbol-reference v2 stores only a
 contained path, symbol, reference version and contributed-runtime execution
 model; it never stores `packageDigest`. The Component Host later resolves that
-reference against the Candidate's exact published package digest. The package-
+reference against the Candidate's exact published package digest, while the
+symbol model exact-matches the Index's independent
+`contributionExecutionModel`. Payload v2 removes the redundant package-default
+configuration fingerprint; reservation/group identities already bind default
+and Product-effective configuration separately. The package-
 internal payload and the Host-resolved symbol binding are different records,
 not source-kind-specific aliases.
 
@@ -1695,7 +1723,8 @@ The architecture is complete only when these statements are executable:
 - every accepted token reaches exactly one of `FINALIZED`, `ABORTED` or
   `EXPIRED`; concurrent/repeated terminal calls are deterministic and consumed
   decisions/evidence are never replayed after aggregate abort, and closing the
-  aggregate prevents new group claims or decision consumption;
+  aggregate prevents new group claims/start permits, while an already-permitted
+  consumption may continue only under the in-flight close wait;
 - each source group is decoded/evaluated once, every reservation belongs to one
   exact closure, mixed groups join without overlap, and one preflight finalizes
   once with source-appropriate evidence;

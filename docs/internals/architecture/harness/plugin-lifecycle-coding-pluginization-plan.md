@@ -598,8 +598,9 @@ Scope:
   closed and no compatibility parser remains beside v2;
 - advance unpublished `CapabilityProviderDeclarationPayload` and
   `PluginSymbolReference` to v2, remove `packageDigest` from package-internal
-  symbol references, and let only the Host-resolved view attach the exact
-  published package digest;
+  symbol references plus the redundant payload configuration fingerprint, add
+  Index-owned `contributionExecutionModel`, and let only the Host-resolved view
+  attach the exact published package digest and validate that model;
 - replace the implicit entrypoint-only source with one strict tagged
   `PluginDeclarationSource` union;
 - define `document` as a contained immutable document locator plus exact
@@ -645,6 +646,9 @@ Scope:
   Approval-owner read-only decision lookup port, not peer context/overlay/
   policy arguments or a caller decision tuple. The pre-PAP2 production lookup
   is pending-only;
+- reuse one low-level `resources.plugins` strict JSON primitive for manifest and
+  DeclarationDocument schema codecs; Coordinator performs exactly one verified-
+  handle read and imports no JSON/Path decoder;
 - implement the exact Source/Index/Declaration/Document/Subject/Decision/
   document-evidence/candidate fields, canonical bytes, fingerprint domains and
   diagnostics frozen by the PLC1B Contract;
@@ -669,6 +673,10 @@ Scope:
   `ACTIVE_OPEN -> FINALIZED|CLOSING_ABORT|CLOSING_EXPIRE` aggregate states;
   consumed decisions remain consumed after aggregate abort and retry starts a
   fresh preflight/decision;
+- install a process-owner expiry reaper before accepted publication, atomically
+  expire deadline claims, and let only a claim worker's shielded physical
+  completion decrement in-flight; close requests cancellation but cannot settle
+  for the worker;
 - reject nullable peer fields, unknown tags, noncanonical locators, and one
   reservation consumed through more than one source model; and
 - delete/private-scope the top-level subject builder, `PluginPreflight`, direct
@@ -681,8 +689,9 @@ Exit gate:
   index/IR and document v1 round trips/fingerprints are canonical;
 - a document-backed Capability Provider payload/symbol-reference v2 contains no
   `packageDigest`, publishes without a digest fixed point and is Host-bound to
-  the exact package digest; both unpublished v1 shapes fail their own version
-  diagnostic;
+  the exact package digest and Index-owned contributed model; required nullable
+  disposer fixtures are exact, the payload has no configuration-fingerprint
+  peer, and both unpublished v1 shapes fail their own version diagnostic;
 - document v1 has only `documentVersion` and a non-empty declaration list sorted
   by `(pluginId, contributionId)`; unknown fields, wrong order, duplicates and
   closure mismatch fail closed;
@@ -708,8 +717,9 @@ Exit gate:
   external-service execution model recorded by the contribution payload;
 - parsing, selection, and authoring remain inert; and
 - Product override/delete/missing/extra configuration, secret-reference
-  rotation/raw-secret rejection, duplicate manifest keys, unsorted Index items,
-  and typed diagnostic preservation have regression fixtures; and
+  rotation/Product-owner pre-handoff raw-secret rejection, duplicate manifest
+  keys, unsorted Index items, and typed diagnostic preservation have regression
+  fixtures; and
 - semantic digest fixtures freeze `allow_nan=False`, `ensure_ascii=True`, sorted
   keys/no whitespace, CJK escaping, normalization-form distinction and unpaired-
   surrogate rejection; and
@@ -718,7 +728,8 @@ Exit gate:
 Required current-source migration inventory:
 
 - `declarations.py`: version constants, contribution source/gate/group,
-  descriptor/reservation fingerprints, declaration IR v2, exact wire fields/
+  independent contribution execution model, descriptor/reservation
+  fingerprints, declaration IR v2, exact wire fields/
   domains/document ordering, duplicate-key/noncanonical-byte rejection, strict
   Unicode scalar validation and golden digest fixtures;
 - `manifest.py`: `_contribution_index()` containment checks move from
@@ -728,6 +739,9 @@ Required current-source migration inventory:
   rejected rather than silently normalized, typed codec diagnostics are
   preserved, and declaration bytes are read only through
   `VerifiedRevisionHandle.open_file()`;
+- `resources/plugins/_strict_json.py`: the only low-level UTF-8/BOM/constant/
+  duplicate/depth decoder and canonical encoder; manifest and document schema
+  codecs share it, with canonical-byte equality enabled only for the document;
 - `selection.py`: subject and decision-record schemas advance to group-level v2;
   the decision record binds `decisionRecordVersion: 2` and
   `subjectSchemaVersion: 2`; preflight is the
@@ -739,22 +753,29 @@ Required current-source migration inventory:
   transitions;
   old public subject/finalize/rollback exports disappear;
 - `plugin_authoring/coordinator.py`: the only terminal-handle consumer, document
-  group claimant, Host evidence/Batch constructor and finalization caller;
+  group claimant, one verified `open_file()` caller, Host evidence/Batch
+  constructor and finalization caller; it imports no JSON or Path reader;
 - `plugin_authoring/reservations.py` and `builder.py`: retained views/builders
   bind exactly one source group and reject cross-group or overlapping input;
 - `plugin_authoring/capability_provider.py`: payload and symbol reference advance
-  to v2, package digest leaves package bytes, factory/disposer execution model
-  becomes `PluginContributionExecutionModel`, and the Host validates both refs
-  against Candidate package provenance rather than declaration source kind;
+  to v2, package digest/configuration-fingerprint peers leave package payload,
+  required disposer becomes `SymbolReferenceV2|null`, factory/disposer execution
+  model becomes `PluginContributionExecutionModel`, and the Host validates both
+  refs against Candidate package provenance plus Index model rather than
+  declaration source kind;
 - exact finite callers/fixtures in `plugin_authoring/builder.py`,
   `plugin_authoring/reservations.py`, `resources/plugins/__init__.py`,
   `tests/harness/conftest.py`, manifest/selection/authority/builder/provider
-  tests, and the architecture export freeze move explicitly to v2 or the
+  tests, `tests/harness/resources/plugins/test_plc0_fixture.py`, and the
+  architecture export freeze move explicitly to v2 or the
   matching unsupported-version expectation. No v1 decision digest is accepted
   by the v2 group subject; and
 - architecture inventories include `plugin_authoring` raw JSON/read sinks,
-  freeze the sole document `open_file()` callpoint, and use synthetic peer-route
-  tests for a second decoder, alias, Subject builder, or terminal caller.
+  count exact call expressions, freeze the sole document `open_file()` and
+  strict decoder callpoints, and use synthetic peer-route tests for a second
+  decoder (including `JSONDecoder.decode` inside an allowed function), Path
+  read, alias, Subject builder, or terminal caller. `resources/plugins/types.py`
+  is explicitly audited and requires no PLC1B schema field change.
 
 #### PLC1B-2: Resource Item Declaration
 
@@ -861,7 +882,13 @@ Scope:
   the installation/workspace-scoped decision journal plus attempt-bound use
   reservations, with one subject/decision bound to each exact in-process source
   group and complete sorted reservation closure;
-- commit `STARTING` before loader invocation; only `EVALUATED` produces receipt
+- require claim then aggregate start permit before the atomic Approval consume/
+  use-reservation transaction; close-before-permit forbids execution, while
+  permit-before-close continues under in-flight fencing and makes close wait for
+  actual worker completion;
+- persist exact `hostBootId`/`importRealmId`, reconcile external-boot
+  `CONSUMED_NOT_STARTED` to `CANCELLED_BEFORE_START`, and commit `STARTING`
+  before loader invocation; only current-realm `EVALUATED` produces receipt
   evidence, while `STARTING`/`FAILED_AFTER_START` fences the polluted import realm
   until a clean Host restart unless idempotent re-evaluation was accepted;
 - complete PAP3 verified Plugin Definition evaluation and import-closure gate;
@@ -878,7 +905,8 @@ Exit gate:
 
 - disabled, denied, expired, stale, wrong-scope, wrong-digest, revoked, or
   incompatible code is never imported;
-- consume/revoke and consume/crash races have tested linearization; and
+- consume/revoke, permit/close, consume/crash and recovery races have tested
+  linearization with no resumable before-start orphan; and
 - mixed document/in-process success evaluates each group once, joins all
   evidence and finalizes exactly once;
 - later-group failure/cancellation aborts exactly once, publishes no candidate,
@@ -1103,8 +1131,10 @@ publication, retirement and replay seams are the completion evidence.
 - document candidate attempts to serialize an empty/nullable decision peer;
 - concurrent finalize/abort/expire and later-group failure after one decision
   has been consumed;
-- group claim/decision consumption racing aggregate close, and evidence from an
-  aborted/expired `preflightUseId` replayed into a fresh accepted attempt;
+- group claim/execution-start permit racing aggregate close, permitted
+  consumption continuing while close waits for physical completion, and
+  evidence from an aborted/expired `preflightUseId` replayed into a fresh
+  accepted attempt;
 - duplicate JSON keys, BOM and noncanonical document bytes;
 - CJK/combining-form semantic fingerprints and unpaired-surrogate input;
 - executable declaration carries a positive decision but no current group

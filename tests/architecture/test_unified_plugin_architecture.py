@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import json
 from collections.abc import Mapping
 from functools import cache
 from hashlib import sha256
@@ -83,6 +84,25 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
         Path("src/loushang/harness/resources/packages/mounts.py"),
         "PackageResourceMount.read_text",
     ): "package-resource-mount",
+}
+EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS = {
+    (Path("src/loushang/harness/resources/packages/catalog.py"), "load_package_catalog", "json_decode"): 1,
+    (Path("src/loushang/harness/resources/packages/catalog.py"), "load_package_catalog", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/manifest.py"), "resolve_package_manifest", "json_decode"): 1,
+    (Path("src/loushang/harness/resources/packages/manifest.py"), "resolve_package_manifest", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/materializer.py"), "PackageMaterializer._load_lockfile", "json_decode"): 1,
+    (Path("src/loushang/harness/resources/packages/materializer.py"), "PackageMaterializer._load_lockfile", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/materializer.py"), "PackageMaterializer.load_trusted_sources", "json_decode"): 1,
+    (Path("src/loushang/harness/resources/packages/materializer.py"), "PackageMaterializer.load_trusted_sources", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/materializer.py"), "_pypi_latest_version_result", "json_decode"): 1,
+    (Path("src/loushang/harness/resources/packages/mounts.py"), "PackageResourceMount.read_text", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/mounts.py"), "PackageResourceMount.read_text", "verified_open_file:handle"): 1,
+    (Path("src/loushang/harness/resources/plugins/manifest.py"), "PluginManifestParser.parse", "json_decode"): 1,
+    (Path("src/loushang/harness/resources/plugins/manifest.py"), "PluginManifestParser.parse", "path_read"): 1,
+    (Path("src/loushang/harness/resources/plugins/manifest.py"), "PluginManifestParser.revalidate", "path_read"): 1,
+    (Path("src/loushang/harness/resources/plugins/revisions.py"), "_digest_file", "path_read"): 1,
+    (Path("src/loushang/harness/resources/plugins/revisions.py"), "_open_directory", "path_read"): 1,
+    (Path("src/loushang/harness/resources/plugins/revisions.py"), "_open_regular_file", "path_read"): 1,
 }
 
 
@@ -464,9 +484,14 @@ def _import_aliases(tree: ast.Module) -> tuple[set[str], set[str]]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name in {"json", "orjson"}:
+                if alias.name in {"json", "orjson", "rapidjson", "ujson"}:
                     json_modules.add(alias.asname or alias.name)
-        elif isinstance(node, ast.ImportFrom) and node.module in {"json", "orjson"}:
+        elif isinstance(node, ast.ImportFrom) and node.module in {
+            "json",
+            "orjson",
+            "rapidjson",
+            "ujson",
+        }:
             for alias in node.names:
                 if alias.name in {"load", "loads"}:
                     json_decoders.add(alias.asname or alias.name)
@@ -530,6 +555,84 @@ def _plugin_package_boundary_sink_sites(
             ):
                 sites.add((path, qualified))
     return sites
+
+
+def _json_decoder_class_aliases(tree: ast.Module) -> set[str]:
+    aliases = {"JSONDecoder"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "json":
+            for alias in node.names:
+                if alias.name == "JSONDecoder":
+                    aliases.add(alias.asname or alias.name)
+    return aliases
+
+
+def _plugin_boundary_call_operation(
+    call: ast.Call,
+    *,
+    json_modules: set[str],
+    json_decoders: set[str],
+    json_decoder_classes: set[str],
+) -> str | None:
+    if isinstance(call.func, ast.Attribute):
+        if call.func.attr == "open_file":
+            return f"verified_open_file:{ast.unparse(call.func.value)}"
+        if call.func.attr in {"open", "read_bytes", "read_text"}:
+            return "path_read"
+        if (
+            isinstance(call.func.value, ast.Name)
+            and call.func.value.id in json_modules
+            and call.func.attr in {"load", "loads"}
+        ):
+            return "json_decode"
+        if call.func.attr == "decode" and isinstance(call.func.value, ast.Call):
+            constructor = call.func.value.func
+            if (
+                isinstance(constructor, ast.Name)
+                and constructor.id in json_decoder_classes
+            ) or (
+                isinstance(constructor, ast.Attribute)
+                and constructor.attr == "JSONDecoder"
+                and isinstance(constructor.value, ast.Name)
+                and constructor.value.id in json_modules
+            ):
+                return "json_decoder_decode"
+    if isinstance(call.func, ast.Name):
+        if call.func.id in {"open", "read_bytes", "read_text"}:
+            return "path_read"
+        if call.func.id in json_decoders:
+            return "json_decode"
+    return None
+
+
+def _plugin_package_boundary_sink_call_counts(
+    sources: Mapping[Path, str],
+) -> dict[tuple[Path, str, str], int]:
+    inventory: dict[tuple[Path, str, str], int] = {}
+    for path, source in sources.items():
+        if not any(path.is_relative_to(root) for root in PLUGIN_PACKAGE_BOUNDARY_ROOTS):
+            continue
+        tree = ast.parse(source, filename=str(path))
+        json_modules, json_decoders = _import_aliases(tree)
+        json_decoder_classes = _json_decoder_class_aliases(tree)
+        units = [("<module>", _code_unit_nodes(tree.body))]
+        units.extend(
+            (qualified, _code_unit_nodes(function.body))
+            for qualified, function in _qualified_functions(source, filename=path)
+        )
+        for qualified, nodes in units:
+            for call in (node for node in nodes if isinstance(node, ast.Call)):
+                operation = _plugin_boundary_call_operation(
+                    call,
+                    json_modules=json_modules,
+                    json_decoders=json_decoders,
+                    json_decoder_classes=json_decoder_classes,
+                )
+                if operation is None:
+                    continue
+                key = (path, qualified, operation)
+                inventory[key] = inventory.get(key, 0) + 1
+    return inventory
 
 
 def _receiver_looks_like_graph_state(
@@ -1148,12 +1251,18 @@ def test_plc1b_contract_freezes_no_self_reference_and_exact_v2_records() -> None
     assert "appear inside package bytes without a self-referential" in architecture
     assert "verified package revision. It is the sole source-group key" not in architecture
     assert "`PluginSymbolReference` v2" in contract
-    assert "Neither\nthe payload nor either symbol reference contains `packageDigest`" in (
+    assert "Neither the payload nor either symbol\nreference contains `packageDigest`" in (
         contract
     )
+    assert "V2 removes the redundant v1 `configurationFingerprint`" in contract
+    assert "required key; exact SymbolReference v2 object or JSON `null`" in contract
+    assert "One private low-level `StrictPluginJsonCodec`" in contract
+    assert "Candidate construction is private to Resolver finalization" in contract
+    assert "Declaration fingerprint is a member of that Batch" in contract
     assert "only in resolved views" in AUTHORING_PLAN_PATH.read_text(encoding="utf-8")
 
     for exact_wire_key in (
+        "`contributionExecutionModel`",
         "`declarationSource`",
         "`reservationFingerprint`",
         "`sourceDescriptorFingerprint`",
@@ -1236,15 +1345,27 @@ def test_plc1b_contract_freezes_no_self_reference_and_exact_v2_records() -> None
     golden_digests = (
         "aec4eb58e83e5b4ee53392eee1881c358f75ca6c3d202c56c348a657edac6595",
         "2fe5d856380b78228e5d3baeb5227598e19268f403c4765e12e99e2567381217",
-        "abc18ae8cf63b0a828accb4638fa389229c0f352db09c0238d0f815771d731bf",
+        "c24ebbab018030bda115eee4257003ef8ac86423faa480fe158bce31fc0377b7",
+        "cfa8e2bbeb73cc55c4e67149c4d6bc0b452b7d93c9d76bfa2bb610a3ebd330fb",
         "bab38106e94908a0e7385da2c5576aa3ce0898348a0521aec1c83d3d8732fb3c",
     )
     for golden_digest in golden_digests:
         assert golden_digest in contract
+    json_blocks = _contract_json_blocks(contract)
     assert tuple(
         sha256(block.encode("utf-8")).hexdigest()
-        for block in _contract_json_blocks(contract)
+        for block in json_blocks
     ) == golden_digests
+    records = tuple(json.loads(block) for block in json_blocks)
+    executable_source = records[2]["source"]
+    subject = records[3]["subject"]
+    assert executable_source["kind"] == "in_process"
+    assert subject["entrypoint"] == executable_source["entrypoint"]
+    assert subject["sourceDescriptorFingerprint"] == golden_digests[2]
+    assert subject["ambientHostAuthority"] is True
+    candidate = records[4]
+    assert candidate["declarationFingerprint"] == golden_digests[1]
+    assert candidate["sourceGroupFingerprint"] == "6" * 64
 
 
 def test_plc1b_contract_freezes_attempt_claim_and_forbidden_peer_semantics() -> None:
@@ -1259,7 +1380,15 @@ def test_plc1b_contract_freezes_attempt_claim_and_forbidden_peer_semantics() -> 
     assert "in_flight == 0" in contract
     assert "finalize CAS loser destroys its private staged candidates" in contract
     assert "help-completable and shielded from caller cancellation" in contract
-    assert "Any token from a prior host epoch returns\n`preflight_expired`" in contract
+    assert "if now >= expiresAt, CAS to CLOSING_EXPIRE and join/help close" in contract
+    assert "closer never settles for worker" in contract
+    assert "process-owner expiry task/reaper registered before" in contract
+    assert "CANCELLED_BEFORE_START" in contract
+    assert "PluginExecutionStartPermit" in contract
+    assert "`hostEpoch` is only the process-local typed name for `hostBootId`" in (
+        contract
+    )
+    assert "Any token from a prior host boot returns\n`preflight_expired`" in contract
     assert "ABORTED -> ACTIVE" not in contract
     assert "`PluginSelectionPlanV2` is the sole Product authority" in contract
     assert "`PluginEffectiveConfigurationSetV1`" in contract
@@ -1287,6 +1416,35 @@ def test_plc1b_contract_freezes_attempt_claim_and_forbidden_peer_semantics() -> 
         "unsupported_plugin_execution_approval_subject_version",
         "unsupported_plugin_execution_decision_record_version",
         "unsupported_plugin_symbol_reference_version",
+    }
+    non_version_diagnostics = _contract_text_fields(
+        contract,
+        heading="## Exact Non-Version Diagnostics",
+    )
+    assert non_version_diagnostics == {
+        "duplicate_plugin_contribution_identity",
+        "duplicate_plugin_declaration_identity",
+        "invalid_plugin_effective_configuration",
+        "plugin_contribution_index_unsorted",
+        "plugin_declaration_closure_mismatch",
+        "plugin_declaration_cross_field_mismatch",
+        "plugin_declaration_document_too_large",
+        "plugin_declaration_document_too_many_declarations",
+        "plugin_declaration_document_unsorted",
+        "plugin_declaration_duplicate_json_key",
+        "plugin_declaration_evidence_attempt_mismatch",
+        "plugin_declaration_exact_field_mismatch",
+        "plugin_declaration_field_type_mismatch",
+        "plugin_declaration_invalid_json",
+        "plugin_declaration_invalid_json_constant",
+        "plugin_declaration_invalid_utf8",
+        "plugin_declaration_json_depth_exceeded",
+        "plugin_declaration_noncanonical_bytes",
+        "plugin_declaration_utf8_bom",
+        "unsupported_plugin_contribution_execution_model",
+        "unsupported_plugin_contribution_kind",
+        "unsupported_plugin_declaration_evidence_kind",
+        "unsupported_plugin_declaration_source_kind",
     }
 
 
@@ -1461,6 +1619,10 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
     sources = _source_texts()
 
     assert (
+        _plugin_package_boundary_sink_call_counts(sources)
+        == EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS
+    )
+    assert (
         _plugin_package_boundary_sink_sites(sources)
         == set(EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS)
     )
@@ -1532,6 +1694,39 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
             Path("src/loushang/harness/plugin_authoring/second_decoder.py"),
             "decode",
         ),
+    }
+
+    same_function_bypasses = {
+        Path("src/loushang/harness/plugin_authoring/coordinator.py"): (
+            "import json\n"
+            "def decode(path, handle):\n"
+            "    first = json.loads(path.read_bytes())\n"
+            "    second = json.JSONDecoder().decode(path.read_text())\n"
+            "    verified = handle.open_file('declarations.json')\n"
+            "    return first, second, verified\n"
+        )
+    }
+    assert _plugin_package_boundary_sink_call_counts(same_function_bypasses) == {
+        (
+            Path("src/loushang/harness/plugin_authoring/coordinator.py"),
+            "decode",
+            "json_decode",
+        ): 1,
+        (
+            Path("src/loushang/harness/plugin_authoring/coordinator.py"),
+            "decode",
+            "json_decoder_decode",
+        ): 1,
+        (
+            Path("src/loushang/harness/plugin_authoring/coordinator.py"),
+            "decode",
+            "path_read",
+        ): 2,
+        (
+            Path("src/loushang/harness/plugin_authoring/coordinator.py"),
+            "decode",
+            "verified_open_file:handle",
+        ): 1,
     }
 
 

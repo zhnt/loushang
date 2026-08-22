@@ -139,7 +139,7 @@ description.
   gates before implementation.
 - [Plugin Declaration Foundation PLC1B Contract](plugin-declaration-foundation-plc1b-contract.md)
   is the normative PLC1B-1 schema/state companion to UPA and both delivery
-  plans; its fourth-review remediation still requires a fresh independent freeze
+  plans; its fifth-review remediation still requires a fresh independent freeze
   review before implementation.
 - [Unified Plugin Lifecycle And Coding Pluginization Delivery Plan](plugin-lifecycle-coding-pluginization-plan.md)
   is the coordinating critical path across common declarations, management

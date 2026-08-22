@@ -183,9 +183,9 @@ normalizes to:
 ```text
 CapabilityBundleProvider metadata
 Capability Provider factory locator
-optional disposer locator
+required nullable disposer locator
 normalized non-secret binding inputs
-source/declaration/config/dependency fingerprints
+reservation/group/declaration/dependency fingerprints attached by Host stages
 requested authorities
 ```
 
@@ -255,11 +255,13 @@ cohesion, but their semantics and ownership must not be merged.
   `rejected` union. Only `accepted` carries an active token and source groups;
   pending may expose canonical proposed subjects, and every non-accepted arm
   carries diagnostics but no reservation, gate, or finalizable preflight.
-- `PluginPreflightAggregateState`: strict `ACTIVE`/`FINALIZED`/`ABORTED`/
-  `EXPIRED` state. The Coordinator alone drives the Resolver's private CAS port.
+- `PluginPreflightAggregateState`: strict `ACTIVE_OPEN`/`CLOSING_ABORT`/
+  `CLOSING_EXPIRE`/`FINALIZED`/`ABORTED`/`EXPIRED` state. The Coordinator alone
+  drives the Resolver's private CAS port.
   Each group is `PENDING -> CLAIMED -> COMPLETED|FAILED`; closing stops new
-  claims/decision consumption and settles in-flight work before one terminal.
-  Tokens bind `preflightUseId`, host epoch and monotonic deadline. Repeated/
+  claims/start permits, requests cancellation and waits for each worker to
+  settle its own lease before one terminal. Tokens bind `preflightUseId`, the
+  same `hostBootId`/local `hostEpoch`, and monotonic deadline. Repeated/
   concurrent terminal calls return one typed error and never replay candidates
   or evidence.
 - `PluginDeclarationDocument`: strict document-envelope v1 containing one or
@@ -289,9 +291,11 @@ cohesion, but their semantics and ownership must not be merged.
   version, and contributed-runtime execution model. It is serializable, never
   carries a callable or package digest, and is not the declaration source. The
   Host binds it to the published package digest only in resolved views.
-- `CapabilityProviderDeclarationPayload`: strict versioned codec containing
-  `CapabilityBundleProvider` data, factory/disposer references, normalized
-  non-secret binding inputs, and requested authorities.
+- `CapabilityProviderDeclarationPayload` v2: strict codec containing
+  `CapabilityBundleProvider` data, required factory, required nullable disposer,
+  and package-default non-secret binding inputs exact-matched to the Index. It
+  has no package-digest or configuration-fingerprint peer; reservation/group
+  identities bind package-default/Product-effective configuration separately.
 - `PluginDeclarationBuilder`: source-group-bound builder that can emit exactly
   one matching declaration per reservation in that group, rejects a different
   source/gate or overlapping closure, and freezes after `build()`.
@@ -550,8 +554,9 @@ Scope:
   without retaining a peer compatibility parser;
 - advance the unpublished `CapabilityProviderDeclarationPayload` and
   `PluginSymbolReference` to v2, remove package digest from package-internal
-  symbol references, and bind the Host-resolved reference to the exact
-  published package digest after publication;
+  symbol references plus the redundant payload configuration fingerprint, add
+  Index-owned `contributionExecutionModel`, and bind the Host-resolved reference
+  to the exact published package digest and Index model after publication;
 - add one versioned `PluginDeclarationSource` tagged union with strict
   `document` and `in_process` arms;
 - bind source kind and the revision-independent descriptor fingerprint into
@@ -583,7 +588,7 @@ Scope:
 - make `PluginSelectionPlanV2` the sole Product context/trust/configuration/
   authority input: Product supplies an already-resolved exact effective map and
   versioned non-secret secret references, while PLC1B validates/hashes and does
-  not own a second overlay/merge algorithm;
+  not own a second overlay/merge/sensitivity-classification algorithm;
 - implement the exact records, domains, canonical byte acceptance and distinct
   version diagnostics frozen by the PLC1B Contract;
 - advance `PluginExecutionApprovalSubject` to group-level v2 and fail closed on
@@ -596,6 +601,9 @@ Scope:
   executable group fails `execution_not_consumed` before any declaration input,
   Batch or candidate creation;
 - add the inert `PluginDeclarationCoordinator` and document decoder. PLC1B
+  uses the one low-level `resources.plugins` strict JSON primitive for manifest
+  and document schemas; the Coordinator imports no decoder and performs exactly
+  one verified-handle read before calling that codec. PLC1B
   pre-scans all groups and finalizes document-only one/multi-group preflights
   exactly once; a mixed document/in-process preflight accepts no executable
   declaration/Builder input, proves routing/no-import, aborts with
@@ -603,6 +611,9 @@ Scope:
 - replace candidate `decision_id` with strict group/evidence provenance and add
   attempt-bound evidence plus the claim-aware
   `ACTIVE_OPEN -> FINALIZED|CLOSING_ABORT|CLOSING_EXPIRE` aggregate protocol;
+- install the expiry reaper before accepted publication, let only the actual
+  execution unit settle its opaque claim lease, and make close wait for physical
+  completion rather than treating cancellation request as completion;
 - privatize direct subject construction and Resolver finalize/rollback; only the
   higher `plugin_authoring` Coordinator receives the internal terminal handle;
 - add strict `resource_item`, `tool_pack`, and `command_pack` declaration
@@ -645,7 +656,9 @@ Exit gate:
 - payload/symbol-reference v1 fail their separate version diagnostics; a real
   document-backed Capability Provider package contains no `packageDigest`, is
   publishable without a hash fixed point, and its Host-resolved reference binds
-  the exact published digest;
+  the exact published digest plus Index-owned contributed execution model;
+  payload v2 has a required `SymbolReferenceV2|null` disposer and no redundant
+  configuration fingerprint;
 - same-source multi-contribution and same-package document multi-source fixtures
   prove one decode per group and one finalization per preflight;
 - mixed document/in-process fixtures prove exact grouping, zero import, zero
@@ -666,8 +679,10 @@ Exit gate:
   callable/live-object capture;
 - the canonical manifest boundary rejects duplicate keys and unsorted Index
   items without swallowing the typed codec diagnostic, and architecture scans
-  cover `plugin_authoring` JSON/raw-read sinks plus the sole declaration
-  `VerifiedRevisionHandle.open_file()` callpoint;
+  count concrete calls across `plugin_authoring`, reject a second decoder/read
+  even inside an allowed function, and freeze the sole declaration
+  `VerifiedRevisionHandle.open_file()` callpoint plus one low-level strict JSON
+  primitive;
 - a Capability Provider cannot contain arbitrary contributions, admit/select/
   bind itself, or explicitly require its own Capability; duplicate requirements
   also fail in the strict payload codec;
@@ -711,16 +726,22 @@ Scope:
   close, and projects the strict v2 selection view. The current Session grant
   store is not reused as durable Plugin authority;
 - implement atomic one-shot consumption and idempotent query/recovery;
+- require the already-claimed worker to win one aggregate
+  `PluginExecutionStartPermit` before calling Approval: permit-before-close may
+  continue while close waits for real completion; close-before-permit forbids
+  consumption and loader entry; release the aggregate lock before Approval;
 - create consumption and the attempt-bound
   `ExecutionUseReservation(CONSUMED_NOT_STARTED)` in the same Approval-owner
   transaction; there is no observable consumed-without-reservation orphan;
 - persist that attempt-bound `ExecutionUseReservation` before declaration import:
-  `CONSUMED_NOT_STARTED -> STARTING -> EVALUATED|FAILED_AFTER_START`.
+  `CONSUMED_NOT_STARTED -> CANCELLED_BEFORE_START|STARTING`, then
+  `STARTING -> EVALUATED|FAILED_AFTER_START`.
   `STARTING` commits before loader invocation; recovery treats started/failed
   use as possibly executed and the exact `importRealmId`/`hostBootId` as
-  polluted. Its execution-start lease linearizes against aggregate close under
-  the frozen lock order, and no Approval callback runs while the aggregate lock
-  is held. Factory/service
+  polluted, while an external-boot not-started use becomes
+  `CANCELLED_BEFORE_START` and is never resumed. Reservation and current-realm
+  `EVALUATED` receipt both carry the exact boot/realm IDs frozen by the Contract;
+  no Approval callback runs while the aggregate lock is held. Factory/service
   launch remains solely under activation approval;
 - keep UI/presentation and Product wording as adapters over the Approval owner;
 - remove the current ability to treat an arbitrary in-memory
@@ -743,7 +764,8 @@ Exit gate:
   wrong-digest, consumed, and revoked decisions all fail before import;
 - consume-versus-revoke has one tested linearization result;
 - consume/import-start versus abort/expire has one tested lease/close
-  linearization result and cannot leave an orphan use reservation;
+  linearization result, waits for physical worker completion, and cannot leave
+  an orphan or resumable before-start use reservation;
 - crash recovery never replays a consumed decision/receipt across accepted
   attempts and conservatively fences a possibly started import realm;
 - the Plugin package owns no second Approval store or pending lifecycle.
@@ -1111,7 +1133,8 @@ Binder, and Session publication seams are the completion evidence.
   decision field;
 - concurrent finalize/abort/expire and later-group failure after one execution
   decision is consumed;
-- group claim or decision consumption racing aggregate close, and stale
+- group claim or execution-start permit racing aggregate close, permitted
+  consumption continuing under close, and stale
   document/execution evidence replayed under a new `preflightUseId`;
 - duplicate JSON keys, BOM, noncanonical whitespace/key order/escaping and raw
   bytes unequal to canonical document re-encoding;
