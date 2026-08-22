@@ -27,6 +27,9 @@ from loushang.harness.resources.plugins.selection import (
     PluginDeclarationReservation,
     PluginEffectiveConfigurationEntry,
     PluginEffectiveConfigurationSetV1,
+    PluginExecutionApprovalSubject,
+    PluginExecutionDecisionCurrent,
+    PluginExecutionDecisionLookupResult,
     PluginExecutionDecisionRecord,
     PluginInstanceRevisionRef,
     PluginPreflightContextV1,
@@ -46,6 +49,17 @@ class _PublishedSyntheticPlugin(Protocol):
     binding: PluginSourceBinding
     contribution: PluginContributionReservation
     import_marker: Path
+
+
+class _CurrentDecisionLookup:
+    def __init__(self, decision: PluginExecutionDecisionRecord) -> None:
+        self._decision = decision
+
+    def lookup_execution_decision(
+        self,
+        subject: PluginExecutionApprovalSubject,
+    ) -> PluginExecutionDecisionLookupResult:
+        return PluginExecutionDecisionCurrent(decision=self._decision)
 
 
 def test_builder_exact_matches_hand_authored_ir_and_freezes(
@@ -355,13 +369,13 @@ def _preflight_reservation(
         (fixture.package,),
         bindings=(fixture.binding,),
         plan=plan,
-        decisions=(
+        decision_lookup=_CurrentDecisionLookup(
             PluginExecutionDecisionRecord(
                 decision_id="decision-1",
                 subject_digest=subject.digest,
                 policy_revision=plan.context.policy_revision,
                 disposition="approved",
-            ),
+            )
         ),
     )
     return preflight.reservations[0]

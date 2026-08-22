@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import inspect
 import json
 from collections.abc import Mapping
 from functools import cache
@@ -1742,6 +1743,29 @@ def test_plc1b_contract_freezes_attempt_claim_and_forbidden_peer_semantics() -> 
         "specialized kind,\nexecution-model, ordering, duplicate, closure, "
         "Evidence-attempt, and effective-\nconfiguration rows override"
         in contract
+    )
+
+
+def test_plugin_preflight_reads_decisions_only_through_the_approval_owner_port() -> None:
+    parameters = inspect.signature(
+        public_plugins.PluginSelectionResolver.preflight
+    ).parameters
+
+    assert tuple(parameters) == (
+        "self",
+        "packages",
+        "bindings",
+        "plan",
+        "decision_lookup",
+    )
+    assert "decisions" not in parameters
+    assert hasattr(
+        public_plugins.PendingOnlyPluginExecutionDecisionLookup,
+        "lookup_execution_decision",
+    )
+    assert not hasattr(
+        public_plugins.PendingOnlyPluginExecutionDecisionLookup(),
+        "record_decision",
     )
 
 

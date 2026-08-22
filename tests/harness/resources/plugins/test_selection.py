@@ -24,10 +24,14 @@ from loushang.harness.resources.plugins.authority import (
 )
 from loushang.harness.resources.plugins.declarations import PluginDeclaration
 from loushang.harness.resources.plugins.selection import (
+    PendingOnlyPluginExecutionDecisionLookup,
     PluginContributionRef,
     PluginEffectiveConfigurationEntry,
     PluginEffectiveConfigurationSetV1,
     PluginExecutionApprovalSubject,
+    PluginExecutionDecisionCurrent,
+    PluginExecutionDecisionLookupResult,
+    PluginExecutionDecisionMissing,
     PluginExecutionDecisionRecord,
     PluginInstanceRevisionRef,
     PluginPreflightContextV1,
@@ -38,6 +42,24 @@ from loushang.harness.resources.plugins.selection import (
     build_execution_approval_subject,
 )
 from loushang.harness.resources.plugins.types import PluginSource
+
+
+class _DecisionLookup:
+    def __init__(self, *decisions: PluginExecutionDecisionRecord) -> None:
+        self._decisions = {
+            decision.subject_digest: decision for decision in decisions
+        }
+        self.subject_digests: list[str] = []
+
+    def lookup_execution_decision(
+        self,
+        subject: PluginExecutionApprovalSubject,
+    ) -> PluginExecutionDecisionLookupResult:
+        self.subject_digests.append(subject.digest)
+        decision = self._decisions.get(subject.digest)
+        if decision is None:
+            return PluginExecutionDecisionMissing()
+        return PluginExecutionDecisionCurrent(decision=decision)
 
 
 def test_preflight_and_finalize_are_inert_and_reservations_are_one_use(
@@ -76,7 +98,7 @@ def test_preflight_and_finalize_are_inert_and_reservations_are_one_use(
         runtime.packages,
         bindings=runtime.bindings,
         plan=plan,
-        decisions=(decision,),
+        decision_lookup=_DecisionLookup(decision),
     )
     declaration = PluginDeclaration(
         plugin_id="review-pack",
@@ -122,7 +144,7 @@ def test_preflight_and_finalize_are_inert_and_reservations_are_one_use(
         runtime.packages,
         bindings=runtime.bindings,
         plan=plan,
-        decisions=(decision,),
+        decision_lookup=_DecisionLookup(decision),
     )
     resolver.rollback(rolled_back)
     with pytest.raises(PluginSelectionError) as caught:
@@ -143,7 +165,7 @@ def test_preflight_rejects_disabled_plugin_without_importing_code(
             runtime.packages,
             bindings=runtime.bindings,
             plan=_plan(binding.source_identity),
-            decisions=(),
+            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
         )
 
     assert caught.value.code == "selected_plugin_disabled"
@@ -171,13 +193,19 @@ def test_preflight_requires_exact_approval_subject_and_binding(
         policy_revision="policy-previous",
         disposition="approved",
     )
+    denied_decision = replace(
+        stale_decision,
+        decision_id="denied",
+        policy_revision=plan.context.policy_revision,
+        disposition="denied",
+    )
 
     with pytest.raises(PluginSelectionError) as caught:
         PluginSelectionResolver().preflight(
             runtime.packages,
             bindings=runtime.bindings,
             plan=plan,
-            decisions=(),
+            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
         )
     assert caught.value.code == "plugin_execution_approval_required"
 
@@ -186,7 +214,16 @@ def test_preflight_requires_exact_approval_subject_and_binding(
             runtime.packages,
             bindings=runtime.bindings,
             plan=plan,
-            decisions=(stale_decision,),
+            decision_lookup=_DecisionLookup(stale_decision),
+        )
+    assert caught.value.code == "invalid_plugin_execution_decision_lookup"
+
+    with pytest.raises(PluginSelectionError) as caught:
+        PluginSelectionResolver().preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=plan,
+            decision_lookup=_DecisionLookup(denied_decision),
         )
     assert caught.value.code == "plugin_execution_denied"
 
@@ -195,10 +232,72 @@ def test_preflight_requires_exact_approval_subject_and_binding(
             runtime.packages,
             bindings=(),
             plan=plan,
-            decisions=(),
+            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
         )
     assert caught.value.code == "plugin_selection_package_mismatch"
     assert (package.root / "imported.txt").exists() is False
+    runtime.close()
+
+
+def test_preflight_looks_up_one_decision_per_complete_source_closure(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path, include_source_sibling=True)
+    package = runtime.packages[0]
+    binding = runtime.bindings[0]
+    plan = _plan(
+        binding.source_identity,
+        include_source_sibling=True,
+        select_source_sibling=True,
+    )
+    subject = build_execution_approval_subject(
+        package,
+        package.contribution_index.items[0],
+        plan=plan,
+        binding=binding,
+    )
+    decision = PluginExecutionDecisionRecord(
+        decision_id="decision-source-closure",
+        subject_digest=subject.digest,
+        policy_revision=plan.context.policy_revision,
+        disposition="approved",
+    )
+    lookup = _DecisionLookup(decision)
+    resolver = PluginSelectionResolver()
+
+    preflight = resolver.preflight(
+        runtime.packages,
+        bindings=runtime.bindings,
+        plan=plan,
+        decision_lookup=lookup,
+    )
+
+    assert lookup.subject_digests == [subject.digest]
+    assert len(preflight.reservations) == 2
+    resolver.rollback(preflight)
+    runtime.close()
+
+
+def test_preflight_rejects_invalid_lookup_result(tmp_path: Path) -> None:
+    class _InvalidLookup:
+        def lookup_execution_decision(
+            self,
+            subject: PluginExecutionApprovalSubject,
+        ) -> object:
+            return object()
+
+    runtime = _runtime(tmp_path)
+    binding = runtime.bindings[0]
+
+    with pytest.raises(PluginSelectionError) as caught:
+        PluginSelectionResolver().preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=_plan(binding.source_identity),
+            decision_lookup=_InvalidLookup(),  # type: ignore[arg-type]
+        )
+
+    assert caught.value.code == "invalid_plugin_execution_decision_lookup"
     runtime.close()
 
 
@@ -227,7 +326,7 @@ def test_finalize_fails_closed_on_missing_or_changed_declaration(
         runtime.packages,
         bindings=runtime.bindings,
         plan=plan,
-        decisions=(decision,),
+        decision_lookup=_DecisionLookup(decision),
     )
 
     with pytest.raises(PluginSelectionError) as caught:
@@ -421,7 +520,7 @@ def test_preflight_rejects_extra_effective_configuration_entry(
             runtime.packages,
             bindings=runtime.bindings,
             plan=extra_plan,
-            decisions=(),
+            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
         )
 
     assert caught.value.code == "invalid_plugin_effective_configuration"
@@ -517,8 +616,11 @@ def _plan(
     source_identity: str,
     *,
     include_source_sibling: bool = False,
+    select_source_sibling: bool = False,
     include_disjoint_source: bool = False,
 ) -> PluginSelectionPlanV2:
+    if select_source_sibling and not include_source_sibling:
+        raise ValueError("Selecting the source sibling requires its fixture")
     configuration_entries = [
         PluginEffectiveConfigurationEntry(
             plugin_id="review-pack",
@@ -537,6 +639,10 @@ def _plan(
     selected_contributions = [
         PluginContributionRef("review-pack", "review-provider")
     ]
+    if select_source_sibling:
+        selected_contributions.append(
+            PluginContributionRef("review-pack", "review-tools")
+        )
     if include_disjoint_source:
         selected_contributions.append(
             PluginContributionRef("review-pack", "z-arch-provider")
@@ -575,5 +681,9 @@ def _plan(
         effective_configuration_set=PluginEffectiveConfigurationSetV1(
             entries=tuple(configuration_entries)
         ),
-        allowed_authority_ceiling=("process",),
+        allowed_authority_ceiling=(
+            ("filesystem", "process")
+            if include_source_sibling
+            else ("process",)
+        ),
     )

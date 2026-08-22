@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal, Protocol, cast
 
 from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
 from loushang.harness.resources.plugins.declarations import (
@@ -626,6 +626,53 @@ class PluginExecutionDecisionRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class PluginExecutionDecisionMissing:
+    disposition: Literal["missing"] = "missing"
+
+    def __post_init__(self) -> None:
+        if self.disposition != "missing":
+            raise ValueError("Unsupported missing execution decision disposition")
+
+
+@dataclass(frozen=True, slots=True)
+class PluginExecutionDecisionCurrent:
+    decision: PluginExecutionDecisionRecord
+    disposition: Literal["current"] = "current"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.decision, PluginExecutionDecisionRecord):
+            raise TypeError("Current lookup result requires a DecisionRecord v2")
+        if self.disposition != "current":
+            raise ValueError("Unsupported current execution decision disposition")
+
+
+PluginExecutionDecisionLookupResult = (
+    PluginExecutionDecisionMissing | PluginExecutionDecisionCurrent
+)
+
+
+class PluginExecutionDecisionLookupPort(Protocol):
+    """Read-only Approval-owner lookup by one exact execution Subject."""
+
+    def lookup_execution_decision(
+        self,
+        subject: PluginExecutionApprovalSubject,
+    ) -> PluginExecutionDecisionLookupResult: ...
+
+
+class PendingOnlyPluginExecutionDecisionLookup:
+    """Pre-PAP2 production adapter that can never return a positive decision."""
+
+    def lookup_execution_decision(
+        self,
+        subject: PluginExecutionApprovalSubject,
+    ) -> PluginExecutionDecisionLookupResult:
+        if not isinstance(subject, PluginExecutionApprovalSubject):
+            raise TypeError("Plugin execution lookup requires a Subject v2")
+        return PluginExecutionDecisionMissing()
+
+
+@dataclass(frozen=True, slots=True)
 class PluginDeclarationReservation:
     package: PublishedPluginPackage = field(repr=False)
     contribution: PluginContributionReservation
@@ -674,7 +721,7 @@ class PluginSelectionResolver:
         *,
         bindings: tuple[PluginSourceBinding, ...],
         plan: PluginSelectionPlanV2,
-        decisions: tuple[PluginExecutionDecisionRecord, ...],
+        decision_lookup: PluginExecutionDecisionLookupPort,
     ) -> PluginPreflight:
         packages_by_id = _packages_by_id(packages)
         bindings_by_id = _bindings_by_id(bindings)
@@ -692,14 +739,16 @@ class PluginSelectionResolver:
                 "Plugin source trust facts do not exactly match Product selection.",
                 code="plugin_selection_trust_mismatch",
             )
-        decisions_by_subject: dict[str, PluginExecutionDecisionRecord] = {}
-        for decision in decisions:
-            if decision.subject_digest in decisions_by_subject:
-                raise PluginSelectionError(
-                    "Multiple execution decisions target the same approval subject.",
-                    code="duplicate_plugin_execution_decision",
-                )
-            decisions_by_subject[decision.subject_digest] = decision
+        lookup_method = getattr(
+            decision_lookup,
+            "lookup_execution_decision",
+            None,
+        )
+        if not callable(lookup_method):
+            raise PluginSelectionError(
+                "Plugin preflight requires an Approval-owned decision lookup port.",
+                code="invalid_plugin_execution_decision_lookup",
+            )
 
         indexed: dict[PluginContributionRef, PluginContributionReservation] = {}
         for plugin_id, package in packages_by_id.items():
@@ -760,6 +809,7 @@ class PluginSelectionResolver:
             )
 
         reservations: list[PluginDeclarationReservation] = []
+        lookup_results: dict[str, PluginExecutionDecisionLookupResult] = {}
         allowed_authorities = set(plan.allowed_authority_ceiling)
         for ref in plan.selected_contributions:
             package = packages_by_id[ref.plugin_id]
@@ -778,17 +828,47 @@ class PluginSelectionResolver:
                 plan=plan,
                 binding=bindings_by_id[ref.plugin_id],
             )
-            matched_decision = decisions_by_subject.get(subject.digest)
-            if matched_decision is None:
+            lookup_result = lookup_results.get(subject.digest)
+            if lookup_result is None:
+                try:
+                    lookup_result = lookup_method(subject)
+                except Exception as exc:
+                    raise PluginSelectionError(
+                        "Plugin execution decision lookup failed closed.",
+                        code="invalid_plugin_execution_decision_lookup",
+                        path=package.root,
+                    ) from exc
+                if not isinstance(
+                    lookup_result,
+                    PluginExecutionDecisionMissing
+                    | PluginExecutionDecisionCurrent,
+                ):
+                    raise PluginSelectionError(
+                        "Plugin execution decision lookup returned an invalid result.",
+                        code="invalid_plugin_execution_decision_lookup",
+                        path=package.root,
+                    )
+                lookup_results[subject.digest] = lookup_result
+            if isinstance(lookup_result, PluginExecutionDecisionMissing):
                 raise PluginSelectionError(
                     f"Plugin execution approval is pending: {ref}",
                     code="plugin_execution_approval_required",
                     path=package.root,
                 )
+            matched_decision = lookup_result.decision
             if (
-                matched_decision.disposition != "approved"
-                or matched_decision.policy_revision != plan.context.policy_revision
+                matched_decision.subject_digest != subject.digest
+                or matched_decision.policy_revision
+                != plan.context.policy_revision
+                or matched_decision.subject_schema_version
+                != subject.schema_version
             ):
+                raise PluginSelectionError(
+                    "Approval owner returned a decision for a different Subject.",
+                    code="invalid_plugin_execution_decision_lookup",
+                    path=package.root,
+                )
+            if matched_decision.disposition != "approved":
                 raise PluginSelectionError(
                     f"Plugin execution was denied: {ref}",
                     code="plugin_execution_denied",
@@ -1344,12 +1424,17 @@ __all__ = [
     "PLUGIN_PREFLIGHT_CONTEXT_VERSION",
     "PLUGIN_SELECTION_PLAN_VERSION",
     "PLUGIN_SOURCE_TRUST_SNAPSHOT_VERSION",
+    "PendingOnlyPluginExecutionDecisionLookup",
     "PluginContributionCandidate",
     "PluginContributionRef",
     "PluginDeclarationReservation",
     "PluginEffectiveConfigurationEntry",
     "PluginEffectiveConfigurationSetV1",
     "PluginExecutionApprovalSubject",
+    "PluginExecutionDecisionCurrent",
+    "PluginExecutionDecisionLookupPort",
+    "PluginExecutionDecisionLookupResult",
+    "PluginExecutionDecisionMissing",
     "PluginExecutionDecisionRecord",
     "PluginInstanceRevisionRef",
     "PluginPreflight",
