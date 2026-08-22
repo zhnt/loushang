@@ -4,6 +4,7 @@ import ast
 import inspect
 import json
 from collections.abc import Mapping
+from dataclasses import fields
 from functools import cache
 from hashlib import sha256
 from pathlib import Path
@@ -1688,7 +1689,9 @@ def test_plc1b_contract_freezes_attempt_claim_and_forbidden_peer_semantics() -> 
     assert diagnostics == {
         "unsupported_plugin_contribution_index_version",
         "unsupported_capability_provider_declaration_payload_version",
+        "unsupported_command_pack_declaration_payload_version",
         "unsupported_resource_item_declaration_payload_version",
+        "unsupported_tool_pack_declaration_payload_version",
         "unsupported_plugin_declaration_document_version",
         "unsupported_plugin_declaration_evidence_version",
         "unsupported_plugin_declaration_ir_version",
@@ -1997,10 +2000,10 @@ def test_resource_item_is_one_inert_kind_with_six_owner_subtypes() -> None:
         PluginContributionKind,
     )
 
-    assert set(get_args(PluginContributionKind)) == {
+    assert {
         "capability_provider",
         "resource_item",
-    }
+    }.issubset(get_args(PluginContributionKind))
     assert set(get_args(ResourceItemKind)) == {
         "asset",
         "method",
@@ -2043,6 +2046,83 @@ def test_resource_item_is_one_inert_kind_with_six_owner_subtypes() -> None:
     assert "no Resource subtype is a Plugin type" in contract
     assert "`contributionExecutionModel: \"data_only\"`" in contract
     assert "## PLC1B-2 Regression Gate" in contract
+
+
+def test_tool_and_command_packs_share_one_inert_catalog_consumer_primitive() -> None:
+    from loushang.harness.plugin_authoring.consumer_pack import (
+        CommandPackDeclarationPayload,
+        ToolPackDeclarationPayload,
+    )
+    from loushang.harness.resources.plugins.declarations import (
+        PluginContributionKind,
+    )
+
+    assert set(get_args(PluginContributionKind)) == {
+        "capability_provider",
+        "command_pack",
+        "resource_item",
+        "tool_pack",
+    }
+    assert ToolPackDeclarationPayload.__bases__ == (
+        CommandPackDeclarationPayload.__bases__
+    )
+    assert tuple(field.name for field in fields(ToolPackDeclarationPayload)) == (
+        "catalog_id",
+        "catalog_revision",
+        "item_ids",
+        "owner_namespace",
+        "requirements",
+        "payload_version",
+    )
+    assert (
+        ToolPackDeclarationPayload._ITEM_FIELD,
+        CommandPackDeclarationPayload._ITEM_FIELD,
+    ) == ("tools", "commands")
+    assert not hasattr(public_plugins, "ToolPackDeclarationPayload")
+    assert not hasattr(public_plugins, "CommandPackDeclarationPayload")
+
+    source_texts = _source_texts()
+    consumer_source = source_texts[
+        Path("src/loushang/harness/plugin_authoring/consumer_pack.py")
+    ]
+    requirement_source = source_texts[
+        Path("src/loushang/harness/plugin_authoring/capability_requirement.py")
+    ]
+    provider_source = source_texts[
+        Path("src/loushang/harness/plugin_authoring/capability_provider.py")
+    ]
+    builder_source = source_texts[
+        Path("src/loushang/harness/plugin_authoring/builder.py")
+    ]
+    assert consumer_source.count("def from_dict(") == 1
+    assert consumer_source.count("def from_candidate(") == 1
+    assert consumer_source.count("def from_reserved_declaration(") == 1
+    assert builder_source.count("def _add_catalog_consumer(") == 1
+    assert "plugin_authoring.capability_provider" not in consumer_source
+    assert requirement_source.count("def capability_requirement_from_dict(") == 1
+    assert "plugin_authoring.capability_requirement" in consumer_source
+    assert "plugin_authoring.capability_requirement" in provider_source
+    for forbidden in (
+        "ToolDefinition",
+        "CommandDef",
+        "RegistrationScope",
+        "RuntimeCapabilityGraphPlanner",
+        "PluginSymbolReference",
+        "WorkspaceToolRegistry",
+        "SessionFacade",
+        "McpSurfaceGeneration",
+    ):
+        assert forbidden not in consumer_source
+
+    contract = PLC1B_CONTRACT_PATH.read_text(encoding="utf-8")
+    normalized_contract = " ".join(contract.split())
+    assert "### Catalog Consumer payload v1" in contract
+    assert "outer Declaration kind remains the only" in contract
+    assert (
+        "These requirement facets are the only Capability-use request"
+        in normalized_contract
+    )
+    assert "## PLC1B-3 Regression Gate" in contract
 
 
 def test_executable_declaration_is_gated_by_inert_preflight() -> None:

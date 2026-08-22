@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 
 import pytest
 
@@ -17,6 +18,8 @@ from loushang.harness.plugin_authoring.capability_provider import (
     PluginSymbolReference,
     capability_bundle_provider_from_dict,
     capability_bundle_provider_to_dict,
+)
+from loushang.harness.plugin_authoring.capability_requirement import (
     capability_contract_range_from_dict,
     capability_contract_range_to_dict,
     capability_requirement_from_dict,
@@ -202,6 +205,32 @@ def test_unpublished_provider_and_symbol_v1_shapes_fail_closed() -> None:
     with pytest.raises(PluginDeclarationCodecError) as caught:
         PluginSymbolReference.from_dict(symbol)
     assert caught.value.code == "unsupported_plugin_symbol_reference_version"
+
+
+def test_provider_payload_rejects_explicit_requirement_on_its_own_capability() -> None:
+    own_requirement = CapabilityRequirement(
+        capability="coding.lsp",
+        facets=("semantic",),
+        compatible_contract=CapabilityContractRange.exact(1),
+    )
+    with pytest.raises(ValueError, match="own Capability"):
+        CapabilityProviderDeclarationPayload(
+            provider=replace(_provider(), requirements=(own_requirement,)),
+            factory=PluginSymbolReference(
+                path="provider.py",
+                symbol="create_provider",
+                execution_model="in_process",
+            ),
+            disposer=None,
+        )
+
+    document = _payload_document()
+    document["provider"]["requirements"] = [
+        capability_requirement_to_dict(own_requirement)
+    ]
+    with pytest.raises(PluginDeclarationCodecError) as caught:
+        CapabilityProviderDeclarationPayload.from_dict(document)
+    assert caught.value.code == "plugin_declaration_cross_field_mismatch"
 
 
 def test_declaration_codec_exposes_only_the_reservation_bound_bridge() -> None:

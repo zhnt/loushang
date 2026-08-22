@@ -7,12 +7,14 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import cast
 
-from loushang.harness.capabilities.contracts import (
-    CapabilityContractRange,
-    CapabilityRequirement,
-    CapabilityRequirementBinding,
-)
 from loushang.harness.capabilities.providers import CapabilityBundleProvider
+from loushang.harness.plugin_authoring.capability_requirement import (
+    _canonical_string_list,
+    capability_contract_range_from_dict,
+    capability_contract_range_to_dict,
+    capability_requirement_from_dict,
+    capability_requirement_to_dict,
+)
 from loushang.harness.plugin_authoring.reservations import (
     _authoring_reservation_view,
     _PluginAuthoringReservationView,
@@ -146,6 +148,13 @@ class CapabilityProviderDeclarationPayload:
     def __post_init__(self) -> None:
         if not isinstance(self.provider, CapabilityBundleProvider):
             raise TypeError("Capability Provider payload requires Provider metadata")
+        if any(
+            requirement.capability == self.provider.capability_id
+            for requirement in self.provider.requirements
+        ):
+            raise ValueError(
+                "Capability Provider cannot require its own Capability"
+            )
         if not isinstance(self.factory, PluginSymbolReference):
             raise TypeError("Capability Provider payload requires a factory reference")
         if self.disposer is not None and not isinstance(
@@ -238,8 +247,17 @@ class CapabilityProviderDeclarationPayload:
                 "Capability Provider metadata must be an object",
                 code="plugin_declaration_field_type_mismatch",
             )
+        provider_metadata = capability_bundle_provider_from_dict(provider)
+        if any(
+            requirement.capability == provider_metadata.capability_id
+            for requirement in provider_metadata.requirements
+        ):
+            raise PluginDeclarationCodecError(
+                "Capability Provider cannot require its own Capability",
+                code="plugin_declaration_cross_field_mismatch",
+            )
         return cls(
-            provider=capability_bundle_provider_from_dict(provider),
+            provider=provider_metadata,
             factory=PluginSymbolReference.from_dict(factory),
             disposer=(
                 None if disposer is None else PluginSymbolReference.from_dict(disposer)
@@ -363,68 +381,6 @@ def _validate_capability_provider_reservation(
             )
 
 
-def capability_contract_range_to_dict(
-    value: CapabilityContractRange,
-) -> dict[str, object]:
-    if not isinstance(value, CapabilityContractRange):
-        raise TypeError("Capability contract codec requires CapabilityContractRange")
-    return {"maximum": value.maximum, "minimum": value.minimum}
-
-
-def capability_contract_range_from_dict(value: object) -> CapabilityContractRange:
-    document = _exact_document(
-        value,
-        name="Capability contract range",
-        keys={"maximum", "minimum"},
-    )
-    return CapabilityContractRange(
-        minimum=cast(int, document["minimum"]),
-        maximum=cast(int, document["maximum"]),
-    )
-
-
-def capability_requirement_to_dict(value: CapabilityRequirement) -> dict[str, object]:
-    if not isinstance(value, CapabilityRequirement):
-        raise TypeError("Capability requirement codec requires CapabilityRequirement")
-    return {
-        "binding": value.binding,
-        "capability": value.capability,
-        "compatibleContract": capability_contract_range_to_dict(
-            value.compatible_contract
-        ),
-        "facets": sorted(value.facets),
-        "optional": value.optional,
-    }
-
-
-def capability_requirement_from_dict(value: object) -> CapabilityRequirement:
-    document = _exact_document(
-        value,
-        name="Capability requirement",
-        keys={"binding", "capability", "compatibleContract", "facets", "optional"},
-    )
-    binding = document["binding"]
-    capability = document["capability"]
-    facets = _canonical_string_list(
-        document["facets"],
-        name="Capability requirement facets",
-    )
-    optional = document["optional"]
-    if not isinstance(binding, str) or not isinstance(capability, str):
-        raise ValueError("Capability requirement identity fields must be strings")
-    if not isinstance(optional, bool):
-        raise ValueError("Capability requirement optional must be a boolean")
-    return CapabilityRequirement(
-        capability=capability,
-        facets=facets,
-        compatible_contract=capability_contract_range_from_dict(
-            document["compatibleContract"]
-        ),
-        optional=optional,
-        binding=cast(CapabilityRequirementBinding, binding),
-    )
-
-
 def capability_bundle_provider_to_dict(
     value: CapabilityBundleProvider,
 ) -> dict[str, object]:
@@ -520,14 +476,6 @@ def capability_bundle_provider_from_dict(value: object) -> CapabilityBundleProvi
     )
 
 
-def _canonical_string_list(value: object, *, name: str) -> tuple[str, ...]:
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise ValueError(f"{name} must be a string list")
-    if value != sorted(set(value)):
-        raise ValueError(f"{name} must use canonical sorted order without duplicates")
-    return tuple(value)
-
-
 def _wire_exact_document(
     value: object,
     *,
@@ -564,8 +512,4 @@ __all__ = [
     "PluginSymbolReference",
     "capability_bundle_provider_from_dict",
     "capability_bundle_provider_to_dict",
-    "capability_contract_range_from_dict",
-    "capability_contract_range_to_dict",
-    "capability_requirement_from_dict",
-    "capability_requirement_to_dict",
 ]

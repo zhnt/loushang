@@ -2,20 +2,21 @@
 
 ## Status And Authority
 
-This document is the normative implementation contract for PLC1B-1. It refines
-the [Unified Plugin Architecture](unified-plugin-architecture.md) and the two
-Plugin delivery plans without changing their owner model. Where an older plan
-uses the ambiguous phrase `declaration_source_fingerprint`, the exact identities
-below apply.
+This document is the normative implementation contract for the PLC1B
+declaration foundation. It refines the
+[Unified Plugin Architecture](unified-plugin-architecture.md) and the two Plugin
+delivery plans without changing their owner model. Where an older plan uses the
+ambiguous phrase `declaration_source_fingerprint`, the exact identities below
+apply.
 
-The final narrow freeze review accepted the normative contract at `3f53a5af`
-with zero P0/P1. Further broad documentation review is not an implementation
-gate; PLC1B-1 source work may begin regression-first after tracking-issue
-attachment.
+The final narrow freeze review accepted the PLC1B-1 core contract at `3f53a5af`
+with zero P0/P1. The later inert payload slices extend that same source,
+reservation, evidence, and Candidate foundation regression-first; they do not
+reopen its authority model.
 
-PLC1B-1 remains internal and inert. It adds no public Plugin SDK, import path,
-owner admission, live Resource/Tool/Command publication, Capability binding, or
-MCP behavior.
+PLC1B remains internal and inert. It adds no public Plugin SDK, import path,
+owner admission, live Resource/Tool/Command publication, Capability binding,
+or MCP behavior.
 
 Source implementation is tracked by
 [#481](https://github.com/zhnt/loushang/issues/481).
@@ -197,7 +198,7 @@ sorted by contribution `id`, contains no duplicate ID, and each item has exactly
 | Key | Type |
 | --- | --- |
 | `configuration` | strict JSON object containing no secret material |
-| `contributionExecutionModel` | exact `"data_only"` or `"in_process"` contributed-runtime tag; `capability_provider` requires `"in_process"` |
+| `contributionExecutionModel` | exact `"data_only"` or `"in_process"` contributed-runtime tag; `capability_provider` requires `"in_process"`, while `resource_item`, `tool_pack`, and `command_pack` require `"data_only"` |
 | `declarationSource` | exact `PluginDeclarationSource` v1 object |
 | `id` | canonical contribution ID |
 | `kind` | supported contribution-kind tag |
@@ -274,6 +275,61 @@ binds the closure-local effective `configurationMapFingerprint`. A
 `requestedAuthorities` list. It may be declared by either document or
 preflighted in-process source, but the Resource itself is never executed by
 PLC1B-2.
+
+### Catalog Consumer payload v1
+
+`tool_pack` and `command_pack` are sibling contribution kinds sharing one
+strict Catalog Consumer primitive. The outer Declaration kind remains the only
+Tool-versus-Command tag; the payload does not repeat it as a peer type code.
+The `tool_pack` payload has exactly:
+
+| Key | Type/value |
+| --- | --- |
+| `catalogId` | canonical owner-controlled Tool catalog identifier |
+| `catalogRevision` | positive non-boolean pinned catalog revision |
+| `ownerNamespace` | canonical Tool owner namespace; exact-matches Declaration `owner` |
+| `payloadVersion` | integer `1` |
+| `requirements` | Capability-ID-sorted unique list of exact `CapabilityRequirement` records |
+| `tools` | non-empty sorted unique list of canonical Tool identities |
+
+The `command_pack` payload substitutes these two exact fields and otherwise
+uses the same record:
+
+| Key | Type/value |
+| --- | --- |
+| `catalogId` | canonical owner-controlled Command catalog identifier |
+| `catalogRevision` | positive non-boolean pinned catalog revision |
+| `commands` | non-empty sorted unique list of canonical Command identities |
+| `ownerNamespace` | canonical Command owner namespace; exact-matches Declaration `owner` |
+| `payloadVersion` | integer `1` |
+| `requirements` | Capability-ID-sorted unique list of exact `CapabilityRequirement` records |
+
+Each requirement has exactly `binding`, `capability`, `compatibleContract`,
+`facets`, and `optional`. `capability` and every facet are canonical
+identifiers; `binding` is `"direct"` or `"stable_reference"`;
+`compatibleContract` has exact positive non-boolean integer `minimum` and
+`maximum` fields with `maximum >= minimum`; `facets` is a non-empty sorted
+unique string list; and `optional` is boolean. These requirement facets are the
+only Capability-use request in the payload. Duplicate Capability identities
+within one pack fail instead of being merged. The inert codec performs no
+transitive Graph walk; PLC4 passes owner-normalized requirements to the existing
+Graph Planner through the Product Consumer-root compiler.
+
+One internal `plugin_authoring.capability_requirement` codec owns the shared
+contract-range and requirement wire mapping. Capability Provider and Catalog
+Consumer codecs are sibling clients of it; neither imports the other and no
+second Tool-specific or Command-specific requirement parser exists.
+
+Both contribution kinds require `contributionExecutionModel: "data_only"` and
+an empty `requestedAuthorities` list. Catalog identity/revision, item IDs, and
+requirements are strict data only. The payload contains no activation choice,
+Resource locator, Tool schema/handler, Command callback, Provider, admission,
+registry, service bag, Graph, Session, executable symbol, package digest, or
+configuration fingerprint. Product selection owns activation. PLC1B-3 is
+catalog-reference-only; a future owner-approved executable or file-backed
+definition requires a separately versioned owner schema and cannot be smuggled
+through these fields. A separate `resource_item` may hold source bytes, but it
+does not mint the Tool or Command identity.
 
 ### `PluginDeclarationDocument` v1
 
@@ -854,6 +910,8 @@ The PLC1B codecs use these distinct codes:
 unsupported_plugin_contribution_index_version
 unsupported_capability_provider_declaration_payload_version
 unsupported_resource_item_declaration_payload_version
+unsupported_tool_pack_declaration_payload_version
+unsupported_command_pack_declaration_payload_version
 unsupported_plugin_symbol_reference_version
 unsupported_plugin_declaration_source_version
 unsupported_plugin_declaration_ir_version
@@ -940,8 +998,8 @@ then union tag; then exact field set, field types, and field values; then the
 specialized ordering/duplicate checks; then cross-field/closure validation;
 and finally canonical-byte equality. For the known unpublished
 legacy Index, Declaration, Subject, Decision, Capability Provider payload,
-Resource Item payload, and symbol-reference shapes, a missing version
-discriminator maps to that record's
+Resource Item payload, Tool/Command pack payload, and symbol-reference shapes,
+a missing version discriminator maps to that record's
 exact `unsupported_*_version` code rather than exact-field mismatch. A present
 supported version with a missing peer field is exact-field mismatch. Thus a
 Decision with `decisionRecordVersion: 2` and `subjectSchemaVersion: 1` is
@@ -956,6 +1014,10 @@ order/duplicate/closure checks follow successful item decoding. Generic
 Declaration decoding precedes owner payload decoding. Resource Item payload
 version precedes its subtype, exact field set, field types, locator-kind and
 subtype-specific path constraints, then reservation/package cross-field checks.
+Tool/Command pack payload version precedes its exact field set, field types,
+catalog/item canonicalization, nested typed requirements, and finally
+reservation/owner cross-field checks. Nested requirement contract ranges and
+facets decode before pack requirement ordering and duplicate checks.
 Capability Provider payload version precedes its field set/types, then Provider
 metadata, required factory, and finally required nullable disposer. A missing
 disposer is `plugin_declaration_exact_field_mismatch`; `disposer: null` is
@@ -1053,3 +1115,29 @@ PLC1B-2 additionally proves:
 6. no Resource payload field can encode a nested contribution, callable,
    executable symbol, package digest, copied configuration fingerprint, owner
    admission, registry, Tool, Command, Capability, or Plugin instance.
+
+## PLC1B-3 Regression Gate
+
+PLC1B-3 additionally proves:
+
+1. Tool and Command packs use one shared Catalog Consumer parser/binder with
+   distinct exact `tools`/`commands` wire field sets and record-specific payload
+   version diagnostics;
+2. catalog identity/revision, owner namespace and item identities round-trip
+   canonically; missing/extra fields, wrong types, unsorted/duplicate/empty
+   items, invalid identifiers and unsupported versions fail with the exact
+   diagnostics above;
+3. typed requirements preserve contract bounds, requested facets, optionality
+   and binding, require Capability-ID order, and reject duplicate identities;
+4. the Index accepts `tool_pack` and `command_pack` only as `data_only` and
+   authority-free, while declaration source remains independently document or
+   in-process;
+5. the reservation-bound Builder consumes each sibling contribution exactly
+   once, and document-backed packs reach inert Candidates without catalog
+   resolution, Tool/Command construction or registration, Provider lookup,
+   Graph planning, Session access, Definition import, or MCP behavior;
+6. Candidate/reservation bridges exact-match Declaration kind, owner/source/
+   reservation envelope and payload `ownerNamespace`; and
+7. a Capability Provider payload explicitly requiring its own Capability fails
+   before owner admission, while transitive cycle detection remains solely with
+   the existing Graph Planner.

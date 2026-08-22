@@ -28,14 +28,22 @@ PLUGIN_DECLARATION_DOCUMENT_SCHEMA_ID = "loushang.plugin-declaration-document"
 MAX_PLUGIN_DECLARATION_DOCUMENT_BYTES = 4_194_304
 MAX_PLUGIN_DECLARATIONS_PER_DOCUMENT = 1_024
 
-PluginContributionKind = Literal["capability_provider", "resource_item"]
+PluginContributionKind = Literal[
+    "capability_provider",
+    "command_pack",
+    "resource_item",
+    "tool_pack",
+]
 PluginContributionExecutionModel = Literal["data_only", "in_process"]
 PluginDeclarationSourceKind = Literal["document", "in_process"]
 
 _SUPPORTED_CONTRIBUTION_KINDS = frozenset(
-    {"capability_provider", "resource_item"}
+    {"capability_provider", "command_pack", "resource_item", "tool_pack"}
 )
 _SUPPORTED_EXECUTION_MODELS = frozenset({"data_only", "in_process"})
+_DATA_ONLY_CONTRIBUTION_KINDS = frozenset(
+    {"command_pack", "resource_item", "tool_pack"}
+)
 _IDENTIFIER = re.compile(r"[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?")
 
 
@@ -237,10 +245,10 @@ class PluginContributionReservation:
         ):
             raise ValueError("Capability Provider contribution must be in-process")
         if (
-            self.kind == "resource_item"
+            self.kind in _DATA_ONLY_CONTRIBUTION_KINDS
             and self.contribution_execution_model != "data_only"
         ):
-            raise ValueError("Resource Item contribution must be data-only")
+            raise ValueError(f"{self.kind} contribution must be data-only")
         if any(not isinstance(item, str) for item in self.requested_authorities):
             raise TypeError("Plugin requested authorities must be strings")
         if tuple(sorted(self.requested_authorities)) != self.requested_authorities:
@@ -249,8 +257,11 @@ class PluginContributionReservation:
             raise ValueError("Plugin requested authorities must be unique")
         for authority in self.requested_authorities:
             _require_identifier(authority, name="requested authority")
-        if self.kind == "resource_item" and self.requested_authorities:
-            raise ValueError("Resource Item contribution cannot request authorities")
+        if (
+            self.kind in _DATA_ONLY_CONTRIBUTION_KINDS
+            and self.requested_authorities
+        ):
+            raise ValueError(f"{self.kind} contribution cannot request authorities")
         object.__setattr__(self, "configuration", _freeze_json_mapping(self.configuration))
         if not isinstance(self.required, bool):
             raise TypeError("Plugin contribution required must be a boolean")
@@ -335,15 +346,15 @@ class PluginContributionReservation:
                 "unsupported_plugin_contribution_execution_model",
                 "Capability Provider contribution must use in_process",
             )
-        if kind == "resource_item" and execution_model != "data_only":
+        if kind in _DATA_ONLY_CONTRIBUTION_KINDS and execution_model != "data_only":
             _raise_codec(
                 "unsupported_plugin_contribution_execution_model",
-                "Resource Item contribution must use data_only",
+                f"{kind} contribution must use data_only",
             )
-        if kind == "resource_item" and authorities:
+        if kind in _DATA_ONLY_CONTRIBUTION_KINDS and authorities:
             _raise_codec(
                 "plugin_declaration_field_value_mismatch",
-                "Resource Item contribution cannot request authorities",
+                f"{kind} contribution cannot request authorities",
             )
         source = PluginDeclarationSource.from_dict(document["declarationSource"])
         try:

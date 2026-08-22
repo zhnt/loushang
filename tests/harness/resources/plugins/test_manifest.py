@@ -226,7 +226,7 @@ def test_plugin_manifest_parser_rejects_unknown_contribution_schema(
                     "items": [
                         {
                             "id": "review-provider",
-                            "kind": "tool_pack",
+                            "kind": "event_definition",
                             "owner": "coding.lsp",
                             "contributionExecutionModel": "in_process",
                             "declarationSource": {
