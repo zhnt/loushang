@@ -138,6 +138,9 @@ The sixth review additionally makes group configuration fingerprints strictly
 closure-local, freezes the exhaustive validation-condition/diagnostic mapping,
 and replaces decoder-name counting as the security claim with a concrete
 verified-handle byte-ingress import/call edge that rejects aliases and helpers.
+The final narrow correction binds the concrete codec construction result to its
+single private Coordinator attribute and forbids injection, shadowing or later
+mutation; it does not change the authoring SPI or delivery order.
 
 ### P0-03 — Stable public SDK cannot precede production combination evidence
 

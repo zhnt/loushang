@@ -229,6 +229,23 @@ change those state machines. It is still not self-approval: one narrow fresh
 freeze review must report zero P0/P1 before PLC1B-1 source migration begins,
 and the required tracking issue remains a separate entry gate.
 
+## PLC1B Final Narrow Freeze Correction
+
+The final narrow review of `260aab45` accepted configuration isolation and the
+diagnostic mapping with zero findings. The decoder and cross-document reviewers
+independently reproduced the same single P1: the guard counted one concrete
+codec construction but did not prove its result was assigned to
+`self._document_codec`, so a caller-supplied codec could satisfy the call count.
+
+The correction requires one unaliased import for each concrete boundary type,
+one exact `self._document_codec = PluginDeclarationDocumentCodec()` assignment
+in Coordinator `__init__`, no imported-symbol shadowing, no later/direct/
+dynamic/property/external mutation, and the existing exact ingress byte flow.
+Regression cases cover caller injection, later rebinding, import shadowing,
+dynamic `__setattr__`, and another source file mutating the private attribute.
+Only the original decoder finding receives a point recheck; this correction
+does not reopen the schema, lifecycle, product, or security architecture.
+
 ## Review Scope
 
 The review compared the plan against:

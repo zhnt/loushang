@@ -88,8 +88,8 @@ uses it with canonical-byte equality disabled, then passes the decoded Index to
 the strict Index codec. `PluginDeclarationDocumentCodec`, colocated with the
 low-level declaration records under `resources.plugins`, uses the same primitive
 with canonical-byte equality required. The higher
-`PluginDeclarationCoordinator` imports neither `json` nor a decoder: its one
-document-group read is exactly one receiver-qualified
+`PluginDeclarationCoordinator` imports neither `json` nor a raw JSON decoder:
+its one document-group read is exactly one receiver-qualified
 `VerifiedRevisionHandle.open_file()` call, after which it calls
 `PluginDeclarationDocumentCodec.decode_bytes()`. It never calls `Path.open`,
 `read_text`, `read_bytes`, or another byte helper.
@@ -101,11 +101,14 @@ That method contains exactly one `handle.open_file(locator)`, one read from the
 returned stream, and one direct
 `self._document_codec.decode_bytes(verified_bytes)` call; it accepts no reader
 or decoder callback and makes no other call. `_document_codec` is the concrete
-`PluginDeclarationDocumentCodec`, constructed once by the Coordinator rather
-than supplied by a caller. The Coordinator directly imports that codec from
+`PluginDeclarationDocumentCodec`, assigned exactly once in `__init__` as
+`self._document_codec = PluginDeclarationDocumentCodec()` rather than supplied
+by a caller. No later assignment, deletion, property/dynamic override, or
+external source mutation is legal. The Coordinator directly and without an
+alias imports that codec from
 `resources.plugins.declarations` and `VerifiedRevisionHandle` from
-`resources.plugins.revisions`. Architecture
-tests verify the handle annotation and receiver, freeze those three call edges,
+`resources.plugins.revisions`; neither imported name may be rebound.
+Architecture tests verify the handle annotation and receiver, freeze those three call edges,
 scan raw-decoder symbol references (including module/import/assignment aliases),
 and reject every helper call from this method even when its import lives outside
 the three package-boundary directories. A helper therefore cannot create a peer
@@ -937,7 +940,8 @@ Implementation begins regression-first and must prove:
    receiver-qualified `VerifiedRevisionHandle.open_file()`, the sole low-level
    strict JSON primitive serves manifest/document codecs, the private byte-
    ingress method has only the exact three call edges above, assignment/module/
-   third-party decoder aliases and imported helper routes fail the architecture
+   third-party decoder aliases, caller-injected/rebound codec instances, import
+   shadowing and imported helper routes fail the architecture
    gate, a real verified-handle fixture proves the receiver, and manifest/Index
    duplicate keys and unsorted items preserve their exact diagnostics;
 8. claim/settle/finalize/abort/expire barriers cover deadline equality,

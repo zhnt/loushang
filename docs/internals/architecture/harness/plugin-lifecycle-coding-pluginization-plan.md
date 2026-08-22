@@ -649,11 +649,14 @@ Scope:
   closures, while each SourceGroup hashes only its closure-local projection; a
   disjoint group's configuration cannot alter this group's Subject/decision key;
 - reuse one low-level `resources.plugins` strict JSON primitive for manifest and
-  DeclarationDocument schema codecs; Coordinator imports no JSON/Path decoder
-  and isolates byte ingress in a concrete-`VerifiedRevisionHandle` method with
+  DeclarationDocument schema codecs; Coordinator imports no raw JSON decoder
+  or Path reader and isolates byte ingress in a concrete-
+  `VerifiedRevisionHandle` method with
   exactly one `open_file`, stream `read`, and direct document-codec
   `decode_bytes` call. It accepts no callback; architecture guards freeze the
-  import/call edge and reject decoder aliases or imported helper calls;
+  import/call edge, exact concrete-codec assignment, and reject caller
+  injection, later/external rebinding, import shadowing, decoder aliases or
+  imported helper calls;
 - implement the exact Source/Index/Declaration/Document/Subject/Decision/
   document-evidence/candidate fields, canonical bytes, fingerprint domains and
   diagnostics frozen by the PLC1B Contract;
@@ -780,7 +783,8 @@ Required current-source migration inventory:
 - architecture inventories include `plugin_authoring` raw JSON/read sinks,
   count exact call expressions, freeze the sole document `open_file()` and
   strict decoder callpoints, verify the concrete handle annotation/receiver,
-  reject any helper call from the byte-ingress method, and use synthetic
+  reject codec injection/rebinding/import shadowing and any helper call from
+  the byte-ingress method, and use synthetic
   peer-route tests for assignment/module/third-party aliases, a second decoder
   (including `JSONDecoder.decode` inside an allowed function), Path read,
   Subject builder, or terminal caller. `resources/plugins/types.py`
