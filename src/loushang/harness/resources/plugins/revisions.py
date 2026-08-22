@@ -493,7 +493,9 @@ def _project_verified_revision(
 ) -> VerifiedPluginRevision:
     package_root = published_root / package.package_root_relative
     manifest_path = (
-        published_root / "plugin.json" if package.manifest_path is not None else None
+        published_root / package.manifest_path.relative_to(package.root)
+        if package.manifest_path is not None
+        else None
     )
     manifest = replace(
         package.manifest,

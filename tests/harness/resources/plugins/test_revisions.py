@@ -30,6 +30,7 @@ def test_revision_store_publishes_content_addressed_snapshot_and_keeps_source_id
     assert published.package_root == published.root / "resources"
     assert published.source.path == source.resolve()
     assert published.manifest.root == published.root
+    assert published.manifest_path == published.root / "plugin.json"
     assert published.manifest_digest == package.manifest_digest
     assert published.root.stat().st_mode & 0o077 == 0
     assert (published.root / "resources" / "prompts" / "review.md").stat().st_mode & 0o077 == 0

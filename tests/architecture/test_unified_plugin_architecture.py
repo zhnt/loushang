@@ -6,6 +6,9 @@ from functools import cache
 from pathlib import Path
 from typing import get_args
 
+import loushang.harness.capabilities as public_capabilities
+import loushang.harness.resources.plugins as public_plugins
+import loushang.harness.runtime as public_runtime
 from loushang.harness.runtime import RuntimeCapabilityScope
 
 ARCHITECTURE_PATH = Path(
@@ -21,35 +24,51 @@ PLUGIN_PACKAGE_BOUNDARY_ROOTS = (
     Path("src/loushang/harness/resources/plugins"),
     Path("src/loushang/harness/resources/packages"),
 )
-EXPECTED_MANIFEST_BOUNDARY_SINK_SITES = {
+EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
     (
         Path("src/loushang/harness/resources/plugins/manifest.py"),
         "PluginManifestParser.parse",
-    ),
+    ): "plugin-manifest-parser",
     (
         Path("src/loushang/harness/resources/plugins/manifest.py"),
         "PluginManifestParser.revalidate",
-    ),
+    ): "plugin-manifest-parser",
+    (
+        Path("src/loushang/harness/resources/plugins/revisions.py"),
+        "_digest_file",
+    ): "verified-revision-publisher",
+    (
+        Path("src/loushang/harness/resources/plugins/revisions.py"),
+        "_open_directory",
+    ): "verified-revision-boundary",
+    (
+        Path("src/loushang/harness/resources/plugins/revisions.py"),
+        "_open_regular_file",
+    ): "verified-revision-boundary",
     (
         Path("src/loushang/harness/resources/packages/manifest.py"),
         "resolve_package_manifest",
-    ),
+    ): "package-manifest-parser",
     (
         Path("src/loushang/harness/resources/packages/materializer.py"),
         "PackageMaterializer.load_trusted_sources",
-    ),
+    ): "package-materializer",
     (
         Path("src/loushang/harness/resources/packages/materializer.py"),
         "PackageMaterializer._load_lockfile",
-    ),
+    ): "package-materializer",
     (
         Path("src/loushang/harness/resources/packages/catalog.py"),
         "load_package_catalog",
-    ),
+    ): "package-catalog",
     (
         Path("src/loushang/harness/resources/packages/materializer.py"),
         "_pypi_latest_version_result",
-    ),
+    ): "package-materializer",
+    (
+        Path("src/loushang/harness/resources/packages/mounts.py"),
+        "PackageResourceMount.read_text",
+    ): "package-resource-mount",
 }
 EXPECTED_GRAPH_PRIVATE_MUTATION_SITES = {
     (
@@ -212,6 +231,65 @@ EXPECTED_AUTHORITY_CLASS_SITES = {
         "src/loushang/harness/capabilities/graph_projection.py"
     ),
 }
+EXPECTED_GRAPH_BINDER_CONSTRUCTION_SITES = {
+    (
+        Path("src/loushang/harness/session/agent_product.py"),
+        "AgentProductSession.__init__",
+    ),
+}
+FOUNDATION_PUBLIC_EXPORTS = {
+    "capabilities": frozenset(
+        {
+            "CapabilityBundleProvider",
+            "CapabilityBundleProviderBinding",
+            "CapabilityDefinition",
+            "CapabilityProviderContext",
+            "CapabilityRequirement",
+            "RuntimeCapabilityGraphBinder",
+            "RuntimeCapabilityGraphPlan",
+            "RuntimeCapabilityGraphPlanner",
+        }
+    ),
+    "plugins": frozenset(
+        {
+            "PluginContributionCandidate",
+            "PluginContributionIndex",
+            "PluginContributionReservation",
+            "PluginDeclaration",
+            "PluginResolutionAuthority",
+            "PluginSelectionResolver",
+            "PublishedPluginPackage",
+            "VerifiedRevisionHandle",
+        }
+    ),
+    "runtime": frozenset(
+        {
+            "RegistrationLease",
+            "RegistrationOwner",
+            "RegistrationScope",
+        }
+    ),
+}
+PRE_SDK_PRIVATE_PLUGIN_SYMBOLS = frozenset(
+    {
+        "CapabilityComponentHost",
+        "PluginContext",
+        "PluginDeclarationBuilder",
+        "PluginDefinition",
+        "PluginDefinitionEvaluator",
+        "PluginManagementService",
+        "ProductCapabilityProviderResolver",
+    }
+)
+INERT_PLUGIN_FORBIDDEN_IMPORT_PREFIXES = (
+    "loushang.coding",
+    "loushang.harness.capabilities.graph_binding",
+    "loushang.harness.capabilities.graph_planning",
+    "loushang.harness.capabilities.graph_runtime",
+    "loushang.harness.capabilities.provider_binding",
+    "loushang.harness.runtime.registration",
+    "loushang.harness.session",
+)
 
 
 @cache
@@ -358,7 +436,7 @@ def _import_aliases(tree: ast.Module) -> tuple[set[str], set[str]]:
     return json_modules, json_decoders
 
 
-def _is_manifest_boundary_sink(
+def _is_plugin_package_boundary_sink(
     nodes: tuple[ast.AST, ...],
     *,
     json_modules: set[str],
@@ -392,7 +470,7 @@ def _is_manifest_boundary_sink(
     return reads_file or parses_json
 
 
-def _manifest_boundary_sink_sites(
+def _plugin_package_boundary_sink_sites(
     sources: Mapping[Path, str],
 ) -> set[tuple[Path, str]]:
     sites: set[tuple[Path, str]] = set()
@@ -401,14 +479,14 @@ def _manifest_boundary_sink_sites(
             continue
         tree = ast.parse(source, filename=str(path))
         json_modules, json_decoders = _import_aliases(tree)
-        if _is_manifest_boundary_sink(
+        if _is_plugin_package_boundary_sink(
             _code_unit_nodes(tree.body),
             json_modules=json_modules,
             json_decoders=json_decoders,
         ):
             sites.add((path, "<module>"))
         for qualified, function in _qualified_functions(source, filename=path):
-            if _is_manifest_boundary_sink(
+            if _is_plugin_package_boundary_sink(
                 _code_unit_nodes(function.body),
                 json_modules=json_modules,
                 json_decoders=json_decoders,
@@ -805,12 +883,92 @@ def _class_sites(
     )
 
 
+def _call_sites(
+    sources: Mapping[Path, str],
+    callable_name: str,
+) -> set[tuple[Path, str]]:
+    sites: set[tuple[Path, str]] = set()
+    for path, source in sources.items():
+        if callable_name not in source:
+            continue
+        tree = ast.parse(source, filename=str(path))
+        module_nodes = _code_unit_nodes(tree.body)
+        if _nodes_call_name(module_nodes, callable_name):
+            sites.add((path, "<module>"))
+        for qualified, function in _qualified_functions(source, filename=path):
+            if _nodes_call_name(_code_unit_nodes(function.body), callable_name):
+                sites.add((path, qualified))
+    return sites
+
+
+def _nodes_call_name(nodes: tuple[ast.AST, ...], callable_name: str) -> bool:
+    return any(
+        isinstance(node, ast.Call)
+        and (
+            isinstance(node.func, ast.Name)
+            and node.func.id == callable_name
+            or isinstance(node.func, ast.Attribute)
+            and node.func.attr == callable_name
+        )
+        for parent in nodes
+        for node in ast.walk(parent)
+    )
+
+
+def _imported_modules(source: str, *, filename: Path) -> set[str]:
+    modules: set[str] = set()
+    for node in ast.walk(ast.parse(source, filename=str(filename))):
+        if isinstance(node, ast.Import):
+            modules.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module is not None:
+            modules.add(node.module)
+    return modules
+
+
+def _executable_loading_sites(
+    sources: Mapping[Path, str],
+) -> set[tuple[Path, str]]:
+    tokens = {
+        "__import__",
+        "exec_module",
+        "import_module",
+        "run_module",
+        "run_path",
+        "spec_from_file_location",
+    }
+    sites: set[tuple[Path, str]] = set()
+    for path, source in sources.items():
+        if not any(token in source for token in tokens):
+            continue
+        tree = ast.parse(source, filename=str(path))
+        if _nodes_call_any_name(_code_unit_nodes(tree.body), tokens):
+            sites.add((path, "<module>"))
+        for qualified, function in _qualified_functions(source, filename=path):
+            if _nodes_call_any_name(_code_unit_nodes(function.body), tokens):
+                sites.add((path, qualified))
+    return sites
+
+
+def _nodes_call_any_name(nodes: tuple[ast.AST, ...], names: set[str]) -> bool:
+    return any(
+        isinstance(node, ast.Call)
+        and (
+            isinstance(node.func, ast.Name)
+            and node.func.id in names
+            or isinstance(node.func, ast.Attribute)
+            and node.func.attr in names
+        )
+        for parent in nodes
+        for node in ast.walk(parent)
+    )
+
+
 def test_unified_plugin_architecture_document_is_indexed() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
     readme = README_PATH.read_text(encoding="utf-8")
 
     assert "unified-plugin-architecture.md" in readme
-    assert "one manifest parser" in architecture
+    assert "Every manifest format has one parser" in architecture
     assert "Plugin identity is not a Capability Graph node" in architecture
     assert "installed != enabled != preflight-approved != declared != requested" in (
         architecture
@@ -954,13 +1112,22 @@ def test_plugin_manifest_has_one_parser_and_one_resolved_descriptor_authority() 
     )
 
 
-def test_current_package_manifest_boundary_sinks_use_qualified_allowlist() -> None:
+def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
     sources = _source_texts()
 
     assert (
-        _manifest_boundary_sink_sites(sources)
-        == EXPECTED_MANIFEST_BOUNDARY_SINK_SITES
+        _plugin_package_boundary_sink_sites(sources)
+        == set(EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS)
     )
+    assert set(EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS.values()) == {
+        "package-catalog",
+        "package-manifest-parser",
+        "package-materializer",
+        "package-resource-mount",
+        "plugin-manifest-parser",
+        "verified-revision-boundary",
+        "verified-revision-publisher",
+    }
     synthetic = {
         Path("src/loushang/harness/resources/plugins/read_helper.py"): (
             "def read_text(path):\n"
@@ -990,7 +1157,7 @@ def test_current_package_manifest_boundary_sinks_use_qualified_allowlist() -> No
             "payload = codec.loads(path.read_text())\n"
         ),
     }
-    assert _manifest_boundary_sink_sites(synthetic) == {
+    assert _plugin_package_boundary_sink_sites(synthetic) == {
         (
             Path("src/loushang/harness/resources/plugins/indirect.py"),
             "parse",
@@ -1162,8 +1329,49 @@ def test_current_profile_graph_authority_classes_have_one_definition() -> None:
 
     for class_name, expected_path in EXPECTED_AUTHORITY_CLASS_SITES.items():
         assert _class_sites(sources, class_name) == (expected_path,)
+    assert (
+        _call_sites(sources, "RuntimeCapabilityGraphBinder")
+        == EXPECTED_GRAPH_BINDER_CONSTRUCTION_SITES
+    )
     assert _class_sites(sources, "EffectivePluginRuntimeProjector") == ()
     assert _class_sites(sources, "PluginProfileResolver") == ()
+
+
+def test_inert_plugin_layer_has_no_live_runtime_or_product_dependencies() -> None:
+    plugin_sources = {
+        path: source
+        for path, source in _source_texts().items()
+        if path.is_relative_to(Path("src/loushang/harness/resources/plugins"))
+    }
+    forbidden_imports = {
+        (path, imported)
+        for path, source in plugin_sources.items()
+        for imported in _imported_modules(source, filename=path)
+        if any(
+            imported == prefix or imported.startswith(f"{prefix}.")
+            for prefix in INERT_PLUGIN_FORBIDDEN_IMPORT_PREFIXES
+        )
+    }
+
+    assert forbidden_imports == set()
+    assert _executable_loading_sites(plugin_sources) == set()
+
+
+def test_plugin_foundation_public_exports_are_frozen_before_sdk() -> None:
+    surfaces = {
+        "capabilities": public_capabilities,
+        "plugins": public_plugins,
+        "runtime": public_runtime,
+    }
+
+    for surface_name, expected in FOUNDATION_PUBLIC_EXPORTS.items():
+        surface = surfaces[surface_name]
+        assert expected.issubset(set(surface.__all__))
+        assert all(hasattr(surface, symbol) for symbol in expected)
+    assert PRE_SDK_PRIVATE_PLUGIN_SYMBOLS.isdisjoint(set(public_plugins.__all__))
+    assert all(
+        not hasattr(public_plugins, symbol) for symbol in PRE_SDK_PRIVATE_PLUGIN_SYMBOLS
+    )
 
 
 def test_plugin_scope_contract_preserves_current_runtime_scope_vocabulary() -> None:
