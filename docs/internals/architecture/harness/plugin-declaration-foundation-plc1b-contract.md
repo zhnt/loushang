@@ -686,6 +686,15 @@ The Coordinator and future evaluator live in the higher
 `loushang.harness.plugin_authoring` composition layer. Lower
 `resources.plugins` declarations/selection code never imports that layer.
 
+The same higher layer exposes exactly one production composition entry,
+`PluginDeclarationHost.resolve()`. One Host instance constructs and retains one
+Resolver/Coordinator pair. It passes `pending_approval`, `denied`, and
+`rejected` through as their existing immutable outcome arms, but it transfers
+`accepted` directly to the Coordinator and exposes only `PluginSelection` on
+success. It never writes an Approval decision or returns the accepted token to
+Product code. Before PLC3, an executable accepted arm therefore still follows
+the Coordinator's typed `execution_not_consumed` aggregate abort fence.
+
 PLC1B removes or privatizes the current top-level
 `build_execution_approval_subject`, `PluginPreflight`, direct `finalize()`, and
 `rollback()` entry points. Callers receive proposed subjects only through

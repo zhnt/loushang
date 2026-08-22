@@ -1941,6 +1941,49 @@ def test_coordinator_exclusively_owns_evidenced_terminal_finalization() -> None:
     assert terminal_callers == {PLUGIN_DECLARATION_COORDINATOR_PATH}
 
 
+def test_declaration_host_is_the_single_production_composition_entry() -> None:
+    from loushang.harness.plugin_authoring.host import (
+        PluginDeclarationHost,
+        PluginDeclarationHostResult,
+    )
+
+    parameters = inspect.signature(PluginDeclarationHost.resolve).parameters
+    assert tuple(parameters) == (
+        "self",
+        "packages",
+        "bindings",
+        "plan",
+        "decision_lookup",
+    )
+    assert set(get_args(PluginDeclarationHostResult)) == {
+        public_plugins.PluginSelection,
+        public_plugins.PluginPreflightPendingApprovalOutcome,
+        public_plugins.PluginPreflightDeniedOutcome,
+        public_plugins.PluginPreflightRejectedOutcome,
+    }
+    host_path = Path("src/loushang/harness/plugin_authoring/host.py")
+    host_source = _source_texts()[host_path]
+    assert host_source.count("self._resolver.preflight(") == 1
+    assert host_source.count("self._coordinator.finalize(") == 1
+    assert _call_sites(_source_texts(), "PluginSelectionResolver") == {
+        (host_path, "PluginDeclarationHost.__init__"),
+    }
+    assert _call_sites(_source_texts(), "PluginDeclarationCoordinator") == {
+        (host_path, "PluginDeclarationHost.__init__"),
+    }
+    assert not hasattr(public_plugins, "PluginDeclarationHost")
+    architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
+    contract = PLC1B_CONTRACT_PATH.read_text(encoding="utf-8")
+    authoring_plan = AUTHORING_PLAN_PATH.read_text(encoding="utf-8")
+    assert "single production\ncomposition entry" in architecture
+    assert "accepted token is never a Product-facing continuation handle" in (
+        architecture
+    )
+    assert "exactly one production composition entry" in contract
+    assert "It never writes an Approval decision" in contract
+    assert "-> PluginDeclarationHost.resolve()" in authoring_plan
+
+
 def test_executable_declaration_is_gated_by_inert_preflight() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
 

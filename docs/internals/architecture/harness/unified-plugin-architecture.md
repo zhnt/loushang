@@ -332,6 +332,17 @@ Coordinator-only terminal transitions:
 `rejected` union described above. Non-accepted arms carry no accepted group,
 reservation, gate, active token, or finalizable preflight.
 
+The higher internal `PluginDeclarationHost` is the single production
+composition entry for this protocol. One Host instance owns one long-lived
+`PluginSelectionResolver` and its matching `PluginDeclarationCoordinator` for
+the current composition root. Its `resolve(packages, bindings, plan,
+decision_lookup)` operation returns the existing `pending_approval`, `denied`,
+or `rejected` arm unchanged; an `accepted` arm is synchronously transferred to
+the Coordinator and returns only the resulting `PluginSelection`. Therefore an
+active accepted token is never a Product-facing continuation handle. The Host
+does not record Approval decisions, evaluate executable Definitions, perform
+owner admission, or bind live runtime objects.
+
 One exact package revision plus `sourceDescriptorFingerprint` forms at most one
 group and is decoded or evaluated exactly once in a preflight. A package may
 contain multiple distinct

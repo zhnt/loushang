@@ -384,6 +384,8 @@ plugin.json
   -> PluginManifestParser
   -> PluginResolutionAuthority
   -> PublishedPluginPackage + VerifiedRevisionHandle
+  -> PluginDeclarationHost.resolve()
+       owns one long-lived Resolver/Coordinator pair for the composition root
   -> PluginSelectionResolver.preflight()
        inert manifest facts only
        no import
@@ -412,6 +414,7 @@ plugin.json
   -> PluginSelectionResolver.finalize()
        exact full-preflight reservation consumption once
        PluginContributionCandidate
+  -> PluginDeclarationHost returns PluginSelection only
   -> Capability owner eligibility
   -> Product/OEM bounded normalization
   -> Capability owner final admission

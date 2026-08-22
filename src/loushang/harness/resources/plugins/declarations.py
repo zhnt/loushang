@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import PurePosixPath
 from types import MappingProxyType
-from typing import Literal, cast
+from typing import Literal, NoReturn, cast
 
 from loushang.harness.resources.plugins._strict_json import (
     PluginJsonCodecError,
@@ -804,7 +804,7 @@ def _require_sorted_unique_strings(value: object, *, name: str) -> tuple[str, ..
 
 def _raise_codec(
     code: str, message: str, *, cause: BaseException | None = None
-) -> None:
+) -> NoReturn:
     error = PluginDeclarationCodecError(message, code=code)
     if cause is None:
         raise error
