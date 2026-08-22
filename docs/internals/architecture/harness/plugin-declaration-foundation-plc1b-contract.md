@@ -94,6 +94,24 @@ document-group read is exactly one receiver-qualified
 `PluginDeclarationDocumentCodec.decode_bytes()`. It never calls `Path.open`,
 `read_text`, `read_bytes`, or another byte helper.
 
+This boundary is frozen by an exact import/call edge, not by a decoder-name
+heuristic. The Coordinator isolates byte ingress in one private
+`_read_and_decode_document(handle: VerifiedRevisionHandle, locator)` method.
+That method contains exactly one `handle.open_file(locator)`, one read from the
+returned stream, and one direct
+`self._document_codec.decode_bytes(verified_bytes)` call; it accepts no reader
+or decoder callback and makes no other call. `_document_codec` is the concrete
+`PluginDeclarationDocumentCodec`, constructed once by the Coordinator rather
+than supplied by a caller. The Coordinator directly imports that codec from
+`resources.plugins.declarations` and `VerifiedRevisionHandle` from
+`resources.plugins.revisions`. Architecture
+tests verify the handle annotation and receiver, freeze those three call edges,
+scan raw-decoder symbol references (including module/import/assignment aliases),
+and reject every helper call from this method even when its import lives outside
+the three package-boundary directories. A helper therefore cannot create a peer
+decode route. A real `VerifiedRevisionHandle` integration fixture separately
+proves the static receiver constraint at runtime.
+
 ## Exact PLC1B Wire Records
 
 All object field sets below are exact. Lists described as sorted must already be
@@ -365,7 +383,7 @@ still determines the bytes. There is no raw-record hashing exception.
 | `indexFingerprint` | domain `loushang.plugin-contribution-index/v2`; `index` = exact Index v2 envelope |
 | `reservationFingerprint` | domain `loushang.plugin-contribution-reservation/v2`; `reservation` = exact v2 Index item |
 | `reservationClosureFingerprint` | domain `loushang.plugin-reservation-closure/v1`; `reservations` = contribution-ID-sorted `{contributionId, reservationFingerprint}` list |
-| `configurationMapFingerprint` | domain `loushang.plugin-group-configuration/v1`; `configurations` = `(pluginId, contributionId)`-sorted exact Product-owned effective entries `{configuration, contributionId, pluginId}` |
+| `configurationMapFingerprint` | domain `loushang.plugin-group-configuration/v1`; `configurations` = the current SourceProposal/SourceGroup's complete reservation-closure projection, encoded as `(pluginId, contributionId)`-sorted exact Product-owned effective entries `{configuration, contributionId, pluginId}` |
 | `declarationFingerprint` | domain `loushang.plugin-declaration/v2`; `declaration` = exact Declaration v2 wire record |
 | `subjectDigest` | domain `loushang.plugin-execution-approval-subject/v2`; `subject` = exact Subject v2 wire record |
 | `sourceGroupFingerprint` | domain `loushang.plugin-declaration-source-group/v1`; exact fields `allowedAuthorityCeiling`, `ambientHostAuthority`, `configurationMapFingerprint`, `dependencyLockDigest`, `instanceRevisionRef`, `packageContentDigest`, `packageSourceIdentity`, `pluginId`, `policyRevision`, `productId`, `requestedAuthorities`, `reservationClosureFingerprint`, `scopeId`, `sourceDescriptorFingerprint`, `sourceTrustClass`, `sourceTrustPolicyRevision` |
@@ -476,9 +494,16 @@ preflight. PLC1B receives only the already-resolved frozen
 `PluginEffectiveConfigurationSetV1` with exactly
 `configurationSetVersion: 1` and `entries`. Each entry has exactly
 `configuration`, `contributionId`, and `pluginId`; entries are strictly sorted
-by `(pluginId, contributionId)` and exactly cover the proposed reservation
-closure. PLC1B validates and hashes this map; it has no overlay, delete, merge,
-or sensitivity-classification algorithm and accepts no peer `overlays`
+by `(pluginId, contributionId)` and exactly cover the union of every proposed
+source reservation closure in the Plan. For each SourceProposal/SourceGroup,
+PLC1B projects exactly the entries in that source's complete reservation
+closure and computes `configurationMapFingerprint` from that local sorted
+projection. There is no Plan-global configuration fingerprint and a group may
+not hash or retain another group's entries. Consequently changing only group B
+configuration does not change group A's configuration fingerprint, group
+fingerprint, Subject, or approval lookup key unless A and B are the same source
+closure. PLC1B validates and hashes these projections; it has no overlay,
+delete, merge, or sensitivity-classification algorithm and accepts no peer `overlays`
 argument. A secret value never enters this map. At any nesting depth, an object
 containing `$secretRef` must contain only that key, whose value is the exact
 tagged reference
@@ -794,6 +819,7 @@ plugin_declaration_document_too_large
 plugin_declaration_document_too_many_declarations
 plugin_declaration_exact_field_mismatch
 plugin_declaration_field_type_mismatch
+plugin_declaration_field_value_mismatch
 unsupported_plugin_declaration_source_kind
 unsupported_plugin_contribution_kind
 unsupported_plugin_contribution_execution_model
@@ -809,10 +835,47 @@ plugin_declaration_evidence_attempt_mismatch
 invalid_plugin_effective_configuration
 ```
 
+The condition-to-code mapping is normative and exhaustive for PLC1B:
+
+| Validation condition | Exact diagnostic |
+| --- | --- |
+| bytes are not UTF-8 | `plugin_declaration_invalid_utf8` |
+| UTF-8 BOM is present | `plugin_declaration_utf8_bom` |
+| JSON syntax or trailing input is invalid | `plugin_declaration_invalid_json` |
+| NaN or Infinity constant is present | `plugin_declaration_invalid_json_constant` |
+| an object contains a duplicate key | `plugin_declaration_duplicate_json_key` |
+| nesting exceeds the frozen limit | `plugin_declaration_json_depth_exceeded` |
+| document byte length exceeds the frozen limit | `plugin_declaration_document_too_large` |
+| declaration count exceeds the frozen limit | `plugin_declaration_document_too_many_declarations` |
+| a supported-version object has a missing or extra key | `plugin_declaration_exact_field_mismatch` |
+| a field has the wrong JSON type, a forbidden null, or a boolean in an integer field | `plugin_declaration_field_type_mismatch` |
+| an individually validated field violates its value domain, including an empty/invalid identifier, digest width/case, integer range, canonical contained locator/symbol path, or a field-level sorted-unique list such as `requestedAuthorities` | `plugin_declaration_field_value_mismatch` |
+| Source union tag is unknown | `unsupported_plugin_declaration_source_kind` |
+| contribution kind is unknown | `unsupported_plugin_contribution_kind` |
+| contributed execution-model tag is unknown or incompatible with its contribution kind | `unsupported_plugin_contribution_execution_model` |
+| Evidence union tag is unknown or not enabled in this slice | `unsupported_plugin_declaration_evidence_kind` |
+| Index `items` are not contribution-ID sorted | `plugin_contribution_index_unsorted` |
+| Index contains duplicate contribution identity | `duplicate_plugin_contribution_identity` |
+| Document `declarations` are not `(pluginId, contributionId)` sorted | `plugin_declaration_document_unsorted` |
+| Document contains duplicate declaration identity | `duplicate_plugin_declaration_identity` |
+| individually valid peer fields disagree, including Source fields, Provider owner metadata versus Declaration owner/source, or factory/disposer model versus Index model | `plugin_declaration_cross_field_mismatch` |
+| declaration/reservation/source set does not equal its complete expected closure | `plugin_declaration_closure_mismatch` |
+| otherwise valid document bytes differ from canonical re-encoding | `plugin_declaration_noncanonical_bytes` |
+| Evidence attempt/group/use identity does not match the active accepted attempt | `plugin_declaration_evidence_attempt_mismatch` |
+| effective configuration coverage, entry identity, or exact `$secretRef` form is invalid | `invalid_plugin_effective_configuration` |
+
+An unsupported or missing version discriminator uses the record-specific
+`unsupported_*_version` code listed above. A discriminator with the wrong JSON
+type uses `plugin_declaration_field_type_mismatch`. The specialized kind,
+execution-model, ordering, duplicate, closure, Evidence-attempt, and effective-
+configuration rows override the general value/cross-field rows, so no invalid
+condition in the table can be assigned two codes.
+
 Decode priority is deterministic: UTF-8/BOM/JSON/duplicate-key failure first;
 then a present version discriminator's strict integer type and supported value;
-then union tag; then exact field set and field types; then cross-field/closure
-validation; and finally canonical-byte equality. For the known unpublished
+then union tag; then exact field set, field types, and field values; then the
+specialized ordering/duplicate checks; then cross-field/closure validation;
+and finally canonical-byte equality. For the known unpublished
 legacy Index, Declaration, Subject, Decision, Capability Provider payload, and
 symbol-reference shapes, a missing version discriminator maps to that record's
 exact `unsupported_*_version` code rather than exact-field mismatch. A present
@@ -865,12 +928,17 @@ Implementation begins regression-first and must prove:
    sources preserve complete declaration closure while candidate selection may
    emit a subset;
 6. effective configuration fixtures cover Product override/delete/missing/extra
-   entries, stable map ordering, secret-reference rotation, malformed tagged
+   entries, stable map ordering, two independent SourceGroups proving that a
+   group-B-only change leaves group A's configuration/group/Subject digests
+   unchanged, secret-reference rotation, malformed tagged
    references, and Product-owner raw-secret rejection before PLC1B handoff,
    without putting secret bytes in PLC1B hashes or diagnostics;
 7. each document source is read exactly once only through the Coordinator's
    receiver-qualified `VerifiedRevisionHandle.open_file()`, the sole low-level
-   strict JSON primitive serves manifest/document codecs, and manifest/Index
+   strict JSON primitive serves manifest/document codecs, the private byte-
+   ingress method has only the exact three call edges above, assignment/module/
+   third-party decoder aliases and imported helper routes fail the architecture
+   gate, a real verified-handle fixture proves the receiver, and manifest/Index
    duplicate keys and unsorted items preserve their exact diagnostics;
 8. claim/settle/finalize/abort/expire barriers cover deadline equality,
    close-versus-claim, close-versus-finalize, caller cancellation, CAS-loser
@@ -884,11 +952,12 @@ Implementation begins regression-first and must prove:
     zero import, zero executable declaration ingress, one abort, and zero
     finalization; and
 11. architecture scans cover `resources.plugins`, `resources.packages`, and
-    `plugin_authoring`; call-expression counts freeze exactly one Coordinator
-    document `open_file()` and one strict decode primitive, reject `Path` reads
-    or `JSONDecoder.decode`, and prove old public subject/finalize/rollback
-    exports, a second decoder, Subject builder, non-Coordinator terminal caller,
-    or reservation-owned gate is absent; and
+    `plugin_authoring`; exact import/call edges freeze exactly one Coordinator
+    document `open_file()`, stream read and document-codec call, reject `Path`
+    reads, raw decoder symbol aliases, `JSONDecoder.decode`, third-party
+    decoders or any helper call from byte ingress, and prove old public subject/
+    finalize/rollback exports, a second decoder, Subject builder,
+    non-Coordinator terminal caller, or reservation-owned gate is absent; and
 12. PAP2/PLC3 barrier fixtures (before executable ingress is enabled) cover
     permit-before-close, close-before-permit, close between permit/Approval/
     `STARTING`, `CANCELLED_BEFORE_START` recovery, transaction atomicity, exact

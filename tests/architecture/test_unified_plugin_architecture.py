@@ -39,6 +39,20 @@ PLUGIN_PACKAGE_BOUNDARY_ROOTS = (
     Path("src/loushang/harness/resources/packages"),
     Path("src/loushang/harness/plugin_authoring"),
 )
+PLUGIN_DECLARATION_COORDINATOR_PATH = Path(
+    "src/loushang/harness/plugin_authoring/coordinator.py"
+)
+RAW_JSON_DECODER_MODULES = {
+    "json",
+    "json.decoder",
+    "msgspec.json",
+    "orjson",
+    "pydantic_core",
+    "rapidjson",
+    "simplejson",
+    "ujson",
+}
+RAW_JSON_DECODER_FUNCTIONS = {"decode", "from_json", "load", "loads"}
 EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
     (
         Path("src/loushang/harness/resources/plugins/manifest.py"),
@@ -484,17 +498,40 @@ def _import_aliases(tree: ast.Module) -> tuple[set[str], set[str]]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name in {"json", "orjson", "rapidjson", "ujson"}:
+                if alias.name in RAW_JSON_DECODER_MODULES:
                     json_modules.add(alias.asname or alias.name)
-        elif isinstance(node, ast.ImportFrom) and node.module in {
-            "json",
-            "orjson",
-            "rapidjson",
-            "ujson",
-        }:
+        elif (
+            isinstance(node, ast.ImportFrom)
+            and node.module in RAW_JSON_DECODER_MODULES
+        ):
             for alias in node.names:
-                if alias.name in {"load", "loads"}:
+                if alias.name in RAW_JSON_DECODER_FUNCTIONS:
                     json_decoders.add(alias.asname or alias.name)
+
+    changed = True
+    while changed:
+        changed = False
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            value = node.value
+            if value is None:
+                continue
+            is_decoder = (
+                isinstance(value, ast.Name) and value.id in json_decoders
+            ) or (
+                isinstance(value, ast.Attribute)
+                and isinstance(value.value, ast.Name)
+                and value.value.id in json_modules
+                and value.attr in RAW_JSON_DECODER_FUNCTIONS
+            )
+            if not is_decoder:
+                continue
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id not in json_decoders:
+                    json_decoders.add(target.id)
+                    changed = True
     return json_modules, json_decoders
 
 
@@ -521,7 +558,7 @@ def _is_plugin_package_boundary_sink(
             isinstance(call.func, ast.Attribute)
             and isinstance(call.func.value, ast.Name)
             and call.func.value.id in json_modules
-            and call.func.attr in {"load", "loads"}
+            and call.func.attr in RAW_JSON_DECODER_FUNCTIONS
         )
         or (
             isinstance(call.func, ast.Name)
@@ -560,10 +597,41 @@ def _plugin_package_boundary_sink_sites(
 def _json_decoder_class_aliases(tree: ast.Module) -> set[str]:
     aliases = {"JSONDecoder"}
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == "json":
+        if isinstance(node, ast.ImportFrom) and node.module in {"json", "json.decoder"}:
             for alias in node.names:
                 if alias.name == "JSONDecoder":
                     aliases.add(alias.asname or alias.name)
+    return aliases
+
+
+def _json_decoder_instance_aliases(
+    tree: ast.Module,
+    *,
+    json_modules: set[str],
+    json_decoder_classes: set[str],
+) -> set[str]:
+    aliases: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        value = node.value
+        if not isinstance(value, ast.Call):
+            continue
+        constructor = value.func
+        is_decoder = (
+            isinstance(constructor, ast.Name)
+            and constructor.id in json_decoder_classes
+        ) or (
+            isinstance(constructor, ast.Attribute)
+            and constructor.attr == "JSONDecoder"
+            and isinstance(constructor.value, ast.Name)
+            and constructor.value.id in json_modules
+        )
+        if is_decoder:
+            aliases.update(
+                target.id for target in targets if isinstance(target, ast.Name)
+            )
     return aliases
 
 
@@ -573,6 +641,7 @@ def _plugin_boundary_call_operation(
     json_modules: set[str],
     json_decoders: set[str],
     json_decoder_classes: set[str],
+    json_decoder_instances: set[str],
 ) -> str | None:
     if isinstance(call.func, ast.Attribute):
         if call.func.attr == "open_file":
@@ -582,9 +651,15 @@ def _plugin_boundary_call_operation(
         if (
             isinstance(call.func.value, ast.Name)
             and call.func.value.id in json_modules
-            and call.func.attr in {"load", "loads"}
+            and call.func.attr in RAW_JSON_DECODER_FUNCTIONS
         ):
             return "json_decode"
+        if (
+            call.func.attr == "decode"
+            and isinstance(call.func.value, ast.Name)
+            and call.func.value.id in json_decoder_instances
+        ):
+            return "json_decoder_decode"
         if call.func.attr == "decode" and isinstance(call.func.value, ast.Call):
             constructor = call.func.value.func
             if (
@@ -615,6 +690,11 @@ def _plugin_package_boundary_sink_call_counts(
         tree = ast.parse(source, filename=str(path))
         json_modules, json_decoders = _import_aliases(tree)
         json_decoder_classes = _json_decoder_class_aliases(tree)
+        json_decoder_instances = _json_decoder_instance_aliases(
+            tree,
+            json_modules=json_modules,
+            json_decoder_classes=json_decoder_classes,
+        )
         units = [("<module>", _code_unit_nodes(tree.body))]
         units.extend(
             (qualified, _code_unit_nodes(function.body))
@@ -627,12 +707,161 @@ def _plugin_package_boundary_sink_call_counts(
                     json_modules=json_modules,
                     json_decoders=json_decoders,
                     json_decoder_classes=json_decoder_classes,
+                    json_decoder_instances=json_decoder_instances,
                 )
                 if operation is None:
                     continue
                 key = (path, qualified, operation)
                 inventory[key] = inventory.get(key, 0) + 1
     return inventory
+
+
+def _annotation_terminal_name(annotation: ast.expr | None) -> str | None:
+    if annotation is None:
+        return None
+    if isinstance(annotation, ast.Name):
+        return annotation.id
+    if isinstance(annotation, ast.Attribute):
+        return annotation.attr
+    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
+        return annotation.value.rsplit(".", maxsplit=1)[-1]
+    return None
+
+
+def _document_ingress_boundary_violations(source: str) -> tuple[str, ...]:
+    tree = ast.parse(source, filename=str(PLUGIN_DECLARATION_COORDINATOR_PATH))
+    imported_symbols = {
+        (node.module, alias.name)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        for alias in node.names
+    }
+    required_imports = {
+        (
+            "loushang.harness.resources.plugins.declarations",
+            "PluginDeclarationDocumentCodec",
+        ),
+        (
+            "loushang.harness.resources.plugins.revisions",
+            "VerifiedRevisionHandle",
+        ),
+    }
+    violations: list[str] = []
+    if not required_imports.issubset(imported_symbols):
+        violations.append("concrete codec and verified handle imports are required")
+    if any(
+        (
+            isinstance(node, ast.Import)
+            and any(alias.name in RAW_JSON_DECODER_MODULES for alias in node.names)
+        )
+        or (
+            isinstance(node, ast.ImportFrom)
+            and node.module in RAW_JSON_DECODER_MODULES
+        )
+        for node in ast.walk(tree)
+    ):
+        violations.append("raw decoder imports are forbidden")
+
+    codec_constructions = tuple(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "PluginDeclarationDocumentCodec"
+    )
+    if len(codec_constructions) != 1:
+        violations.append("Coordinator must construct one concrete document codec")
+
+    functions = tuple(
+        function
+        for qualified, function in _qualified_functions(
+            source,
+            filename=PLUGIN_DECLARATION_COORDINATOR_PATH,
+        )
+        if qualified
+        == "PluginDeclarationCoordinator._read_and_decode_document"
+    )
+    if len(functions) != 1:
+        violations.append("expected exactly one private document byte-ingress method")
+        return tuple(violations)
+
+    function = functions[0]
+    arguments = {argument.arg: argument for argument in function.args.args}
+    handle = arguments.get("handle")
+    if handle is None or _annotation_terminal_name(handle.annotation) != (
+        "VerifiedRevisionHandle"
+    ):
+        violations.append("handle must be annotated VerifiedRevisionHandle")
+    if "locator" not in arguments:
+        violations.append("locator must be an explicit ingress argument")
+    if any(
+        fragment in argument.arg.lower()
+        for argument in function.args.args
+        for fragment in ("callback", "decoder", "reader")
+    ):
+        violations.append("reader/decoder callbacks are forbidden")
+    statements = tuple(ast.unparse(statement) for statement in function.body)
+    if statements != (
+        "with handle.open_file(locator) as stream:\n"
+        "    verified_bytes = stream.read()",
+        "return self._document_codec.decode_bytes(verified_bytes)",
+    ):
+        violations.append("document byte ingress must preserve the exact byte flow")
+
+    operations: list[str] = []
+    for call in (
+        node
+        for node in _code_unit_nodes(function.body)
+        if isinstance(node, ast.Call)
+    ):
+        if (
+            isinstance(call.func, ast.Attribute)
+            and call.func.attr == "open_file"
+            and isinstance(call.func.value, ast.Name)
+            and call.func.value.id == "handle"
+            and len(call.args) == 1
+            and isinstance(call.args[0], ast.Name)
+            and call.args[0].id == "locator"
+            and not call.keywords
+        ):
+            operations.append("handle.open_file")
+        elif (
+            isinstance(call.func, ast.Attribute)
+            and call.func.attr == "read"
+            and isinstance(call.func.value, ast.Name)
+            and call.func.value.id == "stream"
+            and not call.args
+            and not call.keywords
+        ):
+            operations.append("stream.read")
+        elif (
+            isinstance(call.func, ast.Attribute)
+            and call.func.attr == "decode_bytes"
+            and isinstance(call.func.value, ast.Attribute)
+            and isinstance(call.func.value.value, ast.Name)
+            and call.func.value.value.id == "self"
+            and call.func.value.attr == "_document_codec"
+            and len(call.args) == 1
+            and isinstance(call.args[0], ast.Name)
+            and call.args[0].id == "verified_bytes"
+            and not call.keywords
+        ):
+            operations.append("self._document_codec.decode_bytes")
+        else:
+            operations.append(f"forbidden:{ast.unparse(call.func)}")
+
+    expected = {
+        "handle.open_file": 1,
+        "stream.read": 1,
+        "self._document_codec.decode_bytes": 1,
+    }
+    actual = {
+        operation: operations.count(operation)
+        for operation in sorted(set(operations))
+    }
+    if actual != expected:
+        violations.append(f"unexpected document byte-ingress calls: {actual!r}")
+    return tuple(violations)
 
 
 def _receiver_looks_like_graph_state(
@@ -1257,6 +1486,8 @@ def test_plc1b_contract_freezes_no_self_reference_and_exact_v2_records() -> None
     assert "V2 removes the redundant v1 `configurationFingerprint`" in contract
     assert "required key; exact SymbolReference v2 object or JSON `null`" in contract
     assert "One private low-level `StrictPluginJsonCodec`" in contract
+    assert "exact import/call edge, not by a decoder-name\nheuristic" in contract
+    assert "accepts no reader\nor decoder callback and makes no other call" in contract
     assert "Candidate construction is private to Resolver finalization" in contract
     assert "Declaration fingerprint is a member of that Batch" in contract
     assert "only in resolved views" in AUTHORING_PLAN_PATH.read_text(encoding="utf-8")
@@ -1272,6 +1503,13 @@ def test_plc1b_contract_freezes_no_self_reference_and_exact_v2_records() -> None
         assert f"| {exact_wire_key} |" in contract
     assert "They are\nnot serialized as a second interchange format" in contract
     assert "no copied Gate, subject, decision, or evidence" in contract
+    assert "exactly cover the union of every proposed\nsource reservation closure" in (
+        contract
+    )
+    assert "There is no Plan-global configuration fingerprint" in contract
+    assert "changing only group B\nconfiguration does not change group A's" in (
+        contract
+    )
 
     subject_fields = _contract_text_fields(
         contract,
@@ -1435,6 +1673,7 @@ def test_plc1b_contract_freezes_attempt_claim_and_forbidden_peer_semantics() -> 
         "plugin_declaration_evidence_attempt_mismatch",
         "plugin_declaration_exact_field_mismatch",
         "plugin_declaration_field_type_mismatch",
+        "plugin_declaration_field_value_mismatch",
         "plugin_declaration_invalid_json",
         "plugin_declaration_invalid_json_constant",
         "plugin_declaration_invalid_utf8",
@@ -1446,6 +1685,29 @@ def test_plc1b_contract_freezes_attempt_claim_and_forbidden_peer_semantics() -> 
         "unsupported_plugin_declaration_evidence_kind",
         "unsupported_plugin_declaration_source_kind",
     }
+    assert (
+        "The condition-to-code mapping is normative and exhaustive for PLC1B"
+        in contract
+    )
+    condition_mapping = contract.split(
+        "The condition-to-code mapping is normative and exhaustive for PLC1B",
+        maxsplit=1,
+    )[1].split("Decode priority is deterministic", maxsplit=1)[0]
+    for diagnostic in non_version_diagnostics:
+        assert f"`{diagnostic}`" in condition_mapping
+    for condition_code_example in (
+        "field-level sorted-unique list such as `requestedAuthorities` | "
+        "`plugin_declaration_field_value_mismatch`",
+        "canonical contained locator/symbol path",
+        "Provider owner metadata versus Declaration owner/source",
+        "`plugin_declaration_cross_field_mismatch`",
+    ):
+        assert condition_code_example in contract
+    assert (
+        "specialized kind,\nexecution-model, ordering, duplicate, closure, "
+        "Evidence-attempt, and effective-\nconfiguration rows override"
+        in contract
+    )
 
 
 def test_executable_declaration_is_gated_by_inert_preflight() -> None:
@@ -1699,11 +1961,19 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
     same_function_bypasses = {
         Path("src/loushang/harness/plugin_authoring/coordinator.py"): (
             "import json\n"
+            "import json.decoder as decoder_module\n"
+            "from pydantic_core import from_json\n"
+            "decode_alias = json.loads\n"
+            "decoder_instance = decoder_module.JSONDecoder()\n"
             "def decode(path, handle):\n"
             "    first = json.loads(path.read_bytes())\n"
             "    second = json.JSONDecoder().decode(path.read_text())\n"
+            "    third = decode_alias(first)\n"
+            "    fourth = decoder_module.JSONDecoder().decode(first)\n"
+            "    fifth = decoder_instance.decode(first)\n"
+            "    sixth = from_json(first)\n"
             "    verified = handle.open_file('declarations.json')\n"
-            "    return first, second, verified\n"
+            "    return first, second, third, fourth, fifth, sixth, verified\n"
         )
     }
     assert _plugin_package_boundary_sink_call_counts(same_function_bypasses) == {
@@ -1711,12 +1981,12 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
             Path("src/loushang/harness/plugin_authoring/coordinator.py"),
             "decode",
             "json_decode",
-        ): 1,
+        ): 3,
         (
             Path("src/loushang/harness/plugin_authoring/coordinator.py"),
             "decode",
             "json_decoder_decode",
-        ): 1,
+        ): 3,
         (
             Path("src/loushang/harness/plugin_authoring/coordinator.py"),
             "decode",
@@ -1728,6 +1998,57 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
             "verified_open_file:handle",
         ): 1,
     }
+
+
+def test_document_byte_ingress_freezes_verified_handle_and_exact_call_edges() -> None:
+    compliant = (
+        "from loushang.harness.resources.plugins.declarations import "
+        "PluginDeclarationDocumentCodec\n"
+        "from loushang.harness.resources.plugins.revisions import "
+        "VerifiedRevisionHandle\n"
+        "class PluginDeclarationCoordinator:\n"
+        "    def __init__(self):\n"
+        "        self._document_codec = PluginDeclarationDocumentCodec()\n"
+        "    def _read_and_decode_document(\n"
+        "        self, handle: VerifiedRevisionHandle, locator: str\n"
+        "    ):\n"
+        "        with handle.open_file(locator) as stream:\n"
+        "            verified_bytes = stream.read()\n"
+        "        return self._document_codec.decode_bytes(verified_bytes)\n"
+    )
+    assert _document_ingress_boundary_violations(compliant) == ()
+
+    helper_bypass = (
+        "from loushang.harness.resources.plugins.declarations import "
+        "PluginDeclarationDocumentCodec\n"
+        "from loushang.harness.resources.plugins.revisions import "
+        "VerifiedRevisionHandle\n"
+        "from loushang.harness.other.json_helper import hidden_decode\n"
+        "class PluginDeclarationCoordinator:\n"
+        "    def __init__(self):\n"
+        "        self._document_codec = PluginDeclarationDocumentCodec()\n"
+        "    def _read_and_decode_document(\n"
+        "        self, handle: VerifiedRevisionHandle, locator: str\n"
+        "    ):\n"
+        "        with handle.open_file(locator) as stream:\n"
+        "            verified_bytes = stream.read()\n"
+        "        self._document_codec.decode_bytes(verified_bytes)\n"
+        "        return hidden_decode(verified_bytes)\n"
+    )
+    assert _document_ingress_boundary_violations(helper_bypass) == (
+        "document byte ingress must preserve the exact byte flow",
+        "unexpected document byte-ingress calls: "
+        "{'forbidden:hidden_decode': 1, 'handle.open_file': 1, "
+        "'self._document_codec.decode_bytes': 1, 'stream.read': 1}",
+    )
+
+
+def test_real_document_byte_ingress_uses_the_frozen_boundary_when_present() -> None:
+    sources = _source_texts()
+    coordinator = sources.get(PLUGIN_DECLARATION_COORDINATOR_PATH)
+    if coordinator is None:
+        return
+    assert _document_ingress_boundary_violations(coordinator) == ()
 
 
 def test_current_graph_private_mutations_use_qualified_owner_allowlist() -> None:

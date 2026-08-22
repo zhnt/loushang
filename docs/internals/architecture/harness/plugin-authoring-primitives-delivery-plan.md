@@ -230,7 +230,8 @@ cohesion, but their semantics and ownership must not be merged.
   their fields or fingerprint.
 - `PluginDeclarationSourceProposal`: non-authoritative preflight value over one
   package revision and `sourceDescriptorFingerprint`, complete proposed index
-  closure, effective configuration map, authority ceiling and strict
+  closure, its closure-local projection from the Plan-wide effective
+  configuration set, authority ceiling and strict
   `data_only`/`execution_subject(subject)` source disposition. It is never a
   group, gate, reservation or active token.
 - `PluginDeclarationSourceGroup`: one package/revision,
@@ -244,6 +245,9 @@ cohesion, but their semantics and ownership must not be merged.
   contribution from a source is selected, the closure contains every index
   entry for that source; later Product selection may emit only its selected
   candidate subset.
+  The Plan set covers the union of all proposed closures, but each group hashes
+  only its own complete projection; changing a disjoint group's configuration
+  cannot change this group's fingerprint, Subject, or approval lookup key.
 - `PluginDeclarationGate`: strict `data_only`/`execution_preflight` union over
   a source group's shared package/contribution/source/context facts. Only the
   executable arm carries one positive group-level
@@ -602,8 +606,11 @@ Scope:
   Batch or candidate creation;
 - add the inert `PluginDeclarationCoordinator` and document decoder. PLC1B
   uses the one low-level `resources.plugins` strict JSON primitive for manifest
-  and document schemas; the Coordinator imports no decoder and performs exactly
-  one verified-handle read before calling that codec. PLC1B
+  and document schemas; the Coordinator imports no decoder and its private
+  byte-ingress method accepts a concrete `VerifiedRevisionHandle`, permits only
+  exact `open_file`/stream `read`/document-codec `decode_bytes` call edges, and
+  accepts no reader/decoder callback. Decoder-symbol aliases and local imported
+  helper calls are included in the architecture guard. PLC1B
   pre-scans all groups and finalizes document-only one/multi-group preflights
   exactly once; a mixed document/in-process preflight accepts no executable
   declaration/Builder input, proves routing/no-import, aborts with
@@ -661,6 +668,9 @@ Exit gate:
   configuration fingerprint;
 - same-source multi-contribution and same-package document multi-source fixtures
   prove one decode per group and one finalization per preflight;
+- a two-group configuration fixture proves the Plan set covers both closures
+  while each group hashes only its local projection; changing only group B
+  leaves group A's configuration/group/Subject digests unchanged;
 - mixed document/in-process fixtures prove exact grouping, zero import, zero
   executable declaration ingress, typed `execution_not_consumed`, one aggregate
   abort and zero finalization; PLC3 owns the successful mixed-source evaluation/
@@ -676,13 +686,16 @@ Exit gate:
   model are separately fingerprinted and cannot substitute for one another;
 - every new payload has strict canonical JSON round-trip and negative fixtures
   for unknown fields, duplicate identities, owner mismatch, path escape, and
-  callable/live-object capture;
+  callable/live-object capture; the Contract's exhaustive condition-to-code
+  table drives those fixtures and Manifest preserves every nested code;
 - the canonical manifest boundary rejects duplicate keys and unsorted Index
   items without swallowing the typed codec diagnostic, and architecture scans
-  count concrete calls across `plugin_authoring`, reject a second decoder/read
-  even inside an allowed function, and freeze the sole declaration
-  `VerifiedRevisionHandle.open_file()` callpoint plus one low-level strict JSON
-  primitive;
+  count concrete calls across `plugin_authoring`, freeze the Coordinator's exact
+  import/call edge and concrete verified-handle receiver, reject imported local
+  helper calls, assignment/module/third-party decoder aliases, or a
+  second decoder/read even inside an allowed function, and freeze the sole
+  declaration `VerifiedRevisionHandle.open_file()` callpoint plus one low-level
+  strict JSON primitive;
 - a Capability Provider cannot contain arbitrary contributions, admit/select/
   bind itself, or explicitly require its own Capability; duplicate requirements
   also fail in the strict payload codec;

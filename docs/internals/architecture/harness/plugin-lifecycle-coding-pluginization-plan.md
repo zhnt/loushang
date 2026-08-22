@@ -645,10 +645,15 @@ Scope:
   effective-configuration and allowed-authority input; preflight accepts the
   Approval-owner read-only decision lookup port, not peer context/overlay/
   policy arguments or a caller decision tuple. The pre-PAP2 production lookup
-  is pending-only;
+  is pending-only. The Plan configuration set covers the union of proposed
+  closures, while each SourceGroup hashes only its closure-local projection; a
+  disjoint group's configuration cannot alter this group's Subject/decision key;
 - reuse one low-level `resources.plugins` strict JSON primitive for manifest and
-  DeclarationDocument schema codecs; Coordinator performs exactly one verified-
-  handle read and imports no JSON/Path decoder;
+  DeclarationDocument schema codecs; Coordinator imports no JSON/Path decoder
+  and isolates byte ingress in a concrete-`VerifiedRevisionHandle` method with
+  exactly one `open_file`, stream `read`, and direct document-codec
+  `decode_bytes` call. It accepts no callback; architecture guards freeze the
+  import/call edge and reject decoder aliases or imported helper calls;
 - implement the exact Source/Index/Declaration/Document/Subject/Decision/
   document-evidence/candidate fields, canonical bytes, fingerprint domains and
   diagnostics frozen by the PLC1B Contract;
@@ -717,9 +722,11 @@ Exit gate:
   external-service execution model recorded by the contribution payload;
 - parsing, selection, and authoring remain inert; and
 - Product override/delete/missing/extra configuration, secret-reference
-  rotation/Product-owner pre-handoff raw-secret rejection, duplicate manifest
-  keys, unsorted Index items, and typed diagnostic preservation have regression
-  fixtures; and
+  rotation/Product-owner pre-handoff raw-secret rejection, and a two-group
+  isolation case have regression fixtures; the latter changes only group B and
+  proves group A configuration/group/Subject digests remain fixed; duplicate
+  manifest keys, unsorted Index items, the exhaustive condition-to-code map,
+  and typed diagnostic preservation also have regression fixtures; and
 - semantic digest fixtures freeze `allow_nan=False`, `ensure_ascii=True`, sorted
   keys/no whitespace, CJK escaping, normalization-form distinction and unpaired-
   surrogate rejection; and
@@ -772,9 +779,11 @@ Required current-source migration inventory:
   by the v2 group subject; and
 - architecture inventories include `plugin_authoring` raw JSON/read sinks,
   count exact call expressions, freeze the sole document `open_file()` and
-  strict decoder callpoints, and use synthetic peer-route tests for a second
-  decoder (including `JSONDecoder.decode` inside an allowed function), Path
-  read, alias, Subject builder, or terminal caller. `resources/plugins/types.py`
+  strict decoder callpoints, verify the concrete handle annotation/receiver,
+  reject any helper call from the byte-ingress method, and use synthetic
+  peer-route tests for assignment/module/third-party aliases, a second decoder
+  (including `JSONDecoder.decode` inside an allowed function), Path read,
+  Subject builder, or terminal caller. `resources/plugins/types.py`
   is explicitly audited and requires no PLC1B schema field change.
 
 #### PLC1B-2: Resource Item Declaration

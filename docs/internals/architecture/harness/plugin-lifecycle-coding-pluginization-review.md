@@ -25,7 +25,7 @@ order:
 2. move production `coding.base` after `coding.lsp` and before `coding.arch`,
    while keeping the stable SDK gated on LSP, Base and Arch evidence.
 
-The initial review found nine high-priority risks; five later PLC1B review
+The initial review found nine high-priority risks; six later PLC1B review
 rounds found additional declaration, evidence and lifecycle freeze gaps. The
 plan and normative PLC1B Contract include their required corrections. None
 requires a second Graph, Resource runtime, Profile resolver, Plugin-owned
@@ -200,6 +200,34 @@ This fifth remediation is not self-approval. The next review, if requested,
 should be narrowly limited to these five corrected boundaries; PLC1B-1 source
 migration remains blocked until it reports zero P0/P1 and a tracking issue is
 attached.
+
+## PLC1B Sixth Documentation Remediation
+
+Three independent read-only reviews of immutable baseline `f8a9672f` returned
+one `READY` for state/security and two `NOT READY` verdicts for schema and
+decoder enforcement. There was no P0. This remediation closes their three P1
+findings:
+
+1. the Plan effective-configuration set covers the union of proposed source
+   closures, while each SourceProposal/SourceGroup projects and hashes only its
+   own complete closure. A disjoint group cannot perturb another group's
+   configuration/group/Subject digest or approval key;
+2. the finite diagnostic list now has one exhaustive condition-to-code table,
+   including exact field set, JSON type/nullability, scalar/path/list value
+   domain, specialized ordering/duplicate, cross-field, closure, Evidence-
+   attempt and effective-configuration cases; and
+3. the document byte boundary no longer relies on decoder-name/call counts. One
+   private Coordinator method accepts a concrete `VerifiedRevisionHandle` and
+   permits only `open_file`, stream `read`, and concrete document-codec
+   `decode_bytes` calls. Architecture regressions cover assignment/module/
+   instance/third-party aliases and reject a helper call even when imported
+   from outside the original scan roots.
+
+The sixth state/security review found the deadline/reaper/worker-completion and
+start-permit/Approval/recovery contracts ready, so this remediation does not
+change those state machines. It is still not self-approval: one narrow fresh
+freeze review must report zero P0/P1 before PLC1B-1 source migration begins,
+and the required tracking issue remains a separate entry gate.
 
 ## Review Scope
 

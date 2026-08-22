@@ -134,6 +134,10 @@ contributed model; Provider v2 freezes nullable disposer and removes redundant
 configuration digest; codecs share one counted strict decoder; expiry and worker
 completion are owner-driven; and PLC3 start permission linearizes before the
 atomic Approval consume/use transaction with exact boot/realm recovery facts.
+The sixth review additionally makes group configuration fingerprints strictly
+closure-local, freezes the exhaustive validation-condition/diagnostic mapping,
+and replaces decoder-name counting as the security claim with a concrete
+verified-handle byte-ingress import/call edge that rejects aliases and helpers.
 
 ### P0-03 — Stable public SDK cannot precede production combination evidence
 

@@ -228,8 +228,14 @@ Manifest and DeclarationDocument schema codecs share the one private
 `resources.plugins._strict_json.StrictPluginJsonCodec`; only the latter enables
 canonical-byte equality. The higher Coordinator performs one verified-handle
 read and calls the low-level document codec, never a second JSON or Path read.
-Architecture inventories count concrete read/decode call expressions, not just
-filenames or qualified functions.
+Its private byte-ingress method accepts a concrete `VerifiedRevisionHandle` and
+has exactly three calls: receiver-qualified `open_file`, returned-stream
+`read`, and concrete `PluginDeclarationDocumentCodec.decode_bytes`. It accepts
+no reader/decoder callback. Architecture guards freeze that import/call edge,
+scan decoder symbol aliases rather than only direct calls, and reject any helper
+call from the byte-ingress method; a real verified-handle fixture
+proves the receiver constraint. Concrete call counts remain a secondary
+inventory, not the security boundary by themselves.
 
 The current `resources.plugins.resolver` and
 `resources.packages.manifest` handling of `plugin.json` must converge on one
@@ -284,9 +290,15 @@ Coordinator-only terminal transitions:
    selected, the proposal closes over every index entry sharing that exact
    package revision and `sourceDescriptorFingerprint`. A
    `PluginDeclarationSourceProposal` contains the complete sorted proposed
-   closure, effective per-reservation configuration map, authority ceiling and,
+   closure, the exact effective-configuration projection for only that closure,
+   authority ceiling and,
    for executable sources, the canonical proposed execution subject. It is not
    a group, reservation, gate, token, or finalizable preflight;
+   the Plan-level configuration set exactly covers the union of all proposed
+   closures, but no global fingerprint is used. Each group's
+   `configurationMapFingerprint` hashes only its closure-local projection, so a
+   configuration change in a disjoint group cannot change this group's Subject
+   or approval lookup key;
 2. if a current positive decision is missing, `preflight()` returns
    `pending_approval` with only the canonical proposed subjects. The caller asks
    the Approval owner to record decisions and then calls `preflight()` again;
