@@ -1688,6 +1688,7 @@ def test_plc1b_contract_freezes_attempt_claim_and_forbidden_peer_semantics() -> 
     assert diagnostics == {
         "unsupported_plugin_contribution_index_version",
         "unsupported_capability_provider_declaration_payload_version",
+        "unsupported_resource_item_declaration_payload_version",
         "unsupported_plugin_declaration_document_version",
         "unsupported_plugin_declaration_evidence_version",
         "unsupported_plugin_declaration_ir_version",
@@ -1725,6 +1726,8 @@ def test_plc1b_contract_freezes_attempt_claim_and_forbidden_peer_semantics() -> 
         "unsupported_plugin_contribution_kind",
         "unsupported_plugin_declaration_evidence_kind",
         "unsupported_plugin_declaration_source_kind",
+        "unsupported_resource_item_kind",
+        "unsupported_resource_item_locator_kind",
     }
     assert (
         "The condition-to-code mapping is normative and exhaustive for PLC1B"
@@ -1982,6 +1985,64 @@ def test_declaration_host_is_the_single_production_composition_entry() -> None:
     assert "exactly one production composition entry" in contract
     assert "It never writes an Approval decision" in contract
     assert "-> PluginDeclarationHost.resolve()" in authoring_plan
+
+
+def test_resource_item_is_one_inert_kind_with_six_owner_subtypes() -> None:
+    from loushang.harness.plugin_authoring.resource_item import (
+        ResourceItemDeclarationPayload,
+        ResourceItemKind,
+        ResourceItemLocatorKind,
+    )
+    from loushang.harness.resources.plugins.declarations import (
+        PluginContributionKind,
+    )
+
+    assert set(get_args(PluginContributionKind)) == {
+        "capability_provider",
+        "resource_item",
+    }
+    assert set(get_args(ResourceItemKind)) == {
+        "asset",
+        "method",
+        "prompt",
+        "skill",
+        "source",
+        "theme",
+    }
+    assert set(get_args(ResourceItemLocatorKind)) == {"directory", "file"}
+    assert tuple(ResourceItemDeclarationPayload.__dataclass_fields__) == (
+        "locator",
+        "locator_kind",
+        "media_type",
+        "owner_namespace",
+        "resource_kind",
+        "schema_id",
+        "schema_version",
+        "payload_version",
+    )
+    assert not hasattr(public_plugins, "ResourceItemDeclarationPayload")
+    resource_source = _source_texts()[
+        Path("src/loushang/harness/plugin_authoring/resource_item.py")
+    ]
+    for forbidden in (
+        "ResourceBundle",
+        "RegistrationScope",
+        "bind_tool",
+        "bind_command",
+        "RuntimeCapabilityGraphBinder",
+        "ModelInput",
+        "PluginDefinition",
+    ):
+        assert forbidden not in resource_source
+    selection_source = _source_texts()[
+        Path("src/loushang/harness/resources/plugins/selection.py")
+    ]
+    assert "ambient_host_authority=True" in selection_source
+    contract = PLC1B_CONTRACT_PATH.read_text(encoding="utf-8")
+    assert "### `resource_item` payload v1" in contract
+    assert "no Resource subtype is a Plugin type" in contract
+    assert "`contributionExecutionModel: \"data_only\"`" in contract
+    assert "## PLC1B-2 Regression Gate" in contract
 
 
 def test_executable_declaration_is_gated_by_inert_preflight() -> None:

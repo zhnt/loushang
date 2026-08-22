@@ -2312,9 +2312,7 @@ def _build_execution_approval_subject(
         product_id=plan.context.product_id,
         scope_id=plan.context.scope_id,
         policy_revision=plan.context.policy_revision,
-        ambient_host_authority=(
-            contribution.contribution_execution_model == "in_process"
-        ),
+        ambient_host_authority=True,
         configuration_map_fingerprint=_configuration_map_fingerprint(
             _effective_configuration_projection(
                 plan,

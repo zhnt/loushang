@@ -10,6 +10,10 @@ from loushang.harness.plugin_authoring.reservations import (
     _authoring_reservation_view,
     _PluginAuthoringReservationView,
 )
+from loushang.harness.plugin_authoring.resource_item import (
+    ResourceItemDeclarationPayload,
+    _validate_resource_item_reservation,
+)
 from loushang.harness.resources.plugins.declarations import PluginDeclaration
 from loushang.harness.resources.plugins.selection import (
     PluginDeclarationSourceGroup,
@@ -94,6 +98,42 @@ class PluginDeclarationBuilder:
             plugin_id=self._plugin_id,
             contribution_id=contribution_id,
             kind="capability_provider",
+            owner=contribution.owner,
+            reservation_fingerprint=contribution.fingerprint,
+            source_descriptor_fingerprint=contribution.source_descriptor_fingerprint,
+            source_kind=contribution.declaration_source.kind,
+            payload=payload.to_dict(),
+        )
+        self._declarations[contribution_id] = declaration
+        return declaration
+
+    def add_resource_item(
+        self,
+        *,
+        contribution_id: str,
+        payload: ResourceItemDeclarationPayload,
+    ) -> PluginDeclaration:
+        self._require_open()
+        if contribution_id in self._declarations:
+            raise ValueError(
+                f"Plugin contribution is already declared: {contribution_id}"
+            )
+        reservation_view = self._reservations.get(contribution_id)
+        if reservation_view is None:
+            raise ValueError(
+                f"Plugin contribution references an unknown reservation: {contribution_id}"
+            )
+        if not isinstance(payload, ResourceItemDeclarationPayload):
+            raise TypeError("Resource Item declaration requires a typed payload")
+        _validate_resource_item_reservation(
+            payload,
+            reservation=reservation_view,
+        )
+        contribution = reservation_view.contribution
+        declaration = PluginDeclaration(
+            plugin_id=self._plugin_id,
+            contribution_id=contribution_id,
+            kind="resource_item",
             owner=contribution.owner,
             reservation_fingerprint=contribution.fingerprint,
             source_descriptor_fingerprint=contribution.source_descriptor_fingerprint,

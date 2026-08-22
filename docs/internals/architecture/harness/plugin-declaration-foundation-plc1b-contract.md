@@ -238,6 +238,43 @@ The declaration contains no package/revision, Product, scope, policy, group,
 approval, decision, receipt, evidence, or accepted-use field. Host validation
 exact-matches its three source/reservation fields to the selected Index item.
 
+### `resource_item` payload v1
+
+`resource_item` is one contribution kind with an independent owner-controlled
+subtype; no Resource subtype is a Plugin type, numeric type code, capability
+bit, executable Definition, Tool, Command, or Graph node. Its payload has
+exactly:
+
+| Key | Type/value |
+| --- | --- |
+| `locator` | canonical contained revision-root-relative path |
+| `locatorKind` | exact `"file"` or `"directory"` |
+| `mediaType` | non-empty canonical media-type string |
+| `ownerNamespace` | canonical Resource owner namespace; exact-matches Declaration `owner` |
+| `payloadVersion` | integer `1` |
+| `resourceKind` | exact `"skill"`, `"prompt"`, `"method"`, `"theme"`, `"asset"`, or `"source"` |
+| `schemaId` | canonical owner-schema identifier |
+| `schemaVersion` | positive non-boolean integer |
+
+`skill` accepts either a directory locator or a file named `SKILL.md`;
+`prompt` and `method` require Markdown file locators; `theme` requires a JSON
+file locator. `asset` and raw `source` accept either exact locator kind and let
+their Resource owner interpret the declared media/schema identity. Host
+resolution exact-matches `locatorKind` through the accepted package's
+`VerifiedRevisionHandle.entry_kind()` without reading or publishing the
+Resource.
+
+The payload carries no package digest, Product/scope facts, executable symbol,
+live descriptor, registry, nested contribution, authority list, or copied
+configuration fingerprint. Its enclosing Candidate already binds the exact
+package digest and SourceGroup evidence; that group fingerprint transitively
+binds the closure-local effective `configurationMapFingerprint`. A
+`resource_item` Index reservation therefore requires
+`contributionExecutionModel: "data_only"` and an empty
+`requestedAuthorities` list. It may be declared by either document or
+preflighted in-process source, but the Resource itself is never executed by
+PLC1B-2.
+
 ### `PluginDeclarationDocument` v1
 
 The envelope has exactly `declarations` and `documentVersion`, with
@@ -816,6 +853,7 @@ The PLC1B codecs use these distinct codes:
 ```text
 unsupported_plugin_contribution_index_version
 unsupported_capability_provider_declaration_payload_version
+unsupported_resource_item_declaration_payload_version
 unsupported_plugin_symbol_reference_version
 unsupported_plugin_declaration_source_version
 unsupported_plugin_declaration_ir_version
@@ -844,6 +882,8 @@ plugin_declaration_field_value_mismatch
 unsupported_plugin_declaration_source_kind
 unsupported_plugin_contribution_kind
 unsupported_plugin_contribution_execution_model
+unsupported_resource_item_kind
+unsupported_resource_item_locator_kind
 unsupported_plugin_declaration_evidence_kind
 plugin_contribution_index_unsorted
 duplicate_plugin_contribution_identity
@@ -874,6 +914,8 @@ The condition-to-code mapping is normative and exhaustive for PLC1B:
 | Source union tag is unknown | `unsupported_plugin_declaration_source_kind` |
 | contribution kind is unknown | `unsupported_plugin_contribution_kind` |
 | contributed execution-model tag is unknown or incompatible with its contribution kind | `unsupported_plugin_contribution_execution_model` |
+| Resource subtype tag is unknown | `unsupported_resource_item_kind` |
+| Resource locator-kind tag is unknown | `unsupported_resource_item_locator_kind` |
 | Evidence union tag is unknown or not enabled in this slice | `unsupported_plugin_declaration_evidence_kind` |
 | Index `items` are not contribution-ID sorted | `plugin_contribution_index_unsorted` |
 | Index contains duplicate contribution identity | `duplicate_plugin_contribution_identity` |
@@ -897,8 +939,9 @@ then a present version discriminator's strict integer type and supported value;
 then union tag; then exact field set, field types, and field values; then the
 specialized ordering/duplicate checks; then cross-field/closure validation;
 and finally canonical-byte equality. For the known unpublished
-legacy Index, Declaration, Subject, Decision, Capability Provider payload, and
-symbol-reference shapes, a missing version discriminator maps to that record's
+legacy Index, Declaration, Subject, Decision, Capability Provider payload,
+Resource Item payload, and symbol-reference shapes, a missing version
+discriminator maps to that record's
 exact `unsupported_*_version` code rather than exact-field mismatch. A present
 supported version with a missing peer field is exact-field mismatch. Thus a
 Decision with `decisionRecordVersion: 2` and `subjectSchemaVersion: 1` is
@@ -910,11 +953,13 @@ Evidence with supported `evidenceVersion` but wrong `documentSchemaVersion` is
 Nested order is also fixed. Index envelope/version precedes item field/type,
 contribution kind/model, then nested Source version/kind/cross-field checks;
 order/duplicate/closure checks follow successful item decoding. Generic
-Declaration decoding precedes owner payload decoding. Capability Provider
-payload version precedes its field set/types, then Provider metadata, required
-factory, and finally required nullable disposer. A missing disposer is
-`plugin_declaration_exact_field_mismatch`; `disposer: null` is valid; a null
-factory is `plugin_declaration_field_type_mismatch`.
+Declaration decoding precedes owner payload decoding. Resource Item payload
+version precedes its subtype, exact field set, field types, locator-kind and
+subtype-specific path constraints, then reservation/package cross-field checks.
+Capability Provider payload version precedes its field set/types, then Provider
+metadata, required factory, and finally required nullable disposer. A missing
+disposer is `plugin_declaration_exact_field_mismatch`; `disposer: null` is
+valid; a null factory is `plugin_declaration_field_type_mismatch`.
 
 An unknown union tag is not a version error and uses its record-specific
 exact finite `unsupported_*_kind` diagnostic above. Known
@@ -985,3 +1030,26 @@ Implementation begins regression-first and must prove:
     `STARTING`, `CANCELLED_BEFORE_START` recovery, transaction atomicity, exact
     boot/realm receipt fields, and no loader call without both permit and
     committed `STARTING`.
+
+## PLC1B-2 Regression Gate
+
+PLC1B-2 additionally proves:
+
+1. all six `resourceKind` arms round-trip through the exact payload-v1 field
+   set and strict canonical Declaration/Document bytes;
+2. missing/unsupported payload version, unknown Resource/locator kind, extra or
+   missing fields, wrong JSON types, invalid owner/schema/media facts, absolute,
+   Windows, traversing, or subtype-incompatible paths fail with the exact
+   diagnostics above;
+3. the Index accepts `resource_item` only as `data_only` and authority-free,
+   while declaration source remains an independent document/in-process fact;
+4. the reservation-bound Builder consumes one Resource reservation once, and a
+   document-backed package reaches an inert Candidate without Definition
+   import, Resource generation, RegistrationScope, Tool/Command registration,
+   Model Input, or other live effect;
+5. the candidate/reservation bridges exact-match Declaration owner and envelope,
+   Resource `ownerNamespace`, contribution execution model, empty authority set,
+   and the verified package entry kind; and
+6. no Resource payload field can encode a nested contribution, callable,
+   executable symbol, package digest, copied configuration fingerprint, owner
+   admission, registry, Tool, Command, Capability, or Plugin instance.
