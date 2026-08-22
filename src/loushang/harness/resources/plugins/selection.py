@@ -140,9 +140,7 @@ class PluginPreflightContextV1:
         if not refs or any(
             not isinstance(item, PluginInstanceRevisionRef) for item in refs
         ):
-            raise TypeError(
-                "Plugin preflight context requires instance revision refs"
-            )
+            raise TypeError("Plugin preflight context requires instance revision refs")
         expected = tuple(
             sorted(
                 refs,
@@ -172,9 +170,7 @@ class PluginSourceTrustSnapshotV1:
 
     def __post_init__(self) -> None:
         _require_nonempty(self.plugin_id, name="Plugin id")
-        _require_nonempty(
-            self.package_source_identity, name="package source identity"
-        )
+        _require_nonempty(self.package_source_identity, name="package source identity")
         _require_nonempty(self.source_trust_class, name="source trust class")
         _require_nonempty(
             self.source_trust_policy_revision,
@@ -284,9 +280,8 @@ class PluginSelectionPlanV2:
         ):
             raise TypeError("Selected Plugin contributions have invalid type")
         expected_contributions = tuple(sorted(contributions))
-        if (
-            contributions != expected_contributions
-            or len(contributions) != len(set(contributions))
+        if contributions != expected_contributions or len(contributions) != len(
+            set(contributions)
         ):
             raise ValueError(
                 "Selected Plugin contributions must be strictly sorted and unique"
@@ -299,9 +294,7 @@ class PluginSelectionPlanV2:
         if trust != tuple(sorted(trust, key=lambda item: item.plugin_id)):
             raise ValueError("Plugin source trust snapshots must be strictly sorted")
         trust_ids = tuple(item.plugin_id for item in trust)
-        if len(trust_ids) != len(set(trust_ids)) or set(trust_ids) != set(
-            plugin_ids
-        ):
+        if len(trust_ids) != len(set(trust_ids)) or set(trust_ids) != set(plugin_ids):
             raise ValueError(
                 "Plugin source trust snapshots must cover selected Plugins"
             )
@@ -481,7 +474,9 @@ class PluginExecutionApprovalSubject:
             )
         try:
             return cls(
-                plugin_id=_selection_wire_string(document["pluginId"], name="Plugin id"),
+                plugin_id=_selection_wire_string(
+                    document["pluginId"], name="Plugin id"
+                ),
                 package_content_digest=_selection_wire_string(
                     document["packageContentDigest"], name="package content digest"
                 ),
@@ -689,6 +684,226 @@ class PendingOnlyPluginExecutionDecisionLookup:
 
 
 @dataclass(frozen=True, slots=True)
+class PluginDeclarationDataOnlyDisposition:
+    kind: Literal["data_only"] = "data_only"
+
+    def __post_init__(self) -> None:
+        if self.kind != "data_only":
+            raise ValueError("Unsupported data-only source disposition")
+
+
+@dataclass(frozen=True, slots=True)
+class PluginDeclarationExecutionSubjectDisposition:
+    subject: PluginExecutionApprovalSubject
+    kind: Literal["execution_subject"] = "execution_subject"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.subject, PluginExecutionApprovalSubject):
+            raise TypeError("Executable source disposition requires a Subject v2")
+        if self.kind != "execution_subject":
+            raise ValueError("Unsupported executable source disposition")
+
+
+PluginDeclarationSourceDisposition = (
+    PluginDeclarationDataOnlyDisposition | PluginDeclarationExecutionSubjectDisposition
+)
+
+
+@dataclass(frozen=True, slots=True)
+class PluginDeclarationSourceProposal:
+    """Pure proposed facts for one complete package/source closure."""
+
+    package: PublishedPluginPackage = field(repr=False)
+    declaration_source: PluginDeclarationSource
+    source_descriptor_fingerprint: str
+    reservation_closure: tuple[PluginContributionReservation, ...]
+    effective_configuration_entries: tuple[PluginEffectiveConfigurationEntry, ...]
+    configuration_map_fingerprint: str
+    trust_snapshot: PluginSourceTrustSnapshotV1
+    requested_authorities: tuple[str, ...]
+    allowed_authority_ceiling: tuple[str, ...]
+    source_disposition: PluginDeclarationSourceDisposition
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.package, PublishedPluginPackage):
+            raise TypeError("Source proposal requires a published package")
+        if not isinstance(self.declaration_source, PluginDeclarationSource):
+            raise TypeError("Source proposal requires a declaration source")
+        _require_sha256(
+            self.source_descriptor_fingerprint,
+            name="source descriptor fingerprint",
+        )
+        if self.declaration_source.fingerprint != self.source_descriptor_fingerprint:
+            raise ValueError("Source proposal descriptor fingerprint does not match")
+        closure = self.reservation_closure
+        if not closure or any(
+            not isinstance(item, PluginContributionReservation) for item in closure
+        ):
+            raise TypeError("Source proposal requires a reservation closure")
+        if closure != tuple(sorted(closure, key=lambda item: item.contribution_id)):
+            raise ValueError("Source proposal closure must be strictly sorted")
+        contribution_ids = tuple(item.contribution_id for item in closure)
+        if len(contribution_ids) != len(set(contribution_ids)):
+            raise ValueError("Source proposal closure must be unique")
+        if any(
+            item.declaration_source != self.declaration_source
+            or item.source_descriptor_fingerprint != self.source_descriptor_fingerprint
+            for item in closure
+        ):
+            raise ValueError("Source proposal closure crosses declaration sources")
+        if any(item not in self.package.contribution_index.items for item in closure):
+            raise ValueError("Source proposal closure is not owned by its package")
+
+        plugin_id = self.package.manifest.name
+        entries = self.effective_configuration_entries
+        if any(
+            not isinstance(item, PluginEffectiveConfigurationEntry) for item in entries
+        ):
+            raise TypeError("Source proposal configuration entries have invalid type")
+        expected_refs = tuple(
+            PluginContributionRef(plugin_id, item.contribution_id) for item in closure
+        )
+        if tuple(item.ref for item in entries) != expected_refs:
+            raise ValueError("Source proposal configuration does not match its closure")
+        _require_sha256(
+            self.configuration_map_fingerprint,
+            name="configuration map fingerprint",
+        )
+        if (
+            _configuration_map_fingerprint(entries)
+            != self.configuration_map_fingerprint
+        ):
+            raise ValueError("Source proposal configuration fingerprint does not match")
+        if not isinstance(self.trust_snapshot, PluginSourceTrustSnapshotV1):
+            raise TypeError("Source proposal requires a trust snapshot")
+        if self.trust_snapshot.plugin_id != plugin_id:
+            raise ValueError(
+                "Source proposal trust snapshot does not match its package"
+            )
+
+        requested = _strict_sorted_unique_strings(
+            self.requested_authorities,
+            name="requested authorities",
+        )
+        expected_requested = tuple(
+            sorted(
+                {
+                    authority
+                    for item in closure
+                    for authority in item.requested_authorities
+                }
+            )
+        )
+        if requested != expected_requested:
+            raise ValueError("Source proposal authorities do not match its closure")
+        ceiling = _strict_sorted_unique_strings(
+            self.allowed_authority_ceiling,
+            name="allowed authority ceiling",
+        )
+        if not set(requested).issubset(ceiling):
+            raise ValueError("Source proposal exceeds its authority ceiling")
+
+        disposition = self.source_disposition
+        if self.declaration_source.kind == "document":
+            if not isinstance(disposition, PluginDeclarationDataOnlyDisposition):
+                raise ValueError("Document source proposal must be data-only")
+            return
+        if not isinstance(disposition, PluginDeclarationExecutionSubjectDisposition):
+            raise ValueError("In-process source proposal requires an execution Subject")
+        subject = disposition.subject
+        if (
+            subject.plugin_id != plugin_id
+            or subject.package_content_digest != self.package.content_digest
+            or subject.dependency_lock_digest != self.package.dependency_lock.digest
+            or subject.entrypoint != self.declaration_source.entrypoint
+            or subject.package_source_identity
+            != self.trust_snapshot.package_source_identity
+            or subject.source_trust_class != self.trust_snapshot.source_trust_class
+            or subject.source_trust_policy_revision
+            != self.trust_snapshot.source_trust_policy_revision
+            or subject.configuration_map_fingerprint
+            != self.configuration_map_fingerprint
+            or subject.requested_authorities != requested
+            or subject.allowed_authority_ceiling != ceiling
+            or subject.reservation_closure_fingerprint
+            != _reservation_closure_fingerprint(closure)
+            or subject.source_descriptor_fingerprint
+            != self.source_descriptor_fingerprint
+        ):
+            raise ValueError("Source proposal Subject does not match proposed facts")
+
+    @property
+    def key(self) -> tuple[str, str]:
+        return (self.package.manifest.name, self.source_descriptor_fingerprint)
+
+
+@dataclass(frozen=True, slots=True)
+class PluginPreflightProposal:
+    """Non-authoritative, resumeless result of one complete validation pass."""
+
+    plan: PluginSelectionPlanV2
+    source_proposals: tuple[PluginDeclarationSourceProposal, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.plan, PluginSelectionPlanV2):
+            raise TypeError("Plugin preflight proposal requires a Plan v2")
+        sources = self.source_proposals
+        if not sources or any(
+            not isinstance(item, PluginDeclarationSourceProposal) for item in sources
+        ):
+            raise TypeError("Plugin preflight proposal requires source proposals")
+        keys = tuple(item.key for item in sources)
+        if keys != tuple(sorted(keys)) or len(keys) != len(set(keys)):
+            raise ValueError(
+                "Plugin source proposals must be strictly sorted and unique"
+            )
+        if any(item.key[0] not in self.plan.selected_plugin_ids for item in sources):
+            raise ValueError("Plugin source proposal is outside the Product selection")
+        selected_refs = set(self.plan.selected_contributions)
+        proposed_refs = {
+            PluginContributionRef(
+                item.package.manifest.name, contribution.contribution_id
+            )
+            for item in sources
+            for contribution in item.reservation_closure
+        }
+        if not selected_refs.issubset(proposed_refs):
+            raise ValueError("Plugin source proposals do not cover Product selection")
+        if any(
+            not selected_refs.intersection(
+                PluginContributionRef(
+                    source.package.manifest.name,
+                    contribution.contribution_id,
+                )
+                for contribution in source.reservation_closure
+            )
+            for source in sources
+        ):
+            raise ValueError("Plugin source proposal is not selected by the Product")
+        if {
+            entry.ref for entry in self.plan.effective_configuration_set.entries
+        } != proposed_refs:
+            raise ValueError(
+                "Plugin proposal configuration does not cover source closures"
+            )
+        instance_refs = {
+            item.plugin_id: item for item in self.plan.context.instance_revision_refs
+        }
+        for source in sources:
+            disposition = source.source_disposition
+            if isinstance(disposition, PluginDeclarationExecutionSubjectDisposition):
+                subject = disposition.subject
+                if (
+                    subject.product_id != self.plan.context.product_id
+                    or subject.scope_id != self.plan.context.scope_id
+                    or subject.policy_revision != self.plan.context.policy_revision
+                    or subject.instance_revision_ref
+                    != instance_refs[source.package.manifest.name]
+                ):
+                    raise ValueError("Source proposal Subject does not match its Plan")
+
+
+@dataclass(frozen=True, slots=True)
 class PluginDeclarationReservation:
     package: PublishedPluginPackage = field(repr=False)
     contribution: PluginContributionReservation
@@ -856,9 +1071,7 @@ class PluginSelectionResolver:
                 "Published Plugin/binding set does not exactly match Product selection.",
                 code="plugin_selection_package_mismatch",
             )
-        trust_by_id = {
-            item.plugin_id: item for item in plan.source_trust_snapshots
-        }
+        trust_by_id = {item.plugin_id: item for item in plan.source_trust_snapshots}
         if set(trust_by_id) != selected_ids:
             raise PluginSelectionError(
                 "Plugin source trust facts do not exactly match Product selection.",
@@ -932,6 +1145,16 @@ class PluginSelectionResolver:
                 "Plugin effective configuration does not exactly cover source closures.",
                 code="invalid_plugin_effective_configuration",
             )
+        proposal = PluginPreflightProposal(
+            plan=plan,
+            source_proposals=_build_source_proposals(
+                packages_by_id,
+                bindings_by_id,
+                indexed,
+                plan=plan,
+            ),
+        )
+        source_proposals_by_key = {item.key: item for item in proposal.source_proposals}
 
         reservations: list[PluginDeclarationReservation] = []
         lookup_results: dict[str, PluginExecutionDecisionLookupResult] = {}
@@ -947,12 +1170,20 @@ class PluginSelectionResolver:
                     code="plugin_authority_ceiling_exceeded",
                     path=package.root,
                 )
-            subject = build_execution_approval_subject(
-                package,
-                contribution,
-                plan=plan,
-                binding=bindings_by_id[ref.plugin_id],
-            )
+            source_proposal = source_proposals_by_key[
+                (ref.plugin_id, contribution.source_descriptor_fingerprint)
+            ]
+            disposition = source_proposal.source_disposition
+            if not isinstance(
+                disposition,
+                PluginDeclarationExecutionSubjectDisposition,
+            ):
+                raise PluginSelectionError(
+                    "Document declaration sources do not require execution approval.",
+                    code="plugin_execution_subject_not_applicable",
+                    path=package.root,
+                )
+            subject = disposition.subject
             lookup_result = lookup_results.get(subject.digest)
             if lookup_result is None:
                 try:
@@ -965,8 +1196,7 @@ class PluginSelectionResolver:
                     ) from exc
                 if not isinstance(
                     lookup_result,
-                    PluginExecutionDecisionMissing
-                    | PluginExecutionDecisionCurrent,
+                    PluginExecutionDecisionMissing | PluginExecutionDecisionCurrent,
                 ):
                     raise PluginSelectionError(
                         "Plugin execution decision lookup returned an invalid result.",
@@ -983,10 +1213,8 @@ class PluginSelectionResolver:
             matched_decision = lookup_result.decision
             if (
                 matched_decision.subject_digest != subject.digest
-                or matched_decision.policy_revision
-                != plan.context.policy_revision
-                or matched_decision.subject_schema_version
-                != subject.schema_version
+                or matched_decision.policy_revision != plan.context.policy_revision
+                or matched_decision.subject_schema_version != subject.schema_version
             ):
                 raise PluginSelectionError(
                     "Approval owner returned a decision for a different Subject.",
@@ -1112,9 +1340,7 @@ def build_execution_approval_subject(
             code="unknown_plugin_contribution",
             path=package.root,
         )
-    source_trust_by_id = {
-        item.plugin_id: item for item in plan.source_trust_snapshots
-    }
+    source_trust_by_id = {item.plugin_id: item for item in plan.source_trust_snapshots}
     source_trust = source_trust_by_id.get(package.manifest.name)
     if (
         source_trust is None
@@ -1135,11 +1361,7 @@ def build_execution_approval_subject(
     closure = _source_reservation_closure(package, contribution)
     requested_authorities = tuple(
         sorted(
-            {
-                authority
-                for item in closure
-                for authority in item.requested_authorities
-            }
+            {authority for item in closure for authority in item.requested_authorities}
         )
     )
     if not set(requested_authorities).issubset(plan.allowed_authority_ceiling):
@@ -1155,9 +1377,7 @@ def build_execution_approval_subject(
         entrypoint=source.entrypoint,
         package_source_identity=binding.source_identity,
         source_trust_class=source_trust.source_trust_class,
-        source_trust_policy_revision=(
-            source_trust.source_trust_policy_revision
-        ),
+        source_trust_policy_revision=(source_trust.source_trust_policy_revision),
         product_id=plan.context.product_id,
         scope_id=plan.context.scope_id,
         policy_revision=plan.context.policy_revision,
@@ -1176,10 +1396,75 @@ def build_execution_approval_subject(
         reservation_closure_fingerprint=_reservation_closure_fingerprint(closure),
         source_descriptor_fingerprint=contribution.source_descriptor_fingerprint,
         instance_revision_ref={
-            item.plugin_id: item
-            for item in plan.context.instance_revision_refs
+            item.plugin_id: item for item in plan.context.instance_revision_refs
         }[package.manifest.name],
     )
+
+
+def _build_source_proposals(
+    packages_by_id: Mapping[str, PublishedPluginPackage],
+    bindings_by_id: Mapping[str, PluginSourceBinding],
+    indexed: Mapping[PluginContributionRef, PluginContributionReservation],
+    *,
+    plan: PluginSelectionPlanV2,
+) -> tuple[PluginDeclarationSourceProposal, ...]:
+    trust_by_id = {item.plugin_id: item for item in plan.source_trust_snapshots}
+    source_keys = sorted(
+        {
+            (
+                ref.plugin_id,
+                indexed[ref].source_descriptor_fingerprint,
+            )
+            for ref in plan.selected_contributions
+        }
+    )
+    proposals: list[PluginDeclarationSourceProposal] = []
+    for plugin_id, source_fingerprint in source_keys:
+        package = packages_by_id[plugin_id]
+        contribution = next(
+            item
+            for item in package.contribution_index.items
+            if item.source_descriptor_fingerprint == source_fingerprint
+        )
+        closure = _source_reservation_closure(package, contribution)
+        entries = _effective_configuration_projection(plan, plugin_id, closure)
+        requested_authorities = tuple(
+            sorted(
+                {
+                    authority
+                    for item in closure
+                    for authority in item.requested_authorities
+                }
+            )
+        )
+        if contribution.declaration_source.kind == "document":
+            source_disposition: PluginDeclarationSourceDisposition = (
+                PluginDeclarationDataOnlyDisposition()
+            )
+        else:
+            source_disposition = PluginDeclarationExecutionSubjectDisposition(
+                subject=build_execution_approval_subject(
+                    package,
+                    contribution,
+                    plan=plan,
+                    binding=bindings_by_id[plugin_id],
+                )
+            )
+        proposals.append(
+            PluginDeclarationSourceProposal(
+                package=package,
+                declaration_source=contribution.declaration_source,
+                source_descriptor_fingerprint=source_fingerprint,
+                reservation_closure=closure,
+                effective_configuration_entries=entries,
+                configuration_map_fingerprint=_configuration_map_fingerprint(entries),
+                trust_snapshot=trust_by_id[plugin_id],
+                requested_authorities=requested_authorities,
+                allowed_authority_ceiling=plan.allowed_authority_ceiling,
+                source_disposition=source_disposition,
+            )
+        )
+    return tuple(proposals)
 
 
 def _packages_by_id(
@@ -1407,11 +1692,7 @@ def _validate_effective_configuration_value(value: object) -> None:
                 )
             for key in ("authorityClass", "providerId", "referenceId"):
                 item = reference[key]
-                if (
-                    not isinstance(item, str)
-                    or not item
-                    or item != item.strip()
-                ):
+                if not isinstance(item, str) or not item or item != item.strip():
                     raise PluginSelectionError(
                         "Plugin secret reference identity is invalid.",
                         code="invalid_plugin_effective_configuration",
@@ -1542,11 +1823,7 @@ def _require_nonempty(value: object, *, name: str) -> None:
 
 
 def _require_exact_version(value: object, *, supported: int, name: str) -> None:
-    if (
-        not isinstance(value, int)
-        or isinstance(value, bool)
-        or value != supported
-    ):
+    if not isinstance(value, int) or isinstance(value, bool) or value != supported:
         raise ValueError(f"Unsupported {name} version")
 
 
@@ -1574,7 +1851,11 @@ __all__ = [
     "PendingOnlyPluginExecutionDecisionLookup",
     "PluginContributionCandidate",
     "PluginContributionRef",
+    "PluginDeclarationDataOnlyDisposition",
+    "PluginDeclarationExecutionSubjectDisposition",
     "PluginDeclarationReservation",
+    "PluginDeclarationSourceDisposition",
+    "PluginDeclarationSourceProposal",
     "PluginEffectiveConfigurationEntry",
     "PluginEffectiveConfigurationSetV1",
     "PluginExecutionApprovalSubject",
@@ -1591,6 +1872,7 @@ __all__ = [
     "PluginPreflightDiagnostic",
     "PluginPreflightOutcome",
     "PluginPreflightPendingApprovalOutcome",
+    "PluginPreflightProposal",
     "PluginPreflightRejectedOutcome",
     "PluginSelection",
     "PluginSelectionError",

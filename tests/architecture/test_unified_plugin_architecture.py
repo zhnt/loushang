@@ -1785,6 +1785,44 @@ def test_plugin_preflight_reads_decisions_only_through_the_approval_owner_port()
     assert not any(isinstance(node, ast.Raise) for node in ast.walk(preflight_method))
 
 
+def test_plugin_preflight_builds_a_resumeless_source_proposal_before_acceptance() -> None:
+    assert tuple(public_plugins.PluginPreflightProposal.__dataclass_fields__) == (
+        "plan",
+        "source_proposals",
+    )
+    source_fields = tuple(
+        public_plugins.PluginDeclarationSourceProposal.__dataclass_fields__
+    )
+    assert source_fields == (
+        "package",
+        "declaration_source",
+        "source_descriptor_fingerprint",
+        "reservation_closure",
+        "effective_configuration_entries",
+        "configuration_map_fingerprint",
+        "trust_snapshot",
+        "requested_authorities",
+        "allowed_authority_ceiling",
+        "source_disposition",
+    )
+    assert not {
+        "preflight_use_id",
+        "gate",
+        "decision",
+        "reservation",
+        "terminal_handle",
+    }.intersection(source_fields)
+    assert set(get_args(public_plugins.PluginDeclarationSourceDisposition)) == {
+        public_plugins.PluginDeclarationDataOnlyDisposition,
+        public_plugins.PluginDeclarationExecutionSubjectDisposition,
+    }
+    selection_source = Path(
+        "src/loushang/harness/resources/plugins/selection.py"
+    ).read_text(encoding="utf-8")
+    assert "proposal = PluginPreflightProposal(" in selection_source
+    assert "source_proposals=_build_source_proposals(" in selection_source
+
+
 def test_executable_declaration_is_gated_by_inert_preflight() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
 
