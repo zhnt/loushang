@@ -17,6 +17,9 @@ PLC1B-1 remains internal and inert. It adds no public Plugin SDK, import path,
 owner admission, live Resource/Tool/Command publication, Capability binding, or
 MCP behavior.
 
+Source implementation is tracked by
+[#481](https://github.com/zhnt/loushang/issues/481).
+
 ## Identity Layers And The No-Self-Reference Rule
 
 Declaration source identity has three layers:

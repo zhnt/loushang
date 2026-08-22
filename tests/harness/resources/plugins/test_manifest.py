@@ -106,6 +106,22 @@ def test_plugin_manifest_parser_builds_inert_contribution_index(
         reservation.configuration["mode"] = "changed"  # type: ignore[index]
 
 
+def test_plugin_manifest_parser_preserves_strict_json_diagnostic(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "review-pack"
+    root.mkdir()
+    (root / "plugin.json").write_bytes(
+        b'{"name":"first","name":"second","contributionIndex":{}}'
+    )
+
+    with pytest.raises(PluginManifestError) as caught:
+        PluginManifestParser().parse(root)
+
+    assert caught.value.code == "plugin_declaration_duplicate_json_key"
+    assert caught.value.path == (root / "plugin.json").resolve()
+
+
 @pytest.mark.parametrize(
     "entrypoint",
     (
@@ -505,7 +521,7 @@ def test_package_manifest_view_projects_canonical_plugin_parser_error(
     assert resolved.package_root == root.resolve()
     assert resolved.manifest_path == manifest_path.resolve()
     assert resolved.resolved_plugin_package is None
-    assert resolved.diagnostics[0]["code"] == "invalid_package_manifest"
+    assert resolved.diagnostics[0]["code"] == "plugin_declaration_invalid_json"
 
 
 def test_package_manifest_view_rejects_dangling_plugin_manifest_symlink(

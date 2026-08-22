@@ -55,6 +55,10 @@ RAW_JSON_DECODER_MODULES = {
 RAW_JSON_DECODER_FUNCTIONS = {"decode", "from_json", "load", "loads"}
 EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
     (
+        Path("src/loushang/harness/resources/plugins/_strict_json.py"),
+        "StrictPluginJsonCodec.decode_bytes",
+    ): "plugin-strict-json-codec",
+    (
         Path("src/loushang/harness/resources/plugins/manifest.py"),
         "PluginManifestParser.parse",
     ): "plugin-manifest-parser",
@@ -111,9 +115,9 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS = {
     (Path("src/loushang/harness/resources/packages/materializer.py"), "_pypi_latest_version_result", "json_decode"): 1,
     (Path("src/loushang/harness/resources/packages/mounts.py"), "PackageResourceMount.read_text", "path_read"): 1,
     (Path("src/loushang/harness/resources/packages/mounts.py"), "PackageResourceMount.read_text", "verified_open_file:handle"): 1,
-    (Path("src/loushang/harness/resources/plugins/manifest.py"), "PluginManifestParser.parse", "json_decode"): 1,
     (Path("src/loushang/harness/resources/plugins/manifest.py"), "PluginManifestParser.parse", "path_read"): 1,
     (Path("src/loushang/harness/resources/plugins/manifest.py"), "PluginManifestParser.revalidate", "path_read"): 1,
+    (Path("src/loushang/harness/resources/plugins/_strict_json.py"), "StrictPluginJsonCodec.decode_bytes", "json_decode"): 1,
     (Path("src/loushang/harness/resources/plugins/revisions.py"), "_digest_file", "path_read"): 1,
     (Path("src/loushang/harness/resources/plugins/revisions.py"), "_open_directory", "path_read"): 1,
     (Path("src/loushang/harness/resources/plugins/revisions.py"), "_open_regular_file", "path_read"): 1,
@@ -1925,6 +1929,7 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
         "package-materializer",
         "package-resource-mount",
         "plugin-manifest-parser",
+        "plugin-strict-json-codec",
         "verified-revision-boundary",
         "verified-revision-publisher",
     }

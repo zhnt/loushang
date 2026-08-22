@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from hashlib import sha256
 from pathlib import Path
 from types import MappingProxyType
 
+from loushang.harness.resources.plugins._strict_json import (
+    PluginJsonCodecError,
+    StrictPluginJsonCodec,
+)
 from loushang.harness.resources.plugins.declarations import PluginContributionIndex
 from loushang.harness.resources.plugins.types import (
     PluginManifest,
@@ -80,12 +83,11 @@ class PluginManifestParser:
                 path=resolved_manifest_path,
             ) from exc
         try:
-            payload = json.loads(encoded.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            detail = exc.msg if isinstance(exc, json.JSONDecodeError) else str(exc)
+            payload = StrictPluginJsonCodec.decode_bytes(encoded)
+        except PluginJsonCodecError as exc:
             raise PluginManifestError(
-                f"Invalid plugin manifest JSON: {resolved_manifest_path}: {detail}",
-                code="invalid_plugin_manifest",
+                f"Invalid plugin manifest JSON: {resolved_manifest_path}: {exc}",
+                code=exc.code,
                 path=resolved_manifest_path,
             ) from exc
         if not isinstance(payload, dict):
