@@ -242,19 +242,25 @@ Executable declaration has a mandatory pure preflight. The same narrow
 1. `preflight(packages, plan, overlays, policy_snapshot, decisions)` resolves
    installed/enabled/required state, immutable dependency locks, engine
    compatibility, source trust, Product/OEM Plugin and contribution allowlists,
-   runtime scope, and the package-level execution approval subject/decision
-   reference using only inert manifest and approval-policy facts;
+   runtime scope, and one source-neutral declaration reservation using only
+   inert manifest and approval-policy facts. Each reservation carries common
+   package/contribution/source/context facts plus exactly one tagged gate:
+   `data_only` for a document source or `execution_preflight` containing the
+   exact execution subject/decision reference for an in-process source;
 2. `finalize(preflight, declarations)` validates declaration/index identity,
    applies Product-selected contribution enable/deny/order/config requests, and
    emits owner-specific candidates. It does not make final owner admission or
    conflict decisions.
 
-Only a digest-bound package with a positive preflight decision may evaluate an
-executable declaration. Disabled, unselected, incompatible, untrusted, denied,
-or unapproved packages are never imported and never launched. If information
-required to make preflight is available only by executing code, that package is
-invalid for in-process declaration; discovery must move to an accepted isolated
-worker or the information must move into the inert manifest.
+Only a digest-bound package with a positive execution-preflight decision may
+evaluate an executable declaration. A document reservation never fabricates or
+accepts a `PluginExecutionApprovalSubject`, decision ID, or consumption receipt;
+strict document decoding is not execution. Disabled, unselected, incompatible,
+untrusted, denied, or unapproved executable packages are never imported and
+never launched. If information required to make preflight is available only by
+executing code, that package is invalid for in-process declaration; discovery
+must move to an accepted isolated worker or the information must move into the
+inert manifest.
 
 There are two explicit approval subjects:
 
@@ -283,10 +289,11 @@ source-trust policy snapshot revisions, revocation epoch, issued/expiry time,
 and one-shot consumption state where applicable. The Plugin runtime does not
 invent a second approval store or resolver.
 
-`preflight` may return `pending_approval`, `denied`, or a positive decision
-reference. Immediately before import/launch, the Component Host calls the
-Approval owner to `consume_execution_decision(subject, decision_id)`. That
-operation atomically:
+`preflight` returns a `data_only` reservation directly after its inert policy
+checks. An `execution_preflight` may instead return `pending_approval`,
+`denied`, or a positive decision reference. Immediately before import/launch,
+the Component Host calls the Approval owner to
+`consume_execution_decision(subject, decision_id)`. That operation atomically:
 
 - recomputes the subject over the verified revision and current scope/config;
 - rechecks current source trust, policy revisions, expiry and revocation epoch;
@@ -322,10 +329,12 @@ owner bind or service launch. A positive but stale preflight decision alone can
 never authorize execution.
 
 The declaration phase converts one resolved descriptor into one immutable,
-versioned `PluginDeclaration` after positive preflight. It may import a
-host-equivalent-trusted in-process Plugin Definition from the verified
-revision, but it must not publish effects. Resource-only and declarative
-external-service Plugins need no Python import.
+versioned `PluginDeclaration` after source-appropriate preflight. It may import
+a host-equivalent-trusted in-process Plugin Definition from the verified
+revision only after consuming its execution decision, but it must not publish
+effects. A document source is decoded directly from immutable package bytes
+under its `data_only` gate. Resource-only and declarative external-service
+Plugins need no Python import.
 
 A candidate internal authoring seam is:
 
@@ -352,8 +361,8 @@ The declaration IR is a mutually exclusive tagged union:
 | `capability_provider` | Data-only Provider metadata plus a verified factory/disposer reference that may replace one complete top-level Capability Bundle. | Capability-owner eligibility and final admission, Product selection, then Graph Binder |
 | `capability_component` | Data-only owner-schema payload for one component aggregated inside an existing Capability Bundle, such as an LSP server route or architecture analyzer; it cannot replace the Bundle. | Exact Capability owner resolver and generation |
 | `resource_item` | Prompt, Skill, theme, asset, method, or raw source descriptor. | Resource generation owner |
-| `tool_pack` | Typed Tool pack referencing any required source items. | Owning Capability Bundle Tool facet |
-| `command_pack` | Typed Command pack referencing any required source items. | Owning Capability Bundle Command facet |
+| `tool_pack` | Typed Tool pack referencing any required source items and Capability facets. | Tool definition/contribution owner |
+| `command_pack` | Typed Command pack referencing any required source items and Capability facets. | Command/Presentation owner |
 | `event_definition` | Owner-qualified, versioned event contract in a namespace the Product/Capability owner granted to the contributor. | Product/Capability domain Event Definition catalog |
 | `event_subscription` | Typed observer over an admitted Event Definition. | Extension/event owner |
 | `interceptor` | Ordered typed interceptor/decorator/reducer/first-match contribution. | Extension/router owner |
@@ -361,6 +370,45 @@ The declaration IR is a mutually exclusive tagged union:
 | `presentation` | Renderer, shortcut, flag, or UI contribution. | Presentation/Extension owner |
 | `external_service` | Declarative MCP, LSP-server, or other process/transport service that another admitted contribution may reference. It does not itself enter a Capability or publish Tools. | Kind-specific service host |
 | `configuration_schema` | Namespaced settings, defaults, sensitivity, and refresh policy. | Product configuration runtime |
+
+A Plugin package has no mutually exclusive top-level `pluginType`. Its
+classification is the product of independent facts: each
+`contribution.kind`, an owner-specific subtype such as `resourceKind`, the
+declaration source model (`document` or `in_process`), Host-verified source and
+trust provenance, and Product/OEM Composition Set selection. Product and OEM
+are selectors and provenance authorities, not Plugin kinds. A package may
+therefore contribute Resources, Tool/Command consumers, and a Capability
+Provider without becoming a special mixed type.
+
+Declaration source model is not contributed-runtime execution model. A
+document-backed `capability_provider` can still name a separately approval-
+gated factory/disposer, while an in-process Definition may emit a declaration
+whose admitted owner host performs no later code launch. The two facts have
+separate fingerprints and approval gates.
+
+Source-independent conformance compares the normalized kind-specific payload
+and its semantic fingerprint. The complete `PluginDeclaration` and candidate
+fingerprints remain source/reservation-bound and therefore intentionally differ
+when equivalent payloads arrive through different source models. No parity
+test may erase that provenance distinction.
+
+Canonical manifests and declaration IR use readable tagged strings and typed
+records for those independent dimensions. They do not carry a hierarchical
+numeric type code or a capability bitmap. UI, catalog, telemetry, or an
+in-process optimization may derive labels such as resource-only, executable,
+or mixed after validation, but those projections grant no authority and are
+never persisted as the canonical identity, fingerprint, compatibility, or
+admission input.
+
+A `capability_provider` targets exactly one top-level Capability Definition. It
+may declare that Capability's facets and typed requirements, but it cannot
+contain arbitrary Plugin contributions, a nested Plugin runtime, or authority
+to declare, approve, select, bind, retire, or replace itself. Direct and
+transitive self-requirement cycles fail Graph planning. Model-facing Tools and
+human Commands are sibling `tool_pack` and `command_pack` contributions; they
+consume owner-admitted Capability facets through typed requirements. Packaging
+or selecting those siblings together does not transfer their owners to the
+Provider.
 
 A command Markdown file may be a `resource_item` locator, but its executable
 command identity exists only in one `command_pack`. The same rule applies to
@@ -1070,8 +1118,8 @@ The initial first-party decomposition is:
 | Plugin | Main contribution | Capability effect |
 | --- | --- | --- |
 | `coding.base` | Optional standard Coding resources, commands, and Tool packs | Aggregates into `harness.resources` and `harness.session`; no new graph node |
-| `coding.lsp.default` | LSP admission, supervisor/document runtime, semantic tools, and diagnostics | Provides `coding.lsp`, requiring narrow `harness.workspace` read/process facets |
-| `coding.arch.default` | Repository analyzers, architecture facts, queries, and tools | Provides `coding.arch`, requiring `harness.workspace` and optionally consuming `coding.lsp` |
+| `coding.lsp.default` | LSP runtime/diagnostic Provider plus a sibling semantic Tool pack | Provides `coding.lsp`, requiring narrow `harness.workspace` read/process facets; Tool definitions consume its typed runtime facet |
+| `coding.arch.default` | Analyzer/fact Provider plus sibling query Tool pack | Provides `coding.arch`, requiring `harness.workspace` and optionally consuming `coding.lsp`; Tool definitions consume admitted facets |
 
 Suggested named Coding Composition Sets, selected by the Product Runtime Plan
 or OEM Profile rather than a new Product Profile type, are:
@@ -1095,11 +1143,17 @@ coding.lsp.default declaration
   -> Capability Component Host resolves the approved factory reference
   -> one selected Provider factory receives typed facets
   -> Graph Binder mounts one coding.lsp Bundle
-  -> Bundle exposes semantic runtime + tools + diagnostics
+  -> Bundle exposes semantic runtime + tool-runtime support + diagnostics
+  -> sibling tool_pack binds model-visible definitions against captured facets
 ```
 
-Tools are part of the selected Bundle and become visible with the runtime they
-call. They are not registered earlier against a deferred LSP object.
+Owner-admitted Tool packs in the same selected Plugin/composition closure are
+staged by the Tool owner and become Session-visible only when the usable Product
+Session containing the mounted runtime is published. They remain sibling
+Consumer contributions rather than fields or registrations owned by the
+Provider; this Session visibility rule is not a cross-owner publication or
+rollback transaction, and the packs are never registered early against a
+deferred LSP object.
 
 An additional language server does not replace that Bundle. It declares an
 owner-schema `capability_component` referencing an admitted `external_service`;
@@ -1273,6 +1327,8 @@ implementation.
   Session Graph;
   Runtime Profile remains Bundle-private;
 - aggregate additional server components only through the `coding.lsp` owner;
+- admit the model-visible LSP Tool definitions as a sibling `tool_pack` that
+  consumes the mounted runtime facet through the Tool owner;
 - remove deferred LSP/process/Tool pre-binding paths;
 - prove alternate Provider selection, startup rollback, restart reconstruction,
   complete Model Input facts, and owner-correct disposal.
@@ -1282,7 +1338,9 @@ implementation.
 - package the default architecture implementation as a first-party Plugin;
 - mount `coding.arch`, initially independent of LSP;
 - add the optional typed LSP requirement only after contract evidence;
-- bind analyzers, facts, diagnostics, and Tools in one owner Bundle generation;
+- bind analyzers, facts, diagnostics, index/runtime support, and disposer in one
+  Capability owner Bundle generation, with model-visible Tools supplied by a
+  sibling Tool-owner pack at the Product Session visibility boundary;
 - aggregate optional analyzers through the `coding.arch` owner and exercise
   versioned Plugin data generations, migration fencing/atomic cutover,
   rollback and quota contracts for indexes.

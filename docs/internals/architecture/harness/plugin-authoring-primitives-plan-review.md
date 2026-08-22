@@ -6,7 +6,8 @@
 PAP0; PAP1 may begin only after PAP0 restores the architecture baseline to
 green. PAP2 and every later security/lifecycle slice require a fresh
 source-backed review before implementation; this verdict is not approval to
-merge PAP0-PAP7 as one change or to publish the public SDK early.
+merge PAP0-PAP7, including PAP1B, as one change or to publish the public SDK
+early.
 
 The review found four priority errors in the initial proposal and the delivery
 plan now incorporates their corrections:
@@ -28,8 +29,8 @@ The baseline blocker identified by the original review is closed locally at
 verified-revision/mount sinks under named owners, and restored the architecture
 suite to green. The
 [PLC0 baseline](plugin-lifecycle-plc0-baseline.md) records the evidence. PAP1
-was implemented locally at `2ebac237` and review-hardened at `27715416` without
-a public export or live effect.
+was implemented locally at `2ebac237` and review-hardened through `8a3c94fd`
+without a public export or live effect.
 Its source review also corrected the planned placement from
 `resources.plugins` to the higher internal `plugin_authoring` composition layer
 after the dependency gate demonstrated that the original placement would form
@@ -106,9 +107,11 @@ collapse “selected” into “authorized to execute,” make revocation races
 undefined, and allow a crash between one-shot consumption and external process
 tracking.
 
-**Correction applied.** PAP2 adds the durable Approval-owner port and recovery
-states before PAP3 may import a Plugin Definition. The Plugin subsystem does not
-own another approval store.
+**Correction applied.** PAP1B first distinguishes a document `data_only`
+reservation from an in-process `execution_preflight` reservation, so strict
+document decoding never invents execution authority. PAP2 then adds the durable
+Approval-owner port and recovery states before PAP3 may import a Plugin
+Definition. The Plugin subsystem does not own another approval store.
 
 ### P0-03 — Stable public SDK cannot precede production combination evidence
 
@@ -335,8 +338,9 @@ stronger Loushang properties that a universal Plugin context would erase:
 owner admission, pure Product selection, one Graph publisher, exact reversible
 registration ownership, and complete Model Input reconstruction.
 
-PAP0/PLC0 and inert PAP1/PLC1A are complete locally. PAP2 is the next design
-review boundary; skipping it to reach an impressive Plugin demo would
-invalidate the architecture's execution-trust claim. Issue/PR attachment and
-independent review remain publication gates, not reasons to weaken the local
-implementation.
+PAP0/PLC0 and inert PAP1/PLC1A are complete locally. PAP1B/PLC1B is the next
+source-changing declaration slice; PAP2 remains the next high-risk design
+review boundary and may not land before PLC2's management core. Skipping either
+boundary to reach an impressive Plugin demo would invalidate the architecture's
+execution-trust claim. Issue/PR attachment and independent review remain
+publication gates, not reasons to weaken the local implementation.

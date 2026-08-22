@@ -14,6 +14,12 @@ from loushang.harness.runtime import RuntimeCapabilityScope
 ARCHITECTURE_PATH = Path(
     "docs/internals/architecture/harness/unified-plugin-architecture.md"
 )
+AUTHORING_PLAN_PATH = Path(
+    "docs/internals/architecture/harness/plugin-authoring-primitives-delivery-plan.md"
+)
+LIFECYCLE_PLAN_PATH = Path(
+    "docs/internals/architecture/harness/plugin-lifecycle-coding-pluginization-plan.md"
+)
 README_PATH = Path("docs/internals/architecture/harness/README.md")
 SOURCE_ROOT = Path("src/loushang")
 EXPECTED_PLUGIN_JSON_STATIC_SITES = {
@@ -991,16 +997,74 @@ def test_unified_plugin_architecture_defines_the_four_phase_pipeline() -> None:
         assert phase in architecture
 
 
+def test_plugin_classification_is_multidimensional_and_non_authoritative() -> None:
+    architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
+
+    assert "has no mutually exclusive top-level `pluginType`" in architecture
+    assert "Product and OEM\nare selectors and provenance authorities" in architecture
+    assert "do not carry a hierarchical\nnumeric type code or a capability bitmap" in (
+        architecture
+    )
+    assert "never persisted as the canonical identity, fingerprint" in architecture
+    assert "cannot\ncontain arbitrary Plugin contributions" in architecture
+    assert "sibling `tool_pack` and `command_pack` contributions" in architecture
+    assert "| Tool definition/contribution owner |" in architecture
+    assert "sibling tool_pack binds model-visible definitions" in architecture
+    assert "this Session visibility rule is not a cross-owner publication or" in (
+        architecture
+    )
+    assert "Declaration source model is not contributed-runtime execution model" in (
+        architecture
+    )
+    assert "No parity\ntest may erase that provenance distinction" in architecture
+
+
+def test_plc1b_declaration_plan_and_pap_crosswalk_are_explicit() -> None:
+    lifecycle_plan = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
+    authoring_plan = AUTHORING_PLAN_PATH.read_text(encoding="utf-8")
+
+    for slice_name in (
+        "PLC1B-1: Versioned Declaration Source Union",
+        "PLC1B-2: Resource Item Declaration",
+        "PLC1B-3: Tool And Command Consumer Declarations",
+        "PLC1B-4: `coding.base` Shadow Declaration",
+    ):
+        assert slice_name in lifecycle_plan
+    assert "no top-level Plugin type code or bitmap participates" in lifecycle_plan
+    assert "strict gate union: `data_only` for `document`" in lifecycle_plan
+    assert "document reservation succeeds without a `PluginExecutionApprovalSubject`" in (
+        lifecycle_plan
+    )
+    assert "finalized `PluginContributionCandidate`, and candidate fingerprint" in (
+        lifecycle_plan
+    )
+    assert "complete declaration/candidate fingerprints stay source-bound" in (
+        lifecycle_plan
+    )
+    assert "## PAP/PLC Sequencing Crosswalk" in authoring_plan
+    assert "PLC order wins" in authoring_plan
+    assert "### PAP1B: Data-Only Declaration Source And Consumer Expansion" in (
+        authoring_plan
+    )
+    assert "| PAP1B | PLC1B |" in authoring_plan
+    assert "this slice is part of PLC3" in authoring_plan
+    assert "after PAP1B/PLC1B and the PLC2 minimum lifecycle command core" in (
+        authoring_plan
+    )
+
+
 def test_executable_declaration_is_gated_by_inert_preflight() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
 
     assert architecture.index("Plugin Preflight Decision") < architecture.index(
         "Plugin Definition"
     )
-    assert "Only a digest-bound package with a positive preflight decision" in (
-        architecture
+    assert (
+        "Only a digest-bound package with a positive execution-preflight decision"
+        in architecture
     )
-    assert "are never imported and never launched" in architecture
+    assert "A document reservation never fabricates or" in architecture
+    assert "executable packages are never imported and\nnever launched" in architecture
     assert "PluginExecutionApprovalSubject" in architecture
     assert "ContributionActivationApprovalSubject" in architecture
     assert "PluginApprovalDecisionRecord" in architecture

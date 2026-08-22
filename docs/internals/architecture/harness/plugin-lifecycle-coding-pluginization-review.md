@@ -11,7 +11,7 @@ production sample, and retains `coding.lsp` as the first Provider/Graph proof.
 PLC0 restored the source-backed architecture baseline at `25cfc170`; see
 [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md). PLC1A's
 inert authoring primitives are implemented at `2ebac237` and hardened against
-the first implementation review at `27715416`; see the
+the implementation reviews through `8a3c94fd`; see the
 [PLC1A baseline](plugin-lifecycle-plc1a-baseline.md). PLC1B is technically next
 after issue attachment and independent review. This review does not approve the
 security, lifecycle, production cutover, or public SDK slices as one batch.
@@ -123,9 +123,16 @@ compatibility skew.
 
 **Correction accepted.** PLC1 introduces `document` and `in_process` source
 arms that consume the same reservation model and produce the same tagged IR.
-Document declarations still require digest, schema, selection and owner
-admission. Only executable evaluation consumes execution approval and crosses
-the verified import gate.
+The current unconditional execution-subject fields become a strict reservation
+gate union over shared source-neutral facts: `data_only` carries no execution
+subject/decision, while `execution_preflight` carries the exact existing
+subject and decision reference. The same union replaces unconditional approval
+fields in the authoring view, finalized candidate, and candidate fingerprint;
+there is no optional or fabricated decision peer. Document declarations still
+require digest, schema, selection and owner admission. Only executable
+evaluation consumes execution approval and crosses the verified import gate.
+Declaration source kind remains separate from any contributed factory/service
+execution model.
 
 ### P0-06 — Kernel Prompt must remain truthful without Plugins
 
@@ -153,7 +160,10 @@ problem.
 
 **Correction accepted.** PLC1 shadow mode stops at frozen declarations and
 later may compare owner candidate outputs before publication. Each production
-slice includes a final caller inventory and peer-route deletion commit.
+slice includes a final caller inventory and peer-route deletion commit. Shadow
+parity is limited to normalized payload and semantic fingerprints; complete
+declaration/candidate fingerprints intentionally retain their different source
+and reservation provenance.
 
 ### P0-08 — Base-first evidence cannot replace Provider/Graph evidence
 
@@ -270,6 +280,23 @@ scope before the common lifecycle is closed.
 Later declarative external-service support must use the same owner admission,
 process, transport and Tool publication rules.
 
+### P1-07 — Plugin classification must remain orthogonal to contribution authority
+
+**Evidence.** One package may carry Resource items, Tool/Command consumers, and
+a Capability Provider, while Product/OEM composition and Host trust describe
+selection and provenance rather than executable ownership.
+
+**Risk.** A mutually exclusive package `pluginType`, hierarchical numeric code,
+or capability bitmap would either reject valid mixed packages or become a
+second compatibility/admission language that drifts from strict contribution
+records and exact-owner checks.
+
+**Correction accepted.** Canonical manifests and IR classify each contribution
+with readable tagged records and keep Resource subtype, declaration source,
+verified provenance/trust, and Product/OEM selection as separate dimensions.
+Catalog/UI labels may be derived after validation but grant no authority and
+do not participate in canonical identity, compatibility, admission, or binding.
+
 ### P2-01 — PLC2 and PLC3 are separate high-risk boundaries
 
 **Evidence.** Durable management state transitions and Approval/import
@@ -302,7 +329,8 @@ The reviewed critical path is:
 
 ```text
 PLC0 baseline
-  -> PLC1 canonical declarations
+  -> PLC1A capability_provider declaration baseline
+  -> PLC1B source/Resource/Tool/Command declarations and Base shadow
   -> PLC2 management state core
   -> PLC3 executable trust
   -> PLC4 exact-owner admission/binding
@@ -315,8 +343,9 @@ PLC0 baseline
 
 Permitted internal parallelism after interfaces freeze:
 
-- PLC1 Resource codecs may proceed beside the Provider codec, but the Provider
-  codec remains PAP1's first compatibility fixture;
+- PLC1B Resource and Tool/Command codecs may proceed beside each other only
+  after the source-union and identity fields freeze; PLC1A's Provider codec
+  remains the first compatibility fixture;
 - PLC2 inert management records may proceed beside PLC3 Approval design, but
   executable evaluation cannot merge before Approval consumption exists;
 - PLC4 Resource-owner and Capability-owner adapters may proceed independently;
@@ -369,14 +398,14 @@ legacy live registrar behind a facade.
 
 ## First Implementation Gate
 
-PLC0 satisfies the following technical entry gates at `25cfc170`. PLC1 source
+PLC0 and PLC1A satisfy the baseline entry gates through `8a3c94fd`. PLC1B source
 work is eligible after the missing tracking issue is attached:
 
 1. the known architecture inventory failures are reconciled and green;
 2. exact parser, source-open, declaration, selection and live-publication sites
    are recorded without broad allowlists;
 3. `PluginDeclaration` remains the one canonical IR;
-4. the first Provider codec remains inert and compatible with the current
+4. the existing Provider codec remains inert and compatible with the current
    preflight/finalize slice;
 5. the document source model cannot import code;
 6. the `coding.base` shadow fixture stops before owner admission/publication;
@@ -394,8 +423,8 @@ acceptance sample; and `coding.arch` is the second-Provider and optional-
 dependency sample. Together they provide the production diversity needed
 before a stable author SDK is published.
 
-PLC0 is complete locally and PLC1 is the next implementation slice after issue
-binding. The next mandatory design reviews are PLC2's management transaction
-and PLC3's Approval/import-start protocol. Skipping either to make Base appear
-pluggable would preserve the current duplication under a new manifest rather
-than deliver a unified Plugin lifecycle.
+PLC0 and PLC1A are complete locally, and PLC1B is the next implementation slice
+after issue binding. The next mandatory high-risk design reviews are PLC2's
+management transaction and PLC3's Approval/import-start protocol. Skipping
+either to make Base appear pluggable would preserve the current duplication
+under a new manifest rather than deliver a unified Plugin lifecycle.

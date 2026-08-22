@@ -43,12 +43,16 @@ planning, work event persistence, or AI provider behavior.
   existing registration and projection authorities.
 - [Unified Plugin Authoring Primitives Delivery Plan](plugin-authoring-primitives-delivery-plan.md)
   prioritizes the internal Definition / Provider / Consumer authoring bridge,
-  durable execution approval, owner admission, and LSP production proof;
-  Skill-provider convergence remains subordinate and the stable public SDK
-  stays gated by the broader production combination evidence.
+  versions document/in-process declaration sources, keeps Resource/Tool/
+  Command contributions orthogonal to Capability Providers, and then proceeds
+  through durable execution approval, owner admission, and LSP production
+  proof. Skill-provider convergence remains subordinate and the stable public
+  SDK stays gated by the broader production combination evidence.
 - [Unified Plugin Lifecycle And Coding Pluginization Delivery Plan](plugin-lifecycle-coding-pluginization-plan.md)
   coordinates the common install-to-retirement lifecycle with `coding.lsp`,
-  `coding.base`, and `coding.arch` production migrations. Its
+  `coding.base`, and `coding.arch` production migrations. PLC1B first completes
+  the inert declaration-source/Resource/consumer vocabulary and a
+  `coding.base` shadow package; its
   [review](plugin-lifecycle-coding-pluginization-review.md) moves the minimum
   management control core before the Base cutover while preserving exact-owner
   binding, LSP as the first Graph proof, and the later public SDK gate.

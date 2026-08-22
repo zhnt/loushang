@@ -11,9 +11,9 @@
   inventory and verification evidence are recorded in
   [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md). PLC1A's
   inert typed Capability Provider codec and reservation-bound builder are
-  implemented at `2ebac237`, review-hardened at `27715416`, and recorded in the
-  [PLC1A baseline](plugin-lifecycle-plc1a-baseline.md). PLC1B and later slices
-  remain unimplemented.
+  implemented at `2ebac237`, review-hardened through `8a3c94fd`, and recorded
+  in the [PLC1A baseline](plugin-lifecycle-plc1a-baseline.md). PLC1B and later
+  slices remain unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, and later Skill adoption.
@@ -224,13 +224,21 @@ model. The target tagged union is:
 | `capability_provider` | Complete top-level Bundle Provider metadata and verified factory/disposer references | Capability owner, Product Provider resolver, Graph Binder |
 | `capability_component` | Component aggregated inside an existing Bundle | Exact Capability component owner/generation |
 | `resource_item` | Prompt, Skill, method, theme, asset, or raw source descriptor | Resource generation owner |
-| `tool_pack` | Typed Tool selection/definition pack | Owning Bundle Tool facet |
-| `command_pack` | Typed Command pack referencing admitted resources | Owning Bundle Command facet |
+| `tool_pack` | Typed Tool selection/definition pack with Capability requirements | Tool definition/contribution owner |
+| `command_pack` | Typed Command pack referencing admitted resources and Capability facets | Command/Presentation owner |
 | later accepted kinds | Events, Agent definitions, presentation, external services, configuration | Their exact accepted owners |
 
 Only the initial production set is in the first implementation scope:
 `capability_provider`, `resource_item`, `tool_pack`, and `command_pack`.
 `capability_component` follows after the complete-Bundle LSP path is stable.
+
+These tags classify contributions, not packages. A canonical Plugin package
+does not declare one `pluginType`, numeric hierarchy, or capability bitmap.
+Contribution kind, owner-specific subtype, declaration source model,
+Host-verified origin/trust, and Product/OEM selection are separate facts. A
+package may contain several kinds. Any resource-only, executable, Capability,
+or mixed label is a derived catalog/UI projection and has no effect on
+identity, compatibility, trust, admission, or binding.
 
 ### Two declaration source models
 
@@ -294,6 +302,10 @@ injects narrow execution, diagnostics, policy, workspace, and presentation
 facets. The Plugin receives neither a `WorkspaceToolRegistry` nor a service
 bag. A future custom executable Tool uses its own approved declaration and host
 path; `coding.base` does not require that surface to prove its v1 migration.
+When a Capability Plugin distributes a Provider with Tool or Command consumers,
+the three remain sibling contributions joined by typed requirements and the
+Product selection closure. The Provider never contains their declaration or
+registration authority.
 
 ## Product And Capability Ownership
 
@@ -409,8 +421,8 @@ The initial caller inventory that each implementation slice must refine is:
 | Current path | Target | Deletion condition |
 | --- | --- | --- |
 | `coding.cli.build_builtin_tool_registry()` directly calls `register_coding_builtin_tools()` | admitted `coding.base` `tool_pack` resolved by the Tool/Resource owner | standard-mode parity and no direct registrar callers |
-| CLI directly calls `register_coding_arch_tools()` | mounted `coding.arch.default` Bundle Tools | Arch Graph migration and caller inventory green |
-| Coding bootstrap calls `register_coding_lsp_tools()` against a deferred runtime | mounted `coding.lsp.default` Bundle Tools | LSP Graph migration, cancellation and leak tests green |
+| CLI directly calls `register_coding_arch_tools()` | admitted sibling `tool_pack` consuming the mounted `coding.arch.default` runtime facet | Arch Graph/Tool migration and caller inventory green |
+| Coding bootstrap calls `register_coding_lsp_tools()` against a deferred runtime | admitted sibling `tool_pack` consuming the mounted `coding.lsp.default` runtime facet | LSP Graph/Tool migration, cancellation and leak tests green |
 | `_CODING_AGENT_PRODUCT_CONSTRUCTION` binds one monolithic default Coding prompt | Kernel prompt plus admitted Resource/Tool prompt sections | minimal/standard prompt snapshots and Model Input provenance green |
 | Product plan and settings infer built-in capability mount modes | Composition Set and owner-admitted Provider selection | compatibility telemetry shows no independent selection caller |
 | Skill filesystem/package discovery has multiple source adapters | one Resource-owned provider-neutral Skill catalog | Skill convergence gates pass; individual Skills remain Resources |
@@ -526,23 +538,118 @@ Exit gate:
 
 ### PLC1: Canonical Declaration Foundation
 
+PLC1A completed PAP1's typed `capability_provider` codec and
+reservation-bound internal builder. PLC1B is the next source-changing slice and
+is divided into four independently reviewable declaration-only increments.
+
+#### PLC1B-1: Versioned Declaration Source Union
+
 Scope:
 
-- complete PAP1's typed `capability_provider` codec and reservation-bound
-  internal builder first;
-- version the declaration source union for `document` and `in_process`;
-- add strict owner-specific codecs for `resource_item`, `tool_pack`, and
-  `command_pack` without importing executable code;
-- reject unknown fields, duplicate identities, path traversal, callable data,
-  unsupported engine features, owner mismatch, and post-freeze mutation; and
-- compile a document-backed `coding.base` shadow package to frozen IR only.
+- replace the implicit entrypoint-only source with one strict tagged
+  `PluginDeclarationSource` union;
+- define `document` as a contained immutable document locator plus exact
+  schema/media identity, with no import or executable decision consumption;
+- define `in_process` as the existing contained Python Definition entrypoint,
+  still without importing it in this slice;
+- bind source kind and canonical source fingerprint into the reservation and
+  declaration provenance;
+- revise `PluginDeclarationReservation` to retain source-neutral package,
+  contribution, trust, Product/scope, policy, and configuration facts plus one
+  strict gate union: `data_only` for `document`, or `execution_preflight` with
+  the existing exact `PluginExecutionApprovalSubject` and decision reference
+  for `in_process`;
+- propagate that gate union through the narrow authoring reservation view,
+  finalized `PluginContributionCandidate`, and candidate fingerprint instead
+  of retaining an unconditional `approval_subject_digest` or `decision_id`; and
+- reject nullable peer fields, unknown tags, noncanonical locators, and one
+  reservation consumed through more than one source model.
 
 Exit gate:
 
-- hand-authored, document-backed, and internal-builder declarations produce the
-  same canonical fingerprints;
-- one reservation cannot be consumed through multiple source models; and
-- the shadow package has no live registration or model-visible effect.
+- existing in-process fixtures migrate through the one versioned source codec;
+- document and in-process sources exact-match package revision, Product/scope
+  preflight context, and reservation identity;
+- a document reservation succeeds without a `PluginExecutionApprovalSubject`,
+  decision ID, or consumption receipt, while in-process preflight still fails
+  without its exact positive decision;
+- document and in-process candidates retain the same common provenance fields,
+  while only the in-process candidate fingerprint includes execution-subject
+  and decision identity;
+- declaration source kind remains distinct from any factory, disposer, or
+  external-service execution model recorded by the contribution payload;
+- parsing, selection, and authoring remain inert; and
+- no compatibility shim retains the old entrypoint-only parser as a peer path.
+
+#### PLC1B-2: Resource Item Declaration
+
+Scope:
+
+- add the strict `resource_item` payload arm;
+- define an owner-versioned Resource subtype union initially covering `skill`,
+  `prompt`, `method`, `theme`, `asset`, and raw `source` descriptors;
+- bind every Resource locator to immutable package bytes, media/schema facts,
+  owner namespace, and configuration fingerprint; and
+- keep each Skill a Resource identity that may be packaged with other items,
+  not a Plugin instance or a separately executable Definition.
+
+Exit gate:
+
+- every Resource subtype round-trips through canonical JSON and rejects
+  cross-package, duplicate, traversing, callable, or owner-mismatched data;
+- document-backed Resources acquire no live Resource generation; and
+- Resource subtypes cannot mint Tool, Command, or Capability identities.
+
+#### PLC1B-3: Tool And Command Consumer Declarations
+
+Scope:
+
+- add strict `tool_pack` and `command_pack` payload arms referencing
+  owner-controlled catalogs or future owner-approved definitions;
+- express Capability use only through typed requirements and requested facets;
+- keep Provider, Tool pack, and Command pack as sibling contributions even when
+  one package and Product selection closure require them together; and
+- reject embedded registries, live callables, arbitrary service bags, Provider
+  self-admission, and direct or transitive Capability self-requirement cycles.
+
+Exit gate:
+
+- declaration codecs do not resolve Tool/Command implementations or access a
+  live Provider;
+- a Provider cannot contain or emit a sibling contribution; and
+- owner/catalog and Capability requirement fingerprints are canonical and
+  exact-match the reserved facts.
+
+#### PLC1B-4: `coding.base` Shadow Declaration
+
+Scope:
+
+- compile a document-backed `coding.base` shadow package containing optional
+  prompt/Skill Resources plus standard Tool and Command packs;
+- resolve only frozen declaration IR and diagnostics against existing host-owned
+  catalog identities; and
+- compare normalized kind-specific payloads and semantic fingerprints with
+  equivalent hand-authored/internal-builder outputs without activating either
+  route; complete declaration/candidate fingerprints stay source-bound.
+
+Exit gate:
+
+- the shadow package has no Tool registration, Resource publication, Session or
+  Model Input effect;
+- hand-authored, document-backed, and internal-builder routes produce the same
+  normalized payload and semantic fingerprint, while full declaration and
+  candidate fingerprints preserve source/reservation provenance; and
+- disabling or removing the shadow fixture requires no disposer or live-state
+  cleanup.
+
+PLC1 overall exit gate:
+
+- all four PLC1B increments have independent regression and architecture gates;
+- no top-level Plugin type code or bitmap participates in parsing, identity,
+  trust, admission, selection, or binding;
+- the generic Resource Plugin path exists before any `coding.base` production
+  cutover; and
+- PLC1 remains rollback-safe by deleting only inert codecs, fixtures, and IR.
 
 ### PLC2: Minimum Lifecycle And Management Control
 
@@ -609,9 +716,9 @@ Exit gate:
 ### PLC5: `coding.lsp.default` Production Provider
 
 Scope and gates are PAP6, including packaging the complete Bundle, narrow
-workspace requirements, Tool/runtime co-publication, alternate Provider
-selection, rollback, replay, restart reconstruction, owner-correct disposal,
-and deletion of deferred/early-binding peers.
+workspace requirements, Tool/runtime Session co-visibility across their exact
+owners, alternate Provider selection, rollback, replay, restart reconstruction,
+owner-correct disposal, and deletion of deferred/early-binding peers.
 
 This remains the first production Graph proof.
 
@@ -649,8 +756,9 @@ Scope:
 - package and mount the Architecture Bundle through the same Provider path;
 - keep it initially independent of LSP, then add the optional typed LSP
   requirement only with contract evidence;
-- bind analyzers, facts, diagnostics, Tools, index generation and disposer
-  together; and
+- bind analyzers, facts, diagnostics, index/runtime support, and disposer in the
+  Capability generation, while an admitted sibling `tool_pack` consumes its
+  typed facets and becomes visible only with the usable Product Session; and
 - prove versioned private data, migration fencing, rollback and quota policy.
 
 Exit gate:

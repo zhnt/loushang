@@ -3,7 +3,7 @@
 ## Status
 
 - Source commits: implementation `2ebac237`, first review hardening `27715416`,
-  and second-review remediation on
+  and second-review remediation `8a3c94fd` on
   `harness/plugin-authoring-primitives-pap1`.
 - Scope: PAP1 / PLC1A, inert Capability Provider authoring only.
 - Publication: local only. GitHub issue/PR attachment and independent review

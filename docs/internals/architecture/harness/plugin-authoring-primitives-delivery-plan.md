@@ -8,7 +8,7 @@
   chain and the first inert UPA2 `capability_provider` preflight/finalize slice.
 - Delivery status: PAP0/PLC0 is implemented locally at `25cfc170` and the inert
   PAP1/PLC1A authoring slice is implemented at `2ebac237` and review-hardened at
-  `27715416`; see the [PLC1A baseline](plugin-lifecycle-plc1a-baseline.md). No
+  `8a3c94fd`; see the [PLC1A baseline](plugin-lifecycle-plc1a-baseline.md). No
   public Plugin SDK, executable Plugin Definition evaluator, Capability owner
   admission bridge, or Plugin-sourced Capability bind is claimed as
   implemented by this document.
@@ -37,6 +37,10 @@ The delivery order is:
 ```text
 freeze existing semantic types and authority sinks
   -> add an internal data-only authoring builder and typed payload codec
+  -> version document/in-process declaration sources and add strict Resource,
+     Tool-pack, and Command-pack declaration codecs
+  -> prove those codecs with an inert coding.base shadow declaration
+  -> add minimum durable Plugin lifecycle and management control
   -> add durable Approval-owner execution-decision consumption
   -> evaluate one verified Plugin Definition into frozen declaration IR
   -> add Capability-owner eligibility/final admission and Product selection
@@ -129,8 +133,12 @@ duplicates:
 | Inert selection | `PluginSelectionResolver` | Retain preflight/finalize; it never performs owner admission or binding. |
 
 PAP1 now provides the typed `capability_provider` payload codec and
-reservation-bound internal builder. The current source still does not provide:
+reservation-bound internal builder. PLC1B/PAP1B must next complete the inert
+declaration vocabulary before executable lifecycle work. The current source
+still does not provide:
 
+- a versioned document/in-process declaration-source union;
+- strict `resource_item`, `tool_pack`, and `command_pack` declaration arms;
 - a constrained `PluginDefinition` builder/evaluator;
 - durable, consumable Approval-owner Plugin execution decisions;
 - Capability-owner eligibility and final admission records;
@@ -203,9 +211,16 @@ cohesion, but their semantics and ownership must not be merged.
 
 ### Data-only declaration layer
 
+- `PluginDeclarationSource`: strict versioned `document`/`in_process` union
+  that replaces the current peer `entrypoint` and `executionModel` reservation
+  fields and binds one canonical source fingerprint.
+- `PluginDeclarationGate`: strict `data_only`/`execution_preflight` union over
+  the reservation's shared package/contribution/source/context facts. Only the
+  executable arm carries `PluginExecutionApprovalSubject` and decision
+  reference.
 - `PluginSymbolReference`: contained relative module/file locator, symbol,
-  expected package digest, and execution model. It is serializable and never
-  carries a callable.
+  expected package digest, and contributed-runtime execution model. It is
+  serializable, never carries a callable, and is not the declaration source.
 - `CapabilityProviderDeclarationPayload`: strict versioned codec containing
   `CapabilityBundleProvider` data, factory/disposer references, normalized
   non-secret binding inputs, and requested authorities.
@@ -304,6 +319,31 @@ constructed. A construction failure is rolled back by the existing Binder. A
 post-publication retirement failure remains an owner-visible retryable cleanup
 fact and never rolls back the committed graph.
 
+## PAP/PLC Sequencing Crosswalk
+
+PAP describes the author-facing dependency slices. PLC is the coordinating
+source-change order across declarations, lifecycle management, trust, binding,
+and Coding production cutovers. PLC order wins whenever the two plans appear
+to permit different implementation timing.
+
+| PAP slice | Coordinating PLC slice | Relationship |
+| --- | --- | --- |
+| PAP0 | PLC0 | Same baseline and authority inventory. |
+| PAP1 | PLC1A | Same typed `capability_provider` codec and reservation-bound internal builder. |
+| PAP1B | PLC1B | Same source union, Resource/Tool/Command declaration expansion, and inert `coding.base` shadow proof. |
+| No original PAP slice | PLC2 | Minimum lifecycle and management control is an integrated prerequisite before executable declaration work lands. |
+| PAP2 + PAP3 | PLC3 | Approval-owner consumption followed by verified Definition evaluation. |
+| PAP4 + PAP5 | PLC4 | Exact-owner admission, Product selection, Component Host, Resource bridge, and existing Binder publication. |
+| PAP6 | PLC5 | First production Graph proof through `coding.lsp.default`. |
+| No original PAP slice | PLC6 + PLC7 | Production `coding.base` Resource cutover, then `coding.arch.default` as the second Provider proof. |
+| PAP7 + PAP8 | PLC8 | Public SDK stabilization and single provider-neutral Skill Resource path after production evidence. |
+| No original PAP slice | PLC9 | Management surfaces, isolation, GC, and cleanup closure. |
+
+PAP2/PAP3 design and adversarial review may proceed while PLC1B and PLC2 are
+being prepared. Their source implementation may not bypass PLC1B's canonical
+declarations or PLC2's durable Plugin-instance lifecycle. This prevents an
+executable Definition path from becoming the accidental lifecycle authority.
+
 ## Delivery Slices
 
 Each slice uses a task branch from the current Harness integration baseline,
@@ -390,7 +430,83 @@ to freeze and fingerprint an opaque payload; explicit
 any future admission or binding. This preserves the acyclic package graph and
 does not create a second declaration IR.
 
+### PAP1B: Data-Only Declaration Source And Consumer Expansion
+
+Scope:
+
+- add one versioned `PluginDeclarationSource` tagged union with strict
+  `document` and `in_process` arms;
+- bind source kind and canonical source fingerprint into reservation and
+  declaration provenance without importing or executing either source;
+- replace the reservation's unconditional execution subject/decision fields
+  with source-neutral context plus one strict `data_only` or
+  `execution_preflight` gate union; document declarations never carry a fake
+  execution approval;
+- carry the same gate through the narrow authoring view, finalized candidate,
+  and fingerprint instead of leaving unconditional `approval_subject_digest`
+  or `decision_id` peers;
+- add strict `resource_item`, `tool_pack`, and `command_pack` declaration
+  payloads while retaining the existing `capability_provider` arm;
+- model Skill, prompt, method, theme, asset, and raw source as owner-versioned
+  Resource subtypes, not Plugin kinds;
+- keep Provider, Tool pack, and Command pack as sibling contributions joined
+  only by typed requirements and Product selection closure; and
+- compile an inert document-backed `coding.base` shadow declaration for
+  normalized payload/semantic-fingerprint parity with hand-authored and
+  internal-builder IR while retaining source-bound full fingerprints.
+
+Canonical manifests and IR add no mutually exclusive top-level `pluginType`,
+hierarchical numeric type code, or capability bitmap. Contribution kind,
+Resource subtype, declaration source, Host-verified provenance/trust, and
+Product/OEM selection remain separate dimensions. Derived catalog or UI labels
+grant no authority and do not participate in identity, compatibility,
+admission, or binding.
+
+Primary files are expected under:
+
+```text
+src/loushang/harness/resources/plugins/declarations.py
+src/loushang/harness/resources/plugins/manifest.py
+src/loushang/harness/plugin_authoring/
+tests/harness/resources/plugins/
+tests/harness/plugin_authoring/
+tests/harness/resources/plugins/fixtures/coding_base_shadow/
+```
+
+Exit gate:
+
+- document and in-process sources use one source codec and exact-match the
+  immutable package revision, reservation, Product/scope, and configuration;
+- document reservation/finalization needs no execution subject, decision ID, or
+  receipt, while in-process reservation still requires the exact preflight
+  decision and later consumption;
+- both candidate forms retain identical common source/provenance context, and
+  only the executable arm fingerprints execution subject and decision identity;
+- declaration source kind and contributed factory/disposer/service execution
+  model are separately fingerprinted and cannot substitute for one another;
+- every new payload has strict canonical JSON round-trip and negative fixtures
+  for unknown fields, duplicate identities, owner mismatch, path escape, and
+  callable/live-object capture;
+- a Capability Provider cannot contain arbitrary contributions, admit/select/
+  bind itself, or require itself directly or transitively;
+- Provider/Tool/Command sibling declarations cannot import, resolve, register,
+  bind, or publish anything; and
+- the `coding.base` shadow has no Resource generation, Tool registration,
+  Session, Model Input, disposer, or other live effect.
+
+Shadow parity compares kind-specific payload and semantic fingerprints only.
+Complete declaration and candidate fingerprints remain bound to source kind,
+source fingerprint, and reservation provenance, so different source models are
+expected to differ there.
+
+Rollback: remove only the inert codecs, builder arms, and fixtures. No owner or
+live runtime cleanup is required.
+
 ### PAP2: Durable Execution Decision Consumption
+
+Implementation-order note: this slice is part of PLC3. Its source may land only
+after PAP1B/PLC1B and the PLC2 minimum lifecycle command core; designing and
+reviewing its records earlier does not authorize an executable peer path.
 
 Scope:
 
@@ -542,14 +658,16 @@ records remain inert and safe to retain.
 Scope:
 
 - define the owner-qualified `coding.lsp` Capability contract and focused
-  semantic/tool/diagnostic facets;
+  semantic/tool-runtime/diagnostic facets;
 - package the default LSP Bundle Provider through the PAP1 authoring SPI;
-- adapt existing discovery/catalog/supervisor/document/tool objects behind one
-  Provider factory and disposer;
+- adapt existing discovery/catalog/supervisor/document runtime objects behind
+  one Provider factory/disposer, and package model-visible Tool definitions as
+  a sibling `tool_pack` consuming the admitted tool-runtime facet;
 - declare `harness.workspace` read/process requirements and consume only those
   facets;
 - mount LSP through PAP4/PAP5 and delete deferred runtime and early Tool
-  registration only after compatibility tests pass;
+  registration only after Provider and sibling Tool-pack compatibility tests
+  pass;
 - keep individual language-server routes as owner-internal data for this first
   slice; generic `capability_component` authoring follows only after the
   complete-Bundle path is stable.
@@ -569,7 +687,9 @@ Exit gate:
 
 - default and alternate Providers can be selected without changing LSP Tool or
   Session implementation code;
-- Tools appear only with the mounted LSP Bundle and use its typed runtime facet;
+- sibling Tool definitions become Session-visible only with the mounted LSP
+  Bundle and use its typed runtime facet without entering the Provider's owner
+  generation;
 - startup cancellation/failure leaks no process, document, Tool, or
   registration;
 - Session restart reconstructs selection from pinned package/declaration/
@@ -713,8 +833,9 @@ Binder, and Session publication seams are the completion evidence.
 
 ## Definition Of Done
 
-The authoring-primitives milestone is complete only after PAP0-PAP7 and PAP7's
-UPA5/UPA6 prerequisites, not after the first builder lands. Completion means:
+The authoring-primitives milestone is complete only after PAP0-PAP7, including
+PAP1B, and PAP7's UPA5/UPA6 prerequisites, not after the first builder lands.
+Completion means:
 
 1. one documented Provider declaration compiles to the canonical IR;
 2. executable declaration and activation both have current durable consumption
@@ -742,6 +863,7 @@ Indicative focused effort, excluding unrelated failures:
 | --- | ---: | --- |
 | PAP0 | 1 day | none; baseline first |
 | PAP1 | 2–3 days | codecs/tests can split after record names freeze |
+| PAP1B | 4–7 days | source union, Resource/consumer codecs, and shadow fixture split only after identity fields freeze |
 | PAP2 | 4–7 days | store/recovery and Product presentation adapter may split |
 | PAP3 | 4–6 days | import-realm work dominates and should not be rushed |
 | PAP4 | 3–5 days | owner admission and pure Product resolver can split |
@@ -750,9 +872,11 @@ Indicative focused effort, excluding unrelated failures:
 | PAP7 | 2–4 days | guide/fixtures after runtime contracts freeze |
 | PAP8 | 3–5 days | filesystem/package adapters can split after catalog contract freezes |
 
-PAP1 and PAP4 are data/pure-logic work. PAP2, PAP3, PAP5, and PAP6 are
-security/lifecycle work and require regression-first sequencing. Schedule
-estimates are not acceptance criteria.
+PAP1, PAP1B, and PAP4 are data/pure-logic work. PAP2, PAP3, PAP5, and PAP6 are
+security/lifecycle work and require regression-first sequencing. PAP1B remains
+inert even though it prepares executable-source descriptors; descriptor
+parsing never imports the source. Schedule estimates are not acceptance
+criteria.
 
 ## Explicit Deferrals
 
@@ -771,5 +895,5 @@ The authoring milestone does not add:
 - a global Plugin context, service locator, or generic registration bag; or
 - a second Runtime Profile, Graph Binder, Registration owner, or projector.
 
-These remain later UPA slices and must not be pulled into PAP0-PAP7 merely to
-make the first authoring API appear feature-complete.
+These remain later UPA slices and must not be pulled into PAP0-PAP7, including
+PAP1B, merely to make the first authoring API appear feature-complete.
