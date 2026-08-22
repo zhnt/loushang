@@ -654,9 +654,8 @@ Scope:
   `VerifiedRevisionHandle` method with
   exactly one `open_file`, stream `read`, and direct document-codec
   `decode_bytes` call. It accepts no callback; architecture guards freeze the
-  import/call edge, exact concrete-codec assignment, and reject caller
-  injection, later/external rebinding, import shadowing, decoder aliases or
-  imported helper calls;
+  import/call edge and reject any stored/mutable codec instance, import
+  shadowing, decoder aliases or imported helper calls;
 - implement the exact Source/Index/Declaration/Document/Subject/Decision/
   document-evidence/candidate fields, canonical bytes, fingerprint domains and
   diagnostics frozen by the PLC1B Contract;
@@ -783,7 +782,7 @@ Required current-source migration inventory:
 - architecture inventories include `plugin_authoring` raw JSON/read sinks,
   count exact call expressions, freeze the sole document `open_file()` and
   strict decoder callpoints, verify the concrete handle annotation/receiver,
-  reject codec injection/rebinding/import shadowing and any helper call from
+  reject stored/mutable codec routes, import shadowing and any helper call from
   the byte-ingress method, and use synthetic
   peer-route tests for assignment/module/third-party aliases, a second decoder
   (including `JSONDecoder.decode` inside an allowed function), Path read,

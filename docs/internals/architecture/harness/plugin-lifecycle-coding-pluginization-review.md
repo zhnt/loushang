@@ -237,14 +237,17 @@ independently reproduced the same single P1: the guard counted one concrete
 codec construction but did not prove its result was assigned to
 `self._document_codec`, so a caller-supplied codec could satisfy the call count.
 
-The correction requires one unaliased import for each concrete boundary type,
-one exact `self._document_codec = PluginDeclarationDocumentCodec()` assignment
-in Coordinator `__init__`, no imported-symbol shadowing, no later/direct/
-dynamic/property/external mutation, and the existing exact ingress byte flow.
-Regression cases cover caller injection, later rebinding, import shadowing,
-dynamic `__setattr__`, and another source file mutating the private attribute.
-Only the original decoder finding receives a point recheck; this correction
-does not reopen the schema, lifecycle, product, or security architecture.
+The first correction attempted to lock one concrete attribute assignment, but
+the point review showed that receiver aliases and computed dynamic writes make
+that a needlessly open-ended syntactic proof. The converged correction removes
+the mutable seam instead: Coordinator stores no codec instance, and its exact
+byte-ingress method directly calls the stateless class/static
+`PluginDeclarationDocumentCodec.decode_bytes` entrypoint. One unshadowed import
+for each boundary type and the existing exact three-call byte flow are the only
+accepted route. Regression cases cover the former caller-injected attribute,
+import-name assignment and import-alias shadowing. This remains a point fix to
+the original decoder finding; it does not reopen schema, lifecycle, Product, or
+security architecture.
 
 ## Review Scope
 

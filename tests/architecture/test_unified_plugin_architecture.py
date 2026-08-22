@@ -728,53 +728,6 @@ def _annotation_terminal_name(annotation: ast.expr | None) -> str | None:
     return None
 
 
-def _is_self_document_codec_attribute(node: ast.AST) -> bool:
-    return (
-        isinstance(node, ast.Attribute)
-        and node.attr == "_document_codec"
-        and isinstance(node.value, ast.Name)
-        and node.value.id == "self"
-    )
-
-
-def _is_document_codec_dynamic_mutation(node: ast.AST) -> bool:
-    if isinstance(node, ast.Call):
-        if (
-            isinstance(node.func, ast.Name)
-            and node.func.id in {"setattr", "delattr"}
-            and len(node.args) >= 2
-            and isinstance(node.args[1], ast.Constant)
-            and node.args[1].value == "_document_codec"
-        ):
-            return True
-        if isinstance(node.func, ast.Attribute) and node.func.attr in {
-            "__setattr__",
-            "__delattr__",
-        }:
-            key_index = 1 if (
-                isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "object"
-            ) else 0
-            return (
-                len(node.args) > key_index
-                and isinstance(node.args[key_index], ast.Constant)
-                and node.args[key_index].value == "_document_codec"
-            )
-    return (
-        isinstance(node, ast.Subscript)
-        and isinstance(node.ctx, (ast.Store, ast.Del))
-        and isinstance(node.slice, ast.Constant)
-        and node.slice.value == "_document_codec"
-        and (
-            isinstance(node.value, ast.Attribute)
-            and node.value.attr == "__dict__"
-            or isinstance(node.value, ast.Call)
-            and isinstance(node.value.func, ast.Name)
-            and node.value.func.id == "vars"
-        )
-    )
-
-
 def _document_ingress_boundary_violations(source: str) -> tuple[str, ...]:
     tree = ast.parse(source, filename=str(PLUGIN_DECLARATION_COORDINATOR_PATH))
     required_imports = {
@@ -788,17 +741,37 @@ def _document_ingress_boundary_violations(source: str) -> tuple[str, ...]:
         ),
     }
     violations: list[str] = []
+    import_bindings: list[tuple[str, str, str, str | None]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module is not None:
+            import_bindings.extend(
+                (
+                    alias.asname or alias.name,
+                    node.module,
+                    alias.name,
+                    alias.asname,
+                )
+                for alias in node.names
+            )
+        elif isinstance(node, ast.Import):
+            import_bindings.extend(
+                (
+                    alias.asname or alias.name.split(".", maxsplit=1)[0],
+                    alias.name,
+                    "",
+                    alias.asname,
+                )
+                for alias in node.names
+            )
     for module, symbol in sorted(required_imports):
         matches = tuple(
-            alias
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom) and node.module == module
-            for alias in node.names
-            if alias.name == symbol
+            binding
+            for binding in import_bindings
+            if binding[0] == symbol
         )
-        if len(matches) != 1 or matches[0].asname is not None:
+        if len(matches) != 1 or matches[0] != (symbol, module, symbol, None):
             violations.append(
-                f"one unaliased {module}.{symbol} import is required"
+                f"one unshadowed {module}.{symbol} import is required"
             )
     if any(
         (
@@ -824,71 +797,10 @@ def _document_ingress_boundary_violations(source: str) -> tuple[str, ...]:
     ):
         violations.append("required document-boundary imports may not be rebound")
 
-    codec_constructions = tuple(
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "PluginDeclarationDocumentCodec"
-    )
-    if len(codec_constructions) != 1:
-        violations.append("Coordinator must construct one concrete document codec")
-
     qualified_functions = _qualified_functions(
         source,
         filename=PLUGIN_DECLARATION_COORDINATOR_PATH,
     )
-    codec_assignments: list[
-        tuple[str, ast.expr | None, ast.Assign | ast.AnnAssign]
-    ] = []
-    for qualified, candidate_function in qualified_functions:
-        for node in _code_unit_nodes(candidate_function.body):
-            if (
-                isinstance(node, ast.Assign)
-                and len(node.targets) == 1
-                and _is_self_document_codec_attribute(node.targets[0])
-            ):
-                codec_assignments.append((qualified, node.value, node))
-            elif (
-                isinstance(node, ast.AnnAssign)
-                and _is_self_document_codec_attribute(node.target)
-            ):
-                codec_assignments.append((qualified, node.value, node))
-
-    codec_mutations = tuple(
-        node
-        for node in ast.walk(tree)
-        if _is_self_document_codec_attribute(node)
-        and isinstance(node.ctx, (ast.Store, ast.Del))
-    )
-    exact_codec_assignment = (
-        len(codec_assignments) == 1
-        and codec_assignments[0][0] == "PluginDeclarationCoordinator.__init__"
-        and isinstance(codec_assignments[0][1], ast.Call)
-        and isinstance(codec_assignments[0][1].func, ast.Name)
-        and codec_assignments[0][1].func.id == "PluginDeclarationDocumentCodec"
-        and not codec_assignments[0][1].args
-        and not codec_assignments[0][1].keywords
-        and len(codec_mutations) == 1
-    )
-    if not exact_codec_assignment:
-        violations.append(
-            "self._document_codec must be assigned exactly once from the "
-            "concrete codec in Coordinator.__init__"
-        )
-    if any(
-        qualified == "PluginDeclarationCoordinator._document_codec"
-        for qualified, _ in qualified_functions
-    ) or any(
-        _is_document_codec_dynamic_mutation(node)
-        or (
-            isinstance(node, ast.Name)
-            and isinstance(node.ctx, ast.Store)
-            and node.id == "_document_codec"
-        )
-        for node in ast.walk(tree)
-    ):
-        violations.append("document codec property or dynamic override is forbidden")
 
     functions = tuple(
         function
@@ -919,7 +831,7 @@ def _document_ingress_boundary_violations(source: str) -> tuple[str, ...]:
     if statements != (
         "with handle.open_file(locator) as stream:\n"
         "    verified_bytes = stream.read()",
-        "return self._document_codec.decode_bytes(verified_bytes)",
+        "return PluginDeclarationDocumentCodec.decode_bytes(verified_bytes)",
     ):
         violations.append("document byte ingress must preserve the exact byte flow")
 
@@ -952,23 +864,21 @@ def _document_ingress_boundary_violations(source: str) -> tuple[str, ...]:
         elif (
             isinstance(call.func, ast.Attribute)
             and call.func.attr == "decode_bytes"
-            and isinstance(call.func.value, ast.Attribute)
-            and isinstance(call.func.value.value, ast.Name)
-            and call.func.value.value.id == "self"
-            and call.func.value.attr == "_document_codec"
+            and isinstance(call.func.value, ast.Name)
+            and call.func.value.id == "PluginDeclarationDocumentCodec"
             and len(call.args) == 1
             and isinstance(call.args[0], ast.Name)
             and call.args[0].id == "verified_bytes"
             and not call.keywords
         ):
-            operations.append("self._document_codec.decode_bytes")
+            operations.append("PluginDeclarationDocumentCodec.decode_bytes")
         else:
             operations.append(f"forbidden:{ast.unparse(call.func)}")
 
     expected = {
         "handle.open_file": 1,
         "stream.read": 1,
-        "self._document_codec.decode_bytes": 1,
+        "PluginDeclarationDocumentCodec.decode_bytes": 1,
     }
     actual = {
         operation: operations.count(operation)
@@ -977,27 +887,6 @@ def _document_ingress_boundary_violations(source: str) -> tuple[str, ...]:
     if actual != expected:
         violations.append(f"unexpected document byte-ingress calls: {actual!r}")
     return tuple(violations)
-
-
-def _external_document_codec_mutation_sites(
-    sources: Mapping[Path, str],
-) -> set[Path]:
-    sites: set[Path] = set()
-    for path, source in sources.items():
-        if path == PLUGIN_DECLARATION_COORDINATOR_PATH:
-            continue
-        tree = ast.parse(source, filename=str(path))
-        if any(
-            (
-                isinstance(node, ast.Attribute)
-                and node.attr == "_document_codec"
-                and isinstance(node.ctx, (ast.Store, ast.Del))
-            )
-            or _is_document_codec_dynamic_mutation(node)
-            for node in ast.walk(tree)
-        ):
-            sites.add(path)
-    return sites
 
 
 def _receiver_looks_like_graph_state(
@@ -1623,7 +1512,7 @@ def test_plc1b_contract_freezes_no_self_reference_and_exact_v2_records() -> None
     assert "required key; exact SymbolReference v2 object or JSON `null`" in contract
     assert "One private low-level `StrictPluginJsonCodec`" in contract
     assert "exact import/call edge, not by a decoder-name\nheuristic" in contract
-    assert "accepts no reader\nor decoder callback and makes no other call" in contract
+    assert "accepts\nno reader or decoder callback and makes no other call" in contract
     assert "Candidate construction is private to Resolver finalization" in contract
     assert "Declaration fingerprint is a member of that Batch" in contract
     assert "only in resolved views" in AUTHORING_PLAN_PATH.read_text(encoding="utf-8")
@@ -2143,14 +2032,12 @@ def test_document_byte_ingress_freezes_verified_handle_and_exact_call_edges() ->
         "from loushang.harness.resources.plugins.revisions import "
         "VerifiedRevisionHandle\n"
         "class PluginDeclarationCoordinator:\n"
-        "    def __init__(self):\n"
-        "        self._document_codec = PluginDeclarationDocumentCodec()\n"
         "    def _read_and_decode_document(\n"
         "        self, handle: VerifiedRevisionHandle, locator: str\n"
         "    ):\n"
         "        with handle.open_file(locator) as stream:\n"
         "            verified_bytes = stream.read()\n"
-        "        return self._document_codec.decode_bytes(verified_bytes)\n"
+        "        return PluginDeclarationDocumentCodec.decode_bytes(verified_bytes)\n"
     )
     assert _document_ingress_boundary_violations(compliant) == ()
 
@@ -2161,24 +2048,22 @@ def test_document_byte_ingress_freezes_verified_handle_and_exact_call_edges() ->
         "VerifiedRevisionHandle\n"
         "from loushang.harness.other.json_helper import hidden_decode\n"
         "class PluginDeclarationCoordinator:\n"
-        "    def __init__(self):\n"
-        "        self._document_codec = PluginDeclarationDocumentCodec()\n"
         "    def _read_and_decode_document(\n"
         "        self, handle: VerifiedRevisionHandle, locator: str\n"
         "    ):\n"
         "        with handle.open_file(locator) as stream:\n"
         "            verified_bytes = stream.read()\n"
-        "        self._document_codec.decode_bytes(verified_bytes)\n"
+        "        PluginDeclarationDocumentCodec.decode_bytes(verified_bytes)\n"
         "        return hidden_decode(verified_bytes)\n"
     )
     assert _document_ingress_boundary_violations(helper_bypass) == (
         "document byte ingress must preserve the exact byte flow",
         "unexpected document byte-ingress calls: "
-        "{'forbidden:hidden_decode': 1, 'handle.open_file': 1, "
-        "'self._document_codec.decode_bytes': 1, 'stream.read': 1}",
+        "{'PluginDeclarationDocumentCodec.decode_bytes': 1, "
+        "'forbidden:hidden_decode': 1, 'handle.open_file': 1, 'stream.read': 1}",
     )
 
-    caller_injected_codec = (
+    mutable_codec_bypass = (
         "from loushang.harness.resources.plugins.declarations import "
         "PluginDeclarationDocumentCodec\n"
         "from loushang.harness.resources.plugins.revisions import "
@@ -2194,9 +2079,11 @@ def test_document_byte_ingress_freezes_verified_handle_and_exact_call_edges() ->
         "            verified_bytes = stream.read()\n"
         "        return self._document_codec.decode_bytes(verified_bytes)\n"
     )
-    assert _document_ingress_boundary_violations(caller_injected_codec) == (
-        "self._document_codec must be assigned exactly once from the concrete "
-        "codec in Coordinator.__init__",
+    assert _document_ingress_boundary_violations(mutable_codec_bypass) == (
+        "document byte ingress must preserve the exact byte flow",
+        "unexpected document byte-ingress calls: "
+        "{'forbidden:self._document_codec.decode_bytes': 1, "
+        "'handle.open_file': 1, 'stream.read': 1}",
     )
 
     shadowed_import = (
@@ -2206,64 +2093,30 @@ def test_document_byte_ingress_freezes_verified_handle_and_exact_call_edges() ->
         "VerifiedRevisionHandle\n"
         "PluginDeclarationDocumentCodec = replacement\n"
         "class PluginDeclarationCoordinator:\n"
-        "    def __init__(self):\n"
-        "        self._document_codec = PluginDeclarationDocumentCodec()\n"
         "    def _read_and_decode_document(\n"
         "        self, handle: VerifiedRevisionHandle, locator: str\n"
         "    ):\n"
         "        with handle.open_file(locator) as stream:\n"
         "            verified_bytes = stream.read()\n"
-        "        return self._document_codec.decode_bytes(verified_bytes)\n"
+        "        return PluginDeclarationDocumentCodec.decode_bytes(verified_bytes)\n"
     )
     assert _document_ingress_boundary_violations(shadowed_import) == (
         "required document-boundary imports may not be rebound",
     )
 
-    later_rebinding = compliant.replace(
-        "    def _read_and_decode_document(\n",
-        "    def replace_codec(self, supplied):\n"
-        "        self._document_codec = supplied\n"
-        "    def _read_and_decode_document(\n",
-    )
-    assert _document_ingress_boundary_violations(later_rebinding) == (
-        "self._document_codec must be assigned exactly once from the concrete "
-        "codec in Coordinator.__init__",
-    )
-
-    dynamic_rebinding = compliant.replace(
-        "    def _read_and_decode_document(\n",
-        "    def replace_codec(self, supplied):\n"
-        "        object.__setattr__(self, '_document_codec', supplied)\n"
-        "    def _read_and_decode_document(\n",
-    )
-    assert _document_ingress_boundary_violations(dynamic_rebinding) == (
-        "document codec property or dynamic override is forbidden",
-    )
-
-    descriptor_override = compliant.replace(
+    import_alias_shadow = compliant.replace(
         "class PluginDeclarationCoordinator:\n",
-        "class PluginDeclarationCoordinator:\n"
-        "    _document_codec = EvilDescriptor()\n",
+        "from evil import EvilCodec as PluginDeclarationDocumentCodec\n"
+        "class PluginDeclarationCoordinator:\n",
     )
-    assert _document_ingress_boundary_violations(descriptor_override) == (
-        "document codec property or dynamic override is forbidden",
+    assert _document_ingress_boundary_violations(import_alias_shadow) == (
+        "one unshadowed loushang.harness.resources.plugins.declarations."
+        "PluginDeclarationDocumentCodec import is required",
     )
-
-    external_rebinding = {
-        PLUGIN_DECLARATION_COORDINATOR_PATH: compliant,
-        Path("src/loushang/harness/rogue_codec_override.py"): (
-            "def replace(coordinator, supplied):\n"
-            "    coordinator._document_codec = supplied\n"
-        ),
-    }
-    assert _external_document_codec_mutation_sites(external_rebinding) == {
-        Path("src/loushang/harness/rogue_codec_override.py")
-    }
 
 
 def test_coordinator_source_uses_the_frozen_boundary_when_present() -> None:
     sources = _source_texts()
-    assert _external_document_codec_mutation_sites(sources) == set()
     coordinator = sources.get(PLUGIN_DECLARATION_COORDINATOR_PATH)
     if coordinator is None:
         return

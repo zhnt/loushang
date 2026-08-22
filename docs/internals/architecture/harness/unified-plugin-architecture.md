@@ -231,9 +231,10 @@ read and calls the low-level document codec, never a second JSON or Path read.
 Its private byte-ingress method accepts a concrete `VerifiedRevisionHandle` and
 has exactly three calls: receiver-qualified `open_file`, returned-stream
 `read`, and concrete `PluginDeclarationDocumentCodec.decode_bytes`. It accepts
-no reader/decoder callback. The Coordinator constructs and assigns that
-concrete codec exactly once; caller injection, later/external rebinding and
-import-symbol shadowing are forbidden. Architecture guards freeze that import/call edge,
+no reader/decoder callback and stores no codec instance: `decode_bytes` is the
+direct stateless class/static codec entrypoint. Mutable codec injection/
+rebinding and import-symbol shadowing are therefore forbidden. Architecture
+guards freeze that import/call edge,
 scan decoder symbol aliases rather than only direct calls, and reject any helper
 call from the byte-ingress method; a real verified-handle fixture
 proves the receiver constraint. Concrete call counts remain a secondary

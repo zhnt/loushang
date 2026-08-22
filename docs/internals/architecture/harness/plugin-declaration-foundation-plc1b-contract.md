@@ -99,13 +99,12 @@ heuristic. The Coordinator isolates byte ingress in one private
 `_read_and_decode_document(handle: VerifiedRevisionHandle, locator)` method.
 That method contains exactly one `handle.open_file(locator)`, one read from the
 returned stream, and one direct
-`self._document_codec.decode_bytes(verified_bytes)` call; it accepts no reader
-or decoder callback and makes no other call. `_document_codec` is the concrete
-`PluginDeclarationDocumentCodec`, assigned exactly once in `__init__` as
-`self._document_codec = PluginDeclarationDocumentCodec()` rather than supplied
-by a caller. No later assignment, deletion, property/dynamic override, or
-external source mutation is legal. The Coordinator directly and without an
-alias imports that codec from
+`PluginDeclarationDocumentCodec.decode_bytes(verified_bytes)` call; it accepts
+no reader or decoder callback and makes no other call. `decode_bytes` is the
+stateless class/static schema-codec entrypoint. The Coordinator stores no codec
+instance or codec-valued attribute, so there is no constructor injection,
+instance rebinding, property, or dynamic override seam. The Coordinator
+directly and without an alias imports that codec from
 `resources.plugins.declarations` and `VerifiedRevisionHandle` from
 `resources.plugins.revisions`; neither imported name may be rebound.
 Architecture tests verify the handle annotation and receiver, freeze those three call edges,
@@ -940,8 +939,8 @@ Implementation begins regression-first and must prove:
    receiver-qualified `VerifiedRevisionHandle.open_file()`, the sole low-level
    strict JSON primitive serves manifest/document codecs, the private byte-
    ingress method has only the exact three call edges above, assignment/module/
-   third-party decoder aliases, caller-injected/rebound codec instances, import
-   shadowing and imported helper routes fail the architecture
+   third-party decoder aliases, mutable codec-instance routes, import shadowing
+   and imported helper routes fail the architecture
    gate, a real verified-handle fixture proves the receiver, and manifest/Index
    duplicate keys and unsorted items preserve their exact diagnostics;
 8. claim/settle/finalize/abort/expire barriers cover deadline equality,

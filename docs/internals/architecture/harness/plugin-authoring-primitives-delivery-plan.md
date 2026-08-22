@@ -609,9 +609,9 @@ Scope:
   and document schemas; the Coordinator imports no raw JSON decoder and its private
   byte-ingress method accepts a concrete `VerifiedRevisionHandle`, permits only
   exact `open_file`/stream `read`/document-codec `decode_bytes` call edges, and
-  accepts no reader/decoder callback. It constructs and assigns the concrete
-  codec exactly once; caller injection, later/external rebinding, import
-  shadowing, decoder-symbol aliases, and local imported helper calls are
+  accepts no reader/decoder callback. The stateless class/static codec entrypoint
+  is called directly and no codec instance is stored; mutable injection/
+  rebinding, import shadowing, decoder-symbol aliases, and local helper calls are
   included in the architecture guard. PLC1B
   pre-scans all groups and finalizes document-only one/multi-group preflights
   exactly once; a mixed document/in-process preflight accepts no executable
@@ -694,7 +694,7 @@ Exit gate:
   items without swallowing the typed codec diagnostic, and architecture scans
   count concrete calls across `plugin_authoring`, freeze the Coordinator's exact
   import/call edge and concrete verified-handle receiver, reject imported local
-  helper calls, codec injection/rebinding/import shadowing,
+  helper calls, mutable codec routes/import shadowing,
   assignment/module/third-party decoder aliases, or a
   second decoder/read even inside an allowed function, and freeze the sole
   declaration `VerifiedRevisionHandle.open_file()` callpoint plus one low-level
