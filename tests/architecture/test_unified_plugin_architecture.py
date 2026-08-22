@@ -20,6 +20,9 @@ AUTHORING_PLAN_PATH = Path(
 LIFECYCLE_PLAN_PATH = Path(
     "docs/internals/architecture/harness/plugin-lifecycle-coding-pluginization-plan.md"
 )
+PLC1B_CONTRACT_PATH = Path(
+    "docs/internals/architecture/harness/plugin-declaration-foundation-plc1b-contract.md"
+)
 CAPABILITY_LIFECYCLE_PATH = Path(
     "docs/internals/architecture/harness/capability-dependency-and-mount-lifecycle.md"
 )
@@ -79,6 +82,18 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
         "PackageResourceMount.read_text",
     ): "package-resource-mount",
 }
+
+
+def _contract_text_fields(document: str, *, heading: str) -> set[str]:
+    section_parts = document.split(heading, maxsplit=1)
+    assert len(section_parts) == 2, f"missing contract heading: {heading}"
+    fence_parts = section_parts[1].split("```text", maxsplit=1)
+    assert len(fence_parts) == 2, f"missing text record after: {heading}"
+    body_parts = fence_parts[1].split("```", maxsplit=1)
+    assert len(body_parts) == 2, f"unterminated text record after: {heading}"
+    return {line.strip() for line in body_parts[0].splitlines() if line.strip()}
+
+
 EXPECTED_GRAPH_PRIVATE_MUTATION_SITES = {
     (
         Path("src/loushang/harness/capabilities/graph_runtime.py"),
@@ -1061,7 +1076,7 @@ def test_plc1b_declaration_plan_and_pap_crosswalk_are_explicit() -> None:
     assert "mixed document/in-process fixtures prove exact partitioning" in (
         lifecycle_plan
     )
-    assert "one aggregate abort and zero finalization" in lifecycle_plan
+    assert "aggregate abort and zero finalization;" in lifecycle_plan
     assert "successful mixed evaluation/join/single-finalization is a PLC3 exit gate" in (
         lifecycle_plan
     )
@@ -1092,6 +1107,7 @@ def test_plc1b_declaration_plan_and_pap_crosswalk_are_explicit() -> None:
 def test_plc1b_versioned_bytes_and_delivery_order_are_frozen() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
     lifecycle_plan = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
+    contract = PLC1B_CONTRACT_PATH.read_text(encoding="utf-8")
 
     assert "`allow_nan=False`, `ensure_ascii=True`" in architecture
     assert "performs no Unicode normalization" in architecture
@@ -1099,6 +1115,8 @@ def test_plc1b_versioned_bytes_and_delivery_order_are_frozen() -> None:
     assert '"documentVersion": 1' in architecture
     assert "strictly sorted by `(pluginId, contributionId)`" in architecture
     assert "different from the complete indexed source closure fails" in architecture
+    assert "bytes must equal their canonical re-encoding" in contract
+    assert "duplicate object keys" in contract
     assert "mutable-root `resolve(strict=True)` remains only a pre-publication" in (
         lifecycle_plan
     )
@@ -1108,6 +1126,124 @@ def test_plc1b_versioned_bytes_and_delivery_order_are_frozen() -> None:
     assert architecture.index("### UPA5: Base Coding Composition") < architecture.index(
         "### UPA6: Architecture Vertical Slice"
     )
+
+
+def test_plc1b_contract_freezes_no_self_reference_and_exact_v2_records() -> None:
+    architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
+    contract = PLC1B_CONTRACT_PATH.read_text(encoding="utf-8")
+
+    assert "The descriptor fingerprint never includes package content digest" in contract
+    assert "prevents a declaration document from needing\nto contain a hash" in contract
+    assert "appear inside package bytes without a self-referential" in architecture
+    assert "verified package revision. It is the sole source-group key" not in architecture
+
+    for exact_wire_key in (
+        "`declarationSource`",
+        "`reservationFingerprint`",
+        "`sourceDescriptorFingerprint`",
+        "`sourceKind`",
+        "`sourceVersion`",
+    ):
+        assert f"| {exact_wire_key} |" in contract
+    assert "They are\nnot serialized as a second interchange format" in contract
+    assert "no copied Gate, subject, decision, or evidence" in contract
+
+    subject_fields = _contract_text_fields(
+        contract,
+        heading="### `PluginExecutionApprovalSubject` v2",
+    )
+    assert subject_fields == {
+        "ambientHostAuthority",
+        "configurationMapFingerprint",
+        "dependencyLockDigest",
+        "entrypoint",
+        "instanceRevisionRef",
+        "packageContentDigest",
+        "packageSourceIdentity",
+        "pluginId",
+        "policyRevision",
+        "productId",
+        "requestedAuthorities",
+        "reservationClosureFingerprint",
+        "schemaVersion",
+        "scopeId",
+        "sourceDescriptorFingerprint",
+        "sourceTrustClass",
+        "sourceTrustPolicyRevision",
+    }
+    decision_fields = _contract_text_fields(
+        contract,
+        heading="### `PluginExecutionDecisionRecord` v2 selection view",
+    )
+    assert decision_fields == {
+        "decisionId",
+        "decisionRecordVersion",
+        "disposition",
+        "policyRevision",
+        "subjectDigest",
+        "subjectSchemaVersion",
+    }
+    evidence_fields = _contract_text_fields(
+        contract,
+        heading="### `PluginDeclarationEvidence` v1",
+    )
+    assert evidence_fields == {
+        "declarationSetFingerprint",
+        "documentBytesDigest",
+        "documentSchemaVersion",
+        "evidenceVersion",
+        "kind",
+        "packageContentDigest",
+        "preflightUseId",
+        "reservationClosureFingerprint",
+        "sourceDescriptorFingerprint",
+        "sourceGroupFingerprint",
+        "sourceGroupId",
+    }
+
+    for domain in (
+        "loushang.plugin-declaration-source-descriptor/v1",
+        "loushang.plugin-contribution-reservation/v2",
+        "loushang.plugin-reservation-closure/v1",
+        "loushang.plugin-group-configuration/v1",
+        "loushang.plugin-declaration-source-group/v1",
+        "loushang.plugin-declaration-source-group-use/v1",
+        "loushang.plugin-declaration-set/v2",
+        "loushang.plugin-declaration-evidence/v1",
+        "loushang.plugin-contribution-candidate/v2",
+    ):
+        assert domain in contract
+
+
+def test_plc1b_contract_freezes_attempt_claim_and_forbidden_peer_semantics() -> None:
+    contract = PLC1B_CONTRACT_PATH.read_text(encoding="utf-8")
+    lifecycle_plan = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
+
+    assert "preflightUseId` plus `sourceGroupFingerprint" in contract
+    assert "plugin_declaration_evidence_attempt_mismatch" in contract
+    assert "PENDING -> CLAIMED -> COMPLETED | FAILED" in contract
+    assert "CAS open_for_claims=false" in contract
+    assert "in_flight == 0" in contract
+    assert "Any token from a prior host epoch returns\n`preflight_expired`" in contract
+    assert "ABORTED -> ACTIVE" not in contract
+    assert "accepts no\nBuilder output or external executable declaration" in contract
+    assert "zero executable declaration ingress" in lifecycle_plan
+    assert "delete/private-scope the top-level subject builder" in lifecycle_plan
+    assert "direct\n  `finalize()` and `rollback()` entry points" in lifecycle_plan
+
+    diagnostics = _contract_text_fields(
+        contract,
+        heading="## Exact Version Diagnostics",
+    )
+    assert diagnostics == {
+        "unsupported_plugin_contribution_index_version",
+        "unsupported_plugin_declaration_document_version",
+        "unsupported_plugin_declaration_evidence_version",
+        "unsupported_plugin_declaration_ir_version",
+        "unsupported_plugin_declaration_source_version",
+        "unsupported_plugin_execution_approval_subject_version",
+        "unsupported_plugin_execution_decision_record_version",
+    }
 
 
 def test_executable_declaration_is_gated_by_inert_preflight() -> None:
@@ -1156,7 +1292,8 @@ def test_executable_declaration_is_gated_by_inert_preflight() -> None:
     assert "PluginApprovalDecisionRecord" in architecture
     assert "consume_execution_decision(subject, decision_id)" in architecture
     assert "Revocation linearizes against consumption" in architecture
-    assert "normalized group security-configuration\n  fingerprint" in architecture
+    assert "normalized group security-" in architecture
+    assert "configuration fingerprint" in architecture
     assert "Security-relevant configuration includes" in architecture
     assert "factory execution, owner bind and external-service launch are\nauthorized only" in (
         architecture

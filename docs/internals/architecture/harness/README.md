@@ -50,6 +50,11 @@ planning, work event persistence, or AI provider behavior.
   through durable execution approval, owner admission, and LSP production proof.
   Skill-provider convergence remains subordinate and the stable public SDK
   stays gated by the broader production combination evidence.
+- [Plugin Declaration Foundation PLC1B Contract](plugin-declaration-foundation-plc1b-contract.md)
+  freezes the no-self-reference source/group identity layers, exact v2 wire and
+  hash records, canonical document bytes, accepted-attempt evidence, group-
+  claim/terminal protocol, version diagnostics, and forbidden old ingress paths
+  required before PLC1B-1 source work.
 - [Unified Plugin Lifecycle And Coding Pluginization Delivery Plan](plugin-lifecycle-coding-pluginization-plan.md)
   coordinates the common install-to-retirement lifecycle with `coding.lsp`,
   `coding.base`, and `coding.arch` production migrations. PLC1B first completes
@@ -132,6 +137,10 @@ description.
   [self-review](plugin-authoring-primitives-plan-review.md) records the required
   approval, production-sample, SDK-publication, Skill, and peer-route deletion
   gates before implementation.
+- [Plugin Declaration Foundation PLC1B Contract](plugin-declaration-foundation-plc1b-contract.md)
+  is the normative PLC1B-1 schema/state companion to UPA and both delivery
+  plans; its third-review remediation still requires a fresh independent freeze
+  review before implementation.
 - [Unified Plugin Lifecycle And Coding Pluginization Delivery Plan](plugin-lifecycle-coding-pluginization-plan.md)
   is the coordinating critical path across common declarations, management
   state, executable trust, exact-owner binding, Coding production Plugins,

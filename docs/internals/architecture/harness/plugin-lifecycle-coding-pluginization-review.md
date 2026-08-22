@@ -25,8 +25,10 @@ order:
 2. move production `coding.base` after `coding.lsp` and before `coding.arch`,
    while keeping the stable SDK gated on LSP, Base and Arch evidence.
 
-This review found nine high-priority risks. The plan includes their required
-corrections; none requires a second Graph, Resource runtime, Profile resolver,
+The initial review found nine high-priority risks; three later PLC1B review
+rounds found additional declaration, evidence and lifecycle freeze gaps. The
+plan and normative PLC1B Contract include their required corrections. None
+requires a second Graph, Resource runtime, Profile resolver, Plugin-owned
 approval store, registration owner, or effective projector.
 
 ## PLC1B First Documentation Remediation
@@ -91,6 +93,42 @@ P1 corrections are now incorporated:
 
 This remediation also requires fresh independent review before PLC1B-1 source
 work begins; it does not self-approve the implementation freeze.
+
+## PLC1B Third Documentation Remediation
+
+Three new independent read-only reviews of `491817aa` again rejected the
+PLC1B-1 freeze. One reviewer classified the package-hash fixed point as P0; the
+other two classified the surrounding exact-record gap as P1. The corrected
+contract now resolves the shared substance:
+
+1. package-internal `sourceDescriptorFingerprint` excludes package revision;
+   Host-only `sourceGroupFingerprint`, attempt-specific `sourceGroupId`, Batch,
+   Evidence and Candidate add revision/runtime provenance after publication;
+2. the new normative PLC1B Contract freezes exact Source/Index/Declaration/
+   Document/Subject/Decision/document-evidence/candidate fields, hash domains,
+   canonical bytes and distinct version diagnostics before code changes;
+3. static Document/Source records no longer claim to exact-match dynamic
+   Product/scope/configuration. Host-created group/evidence records bind that
+   accepted context;
+4. each accepted attempt receives a unique `preflightUseId`; document evidence
+   and future execution receipts bind it and the attempt-specific group ID, so
+   aborted evidence cannot cross a fresh preflight;
+5. the aggregate adds group claim/in-flight fencing, monotonic expiry, host-
+   epoch rejection and deterministic process-local terminal tombstones;
+6. the decision selection view has independent `decisionRecordVersion: 2` and
+   `subjectSchemaVersion: 2`; pure preflight/instance identity is frozen before
+   PLC2, which later owns its durable lifecycle without redefining it;
+7. PLC1B accepts no executable declaration ingress, and the old public subject/
+   finalize/rollback routes are deleted or private-scoped rather than wrapped;
+   Coordinator/evaluator placement remains in the higher `plugin_authoring`
+   layer to avoid a dependency cycle; and
+8. PAP2/PAP3/PAP5 now distinguish the future durable Approval journal from the
+   current Session grant store, persist import/activation use start states,
+   conservatively fence polluted Hosts, and require fresh decisions for retries.
+
+This is the third remediation, not approval. A fresh independent review must
+confirm the exact PLC1B Contract and cross-document corrections before PLC1B-1
+source work begins.
 
 ## Review Scope
 
@@ -475,24 +513,32 @@ independent review and the missing tracking issue is attached:
 3. runtime-only v2 is the one canonical index/IR path and draft v1 fails closed;
 4. proposal/pending/fresh revalidation produces no accepted state before the
    fully accepted arm, and only SourceGroup owns its gate;
-5. exact source groups, gate/evidence transition, revision-root locator base and
-   Coordinator-owned aggregate terminal protocol are frozen;
-6. PLC1B mixed-source fails with one abort/zero finalize while PLC3 owns its
+5. the exact PLC1B Source/Index/Declaration/Document/Subject/Decision/evidence/
+   candidate records, hash domains, version diagnostics and canonical document
+   bytes are frozen;
+6. revision-independent descriptor identity prevents package self-reference;
+   Host-only group/evidence facts bind revision and accepted dynamic context;
+7. each accepted attempt has a unique use ID, evidence cannot cross attempts,
+   and group claim/in-flight fencing linearizes abort/expire/finalize;
+8. PLC1B mixed-source accepts no executable declaration ingress and fails with
+   one abort/zero finalize while PLC3 owns its
    successful join/finalize proof;
-7. Candidate evidence, execution-subject v2/v1 rejection and canonical byte
+9. Candidate evidence, execution-subject/decision-record v2 rejection and canonical byte
    encoding are frozen without nullable decision peers;
-8. the existing Provider codec remains inert and separates declaration source
+10. the old public subject constructor and direct finalize/rollback routes are
+    removed/private, while Coordinator/evaluator placement remains acyclic;
+11. the existing Provider codec remains inert and separates declaration source
    from contributed factory/disposer execution model;
-9. the document source model cannot import code, while unconsumed in-process
-   Builder output cannot form a batch or candidate;
-10. direct self-requirement fails in the codec and transitive cycles remain with
+12. the document source model cannot import code, while isolated in-process
+    Builder codec output cannot enter the Coordinator;
+13. direct self-requirement fails in the codec and transitive cycles remain with
    the existing Graph Planner;
-11. the `coding.base` shadow fixture stops before owner/Host normalization,
+14. the `coding.base` shadow fixture stops before owner/Host normalization,
    admission or publication;
-12. no stable public SDK symbol is exported and no Graph, Resource, Tool,
+15. no stable public SDK symbol is exported and no Graph, Resource, Tool,
    Command, Extension or Session behavior changes;
-13. targeted Plugin and architecture tests plus `git diff --check` pass; and
-14. rollback requires no live-state cleanup or data migration.
+16. targeted Plugin and architecture tests plus `git diff --check` pass; and
+17. rollback requires no live-state cleanup or data migration.
 
 ## Review Conclusion
 
@@ -505,7 +551,8 @@ dependency sample. Together they provide the production diversity needed
 before a stable author SDK is published.
 
 PLC0 and PLC1A are complete locally, and PLC1B is the next implementation slice
-after issue binding. The next mandatory high-risk design reviews are PLC2's
+only after the revised exact contract passes fresh independent review and issue
+binding. The next mandatory high-risk design reviews are PLC2's
 management transaction and PLC3's Approval/import-start protocol. Skipping
 either to make Base appear pluggable would preserve the current duplication
 under a new manifest rather than deliver a unified Plugin lifecycle.

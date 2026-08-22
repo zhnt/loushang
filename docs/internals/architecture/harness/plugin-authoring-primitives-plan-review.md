@@ -117,6 +117,12 @@ subsystem does not own another approval store. The second PLC1B documentation
 review further requires pending to expose proposed subjects only, a fresh full
 preflight after approval, one group-owned gate, Host-only Batch/evidence
 construction, and one Coordinator-owned finalize/abort/expire transition.
+The third review adds the normative PLC1B Contract: revision-independent source
+descriptor identity prevents a package-hash fixed point; exact v2 records,
+attempt-bound evidence, group claims, independent decision-record version and
+strict canonical document bytes now precede source work. PAP2 adds its durable
+journal inside the Approval owner rather than pretending the current Session
+grant store already satisfies Plugin decision recovery.
 
 ### P0-03 — Stable public SDK cannot precede production combination evidence
 
@@ -344,8 +350,9 @@ owner admission, pure Product selection, one Graph publisher, exact reversible
 registration ownership, and complete Model Input reconstruction.
 
 PAP0/PLC0 and inert PAP1/PLC1A are complete locally. PAP1B/PLC1B is the next
-source-changing declaration slice; PAP2 remains the next high-risk design
-review boundary and may not land before PLC2's management core. Skipping either
-boundary to reach an impressive Plugin demo would invalidate the architecture's
-execution-trust claim. Issue/PR attachment and independent review remain
-publication gates, not reasons to weaken the local implementation.
+source-changing declaration slice only after its exact PLC1B Contract passes a
+fresh independent review; PAP2 remains the next high-risk design review boundary
+and may not land before PLC2's management core. Skipping either boundary to
+reach an impressive Plugin demo would invalidate the architecture's execution-
+trust claim. Issue/PR attachment and independent review remain publication
+gates, not reasons to weaken the local implementation.
