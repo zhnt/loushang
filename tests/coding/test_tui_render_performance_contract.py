@@ -29,6 +29,7 @@ pytestmark = pytest.mark.tui_render_contract
                 max_serialized_output_bytes=768,
                 max_changed_visible_lines=8,
                 require_synchronized=True,
+                require_native_scrollback_safe=True,
             ),
         ),
         (
@@ -42,6 +43,7 @@ pytestmark = pytest.mark.tui_render_contract
                 max_serialized_output_bytes=2_000,
                 max_changed_visible_lines=3,
                 require_synchronized=True,
+                require_native_scrollback_safe=True,
             ),
         ),
         (
@@ -55,6 +57,7 @@ pytestmark = pytest.mark.tui_render_contract
                 max_serialized_output_bytes=3_000,
                 max_changed_visible_lines=20,
                 require_synchronized=True,
+                require_native_scrollback_safe=True,
             ),
         ),
         (
@@ -68,6 +71,7 @@ pytestmark = pytest.mark.tui_render_contract
                 max_serialized_output_bytes=90_000,
                 max_changed_visible_lines=18,
                 require_synchronized=True,
+                require_native_scrollback_safe=True,
             ),
         ),
     ),
