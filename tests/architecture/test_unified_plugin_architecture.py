@@ -368,6 +368,12 @@ PRE_SDK_PRIVATE_PLUGIN_SYMBOLS = frozenset(
         "PluginDesiredStateLedger",
         "PluginRetirementIntentLedger",
         "PluginRetirementIntentV1",
+        "PluginOwnerRetirementOutcomeV1",
+        "PluginOwnerRetirementPlanV1",
+        "PluginOwnerRetirementTargetV1",
+        "PluginRetirementSetEventV1",
+        "PluginRetirementSetLedger",
+        "PluginRetirementSetSnapshotV1",
         "ProductCapabilityProviderResolver",
         "compile_plugin_contribution_semantic_fingerprint",
     }
@@ -2983,3 +2989,40 @@ def test_plc2_retirement_intent_is_handoff_not_effective_state() -> None:
         "acquire_current(",
     ):
         assert forbidden_call not in retirement
+
+
+def test_plc2_retirement_set_is_exact_inert_and_opened_by_one_authority() -> None:
+    contract = PLC2_CONTRACT_PATH.read_text(encoding="utf-8")
+    retirement_sets_path = Path(
+        "src/loushang/harness/plugin_management/retirement_sets.py"
+    )
+    retirement_sets = retirement_sets_path.read_text(encoding="utf-8")
+    management_root = Path("src/loushang/harness/plugin_management")
+    management_sources = {
+        path: path.read_text(encoding="utf-8")
+        for path in management_root.rglob("*.py")
+    }
+
+    assert "## PLC2-4B Exact-Owner Retirement Aggregation" in contract
+    assert "does not prove the Instance was\ninactive" in contract
+    assert "PLC2-4C must still prove zero Instance leases" in contract
+    assert "PLC2-4D must separately own cleanup/package-lease release" in contract
+    assert _call_sites(management_sources, "open_set") == {
+        (
+            Path("src/loushang/harness/plugin_management/service.py"),
+            "PluginManagementService._handoff_retirement",
+        ),
+    }
+    assert _call_sites(management_sources, "commit_plan") == set()
+    assert _call_sites(management_sources, "record_outcome") == set()
+    for forbidden_call in (
+        ".dispose(",
+        ".deactivate(",
+        ".release_package(",
+        ".delete(",
+        "acquire_current(",
+        "register_tool(",
+        "bind_tool(",
+        "publish_resource(",
+    ):
+        assert forbidden_call not in retirement_sets

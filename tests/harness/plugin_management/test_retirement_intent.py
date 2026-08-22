@@ -27,6 +27,9 @@ from loushang.harness.plugin_management.retirement import (
     PluginRetirementRecordCodecError,
     retirement_id_for,
 )
+from loushang.harness.plugin_management.retirement_sets import (
+    PluginRetirementSetLedger,
+)
 from loushang.harness.plugin_management.service import PluginManagementService
 from loushang.harness.plugin_management.updates import (
     PluginDesiredStateUpdateMutationV1,
@@ -223,10 +226,15 @@ def test_management_service_hands_off_disable_remove_and_update_intents(
         instance_id_factory=lambda: "instance-1",
     )
     retirements = PluginRetirementIntentLedger(retirement_path)
+    retirement_sets = PluginRetirementSetLedger(
+        tmp_path / "retirement-sets.jsonl",
+        retirement_intents=retirements,
+    )
     service = PluginManagementService(
         desired_state=desired,
         operation_journal_path=tmp_path / "operations.jsonl",
         retirement_intents=retirements,
+        retirement_sets=retirement_sets,
     )
     service.submit(_command("install", revision=0, operation=1))
     service.submit(_command("enable", revision=1, operation=2))
@@ -243,6 +251,9 @@ def test_management_service_hands_off_disable_remove_and_update_intents(
     assert disable_terminal.result is not None
     assert disable_terminal.result.disposition == "succeeded"
     assert service.operations()[-1].command.operation_id == "operation-5"
+    assert {
+        item.intent.trigger for item in retirement_sets.snapshot().sets
+    } == {"update", "disable"}
 
 
 def test_recovery_writes_missing_intent_after_desired_cutover(tmp_path: Path) -> None:
@@ -388,6 +399,12 @@ def test_two_services_serialize_one_exact_retirement_handoff(tmp_path: Path) -> 
 
     assert results[0] == results[1]
     assert PluginRetirementIntentLedger(retirement_path).snapshot().journal_revision == 1
+    retirement_source = PluginRetirementIntentLedger(retirement_path)
+    retirement_sets = PluginRetirementSetLedger(
+        operation_path.with_name(f"{operation_path.name}.retirement-sets"),
+        retirement_intents=retirement_source,
+    )
+    assert retirement_sets.snapshot().journal_revision == 1
     assert PluginDesiredStateLedger(desired_path).snapshot().inventory_revision == 3
 
 

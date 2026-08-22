@@ -1,7 +1,7 @@
 # Plugin Lifecycle PLC2 Contract
 
-Status: PLC2-1, PLC2-2, PLC2-3 and PLC2-4A implemented; PLC2-4B/4C/4D not
-started. This document
+Status: PLC2-1, PLC2-2, PLC2-3, PLC2-4A and PLC2-4B implemented; PLC2-4C/4D
+not started. This document
 narrows the PLC2 section of the
 [Unified Plugin Lifecycle And Coding Pluginization Delivery Plan](plugin-lifecycle-coding-pluginization-plan.md).
 It does not make the Plugin authoring SDK public and does not authorize live
@@ -613,3 +613,137 @@ PLC2-4A is complete only when tests prove:
 - architecture gates find one production intent append call site inside
   `PluginManagementService` and no owner, disposer, Session, registration,
   execution, private-data, package-cache or GC dependency.
+
+## PLC2-4B Exact-Owner Retirement Aggregation
+
+PLC2-4B adds a durable `PluginRetirementSet` projection for each PLC2-4A
+intent. The set coordinates immutable owner references and owner-issued
+outcomes only. It cannot look up a live registry, call or retain a callable,
+deactivate a lease, invoke a disposer, stop an external service, mutate an
+owner generation, change Instance execution state, release package bytes, or
+claim cleanup success.
+
+### Open Set And Complete Owner Plan
+
+The management handoff opens exactly one `collecting` set after it durably
+creates an intent and before it writes the terminal management event. Opening a
+set stores the complete exact intent; it does not infer that the Instance was
+active or that any owner target exists.
+
+A future Product Plugin Host may commit one complete
+`PluginOwnerRetirementPlanV1` after exact owner binding exists. PLC2-4B defines
+the port and durable validation but has no production caller that fabricates
+such a plan. The plan contains:
+
+- the exact `retirementId` and one opaque `ownerClosureReference` issued by the
+  Product Plugin Host;
+- a contract-derived plan ID over canonical plan bytes; and
+- zero or more canonical `PluginOwnerRetirementTargetV1` values.
+
+Each target contains only an opaque owner reference, owner-generation
+reference, owner-issued retirement handle and a non-empty sorted unique tuple
+of contribution IDs. A target ID is derived from those exact canonical fields.
+Targets are strictly sorted by target ID; owner-generation pairs, retirement
+handles, target IDs and contribution IDs are unique within a plan.
+There is no top-level Plugin type code and no callback or authority object.
+
+An empty sealed plan is legal only as the Product Plugin Host's explicit
+statement that the exact Instance has no foreign owner generations. It makes
+owner-retirement aggregation complete but does not prove the Instance was
+inactive, release a direct-host or membership lease, or make the Package
+Revision reclaimable.
+
+### Owner-Issued Outcomes And Aggregate State
+
+`PluginOwnerRetirementOutcomeV1` references one exact target and carries:
+
+- owner-issued operation ID and idempotency key;
+- a positive attempt number;
+- disposition `succeeded`, `retryable_failure`, or `terminal_failure`;
+- one bounded structural `resultCode`; and
+- one opaque owner outcome reference.
+
+There is no free-form result text. Result codes use only lowercase ASCII
+letters, digits, `.`, `_`, `-`, and `:` and are at most 128 characters. They
+must not contain package bytes, private data, secrets, credentials or exception
+text.
+
+The first outcome for a target is attempt 1. Only `retryable_failure` permits
+the next contiguous attempt. `succeeded` and `terminal_failure` are terminal
+for that target. Operation IDs and idempotency keys are scoped by the exact
+retirement ID plus target ID, so independent owners need no shared naming
+registry. Exact retry in that scope returns the current aggregate without
+appending another event; reuse with different evidence fails closed.
+
+The set state is derived, never caller-supplied:
+
+| Evidence | Aggregate state |
+| --- | --- |
+| no sealed plan | `collecting` |
+| sealed plan with pending targets | `retiring` |
+| every target succeeded, including an empty plan | `succeeded` |
+| no terminal failure and at least one latest retryable failure | `retryable_failure` |
+| any target has terminal failure | `terminal_failure` |
+
+Succeeded targets remain visible when another target is pending or failed.
+The aggregate contains the latest outcome per target and all append-only
+attempt evidence. `succeeded` means only that the sealed foreign-owner plan
+completed; PLC2-4C must still prove zero Instance leases before `RETIRED`, and
+PLC2-4D must separately own cleanup/package-lease release.
+
+### Four-Journal Ordering And Recovery
+
+The management handoff lock order becomes:
+
+```text
+management operation journal
+  -> desired-state journal
+  -> retirement-intent journal
+  -> retirement-set journal
+```
+
+The service uses one `_handoff_retirement()` path for normal and update
+operations. That path creates the exact intent and opens its collecting set.
+A crash after either append leaves the operation non-terminal; retry reuses the
+same desired transition, intent and set. A terminal management success or
+`restart_required` is corrupt when a required intent or its exact open set is
+missing. A set is corrupt when its embedded intent is absent/different in the
+intent journal.
+
+Owner plan/outcome writes occur later through the retirement-set ledger's typed
+port and its own exclusive journal lock; they never hold the management lock or
+call back into management. Startup replay recomputes every target ID, plan ID,
+attempt transition and aggregate state. Incomplete tails repair; complete or
+cross-journal contradictions fail closed.
+
+### PLC2-4B Exact Error Codes
+
+| Condition | Code |
+| --- | --- |
+| unsupported set/target/plan/outcome/event version | `unsupported_plugin_retirement_set_record_version` |
+| wrong/unknown field or invalid canonical/derived value | `invalid_plugin_retirement_set_record` |
+| plan, target, operation or idempotency identity reused with different evidence | `plugin_retirement_set_conflict` |
+| plan/outcome violates set or attempt state | `invalid_plugin_retirement_set_transition` |
+| set journal/replay/cross-journal evidence is corrupt | `plugin_retirement_set_journal_corrupt` |
+
+These remain infrastructure/owner-coordination errors, not management terminal
+failure codes.
+
+### PLC2-4B Regression Gate
+
+PLC2-4B is complete only when tests prove:
+
+- strict round trips and field/version rejection for target, plan, outcome and
+  event records;
+- target/plan IDs and sorted uniqueness are derived and fail closed;
+- opening is exact/idempotent and management crashes before/after open recover
+  without duplicate desired, intent, set or terminal records;
+- empty, pending, all-success, retryable and terminal-failure aggregate states;
+- exact outcome retry, conflict rejection, contiguous retry attempts and no
+  retry after a terminal target result;
+- journal tail repair, complete corruption rejection and cross-intent checks;
+- one service handoff path opens sets for disable/remove/enabled-update only;
+  and
+- architecture gates find no callable, owner lookup/disposal, Instance-state,
+  package-cache, private-data, cleanup, GC, Session, Graph or registration
+  dependency.

@@ -16,7 +16,8 @@
   PLC1B-4 are implemented on the current delivery branch: source-union and
   Host composition, inert Resource/Tool/Command payloads, the compiler-owned
   semantic fingerprint, and the document-backed `coding.base` shadow are
-  complete. PLC2 and later slices remain unimplemented.
+  complete. PLC2-1 through PLC2-4B are implemented; PLC2-4C/4D and later
+  slices remain unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, and later Skill adoption.
@@ -876,8 +877,8 @@ delivers only the inert desired-state ledger and durable Instance identity;
 PLC2-2 adds the single typed management command core; PLC2-3 adds staged update
 and exact restart outcomes; PLC2-4 adds retirement/cleanup handoff and recovery.
 No earlier slice may impersonate the authority assigned to a later slice.
-PLC2-1, PLC2-2, PLC2-3 and PLC2-4A are implemented; PLC2-4B/4C/4D remain
-gated.
+PLC2-1, PLC2-2, PLC2-3, PLC2-4A and PLC2-4B are implemented; PLC2-4C/4D
+remain gated.
 
 Scope:
 

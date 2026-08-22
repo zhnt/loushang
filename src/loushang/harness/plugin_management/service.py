@@ -41,6 +41,12 @@ from loushang.harness.plugin_management.retirement import (
     PluginRetirementIntentV1,
     retirement_intent_for_transition,
 )
+from loushang.harness.plugin_management.retirement_sets import (
+    PluginRetirementSetError,
+    PluginRetirementSetInventorySnapshotV1,
+    PluginRetirementSetLedger,
+    PluginRetirementSetSnapshotV1,
+)
 from loushang.harness.plugin_management.updates import (
     PLUGIN_UPDATE_TERMINAL_ERROR_CODES,
     PluginDesiredStateUpdateMutationV1,
@@ -95,6 +101,18 @@ class PluginRetirementIntentLedgerPort(Protocol):
     def snapshot(self) -> PluginRetirementIntentSnapshotV1: ...
 
 
+class PluginRetirementSetLedgerPort(Protocol):
+    @property
+    def path(self) -> Path: ...
+
+    def open_set(
+        self,
+        intent: PluginRetirementIntentV1,
+    ) -> PluginRetirementSetSnapshotV1: ...
+
+    def snapshot(self) -> PluginRetirementSetInventorySnapshotV1: ...
+
+
 class PluginManagementError(RuntimeError):
     """Fail-closed management-command error with a stable code."""
 
@@ -121,20 +139,27 @@ class PluginManagementService:
         desired_state: PluginDesiredStateLedgerPort,
         operation_journal_path: str | Path,
         retirement_intents: PluginRetirementIntentLedgerPort | None = None,
+        retirement_sets: PluginRetirementSetLedgerPort | None = None,
     ) -> None:
         self._desired_state = desired_state
         self._path = Path(operation_journal_path)
         self._retirement_intents = retirement_intents or PluginRetirementIntentLedger(
             self._path.with_name(f"{self._path.name}.retirement-intents")
         )
+        self._retirement_sets = retirement_sets or PluginRetirementSetLedger(
+            self._path.with_name(f"{self._path.name}.retirement-sets"),
+            retirement_intents=self._retirement_intents,
+        )
         journal_paths = {
             self._path.resolve(),
             desired_state.path.resolve(),
             self._retirement_intents.path.resolve(),
+            self._retirement_sets.path.resolve(),
         }
-        if len(journal_paths) != 3:
+        if len(journal_paths) != 4:
             raise ValueError(
-                "Plugin operation, desired-state and retirement journals must be distinct"
+                "Plugin operation, desired-state, retirement-intent and "
+                "retirement-set journals must be distinct"
             )
         self._unlocked_durability = replace(
             DURABLE_LOCKED_JOURNAL,
@@ -149,6 +174,10 @@ class PluginManagementService:
     @property
     def retirement_intent_journal_path(self) -> Path:
         return self._retirement_intents.path
+
+    @property
+    def retirement_set_journal_path(self) -> Path:
+        return self._retirement_sets.path
 
     def submit(
         self,
@@ -406,7 +435,9 @@ class PluginManagementService:
         self,
         transition: PluginDesiredStateJournalTransition,
     ) -> None:
-        self._retirement_intents.request_for(transition)
+        intent = self._retirement_intents.request_for(transition)
+        if intent is not None:
+            self._retirement_sets.open_set(intent)
 
     def _prepare_update_mutation(
         self,
@@ -556,6 +587,10 @@ class PluginManagementService:
             intent.source_operation_id: intent
             for intent in retirement_snapshot.intents
         }
+        retirement_by_id = {
+            intent.retirement_id: intent
+            for intent in retirement_snapshot.intents
+        }
         for operation_id, intent in retirement_by_operation.items():
             if desired_by_operation.get(operation_id) != intent.source_transition:
                 raise _retirement_corrupt(
@@ -598,6 +633,40 @@ class PluginManagementService:
                 raise _retirement_corrupt(
                     self._retirement_intents.path,
                     "Plugin management failure conflicts with retirement intent",
+                )
+
+        retirement_set_snapshot = self._retirement_sets.snapshot()
+        retirement_sets = {
+            item.intent.retirement_id: item
+            for item in retirement_set_snapshot.sets
+        }
+        for retirement_id, retirement_set in retirement_sets.items():
+            if retirement_by_id.get(retirement_id) != retirement_set.intent:
+                raise _retirement_set_corrupt(
+                    self._retirement_sets.path,
+                    "Plugin retirement set is not present in retirement intents",
+                )
+        for event in replayed.latest_by_operation.values():
+            if event.status != "terminal" or event.result is None:
+                continue
+            desired = desired_by_operation.get(event.command.operation_id)
+            if isinstance(event, PluginManagementOperationEventV1):
+                committed = event.result.disposition == "succeeded"
+            else:
+                committed = event.result.disposition in {
+                    "succeeded",
+                    "restart_required",
+                }
+            expected_retirement = (
+                None if desired is None else retirement_intent_for_transition(desired)
+            )
+            if not committed or expected_retirement is None:
+                continue
+            expected_set = retirement_sets.get(expected_retirement.retirement_id)
+            if expected_set is None or expected_set.intent != expected_retirement:
+                raise _retirement_set_corrupt(
+                    self._retirement_sets.path,
+                    "Plugin management terminal result lacks exact retirement set",
                 )
 
 
@@ -669,6 +738,14 @@ def _retirement_corrupt(path: Path, message: str) -> PluginRetirementError:
     )
 
 
+def _retirement_set_corrupt(path: Path, message: str) -> PluginRetirementSetError:
+    return PluginRetirementSetError(
+        message,
+        code="plugin_retirement_set_journal_corrupt",
+        path=path,
+    )
+
+
 def _installation_key(
     command: PluginManagementCommand,
 ) -> PluginInstallationKeyV1:
@@ -682,4 +759,5 @@ __all__ = [
     "PluginManagementError",
     "PluginManagementService",
     "PluginRetirementIntentLedgerPort",
+    "PluginRetirementSetLedgerPort",
 ]

@@ -72,7 +72,9 @@ planning, work event persistence, or AI provider behavior.
   fencing, atomic desired-selection cutover and exact conservative restart
   evidence. PLC2-4A adds the durable exact-old-Instance retirement-intent
   handoff without claiming runtime effectiveness or invoking an owner/cleanup
-  action.
+  action. PLC2-4B adds the durable exact-owner retirement set, sealed owner
+  plan and retry-safe result aggregation while keeping Instance state and
+  package cleanup gated behind PLC2-4C/4D.
 - [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md) records the
   green parser/source-sink/authority inventory, frozen foundation exports,
   forbidden peer routes, and inert published-Plugin fixture required before
