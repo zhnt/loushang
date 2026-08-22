@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import gc
 import json
+import threading
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
@@ -116,7 +118,7 @@ def test_document_preflight_and_coordinator_finalization_are_one_use(
     assert (package.root / "imported.txt").exists() is False
     with pytest.raises(PluginSelectionError) as caught:
         coordinator.finalize(preflight)
-    assert caught.value.code == "plugin_preflight_consumed"
+    assert caught.value.code == "preflight_already_finalized"
 
     aborted = _accepted(
         resolver.preflight(
@@ -218,7 +220,192 @@ def test_expired_accepted_preflight_is_terminal_and_cannot_be_reused(
     assert caught.value.code == "preflight_expired"
     with pytest.raises(PluginSelectionError) as caught:
         resolver._abort(accepted)
-    assert caught.value.code == "plugin_preflight_consumed"
+    assert caught.value.code == "preflight_expired"
+    runtime.close()
+
+
+def test_process_owned_reaper_expires_unclaimed_accepted_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _runtime(tmp_path, document_source=True)
+    binding = runtime.bindings[0]
+    resolver = PluginSelectionResolver()
+    reaped = threading.Event()
+    expire_from_reaper = resolver._expire_from_reaper
+
+    def _observe_reaper(preflight_use_id: str, now: float) -> None:
+        expire_from_reaper(preflight_use_id, now)
+        reaped.set()
+
+    monkeypatch.setattr(resolver, "_expire_from_reaper", _observe_reaper)
+    monkeypatch.setattr(plugin_selection, "_PLUGIN_PREFLIGHT_TTL_SECONDS", 0.0)
+    accepted = _accepted(
+        resolver.preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=_plan(binding.source_identity),
+            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+        )
+    )
+
+    assert reaped.wait(timeout=5.0)
+    with pytest.raises(PluginSelectionError) as caught:
+        resolver._peek_active(accepted)
+    assert caught.value.code == "preflight_expired"
+    runtime.close()
+
+
+def test_preflight_capacity_is_reserved_before_acceptance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _runtime(tmp_path, document_source=True)
+    binding = runtime.bindings[0]
+    resolver = PluginSelectionResolver()
+    monkeypatch.setattr(plugin_selection, "_PLUGIN_MAX_ACTIVE_ATTEMPTS", 1)
+
+    accepted = _accepted(
+        resolver.preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=_plan(binding.source_identity),
+            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+        )
+    )
+    rejected = resolver.preflight(
+        runtime.packages,
+        bindings=runtime.bindings,
+        plan=_plan(binding.source_identity),
+        decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+    )
+
+    assert isinstance(rejected, PluginPreflightRejectedOutcome)
+    assert tuple(item.code for item in rejected.diagnostics) == (
+        "plugin_preflight_capacity_exhausted",
+    )
+    resolver._abort(accepted)
+    replacement = _accepted(
+        resolver.preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=_plan(binding.source_identity),
+            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+        )
+    )
+    resolver._abort(replacement)
+    runtime.close()
+
+
+def test_prior_boot_token_is_always_expired_without_consuming_current_attempt(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path, document_source=True)
+    binding = runtime.bindings[0]
+    resolver = PluginSelectionResolver()
+    accepted = _accepted(
+        resolver.preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=_plan(binding.source_identity),
+            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+        )
+    )
+    prior_boot = replace(accepted, host_boot_id="0" * 32)
+
+    with pytest.raises(PluginSelectionError) as caught:
+        resolver._peek_active(prior_boot)
+    assert caught.value.code == "preflight_expired"
+    resolver._abort(accepted)
+    runtime.close()
+
+
+def test_terminal_tombstone_compacts_only_after_token_is_unreferenced(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _runtime(tmp_path, document_source=True)
+    binding = runtime.bindings[0]
+    resolver = PluginSelectionResolver()
+    monkeypatch.setattr(plugin_selection, "_PLUGIN_MAX_TERMINAL_TOMBSTONES", 1)
+
+    accepted = _accepted(
+        resolver.preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=_plan(binding.source_identity),
+            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+        )
+    )
+    resolver._abort(accepted)
+    retained = resolver.preflight(
+        runtime.packages,
+        bindings=runtime.bindings,
+        plan=_plan(binding.source_identity),
+        decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+    )
+    assert isinstance(retained, PluginPreflightRejectedOutcome)
+    assert retained.diagnostics[0].code == "plugin_preflight_capacity_exhausted"
+
+    del accepted
+    gc.collect()
+    replacement = _accepted(
+        resolver.preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=_plan(binding.source_identity),
+            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+        )
+    )
+    resolver._abort(replacement)
+    runtime.close()
+
+
+def test_preflight_lifetime_is_clamped_to_process_maximum(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _runtime(tmp_path, document_source=True)
+    binding = runtime.bindings[0]
+    resolver = PluginSelectionResolver()
+    monkeypatch.setattr(plugin_selection, "monotonic", lambda: 1000.0)
+    monkeypatch.setattr(plugin_selection, "_PLUGIN_PREFLIGHT_TTL_SECONDS", 900.0)
+
+    accepted = _accepted(
+        resolver.preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=_plan(binding.source_identity),
+            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+        )
+    )
+
+    assert accepted.expires_at == 1300.0
+    resolver._abort(accepted)
+    runtime.close()
+
+
+def test_group_claim_lease_settles_exactly_once(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path, document_source=True)
+    binding = runtime.bindings[0]
+    resolver = PluginSelectionResolver()
+    accepted = _accepted(
+        resolver.preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=_plan(binding.source_identity),
+            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+        )
+    )
+    lease = resolver._claim_group(accepted, accepted.source_groups[0])
+
+    resolver._settle_group(lease, succeeded=True)
+    with pytest.raises(PluginSelectionError) as caught:
+        resolver._settle_group(lease, succeeded=True)
+    assert caught.value.code == "plugin_group_claim_consumed"
+    resolver._abort(accepted)
     runtime.close()
 
 
@@ -392,7 +579,7 @@ def test_private_finalization_validation_keeps_attempt_active_for_coordinator_ab
     resolver._abort(preflight)
     with pytest.raises(PluginSelectionError) as caught:
         resolver._finalize(preflight, ())
-    assert caught.value.code == "plugin_preflight_consumed"
+    assert caught.value.code == "preflight_already_aborted"
     runtime.close()
 
 

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Event
 from typing import Protocol
 
 import pytest
@@ -97,7 +99,7 @@ def test_document_coordinator_decodes_once_and_finalizes_evidenced_candidate(
     assert not hasattr(candidate, "decision_id")
     with pytest.raises(PluginSelectionError) as caught:
         PluginDeclarationCoordinator(resolver).finalize(accepted)
-    assert caught.value.code == "plugin_preflight_consumed"
+    assert caught.value.code == "preflight_already_finalized"
 
 
 def test_document_decode_failure_aborts_attempt_once(
@@ -124,7 +126,89 @@ def test_document_decode_failure_aborts_attempt_once(
         coordinator.finalize(accepted)
     with pytest.raises(PluginSelectionError) as caught:
         coordinator.finalize(accepted)
-    assert caught.value.code == "plugin_preflight_consumed"
+    assert caught.value.code == "preflight_already_aborted"
+
+
+def test_racing_document_finalizers_publish_exactly_once(
+    published_document_plugin: _PublishedDocumentPlugin,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolver = PluginSelectionResolver()
+    accepted = _accepted_document(resolver, published_document_plugin)
+    decode_started = Event()
+    allow_decode = Event()
+    decode_bytes = PluginDeclarationDocumentCodec.decode_bytes
+
+    def _blocking_decode(encoded: bytes) -> PluginDeclarationDocument:
+        decode_started.set()
+        assert allow_decode.wait(timeout=5.0)
+        return decode_bytes(encoded)
+
+    monkeypatch.setattr(
+        PluginDeclarationDocumentCodec,
+        "decode_bytes",
+        _blocking_decode,
+    )
+    coordinator = PluginDeclarationCoordinator(resolver)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(coordinator.finalize, accepted)
+        assert decode_started.wait(timeout=5.0)
+        second = pool.submit(coordinator.finalize, accepted)
+        allow_decode.set()
+        outcomes: list[PluginSelection | str] = []
+        for future in (first, second):
+            try:
+                outcomes.append(future.result(timeout=5.0))
+            except PluginSelectionError as exc:
+                outcomes.append(exc.code)
+
+    assert sum(isinstance(item, PluginSelection) for item in outcomes) == 1
+    assert outcomes.count("preflight_already_finalized") == 1
+
+
+def test_abort_waits_for_claimed_document_group_to_settle(
+    published_document_plugin: _PublishedDocumentPlugin,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolver = PluginSelectionResolver()
+    accepted = _accepted_document(resolver, published_document_plugin)
+    decode_started = Event()
+    allow_decode = Event()
+    decode_bytes = PluginDeclarationDocumentCodec.decode_bytes
+
+    def _blocking_decode(encoded: bytes) -> PluginDeclarationDocument:
+        decode_started.set()
+        assert allow_decode.wait(timeout=5.0)
+        return decode_bytes(encoded)
+
+    monkeypatch.setattr(
+        PluginDeclarationDocumentCodec,
+        "decode_bytes",
+        _blocking_decode,
+    )
+    coordinator = PluginDeclarationCoordinator(resolver)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        finalizer = pool.submit(coordinator.finalize, accepted)
+        assert decode_started.wait(timeout=5.0)
+        aborter = pool.submit(resolver._abort, accepted)
+        with resolver._gate:
+            aggregate = resolver._active[accepted.preflight_use_id]
+            assert aggregate.state == "closing_abort"
+            assert aggregate.in_flight == 1
+        assert aborter.done() is False
+        allow_decode.set()
+        assert aborter.result(timeout=5.0) is None
+        with pytest.raises(PluginSelectionError) as caught:
+            finalizer.result(timeout=5.0)
+
+    assert caught.value.code == "preflight_already_aborted"
+    with resolver._gate:
+        terminal = resolver._terminal[accepted.preflight_use_id]
+        assert terminal.late_group_results == (
+            (accepted.source_groups[0].source_group_id, "completed"),
+        )
 
 
 def test_plc1b_coordinator_aborts_executable_group_without_finalization_or_import(

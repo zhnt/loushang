@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import secrets
 import threading
+import weakref
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from hashlib import sha256
@@ -36,6 +37,9 @@ PLUGIN_SELECTION_PLAN_VERSION = 2
 PLUGIN_SOURCE_TRUST_SNAPSHOT_VERSION = 1
 _PLUGIN_HOST_BOOT_ID = secrets.token_hex(16)
 _PLUGIN_PREFLIGHT_TTL_SECONDS = 300.0
+_PLUGIN_MAX_ACTIVE_ATTEMPTS = 1024
+_PLUGIN_MAX_TERMINAL_TOMBSTONES = 8192
+_PLUGIN_MAX_ATTEMPT_LIFETIME_SECONDS = 300.0
 
 
 class PluginSelectionError(RuntimeError):
@@ -1081,7 +1085,7 @@ class _PluginPreflightTerminalHandle:
         _require_hex(self.token, length=48, name="preflight terminal handle")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class AcceptedPluginPreflight:
     preflight_use_id: str
     host_boot_id: str
@@ -1139,10 +1143,42 @@ class AcceptedPluginPreflight:
         )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
+class _PluginGroupRuntime:
+    group: PluginDeclarationSourceGroup
+    state: Literal["pending", "claimed", "completed", "failed"] = "pending"
+    claim_token: str = ""
+    cancel_requested: bool = False
+
+
+@dataclass(slots=True)
 class _ActivePluginPreflight:
     accepted: AcceptedPluginPreflight
     proposal: PluginPreflightProposal
+    groups: dict[str, _PluginGroupRuntime]
+    state: Literal[
+        "active_open",
+        "closing_abort",
+        "closing_expire",
+    ] = "active_open"
+    in_flight: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class _TerminalPluginPreflight:
+    accepted_ref: weakref.ReferenceType[AcceptedPluginPreflight]
+    state: Literal["finalized", "aborted", "expired"]
+    late_group_results: tuple[
+        tuple[str, Literal["completed", "failed"]],
+        ...,
+    ]
+
+
+@dataclass(frozen=True, slots=True)
+class _PluginGroupClaimLease:
+    preflight_use_id: str
+    source_group_id: str
+    claim_token: str
 
 
 @dataclass(frozen=True, order=True, slots=True)
@@ -1463,8 +1499,10 @@ class PluginSelectionResolver:
     """Two-phase inert selector with one-use declaration reservations."""
 
     def __init__(self) -> None:
-        self._gate = threading.Lock()
+        self._gate = threading.Condition()
         self._active: dict[str, _ActivePluginPreflight] = {}
+        self._terminal: dict[str, _TerminalPluginPreflight] = {}
+        self._reaper: threading.Thread | None = None
 
     def preflight(
         self,
@@ -1653,8 +1691,21 @@ class PluginSelectionResolver:
             )
 
         with self._gate:
+            self._compact_tombstones_locked()
+            if (
+                len(self._active) >= _PLUGIN_MAX_ACTIVE_ATTEMPTS
+                or len(self._active) + len(self._terminal)
+                >= _PLUGIN_MAX_TERMINAL_TOMBSTONES
+            ):
+                raise PluginSelectionError(
+                    "Plugin preflight process capacity is exhausted.",
+                    code="plugin_preflight_capacity_exhausted",
+                )
             preflight_use_id = secrets.token_hex(24)
-            while preflight_use_id in self._active:
+            while (
+                preflight_use_id in self._active
+                or preflight_use_id in self._terminal
+            ):
                 preflight_use_id = secrets.token_hex(24)
             instance_refs = {
                 item.plugin_id: item for item in plan.context.instance_revision_refs
@@ -1681,7 +1732,11 @@ class PluginSelectionResolver:
             accepted = AcceptedPluginPreflight(
                 preflight_use_id=preflight_use_id,
                 host_boot_id=_PLUGIN_HOST_BOOT_ID,
-                expires_at=monotonic() + _PLUGIN_PREFLIGHT_TTL_SECONDS,
+                expires_at=monotonic()
+                + min(
+                    max(_PLUGIN_PREFLIGHT_TTL_SECONDS, 0.0),
+                    _PLUGIN_MAX_ATTEMPT_LIFETIME_SECONDS,
+                ),
                 context=plan.context,
                 source_groups=source_groups,
                 _terminal_handle=terminal_handle,
@@ -1689,11 +1744,114 @@ class PluginSelectionResolver:
             self._active[terminal_handle.token] = _ActivePluginPreflight(
                 accepted=accepted,
                 proposal=proposal,
+                groups={
+                    group.source_group_id: _PluginGroupRuntime(group=group)
+                    for group in source_groups
+                },
             )
+            self._ensure_reaper_locked()
+            self._gate.notify_all()
         return accepted
 
+    def _claim_group(
+        self,
+        preflight: AcceptedPluginPreflight,
+        group: PluginDeclarationSourceGroup,
+    ) -> _PluginGroupClaimLease:
+        with self._gate:
+            active = self._active_record_locked(preflight)
+            if active.state != "active_open":
+                raise PluginSelectionError(
+                    "Plugin preflight is closing and accepts no new group claim.",
+                    code="preflight_closing",
+                )
+            now = monotonic()
+            if now >= preflight.expires_at:
+                self._begin_close_locked(active, state="closing_expire")
+                self._finish_close_if_quiescent_locked(active)
+                self._wait_for_terminal_locked(preflight)
+            runtime = active.groups.get(group.source_group_id)
+            if runtime is None or runtime.group is not group:
+                raise PluginSelectionError(
+                    "Plugin declaration group does not belong to this preflight.",
+                    code="plugin_declaration_group_mismatch",
+                    path=group.package.root,
+                )
+            if runtime.state != "pending":
+                while preflight.preflight_use_id in self._active:
+                    self._gate.wait()
+                self._raise_terminal_locked(preflight)
+            claim_token = secrets.token_hex(24)
+            runtime.state = "claimed"
+            runtime.claim_token = claim_token
+            active.in_flight += 1
+            return _PluginGroupClaimLease(
+                preflight_use_id=preflight.preflight_use_id,
+                source_group_id=group.source_group_id,
+                claim_token=claim_token,
+            )
+
+    def _settle_group(
+        self,
+        lease: _PluginGroupClaimLease,
+        *,
+        succeeded: bool,
+    ) -> None:
+        if not isinstance(lease, _PluginGroupClaimLease):
+            raise PluginSelectionError(
+                "Plugin group claim lease is foreign or already consumed.",
+                code="plugin_group_claim_consumed",
+            )
+        if not isinstance(succeeded, bool):
+            raise TypeError("Plugin group settlement requires a boolean outcome")
+        with self._gate:
+            active = self._active.get(lease.preflight_use_id)
+            if active is None:
+                raise PluginSelectionError(
+                    "Plugin group claim lease is foreign or already consumed.",
+                    code="plugin_group_claim_consumed",
+                )
+            runtime = active.groups.get(lease.source_group_id)
+            if (
+                runtime is None
+                or runtime.state != "claimed"
+                or runtime.claim_token != lease.claim_token
+            ):
+                raise PluginSelectionError(
+                    "Plugin group claim lease is foreign or already consumed.",
+                    code="plugin_group_claim_consumed",
+                )
+            runtime.state = "completed" if succeeded else "failed"
+            runtime.claim_token = ""
+            active.in_flight -= 1
+            self._finish_close_if_quiescent_locked(active)
+            self._gate.notify_all()
+            if lease.preflight_use_id not in self._active:
+                self._raise_terminal_for_token_locked(lease.preflight_use_id)
+            if active.state != "active_open":
+                raise PluginSelectionError(
+                    "Plugin preflight is closing; the late group result was discarded.",
+                    code="preflight_closing",
+                    path=runtime.group.package.root,
+                )
+
     def _abort(self, preflight: AcceptedPluginPreflight) -> None:
-        self._consume_active(preflight)
+        with self._gate:
+            active = self._active_record_locked(preflight)
+            initiated_abort = False
+            if active.state == "active_open":
+                if monotonic() >= preflight.expires_at:
+                    self._begin_close_locked(active, state="closing_expire")
+                else:
+                    self._begin_close_locked(active, state="closing_abort")
+                    initiated_abort = True
+                self._finish_close_if_quiescent_locked(active)
+            while preflight.preflight_use_id in self._active:
+                self._gate.wait()
+            terminal = self._terminal_record_locked(preflight)
+            if initiated_abort and terminal.state == "aborted":
+                return
+            raise self._terminal_error(terminal.state)
 
     def _finalize(
         self,
@@ -1807,67 +1965,253 @@ class PluginSelectionResolver:
                         batch,
                     )
                 )
-        consumed = self._consume_active(preflight)
-        if consumed is not active:
-            raise PluginSelectionError(
-                "Plugin preflight terminal state changed during finalization.",
-                code="plugin_preflight_consumed",
-            )
+        self._commit_finalized(preflight, active)
         return PluginSelection(plan=plan, candidates=tuple(candidates))
 
     def _peek_active(
         self,
         preflight: AcceptedPluginPreflight,
     ) -> _ActivePluginPreflight:
-        if not isinstance(preflight, AcceptedPluginPreflight):
-            raise PluginSelectionError(
-                "Plugin preflight reservation was already consumed or is foreign.",
-                code="plugin_preflight_consumed",
-            )
         with self._gate:
-            active = self._active.get(preflight._terminal_handle.token)
-        if active is None or active.accepted is not preflight:
-            raise PluginSelectionError(
-                "Plugin preflight reservation was already consumed or is foreign.",
-                code="plugin_preflight_consumed",
-            )
-        if (
-            preflight.host_boot_id != _PLUGIN_HOST_BOOT_ID
-            or monotonic() >= preflight.expires_at
-        ):
-            with self._gate:
-                self._active.pop(preflight._terminal_handle.token, None)
-            raise PluginSelectionError(
-                "Plugin preflight reservation expired before terminal use.",
-                code="preflight_expired",
-            )
-        return active
+            active = self._active_record_locked(preflight)
+            if active.state != "active_open":
+                raise PluginSelectionError(
+                    "Plugin preflight is closing.",
+                    code="preflight_closing",
+                )
+            if monotonic() >= preflight.expires_at:
+                self._begin_close_locked(active, state="closing_expire")
+                self._finish_close_if_quiescent_locked(active)
+                self._wait_for_terminal_locked(preflight)
+            return active
 
-    def _consume_active(
+    def _commit_finalized(
+        self,
+        preflight: AcceptedPluginPreflight,
+        expected: _ActivePluginPreflight,
+    ) -> None:
+        with self._gate:
+            active = self._active_record_locked(preflight)
+            if active is not expected:
+                raise PluginSelectionError(
+                    "Plugin preflight aggregate identity changed.",
+                    code="plugin_preflight_consumed",
+                )
+            if active.state != "active_open":
+                while preflight.preflight_use_id in self._active:
+                    self._gate.wait()
+                self._raise_terminal_locked(preflight)
+            if monotonic() >= preflight.expires_at:
+                self._begin_close_locked(active, state="closing_expire")
+                self._finish_close_if_quiescent_locked(active)
+                self._wait_for_terminal_locked(preflight)
+            if active.in_flight != 0 or any(
+                runtime.state != "completed"
+                for runtime in active.groups.values()
+            ):
+                raise PluginSelectionError(
+                    "Plugin preflight groups are not completely settled.",
+                    code="plugin_preflight_incomplete",
+                )
+            self._terminalize_locked(active, state="finalized")
+
+    def _active_record_locked(
         self,
         preflight: AcceptedPluginPreflight,
     ) -> _ActivePluginPreflight:
         if not isinstance(preflight, AcceptedPluginPreflight):
             raise PluginSelectionError(
-                "Plugin preflight reservation was already consumed or is foreign.",
+                "Plugin preflight reservation is foreign.",
                 code="plugin_preflight_consumed",
             )
-        with self._gate:
-            active = self._active.pop(preflight._terminal_handle.token, None)
-        if active is None or active.accepted is not preflight:
+        if preflight.host_boot_id != _PLUGIN_HOST_BOOT_ID:
             raise PluginSelectionError(
-                "Plugin preflight reservation was already consumed or is foreign.",
-                code="plugin_preflight_consumed",
-            )
-        if (
-            preflight.host_boot_id != _PLUGIN_HOST_BOOT_ID
-            or monotonic() >= preflight.expires_at
-        ):
-            raise PluginSelectionError(
-                "Plugin preflight reservation expired before terminal use.",
+                "Plugin preflight belongs to a prior Host boot.",
                 code="preflight_expired",
             )
-        return active
+        active = self._active.get(preflight.preflight_use_id)
+        if active is not None and active.accepted is preflight:
+            return active
+        terminal = self._terminal.get(preflight.preflight_use_id)
+        if terminal is not None and terminal.accepted_ref() is preflight:
+            raise self._terminal_error(terminal.state)
+        raise PluginSelectionError(
+            "Plugin preflight reservation is foreign or unknown.",
+            code="plugin_preflight_consumed",
+        )
+
+    def _terminal_record_locked(
+        self,
+        preflight: AcceptedPluginPreflight,
+    ) -> _TerminalPluginPreflight:
+        if preflight.host_boot_id != _PLUGIN_HOST_BOOT_ID:
+            raise PluginSelectionError(
+                "Plugin preflight belongs to a prior Host boot.",
+                code="preflight_expired",
+            )
+        terminal = self._terminal.get(preflight.preflight_use_id)
+        if terminal is None or terminal.accepted_ref() is not preflight:
+            raise PluginSelectionError(
+                "Plugin preflight reservation is foreign or unknown.",
+                code="plugin_preflight_consumed",
+            )
+        return terminal
+
+    def _wait_for_terminal_locked(
+        self,
+        preflight: AcceptedPluginPreflight,
+    ) -> None:
+        while preflight.preflight_use_id in self._active:
+            self._gate.wait()
+        self._raise_terminal_locked(preflight)
+
+    def _raise_terminal_locked(
+        self,
+        preflight: AcceptedPluginPreflight,
+    ) -> None:
+        terminal = self._terminal_record_locked(preflight)
+        raise self._terminal_error(terminal.state)
+
+    def _raise_terminal_for_token_locked(self, preflight_use_id: str) -> None:
+        terminal = self._terminal.get(preflight_use_id)
+        if terminal is None:
+            raise PluginSelectionError(
+                "Plugin preflight reservation is foreign or unknown.",
+                code="plugin_preflight_consumed",
+            )
+        raise self._terminal_error(terminal.state)
+
+    @staticmethod
+    def _terminal_error(
+        state: Literal["finalized", "aborted", "expired"],
+    ) -> PluginSelectionError:
+        if state == "finalized":
+            return PluginSelectionError(
+                "Plugin preflight was already finalized.",
+                code="preflight_already_finalized",
+            )
+        if state == "aborted":
+            return PluginSelectionError(
+                "Plugin preflight was already aborted.",
+                code="preflight_already_aborted",
+            )
+        return PluginSelectionError(
+            "Plugin preflight expired before terminal use.",
+            code="preflight_expired",
+        )
+
+    def _begin_close_locked(
+        self,
+        active: _ActivePluginPreflight,
+        *,
+        state: Literal["closing_abort", "closing_expire"],
+    ) -> None:
+        if active.state != "active_open":
+            return
+        active.state = state
+        for runtime in active.groups.values():
+            if runtime.state == "claimed":
+                runtime.cancel_requested = True
+        self._gate.notify_all()
+
+    def _finish_close_if_quiescent_locked(
+        self,
+        active: _ActivePluginPreflight,
+    ) -> None:
+        if active.in_flight != 0:
+            return
+        if active.state == "closing_abort":
+            self._terminalize_locked(active, state="aborted")
+        elif active.state == "closing_expire":
+            self._terminalize_locked(active, state="expired")
+
+    def _terminalize_locked(
+        self,
+        active: _ActivePluginPreflight,
+        *,
+        state: Literal["finalized", "aborted", "expired"],
+    ) -> None:
+        token = active.accepted.preflight_use_id
+        if self._active.get(token) is not active:
+            raise PluginSelectionError(
+                "Plugin preflight terminal state changed concurrently.",
+                code="plugin_preflight_consumed",
+            )
+        self._active.pop(token)
+        self._terminal[token] = _TerminalPluginPreflight(
+            accepted_ref=weakref.ref(active.accepted),
+            state=state,
+            late_group_results=tuple(
+                (
+                    group_id,
+                    cast(
+                        Literal["completed", "failed"],
+                        runtime.state,
+                    ),
+                )
+                for group_id, runtime in sorted(active.groups.items())
+                if runtime.cancel_requested
+                and runtime.state in {"completed", "failed"}
+            ),
+        )
+        self._gate.notify_all()
+
+    def _compact_tombstones_locked(self) -> None:
+        for token, terminal in tuple(self._terminal.items()):
+            if terminal.accepted_ref() is None:
+                self._terminal.pop(token, None)
+
+    def _ensure_reaper_locked(self) -> None:
+        if self._reaper is not None and self._reaper.is_alive():
+            return
+        reaper = threading.Thread(
+            target=self._run_reaper,
+            name="loushang-plugin-preflight-reaper",
+            daemon=True,
+        )
+        self._reaper = reaper
+        reaper.start()
+
+    def _run_reaper(self) -> None:
+        while True:
+            with self._gate:
+                open_attempts = tuple(
+                    active
+                    for active in self._active.values()
+                    if active.state == "active_open"
+                )
+                if not open_attempts:
+                    if self._active:
+                        self._gate.wait()
+                        continue
+                    self._reaper = None
+                    return
+                now = monotonic()
+                deadline = min(
+                    active.accepted.expires_at for active in open_attempts
+                )
+                if now < deadline:
+                    self._gate.wait(timeout=deadline - now)
+                    continue
+                due = tuple(
+                    active.accepted.preflight_use_id
+                    for active in open_attempts
+                    if now >= active.accepted.expires_at
+                )
+            for preflight_use_id in due:
+                self._expire_from_reaper(preflight_use_id, monotonic())
+
+    def _expire_from_reaper(self, preflight_use_id: str, now: float) -> None:
+        with self._gate:
+            active = self._active.get(preflight_use_id)
+            if (
+                active is None
+                or active.state != "active_open"
+                or now < active.accepted.expires_at
+            ):
+                return
+            self._begin_close_locked(active, state="closing_expire")
+            self._finish_close_if_quiescent_locked(active)
 
 
 def build_execution_approval_subject(

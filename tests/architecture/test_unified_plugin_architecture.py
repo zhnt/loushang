@@ -1898,6 +1898,37 @@ def test_coordinator_exclusively_owns_evidenced_terminal_finalization() -> None:
     )
     assert not hasattr(public_plugins.PluginSelectionResolver, "finalize")
     assert not hasattr(public_plugins.PluginSelectionResolver, "rollback")
+    assert all(
+        hasattr(public_plugins.PluginSelectionResolver, method_name)
+        for method_name in (
+            "_claim_group",
+            "_settle_group",
+            "_abort",
+            "_finalize",
+            "_expire_from_reaper",
+        )
+    )
+    resolver_source = _source_texts()[
+        Path("src/loushang/harness/resources/plugins/selection.py")
+    ]
+    assert "_consume_active" not in resolver_source
+    assert "_PLUGIN_MAX_ACTIVE_ATTEMPTS = 1024" in resolver_source
+    assert "_PLUGIN_MAX_TERMINAL_TOMBSTONES = 8192" in resolver_source
+    assert "_PLUGIN_MAX_ATTEMPT_LIFETIME_SECONDS = 300.0" in resolver_source
+    assert all(
+        state in resolver_source
+        for state in (
+            '"active_open"',
+            '"closing_abort"',
+            '"closing_expire"',
+            '"finalized"',
+            '"aborted"',
+            '"expired"',
+        )
+    )
+    coordinator_source = _source_texts()[PLUGIN_DECLARATION_COORDINATOR_PATH]
+    assert coordinator_source.count("._claim_group(") == 1
+    assert coordinator_source.count("._settle_group(") == 2
     terminal_callers = {
         path
         for path, source in _source_texts().items()

@@ -42,13 +42,35 @@ class PluginDeclarationCoordinator:
 
         try:
             batches = tuple(
-                self._decode_document_group(group)
+                self._consume_document_group(accepted, group)
                 for group in accepted.source_groups
             )
             return self._resolver._finalize(accepted, batches)
+        except PluginSelectionError as exc:
+            if exc.code == "preflight_closing":
+                try:
+                    self._resolver._abort(accepted)
+                except PluginSelectionError as terminal_exc:
+                    raise terminal_exc from exc
+            self._abort_after_failure(accepted)
+            raise
         except BaseException:
             self._abort_after_failure(accepted)
             raise
+
+    def _consume_document_group(
+        self,
+        accepted: AcceptedPluginPreflight,
+        group: PluginDeclarationSourceGroup,
+    ) -> PluginDeclarationBatch:
+        lease = self._resolver._claim_group(accepted, group)
+        try:
+            batch = self._decode_document_group(group)
+        except BaseException:
+            self._resolver._settle_group(lease, succeeded=False)
+            raise
+        self._resolver._settle_group(lease, succeeded=True)
+        return batch
 
     @staticmethod
     def _decode_document_group(
@@ -80,7 +102,12 @@ class PluginDeclarationCoordinator:
         try:
             self._resolver._abort(accepted)
         except PluginSelectionError as exc:
-            if exc.code not in {"plugin_preflight_consumed", "preflight_expired"}:
+            if exc.code not in {
+                "plugin_preflight_consumed",
+                "preflight_already_aborted",
+                "preflight_already_finalized",
+                "preflight_expired",
+            }:
                 raise
 
 
