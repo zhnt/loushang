@@ -9,10 +9,11 @@ The plan correctly gives the common lifecycle priority over a
 `coding.base`-specific loader, uses `coding.base` as the Resource-heavy
 production sample, and retains `coding.lsp` as the first Provider/Graph proof.
 PLC0 restored the source-backed architecture baseline at `25cfc170`; see
-[Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md). PLC1 is
-technically eligible after its tracking issue is attached. This review does not
-approve the security, lifecycle, production cutover, or public SDK slices as
-one batch.
+[Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md). PLC1A's
+inert authoring primitives are implemented locally at `2ebac237`; see the
+[PLC1A baseline](plugin-lifecycle-plc1a-baseline.md). PLC1B is technically next
+after issue attachment and independent review. This review does not approve
+the security, lifecycle, production cutover, or public SDK slices as one batch.
 
 The two proposed sequencing revisions are justified but require architecture-
 owner acceptance before their source implementation:

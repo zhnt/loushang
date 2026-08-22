@@ -9,8 +9,11 @@
   `capability_provider` preflight/finalize slice.
 - Delivery status: PLC0 is implemented locally at `25cfc170`; its exact source
   inventory and verification evidence are recorded in
-  [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md). PLC1
-  remains unimplemented.
+  [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md). PLC1A's
+  inert typed Capability Provider codec and reservation-bound builder are
+  implemented locally at `2ebac237` and recorded in the
+  [PLC1A baseline](plugin-lifecycle-plc1a-baseline.md). PLC1B and later slices
+  remain unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, and later Skill adoption.
@@ -28,7 +31,8 @@
 
 This document is a coordinating plan. It does not claim that document-backed
 Plugin declarations, owner admission bridges, executable Plugin evaluation,
-Plugin management control, or Coding Plugin cutovers are already implemented.
+Plugin management control, or Coding Plugin cutovers are already implemented;
+PLC1A stops at frozen authoring IR.
 
 ## Executive Decision
 

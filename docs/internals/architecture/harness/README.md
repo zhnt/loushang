@@ -137,6 +137,11 @@ description.
   implemented pre-PLC1 parser, verified-revision, public-export, inert-layer,
   Graph-construction, and synthetic-fixture evidence. Any later inventory
   change requires an exact owner and behavioral gate.
+- [Plugin Lifecycle PLC1A Baseline](plugin-lifecycle-plc1a-baseline.md) records
+  the inert typed Capability Provider codec, revision-bound symbol locators,
+  reservation-bound internal Builder, stable fingerprints, and the dependency-
+  graph placement correction. It adds no import, admission, binding, or public
+  SDK path.
 - [Composition Lifecycle Authority CLA0 Baseline](composition-lifecycle-authority-cla0-baseline.md)
   is the executable inventory for that plan, revised through CLA8 to freeze the
   single-candidate authority and forbid removed peer construction paths.

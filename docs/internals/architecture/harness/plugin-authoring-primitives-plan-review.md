@@ -28,7 +28,12 @@ The baseline blocker identified by the original review is closed locally at
 verified-revision/mount sinks under named owners, and restored the architecture
 suite to green. The
 [PLC0 baseline](plugin-lifecycle-plc0-baseline.md) records the evidence. PAP1
-still requires a tracking issue and must preserve the exact inventory.
+was implemented locally at `2ebac237` without a public export or live effect.
+Its source review also corrected the planned placement from
+`resources.plugins` to the higher internal `plugin_authoring` composition layer
+after the dependency gate demonstrated that the original placement would form
+a `resources <-> capabilities` cycle. A tracking issue and independent review
+are still required before remote PR publication.
 
 No unresolved finding requires a second Graph, Profile resolver, Registration
 owner, effective projector, Plugin context, or Skill-specific Plugin runtime.
@@ -320,7 +325,8 @@ stronger Loushang properties that a universal Plugin context would erase:
 owner admission, pure Product selection, one Graph publisher, exact reversible
 registration ownership, and complete Model Input reconstruction.
 
-PAP0/PLC0 is complete locally. PAP1 may begin after the tracking issue is
-attached. PAP2 is the next design review boundary; skipping it to reach an
-impressive Plugin demo would invalidate the architecture's execution-trust
-claim.
+PAP0/PLC0 and inert PAP1/PLC1A are complete locally. PAP2 is the next design
+review boundary; skipping it to reach an impressive Plugin demo would
+invalidate the architecture's execution-trust claim. Issue/PR attachment and
+independent review remain publication gates, not reasons to weaken the local
+implementation.

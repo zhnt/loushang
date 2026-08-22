@@ -6,14 +6,17 @@
   boundaries; it does not amend those boundaries.
 - Baseline: `harness/plugin-resolve-once` after the implemented UPA1 resolve-once
   chain and the first inert UPA2 `capability_provider` preflight/finalize slice.
-- Delivery status: PAP0/PLC0 is implemented locally at `25cfc170`. No public
-  Plugin SDK, typed Provider declaration codec, executable Plugin Definition
-  evaluator, Capability owner admission bridge, or Plugin-sourced Capability
-  bind is claimed as implemented by this document.
+- Delivery status: PAP0/PLC0 is implemented locally at `25cfc170` and the inert
+  PAP1/PLC1A authoring slice is implemented locally at `2ebac237`; see the
+  [PLC1A baseline](plugin-lifecycle-plc1a-baseline.md). No public Plugin SDK,
+  executable Plugin Definition evaluator, Capability owner admission bridge,
+  or Plugin-sourced Capability bind is claimed as implemented by this
+  document.
 - Review status: self-reviewed in
   [Plugin Authoring Primitives Plan Review](plugin-authoring-primitives-plan-review.md).
-  The first source-changing slice still requires an independent review against
-  the source tree and executable gates.
+  The implemented source-changing slice remains local and still requires an
+  independent review against the source tree and executable gates before PR
+  publication.
 
 This plan specializes the broader
 [Unified Plugin Architecture](unified-plugin-architecture.md). The accepted
@@ -125,10 +128,9 @@ duplicates:
 | Inert reservation/declaration | `PluginContributionReservation` / `PluginDeclaration` | Extend compatibly through typed payload codecs; do not add a second IR. |
 | Inert selection | `PluginSelectionResolver` | Retain preflight/finalize; it never performs owner admission or binding. |
 
-The current source does not yet provide:
+PAP1 now provides the typed `capability_provider` payload codec and
+reservation-bound internal builder. The current source still does not provide:
 
-- a typed `capability_provider` payload codec over
-  `CapabilityBundleProvider` and exact factory/disposer locators;
 - a constrained `PluginDefinition` builder/evaluator;
 - durable, consumable Approval-owner Plugin execution decisions;
 - Capability-owner eligibility and final admission records;
@@ -361,10 +363,10 @@ Primary files:
 
 ```text
 src/loushang/harness/resources/plugins/declarations.py
-src/loushang/harness/resources/plugins/capability_provider.py    # new
-src/loushang/harness/resources/plugins/authoring.py              # internal, new
-tests/harness/resources/plugins/test_declarations.py             # new
-tests/harness/resources/plugins/test_authoring.py                # new
+src/loushang/harness/plugin_authoring/capability_provider.py     # new
+src/loushang/harness/plugin_authoring/builder.py                 # internal, new
+tests/harness/plugin_authoring/test_capability_provider.py       # new
+tests/harness/plugin_authoring/test_builder.py                   # new
 ```
 
 Exit gate:
@@ -376,6 +378,16 @@ Exit gate:
   for explicitly versioned fixture evolution.
 
 Rollback: remove the new codec/builder; existing generic payload remains valid.
+
+Implementation placement note: the initial file sketch placed the codec under
+`resources.plugins`. The executable dependency gate proved that placement
+would add `resources -> capabilities` while Capability consumers already use
+Resources. PAP1 therefore lives in the internal top-level `plugin_authoring`
+composition layer. `PluginDeclaration` and `PluginSelectionResolver` continue
+to freeze and fingerprint an opaque payload; explicit
+`from_reserved_declaration()` performs the owner-specific strict decode before
+any future admission or binding. This preserves the acyclic package graph and
+does not create a second declaration IR.
 
 ### PAP2: Durable Execution Decision Consumption
 
