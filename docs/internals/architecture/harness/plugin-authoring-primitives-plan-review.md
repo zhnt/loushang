@@ -28,12 +28,22 @@ The baseline blocker identified by the original review is closed locally at
 verified-revision/mount sinks under named owners, and restored the architecture
 suite to green. The
 [PLC0 baseline](plugin-lifecycle-plc0-baseline.md) records the evidence. PAP1
-was implemented locally at `2ebac237` without a public export or live effect.
+was implemented locally at `2ebac237` and review-hardened at `27715416` without
+a public export or live effect.
 Its source review also corrected the planned placement from
 `resources.plugins` to the higher internal `plugin_authoring` composition layer
 after the dependency gate demonstrated that the original placement would form
 a `resources <-> capabilities` cycle. A tracking issue and independent review
 are still required before remote PR publication.
+
+The implementation review found and closed three issues before PLC1B: Windows
+drive/backslash locators could bypass a POSIX-only containment check; Builder
+identity facts could be independently assembled instead of deriving from one
+preflight reservation; and a weaker public `from_declaration()` method sat
+beside the reservation-bound decoder. The hardened slice rejects both POSIX and
+Windows traversal forms, derives a narrow retained view from an exact
+`PluginDeclarationReservation`, and exposes only the reservation-bound
+declaration decoder.
 
 No unresolved finding requires a second Graph, Profile resolver, Registration
 owner, effective projector, Plugin context, or Skill-specific Plugin runtime.

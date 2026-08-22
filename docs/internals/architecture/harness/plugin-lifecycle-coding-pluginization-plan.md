@@ -11,7 +11,7 @@
   inventory and verification evidence are recorded in
   [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md). PLC1A's
   inert typed Capability Provider codec and reservation-bound builder are
-  implemented locally at `2ebac237` and recorded in the
+  implemented at `2ebac237`, review-hardened at `27715416`, and recorded in the
   [PLC1A baseline](plugin-lifecycle-plc1a-baseline.md). PLC1B and later slices
   remain unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary

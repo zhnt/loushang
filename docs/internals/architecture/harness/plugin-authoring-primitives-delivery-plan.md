@@ -7,11 +7,11 @@
 - Baseline: `harness/plugin-resolve-once` after the implemented UPA1 resolve-once
   chain and the first inert UPA2 `capability_provider` preflight/finalize slice.
 - Delivery status: PAP0/PLC0 is implemented locally at `25cfc170` and the inert
-  PAP1/PLC1A authoring slice is implemented locally at `2ebac237`; see the
-  [PLC1A baseline](plugin-lifecycle-plc1a-baseline.md). No public Plugin SDK,
-  executable Plugin Definition evaluator, Capability owner admission bridge,
-  or Plugin-sourced Capability bind is claimed as implemented by this
-  document.
+  PAP1/PLC1A authoring slice is implemented at `2ebac237` and review-hardened at
+  `27715416`; see the [PLC1A baseline](plugin-lifecycle-plc1a-baseline.md). No
+  public Plugin SDK, executable Plugin Definition evaluator, Capability owner
+  admission bridge, or Plugin-sourced Capability bind is claimed as
+  implemented by this document.
 - Review status: self-reviewed in
   [Plugin Authoring Primitives Plan Review](plugin-authoring-primitives-plan-review.md).
   The implemented source-changing slice remains local and still requires an
@@ -352,7 +352,8 @@ Scope:
   `CapabilityRequirement`, `CapabilityBundleProvider`, and symbol references;
 - add `CapabilityProviderDeclarationPayload` and bind it to one existing
   `PluginDeclaration.payload` arm;
-- add the reservation-bound internal builder;
+- add the internal builder bound to exact `PluginDeclarationReservation`
+  preflight facts;
 - reject unknown fields, noncanonical values, owner/capability mismatch,
   duplicate requirements/facets, callable payloads, absolute/traversing
   locators, reservation mismatch, and post-freeze mutation;
