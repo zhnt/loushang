@@ -26,6 +26,7 @@ PRODUCT_COMPOSED_FRAME_BUDGET = PlaybackFrameBudget(
     max_serialized_output_bytes=3_000,
     max_changed_visible_lines=20,
     require_synchronized=True,
+    require_native_scrollback_safe=True,
 )
 
 PRODUCT_STREAMING_CONTROL_FRAME_BUDGET = PlaybackFrameBudget(
@@ -34,6 +35,7 @@ PRODUCT_STREAMING_CONTROL_FRAME_BUDGET = PlaybackFrameBudget(
     max_serialized_output_bytes=90_000,
     max_changed_visible_lines=18,
     require_synchronized=True,
+    require_native_scrollback_safe=True,
 )
 
 

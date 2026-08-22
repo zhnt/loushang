@@ -32,6 +32,7 @@ class RenderDiagnostics:
     render_end: int | None = None
     viewport_top: int = 0
     previous_viewport_top: int = 0
+    scrollback_frontier_rebased: bool = False
     logical_cursor_row: int = 0
     logical_cursor_column: int = 0
     hardware_cursor_row: int = 0
@@ -96,6 +97,20 @@ class PlaybackStep:
             raise AssertionError("expected diagnostics to report clear scrollback")
         if self.frame is None or not self.frame.clear_scrollback_emitted:
             raise AssertionError("expected frame to emit clear scrollback")
+
+    @property
+    def native_scrollback_safe(self) -> bool:
+        return not _native_scrollback_unsafe_operations(self.diagnostics)
+
+    def assert_native_scrollback_safe(self) -> None:
+        unsafe = _native_scrollback_unsafe_operations(self.diagnostics)
+        if not unsafe:
+            return
+        kinds = ", ".join(operation.kind for operation in unsafe)
+        raise AssertionError(
+            f"step {self.index} preserved native scrollback but emitted "
+            f"history-sensitive erase operations: {kinds}"
+        )
 
 
 PlaybackRender = Callable[
@@ -317,12 +332,32 @@ class PlaybackResult:
         clear_screen = TerminalOperation.clear_screen()
         clear_scrollback = TerminalOperation.clear_scrollback()
         for step in self.steps:
+            step.assert_native_scrollback_safe()
             assert clear_screen not in step.diagnostics.operations
             assert clear_scrollback not in step.diagnostics.operations
             step.assert_no_clear_scrollback()
             if step.frame is not None:
                 assert clear_screen.serialize() not in step.frame.serialized_output
                 assert clear_scrollback.serialize() not in step.frame.serialized_output
+
+    def assert_native_scrollback_safe(self, *, skip_first: bool = False) -> None:
+        steps = self.steps[1:] if skip_first else self.steps
+        for step in steps:
+            step.assert_native_scrollback_safe()
+
+    def replay_terminal_trace(
+        self, port: FakeTerminalPort | None = None
+    ) -> FakeTerminalPort:
+        """Replay successful terminal frames without invoking the renderer again."""
+        if port is None:
+            initial_size = self.steps[0].size if self.steps else self.port.size()
+            port = FakeTerminalPort(size=initial_size)
+        for step in self.steps:
+            if port.size() != step.size:
+                port.resize(step.size)
+            if step.flush_succeeded:
+                port.flush(step.diagnostics.operations)
+        return port
 
     def assert_no_clear_scrollback(self) -> None:
         clear_scrollback = TerminalOperation.clear_scrollback()
@@ -499,6 +534,17 @@ class PlaybackResult:
                 if step.frame is not None
                 else step.diagnostics.clear_scrollback_emitted
             ),
+            "native_scrollback_safe": step.native_scrollback_safe,
+            "scrollback_size": (
+                {
+                    "before": len(step.frame.screen_before.scrollback_lines),
+                    "after": len(step.frame.screen_after.scrollback_lines),
+                    "delta": len(step.frame.screen_after.scrollback_lines)
+                    - len(step.frame.screen_before.scrollback_lines),
+                }
+                if step.frame is not None
+                else None
+            ),
             "visible_lines": list(
                 step.frame.screen_after.visible_lines
                 if step.frame is not None
@@ -512,6 +558,10 @@ class PlaybackResult:
         }
         if include_frames:
             row["serialized_output"] = serialized_output
+            row["operation_trace"] = [
+                _operation_payload(operation)
+                for operation in step.diagnostics.operations
+            ]
         return row
 
 
@@ -522,6 +572,7 @@ class PlaybackFrameBudget:
     max_serialized_output_bytes: int | None = None
     max_changed_visible_lines: int | None = None
     require_synchronized: bool = False
+    require_native_scrollback_safe: bool = False
 
     def assert_result(
         self, result: PlaybackResult, *, skip_first: bool = False
@@ -546,6 +597,8 @@ class PlaybackFrameBudget:
             )
         if self.require_synchronized:
             _assert_synchronized_or_noop_frames(result, skip_first=skip_first)
+        if self.require_native_scrollback_safe:
+            result.assert_native_scrollback_safe(skip_first=skip_first)
 
 
 @dataclass(slots=True)
@@ -597,6 +650,35 @@ def _normalize_diagnostics(diagnostics: RenderDiagnostics) -> RenderDiagnostics:
     if diagnostics.clear_scrollback_emitted == clear_scrollback_emitted:
         return diagnostics
     return replace(diagnostics, clear_scrollback_emitted=clear_scrollback_emitted)
+
+
+def _native_scrollback_unsafe_operations(
+    diagnostics: RenderDiagnostics,
+) -> tuple[TerminalOperation, ...]:
+    if diagnostics.clear_scrollback_emitted:
+        return ()
+    return tuple(
+        operation
+        for operation in diagnostics.operations
+        if operation.kind in {"clear_screen", "clear_from_cursor"}
+    )
+
+
+def _operation_payload(operation: TerminalOperation) -> dict[str, Any]:
+    payload: dict[str, Any] = {"kind": operation.kind}
+    if operation.text:
+        payload["text"] = operation.text
+    if operation.row is not None:
+        payload["row"] = operation.row
+    if operation.column is not None:
+        payload["column"] = operation.column
+    if operation.bottom is not None:
+        payload["bottom"] = operation.bottom
+    if operation.lines:
+        payload["lines"] = operation.lines
+    if operation.active is not None:
+        payload["active"] = operation.active
+    return payload
 
 
 def _screen_anchor_row(

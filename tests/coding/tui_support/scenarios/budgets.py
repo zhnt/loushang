@@ -8,6 +8,7 @@ INTERACTION_FRAME_BUDGET = PlaybackFrameBudget(
     max_serialized_output_bytes=768,
     max_changed_visible_lines=8,
     require_synchronized=True,
+    require_native_scrollback_safe=True,
 )
 
 LONG_TRANSCRIPT_FRAME_BUDGET = PlaybackFrameBudget(
@@ -16,4 +17,5 @@ LONG_TRANSCRIPT_FRAME_BUDGET = PlaybackFrameBudget(
     max_serialized_output_bytes=2_000,
     max_changed_visible_lines=3,
     require_synchronized=True,
+    require_native_scrollback_safe=True,
 )

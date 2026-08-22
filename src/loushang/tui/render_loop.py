@@ -325,6 +325,7 @@ class TranscriptWindowTrimmedResetStrategy:
             cursor=context.cursor,
             declared_cursor=context.declared_cursor,
             repaint_reason=runtime.baseline_reset_reason,
+            scrollback_frontier_rebased=True,
             delete_kitty_image_sequences=context.previous_kitty_delete_sequences,
         )
 
@@ -353,6 +354,9 @@ class BaselineResetStrategy:
             operation_class="baseline_repaint",
             repaint_kind="recovery",
             repaint_reason=runtime.baseline_reset_reason,
+            scrollback_frontier_rebased=_is_transcript_window_replacement(
+                runtime.baseline_reset_reason
+            ),
             delete_kitty_image_sequences=context.previous_kitty_delete_sequences,
         )
 
@@ -778,6 +782,7 @@ class RenderLoop:
         operation_class: str = "managed_viewport_repaint",
         repaint_kind: str | None = "recovery",
         append_start: int | None = None,
+        scrollback_frontier_rebased: bool = False,
         delete_kitty_image_sequences: tuple[str, ...] = (),
     ) -> RenderDiagnostics:
         viewport_top = _viewport_top(current_lines, size)
@@ -795,6 +800,7 @@ class RenderLoop:
                 scrollback_viewport_top=self.scrollback_viewport_top,
                 size=size,
                 hardware_cursor_row=self.hardware_cursor_row,
+                rebase_scrollback_frontier=scrollback_frontier_rebased,
                 delete_kitty_image_sequences=delete_kitty_image_sequences,
             ),
             changed_range=changed_range,
@@ -803,6 +809,7 @@ class RenderLoop:
             appended_lines=max(0, len(current_lines) - len(previous_lines)),
             repaint_kind=repaint_kind,
             repaint_reason=repaint_reason,
+            scrollback_frontier_rebased=scrollback_frontier_rebased,
             cursor=cursor,
             hardware_cursor_row=_hardware_row_after_write(current_lines, cursor=declared_cursor),
             hardware_cursor_column=cursor.column,
@@ -815,7 +822,7 @@ class RenderLoop:
         self.previous_raw_lines = diagnostics.raw_logical_lines
         self.previous_size = size
         self.previous_viewport_top = diagnostics.viewport_top
-        if diagnostics.clear_scrollback_emitted:
+        if diagnostics.clear_scrollback_emitted or diagnostics.scrollback_frontier_rebased:
             self.scrollback_viewport_top = diagnostics.viewport_top
         else:
             self.scrollback_viewport_top = max(
@@ -847,8 +854,18 @@ class RenderLoop:
         repaint_reason: str,
         width_changed: bool = False,
         height_changed: bool = False,
+        scrollback_frontier_rebased: bool = False,
         delete_kitty_image_sequences: tuple[str, ...] = (),
     ) -> RenderDiagnostics:
+        previous_visible_row_count = min(
+            size.rows,
+            (
+                self.previous_size.rows
+                if self.previous_size is not None
+                else size.rows
+            ),
+            len(previous_lines),
+        )
         return self._diagnostics(
             current_lines=current_lines,
             previous_lines=previous_lines,
@@ -862,12 +879,17 @@ class RenderLoop:
                 ),
                 cursor=declared_cursor,
                 viewport_top=_viewport_top(current_lines, size),
+                clear_row_count=max(
+                    min(size.rows, len(current_lines)),
+                    previous_visible_row_count,
+                ),
                 delete_kitty_image_sequences=delete_kitty_image_sequences,
             ),
             changed_range=changed_range,
             viewport_top=_viewport_top(current_lines, size),
             repaint_kind=repaint_kind,
             repaint_reason=repaint_reason,
+            scrollback_frontier_rebased=scrollback_frontier_rebased,
             width_changed=width_changed,
             height_changed=height_changed,
             cursor=cursor,
@@ -890,6 +912,7 @@ class RenderLoop:
         render_end: int | None = None,
         repaint_kind: str | None = None,
         repaint_reason: str | None = None,
+        scrollback_frontier_rebased: bool = False,
         width_changed: bool = False,
         height_changed: bool = False,
         cursor: CursorDeclaration | None = None,
@@ -911,6 +934,7 @@ class RenderLoop:
             render_end=render_end,
             viewport_top=viewport_top,
             previous_viewport_top=self.previous_viewport_top,
+            scrollback_frontier_rebased=scrollback_frontier_rebased,
             logical_cursor_row=logical_cursor.row,
             logical_cursor_column=logical_cursor.column,
             hardware_cursor_row=terminal_cursor_row,
@@ -1129,21 +1153,38 @@ def _repaint_operations(
     clear_scrollback: bool,
     cursor: CursorDeclaration | None,
     viewport_top: int,
+    clear_row_count: int,
     delete_kitty_image_sequences: tuple[str, ...] = (),
 ) -> tuple[TerminalOperation, ...]:
     render_lines = lines if clear_scrollback else lines[viewport_top:]
-    operations: list[TerminalOperation] = [
-        *_kitty_delete_operations(delete_kitty_image_sequences),
-        TerminalOperation.clear_screen(),
-    ]
+    operations: list[TerminalOperation] = list(
+        _kitty_delete_operations(delete_kitty_image_sequences)
+    )
     if clear_scrollback:
-        operations.append(TerminalOperation.clear_scrollback())
-    operations.extend(_write_lines(render_lines))
+        operations.extend(
+            (
+                TerminalOperation.clear_screen(),
+                TerminalOperation.clear_scrollback(),
+                *_write_lines(render_lines),
+            )
+        )
+        current_row = viewport_top + max(0, len(render_lines) - 1)
+    else:
+        operations.append(TerminalOperation.move_cursor(row=0, column=0))
+        operations.extend(
+            _write_cleared_lines(
+                (
+                    *render_lines,
+                    *("" for _ in range(clear_row_count - len(render_lines))),
+                )
+            )
+        )
+        current_row = viewport_top + max(0, clear_row_count - 1)
     return _render_then_position_cursor(
         tuple(operations),
         cursor=cursor,
         viewport_top=viewport_top,
-        current_row=viewport_top + max(0, len(render_lines) - 1),
+        current_row=current_row,
     )
 
 
@@ -1157,6 +1198,7 @@ def _managed_viewport_repaint_operations(
     scrollback_viewport_top: int,
     size: TerminalSize,
     hardware_cursor_row: int,
+    rebase_scrollback_frontier: bool = False,
     delete_kitty_image_sequences: tuple[str, ...] = (),
 ) -> tuple[TerminalOperation, ...]:
     visible_lines = lines[viewport_top : viewport_top + size.rows]
@@ -1188,29 +1230,39 @@ def _managed_viewport_repaint_operations(
             operations.append(TerminalOperation.carriage_return())
         current_physical_row = row
 
-    # A terminal cannot edit a line after it enters scrollback. Refresh the
-    # logical rows that are about to leave the viewport before scrolling them.
-    for offset in range(scroll_count):
-        move_to(offset)
-        operations.append(TerminalOperation.clear_line())
-        line_index = scroll_start + offset
-        if line_index < len(lines):
-            operations.append(TerminalOperation.write(lines[line_index]))
-
-    if scroll_count:
-        move_to(size.rows - 1)
+    if rebase_scrollback_frontier:
+        # A replacement or prefix trim starts a new logical-row epoch. Preserve
+        # existing native scrollback, but do not replay the new epoch's hidden
+        # prefix through coordinates that belonged to the previous epoch.
+        move_to(0)
         operations.extend(
-            TerminalOperation.newline()
-            for _ in range(scroll_count)
+            _write_cleared_lines(
+                (*visible_lines, *("" for _ in range(size.rows - len(visible_lines))))
+            )
         )
         current_physical_row = size.rows - 1
-
-    # Clear once, then paint at most one screen. The final visible line does
-    # not emit a newline, so this phase cannot submit anything to scrollback.
-    move_to(0)
-    operations.append(TerminalOperation.clear_from_cursor())
-    operations.extend(_write_lines(visible_lines))
-    current_physical_row = max(0, len(visible_lines) - 1)
+    elif scroll_count:
+        # Stream the complete departing suffix from row zero so every logical
+        # row enters scrollback exactly once. Scrolling the existing viewport
+        # first would also commit stale snapshots of the protected bottom frame
+        # on real terminals before the repaint can replace them.
+        move_to(0)
+        operations.extend(
+            _write_cleared_lines(
+                lines[scroll_start : viewport_top + size.rows]
+            )
+        )
+        current_physical_row = max(0, len(visible_lines) - 1)
+    else:
+        # Clear and repaint each visible row without ED, which tmux may preserve
+        # as a complete old-screen snapshot in native scrollback.
+        move_to(0)
+        operations.extend(
+            _write_cleared_lines(
+                (*visible_lines, *("" for _ in range(size.rows - len(visible_lines))))
+            )
+        )
+        current_physical_row = size.rows - 1
 
     operations.append(TerminalOperation.end_synchronized_update())
     if cursor is not None:
@@ -1393,6 +1445,19 @@ def _write_lines(lines: Sequence[str]) -> tuple[TerminalOperation, ...]:
     return tuple(operations)
 
 
+def _write_cleared_lines(lines: Sequence[str]) -> tuple[TerminalOperation, ...]:
+    operations: list[TerminalOperation] = []
+    last_index = len(lines) - 1
+    for index, line in enumerate(lines):
+        operations.append(TerminalOperation.clear_line())
+        operations.append(
+            TerminalOperation.write(
+                line if index == last_index else f"{line}\r\n"
+            )
+        )
+    return tuple(operations)
+
+
 def _wrap_synchronized(operations: tuple[TerminalOperation, ...]) -> tuple[TerminalOperation, ...]:
     return (
         TerminalOperation.begin_synchronized_update(),
@@ -1481,6 +1546,12 @@ def _should_clear_scrollback(*, policy: ClearScrollbackPolicy, repaint_kind: str
     if policy == "resize":
         return repaint_kind == "resize"
     return False
+
+
+def _is_transcript_window_replacement(reason: str) -> bool:
+    return reason == "transcript_window_replaced" or reason.startswith(
+        "transcript_window_replaced:"
+    )
 
 
 def _hardware_row_after_write(
