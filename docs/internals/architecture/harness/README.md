@@ -46,6 +46,12 @@ planning, work event persistence, or AI provider behavior.
   durable execution approval, owner admission, and LSP production proof;
   Skill-provider convergence remains subordinate and the stable public SDK
   stays gated by the broader production combination evidence.
+- [Unified Plugin Lifecycle And Coding Pluginization Delivery Plan](plugin-lifecycle-coding-pluginization-plan.md)
+  coordinates the common install-to-retirement lifecycle with `coding.lsp`,
+  `coding.base`, and `coding.arch` production migrations. Its
+  [review](plugin-lifecycle-coding-pluginization-review.md) moves the minimum
+  management control core before the Base cutover while preserving exact-owner
+  binding, LSP as the first Graph proof, and the later public SDK gate.
 - [Composition Lifecycle Authority CLA0 Baseline](composition-lifecycle-authority-cla0-baseline.md)
   retains the executable inventory shape, revised through CLA8, for current
   construction/publication owners, supported entrypoint
@@ -116,6 +122,13 @@ description.
   [self-review](plugin-authoring-primitives-plan-review.md) records the required
   approval, production-sample, SDK-publication, Skill, and peer-route deletion
   gates before implementation.
+- [Unified Plugin Lifecycle And Coding Pluginization Delivery Plan](plugin-lifecycle-coding-pluginization-plan.md)
+  is the coordinating critical path across common declarations, management
+  state, executable trust, exact-owner binding, Coding production Plugins,
+  public SDK, and Skill convergence. Its
+  [self-review](plugin-lifecycle-coding-pluginization-review.md) records the
+  sequencing amendments, lifecycle linearization points, cutover gates, and
+  required deferrals.
 - [Composition Lifecycle Authority CLA0 Baseline](composition-lifecycle-authority-cla0-baseline.md)
   is the executable inventory for that plan, revised through CLA8 to freeze the
   single-candidate authority and forbid removed peer construction paths.
