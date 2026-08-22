@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
+from time import monotonic
 from typing import Literal, Protocol, cast
 
 from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
@@ -30,6 +31,8 @@ PLUGIN_EXECUTION_DECISION_RECORD_VERSION = 2
 PLUGIN_PREFLIGHT_CONTEXT_VERSION = 1
 PLUGIN_SELECTION_PLAN_VERSION = 2
 PLUGIN_SOURCE_TRUST_SNAPSHOT_VERSION = 1
+_PLUGIN_HOST_BOOT_ID = secrets.token_hex(16)
+_PLUGIN_PREFLIGHT_TTL_SECONDS = 300.0
 
 
 class PluginSelectionError(RuntimeError):
@@ -904,11 +907,60 @@ class PluginPreflightProposal:
 
 
 @dataclass(frozen=True, slots=True)
+class PluginDeclarationDataOnlyGate:
+    kind: Literal["data_only"] = "data_only"
+
+    def __post_init__(self) -> None:
+        if self.kind != "data_only":
+            raise ValueError("Unsupported data-only declaration gate")
+
+
+@dataclass(frozen=True, slots=True)
+class PluginDeclarationExecutionPreflightGate:
+    subject: PluginExecutionApprovalSubject
+    decision: PluginExecutionDecisionRecord
+    kind: Literal["execution_preflight"] = "execution_preflight"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.subject, PluginExecutionApprovalSubject):
+            raise TypeError("Execution-preflight gate requires a Subject v2")
+        if not isinstance(self.decision, PluginExecutionDecisionRecord):
+            raise TypeError("Execution-preflight gate requires a DecisionRecord v2")
+        if self.kind != "execution_preflight":
+            raise ValueError("Unsupported execution-preflight declaration gate")
+        if (
+            self.decision.disposition != "approved"
+            or self.decision.subject_digest != self.subject.digest
+            or self.decision.policy_revision != self.subject.policy_revision
+            or self.decision.subject_schema_version != self.subject.schema_version
+        ):
+            raise ValueError("Execution-preflight gate decision does not match Subject")
+
+
+PluginDeclarationGate = (
+    PluginDeclarationDataOnlyGate | PluginDeclarationExecutionPreflightGate
+)
+
+
+@dataclass(frozen=True, slots=True)
 class PluginDeclarationReservation:
     package: PublishedPluginPackage = field(repr=False)
     contribution: PluginContributionReservation
-    approval_subject: PluginExecutionApprovalSubject
-    decision_id: str
+    source_group_id: str
+    source_group_fingerprint: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.package, PublishedPluginPackage):
+            raise TypeError("Declaration reservation requires a published package")
+        if not isinstance(self.contribution, PluginContributionReservation):
+            raise TypeError("Declaration reservation requires an indexed contribution")
+        if self.contribution not in self.package.contribution_index.items:
+            raise ValueError("Declaration reservation is not owned by its package")
+        _require_sha256(self.source_group_id, name="source group id")
+        _require_sha256(
+            self.source_group_fingerprint,
+            name="source group fingerprint",
+        )
 
     @property
     def ref(self) -> PluginContributionRef:
@@ -919,10 +971,175 @@ class PluginDeclarationReservation:
 
 
 @dataclass(frozen=True, slots=True)
-class PluginPreflight:
-    plan: PluginSelectionPlanV2
-    reservations: tuple[PluginDeclarationReservation, ...]
-    _token: str = field(repr=False, compare=False)
+class PluginDeclarationSourceGroup:
+    preflight_use_id: str
+    source_group_id: str
+    source_group_fingerprint: str
+    package: PublishedPluginPackage = field(repr=False)
+    declaration_source: PluginDeclarationSource
+    source_descriptor_fingerprint: str
+    context: PluginPreflightContextV1
+    instance_revision_ref: PluginInstanceRevisionRef
+    reservation_closure: tuple[PluginContributionReservation, ...]
+    reservation_closure_fingerprint: str
+    effective_configuration_entries: tuple[PluginEffectiveConfigurationEntry, ...]
+    configuration_map_fingerprint: str
+    trust_snapshot: PluginSourceTrustSnapshotV1
+    requested_authorities: tuple[str, ...]
+    allowed_authority_ceiling: tuple[str, ...]
+    gate: PluginDeclarationGate
+
+    def __post_init__(self) -> None:
+        _require_hex(self.preflight_use_id, length=48, name="preflight use id")
+        _require_sha256(self.source_group_id, name="source group id")
+        _require_sha256(
+            self.source_group_fingerprint,
+            name="source group fingerprint",
+        )
+        if not isinstance(self.package, PublishedPluginPackage):
+            raise TypeError("Source group requires a published package")
+        if not isinstance(self.context, PluginPreflightContextV1):
+            raise TypeError("Source group requires a preflight Context v1")
+        if not isinstance(self.instance_revision_ref, PluginInstanceRevisionRef):
+            raise TypeError("Source group requires an instance revision ref")
+        plugin_id = self.package.manifest.name
+        if self.instance_revision_ref.plugin_id != plugin_id:
+            raise ValueError("Source group instance revision does not match package")
+        proposal_disposition: PluginDeclarationSourceDisposition
+        if isinstance(self.gate, PluginDeclarationDataOnlyGate):
+            proposal_disposition = PluginDeclarationDataOnlyDisposition()
+        elif isinstance(self.gate, PluginDeclarationExecutionPreflightGate):
+            proposal_disposition = PluginDeclarationExecutionSubjectDisposition(
+                subject=self.gate.subject
+            )
+        else:
+            raise TypeError("Source group requires an exact declaration gate")
+        proposal = PluginDeclarationSourceProposal(
+            package=self.package,
+            declaration_source=self.declaration_source,
+            source_descriptor_fingerprint=self.source_descriptor_fingerprint,
+            reservation_closure=self.reservation_closure,
+            effective_configuration_entries=self.effective_configuration_entries,
+            configuration_map_fingerprint=self.configuration_map_fingerprint,
+            trust_snapshot=self.trust_snapshot,
+            requested_authorities=self.requested_authorities,
+            allowed_authority_ceiling=self.allowed_authority_ceiling,
+            source_disposition=proposal_disposition,
+        )
+        expected_closure_fingerprint = _reservation_closure_fingerprint(
+            self.reservation_closure
+        )
+        if self.reservation_closure_fingerprint != expected_closure_fingerprint:
+            raise ValueError("Source group closure fingerprint does not match")
+        expected_group_fingerprint = _source_group_fingerprint(
+            proposal,
+            context=self.context,
+            instance_revision_ref=self.instance_revision_ref,
+        )
+        if self.source_group_fingerprint != expected_group_fingerprint:
+            raise ValueError("Source group fingerprint does not match")
+        if self.source_group_id != _source_group_id(
+            self.preflight_use_id,
+            self.source_group_fingerprint,
+        ):
+            raise ValueError("Source group id does not match its accepted attempt")
+        if isinstance(self.gate, PluginDeclarationExecutionPreflightGate):
+            subject = self.gate.subject
+            if (
+                subject.product_id != self.context.product_id
+                or subject.scope_id != self.context.scope_id
+                or subject.policy_revision != self.context.policy_revision
+                or subject.instance_revision_ref != self.instance_revision_ref
+            ):
+                raise ValueError("Source group gate does not match its Context")
+
+    @property
+    def key(self) -> tuple[str, str]:
+        return (self.package.manifest.name, self.source_descriptor_fingerprint)
+
+    @property
+    def reservations(self) -> tuple[PluginDeclarationReservation, ...]:
+        return tuple(
+            PluginDeclarationReservation(
+                package=self.package,
+                contribution=contribution,
+                source_group_id=self.source_group_id,
+                source_group_fingerprint=self.source_group_fingerprint,
+            )
+            for contribution in self.reservation_closure
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _PluginPreflightTerminalHandle:
+    token: str
+
+    def __post_init__(self) -> None:
+        _require_hex(self.token, length=48, name="preflight terminal handle")
+
+
+@dataclass(frozen=True, slots=True)
+class AcceptedPluginPreflight:
+    preflight_use_id: str
+    host_boot_id: str
+    expires_at: float
+    context: PluginPreflightContextV1
+    source_groups: tuple[PluginDeclarationSourceGroup, ...]
+    _terminal_handle: _PluginPreflightTerminalHandle = field(
+        repr=False,
+        compare=False,
+    )
+
+    def __post_init__(self) -> None:
+        _require_hex(self.preflight_use_id, length=48, name="preflight use id")
+        _require_hex(self.host_boot_id, length=32, name="host boot id")
+        if (
+            not isinstance(self.expires_at, int | float)
+            or isinstance(self.expires_at, bool)
+            or self.expires_at <= 0
+        ):
+            raise ValueError("Accepted preflight requires a monotonic deadline")
+        if not isinstance(self.context, PluginPreflightContextV1):
+            raise TypeError("Accepted preflight requires a Context v1")
+        groups = self.source_groups
+        if not groups or any(
+            not isinstance(item, PluginDeclarationSourceGroup) for item in groups
+        ):
+            raise TypeError("Accepted preflight requires source groups")
+        keys = tuple(item.key for item in groups)
+        if keys != tuple(sorted(keys)) or len(keys) != len(set(keys)):
+            raise ValueError("Accepted source groups must be sorted and unique")
+        if any(
+            item.preflight_use_id != self.preflight_use_id
+            or item.context != self.context
+            for item in groups
+        ):
+            raise ValueError("Accepted source group does not match its attempt")
+        group_ids = tuple(item.source_group_id for item in groups)
+        if len(group_ids) != len(set(group_ids)):
+            raise ValueError("Accepted source group ids must be unique")
+        if not isinstance(self._terminal_handle, _PluginPreflightTerminalHandle):
+            raise TypeError("Accepted preflight requires an internal terminal handle")
+        if self._terminal_handle.token != self.preflight_use_id:
+            raise ValueError("Accepted preflight terminal handle does not match use id")
+
+    @property
+    def host_epoch(self) -> str:
+        return self.host_boot_id
+
+    @property
+    def reservations(self) -> tuple[PluginDeclarationReservation, ...]:
+        return tuple(
+            reservation
+            for group in self.source_groups
+            for reservation in group.reservations
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _ActivePluginPreflight:
+    accepted: AcceptedPluginPreflight
+    proposal: PluginPreflightProposal
 
 
 @dataclass(frozen=True, order=True, slots=True)
@@ -946,11 +1163,11 @@ class PluginPreflightDiagnostic:
 
 @dataclass(frozen=True, slots=True)
 class PluginPreflightAcceptedOutcome:
-    accepted: PluginPreflight
+    accepted: AcceptedPluginPreflight
     disposition: Literal["accepted"] = "accepted"
 
     def __post_init__(self) -> None:
-        if not isinstance(self.accepted, PluginPreflight):
+        if not isinstance(self.accepted, AcceptedPluginPreflight):
             raise TypeError("Outcome requires an accepted preflight")
         if self.disposition != "accepted":
             raise ValueError("Unsupported accepted preflight disposition")
@@ -1026,7 +1243,7 @@ class PluginSelectionResolver:
 
     def __init__(self) -> None:
         self._gate = threading.Lock()
-        self._active: dict[str, PluginPreflight] = {}
+        self._active: dict[str, _ActivePluginPreflight] = {}
 
     def preflight(
         self,
@@ -1062,7 +1279,7 @@ class PluginSelectionResolver:
         bindings: tuple[PluginSourceBinding, ...],
         plan: PluginSelectionPlanV2,
         decision_lookup: PluginExecutionDecisionLookupPort,
-    ) -> PluginPreflight:
+    ) -> AcceptedPluginPreflight:
         packages_by_id = _packages_by_id(packages)
         bindings_by_id = _bindings_by_id(bindings)
         selected_ids = set(plan.selected_plugin_ids)
@@ -1154,35 +1371,14 @@ class PluginSelectionResolver:
                 plan=plan,
             ),
         )
-        source_proposals_by_key = {item.key: item for item in proposal.source_proposals}
-
-        reservations: list[PluginDeclarationReservation] = []
+        resolved_gates: list[PluginDeclarationGate] = []
         lookup_results: dict[str, PluginExecutionDecisionLookupResult] = {}
-        allowed_authorities = set(plan.allowed_authority_ceiling)
-        for ref in plan.selected_contributions:
-            package = packages_by_id[ref.plugin_id]
-            contribution = indexed[ref]
-            if not set(contribution.requested_authorities).issubset(
-                allowed_authorities
-            ):
-                raise PluginSelectionError(
-                    f"Plugin contribution exceeds its authority ceiling: {ref}",
-                    code="plugin_authority_ceiling_exceeded",
-                    path=package.root,
-                )
-            source_proposal = source_proposals_by_key[
-                (ref.plugin_id, contribution.source_descriptor_fingerprint)
-            ]
+        for source_proposal in proposal.source_proposals:
+            package = source_proposal.package
             disposition = source_proposal.source_disposition
-            if not isinstance(
-                disposition,
-                PluginDeclarationExecutionSubjectDisposition,
-            ):
-                raise PluginSelectionError(
-                    "Document declaration sources do not require execution approval.",
-                    code="plugin_execution_subject_not_applicable",
-                    path=package.root,
-                )
+            if isinstance(disposition, PluginDeclarationDataOnlyDisposition):
+                resolved_gates.append(PluginDeclarationDataOnlyGate())
+                continue
             subject = disposition.subject
             lookup_result = lookup_results.get(subject.digest)
             if lookup_result is None:
@@ -1206,7 +1402,8 @@ class PluginSelectionResolver:
                 lookup_results[subject.digest] = lookup_result
             if isinstance(lookup_result, PluginExecutionDecisionMissing):
                 raise _PluginExecutionApprovalPending(
-                    f"Plugin execution approval is pending: {ref}",
+                    "Plugin execution approval is pending: "
+                    f"{source_proposal.key}",
                     subject=subject,
                     path=package.root,
                 )
@@ -1223,54 +1420,69 @@ class PluginSelectionResolver:
                 )
             if matched_decision.disposition != "approved":
                 raise PluginSelectionError(
-                    f"Plugin execution was denied: {ref}",
+                    f"Plugin execution was denied: {source_proposal.key}",
                     code="plugin_execution_denied",
                     path=package.root,
                 )
-            reservations.append(
-                PluginDeclarationReservation(
-                    package=package,
-                    contribution=contribution,
-                    approval_subject=subject,
-                    decision_id=matched_decision.decision_id,
+            resolved_gates.append(
+                PluginDeclarationExecutionPreflightGate(
+                    subject=subject,
+                    decision=matched_decision,
                 )
             )
 
         with self._gate:
-            token = secrets.token_hex(24)
-            while token in self._active:
-                token = secrets.token_hex(24)
-            preflight = PluginPreflight(
-                plan=plan,
-                reservations=tuple(reservations),
-                _token=token,
+            preflight_use_id = secrets.token_hex(24)
+            while preflight_use_id in self._active:
+                preflight_use_id = secrets.token_hex(24)
+            instance_refs = {
+                item.plugin_id: item for item in plan.context.instance_revision_refs
+            }
+            source_groups = tuple(
+                _accepted_source_group(
+                    source_proposal,
+                    gate=gate,
+                    preflight_use_id=preflight_use_id,
+                    context=plan.context,
+                    instance_revision_ref=instance_refs[
+                        source_proposal.package.manifest.name
+                    ],
+                )
+                for source_proposal, gate in zip(
+                    proposal.source_proposals,
+                    resolved_gates,
+                    strict=True,
+                )
             )
-            self._active[token] = preflight
-        return preflight
+            terminal_handle = _PluginPreflightTerminalHandle(
+                token=preflight_use_id
+            )
+            accepted = AcceptedPluginPreflight(
+                preflight_use_id=preflight_use_id,
+                host_boot_id=_PLUGIN_HOST_BOOT_ID,
+                expires_at=monotonic() + _PLUGIN_PREFLIGHT_TTL_SECONDS,
+                context=plan.context,
+                source_groups=source_groups,
+                _terminal_handle=terminal_handle,
+            )
+            self._active[terminal_handle.token] = _ActivePluginPreflight(
+                accepted=accepted,
+                proposal=proposal,
+            )
+        return accepted
 
-    def rollback(self, preflight: PluginPreflight) -> None:
+    def rollback(self, preflight: AcceptedPluginPreflight) -> None:
         """Release one unconsumed preflight reservation without finalizing it."""
 
-        with self._gate:
-            active = self._active.pop(preflight._token, None)
-        if active is not preflight:
-            raise PluginSelectionError(
-                "Plugin preflight reservation was already consumed or is foreign.",
-                code="plugin_preflight_consumed",
-            )
+        self._consume_active(preflight)
 
     def finalize(
         self,
-        preflight: PluginPreflight,
+        preflight: AcceptedPluginPreflight,
         declarations: tuple[PluginDeclaration, ...],
     ) -> PluginSelection:
-        with self._gate:
-            active = self._active.pop(preflight._token, None)
-        if active is not preflight:
-            raise PluginSelectionError(
-                "Plugin preflight reservation was already consumed or is foreign.",
-                code="plugin_preflight_consumed",
-            )
+        active = self._consume_active(preflight)
+        plan = active.proposal.plan
 
         declarations_by_ref: dict[PluginContributionRef, PluginDeclaration] = {}
         for declaration in declarations:
@@ -1291,6 +1503,10 @@ class PluginSelectionResolver:
                 code="plugin_declaration_reservation_mismatch",
             )
 
+        groups_by_id = {
+            group.source_group_id: group for group in preflight.source_groups
+        }
+        selected_refs = set(plan.selected_contributions)
         candidates: list[PluginContributionCandidate] = []
         for reservation in preflight.reservations:
             declaration = declarations_by_ref[reservation.ref]
@@ -1309,20 +1525,58 @@ class PluginSelectionResolver:
                     code="plugin_declaration_envelope_mismatch",
                     path=reservation.package.root,
                 )
+            if reservation.ref not in selected_refs:
+                continue
+            source_group = groups_by_id[reservation.source_group_id]
             fingerprint = _candidate_fingerprint(
                 reservation,
                 declaration,
-                plan=preflight.plan,
+                group=source_group,
+                plan=plan,
+            )
+            decision_id = (
+                source_group.gate.decision.decision_id
+                if isinstance(
+                    source_group.gate,
+                    PluginDeclarationExecutionPreflightGate,
+                )
+                else "data_only"
             )
             candidates.append(
                 PluginContributionCandidate(
                     package=reservation.package,
                     declaration=declaration,
-                    decision_id=reservation.decision_id,
+                    decision_id=decision_id,
                     fingerprint=fingerprint,
                 )
             )
-        return PluginSelection(plan=preflight.plan, candidates=tuple(candidates))
+        return PluginSelection(plan=plan, candidates=tuple(candidates))
+
+    def _consume_active(
+        self,
+        preflight: AcceptedPluginPreflight,
+    ) -> _ActivePluginPreflight:
+        if not isinstance(preflight, AcceptedPluginPreflight):
+            raise PluginSelectionError(
+                "Plugin preflight reservation was already consumed or is foreign.",
+                code="plugin_preflight_consumed",
+            )
+        with self._gate:
+            active = self._active.pop(preflight._terminal_handle.token, None)
+        if active is None or active.accepted is not preflight:
+            raise PluginSelectionError(
+                "Plugin preflight reservation was already consumed or is foreign.",
+                code="plugin_preflight_consumed",
+            )
+        if (
+            preflight.host_boot_id != _PLUGIN_HOST_BOOT_ID
+            or monotonic() >= preflight.expires_at
+        ):
+            raise PluginSelectionError(
+                "Plugin preflight reservation expired before terminal use.",
+                code="preflight_expired",
+            )
+        return active
 
 
 def build_execution_approval_subject(
@@ -1467,6 +1721,44 @@ def _build_source_proposals(
     return tuple(proposals)
 
 
+def _accepted_source_group(
+    proposal: PluginDeclarationSourceProposal,
+    *,
+    gate: PluginDeclarationGate,
+    preflight_use_id: str,
+    context: PluginPreflightContextV1,
+    instance_revision_ref: PluginInstanceRevisionRef,
+) -> PluginDeclarationSourceGroup:
+    source_group_fingerprint = _source_group_fingerprint(
+        proposal,
+        context=context,
+        instance_revision_ref=instance_revision_ref,
+    )
+    return PluginDeclarationSourceGroup(
+        preflight_use_id=preflight_use_id,
+        source_group_id=_source_group_id(
+            preflight_use_id,
+            source_group_fingerprint,
+        ),
+        source_group_fingerprint=source_group_fingerprint,
+        package=proposal.package,
+        declaration_source=proposal.declaration_source,
+        source_descriptor_fingerprint=proposal.source_descriptor_fingerprint,
+        context=context,
+        instance_revision_ref=instance_revision_ref,
+        reservation_closure=proposal.reservation_closure,
+        reservation_closure_fingerprint=_reservation_closure_fingerprint(
+            proposal.reservation_closure
+        ),
+        effective_configuration_entries=proposal.effective_configuration_entries,
+        configuration_map_fingerprint=proposal.configuration_map_fingerprint,
+        trust_snapshot=proposal.trust_snapshot,
+        requested_authorities=proposal.requested_authorities,
+        allowed_authority_ceiling=proposal.allowed_authority_ceiling,
+        gate=gate,
+    )
+
+
 def _packages_by_id(
     packages: tuple[PublishedPluginPackage, ...],
 ) -> dict[str, PublishedPluginPackage]:
@@ -1535,15 +1827,27 @@ def _candidate_fingerprint(
     reservation: PluginDeclarationReservation,
     declaration: PluginDeclaration,
     *,
+    group: PluginDeclarationSourceGroup,
     plan: PluginSelectionPlanV2,
 ) -> str:
     package = reservation.package
+    gate = group.gate
+    approval_subject_digest = (
+        gate.subject.digest
+        if isinstance(gate, PluginDeclarationExecutionPreflightGate)
+        else ""
+    )
+    decision_id = (
+        gate.decision.decision_id
+        if isinstance(gate, PluginDeclarationExecutionPreflightGate)
+        else ""
+    )
     return _digest_document(
         {
-            "approvalSubjectDigest": reservation.approval_subject.digest,
+            "approvalSubjectDigest": approval_subject_digest,
             "declaration": declaration.to_dict(),
             "declarationFingerprint": declaration.fingerprint,
-            "decisionId": reservation.decision_id,
+            "decisionId": decision_id,
             "dependencyLockDigest": package.dependency_lock.digest,
             "packageContentDigest": package.content_digest,
             "pluginId": package.manifest.name,
@@ -1551,6 +1855,8 @@ def _candidate_fingerprint(
             "productId": plan.context.product_id,
             "reservationFingerprint": reservation.contribution.fingerprint,
             "scopeId": plan.context.scope_id,
+            "sourceGroupFingerprint": group.source_group_fingerprint,
+            "sourceGroupId": group.source_group_id,
         }
     )
 
@@ -1648,6 +1954,60 @@ def _configuration_map_fingerprint(
         {
             "configurations": [item.to_dict() for item in entries],
             "domain": "loushang.plugin-group-configuration/v1",
+        }
+    )
+
+
+def _source_group_fingerprint(
+    proposal: PluginDeclarationSourceProposal,
+    *,
+    context: PluginPreflightContextV1,
+    instance_revision_ref: PluginInstanceRevisionRef,
+) -> str:
+    return _digest_document(
+        {
+            "allowedAuthorityCeiling": list(proposal.allowed_authority_ceiling),
+            "ambientHostAuthority": (
+                proposal.declaration_source.kind == "in_process"
+            ),
+            "configurationMapFingerprint": (
+                proposal.configuration_map_fingerprint
+            ),
+            "dependencyLockDigest": proposal.package.dependency_lock.digest,
+            "domain": "loushang.plugin-declaration-source-group/v1",
+            "instanceRevisionRef": instance_revision_ref.to_dict(),
+            "packageContentDigest": proposal.package.content_digest,
+            "packageSourceIdentity": (
+                proposal.trust_snapshot.package_source_identity
+            ),
+            "pluginId": proposal.package.manifest.name,
+            "policyRevision": context.policy_revision,
+            "productId": context.product_id,
+            "requestedAuthorities": list(proposal.requested_authorities),
+            "reservationClosureFingerprint": _reservation_closure_fingerprint(
+                proposal.reservation_closure
+            ),
+            "scopeId": context.scope_id,
+            "sourceDescriptorFingerprint": (
+                proposal.source_descriptor_fingerprint
+            ),
+            "sourceTrustClass": proposal.trust_snapshot.source_trust_class,
+            "sourceTrustPolicyRevision": (
+                proposal.trust_snapshot.source_trust_policy_revision
+            ),
+        }
+    )
+
+
+def _source_group_id(
+    preflight_use_id: str,
+    source_group_fingerprint: str,
+) -> str:
+    return _digest_document(
+        {
+            "domain": "loushang.plugin-declaration-source-group-use/v1",
+            "preflightUseId": preflight_use_id,
+            "sourceGroupFingerprint": source_group_fingerprint,
         }
     )
 
@@ -1836,12 +2196,22 @@ def _require_sha256(value: object, *, name: str) -> None:
         raise ValueError(f"{name} must be a lowercase SHA-256 digest")
 
 
+def _require_hex(value: object, *, length: int, name: str) -> None:
+    if (
+        not isinstance(value, str)
+        or len(value) != length
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise ValueError(f"{name} must be {length} lowercase hexadecimal characters")
+
+
 def _digest_document(value: object) -> str:
     encoded = StrictPluginJsonCodec.encode(value)
     return sha256(encoded).hexdigest()
 
 
 __all__ = [
+    "AcceptedPluginPreflight",
     "PLUGIN_EFFECTIVE_CONFIGURATION_SET_VERSION",
     "PLUGIN_EXECUTION_APPROVAL_SUBJECT_VERSION",
     "PLUGIN_EXECUTION_DECISION_RECORD_VERSION",
@@ -1851,9 +2221,13 @@ __all__ = [
     "PendingOnlyPluginExecutionDecisionLookup",
     "PluginContributionCandidate",
     "PluginContributionRef",
+    "PluginDeclarationDataOnlyGate",
     "PluginDeclarationDataOnlyDisposition",
+    "PluginDeclarationExecutionPreflightGate",
     "PluginDeclarationExecutionSubjectDisposition",
+    "PluginDeclarationGate",
     "PluginDeclarationReservation",
+    "PluginDeclarationSourceGroup",
     "PluginDeclarationSourceDisposition",
     "PluginDeclarationSourceProposal",
     "PluginEffectiveConfigurationEntry",
@@ -1865,7 +2239,6 @@ __all__ = [
     "PluginExecutionDecisionMissing",
     "PluginExecutionDecisionRecord",
     "PluginInstanceRevisionRef",
-    "PluginPreflight",
     "PluginPreflightAcceptedOutcome",
     "PluginPreflightContextV1",
     "PluginPreflightDeniedOutcome",

@@ -12,7 +12,7 @@ from loushang.harness.plugin_authoring.reservations import (
 )
 from loushang.harness.resources.plugins.declarations import PluginDeclaration
 from loushang.harness.resources.plugins.selection import (
-    PluginDeclarationReservation,
+    PluginDeclarationSourceGroup,
 )
 
 
@@ -22,10 +22,13 @@ class PluginDeclarationBuilder:
     def __init__(
         self,
         *,
-        reservations: tuple[PluginDeclarationReservation, ...],
+        source_group: PluginDeclarationSourceGroup,
     ) -> None:
+        if not isinstance(source_group, PluginDeclarationSourceGroup):
+            raise TypeError("Plugin declaration builder requires one SourceGroup")
+        reservations = source_group.reservations
         reservation_views = tuple(
-            _authoring_reservation_view(item) for item in reservations
+            _authoring_reservation_view(source_group, item) for item in reservations
         )
         if not reservation_views:
             raise ValueError("Plugin declaration builder requires reservations")

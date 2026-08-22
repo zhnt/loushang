@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from loushang.harness.resources.plugins.declarations import (
     PluginContributionReservation,
 )
 from loushang.harness.resources.plugins.selection import (
+    PluginDeclarationExecutionPreflightGate,
     PluginDeclarationReservation,
+    PluginDeclarationSourceGroup,
     PluginExecutionApprovalSubject,
-    _configuration_map_fingerprint,
-    _package_default_configuration_projection,
-    _reservation_closure_fingerprint,
-    _source_reservation_closure,
 )
 from loushang.harness.resources.plugins.types import PublishedPluginPackage
 
@@ -39,20 +38,32 @@ class _PluginAuthoringReservationView:
     dependency_lock_digest: str
     preflight_context: _PluginAuthoringPreflightContext
     contribution: PluginContributionReservation
+    effective_configuration: Mapping[str, object]
     approval_subject_digest: str
     decision_id: str
 
 
 def _authoring_reservation_view(
+    source_group: PluginDeclarationSourceGroup,
     value: PluginDeclarationReservation,
 ) -> _PluginAuthoringReservationView:
+    if not isinstance(source_group, PluginDeclarationSourceGroup):
+        raise TypeError("Plugin authoring requires an exact declaration SourceGroup")
     if not isinstance(value, PluginDeclarationReservation):
         raise TypeError(
             "Plugin authoring requires an exact preflight declaration reservation"
         )
+    if (
+        value.source_group_id != source_group.source_group_id
+        or value.source_group_fingerprint != source_group.source_group_fingerprint
+    ):
+        raise ValueError("Plugin authoring reservation does not belong to its SourceGroup")
     package = value.package
     contribution = value.contribution
-    subject = value.approval_subject
+    gate = source_group.gate
+    if not isinstance(gate, PluginDeclarationExecutionPreflightGate):
+        raise ValueError("Plugin declaration Builder requires an executable SourceGroup")
+    subject = gate.subject
     if not isinstance(package, PublishedPluginPackage):
         raise TypeError("Plugin authoring reservation requires a published package")
     if not isinstance(contribution, PluginContributionReservation):
@@ -66,46 +77,32 @@ def _authoring_reservation_view(
     plugin_id = package.manifest.name
     package_digest = package.content_digest
     dependency_lock_digest = package.dependency_lock.digest
-    closure = _source_reservation_closure(package, contribution)
-    requested_authorities = tuple(
-        sorted(
-            {
-                authority
-                for item in closure
-                for authority in item.requested_authorities
-            }
-        )
-    )
     if (
-        subject.plugin_id != plugin_id
+        package is not source_group.package
+        or contribution not in source_group.reservation_closure
+        or subject.plugin_id != plugin_id
         or subject.package_content_digest != package_digest
         or subject.dependency_lock_digest != dependency_lock_digest
-        or subject.ambient_host_authority
-        != (contribution.contribution_execution_model == "in_process")
+        or not subject.ambient_host_authority
         or subject.entrypoint != contribution.declaration_source.entrypoint
         or subject.source_descriptor_fingerprint
         != contribution.source_descriptor_fingerprint
         or subject.configuration_map_fingerprint
-        != _configuration_map_fingerprint(
-            _package_default_configuration_projection(plugin_id, closure)
-        )
+        != source_group.configuration_map_fingerprint
         or subject.reservation_closure_fingerprint
-        != _reservation_closure_fingerprint(closure)
-        or subject.requested_authorities != requested_authorities
-        or not set(subject.requested_authorities).issubset(
-            subject.allowed_authority_ceiling
-        )
-        or subject.instance_revision_ref.plugin_id != plugin_id
+        != source_group.reservation_closure_fingerprint
+        or subject.requested_authorities != source_group.requested_authorities
+        or subject.allowed_authority_ceiling
+        != source_group.allowed_authority_ceiling
+        or subject.instance_revision_ref != source_group.instance_revision_ref
     ):
         raise ValueError(
             "Plugin authoring reservation does not match its package and approval facts"
         )
-    if (
-        not isinstance(value.decision_id, str)
-        or not value.decision_id
-        or value.decision_id != value.decision_id.strip()
-    ):
-        raise ValueError("Plugin authoring reservation decision id must be non-empty")
+    effective_by_id = {
+        item.contribution_id: item.configuration
+        for item in source_group.effective_configuration_entries
+    }
     return _PluginAuthoringReservationView(
         plugin_id=plugin_id,
         package_digest=package_digest,
@@ -119,8 +116,9 @@ def _authoring_reservation_view(
             ambient_host_authority=subject.ambient_host_authority,
         ),
         contribution=contribution,
+        effective_configuration=effective_by_id[contribution.contribution_id],
         approval_subject_digest=subject.digest,
-        decision_id=value.decision_id,
+        decision_id=gate.decision.decision_id,
     )
 
 

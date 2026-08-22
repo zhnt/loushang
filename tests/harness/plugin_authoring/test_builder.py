@@ -24,7 +24,9 @@ from loushang.harness.resources.plugins.declarations import (
 )
 from loushang.harness.resources.plugins.selection import (
     PluginContributionRef,
+    PluginDeclarationExecutionPreflightGate,
     PluginDeclarationReservation,
+    PluginDeclarationSourceGroup,
     PluginEffectiveConfigurationEntry,
     PluginEffectiveConfigurationSetV1,
     PluginExecutionApprovalSubject,
@@ -66,10 +68,11 @@ class _CurrentDecisionLookup:
 def test_builder_exact_matches_hand_authored_ir_and_freezes(
     published_synthetic_plugin: _PublishedSyntheticPlugin,
 ) -> None:
-    reservation = _preflight_reservation(published_synthetic_plugin)
+    source_group = _preflight_source_group(published_synthetic_plugin)
+    reservation = source_group.reservations[0]
     payload = _payload(reservation)
     builder = PluginDeclarationBuilder(
-        reservations=(reservation,),
+        source_group=source_group,
     )
 
     declaration = builder.add_capability_provider(
@@ -93,7 +96,7 @@ def test_builder_exact_matches_hand_authored_ir_and_freezes(
     assert (
         CapabilityProviderDeclarationPayload.from_reserved_declaration(
             hand_authored,
-            reservation=reservation,
+            source_group=source_group,
         )
         == payload
     )
@@ -110,9 +113,10 @@ def test_builder_exact_matches_hand_authored_ir_and_freezes(
 def test_builder_requires_every_reservation_exactly_once(
     published_synthetic_plugin: _PublishedSyntheticPlugin,
 ) -> None:
-    reservation = _preflight_reservation(published_synthetic_plugin)
+    source_group = _preflight_source_group(published_synthetic_plugin)
+    reservation = source_group.reservations[0]
     builder = PluginDeclarationBuilder(
-        reservations=(reservation,),
+        source_group=source_group,
     )
 
     with pytest.raises(ValueError, match="unconsumed"):
@@ -129,6 +133,31 @@ def test_builder_requires_every_reservation_exactly_once(
     with pytest.raises(ValueError, match="unknown reservation"):
         builder.add_capability_provider(
             contribution_id="missing",
+            payload=_payload(reservation),
+        )
+
+
+def test_builder_uses_product_effective_configuration_from_source_group(
+    published_synthetic_plugin: _PublishedSyntheticPlugin,
+) -> None:
+    source_group = _preflight_source_group(
+        published_synthetic_plugin,
+        effective_configuration={"mode": "product"},
+    )
+    reservation = source_group.reservations[0]
+    builder = PluginDeclarationBuilder(source_group=source_group)
+
+    declaration = builder.add_capability_provider(
+        contribution_id=reservation.contribution.contribution_id,
+        payload=_payload(reservation, binding_inputs={"mode": "product"}),
+    )
+
+    assert declaration.to_dict()["payload"]["bindingInputs"] == {
+        "mode": "product"
+    }
+    with pytest.raises(ValueError, match="binding inputs"):
+        PluginDeclarationBuilder(source_group=source_group).add_capability_provider(
+            contribution_id=reservation.contribution.contribution_id,
             payload=_payload(reservation),
         )
 
@@ -181,11 +210,12 @@ def test_builder_rejects_reservation_or_provenance_mismatch(
     message: str,
     published_synthetic_plugin: _PublishedSyntheticPlugin,
 ) -> None:
-    reservation = _preflight_reservation(published_synthetic_plugin)
+    source_group = _preflight_source_group(published_synthetic_plugin)
+    reservation = source_group.reservations[0]
     assert callable(payload_change)
     payload = payload_change(_payload(reservation))
     builder = PluginDeclarationBuilder(
-        reservations=(reservation,),
+        source_group=source_group,
     )
 
     with pytest.raises(ValueError, match=message):
@@ -198,41 +228,39 @@ def test_builder_rejects_reservation_or_provenance_mismatch(
 def test_builder_rejects_duplicate_reservation_identity(
     published_synthetic_plugin: _PublishedSyntheticPlugin,
 ) -> None:
-    reservation = _preflight_reservation(published_synthetic_plugin)
+    source_group = _preflight_source_group(published_synthetic_plugin)
+    contribution = source_group.reservation_closure[0]
 
-    with pytest.raises(ValueError, match="duplicate"):
-        PluginDeclarationBuilder(
-            reservations=(reservation, reservation),
+    with pytest.raises(ValueError, match="unique"):
+        replace(
+            source_group,
+            reservation_closure=(contribution, contribution),
         )
 
 
-def test_builder_rejects_reservations_from_mixed_preflight_contexts(
+def test_source_group_rejects_preflight_context_drift(
     published_synthetic_plugin: _PublishedSyntheticPlugin,
 ) -> None:
-    reservation = _preflight_reservation(published_synthetic_plugin)
-    another_scope = replace(
-        reservation,
-        approval_subject=replace(
-            reservation.approval_subject,
-            scope_id="workspace:another",
-        ),
-        decision_id="decision-another-scope",
+    source_group = _preflight_source_group(published_synthetic_plugin)
+    another_context = replace(
+        source_group.context,
+        scope_id="workspace:another",
     )
 
-    with pytest.raises(ValueError, match="preflight context"):
-        PluginDeclarationBuilder(
-            reservations=(reservation, another_scope),
-        )
+    with pytest.raises(ValueError, match="fingerprint"):
+        replace(source_group, context=another_context)
 
 
 def test_subject_rejects_inconsistent_ambient_host_authority(
     published_synthetic_plugin: _PublishedSyntheticPlugin,
 ) -> None:
-    reservation = _preflight_reservation(published_synthetic_plugin)
+    source_group = _preflight_source_group(published_synthetic_plugin)
+    gate = source_group.gate
+    assert isinstance(gate, PluginDeclarationExecutionPreflightGate)
 
     with pytest.raises(ValueError, match="ambient host authority"):
         replace(
-            reservation.approval_subject,
+            gate.subject,
             ambient_host_authority=False,
         )
 
@@ -240,23 +268,27 @@ def test_subject_rejects_inconsistent_ambient_host_authority(
 def test_builder_rejects_mixed_package_and_approval_facts(
     published_synthetic_plugin: _PublishedSyntheticPlugin,
 ) -> None:
-    reservation = _preflight_reservation(published_synthetic_plugin)
-    forged = replace(
-        reservation,
-        approval_subject=replace(
-            reservation.approval_subject,
-            package_content_digest="0" * 64,
-        ),
+    source_group = _preflight_source_group(published_synthetic_plugin)
+    gate = source_group.gate
+    assert isinstance(gate, PluginDeclarationExecutionPreflightGate)
+    forged_subject = replace(
+        gate.subject,
+        package_content_digest="0" * 64,
+    )
+    forged_gate = PluginDeclarationExecutionPreflightGate(
+        subject=forged_subject,
+        decision=replace(gate.decision, subject_digest=forged_subject.digest),
     )
 
-    with pytest.raises(ValueError, match="package and approval facts"):
-        PluginDeclarationBuilder(reservations=(forged,))
+    with pytest.raises(ValueError, match="proposed facts"):
+        replace(source_group, gate=forged_gate)
 
 
 def test_reserved_decode_rejects_declaration_from_another_plugin(
     published_synthetic_plugin: _PublishedSyntheticPlugin,
 ) -> None:
-    reservation = _preflight_reservation(published_synthetic_plugin)
+    source_group = _preflight_source_group(published_synthetic_plugin)
+    reservation = source_group.reservations[0]
     payload = _payload(reservation)
     forged_payload = replace(
         payload,
@@ -278,12 +310,14 @@ def test_reserved_decode_rejects_declaration_from_another_plugin(
     with pytest.raises(ValueError, match="package identity"):
         CapabilityProviderDeclarationPayload.from_reserved_declaration(
             declaration,
-            reservation=reservation,
+            source_group=source_group,
         )
 
 
 def _payload(
     reservation: PluginDeclarationReservation,
+    *,
+    binding_inputs: dict[str, object] | None = None,
 ) -> CapabilityProviderDeclarationPayload:
     contribution = reservation.contribution
     plugin_id = reservation.package.manifest.name
@@ -316,13 +350,19 @@ def _payload(
             symbol="dispose_provider",
             execution_model="in_process",
         ),
-        binding_inputs=dict(contribution.configuration),
+        binding_inputs=(
+            dict(contribution.configuration)
+            if binding_inputs is None
+            else binding_inputs
+        ),
     )
 
 
-def _preflight_reservation(
+def _preflight_source_group(
     fixture: _PublishedSyntheticPlugin,
-) -> PluginDeclarationReservation:
+    *,
+    effective_configuration: dict[str, object] | None = None,
+) -> PluginDeclarationSourceGroup:
     plugin_id = fixture.package.manifest.name
     contribution_id = fixture.contribution.contribution_id
     plan = PluginSelectionPlanV2(
@@ -354,7 +394,11 @@ def _preflight_reservation(
                 PluginEffectiveConfigurationEntry(
                     plugin_id=plugin_id,
                     contribution_id=contribution_id,
-                    configuration=dict(fixture.contribution.configuration),
+                    configuration=(
+                        dict(fixture.contribution.configuration)
+                        if effective_configuration is None
+                        else effective_configuration
+                    ),
                 ),
             )
         ),
@@ -380,4 +424,4 @@ def _preflight_reservation(
         ),
     )
     assert isinstance(outcome, PluginPreflightAcceptedOutcome)
-    return outcome.accepted.reservations[0]
+    return outcome.accepted.source_groups[0]

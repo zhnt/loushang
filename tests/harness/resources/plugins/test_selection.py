@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import loushang.harness.resources.plugins.selection as plugin_selection
 from loushang.harness.capabilities import (
     CapabilityBundleProvider,
     CapabilityContractRange,
@@ -22,10 +23,15 @@ from loushang.harness.resources.plugins.authority import (
     PluginResolutionAuthority,
     PluginRuntimeResolution,
 )
-from loushang.harness.resources.plugins.declarations import PluginDeclaration
+from loushang.harness.resources.plugins.declarations import (
+    PluginDeclaration,
+    PluginDeclarationSource,
+)
 from loushang.harness.resources.plugins.selection import (
+    AcceptedPluginPreflight,
     PendingOnlyPluginExecutionDecisionLookup,
     PluginContributionRef,
+    PluginDeclarationDataOnlyGate,
     PluginEffectiveConfigurationEntry,
     PluginEffectiveConfigurationSetV1,
     PluginExecutionApprovalSubject,
@@ -34,7 +40,6 @@ from loushang.harness.resources.plugins.selection import (
     PluginExecutionDecisionMissing,
     PluginExecutionDecisionRecord,
     PluginInstanceRevisionRef,
-    PluginPreflight,
     PluginPreflightAcceptedOutcome,
     PluginPreflightContextV1,
     PluginPreflightDeniedOutcome,
@@ -68,7 +73,7 @@ class _DecisionLookup:
         return PluginExecutionDecisionCurrent(decision=decision)
 
 
-def _accepted(outcome: PluginPreflightOutcome) -> PluginPreflight:
+def _accepted(outcome: PluginPreflightOutcome) -> AcceptedPluginPreflight:
     assert isinstance(outcome, PluginPreflightAcceptedOutcome)
     return outcome.accepted
 
@@ -161,6 +166,15 @@ def test_preflight_and_finalize_are_inert_and_reservations_are_one_use(
             decision_lookup=_DecisionLookup(decision),
         )
     )
+    assert rolled_back.preflight_use_id != preflight.preflight_use_id
+    assert (
+        rolled_back.source_groups[0].source_group_fingerprint
+        == preflight.source_groups[0].source_group_fingerprint
+    )
+    assert (
+        rolled_back.source_groups[0].source_group_id
+        != preflight.source_groups[0].source_group_id
+    )
     resolver.rollback(rolled_back)
     with pytest.raises(PluginSelectionError) as caught:
         resolver.finalize(rolled_back, (declaration,))
@@ -185,6 +199,69 @@ def test_preflight_rejects_disabled_plugin_without_importing_code(
     assert isinstance(outcome, PluginPreflightRejectedOutcome)
     assert outcome.diagnostics[0].code == "selected_plugin_disabled"
     assert (runtime.packages[0].root / "imported.txt").exists() is False
+    runtime.close()
+
+
+def test_document_source_accepts_without_execution_decision_or_copied_gate(
+    tmp_path: Path,
+) -> None:
+    class _RejectLookup:
+        def lookup_execution_decision(
+            self,
+            subject: PluginExecutionApprovalSubject,
+        ) -> PluginExecutionDecisionLookupResult:
+            raise AssertionError("data-only source must not query execution approval")
+
+    runtime = _runtime(tmp_path, document_source=True)
+    binding = runtime.bindings[0]
+    resolver = PluginSelectionResolver()
+
+    accepted = _accepted(
+        resolver.preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=_plan(binding.source_identity),
+            decision_lookup=_RejectLookup(),
+        )
+    )
+
+    assert len(accepted.preflight_use_id) == 48
+    assert len(accepted.host_boot_id) == 32
+    assert accepted.host_epoch == accepted.host_boot_id
+    assert len(accepted.source_groups) == 1
+    group = accepted.source_groups[0]
+    assert isinstance(group.gate, PluginDeclarationDataOnlyGate)
+    assert group.declaration_source.kind == "document"
+    assert group.reservations[0].source_group_id == group.source_group_id
+    assert not hasattr(group.reservations[0], "approval_subject")
+    assert not hasattr(group.reservations[0], "decision_id")
+    resolver.rollback(accepted)
+    runtime.close()
+
+
+def test_expired_accepted_preflight_is_terminal_and_cannot_be_reused(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _runtime(tmp_path, document_source=True)
+    binding = runtime.bindings[0]
+    resolver = PluginSelectionResolver()
+    monkeypatch.setattr(plugin_selection, "_PLUGIN_PREFLIGHT_TTL_SECONDS", 0.0)
+    accepted = _accepted(
+        resolver.preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=_plan(binding.source_identity),
+            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+        )
+    )
+
+    with pytest.raises(PluginSelectionError) as caught:
+        resolver.rollback(accepted)
+    assert caught.value.code == "preflight_expired"
+    with pytest.raises(PluginSelectionError) as caught:
+        resolver.rollback(accepted)
+    assert caught.value.code == "plugin_preflight_consumed"
     runtime.close()
 
 
@@ -290,7 +367,11 @@ def test_preflight_looks_up_one_decision_per_complete_source_closure(
     )
 
     assert lookup.subject_digests == [subject.digest]
+    assert len(preflight.source_groups) == 1
     assert len(preflight.reservations) == 2
+    assert {
+        item.source_group_id for item in preflight.reservations
+    } == {preflight.source_groups[0].source_group_id}
     resolver.rollback(preflight)
     runtime.close()
 
@@ -552,6 +633,7 @@ def _runtime(
     enabled: bool = True,
     include_source_sibling: bool = False,
     include_disjoint_source: bool = False,
+    document_source: bool = False,
 ) -> PluginRuntimeResolution:
     root = tmp_path / "review-pack"
     root.mkdir()
@@ -562,17 +644,24 @@ def _runtime(
     )
     if include_disjoint_source:
         (root / "arch.py").write_text("def declare():\n    return None\n", encoding="utf-8")
+    if document_source:
+        (root / "declarations").mkdir()
+        (root / "declarations" / "providers.json").write_text(
+            '{"declarations":[],"documentVersion":1}',
+            encoding="utf-8",
+        )
+    declaration_source = (
+        PluginDeclarationSource.document("declarations/providers.json").to_dict()
+        if document_source
+        else PluginDeclarationSource.in_process("provider.py:declare").to_dict()
+    )
     items = [
         {
             "id": "review-provider",
             "kind": "capability_provider",
             "owner": "coding.lsp",
             "contributionExecutionModel": "in_process",
-            "declarationSource": {
-                "entrypoint": "provider.py:declare",
-                "kind": "in_process",
-                "sourceVersion": 1,
-            },
+            "declarationSource": declaration_source,
             "requestedAuthorities": ["process"],
             "configuration": {"mode": "review"},
             "required": True,

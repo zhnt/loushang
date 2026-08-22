@@ -31,7 +31,7 @@ from loushang.harness.resources.plugins.locators import (
     canonical_plugin_symbol,
 )
 from loushang.harness.resources.plugins.selection import (
-    PluginDeclarationReservation,
+    PluginDeclarationSourceGroup,
 )
 
 CAPABILITY_PROVIDER_PAYLOAD_VERSION = 2
@@ -253,13 +253,24 @@ class CapabilityProviderDeclarationPayload:
         cls,
         declaration: PluginDeclaration,
         *,
-        reservation: PluginDeclarationReservation,
+        source_group: PluginDeclarationSourceGroup,
     ) -> CapabilityProviderDeclarationPayload:
         """Decode one declaration against its complete inert reservation."""
 
-        reservation_view = _authoring_reservation_view(reservation)
         if not isinstance(declaration, PluginDeclaration):
             raise TypeError("Capability Provider codec requires PluginDeclaration")
+        if not isinstance(source_group, PluginDeclarationSourceGroup):
+            raise TypeError("Capability Provider codec requires one SourceGroup")
+        reservations_by_id = {
+            item.contribution.contribution_id: item
+            for item in source_group.reservations
+        }
+        reservation = reservations_by_id.get(declaration.contribution_id)
+        if reservation is None:
+            raise ValueError(
+                "Capability Provider declaration must match a SourceGroup reservation"
+            )
+        reservation_view = _authoring_reservation_view(source_group, reservation)
         if declaration.plugin_id != reservation_view.plugin_id:
             raise ValueError(
                 "Capability Provider declaration must match its package identity"
@@ -337,7 +348,9 @@ def _validate_capability_provider_reservation(
         contribution.requested_authorities
     ):
         raise ValueError("Capability Provider authorities must match its reservation")
-    if payload.to_dict()["bindingInputs"] != contribution.to_dict()["configuration"]:
+    if payload.to_dict()["bindingInputs"] != _thaw_json(
+        reservation.effective_configuration
+    ):
         raise ValueError(
             "Capability Provider binding inputs must match its reservation configuration"
         )

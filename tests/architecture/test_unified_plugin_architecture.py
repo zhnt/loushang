@@ -1823,6 +1823,37 @@ def test_plugin_preflight_builds_a_resumeless_source_proposal_before_acceptance(
     assert "source_proposals=_build_source_proposals(" in selection_source
 
 
+def test_accepted_preflight_moves_gate_and_context_ownership_to_source_group() -> None:
+    from loushang.harness.plugin_authoring.builder import PluginDeclarationBuilder
+
+    assert tuple(public_plugins.AcceptedPluginPreflight.__dataclass_fields__) == (
+        "preflight_use_id",
+        "host_boot_id",
+        "expires_at",
+        "context",
+        "source_groups",
+        "_terminal_handle",
+    )
+    assert tuple(
+        public_plugins.PluginDeclarationReservation.__dataclass_fields__
+    ) == (
+        "package",
+        "contribution",
+        "source_group_id",
+        "source_group_fingerprint",
+    )
+    assert set(get_args(public_plugins.PluginDeclarationGate)) == {
+        public_plugins.PluginDeclarationDataOnlyGate,
+        public_plugins.PluginDeclarationExecutionPreflightGate,
+    }
+    assert not hasattr(public_plugins, "PluginPreflight")
+    builder_parameters = inspect.signature(
+        PluginDeclarationBuilder.__init__
+    ).parameters
+    assert tuple(builder_parameters) == ("self", "source_group")
+    assert "reservations" not in builder_parameters
+
+
 def test_executable_declaration_is_gated_by_inert_preflight() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
 
