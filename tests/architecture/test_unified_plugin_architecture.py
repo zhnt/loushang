@@ -290,6 +290,10 @@ INERT_PLUGIN_FORBIDDEN_IMPORT_PREFIXES = (
     "loushang.harness.runtime.registration",
     "loushang.harness.session",
 )
+INERT_PLUGIN_SOURCE_ROOTS = (
+    Path("src/loushang/harness/plugin_authoring"),
+    Path("src/loushang/harness/resources/plugins"),
+)
 
 
 @cache
@@ -1341,8 +1345,9 @@ def test_inert_plugin_layer_has_no_live_runtime_or_product_dependencies() -> Non
     plugin_sources = {
         path: source
         for path, source in _source_texts().items()
-        if path.is_relative_to(Path("src/loushang/harness/resources/plugins"))
+        if any(path.is_relative_to(root) for root in INERT_PLUGIN_SOURCE_ROOTS)
     }
+    assert Path("src/loushang/harness/plugin_authoring/builder.py") in plugin_sources
     forbidden_imports = {
         (path, imported)
         for path, source in plugin_sources.items()

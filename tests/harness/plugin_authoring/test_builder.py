@@ -191,6 +191,41 @@ def test_builder_rejects_duplicate_reservation_identity(
         )
 
 
+def test_builder_rejects_reservations_from_mixed_preflight_contexts(
+    published_synthetic_plugin: _PublishedSyntheticPlugin,
+) -> None:
+    reservation = _preflight_reservation(published_synthetic_plugin)
+    another_scope = replace(
+        reservation,
+        approval_subject=replace(
+            reservation.approval_subject,
+            scope_id="workspace:another",
+        ),
+        decision_id="decision-another-scope",
+    )
+
+    with pytest.raises(ValueError, match="preflight context"):
+        PluginDeclarationBuilder(
+            reservations=(reservation, another_scope),
+        )
+
+
+def test_builder_rejects_inconsistent_ambient_host_authority(
+    published_synthetic_plugin: _PublishedSyntheticPlugin,
+) -> None:
+    reservation = _preflight_reservation(published_synthetic_plugin)
+    forged = replace(
+        reservation,
+        approval_subject=replace(
+            reservation.approval_subject,
+            ambient_host_authority=False,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="package and approval facts"):
+        PluginDeclarationBuilder(reservations=(forged,))
+
+
 def test_builder_rejects_mixed_package_and_approval_facts(
     published_synthetic_plugin: _PublishedSyntheticPlugin,
 ) -> None:

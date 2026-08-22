@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from pathlib import PurePosixPath, PureWindowsPath
+from pathlib import PurePosixPath
 from typing import cast
 
 from loushang.harness.capabilities.contracts import (
@@ -27,15 +26,16 @@ from loushang.harness.resources.plugins.declarations import (
     _require_sha256,
     _thaw_json,
 )
+from loushang.harness.resources.plugins.locators import (
+    canonical_plugin_python_path,
+    canonical_plugin_symbol,
+)
 from loushang.harness.resources.plugins.selection import (
     PluginDeclarationReservation,
 )
 
 CAPABILITY_PROVIDER_PAYLOAD_VERSION = 1
 PLUGIN_PROVIDER_SELECTION_RULE = "Plugin declaration candidate"
-
-_SYMBOL = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*")
-
 
 @dataclass(frozen=True, slots=True)
 class PluginSymbolReference:
@@ -48,8 +48,7 @@ class PluginSymbolReference:
 
     def __post_init__(self) -> None:
         path = _contained_python_path(self.path)
-        if not isinstance(self.symbol, str) or not _SYMBOL.fullmatch(self.symbol):
-            raise ValueError("Plugin symbol must be a dotted Python symbol")
+        canonical_plugin_symbol(self.symbol)
         _require_sha256(self.package_digest, name="Plugin symbol package digest")
         if self.execution_model != "in_process":
             raise ValueError("Unsupported Plugin symbol execution model")
@@ -463,25 +462,12 @@ def _canonical_string_list(value: object, *, name: str) -> tuple[str, ...]:
 
 
 def _contained_python_path(value: object) -> PurePosixPath:
-    if (
-        not isinstance(value, str)
-        or value != value.strip()
-        or "\\" in value
-    ):
-        raise ValueError("Plugin symbol path must be a contained relative Python path")
-    path = PurePosixPath(value)
-    windows_path = PureWindowsPath(value)
-    if (
-        path.is_absolute()
-        or windows_path.is_absolute()
-        or bool(windows_path.drive)
-        or not path.parts
-        or path.as_posix() != value
-        or path.suffix != ".py"
-        or any(part in {"", ".", ".."} for part in path.parts)
-    ):
-        raise ValueError("Plugin symbol path must be a contained relative Python path")
-    return path
+    try:
+        return canonical_plugin_python_path(value)
+    except ValueError as exc:
+        raise ValueError(
+            "Plugin symbol path must be a contained relative Python path"
+        ) from exc
 
 
 __all__ = [

@@ -9,6 +9,8 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Literal, cast
 
+from loushang.harness.resources.plugins.locators import parse_plugin_entrypoint
+
 PLUGIN_CONTRIBUTION_INDEX_VERSION = 1
 PLUGIN_DECLARATION_IR_VERSION = 1
 
@@ -16,7 +18,6 @@ PluginContributionKind = Literal["capability_provider"]
 PluginExecutionModel = Literal["in_process"]
 
 _IDENTIFIER = re.compile(r"[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?")
-_SYMBOL = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*")
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,7 +40,7 @@ class PluginContributionReservation:
             raise ValueError("Unsupported Plugin contribution kind")
         if self.execution_model != "in_process":
             raise ValueError("Unsupported Plugin execution model")
-        _entrypoint_path_and_symbol(self.entrypoint)
+        parse_plugin_entrypoint(self.entrypoint)
         if any(not isinstance(item, str) for item in self.requested_authorities):
             raise TypeError("Plugin requested authorities must be strings")
         authorities = tuple(sorted(self.requested_authorities))
@@ -54,7 +55,7 @@ class PluginContributionReservation:
 
     @property
     def entrypoint_path(self) -> PurePosixPath:
-        path, _ = _entrypoint_path_and_symbol(self.entrypoint)
+        path, _ = parse_plugin_entrypoint(self.entrypoint)
         return path
 
     @property
@@ -270,22 +271,6 @@ class PluginDeclaration:
             payload=payload,
             ir_version=ir_version,
         )
-
-
-def _entrypoint_path_and_symbol(value: str) -> tuple[PurePosixPath, str]:
-    if not isinstance(value, str) or value != value.strip():
-        raise ValueError("Plugin contribution entrypoint must be a string")
-    raw_path, separator, symbol = value.rpartition(":")
-    path = PurePosixPath(raw_path)
-    if (
-        separator != ":"
-        or path.is_absolute()
-        or not path.parts
-        or any(part in {"", ".", ".."} for part in path.parts)
-        or not _SYMBOL.fullmatch(symbol)
-    ):
-        raise ValueError("Plugin entrypoint must use contained path.py:symbol syntax")
-    return path, symbol
 
 
 def _require_identifier(value: object, *, name: str) -> None:

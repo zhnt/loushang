@@ -2,7 +2,8 @@
 
 ## Status
 
-- Source commits: implementation `2ebac237`, review hardening `27715416`, on
+- Source commits: implementation `2ebac237`, first review hardening `27715416`,
+  and second-review remediation on
   `harness/plugin-authoring-primitives-pap1`.
 - Scope: PAP1 / PLC1A, inert Capability Provider authoring only.
 - Publication: local only. GitHub issue/PR attachment and independent review
@@ -70,9 +71,11 @@ types remain authoritative; no parallel Provider or Consumer model was added.
   non-canonical, or non-Python symbol paths are rejected.
 - Factory and disposer references must share package revision and execution
   identity.
-- Builder inputs are derived from one preflight reservation and must match its
-  published package, dependency lock, approval subject, owner, authorities,
-  configuration, package revision, and execution model.
+- Builder inputs are derived from one preflight context and must share its
+  Product, scope, policy revision, source identity/trust class, ambient-host
+  authority, published package, and dependency lock. Each reservation must
+  also match its approval subject, owner, authorities, configuration, package
+  revision, and execution model.
 - Builder reservations are one-use; every selected reservation must be
   consumed, and the Builder cannot mutate after freeze.
 - Canonical payload and binding-input SHA-256 fixtures are pinned in tests.
@@ -113,6 +116,28 @@ under both POSIX and Windows semantics; exact package/approval facts are derived
 from `PluginDeclarationReservation` and immediately narrowed to a data-only
 view; and `from_reserved_declaration()` is now the sole declaration-object
 decode path. Regression tests cover all three failures.
+
+The second implementation review found three additional gaps:
+
+1. Manifest Definition entrypoints and verified-revision logical paths still
+   used independent, weaker POSIX-only validation even though Provider symbol
+   references used a host-independent codec.
+2. Reservations for one immutable package revision could be combined across
+   different Product, scope, policy, or source-trust preflight contexts.
+3. The inert-layer architecture gate scanned `resources.plugins` but not the
+   higher `plugin_authoring` composition layer.
+
+The remediation introduces one Resource-owned canonical path/symbol codec used
+by manifest reservations, verified revisions, and Provider symbol references;
+retains a narrow immutable common preflight context in the Builder; validates
+ambient-host authority against the reserved execution model; and scans both
+inert source roots for forbidden runtime/product imports and executable loading.
+Regression tests cover the original failing forms without adding a dependency
+allowlist or any live Plugin behavior. The remediation's focused suite passes
+102 tests together with Ruff and focused mypy. Its final `make check-harness`
+gate passes Ruff, mypy over 493 source files, and 2361 tests with four skips;
+the unified-Plugin, import-boundary, and architecture-documentation gate passes
+185 tests.
 
 ## Deferred
 

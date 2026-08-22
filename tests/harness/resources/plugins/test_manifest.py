@@ -8,6 +8,9 @@ from types import MappingProxyType
 import pytest
 
 from loushang.harness.resources.packages.manifest import resolve_package_manifest
+from loushang.harness.resources.plugins.declarations import (
+    PluginContributionReservation,
+)
 from loushang.harness.resources.plugins.manager import PluginManager
 from loushang.harness.resources.plugins.manifest import (
     PluginManifestError,
@@ -101,6 +104,28 @@ def test_plugin_manifest_parser_builds_inert_contribution_index(
     assert (root / "imported.txt").exists() is False
     with pytest.raises(TypeError):
         reservation.configuration["mode"] = "changed"  # type: ignore[index]
+
+
+@pytest.mark.parametrize(
+    "entrypoint",
+    (
+        r"..\definition.py:declare",
+        r"C:\definition.py:declare",
+        "definition.txt:declare",
+    ),
+)
+def test_plugin_contribution_rejects_noncanonical_python_entrypoint(
+    entrypoint: str,
+) -> None:
+    with pytest.raises(ValueError, match=r"contained path\.py:symbol"):
+        PluginContributionReservation(
+            contribution_id="review-provider",
+            kind="capability_provider",
+            owner="coding.lsp",
+            entrypoint=entrypoint,
+            execution_model="in_process",
+            requested_authorities=(),
+        )
 
 
 def test_plugin_manifest_parser_rejects_unknown_contribution_schema(

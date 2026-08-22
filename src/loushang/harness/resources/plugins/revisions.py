@@ -13,6 +13,9 @@ from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import BinaryIO, Literal, cast
 
+from loushang.harness.resources.plugins.locators import (
+    canonical_plugin_relative_path,
+)
 from loushang.harness.resources.plugins.manifest import PluginManifestParser
 from loushang.harness.resources.plugins.types import (
     ResolvedPluginPackage,
@@ -523,16 +526,14 @@ def _logical_relative_path(
     *,
     root: Path,
 ) -> PurePosixPath:
-    path = PurePosixPath(value)
-    if path.is_absolute() or not path.parts or any(
-        part in {"", ".", ".."} for part in path.parts
-    ):
+    try:
+        return canonical_plugin_relative_path(value)
+    except ValueError as exc:
         raise PluginRevisionError(
             f"Plugin revision path must be a contained relative path: {value}",
             code="invalid_plugin_revision_path",
             path=root,
-        )
-    return path
+        ) from exc
 
 
 def _stat_identity(value: os.stat_result) -> tuple[int, int]:

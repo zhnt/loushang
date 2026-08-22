@@ -57,6 +57,22 @@ def test_published_revision_isolated_from_later_source_changes(tmp_path: Path) -
         assert stream.read() == b"review v1"
 
 
+def test_revision_handle_rejects_host_ambiguous_logical_path(tmp_path: Path) -> None:
+    source = _plugin(tmp_path / "source")
+    ambiguous = source / "resources" / r"..\review.md"
+    ambiguous.write_text("must not be addressable", encoding="utf-8")
+    published = PluginRevisionStore(tmp_path / "revisions").publish(
+        PluginManifestParser().parse(source)
+    )
+    handle = published.revision_handle
+    assert handle is not None
+
+    with pytest.raises(PluginRevisionError) as caught:
+        handle.open_file(r"resources/..\review.md")
+
+    assert caught.value.code == "invalid_plugin_revision_path"
+
+
 def test_equal_content_reuses_revision_but_returns_independent_handles(
     tmp_path: Path,
 ) -> None:

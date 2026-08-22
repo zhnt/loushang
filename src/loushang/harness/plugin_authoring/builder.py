@@ -41,6 +41,13 @@ class PluginDeclarationBuilder:
             raise ValueError(
                 "Plugin declaration reservations must share one package revision"
             )
+        preflight_contexts = {
+            item.preflight_context for item in reservation_views
+        }
+        if len(preflight_contexts) != 1:
+            raise ValueError(
+                "Plugin declaration reservations must share one preflight context"
+            )
         reservation_ids = tuple(
             item.contribution.contribution_id for item in reservation_views
         )
