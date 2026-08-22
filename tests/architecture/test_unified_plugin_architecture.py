@@ -366,6 +366,12 @@ PRE_SDK_PRIVATE_PLUGIN_SYMBOLS = frozenset(
         "PluginManagementService",
         "PluginManagementUpdateCommandV2",
         "PluginDesiredStateLedger",
+        "PluginInstanceActivationV1",
+        "PluginInstanceLeaseFamilyV1",
+        "PluginInstanceRetirementCompletionV1",
+        "PluginInstanceRevocationV1",
+        "PluginInstanceRuntimeLedger",
+        "PluginInstanceRuntimeSnapshotV1",
         "PluginRetirementIntentLedger",
         "PluginRetirementIntentV1",
         "PluginOwnerRetirementOutcomeV1",
@@ -3026,3 +3032,41 @@ def test_plc2_retirement_set_is_exact_inert_and_opened_by_one_authority() -> Non
         "publish_resource(",
     ):
         assert forbidden_call not in retirement_sets
+
+
+def test_plc2_instance_runtime_is_host_gated_and_not_package_cleanup() -> None:
+    contract = PLC2_CONTRACT_PATH.read_text(encoding="utf-8")
+    management_root = Path("src/loushang/harness/plugin_management")
+    management_sources = {
+        path: path.read_text(encoding="utf-8")
+        for path in management_root.rglob("*.py")
+    }
+    instance_runtime = Path(
+        "src/loushang/harness/plugin_management/instance_runtime.py"
+    ).read_text(encoding="utf-8")
+
+    assert "## PLC2-4C Instance Lease And State Gate" in contract
+    assert "ACTIVE --graceful--> DRAINING --> RETIRED" in contract
+    assert "ACTIVE --security--> REVOKING --> RETIRED" in contract
+    assert "management operation/coordination lock" in contract
+    assert "does not make its Package Revision `gc_eligible`" in contract
+    for host_only_call in (
+        "activate_current",
+        "acquire_current_family",
+        "derive_agent_membership",
+        "begin_drain",
+        "begin_revoke",
+        "release_family",
+        "complete_retirement",
+    ):
+        assert _call_sites(management_sources, host_only_call) == set()
+    for forbidden_call in (
+        ".dispose(",
+        ".deactivate(",
+        ".release_package(",
+        ".delete(",
+        "register_tool(",
+        "bind_tool(",
+        "publish_resource(",
+    ):
+        assert forbidden_call not in instance_runtime

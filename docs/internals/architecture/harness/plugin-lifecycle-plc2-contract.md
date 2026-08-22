@@ -1,7 +1,7 @@
 # Plugin Lifecycle PLC2 Contract
 
-Status: PLC2-1, PLC2-2, PLC2-3, PLC2-4A and PLC2-4B implemented; PLC2-4C/4D
-not started. This document
+Status: PLC2-1, PLC2-2, PLC2-3, PLC2-4A, PLC2-4B and PLC2-4C implemented;
+PLC2-4D not started. This document
 narrows the PLC2 section of the
 [Unified Plugin Lifecycle And Coding Pluginization Delivery Plan](plugin-lifecycle-coding-pluginization-plan.md).
 It does not make the Plugin authoring SDK public and does not authorize live
@@ -747,3 +747,153 @@ PLC2-4B is complete only when tests prove:
 - architecture gates find no callable, owner lookup/disposal, Instance-state,
   package-cache, private-data, cleanup, GC, Session, Graph or registration
   dependency.
+
+## PLC2-4C Instance Lease And State Gate
+
+PLC2-4C adds the internal Product Plugin Host primitive that owns effective
+Plugin Instance Revision state and reference counts. It does not make desired
+selection effective, bind a Capability, discover an owner, invoke a disposer,
+release package bytes, run cleanup, or publish a public Plugin SDK.
+
+### Independent State And Activation Evidence
+
+The only Instance execution states are:
+
+```text
+ACTIVE --graceful--> DRAINING --> RETIRED
+ACTIVE --security--> REVOKING --> RETIRED
+DRAINING --security--> REVOKING
+```
+
+There is no `INSTALLED`, `ENABLED`, `STARTING`, `FAILED`, `REMOVED`, cleanup or
+package-cache state in this machine. Desired `installed_enabled`, an activation
+operation, an open retirement set and owner aggregate `succeeded` remain
+independent facts.
+
+Only a Product Plugin Host may append one `PluginInstanceActivationV1`. The
+activation names the exact Installation, Instance Revision, Package Revision,
+desired inventory revision, host-issued operation/idempotency keys and opaque
+direct-host reference. The runtime gate checks, under the management operation
+lock, that the exact revision is the current enabled desired selection. One
+activation event atomically creates `ACTIVE` state and its one-member
+`direct_host` lease family. An intent or desired selection can never synthesize
+activation evidence.
+
+Replay validates the activation against desired state as it existed at the
+recorded global inventory revision, not merely against the current selection.
+This permits an old activated revision to remain reconstructible while it
+drains after a later desired cutover.
+
+### Durable Lease Families
+
+Every Instance reference owned by this primitive belongs to one immutable
+`PluginInstanceLeaseFamilyV1`. A family carries a derived family ID,
+host-issued operation/idempotency keys, an opaque holder reference, its kind,
+an optional parent family and a sorted exact member tuple. Each member contains
+the Installation, Instance Revision and Package Revision and has a derived
+lease ID.
+
+The kinds are:
+
+| Kind | Acquisition rule |
+| --- | --- |
+| `direct_host` | one member, created only with activation |
+| `independent` | one current `ACTIVE` Instance |
+| `owner_generation` | one current `ACTIVE` Instance |
+| `session_membership` | one or more current `ACTIVE` Instances in one atomic family |
+| `agent_membership` | derived atomically from one open Session/Agent family |
+
+Root acquisition resolves every requested Installation from one desired-state
+snapshot while holding the management operation lock, then commits the whole
+family in one runtime-journal event. A failed member check appends nothing.
+This is the PLC2 Product-host primitive for multi-revision Session acquisition;
+no Session implementation calls it before the later production cutover.
+
+`DRAINING` rejects every new root acquisition, but an open Session/Agent parent
+may derive an `agent_membership` family over the same pinned members.
+`REVOKING` and `RETIRED` reject root and derived acquisition. A parent cannot
+release while an open child family exists. Family release is an explicit
+durable event with its own operation/idempotency identity and opaque release
+reference; exact retry appends nothing. No process restart implicitly releases
+an open family. Startup therefore reconstructs uncertain references as pinned
+until their Product owner reconciles them.
+
+The management operation journal lock is also the PLC2-4C cross-journal
+linearization gate. Management already holds it across desired cutover and
+retirement handoff. Activation, root/derived acquisition, release, drain,
+revoke and retirement completion acquire the same lock before their source
+reads and runtime append. The nested order is:
+
+```text
+management operation/coordination lock
+  -> desired-state or retirement source journals
+  -> instance-runtime journal
+```
+
+This prevents a root acquisition from racing through a disable, remove or
+update cutover without introducing another selection authority.
+
+### Graceful Drain, Security Revoke And Retirement
+
+`begin_drain()` accepts only the exact PLC2-4A intent for an `ACTIVE` Instance
+and requires its exact PLC2-4B open set. It records `DRAINING`; it does not call
+owners or release any family. Missing activation is an invalid transition, not
+evidence for manufacturing a runtime state.
+
+`PluginInstanceRevocationV1` contains exact Instance identity, host-issued
+operation/idempotency keys, an opaque authority reference and one bounded
+structural reason code. It can move `ACTIVE` or `DRAINING` to `REVOKING`.
+PLC2-4C defines the Product-host port but has no management, trust or adapter
+caller that fabricates security authority.
+
+Retirement is a separate confirmed append:
+
+- `DRAINING -> RETIRED` requires the same retirement set to be `succeeded` and
+  every direct-host, independent, owner-generation, Session and Agent family
+  member for that Instance to be released;
+- `REVOKING -> RETIRED` requires the exact revocation evidence and the same
+  zero-open-family invariant; and
+- `ACTIVE -> RETIRED` is never legal.
+
+The completion stores only host-issued operation/idempotency keys and an opaque
+completion reference. `RETIRED` proves the Instance runtime has no lease owned
+by this gate. It does not make its Package Revision `gc_eligible`; PLC2-4D must
+still reconstruct package/cleanup leases and decide cleanup disposition.
+
+### PLC2-4C Exact Error Codes
+
+| Condition | Code |
+| --- | --- |
+| unsupported activation/family/member/release/revocation/completion/event version | `unsupported_plugin_instance_runtime_record_version` |
+| wrong/unknown field or invalid canonical/derived value | `invalid_plugin_instance_runtime_record` |
+| operation, idempotency, activation, family or security identity reused with different evidence | `plugin_instance_runtime_conflict` |
+| illegal state, family, parent, release or retirement transition | `invalid_plugin_instance_runtime_transition` |
+| current selection/state cannot serve an acquisition | `plugin_instance_acquisition_unavailable` |
+| runtime journal/replay/source evidence is corrupt | `plugin_instance_runtime_journal_corrupt` |
+
+These codes never contain holder data, exception text, package bytes, private
+data, credentials or cleanup output.
+
+### PLC2-4C Regression Gate
+
+PLC2-4C is complete only when tests prove:
+
+- strict record round trips, version/field rejection, canonical sorting and
+  derived family/member identities;
+- activation requires the exact current enabled desired revision and creates
+  one direct-host family atomically;
+- root multi-Instance acquisition is all-or-nothing and serializes with
+  management cutover through the one operation lock;
+- `DRAINING` rejects roots but permits exact open-parent Agent derivation,
+  while `REVOKING` rejects both;
+- parent-before-child release is rejected and every exact release/retry remains
+  reconstructible after restart;
+- graceful drain requires exact intent/set evidence, owner aggregate success
+  alone cannot retire an Instance, and every open family blocks retirement;
+- security revoke is exact, dominates graceful drain and retires only at zero
+  open families;
+- incomplete tails repair and complete, sequence or cross-journal corruption
+  fails closed; and
+- architecture gates find no Product/Session/Graph/registration/disposer,
+  package-cache, cleanup, GC, private-data or MCP dependency and no production
+  caller that fabricates activation, membership or revocation evidence.
