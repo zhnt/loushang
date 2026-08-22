@@ -1,6 +1,6 @@
 # Plugin Lifecycle PLC2 Contract
 
-Status: PLC2-1 and PLC2-2 implemented; PLC2-3/PLC2-4 not started. This document
+Status: PLC2-1, PLC2-2 and PLC2-3 implemented; PLC2-4 not started. This document
 narrows the PLC2 section of the
 [Unified Plugin Lifecycle And Coding Pluginization Delivery Plan](plugin-lifecycle-coding-pluginization-plan.md).
 It does not make the Plugin authoring SDK public and does not authorize live
@@ -367,3 +367,129 @@ PLC2-2 is complete only when tests prove:
 - architecture tests find exactly one production `PluginDesiredStateLedger`
   mutation call site, inside `PluginManagementService`, with no new live owner,
   Product, adapter, import/evaluation, registration or binding dependency.
+
+## PLC2-3 Staged Update Contract
+
+PLC2-3 adds one update transaction to the same internal management authority.
+It remains inert: staging does not materialize/import package code, inspect a
+live Session, migrate private data, publish an owner generation, or claim that
+an effective runtime has restarted. A Package Revision reference is immutable
+verified-package evidence supplied to this layer, not permission to execute it.
+
+### Version And Command Boundary
+
+The frozen PLC2-2 `PluginManagementCommandV1` remains exact and never learns an
+extra action. Update uses `PluginManagementUpdateCommandV2`; both versions are
+accepted by the one `PluginManagementService` and share one operation journal,
+operation-ID namespace, idempotency-key namespace and same-Installation busy
+gate. The v2 command carries exactly:
+
+- operation ID, idempotency key and expected inventory revision;
+- Installation key and the exact expected current Package Revision;
+- one different immutable staged Package Revision;
+- actor, policy and optional approval provenance; and
+- the fixed action `update` and `commandVersion=2` discriminators.
+
+The command does not choose an Instance Revision, current desired state,
+migration outcome, restart outcome or transition kind. The service derives
+those facts from the CAS-protected current state. Update of `absent`, Package
+Plugin-ID mismatch, an equal target revision, or a current Package Revision
+different from the staged command's expected predecessor fails closed.
+
+### Durable Update Sequence And Migration Fence
+
+The v2 operation has this exact append-only sequence:
+
+```text
+accepted(command_accepted, operationRevision=1)
+  -> running(update_staged, operationRevision=2)
+  -> running(migration_fence_satisfied, operationRevision=3)
+  -> running(desired_state_committing, operationRevision=4)
+  -> terminal(desired_state_committed | update_restart_required |
+              desired_state_failed, operationRevision=5)
+```
+
+`update_staged` persists the complete target while leaving desired selection
+unchanged. PLC2 has no bound `PluginDataFacet` or private-data generation, so
+the only legal `PluginMigrationFenceV1` disposition is
+`not_applicable_unbound`. It states only that this inert management slice has
+no data pointer or writer lease to migrate. It must never be translated into
+schema compatibility or completed-migration evidence. Adding a bound data
+owner requires a new fence version and the Product/data-owner gate frozen by
+UPA; it cannot broaden this disposition in place.
+
+After the fence, the service constructs a ledger-only
+`PluginDesiredStateUpdateMutationV1`. The desired-state journal stores update
+cutover as record version 2 and transition kind `update`; record version 1 is
+not widened. The new record embeds the exact command-derived mutation, fence,
+previous state and committed state.
+
+Under the operation-journal lock followed by the desired-state-ledger lock,
+cutover compares both the global inventory revision and exact expected current
+Package Revision. One append atomically replaces the Package Revision in the
+desired selection. Disabled selection stays disabled and retains its latest
+Instance lineage. Enabled selection stays enabled and advances the same opaque
+Instance ID by one revision. A failed precondition or append leaves the old
+selection unchanged.
+
+There is no cross-file atomicity claim. Recovery resumes from the last exact
+operation revision. Retrying record revision 4 reuses the same update mutation;
+the desired ledger returns the already committed transition when a crash
+occurred after cutover but before the terminal operation event.
+
+### Exact Restart Outcome
+
+The update terminal dispositions are `succeeded`, `restart_required`, and
+`failed`. `restart_required` is a successful desired-selection cutover with a
+runtime boundary still owed; it is not a failure and not evidence that a host
+or Session restarted.
+
+PLC2-3 has no declaration/owner admission evidence with which to prove a safe
+live declarative, isolated-service or single-owner refresh exception. It
+therefore applies one conservative, deterministic rule:
+
+- updating `installed_disabled` returns `succeeded` with no restart record;
+- updating `installed_enabled` returns `restart_required` with reason code
+  `enabled_package_revision_changed` and a non-empty, canonical list of the
+  exact Package Revision fields that changed.
+
+The changed-field vocabulary is `pluginVersion`, `packageContentDigest`,
+`dependencyLockDigest`, and `packageSourceIdentity`, in that order. A future
+owner-bound protocol may narrow this conservative result only from durable
+admission/import-realm evidence; an adapter or caller assertion cannot do so.
+Until then no live owner may consume the new enabled revision without honoring
+the returned restart boundary.
+
+### PLC2-3 Exact Error Codes
+
+| Condition | Code |
+| --- | --- |
+| update targets an absent Installation | `plugin_update_not_installed` |
+| current Package Revision differs from the staged predecessor | `plugin_update_expected_package_mismatch` |
+| command target equals its expected predecessor | `plugin_update_target_not_new` |
+| unsupported v2 command/event/result/fence/update record version | existing unsupported management/lifecycle record code |
+| invalid v2 shape, sequence or cross-journal evidence | existing invalid/corrupt management/lifecycle code |
+
+Inventory CAS, Package Plugin-ID, operation/idempotency conflict and Instance
+identity errors retain the PLC2-1/PLC2-2 codes.
+
+### PLC2-3 Regression Gate
+
+PLC2-3 is complete only when tests prove:
+
+- strict round trips and unknown-version/field rejection for every v2 record;
+- v1 journals remain replayable and mixed v1/v2 operation and desired-state
+  journals preserve one contiguous revision sequence;
+- staging and the migration-fence event leave the old selection unchanged;
+- disabled and enabled cutovers preserve desired state, replace only the exact
+  staged Package Revision, and apply the specified Instance lineage rules;
+- enabled updates return the exact canonical changed-field restart evidence;
+- stale inventory, absent Installation and expected-package mismatch leave the
+  old selection byte-for-byte unchanged;
+- exact retry appends nothing, conflicting keys fail closed, and an incomplete
+  update blocks every other command for the same Installation;
+- crash after desired-state cutover recovers to one matching terminal result;
+- terminal success/restart evidence cannot survive without its exact durable
+  update transition, and terminal failure cannot contradict one; and
+- architecture gates retain one management authority and introduce no Product,
+  Session, Graph, registration, execution, private-data or GC dependency.

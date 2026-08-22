@@ -15,14 +15,21 @@ from loushang.harness.journal import (
     journal_file_lock,
     load_jsonl,
 )
+from loushang.harness.plugin_management.journal_codecs import (
+    PLUGIN_DESIRED_STATE_JOURNAL_CODEC,
+    PluginDesiredStateJournalTransition,
+)
 from loushang.harness.plugin_management.records import (
-    PLUGIN_DESIRED_STATE_TRANSITION_CODEC,
     PluginDesiredSelectionV1,
     PluginDesiredStateMutationV1,
     PluginDesiredStateTransitionV1,
     PluginDesiredTransitionKind,
     PluginInstallationKeyV1,
     PluginInstallationStateV1,
+)
+from loushang.harness.plugin_management.updates import (
+    PluginDesiredStateUpdateMutationV1,
+    PluginDesiredStateUpdateTransitionV2,
 )
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
 
@@ -77,15 +84,15 @@ class PluginDesiredStateSnapshotV1:
 
 @dataclass(slots=True)
 class _ReplayedLedger:
-    transitions: tuple[PluginDesiredStateTransitionV1, ...]
+    transitions: tuple[PluginDesiredStateJournalTransition, ...]
     states: dict[PluginInstallationKeyV1, PluginInstallationStateV1]
-    operations: dict[str, PluginDesiredStateTransitionV1]
-    idempotency: dict[str, PluginDesiredStateTransitionV1]
+    operations: dict[str, PluginDesiredStateJournalTransition]
+    idempotency: dict[str, PluginDesiredStateJournalTransition]
     instance_owners: dict[str, PluginInstallationKeyV1]
 
 
 class PluginDesiredStateLedger:
-    """Durable, inert desired-selection authority for PLC2-1.
+    """Durable, inert desired-selection and staged-cutover authority for PLC2.
 
     This ledger owns only management intent and Instance Revision identity. It
     has no live Plugin, Product Session, Graph, registration, or package-GC
@@ -119,7 +126,7 @@ class PluginDesiredStateLedger:
             replayed = self._load_and_replay_unlocked()
         return _snapshot(replayed)
 
-    def transitions(self) -> tuple[PluginDesiredStateTransitionV1, ...]:
+    def transitions(self) -> tuple[PluginDesiredStateJournalTransition, ...]:
         with journal_file_lock(
             self._path,
             "exclusive",
@@ -141,6 +148,12 @@ class PluginDesiredStateLedger:
             replayed = self._load_and_replay_unlocked()
             repeated = self._repeat_result(replayed, mutation)
             if repeated is not None:
+                if not isinstance(repeated, PluginDesiredStateTransitionV1):
+                    raise PluginLifecycleError(
+                        "Plugin operation identity belongs to an update mutation",
+                        code="plugin_management_operation_conflict",
+                        path=self._path,
+                    )
                 return repeated
 
             head = len(replayed.transitions)
@@ -197,7 +210,69 @@ class PluginDesiredStateLedger:
             append_jsonl_record(
                 self._path,
                 transition,
-                record_codec=PLUGIN_DESIRED_STATE_TRANSITION_CODEC,
+                record_codec=PLUGIN_DESIRED_STATE_JOURNAL_CODEC,
+                format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                durability=self._unlocked_durability,
+            )
+            return transition
+
+    def commit_update(
+        self,
+        mutation: PluginDesiredStateUpdateMutationV1,
+    ) -> PluginDesiredStateUpdateTransitionV2:
+        if not isinstance(mutation, PluginDesiredStateUpdateMutationV1):
+            raise TypeError("Plugin desired-state update mutation is required")
+        with journal_file_lock(
+            self._path,
+            "exclusive",
+            lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
+        ):
+            replayed = self._load_and_replay_unlocked()
+            repeated = self._repeat_result(replayed, mutation)
+            if repeated is not None:
+                if not isinstance(repeated, PluginDesiredStateUpdateTransitionV2):
+                    raise PluginLifecycleError(
+                        "Plugin update operation identity belongs to another mutation",
+                        code="plugin_management_operation_conflict",
+                        path=self._path,
+                    )
+                return repeated
+
+            head = len(replayed.transitions)
+            if mutation.expected_inventory_revision != head:
+                raise PluginLifecycleError(
+                    "Expected Plugin inventory revision does not match current head",
+                    code="plugin_inventory_revision_conflict",
+                    path=self._path,
+                )
+
+            previous = replayed.states.get(
+                mutation.installation_key,
+                PluginInstallationStateV1.initial(mutation.installation_key),
+            )
+            try:
+                committed = _apply_update_mutation(previous, mutation)
+            except _TransitionRejected as exc:
+                raise PluginLifecycleError(
+                    str(exc), code=exc.code, path=self._path
+                ) from exc
+            except (TypeError, ValueError) as exc:
+                raise PluginLifecycleError(
+                    f"Invalid Plugin desired-state update transition: {exc}",
+                    code="invalid_plugin_lifecycle_transition",
+                    path=self._path,
+                ) from exc
+
+            transition = PluginDesiredStateUpdateTransitionV2(
+                inventory_revision=head + 1,
+                mutation=mutation,
+                previous_state=previous,
+                committed_state=committed,
+            )
+            append_jsonl_record(
+                self._path,
+                transition,
+                record_codec=PLUGIN_DESIRED_STATE_JOURNAL_CODEC,
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._unlocked_durability,
             )
@@ -207,12 +282,14 @@ class PluginDesiredStateLedger:
         if not self._path.exists():
             return _empty_replay()
         try:
-            snapshot: JsonlSnapshot[None, PluginDesiredStateTransitionV1] = load_jsonl(
-                self._path,
-                record_codec=PLUGIN_DESIRED_STATE_TRANSITION_CODEC,
-                format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                durability=self._unlocked_durability,
-                load_policy=self._load_policy,
+            snapshot: JsonlSnapshot[None, PluginDesiredStateJournalTransition] = (
+                load_jsonl(
+                    self._path,
+                    record_codec=PLUGIN_DESIRED_STATE_JOURNAL_CODEC,
+                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                    durability=self._unlocked_durability,
+                    load_policy=self._load_policy,
+                )
             )
         except JournalFileError as exc:
             code = (
@@ -234,8 +311,8 @@ class PluginDesiredStateLedger:
     def _repeat_result(
         self,
         replayed: _ReplayedLedger,
-        mutation: PluginDesiredStateMutationV1,
-    ) -> PluginDesiredStateTransitionV1 | None:
+        mutation: PluginDesiredStateMutationV1 | PluginDesiredStateUpdateMutationV1,
+    ) -> PluginDesiredStateJournalTransition | None:
         by_idempotency = replayed.idempotency.get(mutation.idempotency_key)
         if by_idempotency is not None:
             if by_idempotency.mutation != mutation:
@@ -291,7 +368,7 @@ def _empty_replay() -> _ReplayedLedger:
 
 
 def _replay(
-    transitions: tuple[PluginDesiredStateTransitionV1, ...],
+    transitions: tuple[PluginDesiredStateJournalTransition, ...],
     *,
     path: Path,
 ) -> _ReplayedLedger:
@@ -311,19 +388,29 @@ def _replay(
         if mutation.idempotency_key in replayed.idempotency:
             raise _corrupt(path, "Plugin lifecycle idempotency key is duplicated")
 
-        committed_instance = transition.committed_state.selection.instance_revision_ref
-        replay_fresh_id = (
-            committed_instance.instance_id
-            if _requires_fresh_instance(previous, mutation)
-            and committed_instance is not None
-            else None
-        )
+        expected_kind: str
         try:
-            expected_kind, expected_state, fresh_instance_id = _apply_mutation(
-                previous,
-                mutation,
-                fresh_instance_id=replay_fresh_id,
-            )
+            if isinstance(transition, PluginDesiredStateTransitionV1):
+                normal_mutation = transition.mutation
+                committed_instance = (
+                    transition.committed_state.selection.instance_revision_ref
+                )
+                replay_fresh_id = (
+                    committed_instance.instance_id
+                    if _requires_fresh_instance(previous, normal_mutation)
+                    and committed_instance is not None
+                    else None
+                )
+                expected_kind, expected_state, fresh_instance_id = _apply_mutation(
+                    previous,
+                    normal_mutation,
+                    fresh_instance_id=replay_fresh_id,
+                )
+            else:
+                update_mutation = transition.mutation
+                expected_kind = "update"
+                expected_state = _apply_update_mutation(previous, update_mutation)
+                fresh_instance_id = None
         except (TypeError, ValueError) as exc:
             raise _corrupt(
                 path, f"Plugin lifecycle transition is invalid: {exc}"
@@ -473,6 +560,64 @@ def _apply_mutation(
             latest_instance_revision_ref=instance_ref,
         ),
         issued_fresh,
+    )
+
+
+def _apply_update_mutation(
+    previous: PluginInstallationStateV1,
+    mutation: PluginDesiredStateUpdateMutationV1,
+) -> PluginInstallationStateV1:
+    command = mutation.command
+    key = command.installation_key
+    if previous.installation_key != key:
+        raise ValueError("Update mutation and previous Installation keys do not match")
+    current = previous.selection
+    if current.desired_state == "absent":
+        raise _TransitionRejected(
+            "Plugin update requires an installed predecessor",
+            code="plugin_update_not_installed",
+        )
+    if current.desired_state != mutation.desired_state:
+        raise ValueError("Plugin update mutation does not preserve desired state")
+    if current.package_revision != command.expected_package_revision:
+        raise _TransitionRejected(
+            "Plugin update predecessor Package Revision does not match",
+            code="plugin_update_expected_package_mismatch",
+        )
+    if command.staged_package_revision == command.expected_package_revision:
+        raise _TransitionRejected(
+            "Plugin update target must differ from its predecessor",
+            code="plugin_update_target_not_new",
+        )
+
+    if current.desired_state == "installed_disabled":
+        return PluginInstallationStateV1(
+            installation_key=key,
+            selection=PluginDesiredSelectionV1(
+                desired_state="installed_disabled",
+                package_revision=command.staged_package_revision,
+                instance_revision_ref=None,
+            ),
+            latest_instance_revision_ref=previous.latest_instance_revision_ref,
+        )
+
+    current_instance = current.instance_revision_ref
+    latest = previous.latest_instance_revision_ref
+    if current_instance is None or latest is None or current_instance != latest:
+        raise ValueError("Enabled Plugin update predecessor has invalid Instance lineage")
+    next_instance = PluginInstanceRevisionRef(
+        instance_id=latest.instance_id,
+        plugin_id=latest.plugin_id,
+        revision=latest.revision + 1,
+    )
+    return PluginInstallationStateV1(
+        installation_key=key,
+        selection=PluginDesiredSelectionV1(
+            desired_state="installed_enabled",
+            package_revision=command.staged_package_revision,
+            instance_revision_ref=next_instance,
+        ),
+        latest_instance_revision_ref=next_instance,
     )
 
 

@@ -67,8 +67,10 @@ planning, work event persistence, or AI provider behavior.
   management critical path into an inert desired-state ledger, one typed
   command authority, staged update, and retirement/cleanup recovery; PLC2-1
   freezes strict Package/Installation/selection records, CAS and ledger-owned
-  Instance identity, while PLC2-2 implements the sole durable install/enable/
-  disable/remove command core without claiming runtime effectiveness.
+  Instance identity, PLC2-2 implements the sole durable install/enable/disable/
+  remove command core, and PLC2-3 adds inert staged update, versioned migration
+  fencing, atomic desired-selection cutover and exact conservative restart
+  evidence without claiming runtime effectiveness.
 - [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md) records the
   green parser/source-sink/authority inventory, frozen foundation exports,
   forbidden peer routes, and inert published-Plugin fixture required before

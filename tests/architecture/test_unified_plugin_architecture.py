@@ -364,6 +364,7 @@ PRE_SDK_PRIVATE_PLUGIN_SYMBOLS = frozenset(
         "PluginManagementOperationEventV1",
         "PluginManagementOperationResultV1",
         "PluginManagementService",
+        "PluginManagementUpdateCommandV2",
         "PluginDesiredStateLedger",
         "ProductCapabilityProviderResolver",
         "compile_plugin_contribution_semantic_fingerprint",
@@ -2929,3 +2930,27 @@ def test_plc2_management_service_is_the_only_desired_state_mutation_caller() -> 
             "PluginManagementService._execute_unlocked",
         )
     }
+    assert _call_sites(sources, "commit_update") == {
+        (
+            Path("src/loushang/harness/plugin_management/service.py"),
+            "PluginManagementService._execute_update_unlocked",
+        )
+    }
+
+
+def test_plc2_staged_update_contract_is_versioned_inert_and_conservative() -> None:
+    contract = PLC2_CONTRACT_PATH.read_text(encoding="utf-8")
+    operations = Path(
+        "src/loushang/harness/plugin_management/operations.py"
+    ).read_text(encoding="utf-8")
+
+    assert "## PLC2-3 Staged Update Contract" in contract
+    assert "`PluginManagementCommandV1` remains exact" in contract
+    assert "share one operation journal" in contract
+    assert "`not_applicable_unbound`" in contract
+    assert "must never be translated into\nschema compatibility" in contract
+    assert "`enabled_package_revision_changed`" in contract
+    assert "not evidence that a host\nor Session restarted" in contract
+    assert 'PluginManagementAction = Literal["install", "enable", "disable", "remove"]' in (
+        operations
+    )
