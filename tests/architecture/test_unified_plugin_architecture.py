@@ -741,6 +741,12 @@ def _document_ingress_boundary_violations(source: str) -> tuple[str, ...]:
         ),
     }
     violations: list[str] = []
+    if any(
+        isinstance(node, ast.ImportFrom)
+        and any(alias.name == "*" for alias in node.names)
+        for node in ast.walk(tree)
+    ):
+        violations.append("wildcard imports are forbidden at document byte ingress")
     import_bindings: list[tuple[str, str, str, str | None]] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module is not None:
@@ -2112,6 +2118,15 @@ def test_document_byte_ingress_freezes_verified_handle_and_exact_call_edges() ->
     assert _document_ingress_boundary_violations(import_alias_shadow) == (
         "one unshadowed loushang.harness.resources.plugins.declarations."
         "PluginDeclarationDocumentCodec import is required",
+    )
+
+    wildcard_import_shadow = compliant.replace(
+        "class PluginDeclarationCoordinator:\n",
+        "from evil import *\n"
+        "class PluginDeclarationCoordinator:\n",
+    )
+    assert _document_ingress_boundary_violations(wildcard_import_shadow) == (
+        "wildcard imports are forbidden at document byte ingress",
     )
 
 

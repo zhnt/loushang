@@ -248,6 +248,8 @@ accepted route. Regression cases cover the former caller-injected attribute,
 import-name assignment and import-alias shadowing. This remains a point fix to
 the original decoder finding; it does not reopen schema, lifecycle, Product, or
 security architecture.
+The final point check also forbids wildcard imports in the Coordinator module,
+closing the remaining static import-shadow form without enumerating libraries.
 
 ## Review Scope
 

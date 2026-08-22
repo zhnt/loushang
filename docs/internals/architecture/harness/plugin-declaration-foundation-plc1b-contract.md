@@ -107,6 +107,8 @@ instance rebinding, property, or dynamic override seam. The Coordinator
 directly and without an alias imports that codec from
 `resources.plugins.declarations` and `VerifiedRevisionHandle` from
 `resources.plugins.revisions`; neither imported name may be rebound.
+The Coordinator module permits no wildcard import, because its exported names
+could shadow either exact boundary binding.
 Architecture tests verify the handle annotation and receiver, freeze those three call edges,
 scan raw-decoder symbol references (including module/import/assignment aliases),
 and reject every helper call from this method even when its import lives outside
