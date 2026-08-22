@@ -1898,6 +1898,7 @@ def test_coordinator_exclusively_owns_evidenced_terminal_finalization() -> None:
     )
     assert not hasattr(public_plugins.PluginSelectionResolver, "finalize")
     assert not hasattr(public_plugins.PluginSelectionResolver, "rollback")
+    assert not hasattr(public_plugins, "build_execution_approval_subject")
     assert all(
         hasattr(public_plugins.PluginSelectionResolver, method_name)
         for method_name in (
@@ -1912,6 +1913,8 @@ def test_coordinator_exclusively_owns_evidenced_terminal_finalization() -> None:
         Path("src/loushang/harness/resources/plugins/selection.py")
     ]
     assert "_consume_active" not in resolver_source
+    assert "def build_execution_approval_subject(" not in resolver_source
+    assert "def _build_execution_approval_subject(" in resolver_source
     assert "_PLUGIN_MAX_ACTIVE_ATTEMPTS = 1024" in resolver_source
     assert "_PLUGIN_MAX_TERMINAL_TOMBSTONES = 8192" in resolver_source
     assert "_PLUGIN_MAX_ATTEMPT_LIFETIME_SECONDS = 300.0" in resolver_source

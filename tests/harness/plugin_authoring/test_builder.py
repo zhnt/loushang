@@ -23,6 +23,7 @@ from loushang.harness.resources.plugins.declarations import (
     PluginDeclaration,
 )
 from loushang.harness.resources.plugins.selection import (
+    PendingOnlyPluginExecutionDecisionLookup,
     PluginContributionRef,
     PluginDeclarationExecutionPreflightGate,
     PluginDeclarationReservation,
@@ -36,10 +37,10 @@ from loushang.harness.resources.plugins.selection import (
     PluginInstanceRevisionRef,
     PluginPreflightAcceptedOutcome,
     PluginPreflightContextV1,
+    PluginPreflightPendingApprovalOutcome,
     PluginSelectionPlanV2,
     PluginSelectionResolver,
     PluginSourceTrustSnapshotV1,
-    build_execution_approval_subject,
 )
 from loushang.harness.resources.plugins.types import (
     PluginSourceBinding,
@@ -404,13 +405,16 @@ def _preflight_source_group(
         ),
         allowed_authority_ceiling=fixture.contribution.requested_authorities,
     )
-    subject = build_execution_approval_subject(
-        fixture.package,
-        fixture.contribution,
+    resolver = PluginSelectionResolver()
+    pending = resolver.preflight(
+        (fixture.package,),
+        bindings=(fixture.binding,),
         plan=plan,
-        binding=fixture.binding,
+        decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
     )
-    outcome = PluginSelectionResolver().preflight(
+    assert isinstance(pending, PluginPreflightPendingApprovalOutcome)
+    [subject] = pending.subjects
+    outcome = resolver.preflight(
         (fixture.package,),
         bindings=(fixture.binding,),
         plan=plan,

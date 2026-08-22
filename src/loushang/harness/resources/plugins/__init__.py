@@ -78,7 +78,6 @@ from loushang.harness.resources.plugins.selection import (
     PluginSelectionPlanV2,
     PluginSelectionResolver,
     PluginSourceTrustSnapshotV1,
-    build_execution_approval_subject,
 )
 from loushang.harness.resources.plugins.types import (
     InstalledPlugin,
@@ -207,7 +206,6 @@ __all__ = [
     "ResolvedPluginPackage",
     "VerifiedPluginRevision",
     "VerifiedRevisionHandle",
-    "build_execution_approval_subject",
     "is_remote_plugin_source",
     "lock_plugin_dependency_closure",
     "project_installed_plugin",

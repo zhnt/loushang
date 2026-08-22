@@ -32,12 +32,12 @@ from loushang.harness.resources.plugins.selection import (
     PluginInstanceRevisionRef,
     PluginPreflightAcceptedOutcome,
     PluginPreflightContextV1,
+    PluginPreflightPendingApprovalOutcome,
     PluginSelection,
     PluginSelectionError,
     PluginSelectionPlanV2,
     PluginSelectionResolver,
     PluginSourceTrustSnapshotV1,
-    build_execution_approval_subject,
 )
 from loushang.harness.resources.plugins.types import (
     PluginSourceBinding,
@@ -231,12 +231,14 @@ def test_plc1b_coordinator_aborts_executable_group_without_finalization_or_impor
 
     resolver = _CountingResolver()
     plan = _plan(fixture)
-    subject = build_execution_approval_subject(
-        fixture.package,
-        fixture.contribution,
+    pending = resolver.preflight(
+        (fixture.package,),
+        bindings=(fixture.binding,),
         plan=plan,
-        binding=fixture.binding,
+        decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
     )
+    assert isinstance(pending, PluginPreflightPendingApprovalOutcome)
+    [subject] = pending.subjects
     outcome = resolver.preflight(
         (fixture.package,),
         bindings=(fixture.binding,),

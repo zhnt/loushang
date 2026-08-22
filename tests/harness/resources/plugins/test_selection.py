@@ -58,7 +58,6 @@ from loushang.harness.resources.plugins.selection import (
     PluginSelectionPlanV2,
     PluginSelectionResolver,
     PluginSourceTrustSnapshotV1,
-    build_execution_approval_subject,
 )
 from loushang.harness.resources.plugins.types import PluginSource
 
@@ -84,6 +83,21 @@ class _DecisionLookup:
 def _accepted(outcome: PluginPreflightOutcome) -> AcceptedPluginPreflight:
     assert isinstance(outcome, PluginPreflightAcceptedOutcome)
     return outcome.accepted
+
+
+def _single_proposed_subject(
+    runtime: PluginRuntimeResolution,
+    plan: PluginSelectionPlanV2,
+) -> PluginExecutionApprovalSubject:
+    outcome = PluginSelectionResolver().preflight(
+        runtime.packages,
+        bindings=runtime.bindings,
+        plan=plan,
+        decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+    )
+    assert isinstance(outcome, PluginPreflightPendingApprovalOutcome)
+    assert len(outcome.subjects) == 1
+    return outcome.subjects[0]
 
 
 def test_document_preflight_and_coordinator_finalization_are_one_use(
@@ -416,13 +430,7 @@ def test_preflight_requires_exact_approval_subject_and_binding(
     package = runtime.packages[0]
     binding = runtime.bindings[0]
     plan = _plan(binding.source_identity)
-    contribution = package.contribution_index.items[0]
-    subject = build_execution_approval_subject(
-        package,
-        contribution,
-        plan=plan,
-        binding=binding,
-    )
+    subject = _single_proposed_subject(runtime, plan)
     stale_decision = PluginExecutionDecisionRecord(
         decision_id="stale",
         subject_digest=subject.digest,
@@ -475,23 +483,95 @@ def test_preflight_requires_exact_approval_subject_and_binding(
     runtime.close()
 
 
+def test_preflight_aggregates_source_findings_with_strict_outcome_priority(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path, include_disjoint_source=True)
+    binding = runtime.bindings[0]
+    plan = _plan(binding.source_identity, include_disjoint_source=True)
+    resolver = PluginSelectionResolver()
+    pending = resolver.preflight(
+        runtime.packages,
+        bindings=runtime.bindings,
+        plan=plan,
+        decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+    )
+    assert isinstance(pending, PluginPreflightPendingApprovalOutcome)
+    assert len(pending.subjects) == 2
+    assert len(pending.diagnostics) == 2
+    assert pending.diagnostics == tuple(sorted(pending.diagnostics))
+    assert {item.plugin_id for item in pending.diagnostics} == {"review-pack"}
+    assert all(item.source_descriptor_fingerprint for item in pending.diagnostics)
+    assert resolver._active == {}
+
+    first, second = pending.subjects
+    denied_first = PluginExecutionDecisionRecord(
+        decision_id="deny-first",
+        subject_digest=first.digest,
+        policy_revision=plan.context.policy_revision,
+        disposition="denied",
+    )
+    denied_second = PluginExecutionDecisionRecord(
+        decision_id="deny-second",
+        subject_digest=second.digest,
+        policy_revision=plan.context.policy_revision,
+        disposition="denied",
+    )
+    denied = resolver.preflight(
+        runtime.packages,
+        bindings=runtime.bindings,
+        plan=plan,
+        decision_lookup=_DecisionLookup(denied_first),
+    )
+    assert isinstance(denied, PluginPreflightDeniedOutcome)
+    assert tuple(item.code for item in denied.diagnostics) == (
+        "plugin_execution_denied",
+    )
+
+    all_denied = resolver.preflight(
+        runtime.packages,
+        bindings=runtime.bindings,
+        plan=plan,
+        decision_lookup=_DecisionLookup(denied_first, denied_second),
+    )
+    assert isinstance(all_denied, PluginPreflightDeniedOutcome)
+    assert len(all_denied.diagnostics) == 2
+    assert all_denied.diagnostics == tuple(sorted(all_denied.diagnostics))
+
+    class _RejectedOverDeniedLookup:
+        def lookup_execution_decision(
+            self,
+            subject: PluginExecutionApprovalSubject,
+        ) -> object:
+            if subject.digest == first.digest:
+                return PluginExecutionDecisionCurrent(decision=denied_first)
+            return object()
+
+    rejected = resolver.preflight(
+        runtime.packages,
+        bindings=runtime.bindings,
+        plan=plan,
+        decision_lookup=_RejectedOverDeniedLookup(),  # type: ignore[arg-type]
+    )
+    assert isinstance(rejected, PluginPreflightRejectedOutcome)
+    assert tuple(item.code for item in rejected.diagnostics) == (
+        "invalid_plugin_execution_decision_lookup",
+    )
+    assert resolver._active == {}
+    runtime.close()
+
+
 def test_preflight_looks_up_one_decision_per_complete_source_closure(
     tmp_path: Path,
 ) -> None:
     runtime = _runtime(tmp_path, include_source_sibling=True)
-    package = runtime.packages[0]
     binding = runtime.bindings[0]
     plan = _plan(
         binding.source_identity,
         include_source_sibling=True,
         select_source_sibling=True,
     )
-    subject = build_execution_approval_subject(
-        package,
-        package.contribution_index.items[0],
-        plan=plan,
-        binding=binding,
-    )
+    subject = _single_proposed_subject(runtime, plan)
     decision = PluginExecutionDecisionRecord(
         decision_id="decision-source-closure",
         subject_digest=subject.digest,
@@ -547,16 +627,9 @@ def test_private_finalization_validation_keeps_attempt_active_for_coordinator_ab
     tmp_path: Path,
 ) -> None:
     runtime = _runtime(tmp_path)
-    package = runtime.packages[0]
     binding = runtime.bindings[0]
     plan = _plan(binding.source_identity)
-    contribution = package.contribution_index.items[0]
-    subject = build_execution_approval_subject(
-        package,
-        contribution,
-        plan=plan,
-        binding=binding,
-    )
+    subject = _single_proposed_subject(runtime, plan)
     decision = PluginExecutionDecisionRecord(
         decision_id="decision-1",
         subject_digest=subject.digest,
@@ -622,7 +695,7 @@ def test_subject_v2_closes_over_every_contribution_from_the_same_source(
         allowed_authority_ceiling=("filesystem", "process"),
     )
 
-    subject = build_execution_approval_subject(
+    subject = plugin_selection._build_execution_approval_subject(
         package,
         contribution,
         plan=plan,
@@ -667,7 +740,7 @@ def test_subject_v2_hashes_product_effective_configuration(tmp_path: Path) -> No
     binding = runtime.bindings[0]
     contribution = package.contribution_index.items[0]
     plan = _plan(binding.source_identity)
-    baseline = build_execution_approval_subject(
+    baseline = plugin_selection._build_execution_approval_subject(
         package,
         contribution,
         plan=plan,
@@ -684,7 +757,7 @@ def test_subject_v2_hashes_product_effective_configuration(tmp_path: Path) -> No
             entries=(override_entry,)
         ),
     )
-    overridden = build_execution_approval_subject(
+    overridden = plugin_selection._build_execution_approval_subject(
         package,
         contribution,
         plan=override_plan,
@@ -713,7 +786,7 @@ def test_disjoint_source_configuration_does_not_change_another_subject(
         contribution_id: str,
         selected_plan: PluginSelectionPlanV2,
     ) -> PluginExecutionApprovalSubject:
-        return build_execution_approval_subject(
+        return plugin_selection._build_execution_approval_subject(
             package,
             contributions[contribution_id],
             plan=selected_plan,

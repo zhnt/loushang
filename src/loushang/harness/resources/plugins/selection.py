@@ -51,22 +51,6 @@ class PluginSelectionError(RuntimeError):
         self.path = path
 
 
-class _PluginExecutionApprovalPending(PluginSelectionError):
-    def __init__(
-        self,
-        message: str,
-        *,
-        subject: PluginExecutionApprovalSubject,
-        path: Path,
-    ) -> None:
-        super().__init__(
-            message,
-            code="plugin_execution_approval_required",
-            path=path,
-        )
-        self.subject = subject
-
-
 @dataclass(frozen=True, order=True, slots=True)
 class PluginContributionRef:
     plugin_id: str
@@ -1513,32 +1497,33 @@ class PluginSelectionResolver:
         decision_lookup: PluginExecutionDecisionLookupPort,
     ) -> PluginPreflightOutcome:
         try:
-            accepted = self._preflight_accepted(
+            result = self._resolve_preflight(
                 packages,
                 bindings=bindings,
                 plan=plan,
                 decision_lookup=decision_lookup,
             )
-        except _PluginExecutionApprovalPending as exc:
-            return PluginPreflightPendingApprovalOutcome(
-                subjects=(exc.subject,),
-                diagnostics=(_preflight_diagnostic(exc),),
-            )
         except PluginSelectionError as exc:
-            diagnostic = _preflight_diagnostic(exc)
-            if exc.code == "plugin_execution_denied":
-                return PluginPreflightDeniedOutcome(diagnostics=(diagnostic,))
-            return PluginPreflightRejectedOutcome(diagnostics=(diagnostic,))
-        return PluginPreflightAcceptedOutcome(accepted=accepted)
+            return PluginPreflightRejectedOutcome(
+                diagnostics=(_preflight_diagnostic(exc),)
+            )
+        if not isinstance(result, AcceptedPluginPreflight):
+            return result
+        return PluginPreflightAcceptedOutcome(accepted=result)
 
-    def _preflight_accepted(
+    def _resolve_preflight(
         self,
         packages: tuple[PublishedPluginPackage, ...],
         *,
         bindings: tuple[PluginSourceBinding, ...],
         plan: PluginSelectionPlanV2,
         decision_lookup: PluginExecutionDecisionLookupPort,
-    ) -> AcceptedPluginPreflight:
+    ) -> (
+        AcceptedPluginPreflight
+        | PluginPreflightPendingApprovalOutcome
+        | PluginPreflightDeniedOutcome
+        | PluginPreflightRejectedOutcome
+    ):
         packages_by_id = _packages_by_id(packages)
         bindings_by_id = _bindings_by_id(bindings)
         selected_ids = set(plan.selected_plugin_ids)
@@ -1631,7 +1616,14 @@ class PluginSelectionResolver:
             ),
         )
         resolved_gates: list[PluginDeclarationGate] = []
-        lookup_results: dict[str, PluginExecutionDecisionLookupResult] = {}
+        lookup_results: dict[
+            str,
+            PluginExecutionDecisionLookupResult | PluginSelectionError,
+        ] = {}
+        pending_subjects: list[PluginExecutionApprovalSubject] = []
+        pending_diagnostics: list[PluginPreflightDiagnostic] = []
+        denied_diagnostics: list[PluginPreflightDiagnostic] = []
+        rejected_diagnostics: list[PluginPreflightDiagnostic] = []
         for source_proposal in proposal.source_proposals:
             package = source_proposal.package
             disposition = source_proposal.source_disposition
@@ -1642,52 +1634,102 @@ class PluginSelectionResolver:
             lookup_result = lookup_results.get(subject.digest)
             if lookup_result is None:
                 try:
-                    lookup_result = lookup_method(subject)
-                except Exception as exc:
-                    raise PluginSelectionError(
-                        "Plugin execution decision lookup failed closed.",
+                    candidate_result = lookup_method(subject)
+                except Exception:
+                    lookup_result = PluginSelectionError(
+                        "Plugin execution decision lookup failed closed: "
+                        f"{source_proposal.key}",
                         code="invalid_plugin_execution_decision_lookup",
                         path=package.root,
-                    ) from exc
+                    )
+                else:
+                    lookup_result = candidate_result
                 if not isinstance(
                     lookup_result,
-                    PluginExecutionDecisionMissing | PluginExecutionDecisionCurrent,
+                    PluginSelectionError
+                    | PluginExecutionDecisionMissing
+                    | PluginExecutionDecisionCurrent,
                 ):
-                    raise PluginSelectionError(
-                        "Plugin execution decision lookup returned an invalid result.",
+                    lookup_result = PluginSelectionError(
+                        "Plugin execution decision lookup returned an invalid "
+                        f"result: {source_proposal.key}",
                         code="invalid_plugin_execution_decision_lookup",
                         path=package.root,
                     )
                 lookup_results[subject.digest] = lookup_result
-            if isinstance(lookup_result, PluginExecutionDecisionMissing):
-                raise _PluginExecutionApprovalPending(
-                    "Plugin execution approval is pending: "
-                    f"{source_proposal.key}",
-                    subject=subject,
-                    path=package.root,
+            if isinstance(lookup_result, PluginSelectionError):
+                rejected_diagnostics.append(
+                    _source_preflight_diagnostic(lookup_result, source_proposal)
                 )
+                continue
+            if isinstance(lookup_result, PluginExecutionDecisionMissing):
+                pending_subjects.append(subject)
+                pending_diagnostics.append(
+                    _source_preflight_diagnostic(
+                        PluginSelectionError(
+                            "Plugin execution approval is pending: "
+                            f"{source_proposal.key}",
+                            code="plugin_execution_approval_required",
+                            path=package.root,
+                        ),
+                        source_proposal,
+                    )
+                )
+                continue
             matched_decision = lookup_result.decision
             if (
                 matched_decision.subject_digest != subject.digest
                 or matched_decision.policy_revision != plan.context.policy_revision
                 or matched_decision.subject_schema_version != subject.schema_version
             ):
-                raise PluginSelectionError(
-                    "Approval owner returned a decision for a different Subject.",
-                    code="invalid_plugin_execution_decision_lookup",
-                    path=package.root,
+                rejected_diagnostics.append(
+                    _source_preflight_diagnostic(
+                        PluginSelectionError(
+                            "Approval owner returned a decision for a different "
+                            f"Subject: {source_proposal.key}",
+                            code="invalid_plugin_execution_decision_lookup",
+                            path=package.root,
+                        ),
+                        source_proposal,
+                    )
                 )
+                continue
             if matched_decision.disposition != "approved":
-                raise PluginSelectionError(
-                    f"Plugin execution was denied: {source_proposal.key}",
-                    code="plugin_execution_denied",
-                    path=package.root,
+                denied_diagnostics.append(
+                    _source_preflight_diagnostic(
+                        PluginSelectionError(
+                            f"Plugin execution was denied: {source_proposal.key}",
+                            code="plugin_execution_denied",
+                            path=package.root,
+                        ),
+                        source_proposal,
+                    )
                 )
+                continue
             resolved_gates.append(
                 PluginDeclarationExecutionPreflightGate(
                     subject=subject,
                     decision=matched_decision,
                 )
+            )
+
+        if rejected_diagnostics:
+            return PluginPreflightRejectedOutcome(
+                diagnostics=_sorted_unique_diagnostics(rejected_diagnostics)
+            )
+        if denied_diagnostics:
+            return PluginPreflightDeniedOutcome(
+                diagnostics=_sorted_unique_diagnostics(denied_diagnostics)
+            )
+        if pending_subjects:
+            return PluginPreflightPendingApprovalOutcome(
+                subjects=tuple(
+                    sorted(
+                        {item.digest: item for item in pending_subjects}.values(),
+                        key=lambda item: item.digest,
+                    )
+                ),
+                diagnostics=_sorted_unique_diagnostics(pending_diagnostics),
             )
 
         with self._gate:
@@ -2214,7 +2256,7 @@ class PluginSelectionResolver:
             self._finish_close_if_quiescent_locked(active)
 
 
-def build_execution_approval_subject(
+def _build_execution_approval_subject(
     package: PublishedPluginPackage,
     contribution: PluginContributionReservation,
     *,
@@ -2332,7 +2374,7 @@ def _build_source_proposals(
             )
         else:
             source_disposition = PluginDeclarationExecutionSubjectDisposition(
-                subject=build_execution_approval_subject(
+                subject=_build_execution_approval_subject(
                     package,
                     contribution,
                     plan=plan,
@@ -2747,6 +2789,24 @@ def _preflight_diagnostic(error: PluginSelectionError) -> PluginPreflightDiagnos
     )
 
 
+def _source_preflight_diagnostic(
+    error: PluginSelectionError,
+    proposal: PluginDeclarationSourceProposal,
+) -> PluginPreflightDiagnostic:
+    return PluginPreflightDiagnostic(
+        code=error.code,
+        message=str(error),
+        plugin_id=proposal.package.manifest.name,
+        source_descriptor_fingerprint=proposal.source_descriptor_fingerprint,
+    )
+
+
+def _sorted_unique_diagnostics(
+    diagnostics: list[PluginPreflightDiagnostic],
+) -> tuple[PluginPreflightDiagnostic, ...]:
+    return tuple(sorted(set(diagnostics)))
+
+
 def _selection_wire_object(value: object, *, name: str) -> dict[str, object]:
     if not isinstance(value, dict):
         raise PluginDeclarationCodecError(
@@ -2886,5 +2946,4 @@ __all__ = [
     "PluginSelectionPlanV2",
     "PluginSelectionResolver",
     "PluginSourceTrustSnapshotV1",
-    "build_execution_approval_subject",
 ]
