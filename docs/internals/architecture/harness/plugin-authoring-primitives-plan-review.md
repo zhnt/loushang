@@ -122,7 +122,13 @@ descriptor identity prevents a package-hash fixed point; exact v2 records,
 attempt-bound evidence, group claims, independent decision-record version and
 strict canonical document bytes now precede source work. PAP2 adds its durable
 journal inside the Approval owner rather than pretending the current Session
-grant store already satisfies Plugin decision recovery.
+grant store already satisfies Plugin decision recovery. The fourth review also
+removes package digest from package-internal Provider symbol references, makes
+the production pre-PAP2 decision lookup pending-only, freezes Product-owned
+effective configuration/trust input, and replaces the close/finalize race with
+explicit open/closing states. PAP2 must create consumption plus its use
+reservation in one Approval transaction and linearize execution start against
+aggregate close before any executable source is admitted.
 
 ### P0-03 — Stable public SDK cannot precede production combination evidence
 

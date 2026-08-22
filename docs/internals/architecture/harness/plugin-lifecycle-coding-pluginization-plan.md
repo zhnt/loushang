@@ -596,6 +596,10 @@ Scope:
 - advance `ContributionIndex` and `PluginDeclaration` to runtime-only v2 and
   add strict `PluginDeclarationDocument` envelope v1; draft v1 input fails
   closed and no compatibility parser remains beside v2;
+- advance unpublished `CapabilityProviderDeclarationPayload` and
+  `PluginSymbolReference` to v2, remove `packageDigest` from package-internal
+  symbol references, and let only the Host-resolved view attach the exact
+  published package digest;
 - replace the implicit entrypoint-only source with one strict tagged
   `PluginDeclarationSource` union;
 - define `document` as a contained immutable document locator plus exact
@@ -619,9 +623,10 @@ Scope:
   binds the accepted `PluginDeclarationSourceGroup` to its gate kind, sorted
   closure and canonical per-reservation configuration-map fingerprint; reject
   attempts to split one source descriptor across multiple groups;
-- revise `PluginDeclarationReservation` to retain source-neutral package,
-  contribution, trust, Product/scope, policy and configuration facts plus only
-  its source-group ID/fingerprint. `PluginDeclarationSourceGroup` is the sole
+- revise `PluginDeclarationReservation` to retain only package/contribution/
+  reservation identity plus its source-group ID/fingerprint; dynamic Context,
+  trust, Product/scope, policy, configuration and authority facts live once on
+  `PluginDeclarationSourceGroup`, which is also the sole
   owner of the strict gate union: `data_only` for `document`, or
   `execution_preflight` with one positive group-level
   `PluginExecutionApprovalSubject` and decision reference for the complete in-
@@ -635,6 +640,11 @@ Scope:
 - add pure-data `PluginPreflightContextV1` and `PluginInstanceRevisionRef` as
   Product-supplied identities; PLC1B validates but does not persist/invent them,
   while PLC2 later owns the same durable lifecycle without schema redefinition;
+- make `PluginSelectionPlanV2` the sole Product context, trust-policy-revision,
+  effective-configuration and allowed-authority input; preflight accepts the
+  Approval-owner read-only decision lookup port, not peer context/overlay/
+  policy arguments or a caller decision tuple. The pre-PAP2 production lookup
+  is pending-only;
 - implement the exact Source/Index/Declaration/Document/Subject/Decision/
   document-evidence/candidate fields, canonical bytes, fingerprint domains and
   diagnostics frozen by the PLC1B Contract;
@@ -655,8 +665,8 @@ Scope:
   zero times until PLC3 supplies executable evidence;
 - replace candidate `decision_id` with strict source-group/evidence provenance,
   bind evidence to `preflightUseId`/attempt-specific group ID, and define group
-  claim/in-flight fencing under `ACTIVE -> FINALIZED|ABORTED|EXPIRED` aggregate
-  terminal states;
+  claim/in-flight fencing under explicit
+  `ACTIVE_OPEN -> FINALIZED|CLOSING_ABORT|CLOSING_EXPIRE` aggregate states;
   consumed decisions remain consumed after aggregate abort and retry starts a
   fresh preflight/decision;
 - reject nullable peer fields, unknown tags, noncanonical locators, and one
@@ -669,6 +679,10 @@ Exit gate:
 
 - v1 index/IR fixtures fail with exact unsupported-version diagnostics; v2
   index/IR and document v1 round trips/fingerprints are canonical;
+- a document-backed Capability Provider payload/symbol-reference v2 contains no
+  `packageDigest`, publishes without a digest fixed point and is Host-bound to
+  the exact package digest; both unpublished v1 shapes fail their own version
+  diagnostic;
 - document v1 has only `documentVersion` and a non-empty declaration list sorted
   by `(pluginId, contributionId)`; unknown fields, wrong order, duplicates and
   closure mismatch fail closed;
@@ -680,7 +694,9 @@ Exit gate:
   preflight;
 - mixed document/in-process fixtures prove exact partitioning, zero import,
   zero executable declaration ingress, typed `execution_not_consumed`, one
-  aggregate abort and zero finalization;
+  aggregate abort and zero finalization; the accepted mixed fixture uses only a
+  private decision-lookup test double because the production pre-PAP2 lookup is
+  pending-only;
   successful mixed evaluation/join/single-finalization is a PLC3 exit gate;
 - a document batch carries verified `document_decoded` evidence without an
   execution subject/decision/receipt; isolated in-process Builder codec output
@@ -691,6 +707,9 @@ Exit gate:
 - declaration source kind remains distinct from any factory, disposer, or
   external-service execution model recorded by the contribution payload;
 - parsing, selection, and authoring remain inert; and
+- Product override/delete/missing/extra configuration, secret-reference
+  rotation/raw-secret rejection, duplicate manifest keys, unsorted Index items,
+  and typed diagnostic preservation have regression fixtures; and
 - semantic digest fixtures freeze `allow_nan=False`, `ensure_ascii=True`, sorted
   keys/no whitespace, CJK escaping, normalization-form distinction and unpaired-
   surrogate rejection; and
@@ -705,24 +724,37 @@ Required current-source migration inventory:
 - `manifest.py`: `_contribution_index()` containment checks move from
   `entrypoint_path` to the one revision-root-relative source locator codec. Its
   mutable-root `resolve(strict=True)` remains only a pre-publication diagnostic;
-  declaration bytes are read only through `VerifiedRevisionHandle.open_file()`;
+  strict duplicate-key decoding precedes Index extraction, Index order is
+  rejected rather than silently normalized, typed codec diagnostics are
+  preserved, and declaration bytes are read only through
+  `VerifiedRevisionHandle.open_file()`;
 - `selection.py`: subject and decision-record schemas advance to group-level v2;
   the decision record binds `decisionRecordVersion: 2` and
   `subjectSchemaVersion: 2`; preflight is the
   fresh proposal/pending/revalidation/accepted protocol; only SourceGroup owns
   the gate; candidate `decision_id` becomes attempt-bound evidence provenance;
-  private claim/finalize/abort/expire CAS serializes the aggregate transition;
+  the Plan contains the one Context/trust/configuration/authority authority,
+  the decision input becomes an Approval-owner lookup port, and private
+  claim/settle/finalize/close CAS serializes explicit open/closing/terminal
+  transitions;
   old public subject/finalize/rollback exports disappear;
 - `plugin_authoring/coordinator.py`: the only terminal-handle consumer, document
   group claimant, Host evidence/Batch constructor and finalization caller;
 - `plugin_authoring/reservations.py` and `builder.py`: retained views/builders
   bind exactly one source group and reject cross-group or overlapping input;
-- `plugin_authoring/capability_provider.py`: factory/disposer execution model
-  becomes `PluginContributionExecutionModel`, remains payload runtime identity,
-  and no longer exact-matches declaration source kind; and
-- the Plugin public constant/export freeze, declaration/index v1 fixtures and
-  execution-subject v1 fixtures move explicitly to v2 or unsupported-version
-  expectations. No v1 decision digest is accepted by the v2 group subject.
+- `plugin_authoring/capability_provider.py`: payload and symbol reference advance
+  to v2, package digest leaves package bytes, factory/disposer execution model
+  becomes `PluginContributionExecutionModel`, and the Host validates both refs
+  against Candidate package provenance rather than declaration source kind;
+- exact finite callers/fixtures in `plugin_authoring/builder.py`,
+  `plugin_authoring/reservations.py`, `resources/plugins/__init__.py`,
+  `tests/harness/conftest.py`, manifest/selection/authority/builder/provider
+  tests, and the architecture export freeze move explicitly to v2 or the
+  matching unsupported-version expectation. No v1 decision digest is accepted
+  by the v2 group subject; and
+- architecture inventories include `plugin_authoring` raw JSON/read sinks,
+  freeze the sole document `open_file()` callpoint, and use synthetic peer-route
+  tests for a second decoder, alias, Subject builder, or terminal caller.
 
 #### PLC1B-2: Resource Item Declaration
 

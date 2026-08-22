@@ -25,7 +25,7 @@ order:
 2. move production `coding.base` after `coding.lsp` and before `coding.arch`,
    while keeping the stable SDK gated on LSP, Base and Arch evidence.
 
-The initial review found nine high-priority risks; three later PLC1B review
+The initial review found nine high-priority risks; four later PLC1B review
 rounds found additional declaration, evidence and lifecycle freeze gaps. The
 plan and normative PLC1B Contract include their required corrections. None
 requires a second Graph, Resource runtime, Profile resolver, Plugin-owned
@@ -129,6 +129,44 @@ contract now resolves the shared substance:
 This is the third remediation, not approval. A fresh independent review must
 confirm the exact PLC1B Contract and cross-document corrections before PLC1B-1
 source work begins.
+
+## PLC1B Fourth Documentation Remediation
+
+Three new independent read-only reviews of immutable baseline `1dde5706` all
+returned `NOT READY`. One found a P0 package-digest fixed point in the existing
+Capability Provider payload; the others found no P0 because PLC1B remains
+inert, but all agreed that the P1 contract gaps would produce incompatible or
+unsafe implementations. This remediation incorporates their combined blockers:
+
+1. package-internal `CapabilityProviderDeclarationPayload` and
+   `PluginSymbolReference` advance to v2 and contain no package digest; only a
+   Host-resolved view binds the published package digest, with a real document-
+   backed Provider fixture proving no fixed point;
+2. Index, Declaration, Subject, Evidence and Candidate now have complete
+   domain-wrapped fingerprint inputs, strict wire types, diagnostic precedence,
+   and golden canonical-byte/digest requirements; Candidate inputs are
+   reconstructable from its own owned fields;
+3. `PluginSelectionPlanV2` is the single Product context/trust/configuration/
+   authority authority. Product owns overlay/delete/secret normalization and
+   PLC1B receives an exact resolved map with versioned non-secret secret refs;
+4. preflight reads decisions only through an Approval-owner lookup port. The
+   production pre-PAP2 adapter is pending-only; a private test double may prove
+   mixed-source abort routing but cannot consume, import, or create evidence;
+5. the aggregate now uses `ACTIVE_OPEN`, explicit un-cancellable/help-
+   completable closing states, atomic claim/in-flight updates, deadline-aware
+   finalize CAS, CAS-loser candidate destruction, bounded tombstones and exact
+   race regressions;
+6. the canonical manifest boundary detects duplicate keys, rejects unsorted
+   wire input and preserves typed codec diagnostics; architecture inventories
+   expand through `plugin_authoring` and freeze the sole verified document-read
+   callpoint; and
+7. PAP2/PAP3 must transactionally create consumption plus its use reservation,
+   linearize execution start against close without callbacks under the
+   aggregate lock, and persist import-realm/host-boot identity for recovery.
+
+This fourth remediation still does not self-approve PLC1B-1. Source migration
+may begin only after a narrow independent freeze review reports no P0/P1 and a
+tracking issue is attached.
 
 ## Review Scope
 

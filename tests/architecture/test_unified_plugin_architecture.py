@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from collections.abc import Mapping
 from functools import cache
+from hashlib import sha256
 from pathlib import Path
 from typing import get_args
 
@@ -35,6 +36,7 @@ EXPECTED_PLUGIN_JSON_STATIC_SITES = {
 PLUGIN_PACKAGE_BOUNDARY_ROOTS = (
     Path("src/loushang/harness/resources/plugins"),
     Path("src/loushang/harness/resources/packages"),
+    Path("src/loushang/harness/plugin_authoring"),
 )
 EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
     (
@@ -92,6 +94,13 @@ def _contract_text_fields(document: str, *, heading: str) -> set[str]:
     body_parts = fence_parts[1].split("```", maxsplit=1)
     assert len(body_parts) == 2, f"unterminated text record after: {heading}"
     return {line.strip() for line in body_parts[0].splitlines() if line.strip()}
+
+
+def _contract_json_blocks(document: str) -> tuple[str, ...]:
+    return tuple(
+        part.split("```", maxsplit=1)[0].strip()
+        for part in document.split("```json")[1:]
+    )
 
 
 EXPECTED_GRAPH_PRIVATE_MUTATION_SITES = {
@@ -1083,7 +1092,9 @@ def test_plc1b_declaration_plan_and_pap_crosswalk_are_explicit() -> None:
     assert "candidate `decision_id` with strict source-group/evidence provenance" in (
         lifecycle_plan
     )
-    assert "`ACTIVE -> FINALIZED|ABORTED|EXPIRED`" in lifecycle_plan
+    assert "`ACTIVE_OPEN -> FINALIZED|CLOSING_ABORT|CLOSING_EXPIRE`" in (
+        lifecycle_plan
+    )
     assert "Transitive cycles are deferred to the existing Graph\n  Planner" in (
         lifecycle_plan
     )
@@ -1136,6 +1147,11 @@ def test_plc1b_contract_freezes_no_self_reference_and_exact_v2_records() -> None
     assert "prevents a declaration document from needing\nto contain a hash" in contract
     assert "appear inside package bytes without a self-referential" in architecture
     assert "verified package revision. It is the sole source-group key" not in architecture
+    assert "`PluginSymbolReference` v2" in contract
+    assert "Neither\nthe payload nor either symbol reference contains `packageDigest`" in (
+        contract
+    )
+    assert "only in resolved views" in AUTHORING_PLAN_PATH.read_text(encoding="utf-8")
 
     for exact_wire_key in (
         "`declarationSource`",
@@ -1154,6 +1170,7 @@ def test_plc1b_contract_freezes_no_self_reference_and_exact_v2_records() -> None
     )
     assert subject_fields == {
         "ambientHostAuthority",
+        "allowedAuthorityCeiling",
         "configurationMapFingerprint",
         "dependencyLockDigest",
         "entrypoint",
@@ -1203,9 +1220,12 @@ def test_plc1b_contract_freezes_no_self_reference_and_exact_v2_records() -> None
 
     for domain in (
         "loushang.plugin-declaration-source-descriptor/v1",
+        "loushang.plugin-contribution-index/v2",
         "loushang.plugin-contribution-reservation/v2",
         "loushang.plugin-reservation-closure/v1",
         "loushang.plugin-group-configuration/v1",
+        "loushang.plugin-declaration/v2",
+        "loushang.plugin-execution-approval-subject/v2",
         "loushang.plugin-declaration-source-group/v1",
         "loushang.plugin-declaration-source-group-use/v1",
         "loushang.plugin-declaration-set/v2",
@@ -1213,6 +1233,18 @@ def test_plc1b_contract_freezes_no_self_reference_and_exact_v2_records() -> None
         "loushang.plugin-contribution-candidate/v2",
     ):
         assert domain in contract
+    golden_digests = (
+        "aec4eb58e83e5b4ee53392eee1881c358f75ca6c3d202c56c348a657edac6595",
+        "2fe5d856380b78228e5d3baeb5227598e19268f403c4765e12e99e2567381217",
+        "abc18ae8cf63b0a828accb4638fa389229c0f352db09c0238d0f815771d731bf",
+        "bab38106e94908a0e7385da2c5576aa3ce0898348a0521aec1c83d3d8732fb3c",
+    )
+    for golden_digest in golden_digests:
+        assert golden_digest in contract
+    assert tuple(
+        sha256(block.encode("utf-8")).hexdigest()
+        for block in _contract_json_blocks(contract)
+    ) == golden_digests
 
 
 def test_plc1b_contract_freezes_attempt_claim_and_forbidden_peer_semantics() -> None:
@@ -1222,10 +1254,20 @@ def test_plc1b_contract_freezes_attempt_claim_and_forbidden_peer_semantics() -> 
     assert "preflightUseId` plus `sourceGroupFingerprint" in contract
     assert "plugin_declaration_evidence_attempt_mismatch" in contract
     assert "PENDING -> CLAIMED -> COMPLETED | FAILED" in contract
-    assert "CAS open_for_claims=false" in contract
+    assert "ACTIVE_OPEN -> CLOSING_ABORT -> ABORTED" in contract
+    assert "CAS ACTIVE_OPEN -> CLOSING_ABORT | CLOSING_EXPIRE" in contract
     assert "in_flight == 0" in contract
+    assert "finalize CAS loser destroys its private staged candidates" in contract
+    assert "help-completable and shielded from caller cancellation" in contract
     assert "Any token from a prior host epoch returns\n`preflight_expired`" in contract
     assert "ABORTED -> ACTIVE" not in contract
+    assert "`PluginSelectionPlanV2` is the sole Product authority" in contract
+    assert "`PluginEffectiveConfigurationSetV1`" in contract
+    assert "`PluginExecutionDecisionLookupPort`" in contract
+    assert "`PendingOnlyPluginExecutionDecisionLookup`" in contract
+    assert "callers cannot supply a tuple or map of\ndecisions" in contract
+    assert "strict duplicate-key decoding precedes Index extraction" in lifecycle_plan
+    assert "typed codec diagnostics are\n  preserved" in lifecycle_plan
     assert "accepts no\nBuilder output or external executable declaration" in contract
     assert "zero executable declaration ingress" in lifecycle_plan
     assert "delete/private-scope the top-level subject builder" in lifecycle_plan
@@ -1237,12 +1279,14 @@ def test_plc1b_contract_freezes_attempt_claim_and_forbidden_peer_semantics() -> 
     )
     assert diagnostics == {
         "unsupported_plugin_contribution_index_version",
+        "unsupported_capability_provider_declaration_payload_version",
         "unsupported_plugin_declaration_document_version",
         "unsupported_plugin_declaration_evidence_version",
         "unsupported_plugin_declaration_ir_version",
         "unsupported_plugin_declaration_source_version",
         "unsupported_plugin_execution_approval_subject_version",
         "unsupported_plugin_execution_decision_record_version",
+        "unsupported_plugin_symbol_reference_version",
     }
 
 
@@ -1280,9 +1324,9 @@ def test_executable_declaration_is_gated_by_inert_preflight() -> None:
     assert "unsupported_plugin_execution_approval_subject_version" in architecture
     assert "`subjectSchemaVersion: 2`" in architecture
     assert "unsupported_plugin_execution_decision_record_version" in architecture
-    assert "ACTIVE -> FINALIZED" in architecture
-    assert "ACTIVE -> ABORTED" in architecture
-    assert "ACTIVE -> EXPIRED" in architecture
+    assert "ACTIVE_OPEN -> FINALIZED" in architecture
+    assert "ACTIVE_OPEN -> CLOSING_ABORT -> ABORTED" in architecture
+    assert "ACTIVE_OPEN -> CLOSING_EXPIRE -> EXPIRED" in architecture
     assert "calls `finalize()` zero times" in architecture
     assert "Definition returns the analogous complete frozen declaration" in architecture
     assert "sequence for its exact group" in architecture
@@ -1457,6 +1501,11 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
             "import json as codec\n"
             "payload = codec.loads(path.read_text())\n"
         ),
+        Path("src/loushang/harness/plugin_authoring/second_decoder.py"): (
+            "import json\n"
+            "def decode(path):\n"
+            "    return json.loads(path.read_bytes())\n"
+        ),
     }
     assert _plugin_package_boundary_sink_sites(synthetic) == {
         (
@@ -1478,6 +1527,10 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
         (
             Path("src/loushang/harness/resources/packages/module_parse.py"),
             "<module>",
+        ),
+        (
+            Path("src/loushang/harness/plugin_authoring/second_decoder.py"),
+            "decode",
         ),
     }
 

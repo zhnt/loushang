@@ -207,10 +207,13 @@ plus `preflightUseId`. The exact records and domains are frozen by the
 Implementations and diagnostics must not shorten any of these or
 `package_source_identity` to an ambiguous `source_identity`.
 
-Every locator carries its logical relative path, content identity, and
-environment/source authority. Resolution normalizes paths after symbolic-link
-resolution and proves containment within the immutable package revision.
-Component Hosts open only the verified revision. They do not resolve the same
+A package-internal locator carries only its canonical logical relative path and,
+where applicable, a symbol/execution-model tag. Content identity and
+environment/source authority belong to the Host-resolved locator view that
+combines the locator with `PublishedPluginPackage`/`VerifiedRevisionHandle`;
+they never appear in package bytes. Resolution normalizes paths after symbolic-
+link resolution and proves containment within the immutable package revision.
+Component Hosts open only that verified revision. They do not resolve the same
 mutable source path again.
 
 The canonical parsing boundary is:
@@ -262,10 +265,14 @@ Executable declaration has a mandatory pure preflight. The narrow
 `PluginSelectionResolver` exposes one revalidating preflight operation plus
 Coordinator-only terminal transitions:
 
-1. Every call to
-   `preflight(packages, plan, overlays, policy_snapshot, decisions)` rebuilds a
-   `PluginPreflightProposal` from immutable package handles and current inert
-   policy/trust facts. If any contribution from a declaration source is
+1. Every call to `preflight(packages, bindings, plan, decision_lookup)` rebuilds
+   a `PluginPreflightProposal` from immutable package handles and one
+   authoritative `PluginSelectionPlanV2`. The Plan owns the exact
+   Product/scope/policy Context, trust-policy-revision snapshots, allowed
+   authority ceiling and already-resolved effective configuration set; there
+   are no peer overlay/policy/context arguments. `decision_lookup` is the
+   Approval owner's read-only port, never a caller-supplied decision tuple. If
+   any contribution from a declaration source is
    selected, the proposal closes over every index entry sharing that exact
    package revision and `sourceDescriptorFingerprint`. A
    `PluginDeclarationSourceProposal` contains the complete sorted proposed
@@ -276,8 +283,11 @@ Coordinator-only terminal transitions:
    `pending_approval` with only the canonical proposed subjects. The caller asks
    the Approval owner to record decisions and then calls `preflight()` again;
    there is no mutable proposal to resume. The new call recomputes and rechecks
-   package revision, dependency lock, trust, policy, scope, configuration and
-   decisions. `denied` and `rejected` likewise carry diagnostics only;
+   package revision, dependency lock, trust revision, policy, scope,
+   configuration, authority ceiling and decisions. Before PAP2 the production
+   lookup is pending-only, so executable acceptance exists only in a private
+   PLC1B routing fixture. `denied` and `rejected` likewise carry diagnostics
+   only;
 3. only when every selected source is data-only or has a matching current
    positive decision does `accepted` atomically create one active token with a
    new `preflightUseId`, host epoch and monotonic deadline,
@@ -442,29 +452,32 @@ batches can become inert candidates in PLC1B.
 An accepted preflight token has exactly one aggregate state machine:
 
 ```text
-ACTIVE -> FINALIZED
-ACTIVE -> ABORTED
-ACTIVE -> EXPIRED
+ACTIVE_OPEN -> FINALIZED
+ACTIVE_OPEN -> CLOSING_ABORT -> ABORTED
+ACTIVE_OPEN -> CLOSING_EXPIRE -> EXPIRED
 ```
 
 The Coordinator exclusively owns terminal use of the token through the
 Resolver's private CAS port. Each group is `PENDING -> CLAIMED -> COMPLETED |
-FAILED`; a claim increments the aggregate in-flight count. Finalize requires
-every group completed and zero in-flight work. Abort/expiry first close new
-claims and decision consumption, cancel or settle claimed work, and reach the
-terminal only at zero in-flight work. Successful full-set validation and
-candidate construction atomically move `ACTIVE` to `FINALIZED`. Any decode/
-evaluation failure, missing evidence, cancellation or finalize validation error
-moves it to `ABORTED`; timeout moves it to `EXPIRED`. A concurrent or repeated
-finalize/abort returns the deterministic
+FAILED`; the state check, group claim and in-flight increment are one atomic
+step. Finalize privately stages candidates and may CAS only from `ACTIVE_OPEN`,
+before the monotonic deadline, with every group completed and zero in-flight
+work; candidates escape only after that CAS wins. Abort/expiry first CAS into
+one explicit closing state, close new claims and decision consumption, cancel
+or settle claimed work, and reach the terminal only at zero in-flight work. The
+first closing reason wins, close is help-completable and shielded from caller
+cancellation, and a finalize CAS loser destroys its staged candidates. Any
+decode/evaluation failure, missing evidence, cancellation or finalize
+validation error requests abort; timeout requests expiry. A concurrent or
+repeated finalize/abort returns the deterministic
 typed terminal error `preflight_already_finalized`,
 `preflight_already_aborted`, or `preflight_expired` and never replays
 candidates. An execution decision consumed before a later group failure remains
 consumed for audit and cannot be reused; retry starts from a fresh preflight and
 requires a fresh current decision. Active tokens are process/instance-revision
 bound and non-resumable. A monotonic deadline governs the current host epoch;
-any prior-host-epoch token fails as `preflight_expired`. PLC1B retains process-
-local terminal tombstones and adds no durable aggregate store. The target
+any prior-host-epoch token fails as `preflight_expired`. PLC1B retains bounded
+process-local terminal tombstones and adds no durable aggregate store. The target
 replaces the current public-looking `rollback()` choice with this one
 Coordinator-owned abort transition.
 
@@ -516,6 +529,13 @@ not a security sandbox. The returned IR contains only strict serializable data
 and verified locator/factory references; it must exactly fulfill the group's
 sorted reservation closure. A callable captured in the IR is a schema
 violation.
+
+Package-internal Capability Provider payload/symbol-reference v2 stores only a
+contained path, symbol, reference version and contributed-runtime execution
+model; it never stores `packageDigest`. The Component Host later resolves that
+reference against the Candidate's exact published package digest. The package-
+internal payload and the Host-resolved symbol binding are different records,
+not source-kind-specific aliases.
 
 The declaration IR is a mutually exclusive tagged union:
 
@@ -752,8 +772,11 @@ The IR is frozen before the public SDK:
 
 There is no new Plugin Profile resolver. Product Runtime Plans and OEM Profiles
 expand Plugin Composition Sets and supply Plugin-selection/configuration
-overlays. A narrow `PluginSelectionResolver` owns only the preflight/finalize
-split above. Its final output says which Plugins Product policy selected and
+overlays to the Product configuration owner. That owner resolves defaults,
+override/delete semantics and secret-reference normalization into the exact
+`PluginEffectiveConfigurationSetV1` carried by `PluginSelectionPlanV2`; the
+Resolver does not merge overlays. A narrow `PluginSelectionResolver` owns only
+the preflight/finalize split above. Its final output says which Plugins Product policy selected and
 which contribution candidates they request. It never labels a contribution
 `admitted`, chooses a live Provider, or resolves an owner-specific conflict.
 
