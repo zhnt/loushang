@@ -41,6 +41,22 @@ class PluginSelectionError(RuntimeError):
         self.path = path
 
 
+class _PluginExecutionApprovalPending(PluginSelectionError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        subject: PluginExecutionApprovalSubject,
+        path: Path,
+    ) -> None:
+        super().__init__(
+            message,
+            code="plugin_execution_approval_required",
+            path=path,
+        )
+        self.subject = subject
+
+
 @dataclass(frozen=True, order=True, slots=True)
 class PluginContributionRef:
     plugin_id: str
@@ -694,6 +710,88 @@ class PluginPreflight:
     _token: str = field(repr=False, compare=False)
 
 
+@dataclass(frozen=True, order=True, slots=True)
+class PluginPreflightDiagnostic:
+    code: str
+    message: str
+    plugin_id: str = ""
+    source_descriptor_fingerprint: str = ""
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.code, name="Plugin preflight diagnostic code")
+        _require_nonempty(self.message, name="Plugin preflight diagnostic message")
+        if self.plugin_id:
+            _require_nonempty(self.plugin_id, name="Plugin id")
+        if self.source_descriptor_fingerprint:
+            _require_sha256(
+                self.source_descriptor_fingerprint,
+                name="source descriptor fingerprint",
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class PluginPreflightAcceptedOutcome:
+    accepted: PluginPreflight
+    disposition: Literal["accepted"] = "accepted"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.accepted, PluginPreflight):
+            raise TypeError("Outcome requires an accepted preflight")
+        if self.disposition != "accepted":
+            raise ValueError("Unsupported accepted preflight disposition")
+
+
+@dataclass(frozen=True, slots=True)
+class PluginPreflightPendingApprovalOutcome:
+    subjects: tuple[PluginExecutionApprovalSubject, ...]
+    diagnostics: tuple[PluginPreflightDiagnostic, ...]
+    disposition: Literal["pending_approval"] = "pending_approval"
+
+    def __post_init__(self) -> None:
+        if not self.subjects or any(
+            not isinstance(item, PluginExecutionApprovalSubject)
+            for item in self.subjects
+        ):
+            raise ValueError("Pending approval requires proposed subjects")
+        if self.subjects != tuple(sorted(self.subjects, key=lambda item: item.digest)):
+            raise ValueError("Pending approval subjects must be strictly sorted")
+        if len(self.subjects) != len({item.digest for item in self.subjects}):
+            raise ValueError("Pending approval subjects must be unique")
+        _validate_preflight_diagnostics(self.diagnostics, required=False)
+        if self.disposition != "pending_approval":
+            raise ValueError("Unsupported pending approval disposition")
+
+
+@dataclass(frozen=True, slots=True)
+class PluginPreflightDeniedOutcome:
+    diagnostics: tuple[PluginPreflightDiagnostic, ...]
+    disposition: Literal["denied"] = "denied"
+
+    def __post_init__(self) -> None:
+        _validate_preflight_diagnostics(self.diagnostics, required=True)
+        if self.disposition != "denied":
+            raise ValueError("Unsupported denied preflight disposition")
+
+
+@dataclass(frozen=True, slots=True)
+class PluginPreflightRejectedOutcome:
+    diagnostics: tuple[PluginPreflightDiagnostic, ...]
+    disposition: Literal["rejected"] = "rejected"
+
+    def __post_init__(self) -> None:
+        _validate_preflight_diagnostics(self.diagnostics, required=True)
+        if self.disposition != "rejected":
+            raise ValueError("Unsupported rejected preflight disposition")
+
+
+PluginPreflightOutcome = (
+    PluginPreflightAcceptedOutcome
+    | PluginPreflightPendingApprovalOutcome
+    | PluginPreflightDeniedOutcome
+    | PluginPreflightRejectedOutcome
+)
+
+
 @dataclass(frozen=True, slots=True)
 class PluginContributionCandidate:
     package: PublishedPluginPackage = field(repr=False)
@@ -716,6 +814,33 @@ class PluginSelectionResolver:
         self._active: dict[str, PluginPreflight] = {}
 
     def preflight(
+        self,
+        packages: tuple[PublishedPluginPackage, ...],
+        *,
+        bindings: tuple[PluginSourceBinding, ...],
+        plan: PluginSelectionPlanV2,
+        decision_lookup: PluginExecutionDecisionLookupPort,
+    ) -> PluginPreflightOutcome:
+        try:
+            accepted = self._preflight_accepted(
+                packages,
+                bindings=bindings,
+                plan=plan,
+                decision_lookup=decision_lookup,
+            )
+        except _PluginExecutionApprovalPending as exc:
+            return PluginPreflightPendingApprovalOutcome(
+                subjects=(exc.subject,),
+                diagnostics=(_preflight_diagnostic(exc),),
+            )
+        except PluginSelectionError as exc:
+            diagnostic = _preflight_diagnostic(exc)
+            if exc.code == "plugin_execution_denied":
+                return PluginPreflightDeniedOutcome(diagnostics=(diagnostic,))
+            return PluginPreflightRejectedOutcome(diagnostics=(diagnostic,))
+        return PluginPreflightAcceptedOutcome(accepted=accepted)
+
+    def _preflight_accepted(
         self,
         packages: tuple[PublishedPluginPackage, ...],
         *,
@@ -850,9 +975,9 @@ class PluginSelectionResolver:
                     )
                 lookup_results[subject.digest] = lookup_result
             if isinstance(lookup_result, PluginExecutionDecisionMissing):
-                raise PluginSelectionError(
+                raise _PluginExecutionApprovalPending(
                     f"Plugin execution approval is pending: {ref}",
-                    code="plugin_execution_approval_required",
+                    subject=subject,
                     path=package.root,
                 )
             matched_decision = lookup_result.decision
@@ -1328,6 +1453,28 @@ def _validate_effective_configuration_value(value: object) -> None:
         ) from exc
 
 
+def _validate_preflight_diagnostics(
+    diagnostics: tuple[PluginPreflightDiagnostic, ...],
+    *,
+    required: bool,
+) -> None:
+    if required and not diagnostics:
+        raise ValueError("Preflight outcome requires diagnostics")
+    if any(not isinstance(item, PluginPreflightDiagnostic) for item in diagnostics):
+        raise TypeError("Preflight diagnostics have invalid type")
+    if diagnostics != tuple(sorted(diagnostics)):
+        raise ValueError("Preflight diagnostics must be strictly sorted")
+    if len(diagnostics) != len(set(diagnostics)):
+        raise ValueError("Preflight diagnostics must be unique")
+
+
+def _preflight_diagnostic(error: PluginSelectionError) -> PluginPreflightDiagnostic:
+    return PluginPreflightDiagnostic(
+        code=error.code,
+        message=str(error),
+    )
+
+
 def _selection_wire_object(value: object, *, name: str) -> dict[str, object]:
     if not isinstance(value, dict):
         raise PluginDeclarationCodecError(
@@ -1438,7 +1585,13 @@ __all__ = [
     "PluginExecutionDecisionRecord",
     "PluginInstanceRevisionRef",
     "PluginPreflight",
+    "PluginPreflightAcceptedOutcome",
     "PluginPreflightContextV1",
+    "PluginPreflightDeniedOutcome",
+    "PluginPreflightDiagnostic",
+    "PluginPreflightOutcome",
+    "PluginPreflightPendingApprovalOutcome",
+    "PluginPreflightRejectedOutcome",
     "PluginSelection",
     "PluginSelectionError",
     "PluginSelectionPlanV2",

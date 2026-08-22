@@ -1747,9 +1747,8 @@ def test_plc1b_contract_freezes_attempt_claim_and_forbidden_peer_semantics() -> 
 
 
 def test_plugin_preflight_reads_decisions_only_through_the_approval_owner_port() -> None:
-    parameters = inspect.signature(
-        public_plugins.PluginSelectionResolver.preflight
-    ).parameters
+    signature = inspect.signature(public_plugins.PluginSelectionResolver.preflight)
+    parameters = signature.parameters
 
     assert tuple(parameters) == (
         "self",
@@ -1759,6 +1758,7 @@ def test_plugin_preflight_reads_decisions_only_through_the_approval_owner_port()
         "decision_lookup",
     )
     assert "decisions" not in parameters
+    assert signature.return_annotation == "PluginPreflightOutcome"
     assert hasattr(
         public_plugins.PendingOnlyPluginExecutionDecisionLookup,
         "lookup_execution_decision",
@@ -1767,6 +1767,22 @@ def test_plugin_preflight_reads_decisions_only_through_the_approval_owner_port()
         public_plugins.PendingOnlyPluginExecutionDecisionLookup(),
         "record_decision",
     )
+    selection_tree = ast.parse(
+        Path(
+            "src/loushang/harness/resources/plugins/selection.py"
+        ).read_text(encoding="utf-8")
+    )
+    resolver_class = next(
+        node
+        for node in selection_tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "PluginSelectionResolver"
+    )
+    preflight_method = next(
+        node
+        for node in resolver_class.body
+        if isinstance(node, ast.FunctionDef) and node.name == "preflight"
+    )
+    assert not any(isinstance(node, ast.Raise) for node in ast.walk(preflight_method))
 
 
 def test_executable_declaration_is_gated_by_inert_preflight() -> None:

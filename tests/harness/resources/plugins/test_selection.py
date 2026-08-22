@@ -34,7 +34,13 @@ from loushang.harness.resources.plugins.selection import (
     PluginExecutionDecisionMissing,
     PluginExecutionDecisionRecord,
     PluginInstanceRevisionRef,
+    PluginPreflight,
+    PluginPreflightAcceptedOutcome,
     PluginPreflightContextV1,
+    PluginPreflightDeniedOutcome,
+    PluginPreflightOutcome,
+    PluginPreflightPendingApprovalOutcome,
+    PluginPreflightRejectedOutcome,
     PluginSelectionError,
     PluginSelectionPlanV2,
     PluginSelectionResolver,
@@ -60,6 +66,11 @@ class _DecisionLookup:
         if decision is None:
             return PluginExecutionDecisionMissing()
         return PluginExecutionDecisionCurrent(decision=decision)
+
+
+def _accepted(outcome: PluginPreflightOutcome) -> PluginPreflight:
+    assert isinstance(outcome, PluginPreflightAcceptedOutcome)
+    return outcome.accepted
 
 
 def test_preflight_and_finalize_are_inert_and_reservations_are_one_use(
@@ -94,11 +105,13 @@ def test_preflight_and_finalize_are_inert_and_reservations_are_one_use(
     )
     resolver = PluginSelectionResolver()
 
-    preflight = resolver.preflight(
-        runtime.packages,
-        bindings=runtime.bindings,
-        plan=plan,
-        decision_lookup=_DecisionLookup(decision),
+    preflight = _accepted(
+        resolver.preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=plan,
+            decision_lookup=_DecisionLookup(decision),
+        )
     )
     declaration = PluginDeclaration(
         plugin_id="review-pack",
@@ -140,11 +153,13 @@ def test_preflight_and_finalize_are_inert_and_reservations_are_one_use(
         resolver.finalize(preflight, (declaration,))
     assert caught.value.code == "plugin_preflight_consumed"
 
-    rolled_back = resolver.preflight(
-        runtime.packages,
-        bindings=runtime.bindings,
-        plan=plan,
-        decision_lookup=_DecisionLookup(decision),
+    rolled_back = _accepted(
+        resolver.preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=plan,
+            decision_lookup=_DecisionLookup(decision),
+        )
     )
     resolver.rollback(rolled_back)
     with pytest.raises(PluginSelectionError) as caught:
@@ -160,15 +175,15 @@ def test_preflight_rejects_disabled_plugin_without_importing_code(
     binding = runtime.bindings[0]
     resolver = PluginSelectionResolver()
 
-    with pytest.raises(PluginSelectionError) as caught:
-        resolver.preflight(
-            runtime.packages,
-            bindings=runtime.bindings,
-            plan=_plan(binding.source_identity),
-            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
-        )
+    outcome = resolver.preflight(
+        runtime.packages,
+        bindings=runtime.bindings,
+        plan=_plan(binding.source_identity),
+        decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+    )
 
-    assert caught.value.code == "selected_plugin_disabled"
+    assert isinstance(outcome, PluginPreflightRejectedOutcome)
+    assert outcome.diagnostics[0].code == "selected_plugin_disabled"
     assert (runtime.packages[0].root / "imported.txt").exists() is False
     runtime.close()
 
@@ -200,41 +215,41 @@ def test_preflight_requires_exact_approval_subject_and_binding(
         disposition="denied",
     )
 
-    with pytest.raises(PluginSelectionError) as caught:
-        PluginSelectionResolver().preflight(
-            runtime.packages,
-            bindings=runtime.bindings,
-            plan=plan,
-            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
-        )
-    assert caught.value.code == "plugin_execution_approval_required"
+    outcome = PluginSelectionResolver().preflight(
+        runtime.packages,
+        bindings=runtime.bindings,
+        plan=plan,
+        decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+    )
+    assert isinstance(outcome, PluginPreflightPendingApprovalOutcome)
+    assert outcome.subjects == (subject,)
 
-    with pytest.raises(PluginSelectionError) as caught:
-        PluginSelectionResolver().preflight(
-            runtime.packages,
-            bindings=runtime.bindings,
-            plan=plan,
-            decision_lookup=_DecisionLookup(stale_decision),
-        )
-    assert caught.value.code == "invalid_plugin_execution_decision_lookup"
+    outcome = PluginSelectionResolver().preflight(
+        runtime.packages,
+        bindings=runtime.bindings,
+        plan=plan,
+        decision_lookup=_DecisionLookup(stale_decision),
+    )
+    assert isinstance(outcome, PluginPreflightRejectedOutcome)
+    assert outcome.diagnostics[0].code == "invalid_plugin_execution_decision_lookup"
 
-    with pytest.raises(PluginSelectionError) as caught:
-        PluginSelectionResolver().preflight(
-            runtime.packages,
-            bindings=runtime.bindings,
-            plan=plan,
-            decision_lookup=_DecisionLookup(denied_decision),
-        )
-    assert caught.value.code == "plugin_execution_denied"
+    outcome = PluginSelectionResolver().preflight(
+        runtime.packages,
+        bindings=runtime.bindings,
+        plan=plan,
+        decision_lookup=_DecisionLookup(denied_decision),
+    )
+    assert isinstance(outcome, PluginPreflightDeniedOutcome)
+    assert outcome.diagnostics[0].code == "plugin_execution_denied"
 
-    with pytest.raises(PluginSelectionError) as caught:
-        PluginSelectionResolver().preflight(
-            runtime.packages,
-            bindings=(),
-            plan=plan,
-            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
-        )
-    assert caught.value.code == "plugin_selection_package_mismatch"
+    outcome = PluginSelectionResolver().preflight(
+        runtime.packages,
+        bindings=(),
+        plan=plan,
+        decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+    )
+    assert isinstance(outcome, PluginPreflightRejectedOutcome)
+    assert outcome.diagnostics[0].code == "plugin_selection_package_mismatch"
     assert (package.root / "imported.txt").exists() is False
     runtime.close()
 
@@ -265,11 +280,13 @@ def test_preflight_looks_up_one_decision_per_complete_source_closure(
     lookup = _DecisionLookup(decision)
     resolver = PluginSelectionResolver()
 
-    preflight = resolver.preflight(
-        runtime.packages,
-        bindings=runtime.bindings,
-        plan=plan,
-        decision_lookup=lookup,
+    preflight = _accepted(
+        resolver.preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=plan,
+            decision_lookup=lookup,
+        )
     )
 
     assert lookup.subject_digests == [subject.digest]
@@ -289,15 +306,15 @@ def test_preflight_rejects_invalid_lookup_result(tmp_path: Path) -> None:
     runtime = _runtime(tmp_path)
     binding = runtime.bindings[0]
 
-    with pytest.raises(PluginSelectionError) as caught:
-        PluginSelectionResolver().preflight(
-            runtime.packages,
-            bindings=runtime.bindings,
-            plan=_plan(binding.source_identity),
-            decision_lookup=_InvalidLookup(),  # type: ignore[arg-type]
-        )
+    outcome = PluginSelectionResolver().preflight(
+        runtime.packages,
+        bindings=runtime.bindings,
+        plan=_plan(binding.source_identity),
+        decision_lookup=_InvalidLookup(),  # type: ignore[arg-type]
+    )
 
-    assert caught.value.code == "invalid_plugin_execution_decision_lookup"
+    assert isinstance(outcome, PluginPreflightRejectedOutcome)
+    assert outcome.diagnostics[0].code == "invalid_plugin_execution_decision_lookup"
     runtime.close()
 
 
@@ -322,11 +339,13 @@ def test_finalize_fails_closed_on_missing_or_changed_declaration(
         disposition="approved",
     )
     resolver = PluginSelectionResolver()
-    preflight = resolver.preflight(
-        runtime.packages,
-        bindings=runtime.bindings,
-        plan=plan,
-        decision_lookup=_DecisionLookup(decision),
+    preflight = _accepted(
+        resolver.preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=plan,
+            decision_lookup=_DecisionLookup(decision),
+        )
     )
 
     with pytest.raises(PluginSelectionError) as caught:
@@ -515,15 +534,15 @@ def test_preflight_rejects_extra_effective_configuration_entry(
         ),
     )
 
-    with pytest.raises(PluginSelectionError) as caught:
-        PluginSelectionResolver().preflight(
-            runtime.packages,
-            bindings=runtime.bindings,
-            plan=extra_plan,
-            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
-        )
+    outcome = PluginSelectionResolver().preflight(
+        runtime.packages,
+        bindings=runtime.bindings,
+        plan=extra_plan,
+        decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+    )
 
-    assert caught.value.code == "invalid_plugin_effective_configuration"
+    assert isinstance(outcome, PluginPreflightRejectedOutcome)
+    assert outcome.diagnostics[0].code == "invalid_plugin_effective_configuration"
     runtime.close()
 
 

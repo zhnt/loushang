@@ -32,6 +32,7 @@ from loushang.harness.resources.plugins.selection import (
     PluginExecutionDecisionLookupResult,
     PluginExecutionDecisionRecord,
     PluginInstanceRevisionRef,
+    PluginPreflightAcceptedOutcome,
     PluginPreflightContextV1,
     PluginSelectionPlanV2,
     PluginSelectionResolver,
@@ -365,7 +366,7 @@ def _preflight_reservation(
         plan=plan,
         binding=fixture.binding,
     )
-    preflight = PluginSelectionResolver().preflight(
+    outcome = PluginSelectionResolver().preflight(
         (fixture.package,),
         bindings=(fixture.binding,),
         plan=plan,
@@ -378,4 +379,5 @@ def _preflight_reservation(
             )
         ),
     )
-    return preflight.reservations[0]
+    assert isinstance(outcome, PluginPreflightAcceptedOutcome)
+    return outcome.accepted.reservations[0]
