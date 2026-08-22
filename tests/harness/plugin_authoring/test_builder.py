@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
+from typing import Protocol
 
 import pytest
 
@@ -20,27 +22,47 @@ from loushang.harness.resources.plugins.declarations import (
     PluginContributionReservation,
     PluginDeclaration,
 )
+from loushang.harness.resources.plugins.selection import (
+    PluginContributionRef,
+    PluginDeclarationReservation,
+    PluginExecutionDecisionRecord,
+    PluginSelectionPlan,
+    PluginSelectionResolver,
+    PluginSourceTrust,
+    build_execution_approval_subject,
+)
+from loushang.harness.resources.plugins.types import (
+    PluginSourceBinding,
+    PublishedPluginPackage,
+)
 
 
-def test_builder_exact_matches_hand_authored_ir_and_freezes() -> None:
-    reservation = _reservation()
+class _PublishedSyntheticPlugin(Protocol):
+    package: PublishedPluginPackage
+    binding: PluginSourceBinding
+    contribution: PluginContributionReservation
+    import_marker: Path
+
+
+def test_builder_exact_matches_hand_authored_ir_and_freezes(
+    published_synthetic_plugin: _PublishedSyntheticPlugin,
+) -> None:
+    reservation = _preflight_reservation(published_synthetic_plugin)
     payload = _payload(reservation)
     builder = PluginDeclarationBuilder(
-        plugin_id="review-pack",
-        package_digest="a" * 64,
         reservations=(reservation,),
     )
 
     declaration = builder.add_capability_provider(
-        contribution_id="review-provider",
+        contribution_id=reservation.contribution.contribution_id,
         payload=payload,
     )
     hand_authored = PluginDeclaration(
-        plugin_id="review-pack",
-        contribution_id="review-provider",
+        plugin_id=reservation.package.manifest.name,
+        contribution_id=reservation.contribution.contribution_id,
         kind="capability_provider",
-        owner="coding.lsp",
-        reservation_fingerprint=reservation.fingerprint,
+        owner=reservation.contribution.owner,
+        reservation_fingerprint=reservation.contribution.fingerprint,
         payload=payload.to_dict(),
     )
 
@@ -48,7 +70,6 @@ def test_builder_exact_matches_hand_authored_ir_and_freezes() -> None:
     assert (
         CapabilityProviderDeclarationPayload.from_reserved_declaration(
             hand_authored,
-            package_digest="a" * 64,
             reservation=reservation,
         )
         == payload
@@ -63,30 +84,29 @@ def test_builder_exact_matches_hand_authored_ir_and_freezes() -> None:
         )
 
 
-def test_builder_requires_every_reservation_exactly_once() -> None:
-    first = _reservation()
-    second = replace(first, contribution_id="alternate-provider", required=False)
+def test_builder_requires_every_reservation_exactly_once(
+    published_synthetic_plugin: _PublishedSyntheticPlugin,
+) -> None:
+    reservation = _preflight_reservation(published_synthetic_plugin)
     builder = PluginDeclarationBuilder(
-        plugin_id="review-pack",
-        package_digest="a" * 64,
-        reservations=(first, second),
-    )
-    builder.add_capability_provider(
-        contribution_id=first.contribution_id,
-        payload=_payload(first),
+        reservations=(reservation,),
     )
 
     with pytest.raises(ValueError, match="unconsumed"):
         builder.build()
+    builder.add_capability_provider(
+        contribution_id=reservation.contribution.contribution_id,
+        payload=_payload(reservation),
+    )
     with pytest.raises(ValueError, match="already declared"):
         builder.add_capability_provider(
-            contribution_id=first.contribution_id,
-            payload=_payload(first),
+            contribution_id=reservation.contribution.contribution_id,
+            payload=_payload(reservation),
         )
     with pytest.raises(ValueError, match="unknown reservation"):
         builder.add_capability_provider(
             contribution_id="missing",
-            payload=_payload(first),
+            payload=_payload(reservation),
         )
 
 
@@ -144,51 +164,82 @@ def test_builder_requires_every_reservation_exactly_once() -> None:
 def test_builder_rejects_reservation_or_provenance_mismatch(
     payload_change: object,
     message: str,
+    published_synthetic_plugin: _PublishedSyntheticPlugin,
 ) -> None:
-    reservation = _reservation()
+    reservation = _preflight_reservation(published_synthetic_plugin)
     assert callable(payload_change)
     payload = payload_change(_payload(reservation))
     builder = PluginDeclarationBuilder(
-        plugin_id="review-pack",
-        package_digest="a" * 64,
         reservations=(reservation,),
     )
 
     with pytest.raises(ValueError, match=message):
         builder.add_capability_provider(
-            contribution_id=reservation.contribution_id,
+            contribution_id=reservation.contribution.contribution_id,
             payload=payload,
         )
 
 
-def test_builder_rejects_duplicate_reservation_identity() -> None:
-    reservation = _reservation()
+def test_builder_rejects_duplicate_reservation_identity(
+    published_synthetic_plugin: _PublishedSyntheticPlugin,
+) -> None:
+    reservation = _preflight_reservation(published_synthetic_plugin)
 
     with pytest.raises(ValueError, match="duplicate"):
         PluginDeclarationBuilder(
-            plugin_id="review-pack",
-            package_digest="a" * 64,
             reservations=(reservation, reservation),
         )
 
 
-def _reservation() -> PluginContributionReservation:
-    return PluginContributionReservation(
-        contribution_id="review-provider",
-        kind="capability_provider",
-        owner="coding.lsp",
-        entrypoint="definition.py:declare",
-        execution_model="in_process",
-        requested_authorities=("process",),
-        configuration={"mode": "review"},
+def test_builder_rejects_mixed_package_and_approval_facts(
+    published_synthetic_plugin: _PublishedSyntheticPlugin,
+) -> None:
+    reservation = _preflight_reservation(published_synthetic_plugin)
+    forged = replace(
+        reservation,
+        approval_subject=replace(
+            reservation.approval_subject,
+            package_content_digest="0" * 64,
+        ),
     )
+
+    with pytest.raises(ValueError, match="package and approval facts"):
+        PluginDeclarationBuilder(reservations=(forged,))
+
+
+def test_reserved_decode_rejects_declaration_from_another_plugin(
+    published_synthetic_plugin: _PublishedSyntheticPlugin,
+) -> None:
+    reservation = _preflight_reservation(published_synthetic_plugin)
+    payload = _payload(reservation)
+    forged_payload = replace(
+        payload,
+        provider=replace(payload.provider, source_id="plugin:forged-plugin"),
+    )
+    declaration = PluginDeclaration(
+        plugin_id="forged-plugin",
+        contribution_id=reservation.contribution.contribution_id,
+        kind="capability_provider",
+        owner=reservation.contribution.owner,
+        reservation_fingerprint=reservation.contribution.fingerprint,
+        payload=forged_payload.to_dict(),
+    )
+
+    with pytest.raises(ValueError, match="package identity"):
+        CapabilityProviderDeclarationPayload.from_reserved_declaration(
+            declaration,
+            reservation=reservation,
+        )
 
 
 def _payload(
-    reservation: PluginContributionReservation,
+    reservation: PluginDeclarationReservation,
 ) -> CapabilityProviderDeclarationPayload:
+    contribution = reservation.contribution
+    plugin_id = reservation.package.manifest.name
+    package_digest = reservation.package.content_digest
     provider = CapabilityBundleProvider(
-        capability_id="coding.lsp",
+        capability_id=contribution.owner,
         provider_id="org.loushang.coding-lsp/default",
         implementation_version=1,
         compatible_contract=CapabilityContractRange.exact(1),
@@ -200,8 +251,8 @@ def _payload(
                 compatible_contract=CapabilityContractRange.exact(1),
             ),
         ),
-        required_authorities=frozenset({"process"}),
-        source_id="plugin:review-pack",
+        required_authorities=frozenset(contribution.requested_authorities),
+        source_id=f"plugin:{plugin_id}",
         selection_rule="Plugin declaration candidate",
     )
     return CapabilityProviderDeclarationPayload(
@@ -209,15 +260,59 @@ def _payload(
         factory=PluginSymbolReference(
             path="provider.py",
             symbol="create_provider",
-            package_digest="a" * 64,
+            package_digest=package_digest,
             execution_model="in_process",
         ),
         disposer=PluginSymbolReference(
             path="provider.py",
             symbol="dispose_provider",
-            package_digest="a" * 64,
+            package_digest=package_digest,
             execution_model="in_process",
         ),
-        binding_inputs={"mode": "review"},
-        configuration_fingerprint=reservation.configuration_fingerprint,
+        binding_inputs=dict(contribution.configuration),
+        configuration_fingerprint=contribution.configuration_fingerprint,
     )
+
+
+def _preflight_reservation(
+    fixture: _PublishedSyntheticPlugin,
+) -> PluginDeclarationReservation:
+    plugin_id = fixture.package.manifest.name
+    contribution_id = fixture.contribution.contribution_id
+    plan = PluginSelectionPlan(
+        product_id="coding",
+        scope_id="workspace:test",
+        policy_revision="policy-1",
+        selected_plugin_ids=(plugin_id,),
+        selected_contributions=(PluginContributionRef(plugin_id, contribution_id),),
+        source_trust=(
+            PluginSourceTrust(
+                plugin_id=plugin_id,
+                source_identity=fixture.binding.source_identity,
+                trust_class="host-equivalent-local",
+                trusted=True,
+            ),
+        ),
+        allowed_authorities=fixture.contribution.requested_authorities,
+    )
+    subject = build_execution_approval_subject(
+        fixture.package,
+        fixture.contribution,
+        plan=plan,
+        source_trust=plan.source_trust[0],
+        binding=fixture.binding,
+    )
+    preflight = PluginSelectionResolver().preflight(
+        (fixture.package,),
+        bindings=(fixture.binding,),
+        plan=plan,
+        decisions=(
+            PluginExecutionDecisionRecord(
+                decision_id="decision-1",
+                subject_digest=subject.digest,
+                policy_revision=plan.policy_revision,
+                disposition="approved",
+            ),
+        ),
+    )
+    return preflight.reservations[0]

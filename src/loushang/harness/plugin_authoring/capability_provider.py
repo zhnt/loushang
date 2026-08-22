@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from pathlib import PurePosixPath
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import cast
 
 from loushang.harness.capabilities.contracts import (
@@ -14,8 +14,11 @@ from loushang.harness.capabilities.contracts import (
     CapabilityRequirementBinding,
 )
 from loushang.harness.capabilities.providers import CapabilityBundleProvider
+from loushang.harness.plugin_authoring.reservations import (
+    _authoring_reservation_view,
+    _PluginAuthoringReservationView,
+)
 from loushang.harness.resources.plugins.declarations import (
-    PluginContributionReservation,
     PluginDeclaration,
     PluginExecutionModel,
     _document_digest,
@@ -23,6 +26,9 @@ from loushang.harness.resources.plugins.declarations import (
     _freeze_json_mapping,
     _require_sha256,
     _thaw_json,
+)
+from loushang.harness.resources.plugins.selection import (
+    PluginDeclarationReservation,
 )
 
 CAPABILITY_PROVIDER_PAYLOAD_VERSION = 1
@@ -189,51 +195,53 @@ class CapabilityProviderDeclarationPayload:
         )
 
     @classmethod
-    def from_declaration(
-        cls,
-        declaration: PluginDeclaration,
-    ) -> CapabilityProviderDeclarationPayload:
-        """Decode and identity-bind one opaque declaration payload."""
-
-        if not isinstance(declaration, PluginDeclaration):
-            raise TypeError("Capability Provider codec requires PluginDeclaration")
-        if declaration.kind != "capability_provider":
-            raise ValueError("Capability Provider declaration kind mismatch")
-        payload = cls.from_dict(declaration.to_dict()["payload"])
-        _validate_capability_provider_identity(
-            payload,
-            plugin_id=declaration.plugin_id,
-            owner=declaration.owner,
-        )
-        return payload
-
-    @classmethod
     def from_reserved_declaration(
         cls,
         declaration: PluginDeclaration,
         *,
-        package_digest: str,
-        reservation: PluginContributionReservation,
+        reservation: PluginDeclarationReservation,
     ) -> CapabilityProviderDeclarationPayload:
         """Decode one declaration against its complete inert reservation."""
 
+        reservation_view = _authoring_reservation_view(reservation)
+        if not isinstance(declaration, PluginDeclaration):
+            raise TypeError("Capability Provider codec requires PluginDeclaration")
+        if declaration.plugin_id != reservation_view.plugin_id:
+            raise ValueError(
+                "Capability Provider declaration must match its package identity"
+            )
+        contribution = reservation_view.contribution
         if (
-            declaration.contribution_id != reservation.contribution_id
-            or declaration.kind != reservation.kind
-            or declaration.owner != reservation.owner
-            or declaration.reservation_fingerprint != reservation.fingerprint
+            declaration.contribution_id != contribution.contribution_id
+            or declaration.kind != contribution.kind
+            or declaration.owner != contribution.owner
+            or declaration.reservation_fingerprint != contribution.fingerprint
         ):
             raise ValueError(
                 "Capability Provider declaration must match its reservation envelope"
             )
-        payload = cls.from_declaration(declaration)
+        payload = _capability_provider_payload_from_declaration(declaration)
         _validate_capability_provider_reservation(
             payload,
-            plugin_id=declaration.plugin_id,
-            package_digest=package_digest,
-            reservation=reservation,
+            reservation=reservation_view,
         )
         return payload
+
+
+def _capability_provider_payload_from_declaration(
+    declaration: PluginDeclaration,
+) -> CapabilityProviderDeclarationPayload:
+    if declaration.kind != "capability_provider":
+        raise ValueError("Capability Provider declaration kind mismatch")
+    payload = CapabilityProviderDeclarationPayload.from_dict(
+        declaration.to_dict()["payload"]
+    )
+    _validate_capability_provider_identity(
+        payload,
+        plugin_id=declaration.plugin_id,
+        owner=declaration.owner,
+    )
+    return payload
 
 
 def _validate_capability_provider_identity(
@@ -258,33 +266,32 @@ def _validate_capability_provider_identity(
 def _validate_capability_provider_reservation(
     payload: CapabilityProviderDeclarationPayload,
     *,
-    plugin_id: str,
-    package_digest: str,
-    reservation: PluginContributionReservation,
+    reservation: _PluginAuthoringReservationView,
 ) -> None:
+    contribution = reservation.contribution
     _validate_capability_provider_identity(
         payload,
-        plugin_id=plugin_id,
-        owner=reservation.owner,
+        plugin_id=reservation.plugin_id,
+        owner=contribution.owner,
     )
-    if reservation.kind != "capability_provider":
+    if contribution.kind != "capability_provider":
         raise ValueError("Capability Provider declaration reservation kind mismatch")
     if payload.provider.required_authorities != frozenset(
-        reservation.requested_authorities
+        contribution.requested_authorities
     ):
         raise ValueError("Capability Provider authorities must match its reservation")
-    if payload.configuration_fingerprint != reservation.configuration_fingerprint:
+    if payload.configuration_fingerprint != contribution.configuration_fingerprint:
         raise ValueError(
             "Capability Provider configuration fingerprint must match its reservation"
         )
     for reference in (payload.factory, payload.disposer):
         if reference is None:
             continue
-        if reference.package_digest != package_digest:
+        if reference.package_digest != reservation.package_digest:
             raise ValueError(
                 "Capability Provider symbol package digest must match its package"
             )
-        if reference.execution_model != reservation.execution_model:
+        if reference.execution_model != contribution.execution_model:
             raise ValueError(
                 "Capability Provider symbol execution model must match its reservation"
             )
@@ -456,11 +463,18 @@ def _canonical_string_list(value: object, *, name: str) -> tuple[str, ...]:
 
 
 def _contained_python_path(value: object) -> PurePosixPath:
-    if not isinstance(value, str) or value != value.strip():
+    if (
+        not isinstance(value, str)
+        or value != value.strip()
+        or "\\" in value
+    ):
         raise ValueError("Plugin symbol path must be a contained relative Python path")
     path = PurePosixPath(value)
+    windows_path = PureWindowsPath(value)
     if (
         path.is_absolute()
+        or windows_path.is_absolute()
+        or bool(windows_path.drive)
         or not path.parts
         or path.as_posix() != value
         or path.suffix != ".py"

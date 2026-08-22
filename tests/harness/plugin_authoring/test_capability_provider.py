@@ -22,7 +22,6 @@ from loushang.harness.plugin_authoring.capability_provider import (
     capability_requirement_from_dict,
     capability_requirement_to_dict,
 )
-from loushang.harness.resources.plugins.declarations import PluginDeclaration
 
 
 def test_capability_contract_and_requirement_codecs_are_strict_and_canonical() -> None:
@@ -120,6 +119,18 @@ def test_provider_and_payload_codecs_roundtrip_exact_semantic_types() -> None:
             "contained relative Python path",
         ),
         (
+            lambda value: value["factory"].update({"path": "..\\provider.py"}),
+            "contained relative Python path",
+        ),
+        (
+            lambda value: value["factory"].update({"path": "C:\\provider.py"}),
+            "contained relative Python path",
+        ),
+        (
+            lambda value: value["factory"].update({"path": "C:/provider.py"}),
+            "contained relative Python path",
+        ),
+        (
             lambda value: value["factory"].update({"packageDigest": "bad"}),
             "SHA-256",
         ),
@@ -178,35 +189,8 @@ def test_payload_rejects_callable_and_non_json_binding_inputs() -> None:
         )
 
 
-@pytest.mark.parametrize(
-    ("field", "value", "message"),
-    [
-        ("capabilityId", "coding.arch", "owner"),
-        ("sourceId", "plugin:forged", "source id"),
-        ("selectionRule", "forged", "selection rule"),
-    ],
-)
-def test_plugin_declaration_rejects_payload_identity_mismatch(
-    field: str,
-    value: str,
-    message: str,
-) -> None:
-    payload = _payload_document()
-    provider = payload["provider"]
-    assert isinstance(provider, dict)
-    provider[field] = value
-
-    declaration = PluginDeclaration(
-        plugin_id="review-pack",
-        contribution_id="review-provider",
-        kind="capability_provider",
-        owner="coding.lsp",
-        reservation_fingerprint="d" * 64,
-        payload=payload,
-    )
-
-    with pytest.raises(ValueError, match=message):
-        CapabilityProviderDeclarationPayload.from_declaration(declaration)
+def test_declaration_codec_exposes_only_the_reservation_bound_bridge() -> None:
+    assert not hasattr(CapabilityProviderDeclarationPayload, "from_declaration")
 
 
 def _provider() -> CapabilityBundleProvider:
