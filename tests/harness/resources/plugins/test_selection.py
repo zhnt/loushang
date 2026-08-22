@@ -25,12 +25,16 @@ from loushang.harness.resources.plugins.authority import (
 from loushang.harness.resources.plugins.declarations import PluginDeclaration
 from loushang.harness.resources.plugins.selection import (
     PluginContributionRef,
+    PluginEffectiveConfigurationEntry,
+    PluginEffectiveConfigurationSetV1,
+    PluginExecutionApprovalSubject,
     PluginExecutionDecisionRecord,
     PluginInstanceRevisionRef,
+    PluginPreflightContextV1,
     PluginSelectionError,
-    PluginSelectionPlan,
+    PluginSelectionPlanV2,
     PluginSelectionResolver,
-    PluginSourceTrust,
+    PluginSourceTrustSnapshotV1,
     build_execution_approval_subject,
 )
 from loushang.harness.resources.plugins.types import PluginSource
@@ -48,21 +52,22 @@ def test_preflight_and_finalize_are_inert_and_reservations_are_one_use(
         package,
         contribution,
         plan=plan,
-        source_trust=plan.source_trust[0],
         binding=binding,
     )
     changed_subject = build_execution_approval_subject(
         package,
         contribution,
-        plan=replace(plan, policy_revision="policy-2"),
-        source_trust=plan.source_trust[0],
+        plan=replace(
+            plan,
+            context=replace(plan.context, policy_revision="policy-2"),
+        ),
         binding=binding,
     )
     assert changed_subject.digest != subject.digest
     decision = PluginExecutionDecisionRecord(
         decision_id="decision-1",
         subject_digest=subject.digest,
-        policy_revision=plan.policy_revision,
+        policy_revision=plan.context.policy_revision,
         disposition="approved",
     )
     resolver = PluginSelectionResolver()
@@ -158,7 +163,6 @@ def test_preflight_requires_exact_approval_subject_and_binding(
         package,
         contribution,
         plan=plan,
-        source_trust=plan.source_trust[0],
         binding=binding,
     )
     stale_decision = PluginExecutionDecisionRecord(
@@ -210,13 +214,12 @@ def test_finalize_fails_closed_on_missing_or_changed_declaration(
         package,
         contribution,
         plan=plan,
-        source_trust=plan.source_trust[0],
         binding=binding,
     )
     decision = PluginExecutionDecisionRecord(
         decision_id="decision-1",
         subject_digest=subject.digest,
-        policy_revision=plan.policy_revision,
+        policy_revision=plan.context.policy_revision,
         disposition="approved",
     )
     resolver = PluginSelectionResolver()
@@ -271,15 +274,14 @@ def test_subject_v2_closes_over_every_contribution_from_the_same_source(
     binding = runtime.bindings[0]
     contribution = package.contribution_index.items[0]
     plan = replace(
-        _plan(binding.source_identity),
-        allowed_authorities=("filesystem", "process"),
+        _plan(binding.source_identity, include_source_sibling=True),
+        allowed_authority_ceiling=("filesystem", "process"),
     )
 
     subject = build_execution_approval_subject(
         package,
         contribution,
         plan=plan,
-        source_trust=plan.source_trust[0],
         binding=binding,
     )
     closure = package.contribution_index.items
@@ -315,11 +317,123 @@ def test_subject_v2_closes_over_every_contribution_from_the_same_source(
     runtime.close()
 
 
+def test_subject_v2_hashes_product_effective_configuration(tmp_path: Path) -> None:
+    runtime = _runtime(tmp_path)
+    package = runtime.packages[0]
+    binding = runtime.bindings[0]
+    contribution = package.contribution_index.items[0]
+    plan = _plan(binding.source_identity)
+    baseline = build_execution_approval_subject(
+        package,
+        contribution,
+        plan=plan,
+        binding=binding,
+    )
+    override_entry = PluginEffectiveConfigurationEntry(
+        plugin_id="review-pack",
+        contribution_id="review-provider",
+        configuration={"mode": "product-override"},
+    )
+    override_plan = replace(
+        plan,
+        effective_configuration_set=PluginEffectiveConfigurationSetV1(
+            entries=(override_entry,)
+        ),
+    )
+    overridden = build_execution_approval_subject(
+        package,
+        contribution,
+        plan=override_plan,
+        binding=binding,
+    )
+
+    assert overridden.configuration_map_fingerprint != (
+        baseline.configuration_map_fingerprint
+    )
+    assert overridden.digest != baseline.digest
+    runtime.close()
+
+
+def test_disjoint_source_configuration_does_not_change_another_subject(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path, include_disjoint_source=True)
+    package = runtime.packages[0]
+    binding = runtime.bindings[0]
+    contributions = {
+        item.contribution_id: item for item in package.contribution_index.items
+    }
+    plan = _plan(binding.source_identity, include_disjoint_source=True)
+
+    def subject_for(
+        contribution_id: str,
+        selected_plan: PluginSelectionPlanV2,
+    ) -> PluginExecutionApprovalSubject:
+        return build_execution_approval_subject(
+            package,
+            contributions[contribution_id],
+            plan=selected_plan,
+            binding=binding,
+        )
+
+    review_before = subject_for("review-provider", plan)
+    arch_before = subject_for("z-arch-provider", plan)
+    review_entry, arch_entry = plan.effective_configuration_set.entries
+    changed_plan = replace(
+        plan,
+        effective_configuration_set=PluginEffectiveConfigurationSetV1(
+            entries=(
+                review_entry,
+                replace(arch_entry, configuration={"depth": 9}),
+            )
+        ),
+    )
+    review_after = subject_for("review-provider", changed_plan)
+    arch_after = subject_for("z-arch-provider", changed_plan)
+
+    assert review_after == review_before
+    assert arch_after.digest != arch_before.digest
+    runtime.close()
+
+
+def test_preflight_rejects_extra_effective_configuration_entry(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    binding = runtime.bindings[0]
+    plan = _plan(binding.source_identity)
+    extra_plan = replace(
+        plan,
+        effective_configuration_set=PluginEffectiveConfigurationSetV1(
+            entries=(
+                *plan.effective_configuration_set.entries,
+                PluginEffectiveConfigurationEntry(
+                    plugin_id="review-pack",
+                    contribution_id="z-ghost-provider",
+                    configuration={},
+                ),
+            )
+        ),
+    )
+
+    with pytest.raises(PluginSelectionError) as caught:
+        PluginSelectionResolver().preflight(
+            runtime.packages,
+            bindings=runtime.bindings,
+            plan=extra_plan,
+            decisions=(),
+        )
+
+    assert caught.value.code == "invalid_plugin_effective_configuration"
+    runtime.close()
+
+
 def _runtime(
     tmp_path: Path,
     *,
     enabled: bool = True,
     include_source_sibling: bool = False,
+    include_disjoint_source: bool = False,
 ) -> PluginRuntimeResolution:
     root = tmp_path / "review-pack"
     root.mkdir()
@@ -328,6 +442,8 @@ def _runtime(
         "Path(__file__).with_name('imported.txt').write_text('imported')\n",
         encoding="utf-8",
     )
+    if include_disjoint_source:
+        (root / "arch.py").write_text("def declare():\n    return None\n", encoding="utf-8")
     items = [
         {
             "id": "review-provider",
@@ -361,6 +477,23 @@ def _runtime(
                 "required": False,
             }
         )
+    if include_disjoint_source:
+        items.append(
+            {
+                "id": "z-arch-provider",
+                "kind": "capability_provider",
+                "owner": "coding.arch",
+                "contributionExecutionModel": "in_process",
+                "declarationSource": {
+                    "entrypoint": "arch.py:declare",
+                    "kind": "in_process",
+                    "sourceVersion": 1,
+                },
+                "requestedAuthorities": ["process"],
+                "configuration": {"depth": 3},
+                "required": True,
+            }
+        )
     (root / "plugin.json").write_text(
         json.dumps(
             {
@@ -380,30 +513,67 @@ def _runtime(
     return authority.publish_runtime((inspection,), binding_store=materializer)
 
 
-def _plan(source_identity: str) -> PluginSelectionPlan:
-    return PluginSelectionPlan(
-        product_id="coding",
-        scope_id="workspace:test",
-        policy_revision="policy-1",
-        selected_plugin_ids=("review-pack",),
-        selected_contributions=(
-            PluginContributionRef("review-pack", "review-provider"),
-        ),
-        source_trust=(
-            PluginSourceTrust(
+def _plan(
+    source_identity: str,
+    *,
+    include_source_sibling: bool = False,
+    include_disjoint_source: bool = False,
+) -> PluginSelectionPlanV2:
+    configuration_entries = [
+        PluginEffectiveConfigurationEntry(
+            plugin_id="review-pack",
+            contribution_id="review-provider",
+            configuration={"mode": "review"},
+        )
+    ]
+    if include_source_sibling:
+        configuration_entries.append(
+            PluginEffectiveConfigurationEntry(
                 plugin_id="review-pack",
-                source_identity=source_identity,
-                trust_class="host-equivalent-local",
-                trust_policy_revision="trust-1",
+                contribution_id="review-tools",
+                configuration={"mode": "tools"},
+            )
+        )
+    selected_contributions = [
+        PluginContributionRef("review-pack", "review-provider")
+    ]
+    if include_disjoint_source:
+        selected_contributions.append(
+            PluginContributionRef("review-pack", "z-arch-provider")
+        )
+        configuration_entries.append(
+            PluginEffectiveConfigurationEntry(
+                plugin_id="review-pack",
+                contribution_id="z-arch-provider",
+                configuration={"depth": 3},
+            )
+        )
+    return PluginSelectionPlanV2(
+        context=PluginPreflightContextV1(
+            product_id="coding",
+            scope_id="workspace:test",
+            policy_revision="policy-1",
+            instance_revision_refs=(
+                PluginInstanceRevisionRef(
+                    instance_id="review-pack@product",
+                    plugin_id="review-pack",
+                    revision=1,
+                ),
+            ),
+        ),
+        selected_plugin_ids=("review-pack",),
+        selected_contributions=tuple(selected_contributions),
+        source_trust_snapshots=(
+            PluginSourceTrustSnapshotV1(
+                plugin_id="review-pack",
+                package_source_identity=source_identity,
+                source_trust_class="host-equivalent-local",
+                source_trust_policy_revision="trust-1",
                 trusted=True,
             ),
         ),
-        instance_revision_refs=(
-            PluginInstanceRevisionRef(
-                instance_id="review-pack@product",
-                plugin_id="review-pack",
-                revision=1,
-            ),
+        effective_configuration_set=PluginEffectiveConfigurationSetV1(
+            entries=tuple(configuration_entries)
         ),
-        allowed_authorities=("process",),
+        allowed_authority_ceiling=("process",),
     )

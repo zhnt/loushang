@@ -11,6 +11,7 @@ from loushang.harness.resources.plugins.selection import (
     PluginDeclarationReservation,
     PluginExecutionApprovalSubject,
     _configuration_map_fingerprint,
+    _package_default_configuration_projection,
     _reservation_closure_fingerprint,
     _source_reservation_closure,
 )
@@ -85,7 +86,9 @@ def _authoring_reservation_view(
         or subject.source_descriptor_fingerprint
         != contribution.source_descriptor_fingerprint
         or subject.configuration_map_fingerprint
-        != _configuration_map_fingerprint(plugin_id, closure)
+        != _configuration_map_fingerprint(
+            _package_default_configuration_projection(plugin_id, closure)
+        )
         or subject.reservation_closure_fingerprint
         != _reservation_closure_fingerprint(closure)
         or subject.requested_authorities != requested_authorities

@@ -25,11 +25,14 @@ from loushang.harness.resources.plugins.declarations import (
 from loushang.harness.resources.plugins.selection import (
     PluginContributionRef,
     PluginDeclarationReservation,
+    PluginEffectiveConfigurationEntry,
+    PluginEffectiveConfigurationSetV1,
     PluginExecutionDecisionRecord,
     PluginInstanceRevisionRef,
-    PluginSelectionPlan,
+    PluginPreflightContextV1,
+    PluginSelectionPlanV2,
     PluginSelectionResolver,
-    PluginSourceTrust,
+    PluginSourceTrustSnapshotV1,
     build_execution_approval_subject,
 )
 from loushang.harness.resources.plugins.types import (
@@ -307,35 +310,45 @@ def _preflight_reservation(
 ) -> PluginDeclarationReservation:
     plugin_id = fixture.package.manifest.name
     contribution_id = fixture.contribution.contribution_id
-    plan = PluginSelectionPlan(
-        product_id="coding",
-        scope_id="workspace:test",
-        policy_revision="policy-1",
+    plan = PluginSelectionPlanV2(
+        context=PluginPreflightContextV1(
+            product_id="coding",
+            scope_id="workspace:test",
+            policy_revision="policy-1",
+            instance_revision_refs=(
+                PluginInstanceRevisionRef(
+                    instance_id=f"{plugin_id}@product",
+                    plugin_id=plugin_id,
+                    revision=1,
+                ),
+            ),
+        ),
         selected_plugin_ids=(plugin_id,),
         selected_contributions=(PluginContributionRef(plugin_id, contribution_id),),
-        source_trust=(
-            PluginSourceTrust(
+        source_trust_snapshots=(
+            PluginSourceTrustSnapshotV1(
                 plugin_id=plugin_id,
-                source_identity=fixture.binding.source_identity,
-                trust_class="host-equivalent-local",
-                trust_policy_revision="trust-1",
+                package_source_identity=fixture.binding.source_identity,
+                source_trust_class="host-equivalent-local",
+                source_trust_policy_revision="trust-1",
                 trusted=True,
             ),
         ),
-        instance_revision_refs=(
-            PluginInstanceRevisionRef(
-                instance_id=f"{plugin_id}@product",
-                plugin_id=plugin_id,
-                revision=1,
-            ),
+        effective_configuration_set=PluginEffectiveConfigurationSetV1(
+            entries=(
+                PluginEffectiveConfigurationEntry(
+                    plugin_id=plugin_id,
+                    contribution_id=contribution_id,
+                    configuration=dict(fixture.contribution.configuration),
+                ),
+            )
         ),
-        allowed_authorities=fixture.contribution.requested_authorities,
+        allowed_authority_ceiling=fixture.contribution.requested_authorities,
     )
     subject = build_execution_approval_subject(
         fixture.package,
         fixture.contribution,
         plan=plan,
-        source_trust=plan.source_trust[0],
         binding=fixture.binding,
     )
     preflight = PluginSelectionResolver().preflight(
@@ -346,7 +359,7 @@ def _preflight_reservation(
             PluginExecutionDecisionRecord(
                 decision_id="decision-1",
                 subject_digest=subject.digest,
-                policy_revision=plan.policy_revision,
+                policy_revision=plan.context.policy_revision,
                 disposition="approved",
             ),
         ),

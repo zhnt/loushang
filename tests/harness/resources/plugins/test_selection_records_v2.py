@@ -144,6 +144,8 @@ def test_subject_rejects_cross_field_authority_and_instance_mismatch() -> None:
         )
     with pytest.raises(ValueError, match="source descriptor"):
         replace(subject, source_descriptor_fingerprint="0" * 64)
+    with pytest.raises(ValueError, match="subject version"):
+        replace(subject, schema_version=2.0)  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="Plugin id"):
         replace(
             subject,
