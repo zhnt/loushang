@@ -2,15 +2,17 @@
 
 ## Verdict
 
-**Approve PLC0; recommend the coordinating plan with two explicit UPA
+**PLC0 accepted locally; recommend the coordinating plan with two explicit UPA
 sequencing revisions.**
 
 The plan correctly gives the common lifecycle priority over a
 `coding.base`-specific loader, uses `coding.base` as the Resource-heavy
 production sample, and retains `coding.lsp` as the first Provider/Graph proof.
-It is suitable to begin PLC0 only. PLC1 may begin after PLC0 restores the known
-architecture baseline to green. This review does not approve the security,
-lifecycle, production cutover, or public SDK slices as one batch.
+PLC0 restored the source-backed architecture baseline at `25cfc170`; see
+[Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md). PLC1 is
+technically eligible after its tracking issue is attached. This review does not
+approve the security, lifecycle, production cutover, or public SDK slices as
+one batch.
 
 The two proposed sequencing revisions are justified but require architecture-
 owner acceptance before their source implementation:
@@ -365,8 +367,8 @@ legacy live registrar behind a facade.
 
 ## First Implementation Gate
 
-Only PLC0 is approved to begin from this review. PLC1 source work is eligible
-when all of the following are true:
+PLC0 satisfies the following technical entry gates at `25cfc170`. PLC1 source
+work is eligible after the missing tracking issue is attached:
 
 1. the known architecture inventory failures are reconciled and green;
 2. exact parser, source-open, declaration, selection and live-publication sites
@@ -390,8 +392,8 @@ acceptance sample; and `coding.arch` is the second-Provider and optional-
 dependency sample. Together they provide the production diversity needed
 before a stable author SDK is published.
 
-Implementation should begin with PLC0, then PLC1 only after the baseline is
-green. The next mandatory design reviews are PLC2's management transaction and
-PLC3's Approval/import-start protocol. Skipping either to make Base appear
+PLC0 is complete locally and PLC1 is the next implementation slice after issue
+binding. The next mandatory design reviews are PLC2's management transaction
+and PLC3's Approval/import-start protocol. Skipping either to make Base appear
 pluggable would preserve the current duplication under a new manifest rather
 than deliver a unified Plugin lifecycle.

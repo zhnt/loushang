@@ -52,6 +52,10 @@ planning, work event persistence, or AI provider behavior.
   [review](plugin-lifecycle-coding-pluginization-review.md) moves the minimum
   management control core before the Base cutover while preserving exact-owner
   binding, LSP as the first Graph proof, and the later public SDK gate.
+- [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md) records the
+  green parser/source-sink/authority inventory, frozen foundation exports,
+  forbidden peer routes, and inert published-Plugin fixture required before
+  typed declaration work begins.
 - [Composition Lifecycle Authority CLA0 Baseline](composition-lifecycle-authority-cla0-baseline.md)
   retains the executable inventory shape, revised through CLA8, for current
   construction/publication owners, supported entrypoint
@@ -129,6 +133,10 @@ description.
   [self-review](plugin-lifecycle-coding-pluginization-review.md) records the
   sequencing amendments, lifecycle linearization points, cutover gates, and
   required deferrals.
+- [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md) freezes the
+  implemented pre-PLC1 parser, verified-revision, public-export, inert-layer,
+  Graph-construction, and synthetic-fixture evidence. Any later inventory
+  change requires an exact owner and behavioral gate.
 - [Composition Lifecycle Authority CLA0 Baseline](composition-lifecycle-authority-cla0-baseline.md)
   is the executable inventory for that plan, revised through CLA8 to freeze the
   single-candidate authority and forbid removed peer construction paths.

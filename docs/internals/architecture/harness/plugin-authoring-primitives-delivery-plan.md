@@ -6,7 +6,8 @@
   boundaries; it does not amend those boundaries.
 - Baseline: `harness/plugin-resolve-once` after the implemented UPA1 resolve-once
   chain and the first inert UPA2 `capability_provider` preflight/finalize slice.
-- Delivery status: proposed. No public Plugin SDK, executable Plugin Definition
+- Delivery status: PAP0/PLC0 is implemented locally at `25cfc170`. No public
+  Plugin SDK, typed Provider declaration codec, executable Plugin Definition
   evaluator, Capability owner admission bridge, or Plugin-sourced Capability
   bind is claimed as implemented by this document.
 - Review status: self-reviewed in
@@ -141,16 +142,14 @@ Those are the exact scope of the foundation slices below.
 
 ### Known baseline gate
 
-At plan-writing time,
-`tests/architecture/test_unified_plugin_architecture.py` has three existing
-failures on the `harness/plugin-resolve-once` source baseline: its document
-phrase assertion and the allowlists for static `plugin.json` sites and manifest
-boundary sinks have not been reconciled with the latest resolve-once revision/
-mount code. PAP0 must classify each added site as an authorized verified-
-revision operation or a bypass, update source or the qualified inventory as
-appropriate, and restore the architecture test to green before PAP1 merges.
-This plan does not silently bless the extra sites or weaken the behavioral
-route-exclusivity tests.
+At plan-writing time, the architecture suite had three failures on the
+`harness/plugin-resolve-once` source baseline. PAP0/PLC0 closed them at
+`25cfc170`: the stale document phrase now targets the accepted invariant, the
+duplicate `plugin.json` locator was removed from revision projection, and exact
+verified-revision/Package-mount read functions received qualified owners. The
+[PLC0 baseline](plugin-lifecycle-plc0-baseline.md) records the inventory and
+green gates. PAP1 must preserve that baseline and may not broaden the qualified
+owner inventory.
 
 ## Canonical Role Model
 

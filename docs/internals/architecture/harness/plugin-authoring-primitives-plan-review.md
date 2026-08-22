@@ -23,10 +23,12 @@ plan now incorporates their corrections:
    the UPA delivery sequence, so PAP7 now requires the `coding.arch` and
    `coding.base` production evidence or an explicit accepted UPA revision.
 
-One baseline blocker remains intentionally open: the current resolve-once branch
-has three architecture-inventory failures. PAP0 must resolve them before PAP1
-may merge; this review does not approve updating an allowlist without checking
-the new revision/mount sinks.
+The baseline blocker identified by the original review is closed locally at
+`25cfc170`. PAP0/PLC0 removed the duplicated manifest locator, classified exact
+verified-revision/mount sinks under named owners, and restored the architecture
+suite to green. The
+[PLC0 baseline](plugin-lifecycle-plc0-baseline.md) records the evidence. PAP1
+still requires a tracking issue and must preserve the exact inventory.
 
 No unresolved finding requires a second Graph, Profile resolver, Registration
 owner, effective projector, Plugin context, or Skill-specific Plugin runtime.
@@ -119,10 +121,10 @@ sinks under verified revisions and package mounts.
 whether a new parser/path bypass came from the authoring slice or the preceding
 resolve-once work.
 
-**Required correction.** PAP0 must inspect each extra site, remove any true
-bypass, and update only the exact qualified inventory for sites that operate on
-the verified revision boundary. Restore the test to green before PAP1; do not
-replace the qualified allowlist with a broad directory exemption.
+**Closure.** PAP0/PLC0 inspected each site at `25cfc170`, removed the duplicated
+manifest path derivation, and updated only exact qualified functions for
+verified revision publication/opening and Package Resource reads. No broad
+directory exemption was added, and the architecture suite is green.
 
 ### P1-01 — Definition ownership and Provider authoring must stay distinct
 
@@ -318,7 +320,7 @@ stronger Loushang properties that a universal Plugin context would erase:
 owner admission, pure Product selection, one Graph publisher, exact reversible
 registration ownership, and complete Model Input reconstruction.
 
-Implementation should now begin with PAP0, then PAP1 after the baseline gate is
-green. PAP2 is the next design review boundary; skipping it to reach an
+PAP0/PLC0 is complete locally. PAP1 may begin after the tracking issue is
+attached. PAP2 is the next design review boundary; skipping it to reach an
 impressive Plugin demo would invalidate the architecture's execution-trust
 claim.

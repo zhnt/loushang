@@ -7,6 +7,10 @@
 - Baseline: `harness/plugin-authoring-primitives-plan` at `2e6f481d`, based on
   the implemented resolve-once package path and inert
   `capability_provider` preflight/finalize slice.
+- Delivery status: PLC0 is implemented locally at `25cfc170`; its exact source
+  inventory and verification evidence are recorded in
+  [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md). PLC1
+  remains unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, and later Skill adoption.
@@ -496,6 +500,10 @@ contracts, small commits, source-backed review, and explicit peer-route
 deletion.
 
 ### PLC0: Baseline And Authority Inventory
+
+Implementation status: complete locally at `25cfc170`; see
+[Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md). A tracking
+issue must still be attached before PLC1 PR work.
 
 Scope:
 
