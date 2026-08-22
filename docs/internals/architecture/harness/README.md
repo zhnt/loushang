@@ -63,6 +63,11 @@ planning, work event persistence, or AI provider behavior.
   [review](plugin-lifecycle-coding-pluginization-review.md) moves the minimum
   management control core before the Base cutover while preserving exact-owner
   binding, LSP as the first Graph proof, and the later public SDK gate.
+- [Plugin Lifecycle PLC2 Contract](plugin-lifecycle-plc2-contract.md) splits the
+  management critical path into an inert desired-state ledger, one typed
+  command authority, staged update, and retirement/cleanup recovery; PLC2-1
+  freezes strict Package/Installation/selection records, CAS and ledger-owned
+  Instance identity without claiming runtime effectiveness.
 - [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md) records the
   green parser/source-sink/authority inventory, frozen foundation exports,
   forbidden peer routes, and inert published-Plugin fixture required before
@@ -148,6 +153,9 @@ description.
   [self-review](plugin-lifecycle-coding-pluginization-review.md) records the
   sequencing amendments, lifecycle linearization points, cutover gates, and
   required deferrals.
+- [Plugin Lifecycle PLC2 Contract](plugin-lifecycle-plc2-contract.md) is the
+  normative record, linearization, idempotency, recovery and regression
+  companion for the four PLC2 delivery slices.
 - [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md) freezes the
   implemented pre-PLC1 parser, verified-revision, public-export, inert-layer,
   Graph-construction, and synthetic-fixture evidence. Any later inventory

@@ -27,6 +27,9 @@ LIFECYCLE_PLAN_PATH = Path(
 PLC1B_CONTRACT_PATH = Path(
     "docs/internals/architecture/harness/plugin-declaration-foundation-plc1b-contract.md"
 )
+PLC2_CONTRACT_PATH = Path(
+    "docs/internals/architecture/harness/plugin-lifecycle-plc2-contract.md"
+)
 CAPABILITY_LIFECYCLE_PATH = Path(
     "docs/internals/architecture/harness/capability-dependency-and-mount-lifecycle.md"
 )
@@ -37,6 +40,7 @@ EXPECTED_PLUGIN_JSON_STATIC_SITES = {
     Path("src/loushang/harness/resources/plugins/manifest.py"),
 }
 PLUGIN_PACKAGE_BOUNDARY_ROOTS = (
+    Path("src/loushang/harness/plugin_management"),
     Path("src/loushang/harness/resources/plugins"),
     Path("src/loushang/harness/resources/packages"),
     Path("src/loushang/harness/plugin_authoring"),
@@ -357,6 +361,7 @@ PRE_SDK_PRIVATE_PLUGIN_SYMBOLS = frozenset(
         "PluginDefinition",
         "PluginDefinitionEvaluator",
         "PluginManagementService",
+        "PluginDesiredStateLedger",
         "ProductCapabilityProviderResolver",
         "compile_plugin_contribution_semantic_fingerprint",
     }
@@ -371,6 +376,7 @@ INERT_PLUGIN_FORBIDDEN_IMPORT_PREFIXES = (
     "loushang.harness.session",
 )
 INERT_PLUGIN_SOURCE_ROOTS = (
+    Path("src/loushang/harness/plugin_management"),
     Path("src/loushang/harness/plugin_authoring"),
     Path("src/loushang/harness/resources/plugins"),
 )
@@ -2833,3 +2839,58 @@ def test_unified_plugin_architecture_keeps_product_kernel_outside_plugins() -> N
     assert "coding.base" in architecture
     assert "must remain\nusable when every optional Plugin is disabled" in architecture
     assert "mandatory system prompt" in architecture
+
+
+def test_plc2_contract_freezes_inert_desired_state_before_management_service() -> None:
+    contract = PLC2_CONTRACT_PATH.read_text(encoding="utf-8")
+    lifecycle_plan = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
+    readme = README_PATH.read_text(encoding="utf-8")
+
+    assert "plugin-lifecycle-plc2-contract.md" in readme
+    assert "plugin-lifecycle-plc2-contract.md" in lifecycle_plan
+    for slice_name in (
+        "PLC2-1 desired-state ledger",
+        "PLC2-2 management command core",
+        "PLC2-3 staged update",
+        "PLC2-4 retirement and cleanup handoff",
+    ):
+        assert slice_name in contract
+    for desired_state in (
+        "absent",
+        "installed_disabled",
+        "installed_enabled",
+    ):
+        assert desired_state in contract
+    assert "installed_enabled` means desired selection only" in contract
+    assert "No caller may supply the committed Instance identity" in contract
+    assert "## PLC2-1 Exact Error Codes" in contract
+    assert "## PLC2-1 Regression Gate" in contract
+
+
+def test_plc2_desired_state_layer_has_no_owner_binding_or_product_imports() -> None:
+    root = Path("src/loushang/harness/plugin_management")
+    sources = {
+        path: path.read_text(encoding="utf-8")
+        for path in root.rglob("*.py")
+    }
+    imported = {
+        module
+        for path, source in sources.items()
+        for module in _imported_modules(source, filename=path)
+    }
+
+    assert not any(
+        module == prefix or module.startswith(f"{prefix}.")
+        for module in imported
+        for prefix in INERT_PLUGIN_FORBIDDEN_IMPORT_PREFIXES
+    )
+    assert _executable_loading_sites(sources) == set()
+    joined = "\n".join(sources.values())
+    for forbidden_call in (
+        "register_tool(",
+        "bind_tool(",
+        "publish_resource(",
+        "RuntimeCapabilityGraphBinder(",
+        "PluginManager(",
+    ):
+        assert forbidden_call not in joined

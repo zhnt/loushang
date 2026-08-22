@@ -870,6 +870,13 @@ PLC1 overall exit gate:
 
 ### PLC2: Minimum Lifecycle And Management Control
 
+Implementation is split by the normative
+[Plugin Lifecycle PLC2 Contract](plugin-lifecycle-plc2-contract.md): PLC2-1
+delivers only the inert desired-state ledger and durable Instance identity;
+PLC2-2 adds the single typed management command core; PLC2-3 adds staged update
+and exact restart outcomes; PLC2-4 adds retirement/cleanup handoff and recovery.
+No earlier slice may impersonate the authority assigned to a later slice.
+
 Scope:
 
 - define Package Revision, Installation, desired selection, lifecycle
