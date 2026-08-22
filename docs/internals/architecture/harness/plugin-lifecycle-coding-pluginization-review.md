@@ -13,7 +13,7 @@ PLC0 restored the source-backed architecture baseline at `25cfc170`; see
 inert authoring primitives are implemented at `2ebac237` and hardened against
 the implementation reviews through `8a3c94fd`; see the
 [PLC1A baseline](plugin-lifecycle-plc1a-baseline.md). PLC1B is technically next
-after issue attachment and independent review. This review does not approve the
+after issue attachment; its final narrow freeze review is complete. This review does not approve the
 security, lifecycle, production cutover, or public SDK slices as one batch.
 
 The two sequencing revisions are now accepted in the authoritative UPA delivery
@@ -250,6 +250,10 @@ the original decoder finding; it does not reopen schema, lifecycle, Product, or
 security architecture.
 The final point check also forbids wildcard imports in the Coordinator module,
 closing the remaining static import-shadow form without enumerating libraries.
+The original decoder reviewer then returned `CLOSED / READY` on immutable
+baseline `3f53a5af`. Together with the schema `READY` and the previously
+accepted state/security review, the final PLC1B-1 freeze verdict is zero P0/P1.
+No further broad documentation review is required before source work.
 
 ## Review Scope
 
@@ -624,9 +628,9 @@ legacy live registrar behind a facade.
 
 ## First Implementation Gate
 
-PLC0 and PLC1A satisfy the baseline entry gates through `8a3c94fd`. PLC1B source
-work is eligible only after the documentation remediation passes fresh
-independent review and the missing tracking issue is attached:
+PLC0 and PLC1A satisfy the baseline entry gates through `8a3c94fd`. PLC1B's
+documentation remediation passed final narrow review at `3f53a5af`; source work
+is eligible once the missing tracking issue is attached:
 
 1. the known architecture inventory failures are reconciled and green;
 2. exact parser, source-open, declaration, selection and live-publication sites
@@ -663,8 +667,8 @@ independent review and the missing tracking issue is attached:
 
 ## Review Conclusion
 
-The combined plan is coherent after the sequencing corrections but remains
-subject to the fresh independent documentation gate above. The common
+The combined plan is coherent after the sequencing corrections and has passed
+the independent PLC1B-1 documentation gate above. The common
 lifecycle is the platform priority; `coding.base` is the Resource and Product
 composition acceptance sample; `coding.lsp` is the executable Provider/Graph
 acceptance sample; and `coding.arch` is the second-Provider and optional-
@@ -672,8 +676,7 @@ dependency sample. Together they provide the production diversity needed
 before a stable author SDK is published.
 
 PLC0 and PLC1A are complete locally, and PLC1B is the next implementation slice
-only after the revised exact contract passes fresh independent review and issue
-binding. The next mandatory high-risk design reviews are PLC2's
+after issue binding. The next mandatory high-risk design reviews are PLC2's
 management transaction and PLC3's Approval/import-start protocol. Skipping
 either to make Base appear pluggable would preserve the current duplication
 under a new manifest rather than deliver a unified Plugin lifecycle.

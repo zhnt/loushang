@@ -367,9 +367,9 @@ stronger Loushang properties that a universal Plugin context would erase:
 owner admission, pure Product selection, one Graph publisher, exact reversible
 registration ownership, and complete Model Input reconstruction.
 
-PAP0/PLC0 and inert PAP1/PLC1A are complete locally. PAP1B/PLC1B is the next
-source-changing declaration slice only after its exact PLC1B Contract passes a
-fresh independent review; PAP2 remains the next high-risk design review boundary
+PAP0/PLC0 and inert PAP1/PLC1A are complete locally. The exact PLC1B Contract
+passed final narrow review at `3f53a5af`; PAP1B/PLC1B is the next source-
+changing declaration slice after issue binding. PAP2 remains the next high-risk design review boundary
 and may not land before PLC2's management core. Skipping either boundary to
 reach an impressive Plugin demo would invalidate the architecture's execution-
 trust claim. Issue/PR attachment and independent review remain publication

@@ -8,6 +8,11 @@ Plugin delivery plans without changing their owner model. Where an older plan
 uses the ambiguous phrase `declaration_source_fingerprint`, the exact identities
 below apply.
 
+The final narrow freeze review accepted the normative contract at `3f53a5af`
+with zero P0/P1. Further broad documentation review is not an implementation
+gate; PLC1B-1 source work may begin regression-first after tracking-issue
+attachment.
+
 PLC1B-1 remains internal and inert. It adds no public Plugin SDK, import path,
 owner admission, live Resource/Tool/Command publication, Capability binding, or
 MCP behavior.
