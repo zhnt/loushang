@@ -41,6 +41,11 @@ planning, work event persistence, or AI provider behavior.
   makes Coding base, LSP, Arch, OEM, and external contributions selectable
   Plugins without replacing Runtime Profile, the typed Capability Graph, or
   existing registration and projection authorities.
+- [Unified Plugin Authoring Primitives Delivery Plan](plugin-authoring-primitives-delivery-plan.md)
+  prioritizes the internal Definition / Provider / Consumer authoring bridge,
+  durable execution approval, owner admission, and LSP production proof;
+  Skill-provider convergence remains subordinate and the stable public SDK
+  stays gated by the broader production combination evidence.
 - [Composition Lifecycle Authority CLA0 Baseline](composition-lifecycle-authority-cla0-baseline.md)
   retains the executable inventory shape, revised through CLA8, for current
   construction/publication owners, supported entrypoint
@@ -105,6 +110,12 @@ description.
   manifest parser, immutable tagged declaration, existing-Profile selection,
   exact-owner binding/retirement, complete Model Input persistence, and a
   separate non-effective inventory for first-party and external Plugins.
+- [Unified Plugin Authoring Primitives Delivery Plan](plugin-authoring-primitives-delivery-plan.md)
+  turns the UPA Definition / Provider / Consumer authoring gap into staged,
+  owner-preserving implementation slices. Its
+  [self-review](plugin-authoring-primitives-plan-review.md) records the required
+  approval, production-sample, SDK-publication, Skill, and peer-route deletion
+  gates before implementation.
 - [Composition Lifecycle Authority CLA0 Baseline](composition-lifecycle-authority-cla0-baseline.md)
   is the executable inventory for that plan, revised through CLA8 to freeze the
   single-candidate authority and forbid removed peer construction paths.
