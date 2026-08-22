@@ -2,23 +2,28 @@ from __future__ import annotations
 
 import secrets
 import threading
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
 from loushang.harness.resources.plugins.declarations import (
     PluginContributionReservation,
     PluginDeclaration,
+    PluginDeclarationCodecError,
+    PluginDeclarationSource,
 )
+from loushang.harness.resources.plugins.locators import parse_plugin_entrypoint
 from loushang.harness.resources.plugins.types import (
     PluginSource,
     PluginSourceBinding,
     PublishedPluginPackage,
 )
 
-PLUGIN_EXECUTION_APPROVAL_SUBJECT_VERSION = 1
+PLUGIN_EXECUTION_APPROVAL_SUBJECT_VERSION = 2
+PLUGIN_EXECUTION_DECISION_RECORD_VERSION = 2
 
 
 class PluginSelectionError(RuntimeError):
@@ -45,12 +50,16 @@ class PluginSourceTrust:
     plugin_id: str
     source_identity: str
     trust_class: str
+    trust_policy_revision: str
     trusted: bool
 
     def __post_init__(self) -> None:
         _require_nonempty(self.plugin_id, name="Plugin id")
         _require_nonempty(self.source_identity, name="source identity")
         _require_nonempty(self.trust_class, name="source trust class")
+        _require_nonempty(
+            self.trust_policy_revision, name="source trust policy revision"
+        )
         if not isinstance(self.trusted, bool):
             raise TypeError("Plugin source trust decision must be a boolean")
 
@@ -65,6 +74,7 @@ class PluginSelectionPlan:
     selected_plugin_ids: tuple[str, ...]
     selected_contributions: tuple[PluginContributionRef, ...]
     source_trust: tuple[PluginSourceTrust, ...]
+    instance_revision_refs: tuple[PluginInstanceRevisionRef, ...]
     allowed_authorities: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -82,6 +92,26 @@ class PluginSelectionPlan:
         trust_ids = [item.plugin_id for item in trust]
         if len(trust_ids) != len(set(trust_ids)):
             raise ValueError("Plugin source trust facts must be unique per Plugin")
+        if any(
+            not isinstance(item, PluginInstanceRevisionRef)
+            for item in self.instance_revision_refs
+        ):
+            raise TypeError("Plugin instance revision refs have an invalid type")
+        instance_refs = tuple(
+            sorted(
+                self.instance_revision_refs,
+                key=lambda item: (item.plugin_id, item.instance_id, item.revision),
+            )
+        )
+        instance_plugin_ids = tuple(item.plugin_id for item in instance_refs)
+        instance_ids = tuple(item.instance_id for item in instance_refs)
+        if (
+            len(instance_plugin_ids) != len(set(instance_plugin_ids))
+            or len(instance_ids) != len(set(instance_ids))
+        ):
+            raise ValueError("Plugin instance revision refs must be unique")
+        if set(instance_plugin_ids) != set(plugin_ids):
+            raise ValueError("Plugin instance revision refs must cover selected Plugins")
         authorities = _sorted_unique_strings(
             self.allowed_authorities,
             name="allowed authorities",
@@ -89,7 +119,60 @@ class PluginSelectionPlan:
         object.__setattr__(self, "selected_plugin_ids", plugin_ids)
         object.__setattr__(self, "selected_contributions", contributions)
         object.__setattr__(self, "source_trust", trust)
+        object.__setattr__(self, "instance_revision_refs", instance_refs)
         object.__setattr__(self, "allowed_authorities", authorities)
+
+
+@dataclass(frozen=True, slots=True)
+class PluginInstanceRevisionRef:
+    instance_id: str
+    plugin_id: str
+    revision: int
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.instance_id, name="Plugin instance id")
+        _require_nonempty(self.plugin_id, name="Plugin id")
+        if (
+            not isinstance(self.revision, int)
+            or isinstance(self.revision, bool)
+            or self.revision < 1
+        ):
+            raise ValueError("Plugin instance revision must be a positive integer")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "instanceId": self.instance_id,
+            "pluginId": self.plugin_id,
+            "revision": self.revision,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> PluginInstanceRevisionRef:
+        document = _selection_wire_object(value, name="Plugin instance revision ref")
+        _selection_wire_exact_fields(
+            document,
+            keys={"instanceId", "pluginId", "revision"},
+            name="Plugin instance revision ref",
+        )
+        try:
+            return cls(
+                instance_id=_selection_wire_string(
+                    document["instanceId"], name="Plugin instance id"
+                ),
+                plugin_id=_selection_wire_string(
+                    document["pluginId"], name="Plugin id"
+                ),
+                revision=_selection_wire_integer(
+                    document["revision"], name="Plugin instance revision"
+                ),
+            )
+        except PluginDeclarationCodecError:
+            raise
+        except (TypeError, ValueError) as exc:
+            raise PluginDeclarationCodecError(
+                f"Invalid Plugin instance revision ref: {exc}",
+                code="plugin_declaration_field_value_mismatch",
+            ) from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,28 +180,29 @@ class PluginExecutionApprovalSubject:
     plugin_id: str
     package_content_digest: str
     dependency_lock_digest: str
-    contribution_id: str
-    reservation_fingerprint: str
-    execution_model: str
     entrypoint: str
-    source_identity: str
+    package_source_identity: str
     source_trust_class: str
+    source_trust_policy_revision: str
     product_id: str
     scope_id: str
     policy_revision: str
     ambient_host_authority: bool
-    configuration_fingerprint: str
+    configuration_map_fingerprint: str
     requested_authorities: tuple[str, ...]
+    allowed_authority_ceiling: tuple[str, ...]
+    reservation_closure_fingerprint: str
+    source_descriptor_fingerprint: str
+    instance_revision_ref: PluginInstanceRevisionRef
     schema_version: int = PLUGIN_EXECUTION_APPROVAL_SUBJECT_VERSION
 
     def __post_init__(self) -> None:
         for name, value in (
             ("Plugin id", self.plugin_id),
-            ("contribution id", self.contribution_id),
-            ("execution model", self.execution_model),
             ("entrypoint", self.entrypoint),
-            ("source identity", self.source_identity),
+            ("package source identity", self.package_source_identity),
             ("source trust class", self.source_trust_class),
+            ("source trust policy revision", self.source_trust_policy_revision),
             ("Product id", self.product_id),
             ("scope id", self.scope_id),
             ("policy revision", self.policy_revision),
@@ -127,46 +211,171 @@ class PluginExecutionApprovalSubject:
         for name, value in (
             ("package content digest", self.package_content_digest),
             ("dependency lock digest", self.dependency_lock_digest),
-            ("reservation fingerprint", self.reservation_fingerprint),
-            ("configuration fingerprint", self.configuration_fingerprint),
+            ("configuration map fingerprint", self.configuration_map_fingerprint),
+            (
+                "reservation closure fingerprint",
+                self.reservation_closure_fingerprint,
+            ),
+            ("source descriptor fingerprint", self.source_descriptor_fingerprint),
         ):
             _require_sha256(value, name=name)
         if not isinstance(self.ambient_host_authority, bool):
             raise TypeError("ambient host authority must be a boolean")
+        if not self.ambient_host_authority:
+            raise ValueError("PLC1B in-process Subject requires ambient host authority")
         if self.schema_version != PLUGIN_EXECUTION_APPROVAL_SUBJECT_VERSION:
             raise ValueError("Unsupported Plugin execution approval subject version")
-        object.__setattr__(
-            self,
-            "requested_authorities",
-            _sorted_unique_strings(
-                self.requested_authorities,
-                name="requested authorities",
-            ),
+        parse_plugin_entrypoint(self.entrypoint)
+        if (
+            PluginDeclarationSource.in_process(self.entrypoint).fingerprint
+            != self.source_descriptor_fingerprint
+        ):
+            raise ValueError(
+                "Subject source descriptor fingerprint must match its entrypoint"
+            )
+        requested = _strict_sorted_unique_strings(
+            self.requested_authorities, name="requested authorities"
         )
+        ceiling = _strict_sorted_unique_strings(
+            self.allowed_authority_ceiling, name="allowed authority ceiling"
+        )
+        if not set(requested).issubset(ceiling):
+            raise ValueError("Requested authorities must be a subset of the ceiling")
+        if not isinstance(self.instance_revision_ref, PluginInstanceRevisionRef):
+            raise TypeError("Subject requires a Plugin instance revision ref")
+        if self.instance_revision_ref.plugin_id != self.plugin_id:
+            raise ValueError("Subject instance Plugin id must match Subject Plugin id")
 
     @property
     def digest(self) -> str:
-        return _digest_document(self.to_dict())
+        return _digest_document(
+            {
+                "domain": "loushang.plugin-execution-approval-subject/v2",
+                "subject": self.to_dict(),
+            }
+        )
 
     def to_dict(self) -> dict[str, object]:
         return {
+            "allowedAuthorityCeiling": list(self.allowed_authority_ceiling),
             "ambientHostAuthority": self.ambient_host_authority,
-            "configurationFingerprint": self.configuration_fingerprint,
-            "contributionId": self.contribution_id,
+            "configurationMapFingerprint": self.configuration_map_fingerprint,
             "dependencyLockDigest": self.dependency_lock_digest,
             "entrypoint": self.entrypoint,
-            "executionModel": self.execution_model,
+            "instanceRevisionRef": self.instance_revision_ref.to_dict(),
             "packageContentDigest": self.package_content_digest,
+            "packageSourceIdentity": self.package_source_identity,
             "pluginId": self.plugin_id,
             "policyRevision": self.policy_revision,
             "productId": self.product_id,
             "requestedAuthorities": list(self.requested_authorities),
-            "reservationFingerprint": self.reservation_fingerprint,
+            "reservationClosureFingerprint": self.reservation_closure_fingerprint,
             "scopeId": self.scope_id,
             "schemaVersion": self.schema_version,
-            "sourceIdentity": self.source_identity,
+            "sourceDescriptorFingerprint": self.source_descriptor_fingerprint,
             "sourceTrustClass": self.source_trust_class,
+            "sourceTrustPolicyRevision": self.source_trust_policy_revision,
         }
+
+    @classmethod
+    def from_dict(cls, value: object) -> PluginExecutionApprovalSubject:
+        document = _selection_wire_object(value, name="Plugin execution subject")
+        _selection_wire_version(
+            document,
+            key="schemaVersion",
+            supported=PLUGIN_EXECUTION_APPROVAL_SUBJECT_VERSION,
+            code="unsupported_plugin_execution_approval_subject_version",
+        )
+        _selection_wire_exact_fields(
+            document,
+            keys={
+                "allowedAuthorityCeiling",
+                "ambientHostAuthority",
+                "configurationMapFingerprint",
+                "dependencyLockDigest",
+                "entrypoint",
+                "instanceRevisionRef",
+                "packageContentDigest",
+                "packageSourceIdentity",
+                "pluginId",
+                "policyRevision",
+                "productId",
+                "requestedAuthorities",
+                "reservationClosureFingerprint",
+                "schemaVersion",
+                "scopeId",
+                "sourceDescriptorFingerprint",
+                "sourceTrustClass",
+                "sourceTrustPolicyRevision",
+            },
+            name="Plugin execution subject",
+        )
+        ambient = document["ambientHostAuthority"]
+        if not isinstance(ambient, bool):
+            raise PluginDeclarationCodecError(
+                "ambientHostAuthority must be a boolean",
+                code="plugin_declaration_field_type_mismatch",
+            )
+        try:
+            return cls(
+                plugin_id=_selection_wire_string(document["pluginId"], name="Plugin id"),
+                package_content_digest=_selection_wire_string(
+                    document["packageContentDigest"], name="package content digest"
+                ),
+                dependency_lock_digest=_selection_wire_string(
+                    document["dependencyLockDigest"], name="dependency lock digest"
+                ),
+                entrypoint=_selection_wire_string(
+                    document["entrypoint"], name="entrypoint"
+                ),
+                package_source_identity=_selection_wire_string(
+                    document["packageSourceIdentity"], name="package source identity"
+                ),
+                source_trust_class=_selection_wire_string(
+                    document["sourceTrustClass"], name="source trust class"
+                ),
+                source_trust_policy_revision=_selection_wire_string(
+                    document["sourceTrustPolicyRevision"],
+                    name="source trust policy revision",
+                ),
+                product_id=_selection_wire_string(
+                    document["productId"], name="Product id"
+                ),
+                scope_id=_selection_wire_string(document["scopeId"], name="scope id"),
+                policy_revision=_selection_wire_string(
+                    document["policyRevision"], name="policy revision"
+                ),
+                ambient_host_authority=ambient,
+                configuration_map_fingerprint=_selection_wire_string(
+                    document["configurationMapFingerprint"],
+                    name="configuration map fingerprint",
+                ),
+                requested_authorities=_selection_wire_string_list(
+                    document["requestedAuthorities"], name="requested authorities"
+                ),
+                allowed_authority_ceiling=_selection_wire_string_list(
+                    document["allowedAuthorityCeiling"],
+                    name="allowed authority ceiling",
+                ),
+                reservation_closure_fingerprint=_selection_wire_string(
+                    document["reservationClosureFingerprint"],
+                    name="reservation closure fingerprint",
+                ),
+                source_descriptor_fingerprint=_selection_wire_string(
+                    document["sourceDescriptorFingerprint"],
+                    name="source descriptor fingerprint",
+                ),
+                instance_revision_ref=PluginInstanceRevisionRef.from_dict(
+                    document["instanceRevisionRef"]
+                ),
+            )
+        except PluginDeclarationCodecError:
+            raise
+        except (TypeError, ValueError) as exc:
+            raise PluginDeclarationCodecError(
+                f"Invalid Plugin execution subject: {exc}",
+                code="plugin_declaration_field_value_mismatch",
+            ) from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,6 +384,8 @@ class PluginExecutionDecisionRecord:
     subject_digest: str
     policy_revision: str
     disposition: Literal["approved", "denied"]
+    decision_record_version: int = PLUGIN_EXECUTION_DECISION_RECORD_VERSION
+    subject_schema_version: int = PLUGIN_EXECUTION_APPROVAL_SUBJECT_VERSION
 
     def __post_init__(self) -> None:
         _require_nonempty(self.decision_id, name="decision id")
@@ -182,6 +393,83 @@ class PluginExecutionDecisionRecord:
         _require_nonempty(self.policy_revision, name="decision policy revision")
         if self.disposition not in {"approved", "denied"}:
             raise ValueError("Unsupported Plugin execution decision disposition")
+        if self.decision_record_version != PLUGIN_EXECUTION_DECISION_RECORD_VERSION:
+            raise ValueError("Unsupported Plugin execution decision record version")
+        if self.subject_schema_version != PLUGIN_EXECUTION_APPROVAL_SUBJECT_VERSION:
+            raise ValueError("Unsupported Plugin execution approval subject version")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "decisionId": self.decision_id,
+            "decisionRecordVersion": self.decision_record_version,
+            "disposition": self.disposition,
+            "policyRevision": self.policy_revision,
+            "subjectDigest": self.subject_digest,
+            "subjectSchemaVersion": self.subject_schema_version,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> PluginExecutionDecisionRecord:
+        document = _selection_wire_object(value, name="Plugin execution decision")
+        _selection_wire_version(
+            document,
+            key="decisionRecordVersion",
+            supported=PLUGIN_EXECUTION_DECISION_RECORD_VERSION,
+            code="unsupported_plugin_execution_decision_record_version",
+        )
+        if "subjectSchemaVersion" not in document:
+            raise PluginDeclarationCodecError(
+                "subjectSchemaVersion is missing",
+                code="unsupported_plugin_execution_approval_subject_version",
+            )
+        subject_version = document["subjectSchemaVersion"]
+        if not isinstance(subject_version, int) or isinstance(subject_version, bool):
+            raise PluginDeclarationCodecError(
+                "subjectSchemaVersion must be an integer",
+                code="plugin_declaration_field_type_mismatch",
+            )
+        if subject_version != PLUGIN_EXECUTION_APPROVAL_SUBJECT_VERSION:
+            raise PluginDeclarationCodecError(
+                "Unsupported Plugin execution approval subject version",
+                code="unsupported_plugin_execution_approval_subject_version",
+            )
+        _selection_wire_exact_fields(
+            document,
+            keys={
+                "decisionId",
+                "decisionRecordVersion",
+                "disposition",
+                "policyRevision",
+                "subjectDigest",
+                "subjectSchemaVersion",
+            },
+            name="Plugin execution decision",
+        )
+        disposition = _selection_wire_string(
+            document["disposition"], name="decision disposition"
+        )
+        try:
+            return cls(
+                decision_id=_selection_wire_string(
+                    document["decisionId"], name="decision id"
+                ),
+                subject_digest=_selection_wire_string(
+                    document["subjectDigest"], name="decision subject digest"
+                ),
+                policy_revision=_selection_wire_string(
+                    document["policyRevision"], name="decision policy revision"
+                ),
+                disposition=cast(Literal["approved", "denied"], disposition),
+                decision_record_version=PLUGIN_EXECUTION_DECISION_RECORD_VERSION,
+                subject_schema_version=subject_version,
+            )
+        except PluginDeclarationCodecError:
+            raise
+        except (TypeError, ValueError) as exc:
+            raise PluginDeclarationCodecError(
+                f"Invalid Plugin execution decision: {exc}",
+                code="plugin_declaration_field_value_mismatch",
+            ) from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -465,24 +753,47 @@ def build_execution_approval_subject(
             code="plugin_execution_subject_not_applicable",
             path=package.root,
         )
+    closure = _source_reservation_closure(package, contribution)
+    requested_authorities = tuple(
+        sorted(
+            {
+                authority
+                for item in closure
+                for authority in item.requested_authorities
+            }
+        )
+    )
+    if not set(requested_authorities).issubset(plan.allowed_authorities):
+        raise PluginSelectionError(
+            "Plugin declaration source exceeds its authority ceiling.",
+            code="plugin_authority_ceiling_exceeded",
+            path=package.root,
+        )
     return PluginExecutionApprovalSubject(
         plugin_id=package.manifest.name,
         package_content_digest=package.content_digest,
         dependency_lock_digest=package.dependency_lock.digest,
-        contribution_id=contribution.contribution_id,
-        reservation_fingerprint=contribution.fingerprint,
-        execution_model=contribution.contribution_execution_model,
         entrypoint=source.entrypoint,
-        source_identity=binding.source_identity,
+        package_source_identity=binding.source_identity,
         source_trust_class=source_trust.trust_class,
+        source_trust_policy_revision=source_trust.trust_policy_revision,
         product_id=plan.product_id,
         scope_id=plan.scope_id,
         policy_revision=plan.policy_revision,
         ambient_host_authority=(
             contribution.contribution_execution_model == "in_process"
         ),
-        configuration_fingerprint=contribution.configuration_fingerprint,
-        requested_authorities=contribution.requested_authorities,
+        configuration_map_fingerprint=_configuration_map_fingerprint(
+            package.manifest.name,
+            closure,
+        ),
+        requested_authorities=requested_authorities,
+        allowed_authority_ceiling=plan.allowed_authorities,
+        reservation_closure_fingerprint=_reservation_closure_fingerprint(closure),
+        source_descriptor_fingerprint=contribution.source_descriptor_fingerprint,
+        instance_revision_ref={
+            item.plugin_id: item for item in plan.instance_revision_refs
+        }[package.manifest.name],
     )
 
 
@@ -590,6 +901,59 @@ def _source_value(source: PluginSource) -> str:
     return str(source.path.expanduser().resolve())
 
 
+def _source_reservation_closure(
+    package: PublishedPluginPackage,
+    contribution: PluginContributionReservation,
+) -> tuple[PluginContributionReservation, ...]:
+    source_fingerprint = contribution.source_descriptor_fingerprint
+    return tuple(
+        sorted(
+            (
+                item
+                for item in package.contribution_index.items
+                if item.source_descriptor_fingerprint == source_fingerprint
+            ),
+            key=lambda item: item.contribution_id,
+        )
+    )
+
+
+def _reservation_closure_fingerprint(
+    closure: tuple[PluginContributionReservation, ...],
+) -> str:
+    return _digest_document(
+        {
+            "domain": "loushang.plugin-reservation-closure/v1",
+            "reservations": [
+                {
+                    "contributionId": item.contribution_id,
+                    "reservationFingerprint": item.fingerprint,
+                }
+                for item in closure
+            ],
+        }
+    )
+
+
+def _configuration_map_fingerprint(
+    plugin_id: str,
+    closure: tuple[PluginContributionReservation, ...],
+) -> str:
+    return _digest_document(
+        {
+            "configurations": [
+                {
+                    "configuration": item.to_dict()["configuration"],
+                    "contributionId": item.contribution_id,
+                    "pluginId": plugin_id,
+                }
+                for item in closure
+            ],
+            "domain": "loushang.plugin-group-configuration/v1",
+        }
+    )
+
+
 def _sorted_unique_strings(values: tuple[str, ...], *, name: str) -> tuple[str, ...]:
     if any(
         not isinstance(value, str) or not value or value != value.strip()
@@ -600,6 +964,80 @@ def _sorted_unique_strings(values: tuple[str, ...], *, name: str) -> tuple[str, 
     if len(normalized) != len(set(normalized)):
         raise ValueError(f"{name} must be unique")
     return normalized
+
+
+def _strict_sorted_unique_strings(
+    values: tuple[str, ...], *, name: str
+) -> tuple[str, ...]:
+    if any(
+        not isinstance(value, str) or not value or value != value.strip()
+        for value in values
+    ):
+        raise ValueError(f"{name} must contain non-empty strings")
+    if values != tuple(sorted(values)) or len(values) != len(set(values)):
+        raise ValueError(f"{name} must use canonical sorted order without duplicates")
+    return values
+
+
+def _selection_wire_object(value: object, *, name: str) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise PluginDeclarationCodecError(
+            f"{name} must be an object",
+            code="plugin_declaration_field_type_mismatch",
+        )
+    return value
+
+
+def _selection_wire_exact_fields(
+    document: Mapping[str, object], *, keys: set[str], name: str
+) -> None:
+    if set(document) != keys:
+        raise PluginDeclarationCodecError(
+            f"{name} fields do not match the supported format",
+            code="plugin_declaration_exact_field_mismatch",
+        )
+
+
+def _selection_wire_version(
+    document: Mapping[str, object], *, key: str, supported: int, code: str
+) -> None:
+    if key not in document:
+        raise PluginDeclarationCodecError(f"{key} is missing", code=code)
+    value = document[key]
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise PluginDeclarationCodecError(
+            f"{key} must be an integer",
+            code="plugin_declaration_field_type_mismatch",
+        )
+    if value != supported:
+        raise PluginDeclarationCodecError(f"Unsupported {key}", code=code)
+
+
+def _selection_wire_string(value: object, *, name: str) -> str:
+    if not isinstance(value, str):
+        raise PluginDeclarationCodecError(
+            f"{name} must be a string",
+            code="plugin_declaration_field_type_mismatch",
+        )
+    return value
+
+
+def _selection_wire_integer(value: object, *, name: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise PluginDeclarationCodecError(
+            f"{name} must be an integer",
+            code="plugin_declaration_field_type_mismatch",
+        )
+    return value
+
+
+def _selection_wire_string_list(value: object, *, name: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise PluginDeclarationCodecError(
+            f"{name} must be a string list",
+            code="plugin_declaration_field_type_mismatch",
+        )
+    return tuple(value)
 
 
 def _require_nonempty(value: object, *, name: str) -> None:
@@ -623,11 +1061,13 @@ def _digest_document(value: object) -> str:
 
 __all__ = [
     "PLUGIN_EXECUTION_APPROVAL_SUBJECT_VERSION",
+    "PLUGIN_EXECUTION_DECISION_RECORD_VERSION",
     "PluginContributionCandidate",
     "PluginContributionRef",
     "PluginDeclarationReservation",
     "PluginExecutionApprovalSubject",
     "PluginExecutionDecisionRecord",
+    "PluginInstanceRevisionRef",
     "PluginPreflight",
     "PluginSelection",
     "PluginSelectionError",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from loushang.harness.plugin_authoring.capability_provider import (
     PluginSymbolReference,
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
 from loushang.harness.resources.plugins.authority import (
     PluginResolutionAuthority,
     PluginRuntimeResolution,
@@ -24,6 +26,7 @@ from loushang.harness.resources.plugins.declarations import PluginDeclaration
 from loushang.harness.resources.plugins.selection import (
     PluginContributionRef,
     PluginExecutionDecisionRecord,
+    PluginInstanceRevisionRef,
     PluginSelectionError,
     PluginSelectionPlan,
     PluginSelectionResolver,
@@ -260,7 +263,64 @@ def test_declaration_ir_rejects_callable_payload() -> None:
         )
 
 
-def _runtime(tmp_path: Path, *, enabled: bool = True) -> PluginRuntimeResolution:
+def test_subject_v2_closes_over_every_contribution_from_the_same_source(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path, include_source_sibling=True)
+    package = runtime.packages[0]
+    binding = runtime.bindings[0]
+    contribution = package.contribution_index.items[0]
+    plan = replace(
+        _plan(binding.source_identity),
+        allowed_authorities=("filesystem", "process"),
+    )
+
+    subject = build_execution_approval_subject(
+        package,
+        contribution,
+        plan=plan,
+        source_trust=plan.source_trust[0],
+        binding=binding,
+    )
+    closure = package.contribution_index.items
+    expected_reservations = {
+        "domain": "loushang.plugin-reservation-closure/v1",
+        "reservations": [
+            {
+                "contributionId": item.contribution_id,
+                "reservationFingerprint": item.fingerprint,
+            }
+            for item in closure
+        ],
+    }
+    expected_configurations = {
+        "configurations": [
+            {
+                "configuration": item.to_dict()["configuration"],
+                "contributionId": item.contribution_id,
+                "pluginId": "review-pack",
+            }
+            for item in closure
+        ],
+        "domain": "loushang.plugin-group-configuration/v1",
+    }
+
+    assert subject.requested_authorities == ("filesystem", "process")
+    assert subject.reservation_closure_fingerprint == sha256(
+        StrictPluginJsonCodec.encode(expected_reservations)
+    ).hexdigest()
+    assert subject.configuration_map_fingerprint == sha256(
+        StrictPluginJsonCodec.encode(expected_configurations)
+    ).hexdigest()
+    runtime.close()
+
+
+def _runtime(
+    tmp_path: Path,
+    *,
+    enabled: bool = True,
+    include_source_sibling: bool = False,
+) -> PluginRuntimeResolution:
     root = tmp_path / "review-pack"
     root.mkdir()
     (root / "provider.py").write_text(
@@ -268,6 +328,39 @@ def _runtime(tmp_path: Path, *, enabled: bool = True) -> PluginRuntimeResolution
         "Path(__file__).with_name('imported.txt').write_text('imported')\n",
         encoding="utf-8",
     )
+    items = [
+        {
+            "id": "review-provider",
+            "kind": "capability_provider",
+            "owner": "coding.lsp",
+            "contributionExecutionModel": "in_process",
+            "declarationSource": {
+                "entrypoint": "provider.py:declare",
+                "kind": "in_process",
+                "sourceVersion": 1,
+            },
+            "requestedAuthorities": ["process"],
+            "configuration": {"mode": "review"},
+            "required": True,
+        }
+    ]
+    if include_source_sibling:
+        items.append(
+            {
+                "id": "review-tools",
+                "kind": "capability_provider",
+                "owner": "coding.tools",
+                "contributionExecutionModel": "in_process",
+                "declarationSource": {
+                    "entrypoint": "provider.py:declare",
+                    "kind": "in_process",
+                    "sourceVersion": 1,
+                },
+                "requestedAuthorities": ["filesystem"],
+                "configuration": {"mode": "tools"},
+                "required": False,
+            }
+        )
     (root / "plugin.json").write_text(
         json.dumps(
             {
@@ -275,22 +368,7 @@ def _runtime(tmp_path: Path, *, enabled: bool = True) -> PluginRuntimeResolution
                 "enabled": enabled,
                 "contributionIndex": {
                     "version": 2,
-                    "items": [
-                        {
-                            "id": "review-provider",
-                            "kind": "capability_provider",
-                            "owner": "coding.lsp",
-                            "contributionExecutionModel": "in_process",
-                            "declarationSource": {
-                                "entrypoint": "provider.py:declare",
-                                "kind": "in_process",
-                                "sourceVersion": 1,
-                            },
-                            "requestedAuthorities": ["process"],
-                            "configuration": {"mode": "review"},
-                            "required": True,
-                        }
-                    ],
+                    "items": items,
                 },
             }
         ),
@@ -316,7 +394,15 @@ def _plan(source_identity: str) -> PluginSelectionPlan:
                 plugin_id="review-pack",
                 source_identity=source_identity,
                 trust_class="host-equivalent-local",
+                trust_policy_revision="trust-1",
                 trusted=True,
+            ),
+        ),
+        instance_revision_refs=(
+            PluginInstanceRevisionRef(
+                instance_id="review-pack@product",
+                plugin_id="review-pack",
+                revision=1,
             ),
         ),
         allowed_authorities=("process",),

@@ -26,6 +26,7 @@ from loushang.harness.resources.plugins.selection import (
     PluginContributionRef,
     PluginDeclarationReservation,
     PluginExecutionDecisionRecord,
+    PluginInstanceRevisionRef,
     PluginSelectionPlan,
     PluginSelectionResolver,
     PluginSourceTrust,
@@ -206,20 +207,16 @@ def test_builder_rejects_reservations_from_mixed_preflight_contexts(
         )
 
 
-def test_builder_rejects_inconsistent_ambient_host_authority(
+def test_subject_rejects_inconsistent_ambient_host_authority(
     published_synthetic_plugin: _PublishedSyntheticPlugin,
 ) -> None:
     reservation = _preflight_reservation(published_synthetic_plugin)
-    forged = replace(
-        reservation,
-        approval_subject=replace(
+
+    with pytest.raises(ValueError, match="ambient host authority"):
+        replace(
             reservation.approval_subject,
             ambient_host_authority=False,
-        ),
-    )
-
-    with pytest.raises(ValueError, match="package and approval facts"):
-        PluginDeclarationBuilder(reservations=(forged,))
+        )
 
 
 def test_builder_rejects_mixed_package_and_approval_facts(
@@ -321,7 +318,15 @@ def _preflight_reservation(
                 plugin_id=plugin_id,
                 source_identity=fixture.binding.source_identity,
                 trust_class="host-equivalent-local",
+                trust_policy_revision="trust-1",
                 trusted=True,
+            ),
+        ),
+        instance_revision_refs=(
+            PluginInstanceRevisionRef(
+                instance_id=f"{plugin_id}@product",
+                plugin_id=plugin_id,
+                revision=1,
             ),
         ),
         allowed_authorities=fixture.contribution.requested_authorities,

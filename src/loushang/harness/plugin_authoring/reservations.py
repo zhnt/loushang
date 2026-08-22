@@ -10,6 +10,9 @@ from loushang.harness.resources.plugins.declarations import (
 from loushang.harness.resources.plugins.selection import (
     PluginDeclarationReservation,
     PluginExecutionApprovalSubject,
+    _configuration_map_fingerprint,
+    _reservation_closure_fingerprint,
+    _source_reservation_closure,
 )
 from loushang.harness.resources.plugins.types import PublishedPluginPackage
 
@@ -62,19 +65,34 @@ def _authoring_reservation_view(
     plugin_id = package.manifest.name
     package_digest = package.content_digest
     dependency_lock_digest = package.dependency_lock.digest
+    closure = _source_reservation_closure(package, contribution)
+    requested_authorities = tuple(
+        sorted(
+            {
+                authority
+                for item in closure
+                for authority in item.requested_authorities
+            }
+        )
+    )
     if (
         subject.plugin_id != plugin_id
         or subject.package_content_digest != package_digest
         or subject.dependency_lock_digest != dependency_lock_digest
-        or subject.contribution_id != contribution.contribution_id
-        or subject.reservation_fingerprint != contribution.fingerprint
-        or subject.execution_model != contribution.contribution_execution_model
         or subject.ambient_host_authority
         != (contribution.contribution_execution_model == "in_process")
         or subject.entrypoint != contribution.declaration_source.entrypoint
-        or subject.configuration_fingerprint
-        != contribution.configuration_fingerprint
-        or subject.requested_authorities != contribution.requested_authorities
+        or subject.source_descriptor_fingerprint
+        != contribution.source_descriptor_fingerprint
+        or subject.configuration_map_fingerprint
+        != _configuration_map_fingerprint(plugin_id, closure)
+        or subject.reservation_closure_fingerprint
+        != _reservation_closure_fingerprint(closure)
+        or subject.requested_authorities != requested_authorities
+        or not set(subject.requested_authorities).issubset(
+            subject.allowed_authority_ceiling
+        )
+        or subject.instance_revision_ref.plugin_id != plugin_id
     ):
         raise ValueError(
             "Plugin authoring reservation does not match its package and approval facts"
@@ -90,7 +108,7 @@ def _authoring_reservation_view(
         package_digest=package_digest,
         dependency_lock_digest=dependency_lock_digest,
         preflight_context=_PluginAuthoringPreflightContext(
-            source_identity=subject.source_identity,
+            source_identity=subject.package_source_identity,
             source_trust_class=subject.source_trust_class,
             product_id=subject.product_id,
             scope_id=subject.scope_id,
