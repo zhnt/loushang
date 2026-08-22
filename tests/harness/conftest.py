@@ -14,6 +14,9 @@ from loushang.harness.resources.plugins.authority import (
 )
 from loushang.harness.resources.plugins.declarations import (
     PluginContributionReservation,
+    PluginDeclaration,
+    PluginDeclarationDocument,
+    PluginDeclarationDocumentCodec,
 )
 from loushang.harness.resources.plugins.types import (
     PluginSource,
@@ -31,6 +34,15 @@ class PublishedSyntheticPlugin:
     binding: PluginSourceBinding
     contribution: PluginContributionReservation
     import_marker: Path
+
+
+@dataclass(frozen=True, slots=True)
+class PublishedDocumentPlugin:
+    runtime: PluginRuntimeResolution
+    package: PublishedPluginPackage
+    binding: PluginSourceBinding
+    contribution: PluginContributionReservation
+    declaration: PluginDeclaration
 
 
 @pytest.fixture
@@ -92,6 +104,84 @@ def published_synthetic_plugin(tmp_path: Path) -> Iterator[PublishedSyntheticPlu
         import_marker=import_marker,
     )
     assert import_marker.exists() is False
+    try:
+        yield fixture
+    finally:
+        runtime.close()
+
+
+@pytest.fixture
+def published_document_plugin(tmp_path: Path) -> Iterator[PublishedDocumentPlugin]:
+    source_root = tmp_path / "source" / "document-provider"
+    declaration_root = source_root / "declarations"
+    declaration_root.mkdir(parents=True)
+    index_item = {
+        "id": "document-provider",
+        "kind": "capability_provider",
+        "owner": "document.capability",
+        "contributionExecutionModel": "in_process",
+        "declarationSource": {
+            "kind": "document",
+            "locator": "declarations/providers.json",
+            "mediaType": "application/vnd.loushang.plugin-declarations+json",
+            "schemaId": "loushang.plugin-declaration-document",
+            "schemaVersion": 1,
+            "sourceVersion": 1,
+        },
+        "requestedAuthorities": [],
+        "configuration": {},
+        "required": True,
+    }
+    contribution = PluginContributionReservation.from_dict(index_item)
+    declaration = PluginDeclaration(
+        plugin_id="document-provider",
+        contribution_id=contribution.contribution_id,
+        kind=contribution.kind,
+        owner=contribution.owner,
+        reservation_fingerprint=contribution.fingerprint,
+        source_descriptor_fingerprint=(
+            contribution.source_descriptor_fingerprint
+        ),
+        source_kind=contribution.declaration_source.kind,
+        payload={},
+    )
+    (declaration_root / "providers.json").write_bytes(
+        PluginDeclarationDocumentCodec.encode_bytes(
+            PluginDeclarationDocument(declarations=(declaration,))
+        )
+    )
+    (source_root / "plugin.json").write_text(
+        json.dumps(
+            {
+                "name": "document-provider",
+                "version": "1",
+                "contributionIndex": {
+                    "version": 2,
+                    "items": [index_item],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    authority = PluginResolutionAuthority()
+    inspection = authority.inspect(PluginSource(path=source_root))
+    materializer = PackageMaterializer(
+        install_root=tmp_path / "installed",
+        plugin_revision_root=tmp_path / "revisions",
+    )
+    runtime = authority.publish_runtime(
+        (inspection,),
+        binding_store=materializer,
+    )
+    [package] = runtime.packages
+    [binding] = runtime.bindings
+    fixture = PublishedDocumentPlugin(
+        runtime=runtime,
+        package=package,
+        binding=binding,
+        contribution=contribution,
+        declaration=declaration,
+    )
     try:
         yield fixture
     finally:

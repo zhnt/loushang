@@ -11,9 +11,11 @@ from typing import Literal, Protocol, cast
 
 from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
 from loushang.harness.resources.plugins.declarations import (
+    PLUGIN_DECLARATION_DOCUMENT_VERSION,
     PluginContributionReservation,
     PluginDeclaration,
     PluginDeclarationCodecError,
+    PluginDeclarationDocument,
     PluginDeclarationSource,
     _freeze_json_mapping,
     _thaw_json,
@@ -28,6 +30,7 @@ from loushang.harness.resources.plugins.types import (
 PLUGIN_EFFECTIVE_CONFIGURATION_SET_VERSION = 1
 PLUGIN_EXECUTION_APPROVAL_SUBJECT_VERSION = 2
 PLUGIN_EXECUTION_DECISION_RECORD_VERSION = 2
+PLUGIN_DECLARATION_EVIDENCE_VERSION = 1
 PLUGIN_PREFLIGHT_CONTEXT_VERSION = 1
 PLUGIN_SELECTION_PLAN_VERSION = 2
 PLUGIN_SOURCE_TRUST_SNAPSHOT_VERSION = 1
@@ -1224,12 +1227,230 @@ PluginPreflightOutcome = (
 )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
+class PluginDocumentDecodedEvidence:
+    declaration_set_fingerprint: str
+    document_bytes_digest: str
+    document_schema_version: int
+    evidence_version: int
+    kind: Literal["document_decoded"]
+    package_content_digest: str
+    preflight_use_id: str
+    reservation_closure_fingerprint: str
+    source_descriptor_fingerprint: str
+    source_group_fingerprint: str
+    source_group_id: str
+
+    def __init__(self) -> None:
+        raise TypeError("Plugin declaration Evidence is Host-constructed")
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("declaration set fingerprint", self.declaration_set_fingerprint),
+            ("document bytes digest", self.document_bytes_digest),
+            ("package content digest", self.package_content_digest),
+            (
+                "reservation closure fingerprint",
+                self.reservation_closure_fingerprint,
+            ),
+            ("source descriptor fingerprint", self.source_descriptor_fingerprint),
+            ("source group fingerprint", self.source_group_fingerprint),
+            ("source group id", self.source_group_id),
+        ):
+            _require_sha256(value, name=name)
+        _require_hex(self.preflight_use_id, length=48, name="preflight use id")
+        _require_exact_version(
+            self.document_schema_version,
+            supported=PLUGIN_DECLARATION_DOCUMENT_VERSION,
+            name="Plugin declaration document",
+        )
+        _require_exact_version(
+            self.evidence_version,
+            supported=PLUGIN_DECLARATION_EVIDENCE_VERSION,
+            name="Plugin declaration evidence",
+        )
+        if self.kind != "document_decoded":
+            raise ValueError("Unsupported document declaration evidence kind")
+
+    @property
+    def fingerprint(self) -> str:
+        return _digest_document(
+            {
+                "domain": "loushang.plugin-declaration-evidence/v1",
+                "evidence": self.to_dict(),
+            }
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "declarationSetFingerprint": self.declaration_set_fingerprint,
+            "documentBytesDigest": self.document_bytes_digest,
+            "documentSchemaVersion": self.document_schema_version,
+            "evidenceVersion": self.evidence_version,
+            "kind": self.kind,
+            "packageContentDigest": self.package_content_digest,
+            "preflightUseId": self.preflight_use_id,
+            "reservationClosureFingerprint": (
+                self.reservation_closure_fingerprint
+            ),
+            "sourceDescriptorFingerprint": self.source_descriptor_fingerprint,
+            "sourceGroupFingerprint": self.source_group_fingerprint,
+            "sourceGroupId": self.source_group_id,
+        }
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class PluginDeclarationBatch:
+    preflight_use_id: str
+    source_group_id: str
+    source_group_fingerprint: str
+    declarations: tuple[PluginDeclaration, ...]
+    evidence: PluginDocumentDecodedEvidence
+
+    def __init__(self) -> None:
+        raise TypeError("Plugin declaration Batch is Host-constructed")
+
+    def __post_init__(self) -> None:
+        _require_hex(self.preflight_use_id, length=48, name="preflight use id")
+        _require_sha256(self.source_group_id, name="source group id")
+        _require_sha256(
+            self.source_group_fingerprint,
+            name="source group fingerprint",
+        )
+        declarations = self.declarations
+        if not declarations or any(
+            not isinstance(item, PluginDeclaration) for item in declarations
+        ):
+            raise TypeError("Plugin declaration Batch requires declarations")
+        identities = tuple(
+            (item.plugin_id, item.contribution_id) for item in declarations
+        )
+        if identities != tuple(sorted(identities)):
+            raise ValueError("Plugin declaration Batch must be strictly sorted")
+        if len(identities) != len(set(identities)):
+            raise ValueError("Plugin declaration Batch identities must be unique")
+        if not isinstance(self.evidence, PluginDocumentDecodedEvidence):
+            raise TypeError("Plugin declaration Batch requires document evidence")
+        if (
+            self.evidence.preflight_use_id != self.preflight_use_id
+            or self.evidence.source_group_id != self.source_group_id
+            or self.evidence.source_group_fingerprint
+            != self.source_group_fingerprint
+        ):
+            raise ValueError("Plugin declaration Batch evidence does not match its group")
+
+    @classmethod
+    def _from_document_decoded(
+        cls,
+        group: PluginDeclarationSourceGroup,
+        document: PluginDeclarationDocument,
+        encoded: bytes,
+    ) -> PluginDeclarationBatch:
+        if not isinstance(group, PluginDeclarationSourceGroup):
+            raise TypeError("Document Batch requires a SourceGroup")
+        if not isinstance(group.gate, PluginDeclarationDataOnlyGate):
+            raise ValueError("Executable SourceGroup cannot form document evidence")
+        if group.declaration_source.kind != "document":
+            raise ValueError("Document Batch requires a document source")
+        if not isinstance(document, PluginDeclarationDocument):
+            raise TypeError("Document Batch requires a decoded declaration document")
+        if not isinstance(encoded, bytes):
+            raise TypeError("Document Batch requires exact source bytes")
+        declarations = document.declarations
+        evidence = object.__new__(PluginDocumentDecodedEvidence)
+        evidence_values = {
+            "declaration_set_fingerprint": _declaration_set_fingerprint(
+                declarations
+            ),
+            "document_bytes_digest": sha256(encoded).hexdigest(),
+            "document_schema_version": document.document_version,
+            "evidence_version": PLUGIN_DECLARATION_EVIDENCE_VERSION,
+            "kind": "document_decoded",
+            "package_content_digest": group.package.content_digest,
+            "preflight_use_id": group.preflight_use_id,
+            "reservation_closure_fingerprint": (
+                group.reservation_closure_fingerprint
+            ),
+            "source_descriptor_fingerprint": (
+                group.source_descriptor_fingerprint
+            ),
+            "source_group_fingerprint": group.source_group_fingerprint,
+            "source_group_id": group.source_group_id,
+        }
+        for name, value in evidence_values.items():
+            object.__setattr__(evidence, name, value)
+        evidence.__post_init__()
+        batch = object.__new__(cls)
+        batch_values = {
+            "preflight_use_id": group.preflight_use_id,
+            "source_group_id": group.source_group_id,
+            "source_group_fingerprint": group.source_group_fingerprint,
+            "declarations": declarations,
+            "evidence": evidence,
+        }
+        for name, value in batch_values.items():
+            object.__setattr__(batch, name, value)
+        batch.__post_init__()
+        return batch
+
+
+@dataclass(frozen=True, slots=True, init=False)
 class PluginContributionCandidate:
     package: PublishedPluginPackage = field(repr=False)
     declaration: PluginDeclaration
-    decision_id: str
+    evidence: PluginDocumentDecodedEvidence
     fingerprint: str
+
+    def __init__(self) -> None:
+        raise TypeError("Plugin contribution Candidate is Host-constructed")
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.package, PublishedPluginPackage):
+            raise TypeError("Plugin candidate requires a published package")
+        if not isinstance(self.declaration, PluginDeclaration):
+            raise TypeError("Plugin candidate requires a declaration")
+        if not isinstance(self.evidence, PluginDocumentDecodedEvidence):
+            raise TypeError("Plugin candidate requires exact declaration evidence")
+        if self.evidence.package_content_digest != self.package.content_digest:
+            raise ValueError("Plugin candidate evidence does not match its package")
+        _require_sha256(self.fingerprint, name="candidate fingerprint")
+        if self.fingerprint != _candidate_fingerprint(
+            self.package,
+            self.declaration,
+            self.evidence,
+        ):
+            raise ValueError("Plugin candidate fingerprint does not match")
+
+    @classmethod
+    def _from_validated_batch(
+        cls,
+        package: PublishedPluginPackage,
+        declaration: PluginDeclaration,
+        batch: PluginDeclarationBatch,
+    ) -> PluginContributionCandidate:
+        if not isinstance(batch, PluginDeclarationBatch):
+            raise TypeError("Plugin candidate requires a declaration Batch")
+        if declaration not in batch.declarations:
+            raise ValueError("Plugin candidate declaration is not in its Batch")
+        if batch.evidence.declaration_set_fingerprint != (
+            _declaration_set_fingerprint(batch.declarations)
+        ):
+            raise ValueError("Plugin candidate Batch evidence does not match")
+        candidate = object.__new__(cls)
+        candidate_values = {
+            "package": package,
+            "declaration": declaration,
+            "evidence": batch.evidence,
+            "fingerprint": _candidate_fingerprint(
+                package,
+                declaration,
+                batch.evidence,
+            ),
+        }
+        for name, value in candidate_values.items():
+            object.__setattr__(candidate, name, value)
+        candidate.__post_init__()
+        return candidate
 
 
 @dataclass(frozen=True, slots=True)
@@ -1471,86 +1692,156 @@ class PluginSelectionResolver:
             )
         return accepted
 
-    def rollback(self, preflight: AcceptedPluginPreflight) -> None:
-        """Release one unconsumed preflight reservation without finalizing it."""
-
+    def _abort(self, preflight: AcceptedPluginPreflight) -> None:
         self._consume_active(preflight)
 
-    def finalize(
+    def _finalize(
         self,
         preflight: AcceptedPluginPreflight,
-        declarations: tuple[PluginDeclaration, ...],
+        batches: tuple[PluginDeclarationBatch, ...],
     ) -> PluginSelection:
-        active = self._consume_active(preflight)
+        active = self._peek_active(preflight)
         plan = active.proposal.plan
-
-        declarations_by_ref: dict[PluginContributionRef, PluginDeclaration] = {}
-        for declaration in declarations:
-            ref = PluginContributionRef(
-                declaration.plugin_id,
-                declaration.contribution_id,
-            )
-            if ref in declarations_by_ref:
+        batches_by_group_id: dict[str, PluginDeclarationBatch] = {}
+        for batch in batches:
+            if not isinstance(batch, PluginDeclarationBatch):
                 raise PluginSelectionError(
-                    f"Plugin declaration identity was emitted twice: {ref}",
-                    code="duplicate_plugin_declaration",
+                    "Plugin finalization accepts only declaration Batches.",
+                    code="plugin_declaration_batch_mismatch",
                 )
-            declarations_by_ref[ref] = declaration
-        expected_refs = {reservation.ref for reservation in preflight.reservations}
-        if set(declarations_by_ref) != expected_refs:
+            if batch.source_group_id in batches_by_group_id:
+                raise PluginSelectionError(
+                    "Plugin declaration SourceGroup was emitted twice.",
+                    code="duplicate_plugin_declaration_batch",
+                )
+            batches_by_group_id[batch.source_group_id] = batch
+        expected_group_ids = {
+            group.source_group_id for group in preflight.source_groups
+        }
+        if set(batches_by_group_id) != expected_group_ids:
             raise PluginSelectionError(
-                "Plugin declarations do not exactly fulfill preflight reservations.",
-                code="plugin_declaration_reservation_mismatch",
+                "Plugin declaration Batches do not exactly fulfill SourceGroups.",
+                code="plugin_declaration_batch_mismatch",
             )
 
-        groups_by_id = {
-            group.source_group_id: group for group in preflight.source_groups
-        }
         selected_refs = set(plan.selected_contributions)
         candidates: list[PluginContributionCandidate] = []
-        for reservation in preflight.reservations:
-            declaration = declarations_by_ref[reservation.ref]
-            contribution = reservation.contribution
+        for group in preflight.source_groups:
+            if not isinstance(group.gate, PluginDeclarationDataOnlyGate):
+                raise PluginSelectionError(
+                    "Executable declaration SourceGroup was not consumed.",
+                    code="execution_not_consumed",
+                    path=group.package.root,
+                )
+            batch = batches_by_group_id[group.source_group_id]
+            evidence = batch.evidence
             if (
-                declaration.kind != contribution.kind
-                or declaration.owner != contribution.owner
-                or declaration.reservation_fingerprint != contribution.fingerprint
-                or declaration.source_descriptor_fingerprint
-                != contribution.source_descriptor_fingerprint
-                or declaration.source_kind != contribution.declaration_source.kind
+                batch.preflight_use_id != preflight.preflight_use_id
+                or batch.source_group_fingerprint
+                != group.source_group_fingerprint
+                or evidence.package_content_digest != group.package.content_digest
+                or evidence.preflight_use_id != preflight.preflight_use_id
+                or evidence.source_group_id != group.source_group_id
+                or evidence.source_group_fingerprint
+                != group.source_group_fingerprint
+                or evidence.reservation_closure_fingerprint
+                != group.reservation_closure_fingerprint
+                or evidence.source_descriptor_fingerprint
+                != group.source_descriptor_fingerprint
             ):
                 raise PluginSelectionError(
-                    f"Plugin declaration changed its inert reservation: "
-                    f"{reservation.ref}",
-                    code="plugin_declaration_envelope_mismatch",
-                    path=reservation.package.root,
+                    "Plugin declaration evidence belongs to a different attempt.",
+                    code="plugin_declaration_evidence_attempt_mismatch",
+                    path=group.package.root,
                 )
-            if reservation.ref not in selected_refs:
-                continue
-            source_group = groups_by_id[reservation.source_group_id]
-            fingerprint = _candidate_fingerprint(
-                reservation,
-                declaration,
-                group=source_group,
-                plan=plan,
-            )
-            decision_id = (
-                source_group.gate.decision.decision_id
-                if isinstance(
-                    source_group.gate,
-                    PluginDeclarationExecutionPreflightGate,
+            if evidence.declaration_set_fingerprint != _declaration_set_fingerprint(
+                batch.declarations
+            ):
+                raise PluginSelectionError(
+                    "Plugin declaration evidence set fingerprint does not match.",
+                    code="plugin_declaration_evidence_mismatch",
+                    path=group.package.root,
                 )
-                else "data_only"
-            )
-            candidates.append(
-                PluginContributionCandidate(
-                    package=reservation.package,
-                    declaration=declaration,
-                    decision_id=decision_id,
-                    fingerprint=fingerprint,
+            declarations_by_ref = {
+                PluginContributionRef(
+                    declaration.plugin_id,
+                    declaration.contribution_id,
+                ): declaration
+                for declaration in batch.declarations
+            }
+            expected_reservations = {item.ref: item for item in group.reservations}
+            if (
+                len(declarations_by_ref) != len(batch.declarations)
+                or set(declarations_by_ref) != set(expected_reservations)
+            ):
+                raise PluginSelectionError(
+                    "Plugin declarations do not exactly fulfill their SourceGroup.",
+                    code="plugin_declaration_reservation_mismatch",
+                    path=group.package.root,
                 )
+            for ref, reservation in expected_reservations.items():
+                declaration = declarations_by_ref[ref]
+                contribution = reservation.contribution
+                if (
+                    declaration.kind != contribution.kind
+                    or declaration.owner != contribution.owner
+                    or declaration.reservation_fingerprint
+                    != contribution.fingerprint
+                    or declaration.source_descriptor_fingerprint
+                    != contribution.source_descriptor_fingerprint
+                    or declaration.source_kind
+                    != contribution.declaration_source.kind
+                ):
+                    raise PluginSelectionError(
+                        "Plugin declaration changed its inert reservation: "
+                        f"{reservation.ref}",
+                        code="plugin_declaration_envelope_mismatch",
+                        path=reservation.package.root,
+                    )
+                if ref not in selected_refs:
+                    continue
+                candidates.append(
+                    PluginContributionCandidate._from_validated_batch(
+                        reservation.package,
+                        declaration,
+                        batch,
+                    )
+                )
+        consumed = self._consume_active(preflight)
+        if consumed is not active:
+            raise PluginSelectionError(
+                "Plugin preflight terminal state changed during finalization.",
+                code="plugin_preflight_consumed",
             )
         return PluginSelection(plan=plan, candidates=tuple(candidates))
+
+    def _peek_active(
+        self,
+        preflight: AcceptedPluginPreflight,
+    ) -> _ActivePluginPreflight:
+        if not isinstance(preflight, AcceptedPluginPreflight):
+            raise PluginSelectionError(
+                "Plugin preflight reservation was already consumed or is foreign.",
+                code="plugin_preflight_consumed",
+            )
+        with self._gate:
+            active = self._active.get(preflight._terminal_handle.token)
+        if active is None or active.accepted is not preflight:
+            raise PluginSelectionError(
+                "Plugin preflight reservation was already consumed or is foreign.",
+                code="plugin_preflight_consumed",
+            )
+        if (
+            preflight.host_boot_id != _PLUGIN_HOST_BOOT_ID
+            or monotonic() >= preflight.expires_at
+        ):
+            with self._gate:
+                self._active.pop(preflight._terminal_handle.token, None)
+            raise PluginSelectionError(
+                "Plugin preflight reservation expired before terminal use.",
+                code="preflight_expired",
+            )
+        return active
 
     def _consume_active(
         self,
@@ -1824,39 +2115,35 @@ def _verify_binding(
 
 
 def _candidate_fingerprint(
-    reservation: PluginDeclarationReservation,
+    package: PublishedPluginPackage,
     declaration: PluginDeclaration,
-    *,
-    group: PluginDeclarationSourceGroup,
-    plan: PluginSelectionPlanV2,
+    evidence: PluginDocumentDecodedEvidence,
 ) -> str:
-    package = reservation.package
-    gate = group.gate
-    approval_subject_digest = (
-        gate.subject.digest
-        if isinstance(gate, PluginDeclarationExecutionPreflightGate)
-        else ""
-    )
-    decision_id = (
-        gate.decision.decision_id
-        if isinstance(gate, PluginDeclarationExecutionPreflightGate)
-        else ""
-    )
     return _digest_document(
         {
-            "approvalSubjectDigest": approval_subject_digest,
-            "declaration": declaration.to_dict(),
+            "domain": "loushang.plugin-contribution-candidate/v2",
             "declarationFingerprint": declaration.fingerprint,
-            "decisionId": decision_id,
-            "dependencyLockDigest": package.dependency_lock.digest,
+            "evidenceFingerprint": evidence.fingerprint,
             "packageContentDigest": package.content_digest,
-            "pluginId": package.manifest.name,
-            "policyRevision": plan.context.policy_revision,
-            "productId": plan.context.product_id,
-            "reservationFingerprint": reservation.contribution.fingerprint,
-            "scopeId": plan.context.scope_id,
-            "sourceGroupFingerprint": group.source_group_fingerprint,
-            "sourceGroupId": group.source_group_id,
+            "sourceGroupFingerprint": evidence.source_group_fingerprint,
+        }
+    )
+
+
+def _declaration_set_fingerprint(
+    declarations: tuple[PluginDeclaration, ...],
+) -> str:
+    return _digest_document(
+        {
+            "declarations": [
+                {
+                    "contributionId": item.contribution_id,
+                    "declarationFingerprint": item.fingerprint,
+                    "pluginId": item.plugin_id,
+                }
+                for item in declarations
+            ],
+            "domain": "loushang.plugin-declaration-set/v2",
         }
     )
 
@@ -2212,6 +2499,7 @@ def _digest_document(value: object) -> str:
 
 __all__ = [
     "AcceptedPluginPreflight",
+    "PLUGIN_DECLARATION_EVIDENCE_VERSION",
     "PLUGIN_EFFECTIVE_CONFIGURATION_SET_VERSION",
     "PLUGIN_EXECUTION_APPROVAL_SUBJECT_VERSION",
     "PLUGIN_EXECUTION_DECISION_RECORD_VERSION",
@@ -2221,6 +2509,7 @@ __all__ = [
     "PendingOnlyPluginExecutionDecisionLookup",
     "PluginContributionCandidate",
     "PluginContributionRef",
+    "PluginDeclarationBatch",
     "PluginDeclarationDataOnlyGate",
     "PluginDeclarationDataOnlyDisposition",
     "PluginDeclarationExecutionPreflightGate",
@@ -2230,6 +2519,7 @@ __all__ = [
     "PluginDeclarationSourceGroup",
     "PluginDeclarationSourceDisposition",
     "PluginDeclarationSourceProposal",
+    "PluginDocumentDecodedEvidence",
     "PluginEffectiveConfigurationEntry",
     "PluginEffectiveConfigurationSetV1",
     "PluginExecutionApprovalSubject",

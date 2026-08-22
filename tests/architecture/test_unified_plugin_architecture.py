@@ -56,6 +56,10 @@ RAW_JSON_DECODER_MODULES = {
 RAW_JSON_DECODER_FUNCTIONS = {"decode", "from_json", "load", "loads"}
 EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
     (
+        Path("src/loushang/harness/plugin_authoring/coordinator.py"),
+        "PluginDeclarationCoordinator._read_and_decode_document",
+    ): "plugin-declaration-coordinator",
+    (
         Path("src/loushang/harness/resources/plugins/_strict_json.py"),
         "StrictPluginJsonCodec.decode_bytes",
     ): "plugin-strict-json-codec",
@@ -105,6 +109,7 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
     ): "package-resource-mount",
 }
 EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS = {
+    (Path("src/loushang/harness/plugin_authoring/coordinator.py"), "PluginDeclarationCoordinator._read_and_decode_document", "verified_open_file:handle"): 1,
     (Path("src/loushang/harness/resources/packages/catalog.py"), "load_package_catalog", "json_decode"): 1,
     (Path("src/loushang/harness/resources/packages/catalog.py"), "load_package_catalog", "path_read"): 1,
     (Path("src/loushang/harness/resources/packages/manifest.py"), "resolve_package_manifest", "json_decode"): 1,
@@ -550,7 +555,7 @@ def _is_plugin_package_boundary_sink(
     reads_file = any(
         (
             isinstance(call.func, ast.Attribute)
-            and call.func.attr in {"read_text", "read_bytes", "open"}
+            and call.func.attr in {"read_text", "read_bytes", "open", "open_file"}
         )
         or (
             isinstance(call.func, ast.Name)
@@ -1854,6 +1859,54 @@ def test_accepted_preflight_moves_gate_and_context_ownership_to_source_group() -
     assert "reservations" not in builder_parameters
 
 
+def test_coordinator_exclusively_owns_evidenced_terminal_finalization() -> None:
+    assert tuple(
+        public_plugins.PluginDocumentDecodedEvidence.__dataclass_fields__
+    ) == (
+        "declaration_set_fingerprint",
+        "document_bytes_digest",
+        "document_schema_version",
+        "evidence_version",
+        "kind",
+        "package_content_digest",
+        "preflight_use_id",
+        "reservation_closure_fingerprint",
+        "source_descriptor_fingerprint",
+        "source_group_fingerprint",
+        "source_group_id",
+    )
+    assert tuple(public_plugins.PluginDeclarationBatch.__dataclass_fields__) == (
+        "preflight_use_id",
+        "source_group_id",
+        "source_group_fingerprint",
+        "declarations",
+        "evidence",
+    )
+    assert tuple(public_plugins.PluginContributionCandidate.__dataclass_fields__) == (
+        "package",
+        "declaration",
+        "evidence",
+        "fingerprint",
+    )
+    assert all(
+        record_type.__dataclass_params__.init is False
+        for record_type in (
+            public_plugins.PluginDocumentDecodedEvidence,
+            public_plugins.PluginDeclarationBatch,
+            public_plugins.PluginContributionCandidate,
+        )
+    )
+    assert not hasattr(public_plugins.PluginSelectionResolver, "finalize")
+    assert not hasattr(public_plugins.PluginSelectionResolver, "rollback")
+    terminal_callers = {
+        path
+        for path, source in _source_texts().items()
+        if "PluginSelectionResolver" in source
+        and ("._finalize(" in source or "._abort(" in source)
+    }
+    assert terminal_callers == {PLUGIN_DECLARATION_COORDINATOR_PATH}
+
+
 def test_executable_declaration_is_gated_by_inert_preflight() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
 
@@ -2037,6 +2090,7 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
         "package-manifest-parser",
         "package-materializer",
         "package-resource-mount",
+        "plugin-declaration-coordinator",
         "plugin-manifest-parser",
         "plugin-strict-json-codec",
         "verified-revision-boundary",

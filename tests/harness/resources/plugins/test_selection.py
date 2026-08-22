@@ -17,6 +17,9 @@ from loushang.harness.plugin_authoring.capability_provider import (
     CapabilityProviderDeclarationPayload,
     PluginSymbolReference,
 )
+from loushang.harness.plugin_authoring.coordinator import (
+    PluginDeclarationCoordinator,
+)
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
 from loushang.harness.resources.plugins.authority import (
@@ -24,7 +27,10 @@ from loushang.harness.resources.plugins.authority import (
     PluginRuntimeResolution,
 )
 from loushang.harness.resources.plugins.declarations import (
+    PluginContributionReservation,
     PluginDeclaration,
+    PluginDeclarationDocument,
+    PluginDeclarationDocumentCodec,
     PluginDeclarationSource,
 )
 from loushang.harness.resources.plugins.selection import (
@@ -78,36 +84,14 @@ def _accepted(outcome: PluginPreflightOutcome) -> AcceptedPluginPreflight:
     return outcome.accepted
 
 
-def test_preflight_and_finalize_are_inert_and_reservations_are_one_use(
+def test_document_preflight_and_coordinator_finalization_are_one_use(
     tmp_path: Path,
 ) -> None:
-    runtime = _runtime(tmp_path)
+    runtime = _runtime(tmp_path, document_source=True)
     package = runtime.packages[0]
     binding = runtime.bindings[0]
     contribution = package.contribution_index.items[0]
     plan = _plan(binding.source_identity)
-    subject = build_execution_approval_subject(
-        package,
-        contribution,
-        plan=plan,
-        binding=binding,
-    )
-    changed_subject = build_execution_approval_subject(
-        package,
-        contribution,
-        plan=replace(
-            plan,
-            context=replace(plan.context, policy_revision="policy-2"),
-        ),
-        binding=binding,
-    )
-    assert changed_subject.digest != subject.digest
-    decision = PluginExecutionDecisionRecord(
-        decision_id="decision-1",
-        subject_digest=subject.digest,
-        policy_revision=plan.context.policy_revision,
-        disposition="approved",
-    )
     resolver = PluginSelectionResolver()
 
     preflight = _accepted(
@@ -115,70 +99,43 @@ def test_preflight_and_finalize_are_inert_and_reservations_are_one_use(
             runtime.packages,
             bindings=runtime.bindings,
             plan=plan,
-            decision_lookup=_DecisionLookup(decision),
+            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
         )
     )
-    declaration = PluginDeclaration(
-        plugin_id="review-pack",
-        contribution_id="review-provider",
-        kind="capability_provider",
-        owner="coding.lsp",
-        reservation_fingerprint=contribution.fingerprint,
-        source_descriptor_fingerprint=contribution.source_descriptor_fingerprint,
-        source_kind=contribution.declaration_source.kind,
-        payload=CapabilityProviderDeclarationPayload(
-            provider=CapabilityBundleProvider(
-                capability_id="coding.lsp",
-                provider_id="review-lsp",
-                implementation_version=1,
-                compatible_contract=CapabilityContractRange.exact(1),
-                facets=("semantic",),
-                required_authorities=frozenset({"process"}),
-                source_id="plugin:review-pack",
-                selection_rule=PLUGIN_PROVIDER_SELECTION_RULE,
-            ),
-            factory=PluginSymbolReference(
-                path="provider.py",
-                symbol="create_provider",
-                execution_model="in_process",
-            ),
-            disposer=None,
-            binding_inputs=dict(contribution.configuration),
-        ).to_dict(),
-    )
+    declaration = _review_declaration(contribution)
     assert PluginDeclaration.from_dict(declaration.to_dict()) == declaration
 
-    selection = resolver.finalize(preflight, (declaration,))
+    coordinator = PluginDeclarationCoordinator(resolver)
+    selection = coordinator.finalize(preflight)
 
     assert len(selection.candidates) == 1
-    assert selection.candidates[0].decision_id == "decision-1"
+    assert selection.candidates[0].declaration == declaration
+    assert selection.candidates[0].evidence.kind == "document_decoded"
+    assert not hasattr(selection.candidates[0], "decision_id")
     assert len(selection.candidates[0].fingerprint) == 64
     assert (package.root / "imported.txt").exists() is False
     with pytest.raises(PluginSelectionError) as caught:
-        resolver.finalize(preflight, (declaration,))
+        coordinator.finalize(preflight)
     assert caught.value.code == "plugin_preflight_consumed"
 
-    rolled_back = _accepted(
+    aborted = _accepted(
         resolver.preflight(
             runtime.packages,
             bindings=runtime.bindings,
             plan=plan,
-            decision_lookup=_DecisionLookup(decision),
+            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
         )
     )
-    assert rolled_back.preflight_use_id != preflight.preflight_use_id
+    assert aborted.preflight_use_id != preflight.preflight_use_id
     assert (
-        rolled_back.source_groups[0].source_group_fingerprint
+        aborted.source_groups[0].source_group_fingerprint
         == preflight.source_groups[0].source_group_fingerprint
     )
     assert (
-        rolled_back.source_groups[0].source_group_id
+        aborted.source_groups[0].source_group_id
         != preflight.source_groups[0].source_group_id
     )
-    resolver.rollback(rolled_back)
-    with pytest.raises(PluginSelectionError) as caught:
-        resolver.finalize(rolled_back, (declaration,))
-    assert caught.value.code == "plugin_preflight_consumed"
+    resolver._abort(aborted)
     runtime.close()
 
 
@@ -235,7 +192,7 @@ def test_document_source_accepts_without_execution_decision_or_copied_gate(
     assert group.reservations[0].source_group_id == group.source_group_id
     assert not hasattr(group.reservations[0], "approval_subject")
     assert not hasattr(group.reservations[0], "decision_id")
-    resolver.rollback(accepted)
+    resolver._abort(accepted)
     runtime.close()
 
 
@@ -257,10 +214,10 @@ def test_expired_accepted_preflight_is_terminal_and_cannot_be_reused(
     )
 
     with pytest.raises(PluginSelectionError) as caught:
-        resolver.rollback(accepted)
+        resolver._abort(accepted)
     assert caught.value.code == "preflight_expired"
     with pytest.raises(PluginSelectionError) as caught:
-        resolver.rollback(accepted)
+        resolver._abort(accepted)
     assert caught.value.code == "plugin_preflight_consumed"
     runtime.close()
 
@@ -372,7 +329,7 @@ def test_preflight_looks_up_one_decision_per_complete_source_closure(
     assert {
         item.source_group_id for item in preflight.reservations
     } == {preflight.source_groups[0].source_group_id}
-    resolver.rollback(preflight)
+    resolver._abort(preflight)
     runtime.close()
 
 
@@ -399,7 +356,7 @@ def test_preflight_rejects_invalid_lookup_result(tmp_path: Path) -> None:
     runtime.close()
 
 
-def test_finalize_fails_closed_on_missing_or_changed_declaration(
+def test_private_finalization_validation_keeps_attempt_active_for_coordinator_abort(
     tmp_path: Path,
 ) -> None:
     runtime = _runtime(tmp_path)
@@ -430,10 +387,11 @@ def test_finalize_fails_closed_on_missing_or_changed_declaration(
     )
 
     with pytest.raises(PluginSelectionError) as caught:
-        resolver.finalize(preflight, ())
-    assert caught.value.code == "plugin_declaration_reservation_mismatch"
+        resolver._finalize(preflight, ())
+    assert caught.value.code == "plugin_declaration_batch_mismatch"
+    resolver._abort(preflight)
     with pytest.raises(PluginSelectionError) as caught:
-        resolver.finalize(preflight, ())
+        resolver._finalize(preflight, ())
     assert caught.value.code == "plugin_preflight_consumed"
     runtime.close()
 
@@ -644,12 +602,6 @@ def _runtime(
     )
     if include_disjoint_source:
         (root / "arch.py").write_text("def declare():\n    return None\n", encoding="utf-8")
-    if document_source:
-        (root / "declarations").mkdir()
-        (root / "declarations" / "providers.json").write_text(
-            '{"declarations":[],"documentVersion":1}',
-            encoding="utf-8",
-        )
     declaration_source = (
         PluginDeclarationSource.document("declarations/providers.json").to_dict()
         if document_source
@@ -700,6 +652,16 @@ def _runtime(
                 "configuration": {"depth": 3},
                 "required": True,
             }
+        )
+    if document_source:
+        contribution = PluginContributionReservation.from_dict(items[0])
+        (root / "declarations").mkdir()
+        (root / "declarations" / "providers.json").write_bytes(
+            PluginDeclarationDocumentCodec.encode_bytes(
+                PluginDeclarationDocument(
+                    declarations=(_review_declaration(contribution),)
+                )
+            )
         )
     (root / "plugin.json").write_text(
         json.dumps(
@@ -794,4 +756,37 @@ def _plan(
             if include_source_sibling
             else ("process",)
         ),
+    )
+
+
+def _review_declaration(
+    contribution: PluginContributionReservation,
+) -> PluginDeclaration:
+    return PluginDeclaration(
+        plugin_id="review-pack",
+        contribution_id=contribution.contribution_id,
+        kind="capability_provider",
+        owner="coding.lsp",
+        reservation_fingerprint=contribution.fingerprint,
+        source_descriptor_fingerprint=contribution.source_descriptor_fingerprint,
+        source_kind=contribution.declaration_source.kind,
+        payload=CapabilityProviderDeclarationPayload(
+            provider=CapabilityBundleProvider(
+                capability_id="coding.lsp",
+                provider_id="review-lsp",
+                implementation_version=1,
+                compatible_contract=CapabilityContractRange.exact(1),
+                facets=("semantic",),
+                required_authorities=frozenset({"process"}),
+                source_id="plugin:review-pack",
+                selection_rule=PLUGIN_PROVIDER_SELECTION_RULE,
+            ),
+            factory=PluginSymbolReference(
+                path="provider.py",
+                symbol="create_provider",
+                execution_model="in_process",
+            ),
+            disposer=None,
+            binding_inputs=dict(contribution.configuration),
+        ).to_dict(),
     )
