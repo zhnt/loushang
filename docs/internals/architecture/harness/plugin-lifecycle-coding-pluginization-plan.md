@@ -876,6 +876,7 @@ delivers only the inert desired-state ledger and durable Instance identity;
 PLC2-2 adds the single typed management command core; PLC2-3 adds staged update
 and exact restart outcomes; PLC2-4 adds retirement/cleanup handoff and recovery.
 No earlier slice may impersonate the authority assigned to a later slice.
+PLC2-1 and PLC2-2 are implemented; PLC2-3 and PLC2-4 remain gated.
 
 Scope:
 

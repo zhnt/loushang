@@ -360,6 +360,9 @@ PRE_SDK_PRIVATE_PLUGIN_SYMBOLS = frozenset(
         "PluginDeclarationBuilder",
         "PluginDefinition",
         "PluginDefinitionEvaluator",
+        "PluginManagementCommandV1",
+        "PluginManagementOperationEventV1",
+        "PluginManagementOperationResultV1",
         "PluginManagementService",
         "PluginDesiredStateLedger",
         "ProductCapabilityProviderResolver",
@@ -2894,3 +2897,35 @@ def test_plc2_desired_state_layer_has_no_owner_binding_or_product_imports() -> N
         "PluginManager(",
     ):
         assert forbidden_call not in joined
+
+
+def test_plc2_management_contract_freezes_one_durable_command_authority() -> None:
+    contract = PLC2_CONTRACT_PATH.read_text(encoding="utf-8")
+
+    assert "## PLC2-2 Typed Management Command Core" in contract
+    assert "Install is intentionally disabled-by-default" in contract
+    assert "There is deliberately no claim of atomic commit" in contract
+    assert "`pending_approval` and `cancelling` remain reserved" in contract
+    assert "## PLC2-2 Exact Error Codes" in contract
+    assert "## PLC2-2 Regression Gate" in contract
+    for state in (
+        "accepted",
+        "running",
+        "terminal",
+    ):
+        assert state in contract
+
+
+def test_plc2_management_service_is_the_only_desired_state_mutation_caller() -> None:
+    root = Path("src/loushang/harness/plugin_management")
+    sources = {
+        path: path.read_text(encoding="utf-8")
+        for path in root.rglob("*.py")
+    }
+
+    assert _call_sites(sources, "commit") == {
+        (
+            Path("src/loushang/harness/plugin_management/service.py"),
+            "PluginManagementService._execute_unlocked",
+        )
+    }
