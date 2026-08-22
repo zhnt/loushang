@@ -107,11 +107,13 @@ collapse “selected” into “authorized to execute,” make revocation races
 undefined, and allow a crash between one-shot consumption and external process
 tracking.
 
-**Correction applied.** PAP1B first distinguishes a document `data_only`
-reservation from an in-process `execution_preflight` reservation, so strict
-document decoding never invents execution authority. PAP2 then adds the durable
-Approval-owner port and recovery states before PAP3 may import a Plugin
-Definition. The Plugin subsystem does not own another approval store.
+**Correction applied.** PAP1B first groups exact reservation closures by source
+and distinguishes a document `data_only` gate from an in-process
+`execution_preflight` gate, so strict document decoding never invents execution
+authority. Those gates are not final evidence: document decoding emits
+`document_decoded`, while PAP2/PAP3 must produce `in_process_evaluated` bound to
+one durable group consumption receipt before candidate finalization. The Plugin
+subsystem does not own another approval store.
 
 ### P0-03 — Stable public SDK cannot precede production combination evidence
 

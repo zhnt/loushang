@@ -35,7 +35,7 @@ or graph node:
 | Concept | Meaning |
 | --- | --- |
 | Capability ID | Stable owner-qualified identity such as `harness.workspace` or `coding.lsp`. |
-| Capability Bundle | The owner-composed runtime, tools, resources, and private binding facets that implement one Capability. |
+| Capability Bundle | The owner-composed runtime, tool-support interfaces, resources, and private binding facets that implement one Capability. Independently selected model-visible Tool definitions remain Tool-owner contributions. |
 | Mount Policy | Product policy such as `disabled`, `on_demand`, or `always` that decides when a Capability is requested. |
 | Mounted Capability | One admitted Capability Bundle bound to a concrete process, tenant, workspace, Session, turn, or Channel scope. |
 
@@ -96,14 +96,19 @@ represented by current Coding constants, are:
 
 | Capability ID | Bundle boundary |
 | --- | --- |
-| `coding.lsp` | Language-server declaration admission, selection, document synchronization, lifecycle, semantic queries, diagnostics, and tools |
-| `coding.arch` | Repository architecture analyzers, import-graph facts, architecture queries, diagnostics, and tools |
+| `coding.lsp` | Language-server declaration admission, selection, document synchronization, lifecycle, semantic queries, diagnostics, and typed tool-runtime support |
+| `coding.arch` | Repository architecture analyzers, import-graph facts, architecture queries, diagnostics, and typed tool-runtime support |
 
-LSP supervisors, documents, diagnostic inboxes, individual analyzers, Tool
-definitions, `interaction.side_question`, and `prompt.sections` do not become
-top-level nodes merely because they have focused implementation owners. They
-remain Bundle internals or Runtime Profile binding facets unless a later
-decision proves an independent public lifecycle.
+LSP supervisors, documents, diagnostic inboxes, individual analyzers,
+`interaction.side_question`, and `prompt.sections` do not become top-level
+nodes merely because they have focused implementation owners. They remain
+Bundle internals or Runtime Profile binding facets unless a later decision
+proves an independent public lifecycle. A Capability Bundle may expose a typed
+tool-runtime support facet, but a separately selected model-visible
+`ToolDefinition`, schema, and registration belong to the Tool
+definition/contribution owner. Such a sibling `tool_pack` consumes the mounted
+Capability facet and becomes visible only with the usable Product Session; it
+does not become a Graph node or a Capability-generation registration.
 
 ## Dependencies And Facet Views
 

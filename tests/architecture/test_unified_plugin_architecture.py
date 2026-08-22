@@ -20,6 +20,9 @@ AUTHORING_PLAN_PATH = Path(
 LIFECYCLE_PLAN_PATH = Path(
     "docs/internals/architecture/harness/plugin-lifecycle-coding-pluginization-plan.md"
 )
+CAPABILITY_LIFECYCLE_PATH = Path(
+    "docs/internals/architecture/harness/capability-dependency-and-mount-lifecycle.md"
+)
 README_PATH = Path("docs/internals/architecture/harness/README.md")
 SOURCE_ROOT = Path("src/loushang")
 EXPECTED_PLUGIN_JSON_STATIC_SITES = {
@@ -999,6 +1002,7 @@ def test_unified_plugin_architecture_defines_the_four_phase_pipeline() -> None:
 
 def test_plugin_classification_is_multidimensional_and_non_authoritative() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
+    capability_lifecycle = CAPABILITY_LIFECYCLE_PATH.read_text(encoding="utf-8")
 
     assert "has no mutually exclusive top-level `pluginType`" in architecture
     assert "Product and OEM\nare selectors and provenance authorities" in architecture
@@ -1016,7 +1020,15 @@ def test_plugin_classification_is_multidimensional_and_non_authoritative() -> No
     assert "Declaration source model is not contributed-runtime execution model" in (
         architecture
     )
-    assert "No parity\ntest may erase that provenance distinction" in architecture
+    assert "No parity test may erase that\nprovenance distinction" in architecture
+    assert "PluginContributionSemanticFingerprint" in architecture
+    assert "never substitutes for\ndeclaration/candidate identity" in architecture
+    assert "Independently selected model-visible Tool definitions" in (
+        capability_lifecycle
+    )
+    assert "does not become a Graph node or a Capability-generation registration" in (
+        capability_lifecycle
+    )
 
 
 def test_plc1b_declaration_plan_and_pap_crosswalk_are_explicit() -> None:
@@ -1031,14 +1043,19 @@ def test_plc1b_declaration_plan_and_pap_crosswalk_are_explicit() -> None:
     ):
         assert slice_name in lifecycle_plan
     assert "no top-level Plugin type code or bitmap participates" in lifecycle_plan
-    assert "strict gate union: `data_only` for `document`" in lifecycle_plan
-    assert "document reservation succeeds without a `PluginExecutionApprovalSubject`" in (
+    assert "runtime-only v2" in lifecycle_plan
+    assert "PluginDeclarationDocument` envelope v1" in lifecycle_plan
+    assert "`PluginDeclarationSourceGroup`" in lifecycle_plan
+    assert "closes its proposed reservation group over every index entry" in (
         lifecycle_plan
     )
-    assert "finalized `PluginContributionCandidate`, and candidate fingerprint" in (
+    assert "same source cannot be split across groups" in lifecycle_plan
+    assert "`document_decoded` and\n  `in_process_evaluated`" in lifecycle_plan
+    assert "rejects in-process finalization as `execution_not_consumed`" in (
         lifecycle_plan
     )
-    assert "complete declaration/candidate fingerprints stay source-bound" in (
+    assert "invoke finalization once for the preflight" in lifecycle_plan
+    assert "Transitive cycles are deferred to the existing Graph\n  Planner" in (
         lifecycle_plan
     )
     assert "## PAP/PLC Sequencing Crosswalk" in authoring_plan
@@ -1047,6 +1064,11 @@ def test_plc1b_declaration_plan_and_pap_crosswalk_are_explicit() -> None:
         authoring_plan
     )
     assert "| PAP1B | PLC1B |" in authoring_plan
+    assert "| PAP4 + PAP4R + PAP5 | PLC4 |" in authoring_plan
+    assert "### PAP4R: Resource/Tool/Command Owner And Consumer-Root Bridge" in (
+        authoring_plan
+    )
+    assert "ProductCapabilityConsumerRequirementSet" in authoring_plan
     assert "this slice is part of PLC3" in authoring_plan
     assert "after PAP1B/PLC1B and the PLC2 minimum lifecycle command core" in (
         authoring_plan
@@ -1067,16 +1089,33 @@ def test_executable_declaration_is_gated_by_inert_preflight() -> None:
     assert "executable packages are never imported and\nnever launched" in architecture
     assert "PluginExecutionApprovalSubject" in architecture
     assert "ContributionActivationApprovalSubject" in architecture
+    assert "PluginPreflightOutcome" in architecture
+    assert "one positive execution subject/decision\n   reference for the whole" in (
+        architecture
+    )
+    assert "Reservation gate and completed declaration evidence are different" in (
+        architecture
+    )
+    assert "A positive decision reference alone cannot become a candidate" in (
+        architecture
+    )
+    assert "carry no\nreservation, gate, active token" in architecture
+    assert "atomically materialize the accepted groups" in architecture
+    assert "is an independent complete subject" in architecture
     assert "PluginApprovalDecisionRecord" in architecture
     assert "consume_execution_decision(subject, decision_id)" in architecture
     assert "Revocation linearizes against consumption" in architecture
-    assert "security-relevant configuration fingerprint" in architecture
+    assert "normalized group security-configuration\n  fingerprint" in architecture
+    assert "Security-relevant configuration includes" in architecture
 
 
 def test_top_level_capability_provider_selection_is_not_a_profile_slot() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
 
     assert "ProductCapabilityProviderResolver" in architecture
+    assert "ProductCapabilityConsumerRequirementSet" in architecture
+    assert "sole bridge into\n`ProductCapabilityProviderResolver`" in architecture
+    assert "not a third\nTool-to-Provider locator" in architecture
     assert "CapabilityProviderEligibilityGrant" in architecture
     assert "CapabilityProviderAdmissionRecord" in architecture
     assert "CapabilityProviderBindingSpec" in architecture
@@ -1105,7 +1144,7 @@ def test_owner_admission_agent_event_and_disable_contracts_are_explicit() -> Non
     )
     assert "must atomically append its delivery\noutbox" in architecture
     assert "an unknown `required` fact fails closed" in architecture
-    assert "one-use declaration reservation" in architecture
+    assert "security envelope and one-use\ndeclaration reservation" in architecture
     assert "`capability_component`" in architecture
     assert "CapabilityComponentDefinition" in architecture
     assert "Agent fields have one authority each" in architecture

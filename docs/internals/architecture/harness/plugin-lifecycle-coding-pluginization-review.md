@@ -29,6 +29,38 @@ This review found nine high-priority risks. The plan includes their required
 corrections; none requires a second Graph, Resource runtime, Profile resolver,
 approval store, registration owner, or effective projector.
 
+## PLC1B Documentation Remediation
+
+Three independent read-only reviews of the PLC1B documentation increment found
+no P0 but rejected it as an implementation freeze because several P1 contracts
+were incomplete or contradictory. The current remediation applies their shared
+requirements:
+
+1. one `PluginDeclarationSourceGroup` owns an exact sorted reservation closure,
+   closes over every index entry sharing its source, is decoded/evaluated once,
+   and all non-overlapping groups join before one preflight finalization;
+2. reservation `data_only`/`execution_preflight` gates are distinct from final
+   `document_decoded`/`in_process_evaluated` evidence, executable evidence
+   requires the durable group consumption receipt, and non-accepted preflight
+   outcomes create no token, reservation, or group;
+3. Contribution Index and Declaration IR advance to runtime-only v2, with draft
+   v1 rejected rather than retained as a peer parser;
+4. direct self-requirement fails in the payload codec, while transitive cycles
+   remain solely with the existing Graph Planner over the PLC4 complete set;
+5. exact Tool/Command owner admission returns typed requirements, one Product
+   requirement set feeds Provider roots, and post-Graph typed capture remains
+   the only external Consumer path;
+6. Capability Bundles own tool-runtime support while independently selected
+   model-visible definitions/registrations remain sibling Tool-owner
+   contributions;
+7. semantic fingerprint v1 is a precisely scoped pre-owner/pre-Host-
+   normalization conformance diagnostic; and
+8. PAP4R makes the Resource/Tool/Command bridge explicit, while PAP8 source
+   implementation remains PLC8 work.
+
+This section records remediation, not approval. A fresh independent review of
+the remediated diff is still required before PLC1B-1 source work begins.
+
 ## Review Scope
 
 The review compared the plan against:
@@ -122,17 +154,17 @@ risk. Giving document declarations a separate IR would create identity and
 compatibility skew.
 
 **Correction accepted.** PLC1 introduces `document` and `in_process` source
-arms that consume the same reservation model and produce the same tagged IR.
-The current unconditional execution-subject fields become a strict reservation
-gate union over shared source-neutral facts: `data_only` carries no execution
-subject/decision, while `execution_preflight` carries the exact existing
-subject and decision reference. The same union replaces unconditional approval
-fields in the authoring view, finalized candidate, and candidate fingerprint;
-there is no optional or fabricated decision peer. Document declarations still
-require digest, schema, selection and owner admission. Only executable
-evaluation consumes execution approval and crosses the verified import gate.
-Declaration source kind remains separate from any contributed factory/service
-execution model.
+arms that produce the same tagged IR v2. Within one preflight context,
+selecting any contribution closes its group over every index entry sharing the
+exact source/revision; the group binds its gate, sorted closure and
+configuration-map fingerprint. `data_only` carries no
+execution subject, while `execution_preflight` carries one positive group
+decision. Those gates do not become final evidence: document decoding emits
+`document_decoded`, executable evaluation emits `in_process_evaluated` bound to
+the durable group receipt, and an unconsumed positive decision cannot form a
+candidate. A coordinator processes each group once and finalizes the complete
+preflight once. Declaration source kind remains separate from any contributed
+factory/service execution model.
 
 ### P0-06 — Kernel Prompt must remain truthful without Plugins
 
@@ -159,11 +191,11 @@ appear successful while duplicate resolution or last-writer behavior masks the
 problem.
 
 **Correction accepted.** PLC1 shadow mode stops at frozen declarations and
-later may compare owner candidate outputs before publication. Each production
-slice includes a final caller inventory and peer-route deletion commit. Shadow
-parity is limited to normalized payload and semantic fingerprints; complete
-declaration/candidate fingerprints intentionally retain their different source
-and reservation provenance.
+validates pinned catalog/schema identities without Host-environment resolution.
+Its versioned semantic fingerprint covers only strict canonical payload before
+owner/Host normalization; full fingerprints retain source/reservation/evidence
+provenance, and live behavior parity waits for PLC4/PLC6. Each production slice
+includes a final caller inventory and peer-route deletion commit.
 
 ### P0-08 — Base-first evidence cannot replace Provider/Graph evidence
 
@@ -344,8 +376,8 @@ PLC0 baseline
 Permitted internal parallelism after interfaces freeze:
 
 - PLC1B Resource and Tool/Command codecs may proceed beside each other only
-  after the source-union and identity fields freeze; PLC1A's Provider codec
-  remains the first compatibility fixture;
+  after v2 source-group, evidence, locator and identity fields freeze; PLC1A's
+  Provider codec remains the first compatibility fixture;
 - PLC2 inert management records may proceed beside PLC3 Approval design, but
   executable evaluation cannot merge before Approval consumption exists;
 - PLC4 Resource-owner and Capability-owner adapters may proceed independently;
@@ -399,20 +431,27 @@ legacy live registrar behind a facade.
 ## First Implementation Gate
 
 PLC0 and PLC1A satisfy the baseline entry gates through `8a3c94fd`. PLC1B source
-work is eligible after the missing tracking issue is attached:
+work is eligible only after the documentation remediation passes fresh
+independent review and the missing tracking issue is attached:
 
 1. the known architecture inventory failures are reconciled and green;
 2. exact parser, source-open, declaration, selection and live-publication sites
    are recorded without broad allowlists;
-3. `PluginDeclaration` remains the one canonical IR;
-4. the existing Provider codec remains inert and compatible with the current
-   preflight/finalize slice;
-5. the document source model cannot import code;
-6. the `coding.base` shadow fixture stops before owner admission/publication;
-7. no stable public SDK symbol is exported;
-8. no Graph, Resource, Tool, Command, Extension or Session behavior changes;
-9. targeted Plugin and architecture tests plus `git diff --check` pass; and
-10. rollback requires no live-state cleanup or data migration.
+3. runtime-only v2 is the one canonical index/IR path and draft v1 fails closed;
+4. exact source groups, gate/evidence transition, revision-root locator base and
+   single-finalization coordinator are frozen;
+5. the existing Provider codec remains inert and separates declaration source
+   from contributed factory/disposer execution model;
+6. the document source model cannot import code, while unconsumed in-process
+   Builder output cannot form a batch or candidate;
+7. direct self-requirement fails in the codec and transitive cycles remain with
+   the existing Graph Planner;
+8. the `coding.base` shadow fixture stops before owner/Host normalization,
+   admission or publication;
+9. no stable public SDK symbol is exported and no Graph, Resource, Tool,
+   Command, Extension or Session behavior changes;
+10. targeted Plugin and architecture tests plus `git diff --check` pass; and
+11. rollback requires no live-state cleanup or data migration.
 
 ## Review Conclusion
 
