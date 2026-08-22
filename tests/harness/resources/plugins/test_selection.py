@@ -6,6 +6,15 @@ from pathlib import Path
 
 import pytest
 
+from loushang.harness.capabilities import (
+    CapabilityBundleProvider,
+    CapabilityContractRange,
+)
+from loushang.harness.plugin_authoring.capability_provider import (
+    PLUGIN_PROVIDER_SELECTION_RULE,
+    CapabilityProviderDeclarationPayload,
+    PluginSymbolReference,
+)
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.plugins.authority import (
     PluginResolutionAuthority,
@@ -67,11 +76,27 @@ def test_preflight_and_finalize_are_inert_and_reservations_are_one_use(
         kind="capability_provider",
         owner="coding.lsp",
         reservation_fingerprint=contribution.fingerprint,
-        payload={
-            "capabilityId": "coding.lsp",
-            "providerId": "review-lsp",
-            "version": "1",
-        },
+        payload=CapabilityProviderDeclarationPayload(
+            provider=CapabilityBundleProvider(
+                capability_id="coding.lsp",
+                provider_id="review-lsp",
+                implementation_version=1,
+                compatible_contract=CapabilityContractRange.exact(1),
+                facets=("semantic",),
+                required_authorities=frozenset({"process"}),
+                source_id="plugin:review-pack",
+                selection_rule=PLUGIN_PROVIDER_SELECTION_RULE,
+            ),
+            factory=PluginSymbolReference(
+                path="provider.py",
+                symbol="create_provider",
+                package_digest=package.content_digest,
+                execution_model="in_process",
+            ),
+            disposer=None,
+            binding_inputs=dict(contribution.configuration),
+            configuration_fingerprint=contribution.configuration_fingerprint,
+        ).to_dict(),
     )
     assert PluginDeclaration.from_dict(declaration.to_dict()) == declaration
 
