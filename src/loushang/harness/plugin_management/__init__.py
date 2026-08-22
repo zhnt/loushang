@@ -30,6 +30,16 @@ from loushang.harness.plugin_management.records import (
     PluginInstallationStateV1,
     PluginPackageRevisionRefV1,
 )
+from loushang.harness.plugin_management.retirement import (
+    PLUGIN_RETIREMENT_INTENT_RECORD_VERSION,
+    PLUGIN_RETIREMENT_INTENT_VERSION,
+    PluginRetirementError,
+    PluginRetirementIntentLedger,
+    PluginRetirementIntentRecordV1,
+    PluginRetirementIntentSnapshotV1,
+    PluginRetirementIntentV1,
+    PluginRetirementRecordCodecError,
+)
 from loushang.harness.plugin_management.service import (
     PluginManagementError,
     PluginManagementService,
@@ -65,6 +75,8 @@ __all__ = [
     "PLUGIN_MANAGEMENT_UPDATE_COMMAND_VERSION",
     "PLUGIN_MIGRATION_FENCE_VERSION",
     "PLUGIN_PACKAGE_REVISION_REF_VERSION",
+    "PLUGIN_RETIREMENT_INTENT_RECORD_VERSION",
+    "PLUGIN_RETIREMENT_INTENT_VERSION",
     "PLUGIN_UPDATE_OPERATION_EVENT_VERSION",
     "PLUGIN_UPDATE_OPERATION_RESULT_VERSION",
     "PLUGIN_UPDATE_RESTART_REQUIREMENT_VERSION",
@@ -86,6 +98,12 @@ __all__ = [
     "PluginManagementUpdateCommandV2",
     "PluginMigrationFenceV1",
     "PluginPackageRevisionRefV1",
+    "PluginRetirementError",
+    "PluginRetirementIntentLedger",
+    "PluginRetirementIntentRecordV1",
+    "PluginRetirementIntentSnapshotV1",
+    "PluginRetirementIntentV1",
+    "PluginRetirementRecordCodecError",
     "PluginUpdateOperationEventV2",
     "PluginUpdateOperationResultV2",
     "PluginUpdateRestartRequirementV1",

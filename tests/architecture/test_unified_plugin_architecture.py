@@ -366,6 +366,8 @@ PRE_SDK_PRIVATE_PLUGIN_SYMBOLS = frozenset(
         "PluginManagementService",
         "PluginManagementUpdateCommandV2",
         "PluginDesiredStateLedger",
+        "PluginRetirementIntentLedger",
+        "PluginRetirementIntentV1",
         "ProductCapabilityProviderResolver",
         "compile_plugin_contribution_semantic_fingerprint",
     }
@@ -2936,6 +2938,12 @@ def test_plc2_management_service_is_the_only_desired_state_mutation_caller() -> 
             "PluginManagementService._execute_update_unlocked",
         )
     }
+    assert _call_sites(sources, "request_for") == {
+        (
+            Path("src/loushang/harness/plugin_management/service.py"),
+            "PluginManagementService._handoff_retirement",
+        ),
+    }
 
 
 def test_plc2_staged_update_contract_is_versioned_inert_and_conservative() -> None:
@@ -2954,3 +2962,24 @@ def test_plc2_staged_update_contract_is_versioned_inert_and_conservative() -> No
     assert 'PluginManagementAction = Literal["install", "enable", "disable", "remove"]' in (
         operations
     )
+
+
+def test_plc2_retirement_intent_is_handoff_not_effective_state() -> None:
+    contract = PLC2_CONTRACT_PATH.read_text(encoding="utf-8")
+    retirement = Path(
+        "src/loushang/harness/plugin_management/retirement.py"
+    ).read_text(encoding="utf-8")
+
+    assert "## PLC2-4A Durable Retirement Intent" in contract
+    assert "do not\nprove that an Instance was ever `ACTIVE`" in contract
+    assert "mode `graceful` only" in contract
+    assert "Owner retirement and\ncleanup have not begun in PLC2-4A" in contract
+    assert "management operation journal\n  -> desired-state journal\n  -> retirement-intent journal" in contract
+    for forbidden_call in (
+        ".dispose(",
+        ".deactivate(",
+        ".release_package(",
+        ".delete(",
+        "acquire_current(",
+    ):
+        assert forbidden_call not in retirement

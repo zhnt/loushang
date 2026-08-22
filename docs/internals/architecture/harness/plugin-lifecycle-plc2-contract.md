@@ -1,6 +1,7 @@
 # Plugin Lifecycle PLC2 Contract
 
-Status: PLC2-1, PLC2-2 and PLC2-3 implemented; PLC2-4 not started. This document
+Status: PLC2-1, PLC2-2, PLC2-3 and PLC2-4A implemented; PLC2-4B/4C/4D not
+started. This document
 narrows the PLC2 section of the
 [Unified Plugin Lifecycle And Coding Pluginization Delivery Plan](plugin-lifecycle-coding-pluginization-plan.md).
 It does not make the Plugin authoring SDK public and does not authorize live
@@ -493,3 +494,122 @@ PLC2-3 is complete only when tests prove:
   update transition, and terminal failure cannot contradict one; and
 - architecture gates retain one management authority and introduce no Product,
   Session, Graph, registration, execution, private-data or GC dependency.
+
+## PLC2-4 Retirement And Cleanup Handoff
+
+PLC2-4 is divided into four rollback-safe increments because retirement
+coordination, Instance execution state, exact-owner results and package cleanup
+belong to different authorities:
+
+1. **PLC2-4A retirement intent handoff** durably identifies the exact replaced
+   enabled Instance Revision and Package Revision after a desired-state cutover.
+2. **PLC2-4B owner-retirement aggregation** records opaque owner/generation
+   handles and redacted owner-issued outcomes without invoking a disposer.
+3. **PLC2-4C Instance lease/state gate** implements `ACTIVE`, `DRAINING`,
+   `REVOKING` and `RETIRED` under the Product Plugin Host's acquisition and
+   membership authority.
+4. **PLC2-4D cleanup lease handoff** implements the package lifecycle owner's
+   write-ahead cleanup journal, startup recovery barrier, retry/repair evidence
+   and journal-owned Package Revision lease.
+
+This order does not imply that management desired state owns effective state.
+In particular, an `installed_enabled` selection and a retirement intent do not
+prove that an Instance was ever `ACTIVE`, that it entered `DRAINING`, that an
+owner generation stopped, or that package bytes are GC-eligible.
+
+## PLC2-4A Durable Retirement Intent
+
+PLC2-4A extends the one management transaction with a durable coordination
+handoff. It introduces no owner callback, disposer, registration handle,
+runtime lease, Session lookup, security-revoke action, package-cache mutation,
+private-data action or cleanup execution.
+
+### Exact Retirement Subject
+
+`PluginRetirementIntentV1` embeds the complete source desired-state transition
+and redundantly records only facts derived from it:
+
+- one service-derived opaque `retirementId`;
+- trigger `disable`, `remove`, or `update`;
+- mode `graceful` only;
+- the previous selection's exact `PluginInstanceRevisionRef`; and
+- the previous selection's exact `PluginPackageRevisionRefV1`.
+
+An intent exists only when the source transition replaced an
+`installed_enabled` selection:
+
+| Source transition | PLC2-4A result |
+| --- | --- |
+| enabled -> disabled | graceful intent, trigger `disable` |
+| enabled -> absent | graceful intent, trigger `remove` |
+| enabled revision N -> enabled revision N+1 | graceful intent for revision N, trigger `update` |
+| install, enable, unchanged, disabled update/remove, absent remove | no intent |
+
+The retirement ID is the lowercase SHA-256 of a domain separator plus the
+canonical source-transition bytes. No adapter or caller supplies it. The
+intent validator recomputes every redundant field and rejects a record that
+changes the trigger, mode, Instance, Package Revision or ID.
+
+`PluginRetirementIntentRecordV1` adds one contiguous positive retirement-
+journal revision. The ledger rejects two source operations for one retirement
+ID, two graceful intents for one Instance Revision, or the same source
+operation with different evidence. Strict decoding, partial-tail repair and
+complete-record fail-closed behavior match the earlier PLC2 journals.
+
+### Three-Journal Ordering And Recovery
+
+The service lock order is:
+
+```text
+management operation journal
+  -> desired-state journal
+  -> retirement-intent journal
+```
+
+After a successful desired cutover and before the terminal operation event,
+the service derives and durably appends the exact retirement intent when one is
+required. There is no cross-file atomicity claim:
+
+- a crash before desired cutover leaves neither transition nor intent;
+- a crash after desired cutover recovers the same idempotent transition, then
+  writes the missing intent;
+- a crash after intent append recovers the same intent without a second append,
+  then writes the terminal operation event; and
+- a terminal committed operation is corrupt unless its exact required intent
+  exists; every intent is corrupt unless its embedded source transition exists
+  exactly in desired state.
+
+An intent-journal infrastructure or corruption failure leaves the management
+operation non-terminal. It is not converted to a successful disable/remove/
+update and does not synthesize a retryable cleanup result. Owner retirement and
+cleanup have not begun in PLC2-4A.
+
+### PLC2-4A Exact Error Codes
+
+| Condition | Code |
+| --- | --- |
+| unsupported intent/record version | `unsupported_plugin_retirement_record_version` |
+| wrong/unknown intent/record field or invalid derived evidence | `invalid_plugin_retirement_record` |
+| retirement/source-operation/Instance identity reused with different evidence | `plugin_retirement_intent_conflict` |
+| intent journal cannot be replayed or contradicts desired/operation evidence | `plugin_retirement_journal_corrupt` |
+
+These are infrastructure/recovery errors, not normal terminal management
+failure codes. They contain no owner result text, package bytes, private data,
+secret or source credential.
+
+### PLC2-4A Regression Gate
+
+PLC2-4A is complete only when tests prove:
+
+- strict intent/record round trips and version/field rejection;
+- the exact transition matrix above, including old Instance/Package identity;
+- exact retry and restart replay without duplicate intent;
+- crash after desired cutover and crash after intent append both recover to one
+  desired transition, one intent and one terminal operation result;
+- terminal operation/desired transition/intent cross-log contradictions fail
+  closed, while a valid non-terminal recovery window remains accepted;
+- two service instances serialize the same handoff and an incomplete operation
+  continues to block a conflicting command for the same Installation; and
+- architecture gates find one production intent append call site inside
+  `PluginManagementService` and no owner, disposer, Session, registration,
+  execution, private-data, package-cache or GC dependency.

@@ -34,6 +34,13 @@ from loushang.harness.plugin_management.records import (
     PluginDesiredStateTransitionV1,
     PluginInstallationKeyV1,
 )
+from loushang.harness.plugin_management.retirement import (
+    PluginRetirementError,
+    PluginRetirementIntentLedger,
+    PluginRetirementIntentSnapshotV1,
+    PluginRetirementIntentV1,
+    retirement_intent_for_transition,
+)
 from loushang.harness.plugin_management.updates import (
     PLUGIN_UPDATE_TERMINAL_ERROR_CODES,
     PluginDesiredStateUpdateMutationV1,
@@ -76,6 +83,18 @@ class PluginDesiredStateLedgerPort(Protocol):
     def transitions(self) -> tuple[PluginDesiredStateJournalTransition, ...]: ...
 
 
+class PluginRetirementIntentLedgerPort(Protocol):
+    @property
+    def path(self) -> Path: ...
+
+    def request_for(
+        self,
+        transition: PluginDesiredStateJournalTransition,
+    ) -> PluginRetirementIntentV1 | None: ...
+
+    def snapshot(self) -> PluginRetirementIntentSnapshotV1: ...
+
+
 class PluginManagementError(RuntimeError):
     """Fail-closed management-command error with a stable code."""
 
@@ -101,12 +120,21 @@ class PluginManagementService:
         *,
         desired_state: PluginDesiredStateLedgerPort,
         operation_journal_path: str | Path,
+        retirement_intents: PluginRetirementIntentLedgerPort | None = None,
     ) -> None:
         self._desired_state = desired_state
         self._path = Path(operation_journal_path)
-        if self._path.resolve() == desired_state.path.resolve():
+        self._retirement_intents = retirement_intents or PluginRetirementIntentLedger(
+            self._path.with_name(f"{self._path.name}.retirement-intents")
+        )
+        journal_paths = {
+            self._path.resolve(),
+            desired_state.path.resolve(),
+            self._retirement_intents.path.resolve(),
+        }
+        if len(journal_paths) != 3:
             raise ValueError(
-                "Plugin operation and desired-state journals must be distinct"
+                "Plugin operation, desired-state and retirement journals must be distinct"
             )
         self._unlocked_durability = replace(
             DURABLE_LOCKED_JOURNAL,
@@ -117,6 +145,10 @@ class PluginManagementService:
     @property
     def operation_journal_path(self) -> Path:
         return self._path
+
+    @property
+    def retirement_intent_journal_path(self) -> Path:
+        return self._retirement_intents.path
 
     def submit(
         self,
@@ -276,6 +308,7 @@ class PluginManagementService:
                     error_code=exc.code,
                 )
             else:
+                self._handoff_retirement(transition)
                 result = PluginManagementOperationResultV1.succeeded(
                     transition=transition,
                 )
@@ -340,6 +373,7 @@ class PluginManagementService:
                     raise
                 result = PluginUpdateOperationResultV2.failed(error_code=exc.code)
             else:
+                self._handoff_retirement(transition)
                 if (
                     transition.previous_state.selection.desired_state
                     == "installed_enabled"
@@ -367,6 +401,12 @@ class PluginManagementService:
         )
         self._append_unlocked(terminal)
         return terminal
+
+    def _handoff_retirement(
+        self,
+        transition: PluginDesiredStateJournalTransition,
+    ) -> None:
+        self._retirement_intents.request_for(transition)
 
     def _prepare_update_mutation(
         self,
@@ -511,6 +551,17 @@ class PluginManagementService:
             transition.mutation.operation_id: transition
             for transition in self._desired_state.transitions()
         }
+        retirement_snapshot = self._retirement_intents.snapshot()
+        retirement_by_operation = {
+            intent.source_operation_id: intent
+            for intent in retirement_snapshot.intents
+        }
+        for operation_id, intent in retirement_by_operation.items():
+            if desired_by_operation.get(operation_id) != intent.source_transition:
+                raise _retirement_corrupt(
+                    self._retirement_intents.path,
+                    "Plugin retirement intent is not present in desired state",
+                )
         for event in replayed.latest_by_operation.values():
             if event.status != "terminal" or event.result is None:
                 continue
@@ -531,6 +582,22 @@ class PluginManagementService:
                 raise _corrupt(
                     self._path,
                     "Plugin management failure conflicts with desired state",
+                )
+            expected_retirement = (
+                None if desired is None else retirement_intent_for_transition(desired)
+            )
+            actual_retirement = retirement_by_operation.get(
+                event.command.operation_id
+            )
+            if committed and actual_retirement != expected_retirement:
+                raise _retirement_corrupt(
+                    self._retirement_intents.path,
+                    "Plugin management terminal result lacks exact retirement intent",
+                )
+            if not committed and actual_retirement is not None:
+                raise _retirement_corrupt(
+                    self._retirement_intents.path,
+                    "Plugin management failure conflicts with retirement intent",
                 )
 
 
@@ -594,6 +661,14 @@ def _corrupt(path: Path, message: str) -> PluginManagementError:
     )
 
 
+def _retirement_corrupt(path: Path, message: str) -> PluginRetirementError:
+    return PluginRetirementError(
+        message,
+        code="plugin_retirement_journal_corrupt",
+        path=path,
+    )
+
+
 def _installation_key(
     command: PluginManagementCommand,
 ) -> PluginInstallationKeyV1:
@@ -606,4 +681,5 @@ __all__ = [
     "PluginDesiredStateLedgerPort",
     "PluginManagementError",
     "PluginManagementService",
+    "PluginRetirementIntentLedgerPort",
 ]

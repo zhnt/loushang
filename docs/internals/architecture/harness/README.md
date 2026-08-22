@@ -70,7 +70,9 @@ planning, work event persistence, or AI provider behavior.
   Instance identity, PLC2-2 implements the sole durable install/enable/disable/
   remove command core, and PLC2-3 adds inert staged update, versioned migration
   fencing, atomic desired-selection cutover and exact conservative restart
-  evidence without claiming runtime effectiveness.
+  evidence. PLC2-4A adds the durable exact-old-Instance retirement-intent
+  handoff without claiming runtime effectiveness or invoking an owner/cleanup
+  action.
 - [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md) records the
   green parser/source-sink/authority inventory, frozen foundation exports,
   forbidden peer routes, and inert published-Plugin fixture required before
