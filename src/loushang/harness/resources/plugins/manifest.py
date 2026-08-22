@@ -9,7 +9,10 @@ from loushang.harness.resources.plugins._strict_json import (
     PluginJsonCodecError,
     StrictPluginJsonCodec,
 )
-from loushang.harness.resources.plugins.declarations import PluginContributionIndex
+from loushang.harness.resources.plugins.declarations import (
+    PluginContributionIndex,
+    PluginDeclarationCodecError,
+)
 from loushang.harness.resources.plugins.types import (
     PluginManifest,
     PluginSource,
@@ -376,6 +379,12 @@ def _contribution_index(
         return PluginContributionIndex()
     try:
         index = PluginContributionIndex.from_dict(value)
+    except PluginDeclarationCodecError as exc:
+        raise PluginManifestError(
+            f"Invalid Plugin contribution index: {manifest_path}: {exc}",
+            code=exc.code,
+            path=manifest_path,
+        ) from exc
     except (TypeError, ValueError) as exc:
         raise PluginManifestError(
             f"Invalid Plugin contribution index: {manifest_path}: {exc}",
@@ -383,7 +392,7 @@ def _contribution_index(
             path=manifest_path,
         ) from exc
     for reservation in index.items:
-        logical_path = Path(*reservation.entrypoint_path.parts)
+        logical_path = Path(*reservation.declaration_source.relative_path.parts)
         candidate = root / logical_path
         try:
             resolved = candidate.resolve(strict=True)

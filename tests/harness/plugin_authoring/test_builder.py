@@ -63,6 +63,10 @@ def test_builder_exact_matches_hand_authored_ir_and_freezes(
         kind="capability_provider",
         owner=reservation.contribution.owner,
         reservation_fingerprint=reservation.contribution.fingerprint,
+        source_descriptor_fingerprint=(
+            reservation.contribution.source_descriptor_fingerprint
+        ),
+        source_kind=reservation.contribution.declaration_source.kind,
         payload=payload.to_dict(),
     )
 
@@ -147,17 +151,9 @@ def test_builder_requires_every_reservation_exactly_once(
         (
             lambda payload: replace(
                 payload,
-                configuration_fingerprint="c" * 64,
+                binding_inputs={"mode": "changed"},
             ),
-            "configuration fingerprint",
-        ),
-        (
-            lambda payload: replace(
-                payload,
-                factory=replace(payload.factory, package_digest="c" * 64),
-                disposer=replace(payload.disposer, package_digest="c" * 64),
-            ),
-            "package digest",
+            "binding inputs",
         ),
     ],
 )
@@ -257,6 +253,10 @@ def test_reserved_decode_rejects_declaration_from_another_plugin(
         kind="capability_provider",
         owner=reservation.contribution.owner,
         reservation_fingerprint=reservation.contribution.fingerprint,
+        source_descriptor_fingerprint=(
+            reservation.contribution.source_descriptor_fingerprint
+        ),
+        source_kind=reservation.contribution.declaration_source.kind,
         payload=forged_payload.to_dict(),
     )
 
@@ -272,7 +272,6 @@ def _payload(
 ) -> CapabilityProviderDeclarationPayload:
     contribution = reservation.contribution
     plugin_id = reservation.package.manifest.name
-    package_digest = reservation.package.content_digest
     provider = CapabilityBundleProvider(
         capability_id=contribution.owner,
         provider_id="org.loushang.coding-lsp/default",
@@ -295,17 +294,14 @@ def _payload(
         factory=PluginSymbolReference(
             path="provider.py",
             symbol="create_provider",
-            package_digest=package_digest,
             execution_model="in_process",
         ),
         disposer=PluginSymbolReference(
             path="provider.py",
             symbol="dispose_provider",
-            package_digest=package_digest,
             execution_model="in_process",
         ),
         binding_inputs=dict(contribution.configuration),
-        configuration_fingerprint=contribution.configuration_fingerprint,
     )
 
 

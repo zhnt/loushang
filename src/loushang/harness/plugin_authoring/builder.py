@@ -93,6 +93,8 @@ class PluginDeclarationBuilder:
             kind="capability_provider",
             owner=contribution.owner,
             reservation_fingerprint=contribution.fingerprint,
+            source_descriptor_fingerprint=contribution.source_descriptor_fingerprint,
+            source_kind=contribution.declaration_source.kind,
             payload=payload.to_dict(),
         )
         self._declarations[contribution_id] = declaration

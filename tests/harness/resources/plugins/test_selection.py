@@ -76,6 +76,8 @@ def test_preflight_and_finalize_are_inert_and_reservations_are_one_use(
         kind="capability_provider",
         owner="coding.lsp",
         reservation_fingerprint=contribution.fingerprint,
+        source_descriptor_fingerprint=contribution.source_descriptor_fingerprint,
+        source_kind=contribution.declaration_source.kind,
         payload=CapabilityProviderDeclarationPayload(
             provider=CapabilityBundleProvider(
                 capability_id="coding.lsp",
@@ -90,12 +92,10 @@ def test_preflight_and_finalize_are_inert_and_reservations_are_one_use(
             factory=PluginSymbolReference(
                 path="provider.py",
                 symbol="create_provider",
-                package_digest=package.content_digest,
                 execution_model="in_process",
             ),
             disposer=None,
             binding_inputs=dict(contribution.configuration),
-            configuration_fingerprint=contribution.configuration_fingerprint,
         ).to_dict(),
     )
     assert PluginDeclaration.from_dict(declaration.to_dict()) == declaration
@@ -241,6 +241,8 @@ def test_declaration_ir_rejects_callable_payload() -> None:
             kind="capability_provider",
             owner="coding.lsp",
             reservation_fingerprint="a" * 64,
+            source_descriptor_fingerprint="b" * 64,
+            source_kind="in_process",
             payload={"factory": lambda: None},
         )
     with pytest.raises(ValueError):
@@ -272,14 +274,18 @@ def _runtime(tmp_path: Path, *, enabled: bool = True) -> PluginRuntimeResolution
                 "name": "review-pack",
                 "enabled": enabled,
                 "contributionIndex": {
-                    "version": 1,
+                    "version": 2,
                     "items": [
                         {
                             "id": "review-provider",
                             "kind": "capability_provider",
                             "owner": "coding.lsp",
-                            "entrypoint": "provider.py:declare",
-                            "executionModel": "in_process",
+                            "contributionExecutionModel": "in_process",
+                            "declarationSource": {
+                                "entrypoint": "provider.py:declare",
+                                "kind": "in_process",
+                                "sourceVersion": 1,
+                            },
                             "requestedAuthorities": ["process"],
                             "configuration": {"mode": "review"},
                             "required": True,

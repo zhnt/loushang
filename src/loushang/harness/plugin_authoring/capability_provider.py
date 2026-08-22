@@ -18,12 +18,12 @@ from loushang.harness.plugin_authoring.reservations import (
     _PluginAuthoringReservationView,
 )
 from loushang.harness.resources.plugins.declarations import (
+    PluginContributionExecutionModel,
     PluginDeclaration,
-    PluginExecutionModel,
+    PluginDeclarationCodecError,
     _document_digest,
     _exact_document,
     _freeze_json_mapping,
-    _require_sha256,
     _thaw_json,
 )
 from loushang.harness.resources.plugins.locators import (
@@ -34,24 +34,26 @@ from loushang.harness.resources.plugins.selection import (
     PluginDeclarationReservation,
 )
 
-CAPABILITY_PROVIDER_PAYLOAD_VERSION = 1
+CAPABILITY_PROVIDER_PAYLOAD_VERSION = 2
+PLUGIN_SYMBOL_REFERENCE_VERSION = 2
 PLUGIN_PROVIDER_SELECTION_RULE = "Plugin declaration candidate"
 
 @dataclass(frozen=True, slots=True)
 class PluginSymbolReference:
-    """Serializable symbol locator bound to one immutable Plugin revision."""
+    """Package-internal symbol locator; the Host attaches revision identity."""
 
     path: str
     symbol: str
-    package_digest: str
-    execution_model: PluginExecutionModel
+    execution_model: PluginContributionExecutionModel
+    symbol_reference_version: int = PLUGIN_SYMBOL_REFERENCE_VERSION
 
     def __post_init__(self) -> None:
         path = _contained_python_path(self.path)
         canonical_plugin_symbol(self.symbol)
-        _require_sha256(self.package_digest, name="Plugin symbol package digest")
         if self.execution_model != "in_process":
             raise ValueError("Unsupported Plugin symbol execution model")
+        if self.symbol_reference_version != PLUGIN_SYMBOL_REFERENCE_VERSION:
+            raise ValueError("Unsupported Plugin symbol reference version")
         object.__setattr__(self, "path", path.as_posix())
 
     @property
@@ -61,48 +63,84 @@ class PluginSymbolReference:
     def to_dict(self) -> dict[str, object]:
         return {
             "executionModel": self.execution_model,
-            "packageDigest": self.package_digest,
             "path": self.path,
             "symbol": self.symbol,
+            "symbolReferenceVersion": self.symbol_reference_version,
         }
 
     @classmethod
     def from_dict(cls, value: object) -> PluginSymbolReference:
-        document = _exact_document(
+        if not isinstance(value, dict):
+            raise PluginDeclarationCodecError(
+                "Plugin symbol reference must be an object",
+                code="plugin_declaration_field_type_mismatch",
+            )
+        version = value.get("symbolReferenceVersion")
+        if version is None:
+            raise PluginDeclarationCodecError(
+                "Plugin symbol reference version is missing",
+                code="unsupported_plugin_symbol_reference_version",
+            )
+        if not isinstance(version, int) or isinstance(version, bool):
+            raise PluginDeclarationCodecError(
+                "Plugin symbol reference version must be an integer",
+                code="plugin_declaration_field_type_mismatch",
+            )
+        if version != PLUGIN_SYMBOL_REFERENCE_VERSION:
+            raise PluginDeclarationCodecError(
+                "Unsupported Plugin symbol reference version",
+                code="unsupported_plugin_symbol_reference_version",
+            )
+        document = _wire_exact_document(
             value,
             name="Plugin symbol reference",
-            keys={"executionModel", "packageDigest", "path", "symbol"},
+            keys={
+                "executionModel",
+                "path",
+                "symbol",
+                "symbolReferenceVersion",
+            },
         )
         path = document["path"]
         symbol = document["symbol"]
-        package_digest = document["packageDigest"]
         execution_model = document["executionModel"]
-        if not all(
-            isinstance(item, str)
-            for item in (path, symbol, package_digest, execution_model)
-        ):
-            raise ValueError("Plugin symbol reference fields must be strings")
+        if not all(isinstance(item, str) for item in (path, symbol, execution_model)):
+            raise PluginDeclarationCodecError(
+                "Plugin symbol reference fields must be strings",
+                code="plugin_declaration_field_type_mismatch",
+            )
         assert isinstance(path, str)
         assert isinstance(symbol, str)
-        assert isinstance(package_digest, str)
         assert isinstance(execution_model, str)
-        return cls(
-            path=path,
-            symbol=symbol,
-            package_digest=package_digest,
-            execution_model=cast(PluginExecutionModel, execution_model),
-        )
+        if execution_model != "in_process":
+            raise PluginDeclarationCodecError(
+                "Unsupported Plugin symbol execution model",
+                code="unsupported_plugin_contribution_execution_model",
+            )
+        try:
+            return cls(
+                path=path,
+                symbol=symbol,
+                execution_model=cast(
+                    PluginContributionExecutionModel, execution_model
+                ),
+                symbol_reference_version=version,
+            )
+        except (TypeError, ValueError) as exc:
+            raise PluginDeclarationCodecError(
+                f"Invalid Plugin symbol reference: {exc}",
+                code="plugin_declaration_field_value_mismatch",
+            ) from exc
 
 
 @dataclass(frozen=True, slots=True)
 class CapabilityProviderDeclarationPayload:
-    """Canonical Provider metadata and revision-bound live symbol references."""
+    """Canonical Provider metadata and package-internal symbol references v2."""
 
     provider: CapabilityBundleProvider
     factory: PluginSymbolReference
     disposer: PluginSymbolReference | None
     binding_inputs: Mapping[str, object] = field(default_factory=dict)
-    configuration_fingerprint: str = ""
     payload_version: int = CAPABILITY_PROVIDER_PAYLOAD_VERSION
 
     def __post_init__(self) -> None:
@@ -115,17 +153,12 @@ class CapabilityProviderDeclarationPayload:
         ):
             raise TypeError("Capability Provider disposer must be a symbol reference")
         if self.disposer is not None and (
-            self.disposer.package_digest != self.factory.package_digest
-            or self.disposer.execution_model != self.factory.execution_model
+            self.disposer.execution_model != self.factory.execution_model
         ):
             raise ValueError(
-                "Capability Provider factory and disposer must share revision identity"
+                "Capability Provider factory and disposer must share execution model"
             )
         binding_inputs = _freeze_json_mapping(self.binding_inputs)
-        _require_sha256(
-            self.configuration_fingerprint,
-            name="Capability Provider configuration fingerprint",
-        )
         if self.payload_version != CAPABILITY_PROVIDER_PAYLOAD_VERSION:
             raise ValueError("Unsupported Capability Provider payload version")
         object.__setattr__(self, "binding_inputs", binding_inputs)
@@ -141,7 +174,6 @@ class CapabilityProviderDeclarationPayload:
     def to_dict(self) -> dict[str, object]:
         return {
             "bindingInputs": _thaw_json(self.binding_inputs),
-            "configurationFingerprint": self.configuration_fingerprint,
             "disposer": None if self.disposer is None else self.disposer.to_dict(),
             "factory": self.factory.to_dict(),
             "payloadVersion": self.payload_version,
@@ -150,12 +182,32 @@ class CapabilityProviderDeclarationPayload:
 
     @classmethod
     def from_dict(cls, value: object) -> CapabilityProviderDeclarationPayload:
-        document = _exact_document(
+        if not isinstance(value, dict):
+            raise PluginDeclarationCodecError(
+                "Capability Provider payload must be an object",
+                code="plugin_declaration_field_type_mismatch",
+            )
+        version = value.get("payloadVersion")
+        if version is None:
+            raise PluginDeclarationCodecError(
+                "Capability Provider payload version is missing",
+                code="unsupported_capability_provider_declaration_payload_version",
+            )
+        if not isinstance(version, int) or isinstance(version, bool):
+            raise PluginDeclarationCodecError(
+                "Capability Provider payload version must be an integer",
+                code="plugin_declaration_field_type_mismatch",
+            )
+        if version != CAPABILITY_PROVIDER_PAYLOAD_VERSION:
+            raise PluginDeclarationCodecError(
+                "Unsupported Capability Provider payload version",
+                code="unsupported_capability_provider_declaration_payload_version",
+            )
+        document = _wire_exact_document(
             value,
             name="Capability Provider declaration payload",
             keys={
                 "bindingInputs",
-                "configurationFingerprint",
                 "disposer",
                 "factory",
                 "payloadVersion",
@@ -163,25 +215,29 @@ class CapabilityProviderDeclarationPayload:
             },
         )
         binding_inputs = document["bindingInputs"]
-        configuration_fingerprint = document["configurationFingerprint"]
         disposer = document["disposer"]
         factory = document["factory"]
-        payload_version = document["payloadVersion"]
         provider = document["provider"]
         if not isinstance(binding_inputs, dict):
-            raise ValueError("Capability Provider bindingInputs must be an object")
-        if not isinstance(configuration_fingerprint, str):
-            raise ValueError(
-                "Capability Provider configurationFingerprint must be a string"
+            raise PluginDeclarationCodecError(
+                "Capability Provider bindingInputs must be an object",
+                code="plugin_declaration_field_type_mismatch",
             )
         if disposer is not None and not isinstance(disposer, dict):
-            raise ValueError("Capability Provider disposer must be an object or null")
+            raise PluginDeclarationCodecError(
+                "Capability Provider disposer must be an object or null",
+                code="plugin_declaration_field_type_mismatch",
+            )
         if not isinstance(factory, dict):
-            raise ValueError("Capability Provider factory must be an object")
-        if not isinstance(payload_version, int) or isinstance(payload_version, bool):
-            raise ValueError("Capability Provider payload version must be an integer")
+            raise PluginDeclarationCodecError(
+                "Capability Provider factory must be an object",
+                code="plugin_declaration_field_type_mismatch",
+            )
         if not isinstance(provider, dict):
-            raise ValueError("Capability Provider metadata must be an object")
+            raise PluginDeclarationCodecError(
+                "Capability Provider metadata must be an object",
+                code="plugin_declaration_field_type_mismatch",
+            )
         return cls(
             provider=capability_bundle_provider_from_dict(provider),
             factory=PluginSymbolReference.from_dict(factory),
@@ -189,8 +245,7 @@ class CapabilityProviderDeclarationPayload:
                 None if disposer is None else PluginSymbolReference.from_dict(disposer)
             ),
             binding_inputs=binding_inputs,
-            configuration_fingerprint=configuration_fingerprint,
-            payload_version=payload_version,
+            payload_version=version,
         )
 
     @classmethod
@@ -215,6 +270,9 @@ class CapabilityProviderDeclarationPayload:
             or declaration.kind != contribution.kind
             or declaration.owner != contribution.owner
             or declaration.reservation_fingerprint != contribution.fingerprint
+            or declaration.source_descriptor_fingerprint
+            != contribution.source_descriptor_fingerprint
+            or declaration.source_kind != contribution.declaration_source.kind
         ):
             raise ValueError(
                 "Capability Provider declaration must match its reservation envelope"
@@ -279,18 +337,14 @@ def _validate_capability_provider_reservation(
         contribution.requested_authorities
     ):
         raise ValueError("Capability Provider authorities must match its reservation")
-    if payload.configuration_fingerprint != contribution.configuration_fingerprint:
+    if payload.to_dict()["bindingInputs"] != contribution.to_dict()["configuration"]:
         raise ValueError(
-            "Capability Provider configuration fingerprint must match its reservation"
+            "Capability Provider binding inputs must match its reservation configuration"
         )
     for reference in (payload.factory, payload.disposer):
         if reference is None:
             continue
-        if reference.package_digest != reservation.package_digest:
-            raise ValueError(
-                "Capability Provider symbol package digest must match its package"
-            )
-        if reference.execution_model != contribution.execution_model:
+        if reference.execution_model != contribution.contribution_execution_model:
             raise ValueError(
                 "Capability Provider symbol execution model must match its reservation"
             )
@@ -461,6 +515,25 @@ def _canonical_string_list(value: object, *, name: str) -> tuple[str, ...]:
     return tuple(value)
 
 
+def _wire_exact_document(
+    value: object,
+    *,
+    name: str,
+    keys: set[str],
+) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise PluginDeclarationCodecError(
+            f"{name} must be an object",
+            code="plugin_declaration_field_type_mismatch",
+        )
+    if set(value) != keys:
+        raise PluginDeclarationCodecError(
+            f"{name} fields do not match the supported format",
+            code="plugin_declaration_exact_field_mismatch",
+        )
+    return value
+
+
 def _contained_python_path(value: object) -> PurePosixPath:
     try:
         return canonical_plugin_python_path(value)
@@ -473,6 +546,7 @@ def _contained_python_path(value: object) -> PurePosixPath:
 __all__ = [
     "CAPABILITY_PROVIDER_PAYLOAD_VERSION",
     "PLUGIN_PROVIDER_SELECTION_RULE",
+    "PLUGIN_SYMBOL_REFERENCE_VERSION",
     "CapabilityProviderDeclarationPayload",
     "PluginSymbolReference",
     "capability_bundle_provider_from_dict",

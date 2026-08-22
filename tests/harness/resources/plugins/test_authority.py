@@ -11,6 +11,7 @@ from loushang.harness.resources.plugins.authority import PluginResolutionAuthori
 from loushang.harness.resources.plugins.declarations import (
     PluginContributionIndex,
     PluginContributionReservation,
+    PluginDeclarationSource,
 )
 from loushang.harness.resources.plugins.manifest import PluginManifestError
 from loushang.harness.resources.plugins.types import (
@@ -196,8 +197,10 @@ class _ContributionChangingBindingStore(_RecordingBindingStore):
                             contribution_id="forged-provider",
                             kind="capability_provider",
                             owner="coding.lsp",
-                            entrypoint="forged.py:declare",
-                            execution_model="in_process",
+                            declaration_source=PluginDeclarationSource.in_process(
+                                "forged.py:declare"
+                            ),
+                            contribution_execution_model="in_process",
                             requested_authorities=(),
                         ),
                     )

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import secrets
 import threading
 from dataclasses import dataclass, field
@@ -8,6 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 
+from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
 from loushang.harness.resources.plugins.declarations import (
     PluginContributionReservation,
     PluginDeclaration,
@@ -407,6 +407,9 @@ class PluginSelectionResolver:
                 declaration.kind != contribution.kind
                 or declaration.owner != contribution.owner
                 or declaration.reservation_fingerprint != contribution.fingerprint
+                or declaration.source_descriptor_fingerprint
+                != contribution.source_descriptor_fingerprint
+                or declaration.source_kind != contribution.declaration_source.kind
             ):
                 raise PluginSelectionError(
                     f"Plugin declaration changed its inert reservation: "
@@ -455,20 +458,29 @@ def build_execution_approval_subject(
             code="plugin_selection_trust_mismatch",
             path=package.root,
         )
+    source = contribution.declaration_source
+    if source.kind != "in_process" or source.entrypoint is None:
+        raise PluginSelectionError(
+            "Document declaration sources do not require execution approval.",
+            code="plugin_execution_subject_not_applicable",
+            path=package.root,
+        )
     return PluginExecutionApprovalSubject(
         plugin_id=package.manifest.name,
         package_content_digest=package.content_digest,
         dependency_lock_digest=package.dependency_lock.digest,
         contribution_id=contribution.contribution_id,
         reservation_fingerprint=contribution.fingerprint,
-        execution_model=contribution.execution_model,
-        entrypoint=contribution.entrypoint,
+        execution_model=contribution.contribution_execution_model,
+        entrypoint=source.entrypoint,
         source_identity=binding.source_identity,
         source_trust_class=source_trust.trust_class,
         product_id=plan.product_id,
         scope_id=plan.scope_id,
         policy_revision=plan.policy_revision,
-        ambient_host_authority=contribution.execution_model == "in_process",
+        ambient_host_authority=(
+            contribution.contribution_execution_model == "in_process"
+        ),
         configuration_fingerprint=contribution.configuration_fingerprint,
         requested_authorities=contribution.requested_authorities,
     )
@@ -605,13 +617,7 @@ def _require_sha256(value: object, *, name: str) -> None:
 
 
 def _digest_document(value: object) -> str:
-    encoded = json.dumps(
-        value,
-        allow_nan=False,
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
+    encoded = StrictPluginJsonCodec.encode(value)
     return sha256(encoded).hexdigest()
 
 

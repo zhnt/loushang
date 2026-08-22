@@ -68,10 +68,10 @@ def _authoring_reservation_view(
         or subject.dependency_lock_digest != dependency_lock_digest
         or subject.contribution_id != contribution.contribution_id
         or subject.reservation_fingerprint != contribution.fingerprint
-        or subject.execution_model != contribution.execution_model
+        or subject.execution_model != contribution.contribution_execution_model
         or subject.ambient_host_authority
-        != (contribution.execution_model == "in_process")
-        or subject.entrypoint != contribution.entrypoint
+        != (contribution.contribution_execution_model == "in_process")
+        or subject.entrypoint != contribution.declaration_source.entrypoint
         or subject.configuration_fingerprint
         != contribution.configuration_fingerprint
         or subject.requested_authorities != contribution.requested_authorities

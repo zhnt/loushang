@@ -49,14 +49,18 @@ def published_synthetic_plugin(tmp_path: Path) -> Iterator[PublishedSyntheticPlu
                 "name": "synthetic-provider",
                 "version": "1",
                 "contributionIndex": {
-                    "version": 1,
+                    "version": 2,
                     "items": [
                         {
                             "id": "synthetic-provider",
                             "kind": "capability_provider",
                             "owner": "synthetic.capability",
-                            "entrypoint": "provider.py:declare",
-                            "executionModel": "in_process",
+                            "contributionExecutionModel": "in_process",
+                            "declarationSource": {
+                                "entrypoint": "provider.py:declare",
+                                "kind": "in_process",
+                                "sourceVersion": 1,
+                            },
                             "requestedAuthorities": [],
                             "configuration": {},
                             "required": True,

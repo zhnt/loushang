@@ -10,6 +10,7 @@ import pytest
 from loushang.harness.resources.packages.manifest import resolve_package_manifest
 from loushang.harness.resources.plugins.declarations import (
     PluginContributionReservation,
+    PluginDeclarationSource,
 )
 from loushang.harness.resources.plugins.manager import PluginManager
 from loushang.harness.resources.plugins.manifest import (
@@ -75,14 +76,18 @@ def test_plugin_manifest_parser_builds_inert_contribution_index(
             {
                 "name": "review-pack",
                 "contributionIndex": {
-                    "version": 1,
+                    "version": 2,
                     "items": [
                         {
                             "id": "review-provider",
                             "kind": "capability_provider",
                             "owner": "coding.lsp",
-                            "entrypoint": "provider.py:declare",
-                            "executionModel": "in_process",
+                            "contributionExecutionModel": "in_process",
+                            "declarationSource": {
+                                "entrypoint": "provider.py:declare",
+                                "kind": "in_process",
+                                "sourceVersion": 1,
+                            },
                             "requestedAuthorities": ["process", "workspace.read"],
                             "configuration": {"mode": "review"},
                             "required": True,
@@ -122,6 +127,69 @@ def test_plugin_manifest_parser_preserves_strict_json_diagnostic(
     assert caught.value.path == (root / "plugin.json").resolve()
 
 
+def test_plugin_manifest_parser_accepts_document_source_without_decoding_it(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "review-pack"
+    declarations = root / "declarations"
+    declarations.mkdir(parents=True)
+    (declarations / "providers.json").write_bytes(b"not decoded by manifest")
+    (root / "plugin.json").write_text(
+        json.dumps(
+            {
+                "contributionIndex": {
+                    "items": [
+                        {
+                            "configuration": {},
+                            "contributionExecutionModel": "in_process",
+                            "declarationSource": {
+                                "kind": "document",
+                                "locator": "declarations/providers.json",
+                                "mediaType": (
+                                    "application/vnd.loushang."
+                                    "plugin-declarations+json"
+                                ),
+                                "schemaId": "loushang.plugin-declaration-document",
+                                "schemaVersion": 1,
+                                "sourceVersion": 1,
+                            },
+                            "id": "review-provider",
+                            "kind": "capability_provider",
+                            "owner": "coding.lsp",
+                            "requestedAuthorities": [],
+                            "required": True,
+                        }
+                    ],
+                    "version": 2,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    resolved = PluginManifestParser().parse(root)
+
+    [reservation] = resolved.contribution_index.items
+    assert reservation.declaration_source.kind == "document"
+    assert reservation.declaration_source.locator == "declarations/providers.json"
+
+
+def test_plugin_manifest_parser_preserves_index_version_diagnostic(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "review-pack"
+    root.mkdir()
+    (root / "plugin.json").write_text(
+        json.dumps({"contributionIndex": {"items": [], "version": 1}}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PluginManifestError) as caught:
+        PluginManifestParser().parse(root)
+
+    assert caught.value.code == "unsupported_plugin_contribution_index_version"
+
+
 @pytest.mark.parametrize(
     "entrypoint",
     (
@@ -138,8 +206,8 @@ def test_plugin_contribution_rejects_noncanonical_python_entrypoint(
             contribution_id="review-provider",
             kind="capability_provider",
             owner="coding.lsp",
-            entrypoint=entrypoint,
-            execution_model="in_process",
+            declaration_source=PluginDeclarationSource.in_process(entrypoint),
+            contribution_execution_model="in_process",
             requested_authorities=(),
         )
 
@@ -154,14 +222,18 @@ def test_plugin_manifest_parser_rejects_unknown_contribution_schema(
         json.dumps(
             {
                 "contributionIndex": {
-                    "version": 1,
+                    "version": 2,
                     "items": [
                         {
                             "id": "review-provider",
                             "kind": "tool_pack",
                             "owner": "coding.lsp",
-                            "entrypoint": "provider.py:declare",
-                            "executionModel": "in_process",
+                            "contributionExecutionModel": "in_process",
+                            "declarationSource": {
+                                "entrypoint": "provider.py:declare",
+                                "kind": "in_process",
+                                "sourceVersion": 1,
+                            },
                             "requestedAuthorities": [],
                             "configuration": {},
                             "required": True,
@@ -176,7 +248,7 @@ def test_plugin_manifest_parser_rejects_unknown_contribution_schema(
     with pytest.raises(PluginManifestError) as caught:
         PluginManifestParser().parse(root)
 
-    assert caught.value.code == "invalid_plugin_contribution_index"
+    assert caught.value.code == "unsupported_plugin_contribution_kind"
 
 
 def test_plugin_manifest_parser_rejects_missing_contribution_entrypoint(
@@ -188,14 +260,18 @@ def test_plugin_manifest_parser_rejects_missing_contribution_entrypoint(
         json.dumps(
             {
                 "contributionIndex": {
-                    "version": 1,
+                    "version": 2,
                     "items": [
                         {
                             "id": "review-provider",
                             "kind": "capability_provider",
                             "owner": "coding.lsp",
-                            "entrypoint": "missing.py:declare",
-                            "executionModel": "in_process",
+                            "contributionExecutionModel": "in_process",
+                            "declarationSource": {
+                                "entrypoint": "missing.py:declare",
+                                "kind": "in_process",
+                                "sourceVersion": 1,
+                            },
                             "requestedAuthorities": [],
                             "configuration": {},
                             "required": True,
@@ -223,8 +299,12 @@ def test_plugin_manifest_parser_rejects_duplicate_contribution_reservations(
         "id": "review-provider",
         "kind": "capability_provider",
         "owner": "coding.lsp",
-        "entrypoint": "provider.py:declare",
-        "executionModel": "in_process",
+        "contributionExecutionModel": "in_process",
+        "declarationSource": {
+            "entrypoint": "provider.py:declare",
+            "kind": "in_process",
+            "sourceVersion": 1,
+        },
         "requestedAuthorities": [],
         "configuration": {},
         "required": True,
@@ -233,7 +313,7 @@ def test_plugin_manifest_parser_rejects_duplicate_contribution_reservations(
         json.dumps(
             {
                 "contributionIndex": {
-                    "version": 1,
+                    "version": 2,
                     "items": [reservation, reservation],
                 }
             }
@@ -244,7 +324,7 @@ def test_plugin_manifest_parser_rejects_duplicate_contribution_reservations(
     with pytest.raises(PluginManifestError) as caught:
         PluginManifestParser().parse(root)
 
-    assert caught.value.code == "invalid_plugin_contribution_index"
+    assert caught.value.code == "duplicate_plugin_contribution_identity"
 
 
 def test_plugin_and_package_views_reuse_one_resolved_descriptor(

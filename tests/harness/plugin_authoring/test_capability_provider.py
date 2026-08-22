@@ -22,6 +22,9 @@ from loushang.harness.plugin_authoring.capability_provider import (
     capability_requirement_from_dict,
     capability_requirement_to_dict,
 )
+from loushang.harness.resources.plugins.declarations import (
+    PluginDeclarationCodecError,
+)
 
 
 def test_capability_contract_and_requirement_codecs_are_strict_and_canonical() -> None:
@@ -75,7 +78,7 @@ def test_provider_and_payload_codecs_roundtrip_exact_semantic_types() -> None:
     assert CapabilityProviderDeclarationPayload.from_dict(payload.to_dict()) == payload
     assert (
         payload.fingerprint
-        == "c81e94aad73a9840a14ac53887f6e8c194a45020e1e8d238fc42c376bfc8ed41"
+        == "7fcbf1a632ede69d630fe1398f3d92f1909ebd727ea05dd7cf5c4222eafc6cd4"
     )
     assert (
         payload.binding_input_fingerprint
@@ -132,20 +135,18 @@ def test_provider_and_payload_codecs_roundtrip_exact_semantic_types() -> None:
         ),
         (
             lambda value: value["factory"].update({"packageDigest": "bad"}),
-            "SHA-256",
+            "fields",
         ),
         (
             lambda value: value["factory"].update({"executionModel": "worker"}),
             "execution model",
         ),
         (
-            lambda value: value.update(
-                {"configurationFingerprint": "not-a-digest"}
-            ),
-            "SHA-256",
+            lambda value: value["factory"].update({"symbolReferenceVersion": 1}),
+            "symbol reference version",
         ),
         (
-            lambda value: value.update({"payloadVersion": 2}),
+            lambda value: value.update({"payloadVersion": 1}),
             "payload version",
         ),
     ],
@@ -167,7 +168,6 @@ def test_payload_rejects_callable_and_non_json_binding_inputs() -> None:
     factory = PluginSymbolReference(
         path="provider.py",
         symbol="create_provider",
-        package_digest="a" * 64,
         execution_model="in_process",
     )
 
@@ -177,16 +177,31 @@ def test_payload_rejects_callable_and_non_json_binding_inputs() -> None:
             factory=factory,
             disposer=None,
             binding_inputs={"factory": lambda: None},
-            configuration_fingerprint="b" * 64,
         )
-    with pytest.raises(ValueError, match="canonical JSON"):
+    with pytest.raises(ValueError, match="finite"):
         CapabilityProviderDeclarationPayload(
             provider=provider,
             factory=factory,
             disposer=None,
             binding_inputs={"notFinite": float("nan")},
-            configuration_fingerprint="b" * 64,
         )
+
+
+def test_unpublished_provider_and_symbol_v1_shapes_fail_closed() -> None:
+    payload = _payload_document()
+    payload["payloadVersion"] = 1
+    with pytest.raises(PluginDeclarationCodecError) as caught:
+        CapabilityProviderDeclarationPayload.from_dict(payload)
+    assert (
+        caught.value.code
+        == "unsupported_capability_provider_declaration_payload_version"
+    )
+
+    symbol = dict(_payload_document()["factory"])
+    symbol["symbolReferenceVersion"] = 1
+    with pytest.raises(PluginDeclarationCodecError) as caught:
+        PluginSymbolReference.from_dict(symbol)
+    assert caught.value.code == "unsupported_plugin_symbol_reference_version"
 
 
 def test_declaration_codec_exposes_only_the_reservation_bound_bridge() -> None:
@@ -238,18 +253,17 @@ def _provider_document() -> dict[str, object]:
 def _payload_document() -> dict[str, object]:
     return {
         "bindingInputs": {"mode": "review"},
-        "configurationFingerprint": "b" * 64,
         "disposer": {
             "executionModel": "in_process",
-            "packageDigest": "a" * 64,
             "path": "provider.py",
             "symbol": "dispose_provider",
+            "symbolReferenceVersion": 2,
         },
         "factory": {
             "executionModel": "in_process",
-            "packageDigest": "a" * 64,
             "path": "provider.py",
             "symbol": "create_provider",
+            "symbolReferenceVersion": 2,
         },
         "payloadVersion": CAPABILITY_PROVIDER_PAYLOAD_VERSION,
         "provider": _provider_document(),
