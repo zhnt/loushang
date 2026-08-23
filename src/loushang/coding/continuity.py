@@ -48,6 +48,8 @@ from loushang.harness.transcript import (
     SessionQuery,
     SessionSummary,
     same_agent_transcript_session_path,
+    session_summary_authority_is_current,
+    session_summary_revision,
 )
 
 CODING_CONTINUITY_PROVIDER_ID = "coding.sessions"
@@ -68,11 +70,14 @@ class CodingContinuityRuntimePort(Protocol):
         *,
         cursor: str | None = None,
         limit: int = 25,
+        ignore_authority: str | Path | None = None,
     ) -> SessionIndexPage: ...
 
     def request_session_index_refresh(self, *, all_sessions: bool = False) -> None: ...
 
     def request_session_index_repair(self) -> None: ...
+
+    def request_bounded_session_index_refresh(self) -> None: ...
 
     def get_current_session(self) -> object | None: ...
 
@@ -125,6 +130,7 @@ class CodingContinuityProvider:
         )
 
     async def query(self, request: ProviderQuery) -> ProviderPage:
+        current_reference = self._runtime.get_current_session_ref()
         page = await asyncio.to_thread(
             self._runtime.try_query_session_index_page,
             SessionQuery(
@@ -134,10 +140,17 @@ class CodingContinuityProvider:
             ),
             cursor=request.cursor,
             limit=request.limit,
+            ignore_authority=current_reference,
         )
         items: list[ProviderPageItem] = []
         for page_item in page.items:
             indexed = page_item.item
+            summary_reference = indexed.projection.session_file
+            if summary_reference is not None and _same_session_reference(
+                current_reference,
+                summary_reference,
+            ):
+                continue
             self._remember(indexed)
             items.append(
                 ProviderPageItem(
@@ -156,12 +169,24 @@ class CodingContinuityProvider:
             )
         elif page.index_state != "fresh":
             if not self._index_refresh_requested:
-                self._runtime.request_session_index_repair()
+                if page.bounded_fallback:
+                    self._runtime.request_bounded_session_index_refresh()
+                else:
+                    self._runtime.request_session_index_repair()
                 self._index_refresh_requested = True
             diagnostics = (
                 ContinuityDiagnostic(
-                    code="coding_continuity_index_not_ready",
-                    message="Coding session history is being indexed.",
+                    code=(
+                        "coding_continuity_bounded_catalog"
+                        if page.bounded_fallback
+                        else "coding_continuity_index_not_ready"
+                    ),
+                    message=(
+                        "Showing recent Coding sessions from bounded transcript "
+                        "previews."
+                        if page.bounded_fallback
+                        else "Coding session history is being indexed."
+                    ),
                     provider_id=CODING_CONTINUITY_PROVIDER_ID,
                 ),
             )
@@ -183,8 +208,18 @@ class CodingContinuityProvider:
         summary = indexed.projection
         rows = [
             ("Workspace", summary.cwd or "Unknown"),
-            ("Messages", str(summary.message_count)),
-            ("Entries", str(summary.entry_count)),
+            (
+                "Messages",
+                str(summary.message_count)
+                if summary.counts_exact
+                else f"at least {summary.message_count}",
+            ),
+            (
+                "Entries",
+                str(summary.entry_count)
+                if summary.counts_exact
+                else f"at least {summary.entry_count}",
+            ),
         ]
         if summary.model:
             provider = summary.model.get("provider")
@@ -203,7 +238,7 @@ class CodingContinuityProvider:
         )
         return ContinuityPreview(
             target=target,
-            revision=str(indexed.source_revision),
+            revision=session_summary_revision(summary, indexed.source_revision),
             heading=_summary_title(summary),
             sections=(
                 ContinuityPreviewSection(
@@ -220,7 +255,10 @@ class CodingContinuityProvider:
                     artifacts=artifacts,
                 ),
             ),
-            stale=str(indexed.source_revision) != target.revision,
+            stale=(
+                session_summary_revision(summary, indexed.source_revision)
+                != target.revision
+            ),
         )
 
     async def prepare(
@@ -228,14 +266,16 @@ class CodingContinuityProvider:
         target: ContinuityTarget,
     ) -> CallbackPreparedActivationLease:
         indexed = self._cached_target(target)
-        expected_revision = str(indexed.source_revision)
+        summary = indexed.projection
+        expected_revision = session_summary_revision(
+            summary,
+            indexed.source_revision,
+        )
         if target.revision != expected_revision:
             raise StaleContinuityTargetError(
                 "The selected Coding session summary is stale."
             )
-        reference: str | Path = (
-            indexed.projection.session_file or indexed.projection.session_id
-        )
+        reference: str | Path = summary.session_file or summary.session_id
         current = self._runtime.get_current_session()
         if current is not None and _same_session_reference(
             self._runtime.get_current_session_ref(),
@@ -251,17 +291,31 @@ class CodingContinuityProvider:
                     cancelled=False,
                 ),
             )
-        current_revision = await asyncio.to_thread(
-            AgentTranscriptSessionCatalog(
-                self._runtime.session_dir
-            ).load_authoritative_revision,
-            indexed.locator,
-        )
-        if current_revision != indexed.source_revision:
-            raise StaleContinuityTargetError(
-                "The selected Coding session changed after it was listed."
+        if summary.authority_fingerprint is not None:
+            if not session_summary_authority_is_current(summary):
+                raise StaleContinuityTargetError(
+                    "The selected Coding session changed after it was listed."
+                )
+        else:
+            current_revision = await asyncio.to_thread(
+                AgentTranscriptSessionCatalog(
+                    self._runtime.session_dir
+                ).load_authoritative_revision,
+                indexed.locator,
             )
+            if current_revision != indexed.source_revision:
+                raise StaleContinuityTargetError(
+                    "The selected Coding session changed after it was listed."
+                )
         candidate = await self._runtime.prepare_restore_session_operation(reference)
+        if (
+            summary.authority_fingerprint is not None
+            and not session_summary_authority_is_current(summary)
+        ):
+            await candidate.abort()
+            raise StaleContinuityTargetError(
+                "The selected Coding session changed while it was being prepared."
+            )
         return CallbackPreparedActivationLease(
             target=target,
             disposition="in_place",
@@ -271,29 +325,37 @@ class CodingContinuityProvider:
 
     async def delete(self, target: ContinuityTarget) -> bool:
         indexed = self._cached_target(target)
-        expected_revision = str(indexed.source_revision)
+        summary = indexed.projection
+        expected_revision = session_summary_revision(
+            summary,
+            indexed.source_revision,
+        )
         if target.revision != expected_revision:
             raise StaleContinuityTargetError(
                 "The selected Coding session summary is stale."
             )
-        reference: str | Path = (
-            indexed.projection.session_file or indexed.projection.session_id
-        )
+        reference: str | Path = summary.session_file or summary.session_id
         if _same_session_reference(
             self._runtime.get_current_session_ref(),
             reference,
         ):
             raise ValueError("Cannot delete the currently active session")
-        current_revision = await asyncio.to_thread(
-            AgentTranscriptSessionCatalog(
-                self._runtime.session_dir
-            ).load_authoritative_revision,
-            indexed.locator,
-        )
-        if current_revision != indexed.source_revision:
-            raise StaleContinuityTargetError(
-                "The selected Coding session changed after it was listed."
+        if summary.authority_fingerprint is not None:
+            if not session_summary_authority_is_current(summary):
+                raise StaleContinuityTargetError(
+                    "The selected Coding session changed after it was listed."
+                )
+        else:
+            current_revision = await asyncio.to_thread(
+                AgentTranscriptSessionCatalog(
+                    self._runtime.session_dir
+                ).load_authoritative_revision,
+                indexed.locator,
             )
+            if current_revision != indexed.source_revision:
+                raise StaleContinuityTargetError(
+                    "The selected Coding session changed after it was listed."
+                )
         deleted = await self._runtime.delete_session(reference)
         if deleted:
             self._preview_items.pop(target.opaque_id, None)
@@ -468,7 +530,7 @@ def _continuity_summary(
         target=ContinuityTarget(
             provider_id=CODING_CONTINUITY_PROVIDER_ID,
             opaque_id=summary.session_id,
-            revision=str(indexed.source_revision),
+            revision=session_summary_revision(summary, indexed.source_revision),
         ),
         domain_ids=("coding",),
         primary_domain_id="coding",

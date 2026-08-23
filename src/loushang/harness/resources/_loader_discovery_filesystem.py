@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -22,6 +23,8 @@ from loushang.harness.resources.types import (
     ThemeDescriptor,
 )
 
+TextReader = Callable[[Path], str]
+
 
 def _discover_prompts_from_dir(
     prompts_dir: Path,
@@ -30,6 +33,7 @@ def _discover_prompts_from_dir(
     source_scope: ResourceSourceScope,
     source_label: str,
     source_root_order: int = 0,
+    text_reader: TextReader | None = None,
 ) -> tuple[list[PromptFragmentDescriptor], list[DiagnosticDraft]]:
     if not prompts_dir.is_dir():
         return [], []
@@ -42,6 +46,7 @@ def _discover_prompts_from_dir(
                 entry,
                 diagnostic_code="unreadable_prompt_entry",
                 message_prefix="Failed to read prompt entry",
+                text_reader=text_reader,
             )
             diagnostics.extend(read_diagnostics)
             if text is None:
@@ -80,6 +85,7 @@ def _discover_skills_from_dir(
     source_scope: ResourceSourceScope,
     source_label: str,
     source_root_order: int = 0,
+    text_reader: TextReader | None = None,
 ) -> tuple[list[SkillDescriptor], list[DiagnosticDraft]]:
     if not skills_dir.is_dir():
         return [], []
@@ -92,6 +98,7 @@ def _discover_skills_from_dir(
         source_scope=source_scope,
         source_label=source_label,
         source_root_order=source_root_order,
+        text_reader=text_reader,
     )
 
 
@@ -104,12 +111,17 @@ def _discover_skills_recursive(
     source_scope: ResourceSourceScope,
     source_label: str,
     source_root_order: int = 0,
+    text_reader: TextReader | None = None,
 ) -> tuple[list[SkillDescriptor], list[DiagnosticDraft]]:
     descriptors: list[SkillDescriptor] = []
     diagnostics: list[DiagnosticDraft] = []
     active_ignore_patterns = (
         *ignore_patterns,
-        *_read_skill_ignore_patterns(current_dir, root_dir),
+        *_read_skill_ignore_patterns(
+            current_dir,
+            root_dir,
+            text_reader=text_reader,
+        ),
     )
     skill_file = current_dir / "SKILL.md"
     if skill_file.is_file():
@@ -121,6 +133,7 @@ def _discover_skills_recursive(
             source_scope=source_scope,
             source_label=source_label,
             source_root_order=source_root_order,
+            text_reader=text_reader,
         )
         diagnostics.extend(skill_diagnostics)
         return ([descriptor] if descriptor is not None else []), diagnostics
@@ -154,6 +167,7 @@ def _discover_skills_recursive(
             source_scope=source_scope,
             source_label=source_label,
             source_root_order=source_root_order,
+            text_reader=text_reader,
         )
         descriptors.extend(child_descriptors)
         diagnostics.extend(child_diagnostics)
@@ -169,11 +183,13 @@ def _skill_descriptor_from_file(
     source_scope: ResourceSourceScope,
     source_label: str,
     source_root_order: int,
+    text_reader: TextReader | None = None,
 ) -> tuple[SkillDescriptor | None, list[DiagnosticDraft]]:
     content, diagnostics = _read_text_file(
         skill_file,
         diagnostic_code="unreadable_skill_entry",
         message_prefix="Failed to read skill entry",
+        text_reader=text_reader,
     )
     if content is None:
         return None, diagnostics
@@ -196,7 +212,12 @@ def _skip_skill_directory(path: Path) -> bool:
     return path.name.startswith(".") or path.name == "node_modules"
 
 
-def _read_skill_ignore_patterns(current_dir: Path, root_dir: Path) -> tuple[str, ...]:
+def _read_skill_ignore_patterns(
+    current_dir: Path,
+    root_dir: Path,
+    *,
+    text_reader: TextReader | None,
+) -> tuple[str, ...]:
     patterns: list[str] = []
     relative_prefix = current_dir.relative_to(root_dir).as_posix()
     prefix = "" if relative_prefix == "." else relative_prefix
@@ -205,7 +226,12 @@ def _read_skill_ignore_patterns(current_dir: Path, root_dir: Path) -> tuple[str,
         if not ignore_file.is_file():
             continue
         try:
-            lines = ignore_file.read_text(encoding="utf-8").splitlines()
+            encoded = (
+                text_reader(ignore_file)
+                if text_reader is not None
+                else ignore_file.read_text(encoding="utf-8")
+            )
+            lines = encoded.splitlines()
         except OSError:
             continue
         for raw_line in lines:
@@ -326,6 +352,7 @@ def _discover_themes_from_dir(
     source_scope: ResourceSourceScope,
     source_label: str,
     source_root_order: int = 0,
+    text_reader: TextReader | None = None,
 ) -> tuple[list[ThemeDescriptor], list[DiagnosticDraft]]:
     if not themes_dir.is_dir():
         return [], []
@@ -333,6 +360,7 @@ def _discover_themes_from_dir(
     descriptors: list[ThemeDescriptor] = []
     diagnostics: list[DiagnosticDraft] = []
     for entry in sorted(themes_dir.iterdir(), key=lambda path: path.name):
+        content: str | None = None
         if entry.is_file() and not entry.name.endswith(".json"):
             diagnostics.append(
                 resource_diagnostic(
@@ -345,7 +373,28 @@ def _discover_themes_from_dir(
             )
             continue
         if entry.is_file():
-            diagnostic = _theme_json_diagnostic(entry, source_kind=source_kind)
+            try:
+                content = (
+                    text_reader(entry)
+                    if text_reader is not None
+                    else entry.read_text(encoding="utf-8")
+                )
+            except (OSError, UnicodeError) as exc:
+                diagnostics.append(
+                    resource_diagnostic(
+                        code="unreadable_theme_entry",
+                        message=f"Failed to read theme entry: {exc}",
+                        source_path=entry,
+                        resource_type="theme",
+                        source_kind=source_kind,
+                    )
+                )
+                continue
+            diagnostic = _theme_json_diagnostic_from_text(
+                entry,
+                content=content,
+                source_kind=source_kind,
+            )
             if diagnostic is not None:
                 diagnostics.append(diagnostic)
                 continue
@@ -359,28 +408,51 @@ def _discover_themes_from_dir(
                 source=source_label,
                 source_root=themes_dir,
                 source_root_order=source_root_order,
+                content=content,
             )
         )
     return descriptors, diagnostics
 
 
 def _theme_json_diagnostic(
-    path: Path, *, source_kind: ResourceSourceKind
+    path: Path,
+    *,
+    source_kind: ResourceSourceKind,
+    text_reader: TextReader | None = None,
 ) -> DiagnosticDraft | None:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
+        encoded = (
+            text_reader(path)
+            if text_reader is not None
+            else path.read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeError) as exc:
         return resource_diagnostic(
-            code="invalid_theme_json",
-            message=f"Theme JSON is invalid: {exc.msg}",
+            code="unreadable_theme_entry",
+            message=f"Failed to read theme entry: {exc}",
             source_path=path,
             resource_type="theme",
             source_kind=source_kind,
         )
-    except Exception as exc:
+    return _theme_json_diagnostic_from_text(
+        path,
+        content=encoded,
+        source_kind=source_kind,
+    )
+
+
+def _theme_json_diagnostic_from_text(
+    path: Path,
+    *,
+    content: str,
+    source_kind: ResourceSourceKind,
+) -> DiagnosticDraft | None:
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError as exc:
         return resource_diagnostic(
-            code="unreadable_theme_entry",
-            message=f"Failed to read theme entry: {exc}",
+            code="invalid_theme_json",
+            message=f"Theme JSON is invalid: {exc.msg}",
             source_path=path,
             resource_type="theme",
             source_kind=source_kind,
@@ -409,9 +481,15 @@ def _read_text_file(
     *,
     diagnostic_code: str,
     message_prefix: str,
+    text_reader: TextReader | None = None,
 ) -> tuple[str | None, list[DiagnosticDraft]]:
     try:
-        return path.read_text(encoding="utf-8").strip(), []
+        encoded = (
+            text_reader(path)
+            if text_reader is not None
+            else path.read_text(encoding="utf-8")
+        )
+        return encoded.strip(), []
     except OSError as exc:
         return (
             None,

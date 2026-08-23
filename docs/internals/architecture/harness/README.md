@@ -36,6 +36,67 @@ planning, work event persistence, or AI provider behavior.
   records the completed CLA0-CLA8 convergence of Profile, Mount, Registration,
   and Extension/Resource construction authority around one publisher per owned
   live object while preserving independent fact clocks.
+- [Unified Plugin Architecture](unified-plugin-architecture.md) defines the
+  target single-path Source/Declaration/Selection/Owner-Binding system that
+  makes Coding base, LSP, Arch, OEM, and external contributions selectable
+  Plugins without replacing Runtime Profile, the typed Capability Graph, or
+  existing registration and projection authorities.
+- [Unified Plugin Authoring Primitives Delivery Plan](plugin-authoring-primitives-delivery-plan.md)
+  prioritizes the internal Definition / Provider / Consumer authoring bridge,
+  versions and groups document/in-process declaration sources, separates a
+  proposal/pending/fresh-accept protocol from decoded/evaluated evidence, gives
+  the Coordinator one finalize/abort/expire transition, keeps Resource/Tool/
+  Command contributions orthogonal to Capability Providers, and then proceeds
+  through durable execution approval, owner admission, and LSP production proof.
+  Skill-provider convergence remains subordinate and the stable public SDK
+  stays gated by the broader production combination evidence.
+- [Plugin Declaration Foundation PLC1B Contract](plugin-declaration-foundation-plc1b-contract.md)
+  freezes the no-self-reference source/group identity layers, exact v2 wire and
+  hash records, canonical document bytes, accepted-attempt evidence, group-
+  claim/terminal protocol, version diagnostics, and forbidden old ingress paths
+  required before PLC1B-1 source work.
+- [Unified Plugin Lifecycle And Coding Pluginization Delivery Plan](plugin-lifecycle-coding-pluginization-plan.md)
+  coordinates the common install-to-retirement lifecycle with `coding.lsp`,
+  `coding.base`, and `coding.arch` production migrations. PLC1B first completes
+  the inert v2 declaration-source-group/Resource/consumer vocabulary and a
+  `coding.base` shadow package; its
+  [review](plugin-lifecycle-coding-pluginization-review.md) moves the minimum
+  management control core before the Base cutover while preserving exact-owner
+  binding, LSP as the first Graph proof, and the later public SDK gate.
+- [Plugin Lifecycle PLC2 Contract](plugin-lifecycle-plc2-contract.md) splits the
+  management critical path into an inert desired-state ledger, one typed
+  command authority, staged update, and retirement/cleanup recovery; PLC2-1
+  freezes strict Package/Installation/selection records, CAS and ledger-owned
+  Instance identity, PLC2-2 implements the sole durable install/enable/disable/
+  remove command core, and PLC2-3 adds inert staged update, versioned migration
+  fencing, atomic desired-selection cutover and exact conservative restart
+  evidence. PLC2-4A adds the durable exact-old-Instance retirement-intent
+  handoff without claiming runtime effectiveness or invoking an owner/cleanup
+  action. PLC2-4B adds the durable exact-owner retirement set, sealed owner
+  plan and retry-safe result aggregation. PLC2-4C adds the durable Product-host
+  Instance state gate, atomic multi-Instance lease families, graceful drain,
+  security revoke and zero-reference retirement proof. PLC2-4D adds durable
+  explicit Package Revision pins, write-ahead cleanup leases, retry/repair
+  evidence, a per-startup recovery barrier and revision-bound conservative GC
+  candidates without mutating package-cache bytes.
+- [Plugin Execution Trust PLC3 Contract](plugin-execution-trust-plc3-contract.md)
+  freezes the internal Approval-owned durable decision/use journal, atomic
+  one-shot consume/revoke linearization, aggregate-owned one-shot start permit,
+  strict use transitions, external-boot recovery, exact evaluated receipt and
+  PLC3-3's private verified-handle Definition evaluator/import realm. Mixed
+  document/executable batches now join before one internal finalization;
+  production Host ingress, owner binding, public SDK and MCP expansion stay
+  closed.
+- [Plugin Capability Admission PAP4 Contract](plugin-capability-admission-pap4-contract.md)
+  freezes the generic complete-Bundle candidate fingerprint, exact Capability-
+  owner eligibility/final admission, immutable binding spec, current owner-
+  policy snapshot and pure Product Provider-closure selection. PAP4-1 remains
+  inert: the `coding.lsp` owner adapter, Component Host, activation approval,
+  live Graph binding, public SDK and MCP expansion stay closed.
+- [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md) records the
+  green parser/source-sink/authority inventory, frozen foundation exports,
+  forbidden peer routes, and inert published-Plugin fixture required before
+  typed declaration work begins.
 - [Composition Lifecycle Authority CLA0 Baseline](composition-lifecycle-authority-cla0-baseline.md)
   retains the executable inventory shape, revised through CLA8, for current
   construction/publication owners, supported entrypoint
@@ -96,6 +157,46 @@ description.
   duplicate live construction paths. Its
   [independent review brief](composition-lifecycle-authority-review-brief.md)
   can be given to reviewers without prior conversation context.
+- [Unified Plugin Architecture](unified-plugin-architecture.md) defines one
+  manifest parser, immutable tagged declaration, existing-Profile selection,
+  exact-owner binding/retirement, complete Model Input persistence, and a
+  separate non-effective inventory for first-party and external Plugins.
+- [Unified Plugin Authoring Primitives Delivery Plan](plugin-authoring-primitives-delivery-plan.md)
+  turns the UPA Definition / Provider / Consumer authoring gap into staged,
+  owner-preserving implementation slices. Its
+  [self-review](plugin-authoring-primitives-plan-review.md) records the required
+  approval, production-sample, SDK-publication, Skill, and peer-route deletion
+  gates before implementation.
+- [Plugin Declaration Foundation PLC1B Contract](plugin-declaration-foundation-plc1b-contract.md)
+  is the normative PLC1B-1 schema/state companion to UPA and both delivery
+  plans; its final narrow freeze review passed at `3f53a5af` with zero P0/P1.
+  Regression-first source work is next after tracking-issue attachment.
+- [Unified Plugin Lifecycle And Coding Pluginization Delivery Plan](plugin-lifecycle-coding-pluginization-plan.md)
+  is the coordinating critical path across common declarations, management
+  state, executable trust, exact-owner binding, Coding production Plugins,
+  public SDK, and Skill convergence. Its
+  [self-review](plugin-lifecycle-coding-pluginization-review.md) records the
+  sequencing amendments, lifecycle linearization points, cutover gates, and
+  required deferrals.
+- [Plugin Lifecycle PLC2 Contract](plugin-lifecycle-plc2-contract.md) is the
+  normative record, linearization, idempotency, recovery and regression
+  companion for the four PLC2 delivery slices.
+- [Plugin Execution Trust PLC3 Contract](plugin-execution-trust-plc3-contract.md)
+  is the normative persistence, replay, CAS, atomic consumption, aggregate
+  pre-start and private verified Definition-evaluation boundary through PLC3-3.
+- [Plugin Capability Admission PAP4 Contract](plugin-capability-admission-pap4-contract.md)
+  is the normative PAP4-1 exact-owner eligibility/final-admission and pure
+  Product Provider-closure selection boundary.
+  Production ingress and live owner binding remain disabled.
+- [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md) freezes the
+  implemented pre-PLC1 parser, verified-revision, public-export, inert-layer,
+  Graph-construction, and synthetic-fixture evidence. Any later inventory
+  change requires an exact owner and behavioral gate.
+- [Plugin Lifecycle PLC1A Baseline](plugin-lifecycle-plc1a-baseline.md) records
+  the inert typed Capability Provider codec, revision-bound symbol locators,
+  reservation-bound internal Builder, stable fingerprints, and the dependency-
+  graph placement correction. It adds no import, admission, binding, or public
+  SDK path.
 - [Composition Lifecycle Authority CLA0 Baseline](composition-lifecycle-authority-cla0-baseline.md)
   is the executable inventory for that plan, revised through CLA8 to freeze the
   single-candidate authority and forbid removed peer construction paths.

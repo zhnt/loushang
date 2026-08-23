@@ -204,6 +204,7 @@ if TYPE_CHECKING:
     )
     from loushang.harness.transcript.session_catalog import (
         AgentTranscriptSessionCatalog,
+        BoundedSessionCatalogSnapshot,
         SessionMetadata,
         SessionQuery,
         SessionRecord,
@@ -224,6 +225,8 @@ if TYPE_CHECKING:
         project_session_record,
         refresh_all_agent_transcript_session_indexes,
         same_agent_transcript_session_path,
+        session_summary_authority_is_current,
+        session_summary_revision,
     )
     from loushang.harness.transcript.session_factory import (
         AgentTranscriptSessionFactory,
@@ -336,6 +339,7 @@ _EXPORT_MODULES = {
     "AgentTranscriptUnitOfWork": "loushang.harness.transcript.unit_of_work",
     "AgentTranscriptSession": "loushang.harness.transcript.session",
     "AgentTranscriptSessionCatalog": "loushang.harness.transcript.session_catalog",
+    "BoundedSessionCatalogSnapshot": "loushang.harness.transcript.session_catalog",
     "AgentTranscriptSessionFactory": "loushang.harness.transcript.session_factory",
     "AgentTranscriptState": "loushang.harness.transcript.types",
     "AnnotationOperation": "loushang.harness.transcript.types",
@@ -484,6 +488,8 @@ _EXPORT_MODULES = {
     "project_session_record": "loushang.harness.transcript.session_catalog",
     "refresh_all_agent_transcript_session_indexes": "loushang.harness.transcript.session_catalog",
     "same_agent_transcript_session_path": "loushang.harness.transcript.session_catalog",
+    "session_summary_authority_is_current": "loushang.harness.transcript.session_catalog",
+    "session_summary_revision": "loushang.harness.transcript.session_catalog",
     "has_post_compaction_usage": "loushang.harness.transcript.context_usage",
     "latest_compaction_entry": "loushang.harness.transcript.context_usage",
     "record_to_context_item": "loushang.harness.transcript.profile",

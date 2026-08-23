@@ -1327,9 +1327,12 @@ async def test_session_manager_writes_and_queries_session_index(tmp_path) -> Non
 
 
 @_async_test
-async def test_session_manager_rebuilds_invalid_session_index(tmp_path) -> None:
+async def test_session_manager_falls_back_before_bounded_invalid_index_rebuild(
+    tmp_path,
+) -> None:
     from loushang.ai.types import TextPart, UserMessage
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.transcript import AgentTranscriptSessionCatalog
 
     session = await SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/project", persist=True
@@ -1348,6 +1351,10 @@ async def test_session_manager_rebuilds_invalid_session_index(tmp_path) -> None:
     assert [summary.session_id for summary in summaries] == [
         session.get_header().conversation_id
     ]
+    assert summaries[0].bounded is True
+    assert SessionManager.load_index(tmp_path) == []
+
+    AgentTranscriptSessionCatalog(tmp_path).refresh_bounded_index()
     assert (
         SessionManager.load_index(tmp_path)[0].session_id
         == session.get_header().conversation_id
@@ -1385,13 +1392,14 @@ async def test_session_manager_preserves_corrupt_index_for_diagnostics(
 
 
 @_async_test
-async def test_session_manager_rebuilds_stale_index_when_indexed_session_file_disappears(
+async def test_session_manager_falls_back_before_bounded_deleted_file_rebuild(
     tmp_path,
 ) -> None:
     import json
 
     from loushang.ai.types import TextPart, UserMessage
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.transcript import AgentTranscriptSessionCatalog
 
     first = await SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/project-a", persist=True
@@ -1419,26 +1427,33 @@ async def test_session_manager_rebuilds_stale_index_when_indexed_session_file_di
 
     second_file.unlink()
     summaries = SessionManager.list_indexed_summaries(tmp_path)
-    raw_index = json.loads(
+    stale_index = json.loads(
         SessionManager.index_file(tmp_path).read_text(encoding="utf-8")
     )
 
     assert [summary.session_id for summary in summaries] == [
         first.get_header().conversation_id
     ]
-    assert [item["projection"]["session_id"] for item in raw_index["items"]] == [
+    assert len(stale_index["items"]) == 2
+
+    AgentTranscriptSessionCatalog(tmp_path).refresh_bounded_index()
+    rebuilt_index = json.loads(
+        SessionManager.index_file(tmp_path).read_text(encoding="utf-8")
+    )
+    assert [item["projection"]["session_id"] for item in rebuilt_index["items"]] == [
         first.get_header().conversation_id
     ]
 
 
 @_async_test
-async def test_session_manager_rebuilds_nested_stale_indexes_during_all_index_query(
+async def test_session_manager_falls_back_for_nested_stale_index_before_rebuild(
     tmp_path,
 ) -> None:
     import json
 
     from loushang.ai.types import TextPart, UserMessage
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.transcript import AgentTranscriptSessionCatalog
 
     root = await SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/root-project", persist=True
@@ -1465,13 +1480,19 @@ async def test_session_manager_rebuilds_nested_stale_indexes_during_all_index_qu
 
     nested_file.unlink()
     summaries = SessionManager.list_all_indexed_summaries(tmp_path)
-    nested_index = json.loads(
+    stale_nested_index = json.loads(
         SessionManager.index_file(nested_dir).read_text(encoding="utf-8")
     )
 
     assert [summary.session_id for summary in summaries] == [
         root.get_header().conversation_id
     ]
+    assert len(stale_nested_index["items"]) == 1
+
+    AgentTranscriptSessionCatalog(nested_dir).refresh_bounded_index()
+    nested_index = json.loads(
+        SessionManager.index_file(nested_dir).read_text(encoding="utf-8")
+    )
     assert nested_index["items"] == []
 
 

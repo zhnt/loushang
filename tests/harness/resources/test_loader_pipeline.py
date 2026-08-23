@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import MappingProxyType
+
+import pytest
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources._loader_pipeline import (
@@ -10,6 +11,7 @@ from loushang.harness.resources._loader_pipeline import (
 )
 from loushang.harness.resources._loader_types import _SourceDiscovery
 from loushang.harness.resources.loader import ResourceLoader
+from loushang.harness.resources.packages.mounts import PackageResourceMount
 from loushang.harness.resources.packages.source import PackageSourceConfig
 from loushang.harness.resources.types import (
     ExtensionDescriptor,
@@ -152,10 +154,9 @@ def test_resource_loader_passes_one_immutable_discovery_request(
     request = captured[0]
     assert request.cwd == workspace
     assert request.package_roots == (package_root.resolve(),)
-    assert request.package_source_filters == {
-        package_root.resolve(): package_filter
-    }
-    assert isinstance(request.package_source_filters, MappingProxyType)
+    assert request.package_mounts == (
+        PackageResourceMount(root=package_root, source_filter=package_filter),
+    )
     assert request.user_resource_roots == (user_root.resolve(),)
     assert request.explicit_user_roots == frozenset({user_root.resolve()})
     assert request.additional_extension_paths == (Path("review.py"),)
@@ -170,3 +171,93 @@ def test_resource_loader_passes_one_immutable_discovery_request(
     assert request.built_in_resource_packages == ("loushang.builtin",)
     assert request.context_file_names == ("PROJECT.md",)
     assert request.project_resource_root == workspace.resolve() / ".loushang"
+
+
+def test_resource_loader_does_not_commit_snapshot_when_revision_changes_during_discovery(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import loushang.harness.resources.loader as loader_module
+
+    class RevisionHandle:
+        def __init__(self, root: Path) -> None:
+            self.root = root
+            self.content_digest = "a" * 64
+            self.verifications = 0
+            self.closed = False
+
+        def verify(self) -> None:
+            self.verifications += 1
+            if self.verifications > 2:
+                raise RuntimeError("revision changed")
+
+        def close(self) -> None:
+            self.closed = True
+
+    loader = ResourceLoader(user_resource_roots=())
+    loader.discover_resources(tmp_path)
+    previous = loader.get_resource_snapshot()
+    handle = RevisionHandle(tmp_path)
+    mount = PackageResourceMount(
+        root=tmp_path,
+        content_digest=handle.content_digest,
+        revision_handle=handle,  # type: ignore[arg-type]
+    )
+    loader.set_package_mounts((mount,))
+    candidate = ResourceSnapshot(cwd=tmp_path / "candidate")
+    monkeypatch.setattr(loader_module, "_discover_snapshot", lambda request: candidate)
+
+    with pytest.raises(RuntimeError, match="revision changed"):
+        loader.discover_resources(tmp_path)
+
+    assert loader.get_resource_snapshot() is previous
+    loader.close()
+    assert handle.closed is True
+
+
+def test_resource_loader_mount_swap_is_atomic_and_closes_replaced_lease(
+    tmp_path: Path,
+) -> None:
+    class RevisionHandle:
+        def __init__(self, root: Path, digest: str) -> None:
+            self.root = root
+            self.content_digest = digest
+            self.fail = False
+            self.closed = False
+
+        def verify(self) -> None:
+            if self.fail:
+                raise RuntimeError("candidate revision changed")
+
+        def close(self) -> None:
+            self.closed = True
+
+    first_handle = RevisionHandle(tmp_path / "first", "a" * 64)
+    candidate_handle = RevisionHandle(tmp_path / "candidate", "b" * 64)
+    first = PackageResourceMount(
+        root=first_handle.root,
+        content_digest=first_handle.content_digest,
+        revision_handle=first_handle,  # type: ignore[arg-type]
+    )
+    candidate = PackageResourceMount(
+        root=candidate_handle.root,
+        content_digest=candidate_handle.content_digest,
+        revision_handle=candidate_handle,  # type: ignore[arg-type]
+    )
+    loader = ResourceLoader(user_resource_roots=())
+    loader.set_package_mounts((first,))
+    candidate_handle.fail = True
+
+    with pytest.raises(RuntimeError, match="candidate revision changed"):
+        loader.set_package_mounts((candidate,))
+
+    assert loader._package_mounts == (first,)
+    assert first_handle.closed is False
+    assert candidate_handle.closed is False
+
+    candidate_handle.fail = False
+    loader.set_package_mounts((candidate,))
+    assert first_handle.closed is True
+    assert candidate_handle.closed is False
+    loader.close()
+    assert candidate_handle.closed is True

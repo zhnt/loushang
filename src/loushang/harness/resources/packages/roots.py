@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
 
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources.layout import resolve_user_resource_roots
-from loushang.harness.resources.packages.manifest import resolve_package_manifest
+from loushang.harness.resources.packages.manifest import (
+    project_plugin_diagnostics,
+    resolve_package_manifest,
+)
 from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.packages.mounts import PackageResourceMount
 from loushang.harness.resources.packages.source import (
     PackageSourceConfig,
     is_remote_package_source,
@@ -17,7 +22,17 @@ from loushang.harness.resources.packages.source_resolver import (
     configured_package_sources,
     package_source_scopes,
 )
-from loushang.harness.resources.plugins import PluginManager
+from loushang.harness.resources.plugins.authority import (
+    PluginInspection,
+    PluginResolutionAuthority,
+    PluginRuntimeResolution,
+)
+from loushang.harness.resources.plugins.manifest import PluginManifestError
+from loushang.harness.resources.plugins.revisions import (
+    PluginRevisionError,
+    VerifiedRevisionHandle,
+)
+from loushang.harness.resources.plugins.types import PluginSource
 
 
 class ResourceRootSettingsSnapshot(Protocol):
@@ -47,10 +62,9 @@ class ResourceRootSettingsManager(Protocol):
 
 
 class ResourceRootLoader(Protocol):
-    def set_package_roots(
+    def set_package_mounts(
         self,
-        package_roots: Sequence[str | Path] | None,
-        package_source_filters: Mapping[str | Path, PackageSourceConfig] | None = None,
+        mounts: Sequence[PackageResourceMount],
     ) -> None: ...
 
     def set_user_resource_roots(
@@ -63,8 +77,30 @@ class ResourceRootLoader(Protocol):
 
 @dataclass(frozen=True)
 class ResolvedPackageResourceRoots:
-    roots: tuple[str, ...] = ()
-    filters: dict[Path, PackageSourceConfig] = field(default_factory=dict)
+    mounts: tuple[PackageResourceMount, ...] = ()
+
+    @property
+    def roots(self) -> tuple[str, ...]:
+        return tuple(str(mount.root) for mount in self.mounts if mount.enabled)
+
+    @property
+    def filters(self) -> dict[Path, PackageSourceConfig]:
+        return {
+            mount.root: mount.source_filter
+            for mount in self.mounts
+            if mount.enabled and mount.source_filter is not None
+        }
+
+    @property
+    def revision_handles(self) -> tuple[VerifiedRevisionHandle, ...]:
+        handles: list[VerifiedRevisionHandle] = []
+        seen: set[int] = set()
+        for mount in self.mounts:
+            handle = mount.revision_handle
+            if handle is not None and id(handle) not in seen:
+                handles.append(handle)
+                seen.add(id(handle))
+        return tuple(handles)
 
 
 def configure_resource_loader_roots(
@@ -91,10 +127,11 @@ def configure_resource_loader_roots(
         diagnostics_service=diagnostics_service,
         session_id=session_id,
     )
-    package_source_filters: dict[str | Path, PackageSourceConfig] = {
-        root: config for root, config in resolved.filters.items()
-    }
-    resource_loader.set_package_roots(resolved.roots, package_source_filters)
+    try:
+        resource_loader.set_package_mounts(resolved.mounts)
+    except Exception:
+        _close_mounts(resolved.mounts)
+        raise
     configured_global_roots = settings_manager.get_global_settings().get(
         "resource_roots",
         (),
@@ -129,56 +166,178 @@ def resolve_package_resource_roots(
     diagnostics_service: DiagnosticsService | None = None,
     session_id: str | None = None,
 ) -> ResolvedPackageResourceRoots:
-    roots: list[str] = []
-    filters: dict[Path, PackageSourceConfig] = {}
+    mounts: list[PackageResourceMount] = []
     for configured_root in package_roots:
-        _append_package_root(roots, configured_root)
-    manager = PluginManager(disabled_plugins=disabled_plugins)
+        _upsert_package_mount(
+            mounts,
+            PackageResourceMount(root=Path(configured_root)),
+        )
+    authority = PluginResolutionAuthority(disabled_plugins=disabled_plugins)
+    resolved_plugins: list[tuple[str, PluginInspection]] = []
     for source in plugin_sources:
         if is_remote_package_source(source):
             record = materializer.get_record(source)
             if record is not None and record.lifecycle == "installed":
-                _append_package_root(
-                    roots, resolve_package_manifest(record.target_path).package_root
+                inspection = authority.inspect(
+                    PluginSource(
+                        path=record.target_path,
+                        url=source,
+                        kind="remote",
+                    )
                 )
+                if not inspection.runtime_ready:
+                    _record_plugin_manifest_diagnostics(
+                        diagnostics_service,
+                        source=source,
+                        diagnostics=project_plugin_diagnostics(inspection.diagnostics),
+                        session_id=session_id,
+                    )
+                    continue
+                resolved_plugins.append((source, inspection))
             continue
-        try:
-            plugin = manager.add_plugin_source(source)
-        except Exception as exc:
-            _record_plugin_source_diagnostic(
+        inspection = authority.inspect(PluginSource(path=Path(source).expanduser()))
+        if not inspection.runtime_ready:
+            _record_plugin_manifest_diagnostics(
                 diagnostics_service,
                 source=source,
-                exc=exc,
+                diagnostics=project_plugin_diagnostics(inspection.diagnostics),
                 session_id=session_id,
             )
             continue
-        if plugin.enabled:
-            _append_package_root(
-                roots, plugin.manifest.package_root or plugin.manifest.root
+        resolved_plugins.append((source, inspection))
+    runtime_resolution: PluginRuntimeResolution | None = None
+    try:
+        runtime_resolution = authority.publish_runtime(
+            tuple(inspection for _, inspection in resolved_plugins),
+            binding_store=materializer,
+        )
+    except (PluginManifestError, PluginRevisionError) as exc:
+        _record_plugin_identity_diagnostic(
+            diagnostics_service,
+            source=_plugin_source_for_error(
+                resolved_plugins,
+                exc=exc,
+                error_path=exc.path,
+            ),
+            exc=exc,
+            session_id=session_id,
+        )
+        raise
+    assert runtime_resolution is not None
+    try:
+        for package, plugin in zip(
+            runtime_resolution.packages,
+            runtime_resolution.plugins,
+            strict=True,
+        ):
+            if plugin.enabled:
+                resolved_resources = authority.resolve_resources(plugin)
+                root = resolved_resources.package_roots[0]
+            else:
+                root = package.package_root
+            _upsert_package_mount(
+                mounts,
+                PackageResourceMount(
+                    root=root,
+                    enabled=plugin.enabled,
+                    content_digest=package.content_digest,
+                    revision_handle=package.revision_handle,
+                ),
             )
-    for package_source in package_sources:
-        if is_remote_package_source(package_source.source):
-            record = materializer.get_record(package_source.source)
-            if record is None or record.lifecycle != "installed":
-                continue
-            resolved_root = resolve_package_manifest(record.target_path).package_root
+    except Exception:
+        runtime_resolution.close()
+        raise
+    try:
+        for package_source in package_sources:
+            if is_remote_package_source(package_source.source):
+                record = materializer.get_record(package_source.source)
+                if record is None or record.lifecycle != "installed":
+                    continue
+                resolved_root = resolve_package_manifest(
+                    record.target_path
+                ).package_root
+            else:
+                scope = (package_source_scopes or {}).get(package_source.source)
+                resolved_root = _resolve_local_package_source(
+                    package_source.source,
+                    scope=scope,
+                    global_base_dir=global_base_dir,
+                    project_base_dir=project_base_dir,
+                )
+            _upsert_package_mount(
+                mounts,
+                PackageResourceMount(
+                    root=Path(resolved_root),
+                    source_filter=package_source,
+                ),
+            )
+    except Exception:
+        runtime_resolution.close()
+        raise
+    return ResolvedPackageResourceRoots(mounts=tuple(mounts))
+
+
+def _upsert_package_mount(
+    mounts: list[PackageResourceMount],
+    candidate: PackageResourceMount,
+) -> None:
+    for index, current in enumerate(mounts):
+        if current.root != candidate.root:
+            continue
+        if current.verified and candidate.verified:
+            if current.content_digest != candidate.content_digest:
+                raise ValueError(
+                    f"Package mount root has conflicting revisions: {current.root}"
+                )
+            if current.revision_handle is not candidate.revision_handle:
+                candidate.close()
+            base = current
+        elif candidate.verified:
+            base = candidate
         else:
-            scope = (package_source_scopes or {}).get(package_source.source)
-            resolved_root = _resolve_local_package_source(
-                package_source.source,
-                scope=scope,
-                global_base_dir=global_base_dir,
-                project_base_dir=project_base_dir,
-            )
-        _append_package_root(roots, resolved_root)
-        filters[Path(resolved_root).expanduser().resolve()] = package_source
-    return ResolvedPackageResourceRoots(roots=tuple(roots), filters=filters)
+            base = current
+        mounts[index] = replace(
+            base,
+            source_filter=candidate.source_filter or current.source_filter,
+            enabled=current.enabled or candidate.enabled,
+        )
+        return
+    mounts.append(candidate)
 
 
-def _append_package_root(roots: list[str], root: str | Path) -> None:
-    normalized = str(Path(root).expanduser().resolve())
-    if normalized not in roots:
-        roots.append(normalized)
+def _close_mounts(mounts: Sequence[PackageResourceMount]) -> None:
+    closed: set[int] = set()
+    for mount in mounts:
+        handle = mount.revision_handle
+        if handle is not None and id(handle) not in closed:
+            handle.close()
+            closed.add(id(handle))
+
+
+def _plugin_source_for_error(
+    resolved_plugins: list[tuple[str, PluginInspection]],
+    *,
+    exc: Exception,
+    error_path: Path,
+) -> str:
+    attributed_source = getattr(exc, "plugin_source", None)
+    if isinstance(attributed_source, str) and attributed_source:
+        return attributed_source
+    for source, inspection in resolved_plugins:
+        package = inspection.package
+        if package is None:
+            continue
+        if _path_belongs_to(error_path, package.root):
+            return source
+    return str(error_path)
+
+
+def _path_belongs_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
 
 
 def _resolve_local_package_source(
@@ -201,21 +360,54 @@ def _resolve_local_package_source(
     return (Path(base).expanduser() / path).resolve()
 
 
-def _record_plugin_source_diagnostic(
+def _record_plugin_identity_diagnostic(
     diagnostics_service: DiagnosticsService | None,
     *,
     source: str,
-    exc: Exception,
+    exc: PluginManifestError | PluginRevisionError,
     session_id: str | None,
 ) -> None:
     if diagnostics_service is None:
         return
     diagnostics_service.capture_failure(
-        code="plugin_source_unresolved",
+        code=exc.code,
         error=exc,
         phase="startup",
-        source="bootstrap",
+        source="package",
         level="warning",
         session_id=session_id,
-        details={"plugin_source": source, "exception_type": type(exc).__name__},
+        details={"plugin_source": source},
+    )
+
+
+def _record_plugin_manifest_diagnostics(
+    diagnostics_service: DiagnosticsService | None,
+    *,
+    source: str,
+    diagnostics: tuple[dict[str, object], ...],
+    session_id: str | None,
+) -> None:
+    if diagnostics_service is None:
+        return
+    drafts: list[DiagnosticDraft] = []
+    for diagnostic in diagnostics:
+        code = diagnostic.get("code")
+        message = diagnostic.get("message")
+        path = diagnostic.get("path")
+        if not isinstance(code, str) or not isinstance(message, str):
+            continue
+        drafts.append(
+            DiagnosticDraft(
+                code=code,
+                message=message,
+                source_path=Path(path) if isinstance(path, str) else None,
+                details={"plugin_source": source},
+            )
+        )
+    diagnostics_service.record_drafts(
+        drafts,
+        phase="startup",
+        source="package",
+        session_id=session_id,
+        level="warning",
     )

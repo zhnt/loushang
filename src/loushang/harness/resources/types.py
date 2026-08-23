@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Literal
 
@@ -12,6 +12,7 @@ ResourceSourceKind = Literal[
     "built_in", "project_local", "external_package", "user_global", "temporary"
 ]
 ResourceSourceScope = Literal["builtin", "project", "package", "user", "temporary"]
+RevisionResourceKind = Literal["file", "directory"]
 
 _EMPTY_METADATA: Mapping[str, object] = MappingProxyType({})
 _PROMPT_SOURCE_ORDER: tuple[ResourceSourceKind, ...] = (
@@ -22,6 +23,29 @@ _PROMPT_SOURCE_ORDER: tuple[ResourceSourceKind, ...] = (
     "built_in",
 )
 _CONTEXT_PROMPT_KINDS = frozenset({"agents_md", "claude_md"})
+
+
+@dataclass(frozen=True)
+class RevisionResourceRef:
+    """Stable resource identity relative to one verified Plugin revision."""
+
+    content_digest: str
+    relative_path: str
+    kind: RevisionResourceKind = "file"
+
+    def __post_init__(self) -> None:
+        if self.kind not in {"file", "directory"}:
+            raise ValueError("Revision resource kind must be file or directory.")
+        if len(self.content_digest) != 64 or any(
+            character not in "0123456789abcdef" for character in self.content_digest
+        ):
+            raise ValueError("Revision resource content digest must be SHA-256.")
+        relative = PurePosixPath(self.relative_path)
+        if relative.is_absolute() or not relative.parts or any(
+            part in {"", ".", ".."} for part in relative.parts
+        ):
+            raise ValueError("Revision resource path must be a contained relative path.")
+        object.__setattr__(self, "relative_path", relative.as_posix())
 
 
 @dataclass(frozen=True)
@@ -66,6 +90,7 @@ class PromptFragmentDescriptor:
     source_root: Path | None = None
     source_root_order: int = 0
     prompt_kind: str = "prompt_asset"
+    revision_ref: RevisionResourceRef | None = None
 
     def __post_init__(self) -> None:
         canonical_name = self.canonical_name or self.name
@@ -93,6 +118,7 @@ class SkillDescriptor:
     declared_id: str | None = None
     source_root: Path | None = None
     source_root_order: int = 0
+    revision_ref: RevisionResourceRef | None = None
 
     def __post_init__(self) -> None:
         canonical_name = self.canonical_name or self.name
@@ -118,6 +144,7 @@ class ExtensionDescriptor:
     declared_id: str | None = None
     source_root: Path | None = None
     source_root_order: int = 0
+    revision_ref: RevisionResourceRef | None = None
 
     def __post_init__(self) -> None:
         canonical_name = self.canonical_name or self.name
@@ -143,6 +170,7 @@ class ThemeDescriptor:
     declared_id: str | None = None
     source_root: Path | None = None
     source_root_order: int = 0
+    revision_ref: RevisionResourceRef | None = None
 
     def __post_init__(self) -> None:
         canonical_name = self.canonical_name or self.name
