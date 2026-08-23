@@ -8,13 +8,15 @@ do not need to recreate Conversation JSONL discovery, summary indexing, or query
 from __future__ import annotations
 
 import asyncio
+import json
 import re
+import stat as stat_module
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Generic, Literal, TypeVar
+from typing import Any, Generic, Literal, TypeVar, cast
 
 from loushang.agent.types import AgentMessage
 from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
@@ -24,6 +26,8 @@ from loushang.harness.conversation import (
     ConversationHeader,
     ConversationIndex,
     ConversationIndexSnapshot,
+    ConversationJsonlHeaderCodec,
+    ConversationJsonlRecordCodec,
     ConversationLocator,
     ConversationProviderBinding,
     ConversationRepository,
@@ -40,7 +44,9 @@ from loushang.harness.transcript.jsonl_file import (
 )
 from loushang.harness.transcript.kinds import (
     AGENT_MESSAGE_KIND,
+    CONVERSATION_METADATA_PATCH_KIND,
     EXTENSION_DATA_KIND,
+    MODEL_SELECTION_KIND,
     RECORD_ANNOTATION_PATCH_KIND,
 )
 from loushang.harness.transcript.profile import AgentTranscriptProfile
@@ -48,7 +54,9 @@ from loushang.harness.transcript.types import (
     AgentTranscriptContext,
     AgentTranscriptRecord,
     ApplicationMessage,
+    ConversationMetadataPatch,
     ExtensionData,
+    ModelSelectionSnapshot,
     RecordAnnotationPatch,
 )
 
@@ -56,9 +64,13 @@ RecordT = TypeVar("RecordT")
 
 _LEAF_UNSET = object()
 _MISSING = object()
-_SESSION_INDEX_VERSION = 1
+_SESSION_INDEX_VERSION = 2
 _SESSION_INDEX_FILENAME = ".session-index.json"
+_BOUNDED_SEGMENT_BYTES = 64 * 1024
+_BOUNDED_ENRICH_LIMIT = 50
 _PROFILE = AgentTranscriptProfile.default()
+_HEADER_CODEC = ConversationJsonlHeaderCodec()
+_RECORD_CODEC = ConversationJsonlRecordCodec(_PROFILE.payload_codecs)
 log = get_log(__name__).bind(component="AgentTranscriptSessionCatalog")
 
 
@@ -101,6 +113,25 @@ class SessionSummary:
     last_diagnostic_code: str | None = None
     last_diagnostic_level: str | None = None
     locator: ConversationLocator | None = None
+    authority_fingerprint: str | None = None
+    bounded: bool = False
+    counts_exact: bool = True
+
+
+@dataclass(frozen=True)
+class BoundedSessionCatalogSnapshot:
+    items: tuple[IndexedProjection[SessionSummary], ...]
+    authority_count: int
+    enriched_count: int
+    bytes_read: int
+
+
+@dataclass(frozen=True)
+class _BoundedSessionCandidate:
+    path: Path
+    size: int
+    mtime_ns: int
+    fingerprint: str
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -324,6 +355,7 @@ def project_agent_transcript_session_summary(
     source_path: Path | None,
     *,
     locator: ConversationLocator | None = None,
+    include_all_messages_text: bool = True,
 ) -> SessionSummary:
     """Project standard Agent transcript facts into one searchable summary."""
 
@@ -338,9 +370,11 @@ def project_agent_transcript_session_summary(
         ),
         None,
     )
-    message_texts = [
-        text for message in context.messages if (text := _message_text(message))
-    ]
+    message_texts = (
+        [text for message in context.messages if (text := _message_text(message))]
+        if include_all_messages_text
+        else []
+    )
     first_message = next(
         (
             text
@@ -519,11 +553,17 @@ class AgentTranscriptSessionCatalog:
     def try_query_index_snapshot(
         self,
         query: SessionQuery | None = None,
+        *,
+        ignore_modified_paths: Sequence[str | Path] = (),
     ) -> ConversationIndexSnapshot[SessionSummary]:
         """Read the current projection index without scanning transcript authority."""
 
         index = self._projection_index()
         requested = query or SessionQuery()
+        ignored_paths = tuple(
+            Path(path).expanduser().resolve(strict=False)
+            for path in ignore_modified_paths
+        )
         query_snapshot = getattr(index, "query_snapshot", None)
         if query_snapshot is None:
             items = tuple(_run_catalog(index.query(requested)))
@@ -536,7 +576,22 @@ class AgentTranscriptSessionCatalog:
         else:
             snapshot = _run_catalog(query_snapshot(requested))
         index_state = snapshot.index_state
-        if index_state == "fresh" and self._local_index_is_older_than_authority():
+        if (
+            index_state == "fresh"
+            and self.session_dir is not None
+            and (
+                any(
+                    not _indexed_summary_authority_is_current(
+                        item.projection,
+                        ignore_paths=ignored_paths,
+                    )
+                    for item in snapshot.items
+                )
+                or self._local_index_is_older_than_authority(
+                    ignore_modified_paths=ignored_paths,
+                )
+            )
+        ):
             index_state = "stale"
         return ConversationIndexSnapshot(
             items=tuple(
@@ -550,6 +605,112 @@ class AgentTranscriptSessionCatalog:
             index_state=index_state,
             index_generation=snapshot.index_generation,
             query_snapshot=snapshot.query_snapshot,
+        )
+
+    def bounded_index_snapshot(
+        self,
+        query: SessionQuery | None = None,
+        *,
+        enrich_limit: int = _BOUNDED_ENRICH_LIMIT,
+        segment_bytes: int = _BOUNDED_SEGMENT_BYTES,
+    ) -> BoundedSessionCatalogSnapshot:
+        """Build a bounded resume view without replaying transcript authority.
+
+        Every candidate is discovered with directory metadata, but only the most
+        recent ``enrich_limit`` files are opened. Each opened file contributes at
+        most one head and one tail segment. The result is deliberately partial and
+        is never written to the authoritative projection index.
+        """
+
+        if self._layout is None or self.session_dir is None:
+            return BoundedSessionCatalogSnapshot((), 0, 0, 0)
+        if type(enrich_limit) is not int or enrich_limit < 1:
+            raise ValueError("bounded catalog enrich limit must be positive")
+        if type(segment_bytes) is not int or segment_bytes < 1:
+            raise ValueError("bounded catalog segment size must be positive")
+
+        candidates = self._bounded_candidates()
+        projected, bytes_read = self._project_bounded_candidates(
+            candidates[:enrich_limit],
+            segment_bytes=segment_bytes,
+        )
+
+        selected = _query_indexed_summaries(query or SessionQuery(), projected)
+        return BoundedSessionCatalogSnapshot(
+            items=selected,
+            authority_count=len(candidates),
+            enriched_count=min(len(candidates), enrich_limit),
+            bytes_read=bytes_read,
+        )
+
+    def refresh_bounded_index(
+        self,
+        *,
+        segment_bytes: int = _BOUNDED_SEGMENT_BYTES,
+    ) -> list[SessionSummary]:
+        """Replace a missing/stale local index without replaying transcript bodies.
+
+        The scan may read at most one head and one tail segment per authority file.
+        It publishes only if the directory's stat identities remain stable for the
+        complete scan, preventing a racing append from being mistaken for a fresh
+        index. Individual invalid transcript candidates remain omitted just as they
+        are from the authoritative catalog scan.
+        """
+
+        if self._layout is None or self.session_dir is None:
+            raise ValueError("provider-backed catalogs cannot build a bounded index")
+        if type(segment_bytes) is not int or segment_bytes < 1:
+            raise ValueError("bounded catalog segment size must be positive")
+        self.session_dir.mkdir(parents=True, exist_ok=True)
+        before = self._bounded_candidates()
+        projected, _bytes_read = self._project_bounded_candidates(
+            before,
+            segment_bytes=segment_bytes,
+        )
+        after = self._bounded_candidates()
+        if _bounded_candidate_identities(before) != _bounded_candidate_identities(
+            after
+        ):
+            raise RuntimeError("session authority changed during bounded index refresh")
+        published = _run_catalog(self._projection_index().replace(projected))
+        return _sort_summaries(item.projection for item in published)
+
+    def _project_bounded_candidates(
+        self,
+        candidates: Sequence[_BoundedSessionCandidate],
+        *,
+        segment_bytes: int,
+    ) -> tuple[list[IndexedProjection[SessionSummary]], int]:
+        if self._layout is None:
+            raise ValueError("provider-backed catalogs have no local file layout")
+        projected: list[IndexedProjection[SessionSummary]] = []
+        bytes_read = 0
+        for candidate in candidates:
+            result = _project_bounded_session_summary(
+                candidate,
+                segment_bytes=segment_bytes,
+            )
+            if result is None:
+                continue
+            summary, consumed = result
+            bytes_read += consumed
+            key = self._layout.key(summary.session_id)
+            self._layout.bind_path(key, candidate.path)
+            locator = ConversationLocator(self._provider.provider_id, key)
+            projected.append(
+                IndexedProjection(
+                    locator=locator,
+                    source_revision=summary.entry_count,
+                    projection=replace(summary, locator=locator),
+                )
+            )
+        return projected, bytes_read
+
+    def _bounded_candidates(self) -> tuple[_BoundedSessionCandidate, ...]:
+        if self._layout is None:
+            return ()
+        return _bounded_session_candidates(
+            self._layout.scan_candidate_paths(self._layout.namespace)
         )
 
     async def upsert_summary(
@@ -570,11 +731,12 @@ class AgentTranscriptSessionCatalog:
         if key.conversation_id != summary.session_id:
             raise ValueError("session summary identity does not match its transcript")
         locator = ConversationLocator(self._provider.provider_id, key)
+        indexed_summary = _summary_with_authority_fingerprint(summary)
         return await self._projection_index().upsert(
             IndexedProjection(
                 locator=locator,
                 source_revision=source_revision,
-                projection=replace(summary, locator=locator),
+                projection=replace(indexed_summary, locator=locator),
             )
         )
 
@@ -592,19 +754,12 @@ class AgentTranscriptSessionCatalog:
         if self._external_index is not None:
             summaries = self.refresh_index() if refresh else self.load_index()
             return summaries or self.refresh_index()
-        if refresh or not self.index_path.exists():
+        if refresh:
             return self.refresh_index()
-        summaries = self.load_index()
-        if (
-            not summaries
-            or not self.index_path.exists()
-            or any(
-                summary.session_file is None or not summary.session_file.is_file()
-                for summary in summaries
-            )
-        ):
-            return self.refresh_index()
-        return summaries
+        snapshot = self.try_query_index_snapshot()
+        if snapshot.index_state == "fresh":
+            return [item.projection for item in snapshot.items]
+        return [item.projection for item in self.bounded_index_snapshot().items]
 
     def find_indexed_summaries(
         self,
@@ -626,7 +781,9 @@ class AgentTranscriptSessionCatalog:
     ]:
         return ConversationCatalog(
             providers=(self._provider,),
-            projector=FunctionalConversationProjector(self._project_summary),
+            projector=FunctionalConversationProjector(
+                self._project_index_summary if indexed else self._project_summary
+            ),
             record_id=lambda record: record.record_id,
             index=self._projection_index() if indexed else None,
             query_items=_query_indexed_summaries,
@@ -646,6 +803,24 @@ class AgentTranscriptSessionCatalog:
             leaf_id,
             self._session_file_for(locator),
             locator=locator,
+        )
+
+    def _project_index_summary(
+        self,
+        header: ConversationHeader,
+        records: Sequence[AgentTranscriptRecord],
+        leaf_id: str | None,
+        locator: ConversationLocator,
+    ) -> SessionSummary:
+        return _summary_with_authority_fingerprint(
+            project_agent_transcript_session_summary(
+                header,
+                records,
+                leaf_id,
+                self._session_file_for(locator),
+                locator=locator,
+                include_all_messages_text=False,
+            )
         )
 
     def _projection_index(
@@ -679,7 +854,7 @@ class AgentTranscriptSessionCatalog:
             load_result = await self._provider.store.load(key)
             authority = load_result.snapshot
             leaf_id = authority.records[-1].record_id if authority.records else None
-            summary = self._project_summary(
+            summary = self._project_index_summary(
                 authority.header,
                 authority.records,
                 leaf_id,
@@ -714,13 +889,27 @@ class AgentTranscriptSessionCatalog:
             for item in repaired
         )
 
-    def _local_index_is_older_than_authority(self) -> bool:
+    def _local_index_is_older_than_authority(
+        self,
+        *,
+        ignore_modified_paths: Sequence[str | Path] = (),
+    ) -> bool:
         if self.session_dir is None or self._layout is None:
             return False
         try:
             index_modified = self.index_path.stat().st_mtime_ns
-            return self._layout.has_transcript_modified_after(
-                index_modified,
+            ignored = tuple(
+                Path(path).expanduser().resolve(strict=False)
+                for path in ignore_modified_paths
+            )
+            return any(
+                not any(
+                    same_agent_transcript_session_path(path, ignored_path)
+                    for ignored_path in ignored
+                )
+                for path in self._layout.transcript_paths_modified_after(
+                    index_modified,
+                )
             )
         except OSError:
             return True
@@ -791,6 +980,258 @@ def find_all_indexed_agent_transcript_session_summaries(
         list_all_indexed_agent_transcript_session_summaries(sessions_root),
         query or SessionQuery(),
     )
+
+
+def session_summary_revision(
+    summary: SessionSummary,
+    source_revision: int,
+) -> str:
+    """Return the opaque revision used by continuity selection."""
+
+    return summary.authority_fingerprint or str(source_revision)
+
+
+def session_summary_authority_is_current(summary: SessionSummary) -> bool:
+    """Revalidate a fingerprinted summary without parsing its transcript."""
+
+    if summary.authority_fingerprint is None:
+        return True
+    if summary.session_file is None:
+        return False
+    try:
+        current = _bounded_candidate(summary.session_file)
+    except OSError:
+        return False
+    return current is not None and current.fingerprint == summary.authority_fingerprint
+
+
+def _summary_with_authority_fingerprint(summary: SessionSummary) -> SessionSummary:
+    if summary.session_file is None:
+        return summary
+    try:
+        candidate = _bounded_candidate(summary.session_file)
+    except OSError:
+        return summary
+    if candidate is None:
+        return summary
+    return replace(summary, authority_fingerprint=candidate.fingerprint)
+
+
+def _bounded_session_candidates(
+    paths: Sequence[Path],
+) -> tuple[_BoundedSessionCandidate, ...]:
+    candidates: list[_BoundedSessionCandidate] = []
+    for path in paths:
+        try:
+            candidate = _bounded_candidate(path)
+        except OSError:
+            continue
+        if candidate is not None:
+            candidates.append(candidate)
+    return tuple(
+        sorted(
+            candidates,
+            key=lambda candidate: (candidate.mtime_ns, candidate.path.name),
+            reverse=True,
+        )
+    )
+
+
+def _bounded_candidate(path: Path) -> _BoundedSessionCandidate | None:
+    status = path.stat()
+    if not stat_module.S_ISREG(status.st_mode):
+        return None
+    fingerprint = (
+        f"stat-v1:{status.st_dev}:{status.st_ino}:{status.st_size}:"
+        f"{status.st_mtime_ns}:{status.st_ctime_ns}"
+    )
+    return _BoundedSessionCandidate(
+        path=path,
+        size=status.st_size,
+        mtime_ns=status.st_mtime_ns,
+        fingerprint=fingerprint,
+    )
+
+
+def _bounded_candidate_identities(
+    candidates: Sequence[_BoundedSessionCandidate],
+) -> tuple[tuple[Path, str], ...]:
+    return tuple((candidate.path, candidate.fingerprint) for candidate in candidates)
+
+
+def _project_bounded_session_summary(
+    candidate: _BoundedSessionCandidate,
+    *,
+    segment_bytes: int,
+) -> tuple[SessionSummary, int] | None:
+    try:
+        head, tail = _read_bounded_segments(candidate, segment_bytes=segment_bytes)
+        current = _bounded_candidate(candidate.path)
+    except OSError:
+        return None
+    if current is None or current.fingerprint != candidate.fingerprint:
+        return None
+
+    lines = {
+        offset: line
+        for offset, line in (
+            *_complete_segment_lines(
+                head,
+                start=0,
+                total_size=candidate.size,
+                drop_first=False,
+            ),
+            *_complete_segment_lines(
+                tail,
+                start=max(0, candidate.size - len(tail)),
+                total_size=candidate.size,
+                drop_first=candidate.size > len(tail),
+            ),
+        )
+    }
+    header: ConversationHeader | None = None
+    records: list[AgentTranscriptRecord] = []
+    for _offset, line in sorted(lines.items()):
+        try:
+            value = json.loads(
+                line.decode("utf-8"), parse_constant=_reject_json_constant
+            )
+        except (UnicodeError, json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(value, dict):
+            continue
+        if value.get("type") == "conversation" and header is None:
+            try:
+                header = _HEADER_CODEC.decode_header(value)
+            except Exception:
+                return None
+            continue
+        if value.get("type") != "record":
+            continue
+        try:
+            records.append(
+                cast(AgentTranscriptRecord, _RECORD_CODEC.decode_record(value))
+            )
+        except Exception:
+            continue
+    if header is None:
+        return None
+
+    name = _normalize_nonblank(header.metadata.get("name"))
+    messages: list[AgentMessage] = []
+    model: dict[str, str] | None = None
+    for record in records:
+        if record.kind == AGENT_MESSAGE_KIND and isinstance(
+            record.payload,
+            UserMessage | AssistantMessage | ToolResultMessage,
+        ):
+            messages.append(record.payload)
+        elif record.kind == CONVERSATION_METADATA_PATCH_KIND and isinstance(
+            record.payload,
+            ConversationMetadataPatch,
+        ):
+            if "name" in record.payload.removed_keys:
+                name = None
+            if "name" in record.payload.values:
+                name = _normalize_nonblank(record.payload.values["name"])
+        elif record.kind == MODEL_SELECTION_KIND and isinstance(
+            record.payload,
+            ModelSelectionSnapshot,
+        ):
+            model = {
+                "provider": record.payload.provider,
+                "endpoint_id": record.payload.endpoint_id,
+                "model_id": record.payload.model_id,
+            }
+
+    message_texts = [text for item in messages if (text := _message_text(item))]
+    first_message = next(
+        (
+            text
+            for item in messages
+            if isinstance(item, UserMessage) and (text := _message_text(item))
+        ),
+        message_texts[0] if message_texts else "(preview unavailable)",
+    )
+    last_message_preview = next(
+        (preview for item in reversed(messages) if (preview := _message_preview(item))),
+        None,
+    )
+    diagnostic_count, last_diagnostic_code, last_diagnostic_level = _diagnostic_index(
+        records
+    )
+    updated_at = (
+        datetime.fromtimestamp(candidate.mtime_ns / 1_000_000_000, UTC)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+    return (
+        SessionSummary(
+            session_id=header.conversation_id,
+            cwd=agent_transcript_header_cwd(header),
+            session_file=candidate.path,
+            parent_session=agent_transcript_header_parent_session(header),
+            leaf_id=records[-1].record_id if records else None,
+            created_at=header.created_at,
+            updated_at=updated_at,
+            name=name,
+            message_count=len(messages),
+            entry_count=len(records),
+            first_message=first_message,
+            all_messages_text="",
+            last_message_preview=last_message_preview,
+            model=model,
+            has_diagnostics=diagnostic_count > 0,
+            diagnostic_count=diagnostic_count,
+            last_diagnostic_code=last_diagnostic_code,
+            last_diagnostic_level=last_diagnostic_level,
+            authority_fingerprint=candidate.fingerprint,
+            bounded=True,
+            counts_exact=candidate.size <= segment_bytes * 2,
+        ),
+        len(head) + len(tail),
+    )
+
+
+def _read_bounded_segments(
+    candidate: _BoundedSessionCandidate,
+    *,
+    segment_bytes: int,
+) -> tuple[bytes, bytes]:
+    with candidate.path.open("rb") as handle:
+        head = handle.read(segment_bytes)
+        if candidate.size <= segment_bytes:
+            return head, b""
+        tail_size = min(segment_bytes, candidate.size)
+        handle.seek(candidate.size - tail_size)
+        return head, handle.read(tail_size)
+
+
+def _complete_segment_lines(
+    data: bytes,
+    *,
+    start: int,
+    total_size: int,
+    drop_first: bool,
+) -> tuple[tuple[int, bytes], ...]:
+    lines: list[tuple[int, bytes]] = []
+    offset = start
+    for index, line in enumerate(data.splitlines(keepends=True)):
+        line_start = offset
+        offset += len(line)
+        if drop_first and index == 0:
+            continue
+        complete = line.endswith((b"\n", b"\r")) or offset == total_size
+        if not complete:
+            continue
+        stripped = line.strip()
+        if stripped:
+            lines.append((line_start, stripped))
+    return tuple(lines)
+
+
+def _reject_json_constant(token: str) -> None:
+    raise ValueError(f"invalid JSON constant {token!r}")
 
 
 def filter_agent_transcript_session_summaries(
@@ -964,13 +1405,15 @@ def _summary_to_index_item(summary: SessionSummary) -> dict[str, object]:
         "message_count": summary.message_count,
         "entry_count": summary.entry_count,
         "first_message": summary.first_message,
-        "all_messages_text": summary.all_messages_text,
         "last_message_preview": summary.last_message_preview,
         "model": dict(summary.model) if summary.model is not None else None,
         "has_diagnostics": summary.has_diagnostics,
         "diagnostic_count": summary.diagnostic_count,
         "last_diagnostic_code": summary.last_diagnostic_code,
         "last_diagnostic_level": summary.last_diagnostic_level,
+        "authority_fingerprint": summary.authority_fingerprint,
+        "bounded": summary.bounded,
+        "counts_exact": summary.counts_exact,
     }
 
 
@@ -990,18 +1433,38 @@ def _decode_summary_index_item(value: Mapping[str, object]) -> SessionSummary:
         message_count=_int(value.get("message_count")),
         entry_count=_int(value.get("entry_count")),
         first_message=_string(value.get("first_message")),
-        all_messages_text=_string(value.get("all_messages_text")),
+        all_messages_text="",
         last_message_preview=_optional_string(value.get("last_message_preview")),
         model=_model(value.get("model")),
         has_diagnostics=_bool(value.get("has_diagnostics")),
         diagnostic_count=_int(value.get("diagnostic_count")),
         last_diagnostic_code=_optional_string(value.get("last_diagnostic_code")),
         last_diagnostic_level=_optional_string(value.get("last_diagnostic_level")),
+        authority_fingerprint=_optional_string(value.get("authority_fingerprint")),
+        bounded=_bool(value.get("bounded")),
+        counts_exact=_bool(value.get("counts_exact", True)),
     )
 
 
-def _indexed_session_file_exists(summary: SessionSummary) -> bool:
-    return summary.session_file is not None and summary.session_file.exists()
+def _indexed_summary_authority_is_current(
+    summary: SessionSummary,
+    *,
+    ignore_paths: Sequence[Path],
+) -> bool:
+    session_file = summary.session_file
+    if session_file is None:
+        return False
+    if any(
+        same_agent_transcript_session_path(
+            session_file,
+            path,
+        )
+        for path in ignore_paths
+    ):
+        return True
+    if summary.authority_fingerprint is not None:
+        return session_summary_authority_is_current(summary)
+    return session_file.is_file()
 
 
 def _session_haystack(summary: SessionSummary) -> str:
@@ -1012,7 +1475,6 @@ def _session_haystack(summary: SessionSummary) -> str:
             summary.cwd,
             summary.name or "",
             summary.first_message,
-            summary.all_messages_text,
             summary.last_message_preview or "",
             summary.last_diagnostic_code or "",
             summary.last_diagnostic_level or "",
@@ -1141,6 +1603,7 @@ def _run_catalog(awaitable):
 
 __all__ = [
     "AgentTranscriptSessionCatalog",
+    "BoundedSessionCatalogSnapshot",
     "SessionMetadata",
     "SessionQuery",
     "SessionRecord",
@@ -1160,4 +1623,6 @@ __all__ = [
     "project_agent_transcript_session_summary",
     "refresh_all_agent_transcript_session_indexes",
     "same_agent_transcript_session_path",
+    "session_summary_authority_is_current",
+    "session_summary_revision",
 ]

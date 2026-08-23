@@ -168,6 +168,30 @@ def _normalized_names(values: tuple[str, ...], *, name: str) -> tuple[str, ...]:
     return normalized
 
 
+def _capability_contract_range_to_dict(
+    value: CapabilityContractRange,
+) -> dict[str, object]:
+    if not isinstance(value, CapabilityContractRange):
+        raise TypeError("Capability contract codec requires CapabilityContractRange")
+    return {"maximum": value.maximum, "minimum": value.minimum}
+
+
+def _capability_requirement_to_dict(
+    value: CapabilityRequirement,
+) -> dict[str, object]:
+    if not isinstance(value, CapabilityRequirement):
+        raise TypeError("Capability requirement codec requires CapabilityRequirement")
+    return {
+        "binding": value.binding,
+        "capability": value.capability,
+        "compatibleContract": _capability_contract_range_to_dict(
+            value.compatible_contract
+        ),
+        "facets": sorted(value.facets),
+        "optional": value.optional,
+    }
+
+
 __all__ = [
     "CapabilityContractRange",
     "CapabilityDefinition",

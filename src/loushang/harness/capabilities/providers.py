@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from loushang.harness.capabilities.contracts import (
     CapabilityContractRange,
     CapabilityRequirement,
+    _capability_contract_range_to_dict,
+    _capability_requirement_to_dict,
 )
 
 
@@ -97,6 +99,32 @@ def _normalized_names(values: tuple[str, ...], *, name: str) -> tuple[str, ...]:
     if len(set(normalized)) != len(normalized):
         raise ValueError(f"{name} must not contain duplicates")
     return normalized
+
+
+def _capability_bundle_provider_to_dict(
+    value: CapabilityBundleProvider,
+) -> dict[str, object]:
+    if not isinstance(value, CapabilityBundleProvider):
+        raise TypeError("Capability Provider codec requires Provider metadata")
+    return {
+        "capabilityId": value.capability_id,
+        "compatibleContract": _capability_contract_range_to_dict(
+            value.compatible_contract
+        ),
+        "facets": sorted(value.facets),
+        "implementationVersion": value.implementation_version,
+        "providerId": value.provider_id,
+        "requiredAuthorities": sorted(value.required_authorities),
+        "requirements": [
+            _capability_requirement_to_dict(requirement)
+            for requirement in sorted(
+                value.requirements,
+                key=lambda item: item.capability,
+            )
+        ],
+        "selectionRule": value.selection_rule,
+        "sourceId": value.source_id,
+    }
 
 
 __all__ = ["CapabilityBundleProvider"]

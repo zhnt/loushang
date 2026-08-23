@@ -12,9 +12,13 @@ from loushang.harness.resources.packages.catalog import (
     package_catalog_sources,
     summarize_profiled_package_resources,
 )
-from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.packages.materializer import (
+    PackageMaterializationRecord,
+    PackageMaterializer,
+)
 from loushang.harness.resources.packages.projection import project_package_entry
 from loushang.harness.resources.packages.source import PackageSourceConfig
+from loushang.harness.resources.plugins.types import ResolvedPluginPackage
 from loushang.harness.resources.types import PackageResourceSummary
 
 
@@ -47,6 +51,29 @@ def test_catalog_builds_local_plugin_entries_and_marks_version_conflicts(
     assert entries[0].conflict_diagnostics[0].code == "package_version_conflict"
 
 
+def test_catalog_keeps_invalid_local_plugin_as_broken_inventory(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "plugins" / "review-pack"
+    root.mkdir(parents=True)
+    manifest_path = root / "plugin.json"
+    manifest_path.write_text(json.dumps({"name": 7}), encoding="utf-8")
+
+    entries = PackageCatalogBuilder(summary_provider=_summary).collect(
+        sources=PackageCatalogSources(
+            plugin_sources=((str(root), "merged"),),
+        ),
+        cwd=tmp_path,
+    )
+
+    assert len(entries) == 1
+    assert entries[0].name == "review-pack"
+    assert entries[0].enabled is False
+    assert entries[0].summary.prompt_count == 0
+    assert entries[0].manifest_diagnostics[0]["code"] == "invalid_package_manifest"
+    assert entries[0].manifest_diagnostics[0]["path"] == str(manifest_path.resolve())
+
+
 def test_catalog_projects_prepared_remote_source_without_product_policy(
     tmp_path: Path,
 ) -> None:
@@ -67,6 +94,53 @@ def test_catalog_projects_prepared_remote_source_without_product_policy(
     assert entries[0].lifecycle == "materialization_pending"
     assert entries[0].enabled is False
     assert entries[0].path == tmp_path / "packages" / "review-pack"
+
+
+def test_catalog_keeps_materialized_remote_plugin_disabled_by_manifest(
+    tmp_path: Path,
+) -> None:
+    source = "https://packages.example.invalid/review-pack.git"
+    root = tmp_path / "packages" / "review-pack"
+    root.mkdir(parents=True)
+    (root / "plugin.json").write_text(
+        json.dumps({"name": "canonical-review", "enabled": False}),
+        encoding="utf-8",
+    )
+    materializer = _InstalledMaterializer(source=source, target_path=root)
+
+    entries = PackageCatalogBuilder(summary_provider=_summary).collect(
+        sources=PackageCatalogSources(plugin_sources=((source, "merged"),)),
+        disabled_plugins=(),
+        cwd=tmp_path,
+        materializer=materializer,  # type: ignore[arg-type]
+    )
+
+    assert entries[0].name == "canonical-review"
+    assert entries[0].enabled is False
+    assert entries[0].summary.prompt_count == 0
+
+
+def test_catalog_applies_disabled_plugins_to_materialized_remote_plugin(
+    tmp_path: Path,
+) -> None:
+    source = "https://packages.example.invalid/review-pack.git"
+    root = tmp_path / "packages" / "review-pack"
+    root.mkdir(parents=True)
+    (root / "plugin.json").write_text(
+        json.dumps({"name": "canonical-review", "enabled": True}),
+        encoding="utf-8",
+    )
+    materializer = _InstalledMaterializer(source=source, target_path=root)
+
+    entries = PackageCatalogBuilder(summary_provider=_summary).collect(
+        sources=PackageCatalogSources(plugin_sources=((source, "merged"),)),
+        disabled_plugins=("canonical-review",),
+        cwd=tmp_path,
+        materializer=materializer,  # type: ignore[arg-type]
+    )
+
+    assert entries[0].enabled is False
+    assert entries[0].summary.prompt_count == 0
 
 
 def test_package_projection_is_available_without_coding() -> None:
@@ -178,3 +252,19 @@ class _Settings:
 
     def get_session_settings(self) -> dict[str, object]:
         return {}
+
+
+class _InstalledMaterializer:
+    def __init__(self, *, source: str, target_path: Path) -> None:
+        self._record = PackageMaterializationRecord(
+            source=source,
+            name=target_path.name,
+            lifecycle="installed",
+            target_path=target_path,
+        )
+
+    def get_record(self, source: str) -> PackageMaterializationRecord | None:
+        return self._record if source == self._record.source else None
+
+    def validate_plugin_package(self, package: ResolvedPluginPackage) -> None:
+        del package

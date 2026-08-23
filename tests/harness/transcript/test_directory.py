@@ -131,7 +131,7 @@ def test_directory_runtime_contains_scheduled_refresh_failures(tmp_path: Path) -
     assert failures == [("index unavailable", False)]
 
 
-def test_non_rebuilding_index_page_never_opens_transcript_authority(
+def test_non_rebuilding_index_page_detects_missing_authority_without_replay(
     tmp_path: Path,
 ) -> None:
     project_dir = tmp_path / "project"
@@ -148,16 +148,10 @@ def test_non_rebuilding_index_page_never_opens_transcript_authority(
         transcript.unlink()
 
     first = runtime.try_query_session_index_page(limit=2)
-    second = runtime.try_query_session_index_page(
-        cursor=first.items[-1].after_cursor,
-        limit=2,
-    )
-
-    assert first.index_state == "fresh"
-    assert len(first.items) == 2
-    assert first.has_more is True
-    assert len(second.items) == 1
-    assert second.has_more is False
+    assert first.index_state == "stale"
+    assert first.items == ()
+    assert first.has_more is False
+    assert first.bounded_fallback is True
     assert runtime.session_catalog.index_path.exists()
     assert not list(project_dir.glob("*.jsonl"))
 
@@ -231,7 +225,7 @@ def test_index_page_pins_query_snapshot_across_ordinary_upsert(
     ]
 
 
-def test_missing_index_page_returns_without_rebuilding_authority(
+def test_missing_index_page_returns_bounded_preview_without_rebuilding_authority(
     tmp_path: Path,
 ) -> None:
     project_dir = tmp_path / "project"
@@ -248,6 +242,37 @@ def test_missing_index_page_returns_without_rebuilding_authority(
 
     page = runtime.try_query_session_index_page(limit=10)
 
-    assert page.items == ()
+    assert len(page.items) == 1
+    assert page.items[0].item.projection.session_id == "alpha"
+    assert page.items[0].item.projection.bounded is True
     assert page.index_state == "unavailable"
+    assert page.bounded_fallback is True
     assert not runtime.session_catalog.index_path.exists()
+
+
+def test_directory_can_finish_bounded_index_rebuild_off_the_listing_path(
+    tmp_path: Path,
+) -> None:
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    for index in range(3):
+        write_agent_transcript_export(
+            project_dir / f"session-{index}.jsonl",
+            _header(f"session-{index}", cwd="/workspace/a"),
+            [_record(f"record-{index}", f"message {index}", timestamp=index + 1)],
+        )
+    runtime = AgentTranscriptDirectoryRuntime(
+        session_dir=project_dir,
+        session_index_flush_delay=60.0,
+    )
+
+    first = runtime.try_query_session_index_page(limit=10)
+    assert first.bounded_fallback is True
+    runtime.request_bounded_session_index_refresh()
+    asyncio.run(runtime.drain_session_index_flush())
+
+    rebuilt = runtime.try_query_session_index_page(limit=10)
+    assert rebuilt.index_state == "fresh"
+    assert rebuilt.bounded_fallback is False
+    assert len(rebuilt.items) == 3
+    assert all(item.item.projection.bounded for item in rebuilt.items)

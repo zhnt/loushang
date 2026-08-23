@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from loushang.harness.policy import PolicyDecision
 from loushang.harness.resources.builtin import (
     BuiltInResourcePackage,
@@ -28,11 +30,12 @@ from loushang.harness.resources.packages import (
 )
 from loushang.harness.resources.plugins import (
     InstalledPlugin,
-    PluginManager,
     PluginManifest,
     PluginRegistry,
     PluginSource,
 )
+from loushang.harness.resources.plugins.manager import PluginManager
+from loushang.harness.resources.plugins.manifest import PluginManifestError
 
 
 class _AllowPackageSources:
@@ -266,4 +269,8 @@ def test_package_source_parser_and_plugin_registry_are_product_neutral(
     plugin = manager.add_plugin_source(plugin_root)
 
     assert plugin.manifest.name == "review-pack"
-    assert manager.resolve_package_roots() == (plugin_root.resolve(),)
+    assert plugin.enabled is False
+    assert manager.list_enabled_plugins() == []
+    with pytest.raises(PluginManifestError) as caught:
+        manager.resolve_package_roots()
+    assert caught.value.code == "plugin_manager_inventory_only"

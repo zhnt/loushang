@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources._loader_package_policy import (
@@ -27,6 +28,8 @@ from loushang.harness.resources.layout import (
     resolve_user_resource_roots,
     resolve_workspace_resource_root,
 )
+from loushang.harness.resources.packages.mounts import PackageResourceMount
+from loushang.harness.resources.packages.source import PackageSourceConfig
 from loushang.harness.resources.types import (
     ExtensionDescriptor,
     PackageResourceSummary,
@@ -35,9 +38,6 @@ from loushang.harness.resources.types import (
     ResourceSourceKind,
     SkillDescriptor,
 )
-
-if TYPE_CHECKING:
-    from loushang.harness.resources.packages.source import PackageSourceConfig
 
 SystemPromptAssembler = Callable[[str | None, ResourceBundle], str | None]
 
@@ -72,6 +72,23 @@ def _resolve_prompt_input(source: str | None, *, cwd: Path) -> str | None:
         return candidate.read_text(encoding="utf-8")
     except OSError:
         return source
+
+
+def _package_mounts_from_legacy_roots(
+    package_roots: Sequence[str | Path] | None,
+    package_source_filters: Mapping[str | Path, PackageSourceConfig] | None,
+) -> tuple[PackageResourceMount, ...]:
+    roots = _normalize_package_roots(package_roots)
+    filters = _normalize_package_source_filters(package_source_filters)
+    return tuple(
+        PackageResourceMount(root=root, source_filter=filters.get(root))
+        for root in roots
+    )
+
+
+def _verify_package_mounts(mounts: Sequence[PackageResourceMount]) -> None:
+    for mount in mounts:
+        mount.verify()
 
 
 @dataclass(frozen=True)
@@ -129,9 +146,9 @@ class ResourceLoader:
         project_resource_mode: Literal["standard", "legacy"] = "standard",
     ) -> None:
         self._snapshot: ResourceSnapshot | None = None
-        self._package_roots = _normalize_package_roots(package_roots)
-        self._package_source_filters = _normalize_package_source_filters(
-            package_source_filters
+        self._package_mounts = _package_mounts_from_legacy_roots(
+            package_roots,
+            package_source_filters,
         )
         if user_resource_roots is None:
             platform_roots, _ = resolve_user_resource_roots()
@@ -181,10 +198,32 @@ class ResourceLoader:
         package_roots: Sequence[str | Path] | None,
         package_source_filters: Mapping[str | Path, PackageSourceConfig] | None = None,
     ) -> None:
-        self._package_roots = _normalize_package_roots(package_roots)
-        self._package_source_filters = _normalize_package_source_filters(
-            package_source_filters
+        """Compatibility adapter for path-backed, non-Plugin Package roots."""
+
+        self.set_package_mounts(
+            _package_mounts_from_legacy_roots(
+                package_roots,
+                package_source_filters,
+            )
         )
+
+    def set_package_mounts(
+        self,
+        mounts: Sequence[PackageResourceMount],
+    ) -> None:
+        next_mounts = tuple(mounts)
+        _verify_package_mounts(next_mounts)
+        previous_mounts = self._package_mounts
+        self._package_mounts = next_mounts
+        retained = {
+            id(mount.revision_handle)
+            for mount in next_mounts
+            if mount.revision_handle is not None
+        }
+        for mount in previous_mounts:
+            handle = mount.revision_handle
+            if handle is not None and id(handle) not in retained:
+                handle.close()
 
     def set_user_resource_roots(
         self,
@@ -255,6 +294,7 @@ class ResourceLoader:
         self._append_system_prompt_sources = tuple(append_system_prompt or ())
 
     def discover_resources(self, cwd: str | Path) -> ResourceBundle:
+        _verify_package_mounts(self._package_mounts)
         target = Path(cwd)
         workspace_root = self._workspace_root or target
         project_resource_root = (
@@ -264,8 +304,7 @@ class ResourceLoader:
         )
         request = _ResourceDiscoveryRequest(
             cwd=target,
-            package_roots=self._package_roots,
-            package_source_filters=self._package_source_filters,
+            package_mounts=self._package_mounts,
             user_resource_roots=self._user_resource_roots,
             explicit_user_roots=frozenset(self._explicit_user_resource_roots),
             additional_extension_paths=self._additional_extension_paths,
@@ -282,6 +321,7 @@ class ResourceLoader:
             project_resource_root=project_resource_root,
         )
         snapshot = _discover_snapshot(request)
+        _verify_package_mounts(self._package_mounts)
         self._snapshot = snapshot
         self._resolved_system_prompt = _resolve_prompt_input(
             self._system_prompt_source, cwd=Path(cwd)
@@ -292,6 +332,18 @@ class ResourceLoader:
             if (resolved := _resolve_prompt_input(source, cwd=Path(cwd))) is not None
         )
         return snapshot.to_bundle()
+
+    def close(self) -> None:
+        closed: set[int] = set()
+        for mount in self._package_mounts:
+            handle = mount.revision_handle
+            if handle is not None and id(handle) not in closed:
+                handle.close()
+                closed.add(id(handle))
+
+    def __del__(self) -> None:
+        with suppress(Exception):
+            self.close()
 
     def reload_resources(self, cwd: str | Path | None = None) -> ResourceBundle:
         if cwd is not None:
@@ -322,6 +374,10 @@ class ResourceLoader:
                 ),
             )
         return self._snapshot
+
+    @property
+    def _package_roots(self) -> tuple[Path, ...]:
+        return tuple(mount.root for mount in self._package_mounts if mount.enabled)
 
     def get_diagnostics(self) -> list[DiagnosticDraft]:
         return list(self.get_resource_snapshot().diagnostics)

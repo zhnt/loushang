@@ -180,7 +180,7 @@ class ProductTranscriptSession(
             return
         try:
             await catalog.upsert_summary(
-                self.get_session_summary(),
+                self._get_session_index_summary(),
                 source_revision=revision,
             )
         except Exception:
@@ -303,6 +303,15 @@ class ProductTranscriptSession(
             self.entries,
             self.leaf_id,
             self.session_file,
+        )
+
+    def _get_session_index_summary(self) -> SessionSummary:
+        return project_agent_transcript_session_summary(
+            self.header,
+            self.entries,
+            self.leaf_id,
+            self.session_file,
+            include_all_messages_text=False,
         )
 
     def get_tree(self) -> list[SessionTreeNode[AgentTranscriptRecord]]:
