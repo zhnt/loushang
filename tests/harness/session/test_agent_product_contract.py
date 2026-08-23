@@ -75,7 +75,6 @@ from loushang.harness.plugin_authoring.contribution_admission import (
     prepare_owner_contribution_candidate,
 )
 from loushang.harness.plugin_authoring.host import PluginDeclarationHost
-from loushang.harness.plugin_authoring.import_realm import PluginImportRealm
 from loushang.harness.plugin_authoring.provider_admission import (
     prepare_capability_provider_candidate,
 )
@@ -91,6 +90,7 @@ from loushang.harness.resources.plugins.declarations import (
     PluginDeclarationDocumentCodec,
     PluginDeclarationSource,
 )
+from loushang.harness.resources.plugins.import_realm import PluginImportRealm
 from loushang.harness.resources.plugins.selection import (
     PendingOnlyPluginExecutionDecisionLookup,
     PluginContributionRef,

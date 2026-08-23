@@ -48,10 +48,10 @@ from loushang.harness.capabilities.provider_selection import (
     ResolvedCapabilityProvider,
 )
 from loushang.harness.capabilities.providers import CapabilityBundleProvider
-from loushang.harness.plugin_authoring.import_realm import PluginImportRealm
 from loushang.harness.resources.plugins.dependencies import (
     lock_plugin_dependency_closure,
 )
+from loushang.harness.resources.plugins.import_realm import PluginImportRealm
 from loushang.harness.resources.plugins.manifest import PluginManifestParser
 from loushang.harness.resources.plugins.revisions import PluginRevisionStore
 from loushang.harness.resources.plugins.selection import (

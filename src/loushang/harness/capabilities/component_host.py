@@ -29,7 +29,7 @@ from loushang.harness.capabilities.provider_binding import (
 from loushang.harness.capabilities.provider_selection import (
     ResolvedCapabilityProvider,
 )
-from loushang.harness.plugin_authoring.import_realm import PluginImportRealm
+from loushang.harness.resources.plugins.import_realm import PluginImportRealm
 from loushang.harness.resources.plugins.python_symbols import (
     VerifiedPluginPythonModule,
     load_verified_plugin_python_module,

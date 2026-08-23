@@ -15,13 +15,13 @@ from loushang.harness.approval.plugin_execution import (
     PluginExecutionUseState,
 )
 from loushang.harness.plugin_authoring.builder import PluginDeclarationBuilder
-from loushang.harness.plugin_authoring.import_realm import (
-    PluginImportRealm,
-    PluginImportRealmError,
-)
 from loushang.harness.resources.plugins.declarations import PluginDeclaration
 from loushang.harness.resources.plugins.dependencies import (
     PluginDependencyClosureLock,
+)
+from loushang.harness.resources.plugins.import_realm import (
+    PluginImportRealm,
+    PluginImportRealmError,
 )
 from loushang.harness.resources.plugins.locators import parse_plugin_entrypoint
 from loushang.harness.resources.plugins.python_symbols import (
