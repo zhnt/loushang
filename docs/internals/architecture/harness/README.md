@@ -81,10 +81,10 @@ planning, work event persistence, or AI provider behavior.
   candidates without mutating package-cache bytes.
 - [Plugin Execution Trust PLC3 Contract](plugin-execution-trust-plc3-contract.md)
   freezes the internal Approval-owned durable decision/use journal, atomic
-  one-shot consume/revoke linearization and strict v2 selection projection.
-  PLC3-1 remains non-executable: aggregate start permits, import-realm state,
-  Definition evaluation, owner binding, public SDK and MCP expansion stay
-  closed.
+  one-shot consume/revoke linearization, aggregate-owned one-shot start permit,
+  strict use transitions, external-boot recovery and exact evaluated receipt.
+  PLC3-2 remains non-executable: import-realm loading, Definition evaluation,
+  owner binding, public SDK and MCP expansion stay closed.
 - [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md) records the
   green parser/source-sink/authority inventory, frozen foundation exports,
   forbidden peer routes, and inert published-Plugin fixture required before
@@ -174,9 +174,9 @@ description.
   normative record, linearization, idempotency, recovery and regression
   companion for the four PLC2 delivery slices.
 - [Plugin Execution Trust PLC3 Contract](plugin-execution-trust-plc3-contract.md)
-  is the normative persistence, replay, CAS, atomic consumption and non-effect
-  boundary for PLC3-1, before any aggregate start permit or Definition import
-  path is enabled.
+  is the normative persistence, replay, CAS, atomic consumption and aggregate
+  pre-start boundary through PLC3-2, before any Definition import or live owner
+  binding path is enabled.
 - [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md) freezes the
   implemented pre-PLC1 parser, verified-revision, public-export, inert-layer,
   Graph-construction, and synthetic-fixture evidence. Any later inventory

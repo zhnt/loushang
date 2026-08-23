@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import secrets
 import string
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from time import time_ns
@@ -44,6 +44,7 @@ from loushang.harness.resources.plugins.selection import (
 PLUGIN_APPROVAL_AUTHORIZATION_VERSION = 1
 PLUGIN_APPROVAL_DECISION_RECORD_VERSION = 1
 PLUGIN_EXECUTION_USE_VERSION = 1
+PLUGIN_EXECUTION_RECEIPT_VERSION = 1
 PLUGIN_EXECUTION_JOURNAL_EVENT_VERSION = 1
 
 PluginExecutionJournalScopeKind = Literal["installation", "workspace"]
@@ -70,7 +71,18 @@ PluginExecutionJournalEventKind = Literal[
     "decision_issued",
     "decision_revoked",
     "execution_consumed",
+    "execution_use_transitioned",
+    "execution_uses_recovered",
 ]
+
+_ALLOWED_EXECUTION_USE_TRANSITIONS = frozenset(
+    {
+        ("CONSUMED_NOT_STARTED", "CANCELLED_BEFORE_START"),
+        ("CONSUMED_NOT_STARTED", "STARTING"),
+        ("STARTING", "EVALUATED"),
+        ("STARTING", "FAILED_AFTER_START"),
+    }
+)
 
 _HEX = frozenset(string.hexdigits.lower())
 
@@ -196,9 +208,7 @@ class PluginApprovalAuthorizationV1:
         try:
             return cls(
                 actor_id=_wire_string(document["actorId"], name="actor id"),
-                source=_wire_string(
-                    document["source"], name="authorization source"
-                ),
+                source=_wire_string(document["source"], name="authorization source"),
                 authorization_kind=cast(PluginApprovalAuthorizationKind, kind),
                 authority_id=(
                     _wire_string(document["authorityId"], name="authority id")
@@ -525,9 +535,7 @@ class PluginExecutionUseReservationV1:
                 execution_use_id=_wire_string(
                     document["executionUseId"], name="execution use id"
                 ),
-                host_boot_id=_wire_string(
-                    document["hostBootId"], name="host boot id"
-                ),
+                host_boot_id=_wire_string(document["hostBootId"], name="host boot id"),
                 import_realm_id=_wire_string(
                     document["importRealmId"], name="import realm id"
                 ),
@@ -560,6 +568,129 @@ class PluginExecutionUseReservationV1:
             )
         except (PluginDeclarationCodecError, TypeError, ValueError) as exc:
             raise _invalid_record(str(exc)) from exc
+
+
+@dataclass(frozen=True, order=True, slots=True)
+class PluginImportRealmRefV1:
+    host_boot_id: str
+    import_realm_id: str
+
+    def __post_init__(self) -> None:
+        _require_hex(self.host_boot_id, length=32, name="host boot id")
+        _require_hex(self.import_realm_id, length=32, name="import realm id")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "hostBootId": self.host_boot_id,
+            "importRealmId": self.import_realm_id,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> PluginImportRealmRefV1:
+        document = _wire_object(value, name="Plugin import realm ref")
+        _wire_exact_fields(
+            document,
+            keys={"hostBootId", "importRealmId"},
+            name="Plugin import realm ref",
+        )
+        try:
+            return cls(
+                host_boot_id=_wire_string(document["hostBootId"], name="host boot id"),
+                import_realm_id=_wire_string(
+                    document["importRealmId"], name="import realm id"
+                ),
+            )
+        except (TypeError, ValueError) as exc:
+            raise _invalid_record(str(exc)) from exc
+
+
+@dataclass(frozen=True, slots=True)
+class PluginExecutionConsumptionReceiptV1:
+    decision_id: str
+    execution_use_id: str
+    host_boot_id: str
+    import_realm_id: str
+    instance_revision_ref: PluginInstanceRevisionRef
+    policy_revision: str
+    preflight_use_id: str
+    revocation_epoch: int
+    source_group_id: str
+    source_trust_policy_revision: str
+    subject_digest: str
+    state: Literal["EVALUATED"] = "EVALUATED"
+    receipt_version: int = PLUGIN_EXECUTION_RECEIPT_VERSION
+
+    def __post_init__(self) -> None:
+        _require_hex(self.decision_id, length=48, name="decision id")
+        _require_hex(self.execution_use_id, length=48, name="execution use id")
+        _require_hex(self.host_boot_id, length=32, name="host boot id")
+        _require_hex(self.import_realm_id, length=32, name="import realm id")
+        if not isinstance(self.instance_revision_ref, PluginInstanceRevisionRef):
+            raise TypeError("Execution receipt requires an instance revision ref")
+        _require_nonempty(self.policy_revision, name="policy revision")
+        _require_hex(self.preflight_use_id, length=48, name="preflight use id")
+        _require_non_negative_integer(
+            self.revocation_epoch,
+            name="revocation epoch",
+        )
+        _require_sha256(self.source_group_id, name="source group id")
+        _require_nonempty(
+            self.source_trust_policy_revision,
+            name="source trust policy revision",
+        )
+        _require_sha256(self.subject_digest, name="subject digest")
+        if self.state != "EVALUATED":
+            raise ValueError("Plugin execution receipt requires EVALUATED state")
+        _require_version(
+            self.receipt_version,
+            expected=PLUGIN_EXECUTION_RECEIPT_VERSION,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "decisionId": self.decision_id,
+            "executionUseId": self.execution_use_id,
+            "hostBootId": self.host_boot_id,
+            "importRealmId": self.import_realm_id,
+            "instanceRevisionRef": self.instance_revision_ref.to_dict(),
+            "policyRevision": self.policy_revision,
+            "preflightUseId": self.preflight_use_id,
+            "receiptVersion": self.receipt_version,
+            "revocationEpoch": self.revocation_epoch,
+            "sourceGroupId": self.source_group_id,
+            "sourceTrustPolicyRevision": self.source_trust_policy_revision,
+            "state": self.state,
+            "subjectDigest": self.subject_digest,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class PluginExecutionRecoveryResultV1:
+    journal_revision: int
+    cancelled_before_start: tuple[PluginExecutionUseReservationV1, ...]
+    polluted_import_realms: tuple[PluginImportRealmRefV1, ...]
+
+    def __post_init__(self) -> None:
+        _require_non_negative_integer(
+            self.journal_revision,
+            name="journal revision",
+        )
+        if self.cancelled_before_start != tuple(
+            sorted(
+                self.cancelled_before_start,
+                key=lambda item: item.execution_use_id,
+            )
+        ):
+            raise ValueError("Cancelled Plugin execution uses must be sorted")
+        if any(
+            item.state != "CANCELLED_BEFORE_START"
+            for item in self.cancelled_before_start
+        ):
+            raise ValueError("Recovered Plugin execution uses must be cancelled")
+        if self.polluted_import_realms != tuple(
+            sorted(set(self.polluted_import_realms))
+        ):
+            raise ValueError("Polluted Plugin import realms must be sorted and unique")
 
 
 @dataclass(frozen=True, slots=True)
@@ -626,8 +757,74 @@ class _ExecutionConsumedV1:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class _ExecutionUseTransitionedV1:
+    expected_state: PluginExecutionUseState
+    reservation: PluginExecutionUseReservationV1
+    transitioned_at_unix_ms: int
+
+    def __post_init__(self) -> None:
+        if (
+            self.expected_state,
+            self.reservation.state,
+        ) not in _ALLOWED_EXECUTION_USE_TRANSITIONS:
+            raise ValueError("Unsupported Plugin execution use transition")
+        _require_non_negative_integer(
+            self.transitioned_at_unix_ms,
+            name="transitioned-at Unix milliseconds",
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "expectedState": self.expected_state,
+            "reservation": self.reservation.to_dict(),
+            "transitionedAtUnixMs": self.transitioned_at_unix_ms,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class _ExecutionUsesRecoveredV1:
+    current_host_boot_id: str
+    reservations: tuple[PluginExecutionUseReservationV1, ...]
+    recovered_at_unix_ms: int
+
+    def __post_init__(self) -> None:
+        _require_hex(
+            self.current_host_boot_id,
+            length=32,
+            name="current host boot id",
+        )
+        if not self.reservations:
+            raise ValueError("Plugin execution recovery event cannot be empty")
+        if self.reservations != tuple(
+            sorted(self.reservations, key=lambda item: item.execution_use_id)
+        ):
+            raise ValueError("Recovered Plugin execution uses must be sorted")
+        if any(
+            item.state != "CANCELLED_BEFORE_START"
+            or item.host_boot_id == self.current_host_boot_id
+            for item in self.reservations
+        ):
+            raise ValueError("Plugin execution recovery payload is invalid")
+        _require_non_negative_integer(
+            self.recovered_at_unix_ms,
+            name="recovered-at Unix milliseconds",
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "currentHostBootId": self.current_host_boot_id,
+            "recoveredAtUnixMs": self.recovered_at_unix_ms,
+            "reservations": [item.to_dict() for item in self.reservations],
+        }
+
+
 _PluginExecutionEventPayload = (
-    _DecisionIssuedV1 | _DecisionRevokedV1 | _ExecutionConsumedV1
+    _DecisionIssuedV1
+    | _DecisionRevokedV1
+    | _ExecutionConsumedV1
+    | _ExecutionUseTransitionedV1
+    | _ExecutionUsesRecoveredV1
 )
 
 
@@ -658,6 +855,10 @@ class _PluginExecutionJournalEventV1:
             expected_type = _DecisionRevokedV1
         elif self.event_kind == "execution_consumed":
             expected_type = _ExecutionConsumedV1
+        elif self.event_kind == "execution_use_transitioned":
+            expected_type = _ExecutionUseTransitionedV1
+        elif self.event_kind == "execution_uses_recovered":
+            expected_type = _ExecutionUsesRecoveredV1
         else:
             raise ValueError("Unsupported Plugin execution journal event kind")
         if not isinstance(self.payload, expected_type):
@@ -753,6 +954,61 @@ class _PluginExecutionJournalEventV1:
                     consumed_at_unix_ms=_wire_integer(
                         payload["consumedAtUnixMs"],
                         name="consumed-at Unix milliseconds",
+                    ),
+                )
+            elif kind == "execution_use_transitioned":
+                _wire_exact_fields(
+                    payload,
+                    keys={
+                        "expectedState",
+                        "reservation",
+                        "transitionedAtUnixMs",
+                    },
+                    name="execution use transition payload",
+                )
+                decoded = _ExecutionUseTransitionedV1(
+                    expected_state=cast(
+                        PluginExecutionUseState,
+                        _wire_string(
+                            payload["expectedState"],
+                            name="expected execution use state",
+                        ),
+                    ),
+                    reservation=PluginExecutionUseReservationV1.from_dict(
+                        payload["reservation"]
+                    ),
+                    transitioned_at_unix_ms=_wire_integer(
+                        payload["transitionedAtUnixMs"],
+                        name="transitioned-at Unix milliseconds",
+                    ),
+                )
+            elif kind == "execution_uses_recovered":
+                _wire_exact_fields(
+                    payload,
+                    keys={
+                        "currentHostBootId",
+                        "recoveredAtUnixMs",
+                        "reservations",
+                    },
+                    name="execution use recovery payload",
+                )
+                reservations = payload["reservations"]
+                if not isinstance(reservations, list):
+                    raise _invalid_record(
+                        "Recovered Plugin execution uses must be an array"
+                    )
+                decoded = _ExecutionUsesRecoveredV1(
+                    current_host_boot_id=_wire_string(
+                        payload["currentHostBootId"],
+                        name="current host boot id",
+                    ),
+                    reservations=tuple(
+                        PluginExecutionUseReservationV1.from_dict(item)
+                        for item in reservations
+                    ),
+                    recovered_at_unix_ms=_wire_integer(
+                        payload["recoveredAtUnixMs"],
+                        name="recovered-at Unix milliseconds",
                     ),
                 )
             else:
@@ -902,9 +1158,7 @@ class PluginExecutionDecisionJournal:
                     disposition=disposition,
                     authorization=authorization,
                     policy_revision=subject.policy_revision,
-                    source_trust_policy_revision=(
-                        subject.source_trust_policy_revision
-                    ),
+                    source_trust_policy_revision=(subject.source_trust_policy_revision),
                     revocation_epoch=revocation_epoch,
                     issued_at_unix_ms=issued_at_unix_ms,
                     expires_at_unix_ms=expires_at_unix_ms,
@@ -942,9 +1196,7 @@ class PluginExecutionDecisionJournal:
             or self._now() >= decision.expires_at_unix_ms
         ):
             return PluginExecutionDecisionMissing()
-        return PluginExecutionDecisionCurrent(
-            decision=decision.to_selection_view()
-        )
+        return PluginExecutionDecisionCurrent(decision=decision.to_selection_view())
 
     def consume_execution_decision(
         self,
@@ -1080,6 +1332,180 @@ class PluginExecutionDecisionJournal:
             )
             return reservation
 
+    def transition_execution_use(
+        self,
+        execution_use_id: str,
+        *,
+        expected_state: PluginExecutionUseState,
+        target_state: PluginExecutionUseState,
+        host_boot_id: str,
+        import_realm_id: str,
+        transitioned_at_unix_ms: int,
+        expected_journal_revision: int,
+    ) -> PluginExecutionUseReservationV1:
+        _require_expected_revision(expected_journal_revision)
+        _require_hex(execution_use_id, length=48, name="execution use id")
+        _require_hex(host_boot_id, length=32, name="host boot id")
+        _require_hex(import_realm_id, length=32, name="import realm id")
+        with self._lock():
+            replayed = self._load_and_replay_unlocked()
+            self._require_journal_revision(replayed, expected_journal_revision)
+            current = replayed.execution_uses.get(execution_use_id)
+            if current is None:
+                raise self._error(
+                    "Plugin execution use does not exist",
+                    code="plugin_execution_use_missing",
+                )
+            if current.state != expected_state:
+                raise self._error(
+                    "Plugin execution use state does not match",
+                    code="plugin_execution_use_state_conflict",
+                )
+            if (
+                current.host_boot_id != host_boot_id
+                or current.import_realm_id != import_realm_id
+            ):
+                raise self._error(
+                    "Plugin execution use belongs to another import realm",
+                    code="plugin_execution_import_realm_mismatch",
+                )
+            if (expected_state, target_state) not in (
+                _ALLOWED_EXECUTION_USE_TRANSITIONS
+            ):
+                raise self._error(
+                    "Plugin execution use transition is not allowed",
+                    code="plugin_execution_use_transition_invalid",
+                )
+            now = self._now()
+            if (
+                not isinstance(transitioned_at_unix_ms, int)
+                or isinstance(transitioned_at_unix_ms, bool)
+                or transitioned_at_unix_ms < 0
+                or transitioned_at_unix_ms > now
+            ):
+                raise self._error(
+                    "Plugin execution transition time is outside the durable clock",
+                    code="invalid_plugin_execution_use_transition",
+                )
+            transitioned = replace(current, state=target_state)
+            self._append_unlocked(
+                replayed,
+                event_kind="execution_use_transitioned",
+                payload=_ExecutionUseTransitionedV1(
+                    expected_state=expected_state,
+                    reservation=transitioned,
+                    transitioned_at_unix_ms=transitioned_at_unix_ms,
+                ),
+            )
+            return transitioned
+
+    def recover_execution_uses(
+        self,
+        *,
+        current_host_boot_id: str,
+        recovered_at_unix_ms: int,
+        expected_journal_revision: int,
+    ) -> PluginExecutionRecoveryResultV1:
+        _require_expected_revision(expected_journal_revision)
+        _require_hex(
+            current_host_boot_id,
+            length=32,
+            name="current host boot id",
+        )
+        with self._lock():
+            replayed = self._load_and_replay_unlocked()
+            self._require_journal_revision(replayed, expected_journal_revision)
+            now = self._now()
+            if (
+                not isinstance(recovered_at_unix_ms, int)
+                or isinstance(recovered_at_unix_ms, bool)
+                or recovered_at_unix_ms < 0
+                or recovered_at_unix_ms > now
+            ):
+                raise self._error(
+                    "Plugin execution recovery time is outside the durable clock",
+                    code="invalid_plugin_execution_recovery",
+                )
+            cancelled = tuple(
+                replace(item, state="CANCELLED_BEFORE_START")
+                for item in sorted(
+                    replayed.execution_uses.values(),
+                    key=lambda candidate: candidate.execution_use_id,
+                )
+                if item.state == "CONSUMED_NOT_STARTED"
+                and item.host_boot_id != current_host_boot_id
+            )
+            if cancelled:
+                self._append_unlocked(
+                    replayed,
+                    event_kind="execution_uses_recovered",
+                    payload=_ExecutionUsesRecoveredV1(
+                        current_host_boot_id=current_host_boot_id,
+                        reservations=cancelled,
+                        recovered_at_unix_ms=recovered_at_unix_ms,
+                    ),
+                )
+            final_uses = dict(replayed.execution_uses)
+            final_uses.update((item.execution_use_id, item) for item in cancelled)
+            return PluginExecutionRecoveryResultV1(
+                journal_revision=len(replayed.events) + (1 if cancelled else 0),
+                cancelled_before_start=cancelled,
+                polluted_import_realms=_polluted_import_realms(final_uses.values()),
+            )
+
+    def execution_consumption_receipt(
+        self,
+        execution_use_id: str,
+        *,
+        current_host_boot_id: str,
+        current_import_realm_id: str,
+    ) -> PluginExecutionConsumptionReceiptV1:
+        _require_hex(execution_use_id, length=48, name="execution use id")
+        _require_hex(
+            current_host_boot_id,
+            length=32,
+            name="current host boot id",
+        )
+        _require_hex(
+            current_import_realm_id,
+            length=32,
+            name="current import realm id",
+        )
+        with self._lock():
+            replayed = self._load_and_replay_unlocked()
+        execution_use = replayed.execution_uses.get(execution_use_id)
+        if execution_use is None:
+            raise self._error(
+                "Plugin execution use does not exist",
+                code="plugin_execution_use_missing",
+            )
+        if execution_use.state != "EVALUATED":
+            raise self._error(
+                "Plugin execution use cannot produce a receipt",
+                code="plugin_execution_receipt_unavailable",
+            )
+        if (
+            execution_use.host_boot_id != current_host_boot_id
+            or execution_use.import_realm_id != current_import_realm_id
+        ):
+            raise self._error(
+                "Plugin execution use belongs to another import realm",
+                code="plugin_execution_import_realm_mismatch",
+            )
+        return PluginExecutionConsumptionReceiptV1(
+            decision_id=execution_use.decision_id,
+            execution_use_id=execution_use.execution_use_id,
+            host_boot_id=execution_use.host_boot_id,
+            import_realm_id=execution_use.import_realm_id,
+            instance_revision_ref=execution_use.instance_revision_ref,
+            policy_revision=execution_use.policy_revision,
+            preflight_use_id=execution_use.preflight_use_id,
+            revocation_epoch=execution_use.revocation_epoch,
+            source_group_id=execution_use.source_group_id,
+            source_trust_policy_revision=(execution_use.source_trust_policy_revision),
+            subject_digest=execution_use.subject_digest,
+        )
+
     def revoke_execution_decision(
         self,
         decision_id: str,
@@ -1147,9 +1573,13 @@ class PluginExecutionDecisionJournal:
             replayed = self._load_and_replay_unlocked()
         return PluginExecutionDecisionSnapshotV1(
             journal_revision=len(replayed.events),
-            decisions=tuple(sorted(replayed.decisions.values(), key=lambda x: x.decision_id)),
+            decisions=tuple(
+                sorted(replayed.decisions.values(), key=lambda x: x.decision_id)
+            ),
             execution_uses=tuple(
-                sorted(replayed.execution_uses.values(), key=lambda x: x.execution_use_id)
+                sorted(
+                    replayed.execution_uses.values(), key=lambda x: x.execution_use_id
+                )
             ),
         )
 
@@ -1240,14 +1670,12 @@ class PluginExecutionDecisionJournal:
         if not self._path.exists():
             return _empty_replay()
         try:
-            snapshot: JsonlSnapshot[None, _PluginExecutionJournalEventV1] = (
-                load_jsonl(
-                    self._path,
-                    record_codec=_PLUGIN_EXECUTION_EVENT_CODEC,
-                    format_profile=SORTED_UNICODE_JSONL_FORMAT,
-                    durability=self._unlocked_durability,
-                    load_policy=self._load_policy,
-                )
+            snapshot: JsonlSnapshot[None, _PluginExecutionJournalEventV1] = load_jsonl(
+                self._path,
+                record_codec=_PLUGIN_EXECUTION_EVENT_CODEC,
+                format_profile=SORTED_UNICODE_JSONL_FORMAT,
+                durability=self._unlocked_durability,
+                load_policy=self._load_policy,
             )
         except JournalFileError as exc:
             code = (
@@ -1322,51 +1750,121 @@ def _replay(
                 decision.decision_id
             )
             continue
-        current = replayed.decisions.get(payload.decision.decision_id)
-        if current is None:
-            raise _corrupt(path, "Plugin execution transition has no decision")
-        if payload.expected_decision_revision != current.decision_revision:
-            raise _corrupt(path, "Plugin execution decision revision is not contiguous")
-        if current.consumption_state != "AVAILABLE":
-            raise _corrupt(path, "Plugin execution decision was used more than once")
-        if isinstance(payload, _DecisionRevokedV1):
-            expected = replace(
+        if isinstance(payload, (_DecisionRevokedV1, _ExecutionConsumedV1)):
+            current = replayed.decisions.get(payload.decision.decision_id)
+            if current is None:
+                raise _corrupt(path, "Plugin execution transition has no decision")
+            if payload.expected_decision_revision != current.decision_revision:
+                raise _corrupt(
+                    path,
+                    "Plugin execution decision revision is not contiguous",
+                )
+            if current.consumption_state != "AVAILABLE":
+                raise _corrupt(
+                    path,
+                    "Plugin execution decision was used more than once",
+                )
+            if isinstance(payload, _DecisionRevokedV1):
+                expected = replace(
+                    current,
+                    revocation_epoch=payload.decision.revocation_epoch,
+                    consumption_state="REVOKED",
+                    decision_revision=current.decision_revision + 1,
+                )
+                if (
+                    payload.decision.revocation_epoch <= current.revocation_epoch
+                    or payload.decision != expected
+                ):
+                    raise _corrupt(
+                        path,
+                        "Plugin execution revocation cannot be replayed",
+                    )
+                replayed.decisions[current.decision_id] = payload.decision
+                continue
+            reservation = payload.reservation
+            expected_decision = replace(
                 current,
-                revocation_epoch=payload.decision.revocation_epoch,
-                consumption_state="REVOKED",
+                consumption_state="CONSUMED",
+                consumed_execution_use_id=reservation.execution_use_id,
                 decision_revision=current.decision_revision + 1,
             )
             if (
-                payload.decision.revocation_epoch <= current.revocation_epoch
-                or payload.decision != expected
+                payload.decision != expected_decision
+                or reservation.execution_use_id in replayed.execution_uses
+                or reservation.decision_id != current.decision_id
+                or reservation.subject_digest != current.subject_digest
+                or reservation.instance_revision_ref != current.instance_revision_ref
+                or reservation.policy_revision != current.policy_revision
+                or reservation.source_trust_policy_revision
+                != current.source_trust_policy_revision
+                or reservation.revocation_epoch != current.revocation_epoch
+                or reservation.state != "CONSUMED_NOT_STARTED"
             ):
-                raise _corrupt(path, "Plugin execution revocation cannot be replayed")
+                raise _corrupt(
+                    path,
+                    "Plugin execution consumption cannot be replayed",
+                )
             replayed.decisions[current.decision_id] = payload.decision
+            replayed.execution_uses[reservation.execution_use_id] = reservation
             continue
-        assert isinstance(payload, _ExecutionConsumedV1)
-        reservation = payload.reservation
-        expected_decision = replace(
-            current,
-            consumption_state="CONSUMED",
-            consumed_execution_use_id=reservation.execution_use_id,
-            decision_revision=current.decision_revision + 1,
-        )
-        if (
-            payload.decision != expected_decision
-            or reservation.execution_use_id in replayed.execution_uses
-            or reservation.decision_id != current.decision_id
-            or reservation.subject_digest != current.subject_digest
-            or reservation.instance_revision_ref != current.instance_revision_ref
-            or reservation.policy_revision != current.policy_revision
-            or reservation.source_trust_policy_revision
-            != current.source_trust_policy_revision
-            or reservation.revocation_epoch != current.revocation_epoch
-            or reservation.state != "CONSUMED_NOT_STARTED"
-        ):
-            raise _corrupt(path, "Plugin execution consumption cannot be replayed")
-        replayed.decisions[current.decision_id] = payload.decision
-        replayed.execution_uses[reservation.execution_use_id] = reservation
+        if isinstance(payload, _ExecutionUseTransitionedV1):
+            reservation = payload.reservation
+            current_use = replayed.execution_uses.get(reservation.execution_use_id)
+            if current_use is None:
+                raise _corrupt(
+                    path,
+                    "Plugin execution use transition has no reservation",
+                )
+            expected_use = replace(current_use, state=reservation.state)
+            if (
+                current_use.state != payload.expected_state
+                or (payload.expected_state, reservation.state)
+                not in _ALLOWED_EXECUTION_USE_TRANSITIONS
+                or reservation != expected_use
+            ):
+                raise _corrupt(
+                    path,
+                    "Plugin execution use transition cannot be replayed",
+                )
+            replayed.execution_uses[reservation.execution_use_id] = reservation
+            continue
+        assert isinstance(payload, _ExecutionUsesRecoveredV1)
+        for reservation in payload.reservations:
+            current_use = replayed.execution_uses.get(reservation.execution_use_id)
+            if current_use is None:
+                raise _corrupt(
+                    path,
+                    "Plugin execution recovery has no reservation",
+                )
+            expected_use = replace(current_use, state="CANCELLED_BEFORE_START")
+            if (
+                current_use.state != "CONSUMED_NOT_STARTED"
+                or current_use.host_boot_id == payload.current_host_boot_id
+                or reservation != expected_use
+            ):
+                raise _corrupt(
+                    path,
+                    "Plugin execution recovery cannot be replayed",
+                )
+            replayed.execution_uses[reservation.execution_use_id] = reservation
     return replayed
+
+
+def _polluted_import_realms(
+    execution_uses: Iterable[PluginExecutionUseReservationV1],
+) -> tuple[PluginImportRealmRefV1, ...]:
+    return tuple(
+        sorted(
+            {
+                PluginImportRealmRefV1(
+                    host_boot_id=item.host_boot_id,
+                    import_realm_id=item.import_realm_id,
+                )
+                for item in execution_uses
+                if item.state in {"STARTING", "FAILED_AFTER_START"}
+            }
+        )
+    )
 
 
 def _latest_subject_decision(
@@ -1478,12 +1976,16 @@ __all__ = [
     "PLUGIN_APPROVAL_AUTHORIZATION_VERSION",
     "PLUGIN_APPROVAL_DECISION_RECORD_VERSION",
     "PLUGIN_EXECUTION_JOURNAL_EVENT_VERSION",
+    "PLUGIN_EXECUTION_RECEIPT_VERSION",
     "PLUGIN_EXECUTION_USE_VERSION",
     "PluginApprovalAuthorizationV1",
     "PluginApprovalDecisionRecordV1",
+    "PluginExecutionConsumptionReceiptV1",
     "PluginExecutionDecisionJournal",
     "PluginExecutionDecisionSnapshotV1",
     "PluginExecutionJournalError",
     "PluginExecutionJournalRecordCodecError",
+    "PluginExecutionRecoveryResultV1",
     "PluginExecutionUseReservationV1",
+    "PluginImportRealmRefV1",
 ]

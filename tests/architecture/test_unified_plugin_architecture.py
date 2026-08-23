@@ -3130,32 +3130,48 @@ def test_plc2_package_cleanup_is_write_ahead_inert_and_gc_rechecked() -> None:
         assert forbidden_call not in package_lifecycle
 
 
-def test_plc3_approval_journal_is_atomic_internal_and_not_executable() -> None:
+def test_plc3_start_and_recovery_are_internal_atomic_and_not_executable() -> None:
     contract = PLC3_CONTRACT_PATH.read_text(encoding="utf-8")
     approval_execution_path = Path(
         "src/loushang/harness/approval/plugin_execution.py"
     )
     approval_execution = approval_execution_path.read_text(encoding="utf-8")
+    selection = Path(
+        "src/loushang/harness/resources/plugins/selection.py"
+    ).read_text(encoding="utf-8")
     approval_exports = Path(
         "src/loushang/harness/approval/__init__.py"
     ).read_text(encoding="utf-8")
     coordinator = PLUGIN_DECLARATION_COORDINATOR_PATH.read_text(encoding="utf-8")
 
-    assert "Status: PLC3-1 durable Approval journal implemented" in contract
+    assert "Status: PLC3-2 aggregate start permit and durable execution-use" in (
+        contract
+    )
     assert "A durable approved decision is necessary but not\nsufficient" in contract
     assert "Consumption and reservation creation are therefore one replay transition" in (
         contract
     )
-    assert "PLC3-2 must add the aggregate-owned opaque start permit" in contract
+    assert "one-event multi-use recovery" in contract
+    assert "PLC3-3 must compose these primitives without merging their owners" in (
+        contract
+    )
     assert "PluginExecutionDecisionJournal" not in approval_exports
+    assert "PluginExecutionStartPermit" not in public_plugins.__all__
     assert "execution_not_consumed" in coordinator
     assert not Path("src/loushang/harness/plugin_authoring/evaluator.py").exists()
     assert not Path("src/loushang/harness/plugin_authoring/import_realm.py").exists()
     assert approval_execution.count("append_jsonl_record(") == 1
     assert "append_jsonl_records(" not in approval_execution
     assert "_ExecutionConsumedV1" in approval_execution
+    assert "_ExecutionUseTransitionedV1" in approval_execution
+    assert "_ExecutionUsesRecoveredV1" in approval_execution
+    assert "PluginExecutionConsumptionReceiptV1" in approval_execution
     assert "PluginExecutionUseReservationV1" in approval_execution
     assert "consumption_state=\"CONSUMED\"" in approval_execution
+    assert selection.count("def _issue_execution_start_permit(") == 1
+    assert "plugin_execution_start_permit_consumed" in selection
+    assert "plugin_execution_start_not_applicable" in selection
+    assert "approval.plugin_execution" not in selection
     for forbidden in (
         "VerifiedRevisionHandle",
         "import_module",

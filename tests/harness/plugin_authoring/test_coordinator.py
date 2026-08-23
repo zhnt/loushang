@@ -8,6 +8,7 @@ from typing import Protocol
 
 import pytest
 
+import loushang.harness.resources.plugins.selection as plugin_selection
 from loushang.harness.plugin_authoring.coordinator import (
     PluginDeclarationCoordinator,
 )
@@ -193,10 +194,7 @@ def test_abort_waits_for_claimed_document_group_to_settle(
         finalizer = pool.submit(coordinator.finalize, accepted)
         assert decode_started.wait(timeout=5.0)
         aborter = pool.submit(resolver._abort, accepted)
-        with resolver._gate:
-            aggregate = resolver._active[accepted.preflight_use_id]
-            assert aggregate.state == "closing_abort"
-            assert aggregate.in_flight == 1
+        assert _wait_for_closing_abort(resolver, accepted) == 1
         assert aborter.done() is False
         allow_decode.set()
         assert aborter.result(timeout=5.0) is None
@@ -209,6 +207,104 @@ def test_abort_waits_for_claimed_document_group_to_settle(
         assert terminal.late_group_results == (
             (accepted.source_groups[0].source_group_id, "completed"),
         )
+
+
+def test_execution_start_permit_wins_before_close_and_close_waits_for_worker(
+    published_synthetic_plugin: _PublishedExecutablePlugin,
+) -> None:
+    resolver = PluginSelectionResolver()
+    accepted = _accepted_executable(resolver, published_synthetic_plugin)
+    group = accepted.source_groups[0]
+    claim = resolver._claim_group(accepted, group)
+
+    permit = resolver._issue_execution_start_permit(claim)
+
+    assert permit.preflight_use_id == accepted.preflight_use_id
+    assert permit.source_group_id == group.source_group_id
+    assert permit.host_boot_id == accepted.host_boot_id
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        aborter = pool.submit(resolver._abort, accepted)
+        assert _wait_for_closing_abort(resolver, accepted) == 1
+        assert aborter.done() is False
+        with pytest.raises(PluginSelectionError) as caught:
+            resolver._settle_group(claim, succeeded=False)
+        assert caught.value.code == "preflight_already_aborted"
+        assert aborter.result(timeout=5.0) is None
+
+
+def test_close_before_execution_start_permit_forbids_start_and_waits_for_settle(
+    published_synthetic_plugin: _PublishedExecutablePlugin,
+) -> None:
+    resolver = PluginSelectionResolver()
+    accepted = _accepted_executable(resolver, published_synthetic_plugin)
+    claim = resolver._claim_group(accepted, accepted.source_groups[0])
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        aborter = pool.submit(resolver._abort, accepted)
+        assert _wait_for_closing_abort(resolver, accepted) == 1
+        with pytest.raises(PluginSelectionError) as caught:
+            resolver._issue_execution_start_permit(claim)
+        assert caught.value.code == "preflight_closing"
+        assert aborter.done() is False
+        with pytest.raises(PluginSelectionError) as settled:
+            resolver._settle_group(claim, succeeded=False)
+        assert settled.value.code == "preflight_already_aborted"
+        assert aborter.result(timeout=5.0) is None
+
+
+def test_execution_start_permit_is_single_use_and_executable_only(
+    published_document_plugin: _PublishedDocumentPlugin,
+    published_synthetic_plugin: _PublishedExecutablePlugin,
+) -> None:
+    executable_resolver = PluginSelectionResolver()
+    executable = _accepted_executable(
+        executable_resolver,
+        published_synthetic_plugin,
+    )
+    executable_claim = executable_resolver._claim_group(
+        executable,
+        executable.source_groups[0],
+    )
+    executable_resolver._issue_execution_start_permit(executable_claim)
+
+    with pytest.raises(PluginSelectionError) as repeated:
+        executable_resolver._issue_execution_start_permit(executable_claim)
+    assert repeated.value.code == "plugin_execution_start_permit_consumed"
+    executable_resolver._settle_group(executable_claim, succeeded=False)
+    executable_resolver._abort(executable)
+
+    document_resolver = PluginSelectionResolver()
+    document = _accepted_document(document_resolver, published_document_plugin)
+    document_claim = document_resolver._claim_group(
+        document,
+        document.source_groups[0],
+    )
+    with pytest.raises(PluginSelectionError) as not_applicable:
+        document_resolver._issue_execution_start_permit(document_claim)
+    assert not_applicable.value.code == "plugin_execution_start_not_applicable"
+    document_resolver._settle_group(document_claim, succeeded=False)
+    document_resolver._abort(document)
+
+
+def test_execution_start_permit_rejects_the_exact_aggregate_deadline(
+    published_synthetic_plugin: _PublishedExecutablePlugin,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolver = PluginSelectionResolver()
+    accepted = _accepted_executable(resolver, published_synthetic_plugin)
+    claim = resolver._claim_group(accepted, accepted.source_groups[0])
+    monkeypatch.setattr(
+        plugin_selection,
+        "monotonic",
+        lambda: accepted.expires_at,
+    )
+
+    with pytest.raises(PluginSelectionError) as caught:
+        resolver._issue_execution_start_permit(claim)
+    assert caught.value.code == "preflight_closing"
+    with pytest.raises(PluginSelectionError) as settled:
+        resolver._settle_group(claim, succeeded=False)
+    assert settled.value.code == "preflight_expired"
 
 
 def test_plc1b_coordinator_aborts_executable_group_without_finalization_or_import(
@@ -274,6 +370,52 @@ def _accepted_document(
     )
     assert isinstance(outcome, PluginPreflightAcceptedOutcome)
     return outcome.accepted
+
+
+def _accepted_executable(
+    resolver: PluginSelectionResolver,
+    fixture: _PublishedExecutablePlugin,
+) -> AcceptedPluginPreflight:
+    plan = _plan(fixture)
+    pending = resolver.preflight(
+        (fixture.package,),
+        bindings=(fixture.binding,),
+        plan=plan,
+        decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+    )
+    assert isinstance(pending, PluginPreflightPendingApprovalOutcome)
+    [subject] = pending.subjects
+    outcome = resolver.preflight(
+        (fixture.package,),
+        bindings=(fixture.binding,),
+        plan=plan,
+        decision_lookup=_CurrentDecisionLookup(
+            PluginExecutionDecisionRecord(
+                decision_id="decision-1",
+                subject_digest=subject.digest,
+                policy_revision=plan.context.policy_revision,
+                disposition="approved",
+            )
+        ),
+    )
+    assert isinstance(outcome, PluginPreflightAcceptedOutcome)
+    return outcome.accepted
+
+
+def _wait_for_closing_abort(
+    resolver: PluginSelectionResolver,
+    accepted: AcceptedPluginPreflight,
+) -> int:
+    with resolver._gate:
+        assert resolver._gate.wait_for(
+            lambda: (
+                accepted.preflight_use_id in resolver._active
+                and resolver._active[accepted.preflight_use_id].state
+                == "closing_abort"
+            ),
+            timeout=5.0,
+        )
+        return resolver._active[accepted.preflight_use_id].in_flight
 
 
 def _plan(fixture: _PublishedPlugin) -> PluginSelectionPlanV2:

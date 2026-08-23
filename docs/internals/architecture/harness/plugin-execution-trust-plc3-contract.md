@@ -1,39 +1,45 @@
 # Plugin Execution Trust PLC3 Contract
 
-Status: PLC3-1 durable Approval journal implemented; aggregate start permit,
-use-state recovery, import realm, Definition evaluation, mixed-source join and
-all live owner binding remain closed.
+Status: PLC3-2 aggregate start permit and durable execution-use recovery
+implemented; import-realm loading, Definition evaluation, mixed-source join
+and all live owner binding remain closed.
 
 This document is the normative incremental companion to
 [Unified Plugin Architecture](unified-plugin-architecture.md),
 [Unified Plugin Authoring Primitives Delivery Plan](plugin-authoring-primitives-delivery-plan.md),
 and
 [Unified Plugin Lifecycle And Coding Pluginization Delivery Plan](plugin-lifecycle-coding-pluginization-plan.md).
-It freezes the first executable-trust persistence slice without claiming that
-any installed or approved Plugin may execute.
+It freezes the executable-trust persistence and pre-start linearization slices
+without claiming that any installed or approved Plugin may execute.
 
 ## Ownership And Non-Effect Boundary
 
 `loushang.harness.approval.plugin_execution.PluginExecutionDecisionJournal`
-is the sole durable authority added by PLC3-1. One journal belongs to exactly
-one `installation` or `workspace` scope and survives Session close. The
-existing Session grant store is not reused, and Plugin management, selection,
-authoring, Product adapters and UI do not own peer decision state.
+remains the sole durable authority added by PLC3-1/2. One journal belongs to
+exactly one `installation` or `workspace` scope and survives Session close.
+The existing Session grant store is not reused, and Plugin management,
+selection, authoring, Product adapters and UI do not own peer decision state.
+
+`PluginSelectionResolver` alone owns the PLC3-2 in-memory aggregate start
+permit. It linearizes a claimed executable source group against aggregate
+close, but owns no Approval decision, execution-use state or receipt. The
+permit type and issuing method are internal and are not package exports.
 
 The module is internal and is not re-exported by `loushang.harness.approval`.
-It records authority and inert use reservations only. It does not:
+The Approval module records authority, use state and inert receipts only. It
+does not:
 
-- issue an aggregate start permit;
+- issue or validate the aggregate-owned start permit;
 - load, import or invoke a Definition/Builder;
 - read or reopen a package path or `VerifiedRevisionHandle`;
-- enter the Plugin Instance lifecycle or import-realm gate;
+- create, enter, clean or replace an import realm;
 - bind, register, publish or dispose a contribution;
 - change a Session, Capability Graph, Resource generation or Model Input; or
 - add an MCP server, tool or integration path.
 
 The existing Coordinator therefore continues to reject every executable group
 as `execution_not_consumed`. A durable approved decision is necessary but not
-sufficient execution authority.
+sufficient execution authority; the new primitives have no production caller.
 
 ## Scope And Approval Subject
 
@@ -48,6 +54,27 @@ The journal's exact `scopeId` must match the subject. A mismatch fails before
 decision lookup or use creation. `scopeKind` is explicit because an identical
 string identifier must not silently convert installation authority into
 workspace authority or vice versa.
+
+## Aggregate Start Permit
+
+After `_claim_group` has made one source group in-flight, the same resolver may
+issue one opaque `PluginExecutionStartPermit`. The permit identifies only the
+exact `preflightUseId`, `sourceGroupId` and `hostBootId`; its claim/permit
+tokens remain private. It carries no decision, package path, Definition,
+contribution or runtime object.
+
+Permit issuance and aggregate close contend on the resolver condition lock:
+
+- permit wins: the group stays in-flight and close waits for its settle;
+- close or exact deadline wins: permit issuance fails as `preflight_closing`;
+- a second issuance for the same claim fails as
+  `plugin_execution_start_permit_consumed`; and
+- a document group fails as `plugin_execution_start_not_applicable`.
+
+No Approval, Product, loader or owner callback runs while the aggregate lock is
+held. A rejected permit does not settle the claim; the worker must still settle
+so close can finish. This is an internal race primitive, not permission to
+import a Definition.
 
 ## Durable Records
 
@@ -118,7 +145,7 @@ and subject-schema version 2. This view is not persisted as a second decision.
 
 ### `ExecutionUseReservation` v1
 
-PLC3-1 implements the previously frozen exact record:
+PLC3-1 implemented, and PLC3-2 retains, the exact record:
 
 ```text
 decisionId
@@ -136,18 +163,51 @@ state
 subjectDigest
 ```
 
-`executionUseVersion` is `1`. PLC3-1 can create only
-`CONSUMED_NOT_STARTED`; the record type recognizes the complete frozen state
-vocabulary so later journal events can advance it without changing this wire
-shape. No PLC3-1 method can produce `STARTING`, `EVALUATED`, a consumption
-receipt or import-realm cleanliness evidence.
+`executionUseVersion` is `1`. Atomic decision consumption creates only
+`CONSUMED_NOT_STARTED`. PLC3-2 advances the same replacement record through
+the exact state machine:
+
+```text
+CONSUMED_NOT_STARTED -> CANCELLED_BEFORE_START | STARTING
+STARTING             -> EVALUATED | FAILED_AFTER_START
+```
+
+All other transitions fail closed. Each transition exact-matches the expected
+journal revision, execution-use ID, current state, `hostBootId` and
+`importRealmId`. It cannot change any other reservation field.
+
+### `PluginExecutionConsumptionReceiptV1`
+
+Only an exact current-boot/current-realm `EVALUATED` use projects a receipt.
+The derived, non-persisted receipt has exactly:
+
+```text
+decisionId
+executionUseId
+hostBootId
+importRealmId
+instanceRevisionRef
+policyRevision
+preflightUseId
+receiptVersion
+revocationEpoch
+sourceGroupId
+sourceTrustPolicyRevision
+state
+subjectDigest
+```
+
+`receiptVersion` is `1` and `state` is exactly `EVALUATED`. A not-started,
+cancelled, starting or failed use has no receipt. A receipt carries no loaded
+module, Definition, contribution or owner binding and is not positive package
+or aggregate authority by itself.
 
 ### Atomic Journal Event
 
 Each JSONL record has exact `eventKind`, `eventVersion`,
 `expectedJournalRevision`, `journalRevision` and `payload` fields.
 `eventVersion` is `1`, `journalRevision == expectedJournalRevision + 1`,
-revisions are contiguous, and the only PLC3-1 events are:
+revisions are contiguous. PLC3-1 events remain:
 
 - `decision_issued`, containing the complete initial decision;
 - `decision_revoked`, containing expected decision revision, complete
@@ -156,10 +216,25 @@ revisions are contiguous, and the only PLC3-1 events are:
   `CONSUMED` replacement decision and its complete
   `CONSUMED_NOT_STARTED` reservation in one record.
 
+PLC3-2 adds:
+
+- `execution_use_transitioned`, containing the exact expected state, complete
+  replacement reservation and transition time; and
+- `execution_uses_recovered`, containing the current host boot, recovery time
+  and a sorted non-empty array of complete `CANCELLED_BEFORE_START`
+  replacements.
+
 Consumption and reservation creation are therefore one replay transition, not
 two append operations. A partial final line is repaired by the shared durable
 journal substrate; a complete invalid event, revision gap, orphan transition,
 duplicate identity or non-replayable replacement fails the journal closed.
+
+External-boot recovery cancels every `CONSUMED_NOT_STARTED` use from another
+boot in one event. A repeated recovery with no remaining candidate appends
+nothing. Current-boot not-started uses remain untouched. `STARTING` and
+`FAILED_AFTER_START` uses are never rewritten by recovery and project their
+exact `(hostBootId, importRealmId)` as polluted realms. Recovery therefore
+reports quarantine evidence but performs no module-cache cleanup.
 
 ## Linearization And Revalidation
 
@@ -167,6 +242,13 @@ Issue, revoke and consume acquire the same durable journal lock, reload/replay
 the complete journal, exact-match `expectedJournalRevision`, validate and append
 one event. Consume-versus-revoke therefore has one winner. The loser observes a
 revision conflict and must re-read; it cannot infer success.
+
+Transition and recovery use that same lock and CAS head. Transition replaces
+one use in one event. Recovery replaces all eligible external-boot not-started
+uses in one event, never one append per use. Receipt projection reloads/replays
+under the journal lock but does not append. Aggregate permit issuance uses only
+the separate resolver lock; PLC3-2 deliberately introduces no cross-owner lock
+or callback cycle.
 
 Immediately before the atomic consume event, the journal checks:
 
@@ -189,7 +271,7 @@ selection view only for a matching unexpired `AVAILABLE` or `DENIED` record.
 Consumed, revoked, expired, wrong-scope and unknown decisions project `missing`;
 the consuming command still reports the exact terminal reason.
 
-## PLC3-1 Exact Error Codes
+## PLC3-1/2 Exact Error Codes
 
 | Condition | Code |
 | --- | --- |
@@ -199,19 +281,27 @@ the consuming command still reports the exact terminal reason.
 | denied / consumed / revoked / expired | `plugin_execution_decision_denied` / `plugin_execution_decision_consumed` / `plugin_execution_decision_revoked` / `plugin_execution_decision_expired` |
 | stale policy / trust / epoch / retained authority | `plugin_execution_decision_policy_stale` / `plugin_execution_decision_trust_stale` / `plugin_execution_decision_revocation_stale` / `plugin_execution_authorization_stale` |
 | duplicate generated decision/use identity or active Subject | `plugin_execution_decision_identity_conflict` / `plugin_execution_use_identity_conflict` / `plugin_execution_subject_decision_active` |
+| absent use / stale use state / forbidden transition | `plugin_execution_use_missing` / `plugin_execution_use_state_conflict` / `plugin_execution_use_transition_invalid` |
+| wrong boot or import realm / unavailable receipt | `plugin_execution_import_realm_mismatch` / `plugin_execution_receipt_unavailable` |
+| transition or recovery time outside durable clock | `invalid_plugin_execution_use_transition` / `invalid_plugin_execution_recovery` |
 | unsupported or invalid durable record | `unsupported_plugin_execution_journal_record_version` / `invalid_plugin_execution_journal_record` |
 | non-replayable complete journal | `plugin_execution_journal_corrupt` |
+| aggregate close wins / repeat / document group | `preflight_closing` / `plugin_execution_start_permit_consumed` / `plugin_execution_start_not_applicable` |
 
 ## Regression Gate And Next Slice
 
-PLC3-1 is complete only when tests prove strict durable recovery, v2 projection,
-denial, expiry, wrong digest/scope, stale policy/trust/epoch, retained-authority
-revalidation, atomic one-shot consumption, revocation persistence, CAS failure
-without append and consume/revoke lock linearization.
+PLC3-2 is complete only when tests additionally prove permit-before-close and
+close-before-permit races, close waiting for the claimed worker, one permit per
+executable claim, strict state transitions, exact receipt shape and realm
+binding, one-event multi-use recovery, idempotent repeated recovery and
+polluted-realm projection without cleanup.
 
-PLC3-2 must add the aggregate-owned opaque start permit before this journal is
-wired to a worker, then add durable use-state transitions and external-boot
-`CONSUMED_NOT_STARTED -> CANCELLED_BEFORE_START` reconciliation. Only after
-`STARTING` is committed may PLC3-3 cross the verified-handle import point.
-Public exports and production Host ingress remain forbidden until the complete
+PLC3-3 must compose these primitives without merging their owners: exact claim,
+aggregate start permit, durable consume, durable `STARTING`, then—and only
+then—one verified-handle import-realm evaluator. Import success advances to
+`EVALUATED`; any exception after start advances to `FAILED_AFTER_START` and
+quarantines that realm. PLC3-3 must then prove mixed document/executable
+join-before-single-finalization while the production Coordinator remains
+closed until the whole sequence passes. Public exports, general plugin SDK,
+production Host ingress and MCP expansion remain forbidden until the complete
 PLC3 exit gate passes.

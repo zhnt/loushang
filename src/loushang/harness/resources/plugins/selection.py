@@ -1132,6 +1132,7 @@ class _PluginGroupRuntime:
     group: PluginDeclarationSourceGroup
     state: Literal["pending", "claimed", "completed", "failed"] = "pending"
     claim_token: str = ""
+    start_permit_token: str = ""
     cancel_requested: bool = False
 
 
@@ -1163,6 +1164,24 @@ class _PluginGroupClaimLease:
     preflight_use_id: str
     source_group_id: str
     claim_token: str
+
+
+@dataclass(frozen=True, slots=True)
+class PluginExecutionStartPermit:
+    """Opaque aggregate proof that one claimed executable group won start."""
+
+    preflight_use_id: str
+    source_group_id: str
+    host_boot_id: str
+    _claim_token: str = field(repr=False, compare=False)
+    _permit_token: str = field(repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        _require_hex(self.preflight_use_id, length=48, name="preflight use id")
+        _require_sha256(self.source_group_id, name="source group id")
+        _require_hex(self.host_boot_id, length=32, name="host boot id")
+        _require_hex(self._claim_token, length=48, name="group claim token")
+        _require_hex(self._permit_token, length=48, name="execution start permit")
 
 
 @dataclass(frozen=True, order=True, slots=True)
@@ -1876,6 +1895,73 @@ class PluginSelectionResolver:
                     code="preflight_closing",
                     path=runtime.group.package.root,
                 )
+
+    def _issue_execution_start_permit(
+        self,
+        lease: _PluginGroupClaimLease,
+    ) -> PluginExecutionStartPermit:
+        """Linearize executable start after claim and before Approval access."""
+
+        if not isinstance(lease, _PluginGroupClaimLease):
+            raise PluginSelectionError(
+                "Plugin group claim lease is foreign or already consumed.",
+                code="plugin_group_claim_consumed",
+            )
+        with self._gate:
+            active = self._active.get(lease.preflight_use_id)
+            if active is None:
+                raise PluginSelectionError(
+                    "Plugin group claim lease is foreign or already consumed.",
+                    code="plugin_group_claim_consumed",
+                )
+            runtime = active.groups.get(lease.source_group_id)
+            if (
+                runtime is None
+                or runtime.state != "claimed"
+                or runtime.claim_token != lease.claim_token
+            ):
+                raise PluginSelectionError(
+                    "Plugin group claim lease is foreign or already consumed.",
+                    code="plugin_group_claim_consumed",
+                )
+            if not isinstance(
+                runtime.group.gate,
+                PluginDeclarationExecutionPreflightGate,
+            ):
+                raise PluginSelectionError(
+                    "Document declaration groups do not require an execution start.",
+                    code="plugin_execution_start_not_applicable",
+                    path=runtime.group.package.root,
+                )
+            if runtime.start_permit_token:
+                raise PluginSelectionError(
+                    "Plugin execution start permit was already issued.",
+                    code="plugin_execution_start_permit_consumed",
+                    path=runtime.group.package.root,
+                )
+            if active.state != "active_open":
+                raise PluginSelectionError(
+                    "Plugin preflight is closing and forbids execution start.",
+                    code="preflight_closing",
+                    path=runtime.group.package.root,
+                )
+            if monotonic() >= active.accepted.expires_at:
+                self._begin_close_locked(active, state="closing_expire")
+                self._finish_close_if_quiescent_locked(active)
+                raise PluginSelectionError(
+                    "Plugin preflight expired before execution start.",
+                    code="preflight_closing",
+                    path=runtime.group.package.root,
+                )
+            permit_token = secrets.token_hex(24)
+            runtime.start_permit_token = permit_token
+            return PluginExecutionStartPermit(
+                preflight_use_id=lease.preflight_use_id,
+                source_group_id=lease.source_group_id,
+                host_boot_id=active.accepted.host_boot_id,
+                _claim_token=lease.claim_token,
+                _permit_token=permit_token,
+            )
 
     def _abort(self, preflight: AcceptedPluginPreflight) -> None:
         with self._gate:
