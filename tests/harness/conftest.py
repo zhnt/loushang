@@ -7,6 +7,15 @@ from pathlib import Path
 
 import pytest
 
+from loushang.harness.capabilities import (
+    CapabilityBundleProvider,
+    CapabilityContractRange,
+)
+from loushang.harness.plugin_authoring.capability_provider import (
+    PLUGIN_PROVIDER_SELECTION_RULE,
+    CapabilityProviderDeclarationPayload,
+    PluginSymbolReference,
+)
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.plugins.authority import (
     PluginResolutionAuthority,
@@ -179,6 +188,25 @@ def published_document_plugin(tmp_path: Path) -> Iterator[PublishedDocumentPlugi
         "required": True,
     }
     contribution = PluginContributionReservation.from_dict(index_item)
+    payload = CapabilityProviderDeclarationPayload(
+        provider=CapabilityBundleProvider(
+            capability_id="document.capability",
+            provider_id="org.loushang.document/default",
+            implementation_version=1,
+            compatible_contract=CapabilityContractRange.exact(1),
+            facets=("default",),
+            required_authorities=frozenset(),
+            source_id="plugin:document-provider",
+            selection_rule=PLUGIN_PROVIDER_SELECTION_RULE,
+        ),
+        factory=PluginSymbolReference(
+            path="provider.py",
+            symbol="create_provider",
+            execution_model="in_process",
+        ),
+        disposer=None,
+        binding_inputs={},
+    )
     declaration = PluginDeclaration(
         plugin_id="document-provider",
         contribution_id=contribution.contribution_id,
@@ -189,7 +217,7 @@ def published_document_plugin(tmp_path: Path) -> Iterator[PublishedDocumentPlugi
             contribution.source_descriptor_fingerprint
         ),
         source_kind=contribution.declaration_source.kind,
-        payload={},
+        payload=payload.to_dict(),
     )
     (declaration_root / "providers.json").write_bytes(
         PluginDeclarationDocumentCodec.encode_bytes(
@@ -207,6 +235,11 @@ def published_document_plugin(tmp_path: Path) -> Iterator[PublishedDocumentPlugi
                 },
             }
         ),
+        encoding="utf-8",
+    )
+    (source_root / "provider.py").write_text(
+        "def create_provider(context):\n"
+        "    raise AssertionError('PAP4 admission must not import a factory')\n",
         encoding="utf-8",
     )
     authority = PluginResolutionAuthority()

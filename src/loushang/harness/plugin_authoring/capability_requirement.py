@@ -8,6 +8,8 @@ from loushang.harness.capabilities.contracts import (
     CapabilityContractRange,
     CapabilityRequirement,
     CapabilityRequirementBinding,
+    _capability_contract_range_to_dict,
+    _capability_requirement_to_dict,
 )
 from loushang.harness.resources.plugins.declarations import _exact_document
 
@@ -15,9 +17,7 @@ from loushang.harness.resources.plugins.declarations import _exact_document
 def capability_contract_range_to_dict(
     value: CapabilityContractRange,
 ) -> dict[str, object]:
-    if not isinstance(value, CapabilityContractRange):
-        raise TypeError("Capability contract codec requires CapabilityContractRange")
-    return {"maximum": value.maximum, "minimum": value.minimum}
+    return _capability_contract_range_to_dict(value)
 
 
 def capability_contract_range_from_dict(value: object) -> CapabilityContractRange:
@@ -33,17 +33,7 @@ def capability_contract_range_from_dict(value: object) -> CapabilityContractRang
 
 
 def capability_requirement_to_dict(value: CapabilityRequirement) -> dict[str, object]:
-    if not isinstance(value, CapabilityRequirement):
-        raise TypeError("Capability requirement codec requires CapabilityRequirement")
-    return {
-        "binding": value.binding,
-        "capability": value.capability,
-        "compatibleContract": capability_contract_range_to_dict(
-            value.compatible_contract
-        ),
-        "facets": sorted(value.facets),
-        "optional": value.optional,
-    }
+    return _capability_requirement_to_dict(value)
 
 
 def capability_requirement_from_dict(value: object) -> CapabilityRequirement:

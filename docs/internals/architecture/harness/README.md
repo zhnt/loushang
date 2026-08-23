@@ -87,6 +87,12 @@ planning, work event persistence, or AI provider behavior.
   document/executable batches now join before one internal finalization;
   production Host ingress, owner binding, public SDK and MCP expansion stay
   closed.
+- [Plugin Capability Admission PAP4 Contract](plugin-capability-admission-pap4-contract.md)
+  freezes the generic complete-Bundle candidate fingerprint, exact Capability-
+  owner eligibility/final admission, immutable binding spec, current owner-
+  policy snapshot and pure Product Provider-closure selection. PAP4-1 remains
+  inert: the `coding.lsp` owner adapter, Component Host, activation approval,
+  live Graph binding, public SDK and MCP expansion stay closed.
 - [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md) records the
   green parser/source-sink/authority inventory, frozen foundation exports,
   forbidden peer routes, and inert published-Plugin fixture required before
@@ -178,6 +184,9 @@ description.
 - [Plugin Execution Trust PLC3 Contract](plugin-execution-trust-plc3-contract.md)
   is the normative persistence, replay, CAS, atomic consumption, aggregate
   pre-start and private verified Definition-evaluation boundary through PLC3-3.
+- [Plugin Capability Admission PAP4 Contract](plugin-capability-admission-pap4-contract.md)
+  is the normative PAP4-1 exact-owner eligibility/final-admission and pure
+  Product Provider-closure selection boundary.
   Production ingress and live owner binding remain disabled.
 - [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md) freezes the
   implemented pre-PLC1 parser, verified-revision, public-export, inert-layer,

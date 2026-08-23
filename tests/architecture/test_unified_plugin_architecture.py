@@ -33,6 +33,9 @@ PLC2_CONTRACT_PATH = Path(
 PLC3_CONTRACT_PATH = Path(
     "docs/internals/architecture/harness/plugin-execution-trust-plc3-contract.md"
 )
+PAP4_CONTRACT_PATH = Path(
+    "docs/internals/architecture/harness/plugin-capability-admission-pap4-contract.md"
+)
 CAPABILITY_LIFECYCLE_PATH = Path(
     "docs/internals/architecture/harness/capability-dependency-and-mount-lifecycle.md"
 )
@@ -319,6 +322,9 @@ EXPECTED_AUTHORITY_CLASS_SITES = {
     ),
     "RuntimeCapabilityGraphProjector": Path(
         "src/loushang/harness/capabilities/graph_projection.py"
+    ),
+    "ProductCapabilityProviderResolver": Path(
+        "src/loushang/harness/capabilities/provider_selection.py"
     ),
 }
 EXPECTED_GRAPH_BINDER_CONSTRUCTION_SITES = {
@@ -2321,6 +2327,107 @@ def test_top_level_capability_provider_selection_is_not_a_profile_slot() -> None
     assert "Runtime Profile candidate for coding.lsp" not in architecture
     assert "Top-level Provider facts remain\nseparate data" in architecture
     assert "never carries a\n`ResolvedCapabilityProviderSet`" in architecture
+
+
+def test_pap4_core_keeps_owner_admission_and_product_selection_inert() -> None:
+    from loushang.harness.capabilities.provider_admission import (
+        CapabilityProviderAdmissionRecord,
+        CapabilityProviderBindingSpec,
+        CapabilityProviderCandidateEnvelope,
+        CapabilityProviderEligibilityGrant,
+        CapabilityProviderOwnerSnapshot,
+        CapabilityProviderSymbolLocator,
+    )
+    from loushang.harness.capabilities.provider_selection import (
+        ProductCapabilityProviderResolver,
+        ResolvedCapabilityProviderSet,
+    )
+
+    private_symbols = {
+        "CapabilityProviderAdmissionRecord",
+        "CapabilityProviderBindingSpec",
+        "CapabilityProviderCandidateEnvelope",
+        "CapabilityProviderEligibilityGrant",
+        "CapabilityProviderOwnerSnapshot",
+        "CapabilityProviderSymbolLocator",
+        "ProductCapabilityProviderResolver",
+        "ResolvedCapabilityProviderSet",
+    }
+    assert private_symbols.isdisjoint(set(public_capabilities.__all__))
+    assert all(
+        not hasattr(public_capabilities, symbol) for symbol in private_symbols
+    )
+    assert all(
+        value.__dataclass_params__.frozen
+        for value in (
+            CapabilityProviderAdmissionRecord,
+            CapabilityProviderBindingSpec,
+            CapabilityProviderCandidateEnvelope,
+            CapabilityProviderEligibilityGrant,
+            CapabilityProviderOwnerSnapshot,
+            CapabilityProviderSymbolLocator,
+            ResolvedCapabilityProviderSet,
+        )
+    )
+    assert inspect.signature(ProductCapabilityProviderResolver.resolve).parameters[
+        "evaluated_at"
+    ].default is inspect.Parameter.empty
+
+    admission_source = Path(
+        "src/loushang/harness/capabilities/provider_admission.py"
+    ).read_text(encoding="utf-8")
+    selection_source = Path(
+        "src/loushang/harness/capabilities/provider_selection.py"
+    ).read_text(encoding="utf-8")
+    admission_bridge_source = Path(
+        "src/loushang/harness/plugin_authoring/provider_admission.py"
+    ).read_text(encoding="utf-8")
+    provider_codec_source = Path(
+        "src/loushang/harness/plugin_authoring/capability_provider.py"
+    ).read_text(encoding="utf-8")
+    assert admission_source.count(
+        "CapabilityProviderDeclarationPayload.from_dict("
+    ) == 0
+    assert provider_codec_source.count(
+        "CapabilityProviderDeclarationPayload.from_dict("
+    ) == 1
+    assert "_capability_provider_payload_from_finalized_candidate" not in (
+        admission_source
+    )
+    assert "_capability_provider_payload_from_finalized_candidate" in (
+        admission_bridge_source
+    )
+    assert "prepare_capability_provider_candidate" not in public_capabilities.__all__
+    assert "semantic_fingerprint" not in admission_source
+    for forbidden in (
+        "RuntimeCapabilityGraphBinder",
+        "RuntimeCapabilityGraphPlanner",
+        "RuntimeProfileResolver",
+        "RegistrationScope",
+        "PluginDefinitionEvaluator",
+        "McpSurfaceGeneration",
+    ):
+        assert forbidden not in admission_source
+    for forbidden in (
+        "CapabilityProviderOwnerAuthority",
+        "CapabilityProviderOwnerPolicy",
+        "PluginSelection",
+        "PluginDefinitionEvaluator",
+        "RuntimeCapabilityGraphBinder",
+        "RuntimeCapabilityGraphPlanner",
+        "RuntimeProfileResolver",
+        "RegistrationScope",
+        "McpSurfaceGeneration",
+    ):
+        assert forbidden not in selection_source
+
+    contract = PAP4_CONTRACT_PATH.read_text(encoding="utf-8")
+    assert "Status: PAP4-1 generic Capability-owner" in contract
+    assert "Only that authority constructs" in contract
+    assert "cannot manufacture, renew, widen, or revoke owner records" in contract
+    assert "semantic\nfingerprint remains diagnostic only" in contract
+    assert "Cycles are retained as metadata for the existing Graph Planner" in contract
+    assert "public SDK and MCP expansion remain closed" in contract
 
 
 def test_owner_admission_agent_event_and_disable_contracts_are_explicit() -> None:

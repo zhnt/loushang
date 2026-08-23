@@ -7,13 +7,14 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import cast
 
-from loushang.harness.capabilities.providers import CapabilityBundleProvider
+from loushang.harness.capabilities.providers import (
+    CapabilityBundleProvider,
+    _capability_bundle_provider_to_dict,
+)
 from loushang.harness.plugin_authoring.capability_requirement import (
     _canonical_string_list,
     capability_contract_range_from_dict,
-    capability_contract_range_to_dict,
     capability_requirement_from_dict,
-    capability_requirement_to_dict,
 )
 from loushang.harness.plugin_authoring.reservations import (
     _authoring_reservation_view,
@@ -21,6 +22,7 @@ from loushang.harness.plugin_authoring.reservations import (
 )
 from loushang.harness.resources.plugins.declarations import (
     PluginContributionExecutionModel,
+    PluginContributionReservation,
     PluginDeclaration,
     PluginDeclarationCodecError,
     _document_digest,
@@ -33,7 +35,10 @@ from loushang.harness.resources.plugins.locators import (
     canonical_plugin_symbol,
 )
 from loushang.harness.resources.plugins.selection import (
+    PluginContributionCandidate,
+    PluginContributionRef,
     PluginDeclarationSourceGroup,
+    PluginSelection,
 )
 
 CAPABILITY_PROVIDER_PAYLOAD_VERSION = 2
@@ -289,29 +294,75 @@ class CapabilityProviderDeclarationPayload:
                 "Capability Provider declaration must match a SourceGroup reservation"
             )
         reservation_view = _authoring_reservation_view(source_group, reservation)
-        if declaration.plugin_id != reservation_view.plugin_id:
-            raise ValueError(
-                "Capability Provider declaration must match its package identity"
-            )
         contribution = reservation_view.contribution
-        if (
-            declaration.contribution_id != contribution.contribution_id
-            or declaration.kind != contribution.kind
-            or declaration.owner != contribution.owner
-            or declaration.reservation_fingerprint != contribution.fingerprint
-            or declaration.source_descriptor_fingerprint
-            != contribution.source_descriptor_fingerprint
-            or declaration.source_kind != contribution.declaration_source.kind
-        ):
-            raise ValueError(
-                "Capability Provider declaration must match its reservation envelope"
-            )
+        _validate_capability_provider_declaration_reservation(
+            declaration,
+            plugin_id=reservation_view.plugin_id,
+            contribution=contribution,
+        )
         payload = _capability_provider_payload_from_declaration(declaration)
         _validate_capability_provider_reservation(
             payload,
             reservation=reservation_view,
         )
         return payload
+
+
+def _capability_provider_payload_from_finalized_candidate(
+    selection: PluginSelection,
+    candidate: PluginContributionCandidate,
+) -> CapabilityProviderDeclarationPayload:
+    """Decode one finalized Candidate through the sole Provider validator."""
+
+    if not isinstance(selection, PluginSelection):
+        raise TypeError("Capability Provider codec requires PluginSelection")
+    if not isinstance(candidate, PluginContributionCandidate):
+        raise TypeError("Capability Provider codec requires a finalized Candidate")
+    if candidate not in selection.candidates:
+        raise ValueError(
+            "Capability Provider candidate must belong to its finalized selection"
+        )
+    package = candidate.package
+    declaration = candidate.declaration
+    plugin_id = package.manifest.name
+    matches = tuple(
+        item
+        for item in package.contribution_index.items
+        if item.contribution_id == declaration.contribution_id
+    )
+    if len(matches) != 1:
+        raise ValueError(
+            "Capability Provider declaration must match one package reservation"
+        )
+    contribution = matches[0]
+    ref = PluginContributionRef(plugin_id, contribution.contribution_id)
+    if ref not in selection.plan.selected_contributions:
+        raise ValueError(
+            "Capability Provider contribution must belong to Product selection"
+        )
+    _validate_capability_provider_declaration_reservation(
+        declaration,
+        plugin_id=plugin_id,
+        contribution=contribution,
+    )
+    configurations = {
+        item.ref: item.configuration
+        for item in selection.plan.effective_configuration_set.entries
+    }
+    try:
+        effective_configuration = configurations[ref]
+    except KeyError as exc:
+        raise ValueError(
+            "Capability Provider effective configuration is missing"
+        ) from exc
+    payload = _capability_provider_payload_from_declaration(declaration)
+    _validate_capability_provider_reservation_facts(
+        payload,
+        plugin_id=plugin_id,
+        contribution=contribution,
+        effective_configuration=effective_configuration,
+    )
+    return payload
 
 
 def _capability_provider_payload_from_declaration(
@@ -349,15 +400,53 @@ def _validate_capability_provider_identity(
         )
 
 
+def _validate_capability_provider_declaration_reservation(
+    declaration: PluginDeclaration,
+    *,
+    plugin_id: str,
+    contribution: PluginContributionReservation,
+) -> None:
+    if declaration.plugin_id != plugin_id:
+        raise ValueError(
+            "Capability Provider declaration must match its package identity"
+        )
+    if (
+        declaration.contribution_id != contribution.contribution_id
+        or declaration.kind != contribution.kind
+        or declaration.owner != contribution.owner
+        or declaration.reservation_fingerprint != contribution.fingerprint
+        or declaration.source_descriptor_fingerprint
+        != contribution.source_descriptor_fingerprint
+        or declaration.source_kind != contribution.declaration_source.kind
+    ):
+        raise ValueError(
+            "Capability Provider declaration must match its reservation envelope"
+        )
+
+
 def _validate_capability_provider_reservation(
     payload: CapabilityProviderDeclarationPayload,
     *,
     reservation: _PluginAuthoringReservationView,
 ) -> None:
-    contribution = reservation.contribution
-    _validate_capability_provider_identity(
+    _validate_capability_provider_reservation_facts(
         payload,
         plugin_id=reservation.plugin_id,
+        contribution=reservation.contribution,
+        effective_configuration=reservation.effective_configuration,
+    )
+
+
+def _validate_capability_provider_reservation_facts(
+    payload: CapabilityProviderDeclarationPayload,
+    *,
+    plugin_id: str,
+    contribution: PluginContributionReservation,
+    effective_configuration: Mapping[str, object],
+) -> None:
+    _validate_capability_provider_identity(
+        payload,
+        plugin_id=plugin_id,
         owner=contribution.owner,
     )
     if contribution.kind != "capability_provider":
@@ -367,7 +456,7 @@ def _validate_capability_provider_reservation(
     ):
         raise ValueError("Capability Provider authorities must match its reservation")
     if payload.to_dict()["bindingInputs"] != _thaw_json(
-        reservation.effective_configuration
+        effective_configuration
     ):
         raise ValueError(
             "Capability Provider binding inputs must match its reservation configuration"
@@ -384,27 +473,7 @@ def _validate_capability_provider_reservation(
 def capability_bundle_provider_to_dict(
     value: CapabilityBundleProvider,
 ) -> dict[str, object]:
-    if not isinstance(value, CapabilityBundleProvider):
-        raise TypeError("Capability Provider codec requires Provider metadata")
-    return {
-        "capabilityId": value.capability_id,
-        "compatibleContract": capability_contract_range_to_dict(
-            value.compatible_contract
-        ),
-        "facets": sorted(value.facets),
-        "implementationVersion": value.implementation_version,
-        "providerId": value.provider_id,
-        "requiredAuthorities": sorted(value.required_authorities),
-        "requirements": [
-            capability_requirement_to_dict(requirement)
-            for requirement in sorted(
-                value.requirements,
-                key=lambda item: item.capability,
-            )
-        ],
-        "selectionRule": value.selection_rule,
-        "sourceId": value.source_id,
-    }
+    return _capability_bundle_provider_to_dict(value)
 
 
 def capability_bundle_provider_from_dict(value: object) -> CapabilityBundleProvider:
