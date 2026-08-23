@@ -924,10 +924,12 @@ canonical declaration or Capability Graph type is replaced.
 
 ### PAP5: Owner-Preserving Component Host And Bind Bridge
 
-Implementation status: complete internally at `c8b0088c` and `ee303971`.
+Implementation status: complete internally and hardened after three independent
+reviews on the PAP5 delivery branch.
 Activation decisions/attempts are Approval-owned durable JSONL facts; the
 Component Host consumes one exact decision but does not import until the
-existing Binder invokes the lazy binding. Construction reaches `STARTED`, and
+existing Binder invokes the lazy binding. Construction reaches `STARTED` only
+after a validated Bundle returns, and
 only successful Graph publication permits the Session root to record
 `COMMITTED`.
 
@@ -948,7 +950,15 @@ Scope:
 - make the Session composition root plan once, bind once, capture Consumers,
   then publish the Session;
 - preserve existing built-in direct bindings through an explicit adapter until
-  their production Plugin migrations land.
+  their production Plugin migrations land; Product resolution may use those
+  exact prebound Provider facts to satisfy Plugin dependencies without a second
+  selection or Graph authority;
+- require current Product/scope/time, exact-owner and source-trust facts at
+  contribution compilation and immediately before owner generation staging;
+- retain retryable Provider values, disposers and partially staged owner
+  generations until cleanup actually succeeds;
+- separate audit closure fingerprints from Session semantic fingerprints so a
+  changed evaluation timestamp alone never requires restart.
 
 Primary files are expected under:
 

@@ -1216,21 +1216,23 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 ).hexdigest(),
                 source_id="foundation-contract-test",
             )
-            resolved = ProductCapabilityProviderResolver().resolve(
-                ProductCapabilityProviderSelectionPlanV1(
-                    product_id="coding",
-                    roots=(definition.capability_id,),
-                    choices=(
-                        ProductCapabilityProviderChoice(
-                            capability_id=definition.capability_id,
-                            provider_id=provider_admission.provider.provider_id,
-                            candidate_fingerprint=(
-                                provider_admission.candidate_fingerprint
-                            ),
+            provider_plan = ProductCapabilityProviderSelectionPlanV1(
+                product_id="coding",
+                roots=(definition.capability_id,),
+                choices=(
+                    ProductCapabilityProviderChoice(
+                        capability_id=definition.capability_id,
+                        provider_id=provider_admission.provider.provider_id,
+                        candidate_fingerprint=(
+                            provider_admission.candidate_fingerprint
                         ),
                     ),
-                    policy_revision="coding-plugin-policy-1",
                 ),
+                policy_revision="coding-plugin-policy-1",
+            )
+            provider_resolver = ProductCapabilityProviderResolver()
+            resolved = provider_resolver.resolve(
+                provider_plan,
                 definitions=(definition, WORKSPACE_CAPABILITY_DEFINITION),
                 admissions=(provider_admission,),
                 owner_snapshots=(provider_authority.snapshot(),),
@@ -1290,6 +1292,31 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 resolved_providers=resolved,
                 component_requests=(component_request,),
             )
+            reevaluated_providers = provider_resolver.resolve(
+                provider_plan,
+                definitions=(definition, WORKSPACE_CAPABILITY_DEFINITION),
+                admissions=(provider_admission,),
+                owner_snapshots=(provider_authority.snapshot(),),
+                evaluated_at=151,
+                prebound_providers=(workspace_binding.provider,),
+            )
+            reevaluated_inputs = SessionCapabilityCompositionInputs(
+                product_composition=replace(
+                    compilation,
+                    authority_context=replace(
+                        compilation.authority_context,
+                        evaluated_at=151,
+                    ),
+                ),
+                resolved_providers=reevaluated_providers,
+                component_requests=(
+                    replace(
+                        component_request,
+                        resolved=reevaluated_providers.entries[0],
+                    ),
+                ),
+            )
+            assert composition_inputs.compare(reevaluated_inputs) == "no_change"
 
             async def stage_tools(
                 captures: tuple[SessionCapabilityConsumerCapture, ...],

@@ -241,6 +241,43 @@ def test_compiler_rejects_cross_scope_and_expired_owner_admission() -> None:
     assert expired.value.code == "contribution_admission_not_current"
 
 
+def test_compiler_rejects_public_catalog_identity_owned_by_two_owners() -> None:
+    first = _admission(
+        owner_id="product.tools.a",
+        contribution_id="tools-a",
+        contribution=CatalogConsumerContributionSpec(
+            contribution_kind="tool_pack",
+            catalog_id="shared.tools",
+            catalog_revision=1,
+            item_ids=("query",),
+        ),
+    )
+    second = _admission(
+        owner_id="product.tools.b",
+        contribution_id="tools-b",
+        contribution=CatalogConsumerContributionSpec(
+            contribution_kind="tool_pack",
+            catalog_id="shared.tools",
+            catalog_revision=1,
+            item_ids=("query",),
+        ),
+    )
+
+    with pytest.raises(ProductCompositionError) as caught:
+        ProductCompositionCompiler().compile(
+            authority_context=_context(first, second),
+            mandatory_roots=("harness.model_input",),
+            admissions=(first, second),
+            definitions=_definitions(),
+            optional_choices=(),
+        )
+
+    assert caught.value.code == "duplicate_owner_contribution_identity"
+    assert caught.value.admission_fingerprints == tuple(
+        sorted((first.fingerprint, second.fingerprint))
+    )
+
+
 def _requirement(
     capability: str,
     facet: str,

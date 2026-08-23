@@ -274,6 +274,17 @@ class ResolvedCapabilityProviderSet:
             self._record_document(),
         )
 
+    @property
+    def semantic_fingerprint(self) -> str:
+        """Runtime-relevant closure identity excluding observation time."""
+
+        document = self._record_document()
+        document.pop("evaluatedAt")
+        return _digest_document(
+            "loushang.resolved-capability-provider-set-semantic/v1",
+            document,
+        )
+
     def _record_document(self) -> dict[str, object]:
         return {
             "entries": [item.to_dict() for item in self.entries],

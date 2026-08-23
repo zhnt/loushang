@@ -91,6 +91,65 @@ class ProductCompositionAuthorityContext:
             for item in self.trust_snapshots
         ):
             raise TypeError("Composition trust snapshots have invalid type")
+        owners = tuple(
+            sorted(
+                self.owner_snapshots,
+                key=lambda item: (
+                    item.owner_id,
+                    item.contribution_kind,
+                    item.product_id,
+                ),
+            )
+        )
+        trusts = tuple(
+            sorted(
+                self.trust_snapshots,
+                key=lambda item: (
+                    item.plugin_id,
+                    item.package_source_identity,
+                ),
+            )
+        )
+        if len(
+            {
+                (item.owner_id, item.contribution_kind, item.product_id)
+                for item in owners
+            }
+        ) != len(owners):
+            raise ValueError("Composition owner snapshots must be unique")
+        if len(
+            {(item.plugin_id, item.package_source_identity) for item in trusts}
+        ) != len(trusts):
+            raise ValueError("Composition trust snapshots must be unique")
+        object.__setattr__(self, "owner_snapshots", owners)
+        object.__setattr__(self, "trust_snapshots", trusts)
+
+    @property
+    def semantic_fingerprint(self) -> str:
+        return _digest_document(
+            "loushang.product-composition-authority-context/v1",
+            {
+                "ownerSnapshots": [
+                    item.to_dict() for item in self.owner_snapshots
+                ],
+                "productId": self.product_id,
+                "productPolicyRevision": self.product_policy_revision,
+                "scopeId": self.scope_id,
+                "trustSnapshots": [
+                    {
+                        "packageSourceIdentity": item.package_source_identity,
+                        "pluginId": item.plugin_id,
+                        "sourceTrustClass": item.source_trust_class,
+                        "sourceTrustPolicyRevision": (
+                            item.source_trust_policy_revision
+                        ),
+                        "trusted": item.trusted,
+                        "trustSnapshotVersion": item.trust_snapshot_version,
+                    }
+                    for item in self.trust_snapshots
+                ],
+            },
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -398,7 +457,7 @@ class ProductCompositionCompiler:
         trust_snapshots = _index_trust_snapshots(authority_context.trust_snapshots)
         definitions_by_id = _index_definitions(definitions)
         identity_owners: dict[
-            tuple[str, str, str], list[OwnerContributionAdmissionRecord]
+            tuple[str, str], list[OwnerContributionAdmissionRecord]
         ] = {}
         entries: list[ProductCapabilityConsumerRequirementEntry] = []
         resources: list[OwnerContributionAdmissionRecord] = []
@@ -472,7 +531,7 @@ class ProductCompositionCompiler:
                 )
             for identity in admission.admitted_identities:
                 identity_owners.setdefault(
-                    (admission.contribution_kind, admission.owner_id, identity),
+                    (admission.contribution_kind, identity),
                     [],
                 ).append(admission)
             if admission.contribution_kind == "resource_item":

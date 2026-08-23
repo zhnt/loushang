@@ -56,6 +56,15 @@ def test_product_resolver_selects_required_closure_and_records_optional_absence(
         ("harness.optional", False)
     ]
     assert resolved.closure_fingerprint == resolved.to_dict()["closureFingerprint"]
+    reevaluated = ProductCapabilityProviderResolver().resolve(
+        plan,
+        definitions=definitions,
+        admissions=admissions,
+        owner_snapshots=snapshots,
+        evaluated_at=151,
+    )
+    assert reevaluated.closure_fingerprint != resolved.closure_fingerprint
+    assert reevaluated.semantic_fingerprint == resolved.semantic_fingerprint
     assert not _contains_callable(resolved.to_dict())
     with pytest.raises(TypeError, match="Resolver-constructed"):
         ResolvedCapabilityProviderSet()

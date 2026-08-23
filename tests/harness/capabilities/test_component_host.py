@@ -699,6 +699,7 @@ def _provider_source(
 ) -> str:
     return f'''\
 import os
+import json
 from pathlib import Path
 
 from loushang.harness.capabilities.provider_binding import (
@@ -712,6 +713,12 @@ with MARKER.open("a", encoding="utf-8") as stream:
     stream.write("import\\n")
 
 def create_provider(context):
+    journal_path = MARKER.parent / "activation.jsonl"
+    records = [json.loads(line) for line in journal_path.read_text(
+        encoding="utf-8"
+    ).splitlines()]
+    if records[-1]["payload"]["reservation"]["state"] != "STARTING":
+        raise AssertionError("factory executed outside STARTING state")
     with MARKER.open("a", encoding="utf-8") as stream:
         stream.write("create\\n")
     return CapabilityBundleValue((CapabilityFacetBinding(

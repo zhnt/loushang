@@ -135,6 +135,9 @@ class SessionCapabilityCompositionInputs:
     @property
     def composition_fingerprint(self) -> str:
         document = {
+            "authorityContext": (
+                self.product_composition.authority_context.semantic_fingerprint
+            ),
             "catalogAdmissions": [
                 item.fingerprint
                 for item in self.product_composition.catalog_admissions
@@ -142,7 +145,7 @@ class SessionCapabilityCompositionInputs:
             "consumerRequirements": (
                 self.product_composition.consumer_requirements.fingerprint
             ),
-            "providerClosure": self.resolved_providers.closure_fingerprint,
+            "providerClosure": self.resolved_providers.semantic_fingerprint,
             "resourceAdmissions": [
                 item.fingerprint
                 for item in self.product_composition.resource_admissions

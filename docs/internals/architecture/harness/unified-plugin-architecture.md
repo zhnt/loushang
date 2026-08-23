@@ -2,8 +2,9 @@
 
 ## Status
 
-Target architecture with its internal PAP0-PAP5 foundation implemented through
-`d2b7724a`, `c8b0088c`, and `ee303971`; adopter-level `coding.lsp`,
+Target architecture with its internal PAP0-PAP5 foundation implemented and its
+first independent-review hardening complete on the PAP5 delivery branch;
+adopter-level `coding.lsp`,
 `coding.arch`, public SDK, and Skill convergence remain pending. The existing Capability Graph, Runtime Profile,
 Registration Scope, Extension/Resource generation, Effective Runtime, Resource
 Package, and Plugin source-management runtimes remain authoritative while this
@@ -26,12 +27,23 @@ cross-owner transaction, or effective-runtime projector.
 
 The PAP5 linearization is exact: Component preparation consumes one durable
 activation decision without importing code; the existing Binder is the first
-caller of the verified factory and advances the attempt to `STARTED`; only
-successful Graph publication lets the Session root advance it to `COMMITTED`.
+caller of the verified factory, while `STARTED` is persisted only after the
+factory returns a validated Bundle; only successful Graph publication lets the
+Session root advance it to `COMMITTED`. The Host bootstrap recovers incomplete
+uses before new preparation, and the factory boundary re-reads current Product,
+Owner and Trust authority plus admission/decision time windows.
 The Session then captures narrow external Consumer views, stages exact owner
 generations, and becomes usable. Failure aborts every unstarted/started
 attempt, reverses staged owners, and disposes the candidate Graph. Normal
 unload reverses owner generations before Provider disposal.
+
+Product Provider resolution may consume exact built-in/prebound Provider facts
+as dependency closure members without manufacturing Plugin admissions for
+them. They remain metadata-only inputs to the same single Graph transaction,
+and the Session rejects a prebound fact that differs from its actual built-in
+binding. Audit fingerprints retain evaluation time; Session semantic
+fingerprints exclude observation time while retaining authority, admission,
+package, dependency and Provider facts.
 
 ## Purpose
 
@@ -1105,14 +1117,16 @@ cannot both observe an empty ledger. A same-name/different-digest or incompatibl
 dependency claim fails closed and requires a host restart with one compatible
 set or an isolated worker.
 
-The admitted import realm installs a host-owned meta-path/loader adapter that
-maps every transitive module and native extension to the locked closure and a
-`VerifiedRevisionHandle`; undeclared fallback through ordinary mutable
-`sys.path` is rejected. Failed reservations remain visible until rollback under
-the same gate. If the platform, packaging format or native loader cannot prove
-this closure, the Plugin must use an isolated worker or a clean host restart.
-Plugin-qualified entry module names alone never pretend to isolate transitive
-imports through shared `sys.modules`.
+The mature target may install a host-owned meta-path/loader adapter that maps
+every transitive module and native extension to a locked closure. The current
+host-equivalent PAP5 Python arm deliberately supports a narrower proof: it
+loads the entrypoint only through `VerifiedRevisionHandle`, exact-checks every
+declared installed distribution version, rejects mutable standard-library or
+dependency origins before ordinary import, and denies dynamic import
+facilities. The Import Realm additionally locks Plugin namespace to package
+digest for the Host boot. Unsupported namespace/native/dynamic cases require
+an isolated worker or clean Host restart; this policy is compatibility and
+integrity enforcement, not a malicious-code sandbox.
 
 There is no sequential Graph/Extension/Resource publish followed by snapshot
 restoration. Publication of an owner generation is its linearization point.

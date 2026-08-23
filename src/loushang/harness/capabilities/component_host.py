@@ -354,7 +354,6 @@ class _PreparedComponentAttempt:
                 self._load_symbols,
             )
             self.import_realm.commit(lease)
-            self._transition("STARTING", "STARTED")
             provider_context = replace(
                 context,
                 binding_inputs=self.resolved.binding_spec.binding_inputs,
@@ -371,6 +370,7 @@ class _PreparedComponentAttempt:
                 self.pending_disposal_value = value
                 await self._dispose_pending_value()
                 raise ValueError("Component factory returned unexpected facets")
+            self._transition("STARTING", "STARTED")
             return value
         except BaseException:
             self._try_fail_active_use()

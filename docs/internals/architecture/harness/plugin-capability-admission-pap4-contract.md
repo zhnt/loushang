@@ -123,23 +123,33 @@ is the sole metadata tuple handed to the existing Graph Planner.
 `command_pack` candidates without becoming a global owner registry.
 `ProductCompositionCompiler` preserves every admitted Consumer requirement and
 its provenance, compiles mandatory and explicitly satisfied optional roots,
-and performs no Graph planning or live publication.
+and performs no Graph planning or live publication. Compilation requires one
+non-optional Product/scope/policy/time context plus current exact-owner and
+source-trust snapshots; public Tool/Command identities conflict across owners,
+not merely within one owner.
 
-`CapabilityComponentHost` exact-matches the resolved admission, current owner
-and trust snapshots, published content/dependency lock, and one-shot activation
-decision. It uses the same verified Python loader as Definition evaluation and
+`CapabilityComponentHost` exact-matches the resolved admission, current Product,
+owner and trust readers, published content/dependency lock, and one-shot activation
+decision. Durable decisions support consume-versus-revoke linearization and
+strict immutable replay; Host bootstrap recovers incomplete uses. It uses the
+same verified Python loader as Definition evaluation and
 returns `PreparedCapabilityComponent`; it never owns a Planner, Binder,
 Projector, Session, or Registration Scope. The lazy factory first runs inside
 the existing Binder, reaches durable `STARTED`, and reaches `COMMITTED` only
-after Graph publication.
+after Graph publication. A failed disposer or invalid-Bundle cleanup retains
+the exact value/disposer for retry rather than reporting false success.
 
 `SessionCapabilityCompositionInputs` remains beside the existing staged
 Resource candidate. `AgentProductSession` merges built-ins and selected Plugin
 Providers into one plan and one existing Binder call, captures every satisfied
 external Consumer view, stages exact Tool/Command owner generations, and only
-then exposes the Session. Unload reverses owner generations before Provider
+then exposes the Session. Staging rechecks current scope/policy/owner/trust/time
+authority and preserves any generation whose rollback fails. Built-in/prebound
+Providers may satisfy Plugin Provider dependencies but never enter Component
+Host activation. Unload reverses owner generations before Provider
 disposal. A changed or disabled sealed composition returns
-`restart_required`; it does not hot-swap the active Session.
+`restart_required`; it does not hot-swap the active Session. Re-evaluating the
+same semantic composition at another observation time remains `no_change`.
 
 The next adopter may add the explicit `coding.lsp` owner policy and Provider
 implementation. It must reuse these records and hosts rather than folding
