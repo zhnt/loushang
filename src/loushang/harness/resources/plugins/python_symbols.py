@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import builtins
 import importlib.metadata
+import importlib.util
 import re
 import sys
+import sysconfig
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from types import ModuleType
 
 from loushang.harness.resources.plugins.dependencies import (
@@ -90,19 +93,50 @@ class _LockedImportPolicy:
         *,
         host_api_prefixes: tuple[str, ...],
     ) -> None:
-        locked_names = {
-            distribution.name for distribution in dependency_lock.python_distributions
-        }
+        locked_names: dict[str, str] = {}
+        distribution_roots: dict[str, Path] = {}
+        for distribution in dependency_lock.python_distributions:
+            normalized_name = _normalize_distribution_name(distribution.name)
+            try:
+                installed = importlib.metadata.distribution(distribution.name)
+            except importlib.metadata.PackageNotFoundError as exc:
+                raise ImportError("A locked Plugin dependency is unavailable") from exc
+            installed_version = installed.version
+            if installed_version != distribution.version:
+                raise ImportError("A locked Plugin dependency version drifted")
+            locked_names[normalized_name] = distribution.version
+            distribution_roots[normalized_name] = Path(
+                str(installed.locate_file(""))
+            ).resolve()
         package_distributions = importlib.metadata.packages_distributions()
-        self._allowed_roots = frozenset(
-            package
+        self._allowed_distribution_roots = {
+            package: tuple(
+                distribution_roots[normalized]
+                for item in distributions
+                if (normalized := _normalize_distribution_name(item))
+                in locked_names
+            )
             for package, distributions in package_distributions.items()
             if any(
                 _normalize_distribution_name(item) in locked_names
                 for item in distributions
             )
-        )
+        }
         self._host_api_prefixes = host_api_prefixes
+        self._stdlib_roots = tuple(
+            {
+                Path(value).resolve()
+                for key in ("stdlib", "platstdlib")
+                if (value := sysconfig.get_path(key)) is not None
+            }
+        )
+        self._site_roots = tuple(
+            {
+                Path(value).resolve()
+                for key in ("purelib", "platlib")
+                if (value := sysconfig.get_path(key)) is not None
+            }
+        )
         values = dict(vars(builtins))
         values["__import__"] = self._import
         self.builtins: Mapping[str, object] = values
@@ -118,16 +152,54 @@ class _LockedImportPolicy:
         if level:
             raise ImportError("Relative imports are not available to Plugin modules")
         root = name.partition(".")[0]
-        if not (
-            root in sys.stdlib_module_names
-            or root in self._allowed_roots
-            or any(
-                name == prefix or name.startswith(prefix + ".")
-                for prefix in self._host_api_prefixes
-            )
-        ):
+        if root in {"builtins", "importlib", "pkgutil", "runpy", "sys", "zipimport"}:
+            raise ImportError("Dynamic import facilities are unavailable to Plugin modules")
+        is_host_api = any(
+            name == prefix or name.startswith(prefix + ".")
+            for prefix in self._host_api_prefixes
+        )
+        if root in sys.stdlib_module_names:
+            self._require_stdlib_origin(name)
+        elif root in self._allowed_distribution_roots:
+            self._require_distribution_origin(name, root=root)
+        elif not is_host_api:
             raise ImportError("Plugin import is outside its locked closure")
         return builtins.__import__(name, globals, locals, fromlist, level)
+
+    def _require_stdlib_origin(self, name: str) -> None:
+        spec = importlib.util.find_spec(name)
+        if spec is None:
+            raise ImportError("Plugin standard-library import cannot be resolved")
+        if spec.origin in {"built-in", "frozen"}:
+            return
+        paths = _spec_paths(spec)
+        if not paths or any(
+            not _is_within(path, self._stdlib_roots)
+            or _is_within(path, self._site_roots)
+            for path in paths
+        ):
+            raise ImportError("Plugin standard-library import origin is mutable")
+
+    def _require_distribution_origin(self, name: str, *, root: str) -> None:
+        spec = importlib.util.find_spec(name)
+        allowed = self._allowed_distribution_roots[root]
+        paths = () if spec is None else _spec_paths(spec)
+        if not paths or any(not _is_within(path, allowed) for path in paths):
+            raise ImportError("Plugin dependency import origin is outside its lock")
+
+
+def _spec_paths(spec: object) -> tuple[Path, ...]:
+    origin = getattr(spec, "origin", None)
+    if isinstance(origin, str) and origin not in {"built-in", "frozen"}:
+        return (Path(origin).resolve(),)
+    locations = getattr(spec, "submodule_search_locations", None)
+    if locations is None:
+        return ()
+    return tuple(Path(item).resolve() for item in locations)
+
+
+def _is_within(path: Path, roots: tuple[Path, ...]) -> bool:
+    return any(path == root or path.is_relative_to(root) for root in roots)
 
 
 def _normalize_distribution_name(value: str) -> str:

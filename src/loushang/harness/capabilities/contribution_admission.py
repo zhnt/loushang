@@ -17,6 +17,7 @@ from loushang.harness.runtime import RuntimeCapabilityScope, RuntimeRefreshBound
 
 OWNER_CONTRIBUTION_ADMISSION_VERSION = 1
 OWNER_CONTRIBUTION_CANDIDATE_VERSION = 1
+OWNER_CONTRIBUTION_SNAPSHOT_VERSION = 1
 
 OwnerContributionKind = Literal["resource_item", "tool_pack", "command_pack"]
 ResourceContributionKind = Literal[
@@ -315,6 +316,47 @@ class OwnerContributionPolicy:
 
 
 @dataclass(frozen=True, slots=True, init=False)
+class OwnerContributionSnapshot:
+    """Owner-constructed current policy/revocation evidence for one contribution kind."""
+
+    owner_id: str
+    contribution_kind: OwnerContributionKind
+    product_id: str
+    policy_revision: str
+    revocation_epoch: int
+    snapshot_version: int
+
+    def __init__(self) -> None:
+        raise TypeError("Owner contribution snapshot is owner-constructed")
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.owner_id, name="Contribution owner id")
+        if self.contribution_kind not in _OWNER_CONTRIBUTION_KINDS:
+            raise ValueError("Unsupported owner contribution kind")
+        _require_nonempty(self.product_id, name="Contribution Product id")
+        _require_nonempty(self.policy_revision, name="owner policy revision")
+        _require_nonnegative_integer(
+            self.revocation_epoch,
+            name="owner revocation epoch",
+        )
+        _require_exact_version(
+            self.snapshot_version,
+            supported=OWNER_CONTRIBUTION_SNAPSHOT_VERSION,
+            name="Owner contribution snapshot",
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "contributionKind": self.contribution_kind,
+            "ownerId": self.owner_id,
+            "policyRevision": self.policy_revision,
+            "productId": self.product_id,
+            "revocationEpoch": self.revocation_epoch,
+            "snapshotVersion": self.snapshot_version,
+        }
+
+
+@dataclass(frozen=True, slots=True, init=False)
 class OwnerContributionAdmissionRecord:
     """Exact-owner immutable decision over one complete inert candidate."""
 
@@ -420,6 +462,18 @@ class OwnerContributionAuthority:
     @property
     def policy(self) -> OwnerContributionPolicy:
         return self._policy
+
+    def snapshot(self) -> OwnerContributionSnapshot:
+        policy = self._policy
+        return _owner_construct(
+            OwnerContributionSnapshot,
+            owner_id=policy.owner_id,
+            contribution_kind=policy.contribution_kind,
+            product_id=policy.product_id,
+            policy_revision=policy.policy_revision,
+            revocation_epoch=policy.revocation_epoch,
+            snapshot_version=OWNER_CONTRIBUTION_SNAPSHOT_VERSION,
+        )
 
     def admit(
         self,
@@ -584,6 +638,7 @@ __all__ = [
     "OwnerContributionCandidateEnvelope",
     "OwnerContributionKind",
     "OwnerContributionPolicy",
+    "OwnerContributionSnapshot",
     "OwnerContributionSpec",
     "ResourceContributionSpec",
 ]

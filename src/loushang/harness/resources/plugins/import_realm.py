@@ -31,6 +31,7 @@ class PluginImportRealmSnapshotV1:
     state: Literal["clean", "polluted"]
     active_execution_use_id: str | None
     locked_distributions: tuple[PluginPythonDistributionLock, ...]
+    locked_packages: tuple[tuple[str, str], ...]
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -39,6 +40,10 @@ class PluginImportRealmSnapshotV1:
             "importRealmId": self.import_realm_id,
             "lockedDistributions": [
                 item.to_dict() for item in self.locked_distributions
+            ],
+            "lockedPackages": [
+                {"packageContentDigest": digest, "pluginId": plugin_id}
+                for plugin_id, digest in self.locked_packages
             ],
             "state": self.state,
         }
@@ -49,6 +54,7 @@ class _PluginImportRealmLease:
     import_realm_id: str
     host_boot_id: str
     execution_use_id: str
+    package_namespace: str
     dependency_lock: PluginDependencyClosureLock = field(repr=False)
     token: str = field(repr=False, compare=False)
 
@@ -75,6 +81,7 @@ class PluginImportRealm:
         self._state: Literal["clean", "polluted"] = "clean"
         self._active: _ActiveImport | None = None
         self._locked_distributions: dict[str, PluginPythonDistributionLock] = {}
+        self._locked_packages: dict[str, str] = {}
 
     @property
     def import_realm_id(self) -> str:
@@ -84,29 +91,40 @@ class PluginImportRealm:
         self,
         *,
         host_boot_id: str,
+        package_namespace: str,
         dependency_lock: PluginDependencyClosureLock,
     ) -> None:
-        self._validate_request(host_boot_id, dependency_lock)
+        self._validate_request(host_boot_id, package_namespace, dependency_lock)
         with self._gate:
-            self._require_usable_locked(host_boot_id, dependency_lock)
+            self._require_usable_locked(
+                host_boot_id,
+                package_namespace,
+                dependency_lock,
+            )
 
     def reserve(
         self,
         *,
         host_boot_id: str,
         execution_use_id: str,
+        package_namespace: str,
         dependency_lock: PluginDependencyClosureLock,
     ) -> _PluginImportRealmLease:
-        self._validate_request(host_boot_id, dependency_lock)
+        self._validate_request(host_boot_id, package_namespace, dependency_lock)
         _require_hex(execution_use_id, length=48, name="execution use id")
         with self._gate:
-            self._require_usable_locked(host_boot_id, dependency_lock)
+            self._require_usable_locked(
+                host_boot_id,
+                package_namespace,
+                dependency_lock,
+            )
             if self._host_boot_id is None:
                 self._host_boot_id = host_boot_id
             lease = _PluginImportRealmLease(
                 import_realm_id=self._import_realm_id,
                 host_boot_id=host_boot_id,
                 execution_use_id=execution_use_id,
+                package_namespace=package_namespace,
                 dependency_lock=dependency_lock,
                 token=secrets.token_hex(24),
             )
@@ -147,6 +165,9 @@ class PluginImportRealm:
                 )
             for distribution in lease.dependency_lock.python_distributions:
                 self._locked_distributions[distribution.name] = distribution
+            self._locked_packages[lease.package_namespace] = (
+                lease.dependency_lock.package_content_digest
+            )
             self._active = None
 
     def cancel(self, lease: _PluginImportRealmLease) -> None:
@@ -187,20 +208,24 @@ class PluginImportRealm:
                     self._locked_distributions[name]
                     for name in sorted(self._locked_distributions)
                 ),
+                locked_packages=tuple(sorted(self._locked_packages.items())),
             )
 
     @staticmethod
     def _validate_request(
         host_boot_id: str,
+        package_namespace: str,
         dependency_lock: PluginDependencyClosureLock,
     ) -> None:
         _require_hex(host_boot_id, length=32, name="host boot id")
+        _require_nonempty(package_namespace, name="package namespace")
         if not isinstance(dependency_lock, PluginDependencyClosureLock):
             raise TypeError("Plugin import realm requires a dependency closure lock")
 
     def _require_usable_locked(
         self,
         host_boot_id: str,
+        package_namespace: str,
         dependency_lock: PluginDependencyClosureLock,
     ) -> None:
         if self._state == "polluted":
@@ -217,6 +242,15 @@ class PluginImportRealm:
             raise self._error(
                 "Plugin import realm already has an active import.",
                 code="plugin_import_realm_busy",
+            )
+        committed_digest = self._locked_packages.get(package_namespace)
+        if (
+            committed_digest is not None
+            and committed_digest != dependency_lock.package_content_digest
+        ):
+            raise self._error(
+                "Plugin package revision conflicts with the import realm.",
+                code="plugin_import_package_revision_conflict",
             )
         for distribution in dependency_lock.python_distributions:
             committed = self._locked_distributions.get(distribution.name)
@@ -259,6 +293,15 @@ def _require_hex(value: str, *, length: int, name: str) -> None:
         or any(character not in "0123456789abcdef" for character in value)
     ):
         raise ValueError(f"{name} must be {length} lowercase hexadecimal characters")
+
+
+def _require_nonempty(value: object, *, name: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"{name} must be a string")
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError(f"{name} must not be empty")
+    return normalized
 
 
 __all__ = [

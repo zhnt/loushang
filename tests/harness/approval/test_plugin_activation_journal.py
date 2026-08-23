@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -133,6 +134,56 @@ def test_activation_consumption_rechecks_subject_policy_trust_epoch_and_expiry(
             expected_journal_revision=1,
         )
     assert expiry.value.code == "plugin_activation_decision_expired"
+
+
+def test_activation_decision_revocation_is_durable_and_blocks_consumption(
+    tmp_path: Path,
+) -> None:
+    journal = _journal(tmp_path)
+    decision = _issue(journal)
+
+    revoked = journal.revoke_activation_decision(
+        decision.decision_id,
+        actor_id="operator:alice",
+        source="test-policy",
+        revoked_at_unix_ms=1_500,
+        expected_journal_revision=1,
+    )
+
+    assert revoked.consumption_state == "REVOKED"
+    assert _journal(tmp_path).snapshot().decisions == (revoked,)
+    with pytest.raises(PluginActivationJournalError) as caught:
+        journal.consume_activation_decision(
+            _subject(),
+            decision_id=decision.decision_id,
+            host_boot_id="3" * 32,
+            import_realm_id="4" * 32,
+            expected_journal_revision=2,
+        )
+    assert caught.value.code == "plugin_activation_decision_revoked"
+
+
+def test_activation_replay_rejects_immutable_reservation_identity_drift(
+    tmp_path: Path,
+) -> None:
+    journal = _journal(tmp_path)
+    _consume(journal, _issue(journal).decision_id)
+    records = tuple(
+        json.loads(line)
+        for line in journal.path.read_text(encoding="utf-8").splitlines()
+    )
+    records[1]["payload"]["reservation"]["subjectDigest"] = "7" * 64
+    journal.path.write_text(
+        "".join(
+            json.dumps(record, ensure_ascii=True, sort_keys=True) + "\n"
+            for record in records
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PluginActivationJournalError) as caught:
+        _journal(tmp_path).snapshot()
+    assert caught.value.code == "plugin_activation_journal_corrupt"
 
 
 def test_recovery_cancels_unstarted_and_fails_possibly_started_attempts(

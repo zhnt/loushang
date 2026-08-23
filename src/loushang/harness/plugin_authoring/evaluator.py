@@ -86,6 +86,7 @@ class PluginDefinitionEvaluator:
         try:
             self._import_realm.preflight(
                 host_boot_id=permit.host_boot_id,
+                package_namespace=group.package.manifest.name,
                 dependency_lock=dependency_lock,
             )
         except PluginImportRealmError as exc:
@@ -95,6 +96,7 @@ class PluginDefinitionEvaluator:
             realm_lease = self._import_realm.reserve(
                 host_boot_id=permit.host_boot_id,
                 execution_use_id=reservation.execution_use_id,
+                package_namespace=group.package.manifest.name,
                 dependency_lock=dependency_lock,
             )
         except BaseException as exc:

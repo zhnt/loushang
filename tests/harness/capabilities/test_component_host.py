@@ -81,7 +81,7 @@ async def _component_host_defers_import_until_the_existing_binder_constructs(
     monkeypatch.setenv("LOUSHANG_COMPONENT_TEST_MARKER", str(marker))
     fixture = _fixture(tmp_path, returned_facet="query")
     journal = _journal(tmp_path)
-    host = _host(journal)
+    host = _host(journal, fixture)
     subject = host.activation_subject(
         fixture.resolved,
         owner_snapshot=fixture.owner_snapshot,
@@ -161,7 +161,7 @@ async def _component_host_retries_provider_disposer_after_transient_failure(
         disposer_fails_once=True,
     )
     journal = _journal(tmp_path)
-    host = _host(journal)
+    host = _host(journal, fixture)
     subject = host.activation_subject(
         fixture.resolved,
         owner_snapshot=fixture.owner_snapshot,
@@ -211,7 +211,7 @@ async def _component_host_disposes_invalid_bundle_and_records_failed_attempt(
     monkeypatch.setenv("LOUSHANG_COMPONENT_TEST_MARKER", str(marker))
     fixture = _fixture(tmp_path, returned_facet="wrong")
     journal = _journal(tmp_path)
-    host = _host(journal)
+    host = _host(journal, fixture)
     subject = host.activation_subject(
         fixture.resolved,
         owner_snapshot=fixture.owner_snapshot,
@@ -272,7 +272,7 @@ async def _component_host_retains_invalid_bundle_for_cleanup_retry(
         disposer_fails_once=True,
     )
     journal = _journal(tmp_path)
-    host = _host(journal)
+    host = _host(journal, fixture)
     subject = host.activation_subject(
         fixture.resolved,
         owner_snapshot=fixture.owner_snapshot,
@@ -302,6 +302,178 @@ async def _component_host_retains_invalid_bundle_for_cleanup_retry(
     assert marker.read_text(encoding="utf-8").splitlines().count("dispose") == 1
     assert await prepared.abort_uncommitted() is True
     assert marker.read_text(encoding="utf-8").splitlines().count("dispose") == 2
+
+
+def test_component_host_rechecks_current_authority_before_factory_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(
+        _component_host_rechecks_current_authority_before_factory_execution(
+            tmp_path,
+            monkeypatch,
+        )
+    )
+
+
+async def _component_host_rechecks_current_authority_before_factory_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = tmp_path / "activation.log"
+    monkeypatch.setenv("LOUSHANG_COMPONENT_TEST_MARKER", str(marker))
+    fixture = _fixture(tmp_path, returned_facet="query")
+    current_owner = [fixture.owner_snapshot]
+    journal = _journal(tmp_path)
+    host = _host(
+        journal,
+        fixture,
+        owner_snapshot_reader=lambda _capability_id: current_owner[0],
+    )
+    subject = host.activation_subject(
+        fixture.resolved,
+        owner_snapshot=fixture.owner_snapshot,
+        trust_snapshot=fixture.trust_snapshot,
+    )
+    decision = _approve(journal, subject)
+    prepared = host.prepare_component(
+        fixture.resolved,
+        package=fixture.package,
+        owner_snapshot=fixture.owner_snapshot,
+        trust_snapshot=fixture.trust_snapshot,
+        decision_id=decision.decision_id,
+    )
+    current_owner[0] = _authority(
+        fixture.resolved.definition,
+        revocation_epoch=4,
+    ).snapshot()
+    runtime = RuntimeCapabilityGraphRuntime(
+        product_id="coding",
+        runtime_id="session:test",
+        profile_fingerprint="f" * 64,
+    )
+
+    with pytest.raises(CapabilityGraphBindingError):
+        await RuntimeCapabilityGraphBinder().bind(
+            runtime,
+            fixture.plan,
+            (prepared.binding,),
+        )
+
+    assert marker.exists() is False
+    assert await prepared.abort_uncommitted() is True
+    assert journal.snapshot().activation_uses[0].state == "CANCELLED_BEFORE_START"
+
+
+def test_component_host_bootstrap_recovers_possibly_started_activation(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(tmp_path, returned_facet="query")
+    journal = _journal(tmp_path)
+    first_host = _host(journal, fixture)
+    subject = first_host.activation_subject(
+        fixture.resolved,
+        owner_snapshot=fixture.owner_snapshot,
+        trust_snapshot=fixture.trust_snapshot,
+    )
+    decision = _approve(journal, subject)
+    first_host.prepare_component(
+        fixture.resolved,
+        package=fixture.package,
+        owner_snapshot=fixture.owner_snapshot,
+        trust_snapshot=fixture.trust_snapshot,
+        decision_id=decision.decision_id,
+    )
+    [reservation] = journal.snapshot().activation_uses
+    journal.transition_activation_use(
+        reservation.activation_use_id,
+        expected_state="CONSUMED_NOT_STARTED",
+        target_state="STARTING",
+        host_boot_id="3" * 32,
+        import_realm_id="4" * 32,
+        transitioned_at_unix_ms=150,
+        expected_journal_revision=2,
+    )
+
+    _host(
+        journal,
+        fixture,
+        host_boot_id="8" * 32,
+        import_realm_id="9" * 32,
+    )
+
+    assert journal.snapshot().activation_uses[0].state == "FAILED"
+
+
+def test_component_host_rechecks_decision_expiry_at_factory_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(
+        _component_host_rechecks_decision_expiry_at_factory_boundary(
+            tmp_path,
+            monkeypatch,
+        )
+    )
+
+
+async def _component_host_rechecks_decision_expiry_at_factory_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = tmp_path / "activation.log"
+    monkeypatch.setenv("LOUSHANG_COMPONENT_TEST_MARKER", str(marker))
+    fixture = _fixture(tmp_path, returned_facet="query")
+    now = [150]
+    identities = iter(("1" * 48, "2" * 48))
+    journal = PluginActivationDecisionJournal(
+        tmp_path / "activation.jsonl",
+        scope_id="workspace:test",
+        identity_factory=lambda: next(identities),
+        clock=lambda: now[0],
+    )
+    host = CapabilityComponentHost(
+        decision_journal=journal,
+        import_realm=PluginImportRealm(import_realm_id_factory=lambda: "4" * 32),
+        host_boot_id="3" * 32,
+        clock=lambda: now[0],
+        owner_snapshot_reader=lambda _capability_id: fixture.owner_snapshot,
+        trust_snapshot_reader=(
+            lambda _plugin_id, _source_identity: fixture.trust_snapshot
+        ),
+        product_policy_revision_reader=(
+            lambda _product_id, _scope_id: "coding-plugin-policy-1"
+        ),
+    )
+    subject = host.activation_subject(
+        fixture.resolved,
+        owner_snapshot=fixture.owner_snapshot,
+        trust_snapshot=fixture.trust_snapshot,
+    )
+    decision = _approve(journal, subject)
+    prepared = host.prepare_component(
+        fixture.resolved,
+        package=fixture.package,
+        owner_snapshot=fixture.owner_snapshot,
+        trust_snapshot=fixture.trust_snapshot,
+        decision_id=decision.decision_id,
+    )
+    now[0] = 301
+    runtime = RuntimeCapabilityGraphRuntime(
+        product_id="coding",
+        runtime_id="session:test",
+        profile_fingerprint="f" * 64,
+    )
+
+    with pytest.raises(CapabilityGraphBindingError):
+        await RuntimeCapabilityGraphBinder().bind(
+            runtime,
+            fixture.plan,
+            (prepared.binding,),
+        )
+
+    assert marker.exists() is False
+    assert await prepared.abort_uncommitted() is True
 
 
 @dataclass(frozen=True)
@@ -468,12 +640,31 @@ def _authority(
     )
 
 
-def _host(journal: PluginActivationDecisionJournal) -> CapabilityComponentHost:
+def _host(
+    journal: PluginActivationDecisionJournal,
+    fixture: _Fixture,
+    *,
+    owner_snapshot_reader=None,  # type: ignore[no-untyped-def]
+    host_boot_id: str = "3" * 32,
+    import_realm_id: str = "4" * 32,
+) -> CapabilityComponentHost:
     return CapabilityComponentHost(
         decision_journal=journal,
-        import_realm=PluginImportRealm(import_realm_id_factory=lambda: "4" * 32),
-        host_boot_id="3" * 32,
+        import_realm=PluginImportRealm(
+            import_realm_id_factory=lambda: import_realm_id
+        ),
+        host_boot_id=host_boot_id,
         clock=lambda: 150,
+        owner_snapshot_reader=(
+            owner_snapshot_reader
+            or (lambda _capability_id: fixture.owner_snapshot)
+        ),
+        trust_snapshot_reader=(
+            lambda _plugin_id, _source_identity: fixture.trust_snapshot
+        ),
+        product_policy_revision_reader=(
+            lambda _product_id, _scope_id: "coding-plugin-policy-1"
+        ),
     )
 
 

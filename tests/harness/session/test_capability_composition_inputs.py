@@ -4,14 +4,21 @@ import asyncio
 
 import pytest
 
+from loushang.harness.capabilities.consumer_requirements import (
+    ProductCompositionAuthorityContext,
+)
 from loushang.harness.capabilities.contribution_admission import (
     CatalogConsumerContributionSpec,
     OwnerContributionAuthority,
     OwnerContributionCandidateEnvelope,
     OwnerContributionPolicy,
 )
-from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
+from loushang.harness.resources.plugins.selection import (
+    PluginInstanceRevisionRef,
+    PluginSourceTrustSnapshotV1,
+)
 from loushang.harness.session.capability_composition_inputs import (
+    SessionCapabilityOwnerAuthorityGate,
     SessionCapabilityOwnerGenerationBinding,
     SessionCapabilityOwnerGenerationStagingError,
     dispose_session_capability_owner_generations,
@@ -27,6 +34,7 @@ async def _owner_staging_preserves_generation_when_rollback_must_be_retried() ->
     first = _admission(owner_id="product.tools", contribution_id="tools-a")
     second = _admission(owner_id="product.tools", contribution_id="tools-b")
     disposal_attempts = 0
+    authority_gate = _authority_gate(first, second)
 
     async def dispose_first(_value: object) -> None:
         nonlocal disposal_attempts
@@ -44,6 +52,7 @@ async def _owner_staging_preserves_generation_when_rollback_must_be_retried() ->
             plugin_id=first.plugin_id,
             contribution_id=first.contribution_id,
             admission_fingerprint=first.fingerprint,
+            authority_gate=authority_gate,
             stage=lambda _captures: object(),
             dispose=dispose_first,
         ),
@@ -53,6 +62,7 @@ async def _owner_staging_preserves_generation_when_rollback_must_be_retried() ->
             plugin_id=second.plugin_id,
             contribution_id=second.contribution_id,
             admission_fingerprint=second.fingerprint,
+            authority_gate=authority_gate,
             stage=fail_second,
             dispose=lambda _value: None,
         ),
@@ -72,6 +82,39 @@ async def _owner_staging_preserves_generation_when_rollback_must_be_retried() ->
     await dispose_session_capability_owner_generations(pending)
     assert pending[0].disposed is True
     assert disposal_attempts == 2
+
+
+def test_owner_staging_rechecks_expiry_before_live_generation() -> None:
+    asyncio.run(_owner_staging_rechecks_expiry_before_live_generation())
+
+
+async def _owner_staging_rechecks_expiry_before_live_generation() -> None:
+    admission = _admission(owner_id="product.tools", contribution_id="tools-a")
+    staged = False
+
+    def stage(_captures: tuple[object, ...]) -> object:
+        nonlocal staged
+        staged = True
+        return object()
+
+    binding = SessionCapabilityOwnerGenerationBinding(
+        owner_id=admission.owner_id,
+        contribution_kind=admission.contribution_kind,
+        plugin_id=admission.plugin_id,
+        contribution_id=admission.contribution_id,
+        admission_fingerprint=admission.fingerprint,
+        authority_gate=_authority_gate(admission, now=200),
+        stage=stage,
+        dispose=lambda _value: None,
+    )
+
+    with pytest.raises(ValueError, match="not current"):
+        await stage_session_capability_owner_generations(
+            admissions=(admission,),
+            bindings=(binding,),
+            captures=(),
+        )
+    assert staged is False
 
 
 def _admission(*, owner_id: str, contribution_id: str):  # type: ignore[no-untyped-def]
@@ -118,3 +161,56 @@ def _admission(*, owner_id: str, contribution_id: str):  # type: ignore[no-untyp
             consumer_refresh_boundary="sealed",
         )
     ).admit(candidate, issued_at=100, expires_at=200)
+
+
+def _authority_gate(*admissions, now: int = 150):  # type: ignore[no-untyped-def]
+    snapshots = {}
+    trust_snapshots = {}
+    for admission in admissions:
+        candidate = admission.candidate
+        authority = OwnerContributionAuthority(
+            OwnerContributionPolicy(
+                owner_id=admission.owner_id,
+                contribution_kind=admission.contribution_kind,
+                product_id=admission.product_id,
+                policy_revision=admission.owner_policy_revision,
+                revocation_epoch=admission.revocation_epoch,
+                allowed_source_trust_classes=(candidate.source_trust_class,),
+                allowed_collection_ids=(candidate.contribution.collection_id,),
+                allowed_requirement_bindings=("direct",),
+                consumer_scope=admission.consumer_scope,
+                consumer_refresh_boundary=admission.consumer_refresh_boundary,
+            )
+        )
+        snapshots[
+            (admission.owner_id, admission.contribution_kind, admission.product_id)
+        ] = authority.snapshot()
+        trust = PluginSourceTrustSnapshotV1(
+            plugin_id=admission.plugin_id,
+            package_source_identity=candidate.package_source_identity,
+            source_trust_class=candidate.source_trust_class,
+            source_trust_policy_revision=candidate.source_trust_policy_revision,
+            trusted=True,
+        )
+        trust_snapshots[(admission.plugin_id, candidate.package_source_identity)] = trust
+    context = ProductCompositionAuthorityContext(
+        product_id="coding",
+        scope_id="workspace:sample",
+        product_policy_revision="product-policy-1",
+        evaluated_at=150,
+        owner_snapshots=tuple(snapshots.values()),
+        trust_snapshots=tuple(trust_snapshots.values()),
+    )
+    return SessionCapabilityOwnerAuthorityGate(
+        authority_context=context,
+        owner_snapshot_reader=lambda owner, kind, product: snapshots[
+            (owner, kind, product)
+        ],
+        trust_snapshot_reader=lambda plugin, source: trust_snapshots[
+            (plugin, source)
+        ],
+        product_policy_revision_reader=(
+            lambda _product, _scope: "product-policy-1"
+        ),
+        clock=lambda: now,
+    )

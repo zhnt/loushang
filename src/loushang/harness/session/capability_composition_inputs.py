@@ -11,10 +11,12 @@ from typing import Literal, TypeAlias
 
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCapabilityConsumerRequirementEntry,
+    ProductCompositionAuthorityContext,
     ProductCompositionCompilation,
 )
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAdmissionRecord,
+    OwnerContributionSnapshot,
 )
 from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
 from loushang.harness.capabilities.provider_admission import (
@@ -85,6 +87,18 @@ class SessionCapabilityCompositionInputs:
         requirements = self.product_composition.consumer_requirements
         if requirements.product_id != self.resolved_providers.product_id:
             raise ValueError("Session composition Product facts do not match")
+        authority_context = self.product_composition.authority_context
+        if (
+            authority_context.product_id != self.resolved_providers.product_id
+            or authority_context.product_policy_revision
+            != self.resolved_providers.product_policy_revision
+        ):
+            raise ValueError("Session composition authority facts do not match")
+        if any(
+            item.admission.candidate.scope_id != authority_context.scope_id
+            for item in self.resolved_providers.entries
+        ):
+            raise ValueError("Session composition scope facts do not match")
         admissions = (
             *self.product_composition.resource_admissions,
             *self.product_composition.catalog_admissions,
@@ -176,6 +190,79 @@ OwnerGenerationDispose: TypeAlias = Callable[[object], None | Awaitable[None]]
 
 
 @dataclass(frozen=True, slots=True)
+class SessionCapabilityOwnerAuthorityGate:
+    """Host-owned last-moment authority gate for Tool/Command generation staging."""
+
+    authority_context: ProductCompositionAuthorityContext
+    owner_snapshot_reader: Callable[
+        [str, str, str], OwnerContributionSnapshot
+    ] = field(repr=False, compare=False)
+    trust_snapshot_reader: Callable[
+        [str, str], PluginSourceTrustSnapshotV1
+    ] = field(repr=False, compare=False)
+    product_policy_revision_reader: Callable[[str, str], str] = field(
+        repr=False,
+        compare=False,
+    )
+    clock: Callable[[], int] = field(repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.authority_context, ProductCompositionAuthorityContext):
+            raise TypeError("Owner authority gate requires a composition context")
+        if not all(
+            callable(item)
+            for item in (
+                self.owner_snapshot_reader,
+                self.trust_snapshot_reader,
+                self.product_policy_revision_reader,
+                self.clock,
+            )
+        ):
+            raise TypeError("Owner authority gate requires current authority readers")
+
+    def validate(self, admission: OwnerContributionAdmissionRecord) -> None:
+        context = self.authority_context
+        candidate = admission.candidate
+        if (
+            admission.product_id != context.product_id
+            or candidate.scope_id != context.scope_id
+        ):
+            raise ValueError("Owner admission belongs to another Product or scope")
+        now = self.clock()
+        if isinstance(now, bool) or not isinstance(now, int) or now < 0:
+            raise ValueError("Owner authority gate clock must be non-negative integer")
+        if not admission.issued_at <= now < admission.expires_at:
+            raise ValueError("Owner contribution admission is not current")
+        current_product_policy = self.product_policy_revision_reader(
+            context.product_id,
+            context.scope_id,
+        )
+        if current_product_policy != candidate.product_policy_revision:
+            raise ValueError("Owner contribution Product policy is stale")
+        owner = self.owner_snapshot_reader(
+            admission.owner_id,
+            admission.contribution_kind,
+            admission.product_id,
+        )
+        if (
+            owner.policy_revision != admission.owner_policy_revision
+            or owner.revocation_epoch != admission.revocation_epoch
+        ):
+            raise ValueError("Owner contribution authority is stale")
+        trust = self.trust_snapshot_reader(
+            admission.plugin_id,
+            candidate.package_source_identity,
+        )
+        if (
+            not trust.trusted
+            or trust.source_trust_class != candidate.source_trust_class
+            or trust.source_trust_policy_revision
+            != candidate.source_trust_policy_revision
+        ):
+            raise ValueError("Owner contribution source trust is stale")
+
+
+@dataclass(frozen=True, slots=True)
 class SessionCapabilityOwnerGenerationBinding:
     """Exact Tool/Command owner adapter; it receives only declared Consumers."""
 
@@ -184,6 +271,10 @@ class SessionCapabilityOwnerGenerationBinding:
     plugin_id: str
     contribution_id: str
     admission_fingerprint: str
+    authority_gate: SessionCapabilityOwnerAuthorityGate = field(
+        repr=False,
+        compare=False,
+    )
     stage: OwnerGenerationStage = field(repr=False, compare=False)
     dispose: OwnerGenerationDispose = field(repr=False, compare=False)
 
@@ -200,6 +291,8 @@ class SessionCapabilityOwnerGenerationBinding:
             length=64,
             name="Consumer admission fingerprint",
         )
+        if not isinstance(self.authority_gate, SessionCapabilityOwnerAuthorityGate):
+            raise TypeError("Owner generation binding requires an authority gate")
         if not callable(self.stage) or not callable(self.dispose):
             raise TypeError("Owner generation stage/dispose must be callable")
 
@@ -210,6 +303,10 @@ class SessionCapabilityOwnerGenerationBinding:
             and self.plugin_id == admission.plugin_id
             and self.contribution_id == admission.contribution_id
             and self.admission_fingerprint == admission.fingerprint
+            and self.authority_gate.authority_context.product_id
+            == admission.product_id
+            and self.authority_gate.authority_context.scope_id
+            == admission.candidate.scope_id
         )
 
 
@@ -277,6 +374,7 @@ async def stage_session_capability_owner_generations(
             owner_captures = tuple(
                 captures_by_admission.get(admission.fingerprint, ())
             )
+            binding.authority_gate.validate(admission)
             result = binding.stage(owner_captures)
             if inspect.isawaitable(result):
                 result = await result
@@ -389,6 +487,7 @@ __all__ = [
     "SessionCapabilityConsumerCapture",
     "SessionCapabilityOwnerGenerationBinding",
     "SessionCapabilityOwnerGenerationStagingError",
+    "SessionCapabilityOwnerAuthorityGate",
     "SessionCompositionChange",
     "StagedSessionCapabilityOwnerGeneration",
     "dispose_session_capability_owner_generations",

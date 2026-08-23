@@ -64,6 +64,9 @@ class CapabilityComponentHost:
         import_realm: PluginImportRealm,
         host_boot_id: str,
         clock: Callable[[], int],
+        owner_snapshot_reader: Callable[[str], CapabilityProviderOwnerSnapshot],
+        trust_snapshot_reader: Callable[[str, str], PluginSourceTrustSnapshotV1],
+        product_policy_revision_reader: Callable[[str, str], str],
     ) -> None:
         if not isinstance(decision_journal, PluginActivationDecisionJournal):
             raise TypeError("Component Host requires an activation decision journal")
@@ -72,10 +75,23 @@ class CapabilityComponentHost:
         _require_hex(host_boot_id, length=32, name="Host boot id")
         if not callable(clock):
             raise TypeError("Component Host requires a durable clock")
+        if not all(
+            callable(item)
+            for item in (
+                owner_snapshot_reader,
+                trust_snapshot_reader,
+                product_policy_revision_reader,
+            )
+        ):
+            raise TypeError("Component Host requires current authority readers")
         self._journal = decision_journal
         self._import_realm = import_realm
         self._host_boot_id = host_boot_id
         self._clock = clock
+        self._owner_snapshot_reader = owner_snapshot_reader
+        self._trust_snapshot_reader = trust_snapshot_reader
+        self._product_policy_revision_reader = product_policy_revision_reader
+        self._recover_incomplete_uses()
 
     def activation_subject(
         self,
@@ -84,7 +100,7 @@ class CapabilityComponentHost:
         owner_snapshot: CapabilityProviderOwnerSnapshot,
         trust_snapshot: PluginSourceTrustSnapshotV1,
     ) -> ContributionActivationApprovalSubject:
-        _validate_current_authorities(
+        self._validate_current_authorities(
             resolved,
             owner_snapshot=owner_snapshot,
             trust_snapshot=trust_snapshot,
@@ -146,6 +162,7 @@ class CapabilityComponentHost:
         try:
             self._import_realm.preflight(
                 host_boot_id=self._host_boot_id,
+                package_namespace=resolved.binding_spec.plugin_id,
                 dependency_lock=package.dependency_lock,
             )
         except Exception as exc:
@@ -162,6 +179,11 @@ class CapabilityComponentHost:
             import_realm=self._import_realm,
             host_boot_id=self._host_boot_id,
             clock=self._clock,
+            validate_current_authorities=lambda: self._validate_current_authorities(
+                resolved,
+                owner_snapshot=owner_snapshot,
+                trust_snapshot=trust_snapshot,
+            ),
         )
         binding = CapabilityBundleProviderBinding(
             provider=resolved.provider,
@@ -208,6 +230,65 @@ class CapabilityComponentHost:
             raise ValueError("Component Host clock must be non-negative integer")
         return value
 
+    def _validate_current_authorities(
+        self,
+        resolved: ResolvedCapabilityProvider,
+        *,
+        owner_snapshot: CapabilityProviderOwnerSnapshot,
+        trust_snapshot: PluginSourceTrustSnapshotV1,
+    ) -> None:
+        _validate_current_authorities(
+            resolved,
+            owner_snapshot=owner_snapshot,
+            trust_snapshot=trust_snapshot,
+        )
+        candidate = resolved.admission.candidate
+        current_owner = self._owner_snapshot_reader(resolved.capability_id)
+        current_trust = self._trust_snapshot_reader(
+            resolved.binding_spec.plugin_id,
+            candidate.package_source_identity,
+        )
+        current_product_policy_revision = self._product_policy_revision_reader(
+            candidate.product_id,
+            candidate.scope_id,
+        )
+        if current_owner != owner_snapshot:
+            _raise_host(
+                "capability_provider_owner_authority_stale",
+                "Current Capability owner authority changed after resolution.",
+            )
+        if current_trust != trust_snapshot:
+            _raise_host(
+                "capability_provider_source_trust_stale",
+                "Current Plugin source trust changed after resolution.",
+            )
+        if current_product_policy_revision != candidate.product_policy_revision:
+            _raise_host(
+                "capability_provider_product_policy_stale",
+                "Current Product policy changed after resolution.",
+            )
+
+    def _recover_incomplete_uses(self) -> None:
+        for _ in range(_MAX_JOURNAL_CAS_ATTEMPTS):
+            snapshot = self._journal.snapshot()
+            try:
+                self._journal.recover_activation_uses(
+                    current_host_boot_id=self._host_boot_id,
+                    recovered_at_unix_ms=self._now(),
+                    expected_journal_revision=snapshot.journal_revision,
+                )
+                return
+            except PluginActivationJournalError as exc:
+                if exc.code != "plugin_activation_journal_revision_conflict":
+                    raise CapabilityComponentHostError(
+                        "Component Host activation recovery failed.",
+                        code=exc.code,
+                    ) from exc
+        _raise_host(
+            "plugin_activation_journal_contention",
+            "Component activation recovery remained contended.",
+        )
+
 
 @dataclass(slots=True)
 class _PreparedComponentAttempt:
@@ -218,6 +299,7 @@ class _PreparedComponentAttempt:
     import_realm: PluginImportRealm
     host_boot_id: str
     clock: Callable[[], int]
+    validate_current_authorities: Callable[[], None] = field(repr=False)
     started: bool = False
     disposer: CapabilityProviderDisposer | None = None
     pending_disposal_value: CapabilityBundleValue | None = None
@@ -231,10 +313,29 @@ class _PreparedComponentAttempt:
                 "component_activation_use_consumed",
                 "Prepared component binding is single-use.",
             )
+        self.validate_current_authorities()
+        now = self.clock()
+        admission = self.resolved.admission
+        if now < admission.issued_at or now >= admission.expires_at:
+            _raise_host(
+                "capability_provider_admission_not_current",
+                "Selected Capability Provider admission expired before start.",
+            )
+        try:
+            self.journal.validate_activation_use_current(
+                self.reservation,
+                expected_state="CONSUMED_NOT_STARTED",
+            )
+        except PluginActivationJournalError as exc:
+            raise CapabilityComponentHostError(
+                "Component activation authority expired before execution.",
+                code=exc.code,
+            ) from exc
         self.started = True
         lease = self.import_realm.reserve(
             host_boot_id=self.host_boot_id,
             execution_use_id=self.reservation.activation_use_id,
+            package_namespace=self.resolved.binding_spec.plugin_id,
             dependency_lock=self.package.dependency_lock,
         )
         try:

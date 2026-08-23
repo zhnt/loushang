@@ -35,6 +35,7 @@ from loushang.harness.capabilities import (
 )
 from loushang.harness.capabilities.component_host import CapabilityComponentHost
 from loushang.harness.capabilities.consumer_requirements import (
+    ProductCompositionAuthorityContext,
     ProductCompositionCompiler,
 )
 from loushang.harness.capabilities.contribution_admission import (
@@ -124,6 +125,7 @@ from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityComponentRequest,
     SessionCapabilityCompositionInputs,
     SessionCapabilityConsumerCapture,
+    SessionCapabilityOwnerAuthorityGate,
     SessionCapabilityOwnerGenerationBinding,
 )
 from loushang.harness.transcript import (
@@ -1168,7 +1170,7 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 selection,
                 candidates["tool_pack"],
             )
-            owner_admission = OwnerContributionAuthority(
+            owner_authority = OwnerContributionAuthority(
                 OwnerContributionPolicy(
                     owner_id="coding.tools",
                     contribution_kind="tool_pack",
@@ -1181,16 +1183,28 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                     consumer_scope="session",
                     consumer_refresh_boundary="sealed",
                 )
-            ).admit(owner_candidate, issued_at=120, expires_at=350)
+            )
+            owner_admission = owner_authority.admit(
+                owner_candidate,
+                issued_at=120,
+                expires_at=350,
+            )
+            [trust_snapshot] = selection.plan.source_trust_snapshots
             compilation = ProductCompositionCompiler().compile(
-                product_id="coding",
+                authority_context=ProductCompositionAuthorityContext(
+                    product_id="coding",
+                    scope_id="workspace:test",
+                    product_policy_revision="coding-plugin-policy-1",
+                    evaluated_at=150,
+                    owner_snapshots=(owner_authority.snapshot(),),
+                    trust_snapshots=(trust_snapshot,),
+                ),
                 mandatory_roots=(
                     MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
                 ),
                 admissions=(owner_admission,),
                 definitions=(MODEL_INPUT_CAPABILITY_DEFINITION, definition),
                 optional_choices=(),
-                evaluated_at=150,
             )
             resolved = ProductCapabilityProviderResolver().resolve(
                 ProductCapabilityProviderSelectionPlanV1(
@@ -1226,8 +1240,16 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 ),
                 host_boot_id="3" * 32,
                 clock=lambda: 150,
+                owner_snapshot_reader=(
+                    lambda _capability_id: provider_authority.snapshot()
+                ),
+                trust_snapshot_reader=(
+                    lambda _plugin_id, _source_identity: trust_snapshot
+                ),
+                product_policy_revision_reader=(
+                    lambda _product_id, _scope_id: "coding-plugin-policy-1"
+                ),
             )
-            [trust_snapshot] = selection.plan.source_trust_snapshots
             [resolved_provider] = resolved.entries
             subject = component_host.activation_subject(
                 resolved_provider,
@@ -1280,6 +1302,19 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 plugin_id=owner_admission.plugin_id,
                 contribution_id=owner_admission.contribution_id,
                 admission_fingerprint=owner_admission.fingerprint,
+                authority_gate=SessionCapabilityOwnerAuthorityGate(
+                    authority_context=compilation.authority_context,
+                    owner_snapshot_reader=(
+                        lambda _owner, _kind, _product: owner_authority.snapshot()
+                    ),
+                    trust_snapshot_reader=(
+                        lambda _plugin, _source: trust_snapshot
+                    ),
+                    product_policy_revision_reader=(
+                        lambda _product, _scope: "coding-plugin-policy-1"
+                    ),
+                    clock=lambda: 150,
+                ),
                 stage=stage_tools,
                 dispose=dispose_tools,
             )

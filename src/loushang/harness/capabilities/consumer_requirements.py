@@ -16,8 +16,10 @@ from loushang.harness.capabilities.contracts import (
 )
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAdmissionRecord,
+    OwnerContributionSnapshot,
 )
 from loushang.harness.capabilities.providers import CapabilityBundleProvider
+from loushang.harness.resources.plugins.selection import PluginSourceTrustSnapshotV1
 
 PRODUCT_CAPABILITY_CONSUMER_REQUIREMENT_SET_VERSION = 1
 
@@ -55,6 +57,40 @@ class ProductCapabilityOptionalRequirementChoice:
             "requirementFingerprint": self.requirement_fingerprint,
             "satisfied": self.satisfied,
         }
+
+
+@dataclass(frozen=True, slots=True)
+class ProductCompositionAuthorityContext:
+    """Mandatory current Product/scope/owner/trust facts for one compilation."""
+
+    product_id: str
+    scope_id: str
+    product_policy_revision: str
+    evaluated_at: int
+    owner_snapshots: tuple[OwnerContributionSnapshot, ...]
+    trust_snapshots: tuple[PluginSourceTrustSnapshotV1, ...]
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.product_id, name="Product id")
+        _require_nonempty(self.scope_id, name="scope id")
+        _require_nonempty(
+            self.product_policy_revision,
+            name="Product policy revision",
+        )
+        _require_nonnegative_integer(
+            self.evaluated_at,
+            name="composition evaluation time",
+        )
+        if any(
+            not isinstance(item, OwnerContributionSnapshot)
+            for item in self.owner_snapshots
+        ):
+            raise TypeError("Composition owner snapshots have invalid type")
+        if any(
+            not isinstance(item, PluginSourceTrustSnapshotV1)
+            for item in self.trust_snapshots
+        ):
+            raise TypeError("Composition trust snapshots have invalid type")
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,6 +272,7 @@ class ProductCapabilityConsumerRequirementSet:
 
 @dataclass(frozen=True, slots=True)
 class ProductCompositionCompilation:
+    authority_context: ProductCompositionAuthorityContext
     resource_admissions: tuple[OwnerContributionAdmissionRecord, ...]
     catalog_admissions: tuple[OwnerContributionAdmissionRecord, ...]
     consumer_requirements: ProductCapabilityConsumerRequirementSet
@@ -247,17 +284,15 @@ class ProductCompositionCompiler:
     def preview_optional_choices(
         self,
         *,
-        product_id: str,
+        authority_context: ProductCompositionAuthorityContext,
         mandatory_roots: tuple[str, ...],
         admissions: tuple[OwnerContributionAdmissionRecord, ...],
         definitions: tuple[CapabilityDefinition, ...],
-        evaluated_at: int | None = None,
     ) -> ProductCapabilityConsumerRequirementPreview:
         entries, _resources, _catalog = self._prepare(
-            product_id=product_id,
+            authority_context=authority_context,
             admissions=admissions,
             definitions=definitions,
-            evaluated_at=evaluated_at,
         )
         _sorted_unique_names(mandatory_roots, name="mandatory Capability root")
         return ProductCapabilityConsumerRequirementPreview(
@@ -269,12 +304,11 @@ class ProductCompositionCompiler:
     def compile(
         self,
         *,
-        product_id: str,
+        authority_context: ProductCompositionAuthorityContext,
         mandatory_roots: tuple[str, ...],
         admissions: tuple[OwnerContributionAdmissionRecord, ...],
         definitions: tuple[CapabilityDefinition, ...],
         optional_choices: tuple[ProductCapabilityOptionalRequirementChoice, ...],
-        evaluated_at: int | None = None,
     ) -> ProductCompositionCompilation:
         mandatory = _sorted_unique_names(
             mandatory_roots,
@@ -283,10 +317,9 @@ class ProductCompositionCompiler:
         if not mandatory:
             raise ValueError("Product composition requires mandatory roots")
         entries, resources, catalog = self._prepare(
-            product_id=product_id,
+            authority_context=authority_context,
             admissions=admissions,
             definitions=definitions,
-            evaluated_at=evaluated_at,
         )
         optional_entries = {
             item.fingerprint: item
@@ -328,7 +361,7 @@ class ProductCompositionCompiler:
                 roots.add(entry.requirement.capability)
         requirement_set = _compiler_construct(
             ProductCapabilityConsumerRequirementSet,
-            product_id=product_id,
+            product_id=authority_context.product_id,
             mandatory_roots=mandatory,
             roots=tuple(sorted(roots)),
             entries=entries,
@@ -338,6 +371,7 @@ class ProductCompositionCompiler:
             set_version=PRODUCT_CAPABILITY_CONSUMER_REQUIREMENT_SET_VERSION,
         )
         return ProductCompositionCompilation(
+            authority_context=authority_context,
             resource_admissions=resources,
             catalog_admissions=catalog,
             consumer_requirements=requirement_set,
@@ -346,21 +380,22 @@ class ProductCompositionCompiler:
     @staticmethod
     def _prepare(
         *,
-        product_id: str,
+        authority_context: ProductCompositionAuthorityContext,
         admissions: tuple[OwnerContributionAdmissionRecord, ...],
         definitions: tuple[CapabilityDefinition, ...],
-        evaluated_at: int | None,
     ) -> tuple[
         tuple[ProductCapabilityConsumerRequirementEntry, ...],
         tuple[OwnerContributionAdmissionRecord, ...],
         tuple[OwnerContributionAdmissionRecord, ...],
     ]:
-        _require_nonempty(product_id, name="Product id")
+        if not isinstance(authority_context, ProductCompositionAuthorityContext):
+            raise TypeError("Product composition requires an authority context")
+        product_id = authority_context.product_id
         values = tuple(admissions)
         if any(not isinstance(item, OwnerContributionAdmissionRecord) for item in values):
             raise TypeError("Product composition admissions have invalid type")
-        if evaluated_at is not None:
-            _require_nonnegative_integer(evaluated_at, name="composition evaluation time")
+        owner_snapshots = _index_owner_snapshots(authority_context.owner_snapshots)
+        trust_snapshots = _index_trust_snapshots(authority_context.trust_snapshots)
         definitions_by_id = _index_definitions(definitions)
         identity_owners: dict[
             tuple[str, str, str], list[OwnerContributionAdmissionRecord]
@@ -375,12 +410,64 @@ class ProductCompositionCompiler:
                     "Owner contribution admission belongs to another Product.",
                     admission_fingerprints=(admission.fingerprint,),
                 )
-            if evaluated_at is not None and not (
-                admission.issued_at <= evaluated_at < admission.expires_at
+            candidate = admission.candidate
+            if candidate.scope_id != authority_context.scope_id:
+                _raise_composition(
+                    "contribution_admission_scope_mismatch",
+                    "Owner contribution admission belongs to another scope.",
+                    admission_fingerprints=(admission.fingerprint,),
+                )
+            if (
+                candidate.product_policy_revision
+                != authority_context.product_policy_revision
+            ):
+                _raise_composition(
+                    "contribution_admission_product_policy_stale",
+                    "Owner contribution admission has stale Product policy.",
+                    admission_fingerprints=(admission.fingerprint,),
+                )
+            if not (
+                admission.issued_at
+                <= authority_context.evaluated_at
+                < admission.expires_at
             ):
                 _raise_composition(
                     "contribution_admission_not_current",
                     "Owner contribution admission is not current.",
+                    admission_fingerprints=(admission.fingerprint,),
+                )
+            owner_snapshot = owner_snapshots.get(
+                (
+                    admission.owner_id,
+                    admission.contribution_kind,
+                    admission.product_id,
+                )
+            )
+            if (
+                owner_snapshot is None
+                or owner_snapshot.policy_revision
+                != admission.owner_policy_revision
+                or owner_snapshot.revocation_epoch != admission.revocation_epoch
+            ):
+                _raise_composition(
+                    "contribution_admission_owner_authority_stale",
+                    "Owner contribution admission has stale owner authority.",
+                    admission_fingerprints=(admission.fingerprint,),
+                )
+            trust_snapshot = trust_snapshots.get(
+                (candidate.plugin_id, candidate.package_source_identity)
+            )
+            if (
+                trust_snapshot is None
+                or not trust_snapshot.trusted
+                or trust_snapshot.source_trust_class
+                != candidate.source_trust_class
+                or trust_snapshot.source_trust_policy_revision
+                != candidate.source_trust_policy_revision
+            ):
+                _raise_composition(
+                    "contribution_admission_source_trust_stale",
+                    "Owner contribution admission has stale source trust.",
                     admission_fingerprints=(admission.fingerprint,),
                 )
             for identity in admission.admitted_identities:
@@ -500,6 +587,34 @@ def _index_definitions(
     return indexed
 
 
+def _index_owner_snapshots(
+    snapshots: tuple[OwnerContributionSnapshot, ...],
+) -> dict[tuple[str, str, str], OwnerContributionSnapshot]:
+    indexed: dict[tuple[str, str, str], OwnerContributionSnapshot] = {}
+    for snapshot in snapshots:
+        key = (
+            snapshot.owner_id,
+            snapshot.contribution_kind,
+            snapshot.product_id,
+        )
+        if key in indexed:
+            raise ValueError("Composition owner snapshots must be unique")
+        indexed[key] = snapshot
+    return indexed
+
+
+def _index_trust_snapshots(
+    snapshots: tuple[PluginSourceTrustSnapshotV1, ...],
+) -> dict[tuple[str, str], PluginSourceTrustSnapshotV1]:
+    indexed: dict[tuple[str, str], PluginSourceTrustSnapshotV1] = {}
+    for snapshot in snapshots:
+        key = (snapshot.plugin_id, snapshot.package_source_identity)
+        if key in indexed:
+            raise ValueError("Composition trust snapshots must be unique")
+        indexed[key] = snapshot
+    return indexed
+
+
 def _entry_sort_key(
     entry: ProductCapabilityConsumerRequirementEntry,
 ) -> tuple[object, ...]:
@@ -615,6 +730,7 @@ __all__ = [
     "ProductCapabilityConsumerRequirementSet",
     "ProductCapabilityOptionalRequirementChoice",
     "ProductCompositionCompilation",
+    "ProductCompositionAuthorityContext",
     "ProductCompositionCompiler",
     "ProductCompositionError",
 ]

@@ -50,6 +50,7 @@ PluginActivationUseState = Literal[
 ]
 PluginActivationJournalEventKind = Literal[
     "decision_issued",
+    "decision_revoked",
     "activation_consumed",
     "activation_use_transitioned",
     "activation_uses_recovered",
@@ -597,6 +598,8 @@ class _PluginActivationJournalEventV1:
     reservation: ActivationUseReservationV1 | None = None
     expected_state: PluginActivationUseState | None = None
     reservations: tuple[ActivationUseReservationV1, ...] = ()
+    actor_id: str | None = None
+    source: str | None = None
     occurred_at_unix_ms: int = 0
     event_version: int = PLUGIN_ACTIVATION_JOURNAL_EVENT_VERSION
 
@@ -614,13 +617,42 @@ class _PluginActivationJournalEventV1:
             expected=PLUGIN_ACTIVATION_JOURNAL_EVENT_VERSION,
         )
         if self.event_kind == "decision_issued":
-            valid = self.decision is not None and self.reservation is None
+            valid = (
+                self.decision is not None
+                and self.reservation is None
+                and self.actor_id is None
+                and self.source is None
+            )
+        elif self.event_kind == "decision_revoked":
+            valid = (
+                self.decision is not None
+                and self.reservation is None
+                and self.actor_id is not None
+                and self.source is not None
+            )
+            if valid:
+                _require_nonempty(self.actor_id, name="revocation actor id")
+                _require_nonempty(self.source, name="revocation source")
         elif self.event_kind == "activation_consumed":
-            valid = self.decision is not None and self.reservation is not None
+            valid = (
+                self.decision is not None
+                and self.reservation is not None
+                and self.actor_id is None
+                and self.source is None
+            )
         elif self.event_kind == "activation_use_transitioned":
-            valid = self.reservation is not None and self.expected_state is not None
+            valid = (
+                self.reservation is not None
+                and self.expected_state is not None
+                and self.actor_id is None
+                and self.source is None
+            )
         elif self.event_kind == "activation_uses_recovered":
-            valid = bool(self.reservations)
+            valid = (
+                bool(self.reservations)
+                and self.actor_id is None
+                and self.source is None
+            )
         else:
             raise ValueError("Unsupported Plugin activation event kind")
         if not valid:
@@ -631,6 +663,14 @@ class _PluginActivationJournalEventV1:
         if self.event_kind == "decision_issued":
             assert self.decision is not None
             payload = {"decision": self.decision.to_dict()}
+        elif self.event_kind == "decision_revoked":
+            assert self.decision is not None
+            assert self.actor_id is not None and self.source is not None
+            payload = {
+                "actorId": self.actor_id,
+                "decision": self.decision.to_dict(),
+                "source": self.source,
+            }
         elif self.event_kind == "activation_consumed":
             assert self.decision is not None and self.reservation is not None
             payload = {
@@ -682,11 +722,24 @@ class _PluginActivationJournalEventV1:
             reservation: ActivationUseReservationV1 | None = None
             expected_state: PluginActivationUseState | None = None
             reservations: tuple[ActivationUseReservationV1, ...] = ()
+            actor_id: str | None = None
+            source: str | None = None
             if kind == "decision_issued":
                 _wire_exact_fields(payload, keys={"decision"}, name="issue payload")
                 decision = PluginActivationDecisionRecordV1.from_dict(
                     payload["decision"]
                 )
+            elif kind == "decision_revoked":
+                _wire_exact_fields(
+                    payload,
+                    keys={"actorId", "decision", "source"},
+                    name="revocation payload",
+                )
+                decision = PluginActivationDecisionRecordV1.from_dict(
+                    payload["decision"]
+                )
+                actor_id = _wire_string(payload["actorId"], name="actor id")
+                source = _wire_string(payload["source"], name="revocation source")
             elif kind == "activation_consumed":
                 _wire_exact_fields(
                     payload,
@@ -739,6 +792,8 @@ class _PluginActivationJournalEventV1:
                 reservation=reservation,
                 expected_state=expected_state,
                 reservations=reservations,
+                actor_id=actor_id,
+                source=source,
                 occurred_at_unix_ms=_wire_integer(
                     document["occurredAtUnixMs"], name="event time"
                 ),
@@ -954,6 +1009,91 @@ class PluginActivationDecisionJournal:
             )
             return reservation
 
+    def revoke_activation_decision(
+        self,
+        decision_id: str,
+        *,
+        actor_id: str,
+        source: str,
+        revoked_at_unix_ms: int,
+        expected_journal_revision: int,
+    ) -> PluginActivationDecisionRecordV1:
+        _require_hex(decision_id, length=48, name="activation decision id")
+        _require_nonempty(actor_id, name="revocation actor id")
+        _require_nonempty(source, name="revocation source")
+        _require_expected_revision(expected_journal_revision)
+        with self._lock():
+            replayed = self._load_and_replay_unlocked()
+            self._require_journal_revision(replayed, expected_journal_revision)
+            decision = replayed.decisions.get(decision_id)
+            if decision is None:
+                raise self._error(
+                    "Plugin activation decision does not exist",
+                    code="plugin_activation_decision_missing",
+                )
+            if decision.consumption_state != "AVAILABLE":
+                raise self._error(
+                    "Plugin activation decision is not available for revocation",
+                    code="plugin_activation_decision_not_available",
+                )
+            now = self._now()
+            if (
+                revoked_at_unix_ms < decision.issued_at_unix_ms
+                or revoked_at_unix_ms > now
+            ):
+                raise self._error(
+                    "Plugin activation revocation time is outside the durable clock",
+                    code="invalid_plugin_activation_revocation",
+                )
+            revoked = replace(
+                decision,
+                consumption_state="REVOKED",
+                decision_revision=decision.decision_revision + 1,
+            )
+            self._append_unlocked(
+                replayed,
+                event_kind="decision_revoked",
+                decision=revoked,
+                actor_id=actor_id,
+                source=source,
+                occurred_at=revoked_at_unix_ms,
+            )
+            return revoked
+
+    def validate_activation_use_current(
+        self,
+        reservation: ActivationUseReservationV1,
+        *,
+        expected_state: PluginActivationUseState,
+    ) -> None:
+        if not isinstance(reservation, ActivationUseReservationV1):
+            raise TypeError("Activation use validation requires an exact reservation")
+        with self._lock():
+            replayed = self._load_and_replay_unlocked()
+            current = replayed.activation_uses.get(reservation.activation_use_id)
+            decision = replayed.decisions.get(reservation.decision_id)
+            if current != reservation or current.state != expected_state:
+                raise self._error(
+                    "Plugin activation use is no longer current",
+                    code="plugin_activation_use_state_conflict",
+                )
+            if (
+                decision is None
+                or decision.consumption_state != "CONSUMED"
+                or decision.consumed_activation_use_id
+                != reservation.activation_use_id
+            ):
+                raise self._error(
+                    "Plugin activation use has no exact consumed decision",
+                    code="plugin_activation_use_authority_mismatch",
+                )
+            now = self._now()
+            if now < decision.issued_at_unix_ms or now >= decision.expires_at_unix_ms:
+                raise self._error(
+                    "Plugin activation decision expired before execution start",
+                    code="plugin_activation_decision_expired",
+                )
+
     def transition_activation_use(
         self,
         activation_use_id: str,
@@ -1111,6 +1251,8 @@ class PluginActivationDecisionJournal:
         reservation: ActivationUseReservationV1 | None = None,
         expected_state: PluginActivationUseState | None = None,
         reservations: tuple[ActivationUseReservationV1, ...] = (),
+        actor_id: str | None = None,
+        source: str | None = None,
     ) -> None:
         event = _PluginActivationJournalEventV1(
             journal_revision=len(replayed.events) + 1,
@@ -1120,6 +1262,8 @@ class PluginActivationDecisionJournal:
             reservation=reservation,
             expected_state=expected_state,
             reservations=reservations,
+            actor_id=actor_id,
+            source=source,
             occurred_at_unix_ms=occurred_at,
         )
         append_jsonl_record(
@@ -1194,16 +1338,63 @@ def _replay(
             replayed.subject_decisions.setdefault(decision.subject_digest, []).append(
                 decision.decision_id
             )
-        elif event.event_kind == "activation_consumed":
-            assert event.decision is not None and event.reservation is not None
+        elif event.event_kind == "decision_revoked":
+            assert event.decision is not None
             previous_decision = replayed.decisions.get(event.decision.decision_id)
+            expected_decision = (
+                None
+                if previous_decision is None
+                else replace(
+                    previous_decision,
+                    consumption_state="REVOKED",
+                    decision_revision=previous_decision.decision_revision + 1,
+                )
+            )
             if (
                 previous_decision is None
                 or previous_decision.consumption_state != "AVAILABLE"
-                or event.decision.decision_revision
-                != previous_decision.decision_revision + 1
-                or event.decision.consumed_activation_use_id
-                != event.reservation.activation_use_id
+                or event.decision != expected_decision
+            ):
+                raise _corrupt(path, "Activation revocation event is invalid")
+            replayed.decisions[event.decision.decision_id] = event.decision
+        elif event.event_kind == "activation_consumed":
+            assert event.decision is not None and event.reservation is not None
+            previous_decision = replayed.decisions.get(event.decision.decision_id)
+            subject = event.decision.subject
+            expected_decision = (
+                None
+                if previous_decision is None
+                else replace(
+                    previous_decision,
+                    consumption_state="CONSUMED",
+                    consumed_activation_use_id=(
+                        event.reservation.activation_use_id
+                    ),
+                    decision_revision=previous_decision.decision_revision + 1,
+                )
+            )
+            expected_reservation = ActivationUseReservationV1(
+                decision_id=event.decision.decision_id,
+                activation_use_id=event.reservation.activation_use_id,
+                subject_digest=subject.digest,
+                candidate_fingerprint=subject.candidate_fingerprint,
+                plugin_id=subject.plugin_id,
+                contribution_id=subject.contribution_id,
+                instance_revision_ref=subject.instance_revision_ref,
+                host_boot_id=event.reservation.host_boot_id,
+                import_realm_id=event.reservation.import_realm_id,
+                owner_policy_revision=subject.owner_policy_revision,
+                source_trust_policy_revision=(
+                    subject.source_trust_policy_revision
+                ),
+                revocation_epoch=subject.revocation_epoch,
+                state="CONSUMED_NOT_STARTED",
+            )
+            if (
+                previous_decision is None
+                or previous_decision.consumption_state != "AVAILABLE"
+                or event.decision != expected_decision
+                or event.reservation != expected_reservation
                 or event.reservation.activation_use_id in replayed.activation_uses
             ):
                 raise _corrupt(path, "Activation consumption event is invalid")
@@ -1216,11 +1407,17 @@ def _replay(
             previous_reservation = replayed.activation_uses.get(
                 event.reservation.activation_use_id
             )
+            expected_transition = (
+                None
+                if previous_reservation is None
+                else replace(previous_reservation, state=event.reservation.state)
+            )
             if (
                 previous_reservation is None
                 or previous_reservation.state != event.expected_state
                 or (previous_reservation.state, event.reservation.state)
                 not in _USE_TRANSITIONS
+                or event.reservation != expected_transition
             ):
                 raise _corrupt(path, "Activation transition event is invalid")
             replayed.activation_uses[event.reservation.activation_use_id] = (
@@ -1240,6 +1437,9 @@ def _replay(
                         previous_reservation.state in {"STARTING", "STARTED"}
                         and reservation.state == "FAILED"
                     )
+                ) and reservation == replace(
+                    previous_reservation,
+                    state=reservation.state,
                 )
                 if not valid:
                     raise _corrupt(path, "Activation recovery event is invalid")
