@@ -69,7 +69,7 @@ class ForkPromptSurface:
                 for candidate in reversed(self._candidates)
             ],
             max_visible=20,
-            empty_text=self._styled("No prompts to fork yet", "fork.state"),
+            empty_text=self._styled("No prompts to branch from yet", "fork.state"),
             wrap_navigation=False,
             enable_search=True,
             search_prompt="Search: ",
@@ -97,10 +97,10 @@ class ForkPromptSurface:
             return ""
         if self._preview_visible:
             return (
-                "Enter fork and edit · Space/Esc back · "
+                "Enter branch and edit · Space/Esc back · "
                 "↑/↓ scroll · PgUp/PgDn page"
             )
-        return "Enter fork and edit · Space preview · Esc cancel · ↑/↓ browse"
+        return "Enter branch and edit · Space preview · Esc cancel · ↑/↓ browse"
 
     def begin_activation(self) -> bool:
         if self._activating or self.selected_entry_id is None:
@@ -239,7 +239,7 @@ class ForkPromptSurface:
 
     def _state_lines(self, *, width: int) -> list[RenderLine]:
         if self._activating:
-            return [RenderLine(""), RenderLine("Forking selected prompt…")]
+            return [RenderLine(""), RenderLine("Branching from selected prompt…")]
         if self._error is not None:
             return [
                 RenderLine(""),
@@ -272,7 +272,7 @@ def build_fork_prompt_surface_view(
         theme=resolved_theme,
     )
     return ScreenSurfaceView(
-        title="Fork from a previous prompt",
+        title="Branch from a previous prompt",
         subtitle="Choose a prompt to edit in a new session",
         purpose="fork",
         content=content,

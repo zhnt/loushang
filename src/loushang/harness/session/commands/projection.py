@@ -69,6 +69,7 @@ def project_standard_session_command_result(
             StandardSessionCommandId.RESUME
             | StandardSessionCommandId.FORK
             | StandardSessionCommandId.CLONE
+            | StandardSessionCommandId.BRANCH
             | StandardSessionCommandId.TREE
         ):
             return _ok_command_result(command, result=_to_plain_data(result.value))
@@ -191,10 +192,12 @@ def _standard_argument_error(result: StandardSessionCommandResult) -> str:
             return "Usage: /new"
         case StandardSessionCommandId.DELETE, "unexpected_arguments":
             return "Usage: /delete"
-        case StandardSessionCommandId.FORK, "missing_record_id":
-            return "Usage: /fork <entry-id> [before|at]"
+        case StandardSessionCommandId.BRANCH, "missing_record_id":
+            return "Usage: /branch <entry-id> [before|at]"
         case StandardSessionCommandId.FORK, "invalid_fork_position":
             return f"Unsupported fork position: {result.value}"
+        case StandardSessionCommandId.BRANCH, "invalid_fork_position":
+            return f"Unsupported branch position: {result.value}"
         case StandardSessionCommandId.IMPORT, "missing_import_path":
             return "Usage: /import <jsonl-path> [cwd]"
         case StandardSessionCommandId.TREE, "missing_record_id":

@@ -75,7 +75,7 @@ catalog adapter and Product-specific command overlays.
 | Current command capability | Wave 3 owner | Product injection or retained owner |
 | --- | --- | --- |
 | Session snapshot, manual compaction, resource reload | Standard Harness command mechanism | Product supplies snapshot, compaction, and reload ports plus display wording. |
-| New, resume, fork, clone, and tree navigation | Standard Harness session-operation adapter | Product supplies lifecycle/navigation ports, accepted arguments, fork interpretation, and result projection. |
+| New, resume, fork, clone, branch, and tree navigation | Standard Harness session-operation adapter | Product supplies lifecycle/navigation ports, accepted arguments, fork interpretation, and result projection. |
 | Tool selection and extension inventory | Harness command mechanics only if backed by existing neutral tool/extension ports | Product supplies descriptors, admission policy, display entries, and wording. Do not move Coding renderers. |
 | Session name mutation | Standard Harness command mechanism | Product binds session metadata mutation and projects the completed value. |
 | Transcript export and import | Standard Harness command mechanism | Product binds HTML/JSONL export and import ports, selects files/storage policy, and projects results. |
@@ -86,7 +86,7 @@ catalog adapter and Product-specific command overlays.
 The initial shared subset is intentionally conservative:
 
 ```text
-session, name, export, import, compact, reload, new, resume, fork, clone, tree
+session, name, export, import, compact, reload, new, resume, fork, clone, branch, tree
 ```
 
 `tools` and `extensions` may join only when their existing neutral result
@@ -101,7 +101,7 @@ is fixed.
 
 ```text
 SessionCommandId
-  = session | name | export | import | compact | reload | new | resume | fork | clone | tree
+  = session | name | export | import | compact | reload | new | resume | fork | clone | branch | tree
 
 StandardSessionCommandResult
   command_id: SessionCommandId
@@ -143,7 +143,8 @@ Argument handling is a shared mechanical contract:
 | `compact` | optional `instructions` | preserve an empty request as absent |
 | `new` | optional `cwd` | first positional value is the CWD |
 | `resume` | required `reference` | requires a first positional value |
-| `fork` | required `record_id`, optional `position` | `position` is `before` or `at` |
+| `fork` | optional `record_id` and `position` | no arguments clones the current position; an explicit `position` is `before` or `at` |
+| `branch` | required `record_id`, optional `position` | `position` is `before` or `at`; the TUI's empty form opens the historical prompt picker |
 | `tree` | required `record_id`, optional summary/label/instruction options | preserves current recognized-option parsing |
 
 The parsed values are still subject to Product acceptance. For example, the
@@ -179,7 +180,7 @@ A Product binds the pack through a small adapter:
 ```text
 CODING_SESSION_COMMAND_PROFILE
   = STANDARD_SESSION_COMMAND_PROFILE
-      .select({session, name, export, import, compact, reload, new, resume, fork, clone, tree})
+      .select({session, name, export, import, compact, reload, new, resume, fork, clone, branch, tree})
 
 SessionCommandRuntime(
   sources=(
@@ -278,7 +279,7 @@ Focused tests must cover:
   import;
 - failed, cancelled, and concurrent lifecycle operations preserve the existing
   session operation ownership and do not double-commit a transcript record;
-- `fork` and `tree` preserve `before`/`at`, summarize, and label semantics
+- explicit `fork`, `branch`, and `tree` preserve `before`/`at`, summarize, and label semantics
   without Harness inventing a record-selection policy;
 - Coding's current command catalog, extension command precedence, and RPC/TUI
   result fixtures remain equivalent after its adapter projects the shared

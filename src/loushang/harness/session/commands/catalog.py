@@ -24,6 +24,7 @@ class StandardSessionCommandId(str, Enum):
     DELETE = "delete"
     FORK = "fork"
     CLONE = "clone"
+    BRANCH = "branch"
     TREE = "tree"
     TOOLS = "tools"
     EXTENSIONS = "extensions"
@@ -72,11 +73,15 @@ STANDARD_SESSION_COMMANDS: tuple[StandardSessionCommandDefinition, ...] = (
     ),
     StandardSessionCommandDefinition(
         StandardSessionCommandId.FORK,
-        "Create a new fork from a previous user message",
+        "Fork the current session into a new session",
     ),
     StandardSessionCommandDefinition(
         StandardSessionCommandId.CLONE,
-        "Duplicate the current session at the current position",
+        "Alias for /fork (duplicate the current session)",
+    ),
+    StandardSessionCommandDefinition(
+        StandardSessionCommandId.BRANCH,
+        "Create a new branch from a previous user message",
     ),
     StandardSessionCommandDefinition(
         StandardSessionCommandId.TREE,

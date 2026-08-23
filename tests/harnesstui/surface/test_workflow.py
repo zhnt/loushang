@@ -263,7 +263,7 @@ def _workflow(
                 if text.strip() == "/resume"
                 else (
                     ScreenSurfaceCommand("fork_session")
-                    if text.strip() == "/fork"
+                    if text.strip() == "/branch"
                     else (
                         ScreenSurfaceCommand("rename_session")
                         if text.strip() == "/rename"
@@ -477,12 +477,13 @@ def test_surface_workflow_opens_agent_tree_page() -> None:
     assert surface.purpose == "agent_tree"
 
 
-def test_surface_workflow_opens_fork_picker_and_restores_selected_prompt() -> None:
+def test_surface_workflow_opens_branch_picker_and_restores_selected_prompt() -> None:
     workflow, state = _workflow()
 
-    assert workflow.is_local_command("/fork") is True
+    assert workflow.is_local_command("/branch") is True
+    assert workflow.is_local_command("/fork") is False
     assert workflow.is_local_command("/fork entry-1 before") is False
-    asyncio.run(workflow.handle_text("/fork"))
+    asyncio.run(workflow.handle_text("/branch"))
 
     picker = workflow.current
     assert isinstance(picker, ScreenSurfaceView)

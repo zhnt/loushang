@@ -58,7 +58,7 @@ while `--resume <session-id-or-path>` and `/resume <session-id-or-path>` restore
 a specific session directly. Non-interactive use requires one of those explicit
 forms.
 
-Inside the interactive surface, built-in slash commands include `/session`, `/resume`, `/fork`, `/clone`, `/tree`, `/tools`, `/extensions`, `/export`, `/compact`, `/reload`, and `/quit`.
+Inside the interactive surface, built-in slash commands include `/session`, `/resume`, `/fork`, `/clone`, `/branch`, `/tree`, `/tools`, `/extensions`, `/export`, `/compact`, `/reload`, and `/quit`. `/fork` duplicates the current chat into a new session, `/clone` is a compatibility alias, and `/branch` opens a prompt picker for branching from an earlier user message.
 
 ## Tools
 

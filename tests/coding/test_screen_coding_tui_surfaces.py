@@ -334,8 +334,8 @@ def test_screen_surface_model_selection_error_stays_in_tui() -> None:
     rendered = app.render(RenderConstraints(width=100, max_height=24))
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
     assert expected_error in " ".join(plain_lines)
-    assert any("/fork and select the image prompt" in line for line in plain_lines)
-    assert any("/compact works" in line for line in plain_lines)
+    assert any("/branch and select the image prompt" in line for line in plain_lines)
+    assert "/compact works" in " ".join(plain_lines)
     assert any("moonshot:test-endpoint:kimi-for-coding" in line for line in plain_lines)
     assert any(line.text.startswith("\x1b[91mError:") for line in rendered.lines)
     assert any(
@@ -476,7 +476,7 @@ def test_screen_surface_manager_opens_live_agent_tree_page() -> None:
     asyncio.run(scenario())
 
 
-def test_screen_surface_manager_forks_selected_prompt_and_restores_composer() -> None:
+def test_screen_surface_manager_branches_from_selected_prompt_and_restores_composer() -> None:
     session = _Session()
     session.fork_messages = [
         {"entry_id": "entry-1", "text": "first prompt"},
@@ -507,9 +507,10 @@ def test_screen_surface_manager_forks_selected_prompt_and_restores_composer() ->
             status_provider=_status_provider(app),
         )
 
-        assert manager.is_local_command("/fork")
+        assert manager.is_local_command("/branch")
+        assert not manager.is_local_command("/fork")
         assert not manager.is_local_command("/fork entry-2 before")
-        await manager.handle_text("/fork")
+        await manager.handle_text("/branch")
 
         view = _only_overlay_view(app)
         assert view.purpose == "fork"
@@ -525,7 +526,7 @@ def test_screen_surface_manager_forks_selected_prompt_and_restores_composer() ->
 
         assert runtime.calls == [("entry-2", "before")]
         assert app.composer.value == "latest prompt"
-        assert app.state.status_message == "Forked from selected prompt"
+        assert app.state.status_message == "Branched from selected prompt"
         assert app.surface_host.entries == []
 
     asyncio.run(scenario())

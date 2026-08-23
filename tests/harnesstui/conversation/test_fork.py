@@ -77,7 +77,7 @@ def test_fork_prompt_surface_shows_one_activation_state_and_inline_failure() -> 
     assert surface.begin_activation() is False
     assert surface.footer_help == ""
     lines = _plain_lines(surface)
-    assert sum("Forking selected prompt" in line for line in lines) == 1
+    assert sum("Branching from selected prompt" in line for line in lines) == 1
     assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(
         kind="consumed",
         note="fork_activating",
@@ -101,4 +101,4 @@ def test_fork_prompt_surface_handles_an_empty_conversation() -> None:
     assert surface.begin_activation() is False
     rendered = view.render(RenderConstraints(width=80, max_height=12))
     lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
-    assert "No prompts to fork yet" in lines
+    assert "No prompts to branch from yet" in lines
