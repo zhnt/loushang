@@ -4,15 +4,16 @@
 
 - Authority: implementation plan under the accepted Harness and Product owner
   boundaries; it does not amend those boundaries.
-- Baseline: `harness/plugin-resolve-once` after the implemented UPA1 resolve-once
-  chain and the first inert UPA2 `capability_provider` preflight/finalize slice.
-- Delivery status: PAP0/PLC0 is implemented locally at `25cfc170` and the inert
-  PAP1/PLC1A authoring slice is implemented at `2ebac237` and review-hardened at
-  `8a3c94fd`; see the [PLC1A baseline](plugin-lifecycle-plc1a-baseline.md).
-  PAP1B/PLC1B is implemented through its inert `coding.base` shadow proof on
-  the current delivery branch. No public Plugin SDK, executable Plugin
-  Definition evaluator, Capability owner admission bridge, or Plugin-sourced
-  Capability bind is claimed as implemented by this document.
+- Baseline: current `main` plus the PAP4R/PAP5 foundation delivery tracked by
+  issue `#492`.
+- Delivery status: PAP0 through PAP4 Provider admission/selection were already
+  implemented. PAP4R exact Resource/Tool/Command owner admission and Consumer
+  root compilation landed at `d2b7724a`; PAP5-A activation authority and the
+  narrow Component Host landed at `c8b0088c`; PAP5-B Session single-Graph
+  composition and its production-shaped lifecycle proof landed at `ee303971`.
+  These are internal Harness primitives. This document does not claim a public
+  Plugin SDK, `coding.lsp`, `coding.arch`, Skill catalog convergence, or new
+  MCP functionality.
 - Review status: self-reviewed in
   [Plugin Authoring Primitives Plan Review](plugin-authoring-primitives-plan-review.md).
   The implemented source-changing slice remains local and still requires an
@@ -136,24 +137,12 @@ duplicates:
 | Inert reservation/declaration | `PluginContributionReservation` / `PluginDeclaration` | Evolve only through strict versioned codecs; PLC1B advances the unpublished draft to runtime-only v2 rather than adding a second IR. |
 | Inert selection | `PluginSelectionResolver` | Retain preflight/finalize; it never performs owner admission or binding. |
 
-PAP1 now provides the typed `capability_provider` payload codec and
-reservation-bound internal builder. PLC1B/PAP1B must next complete the inert
-declaration vocabulary before executable lifecycle work. The current source
-still does not provide:
-
-- a versioned document/in-process declaration-source union, source grouping,
-  evidence and single-finalization coordinator;
-- strict `resource_item`, `tool_pack`, and `command_pack` declaration arms;
-- a constrained `PluginDefinition` builder/evaluator;
-- durable, consumable Approval-owner Plugin execution decisions;
-- Capability-owner eligibility and final admission records;
-- Product selection of a complete owner-admitted Provider closure;
-- a Component Host that resolves a selected binding spec from the same verified
-  revision; or
-- a Session composition input for Plugin-selected top-level Providers and
-  matching bindings.
-
-Those are the exact scope of the foundation slices below.
+The internal source now provides the declaration-source/evidence coordinator,
+strict declaration arms, constrained Definition evaluator, durable execution
+and activation journals, exact owner admission, pure Provider selection, the
+Component Host, and the Session composition input described below. Remaining
+work begins with independent hardening and adopter slices; it must not recreate
+these paths under `coding.lsp`, Skill, OEM, or MCP-specific names.
 
 ### Known baseline gate
 
@@ -884,6 +873,11 @@ Rollback: remove the pure records/resolver; no import or Graph behavior changes.
 
 ### PAP4R: Resource/Tool/Command Owner And Consumer-Root Bridge
 
+Implementation status: complete at `d2b7724a`. Exact owner records live in
+`capabilities.contribution_admission`; the sole external-Consumer compiler lives
+in `capabilities.consumer_requirements`. Owner publication remains deferred
+until PAP5-B captures the committed Graph generation.
+
 Scope:
 
 - add exact Resource, Tool, and Command owner codecs/admission records for
@@ -930,6 +924,13 @@ canonical declaration or Capability Graph type is replaced.
 
 ### PAP5: Owner-Preserving Component Host And Bind Bridge
 
+Implementation status: complete internally at `c8b0088c` and `ee303971`.
+Activation decisions/attempts are Approval-owned durable JSONL facts; the
+Component Host consumes one exact decision but does not import until the
+existing Binder invokes the lazy binding. Construction reaches `STARTED`, and
+only successful Graph publication permits the Session root to record
+`COMMITTED`.
+
 Scope:
 
 - add the narrow Capability Component Host;
@@ -956,7 +957,7 @@ src/loushang/harness/capabilities/component_host.py               # new
 src/loushang/harness/session/capability_composition_inputs.py     # new
 src/loushang/harness/session/agent_product.py
 tests/harness/capabilities/test_component_host.py                 # new
-tests/harness/session/test_plugin_capability_composition.py       # new
+tests/harness/session/test_agent_product_contract.py              # extended
 tests/architecture/test_unified_plugin_architecture.py
 ```
 

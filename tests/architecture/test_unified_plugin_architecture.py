@@ -67,9 +67,9 @@ RAW_JSON_DECODER_MODULES = {
 RAW_JSON_DECODER_FUNCTIONS = {"decode", "from_json", "load", "loads"}
 EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
     (
-        Path("src/loushang/harness/plugin_authoring/evaluator.py"),
-        "PluginDefinitionEvaluator._evaluate_verified_definition",
-    ): "plugin-definition-evaluator",
+        Path("src/loushang/harness/resources/plugins/python_symbols.py"),
+        "load_verified_plugin_python_module",
+    ): "verified-plugin-python-loader",
     (
         Path("src/loushang/harness/plugin_authoring/coordinator.py"),
         "PluginDeclarationCoordinator._read_and_decode_document",
@@ -124,7 +124,7 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
     ): "package-resource-mount",
 }
 EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS = {
-    (Path("src/loushang/harness/plugin_authoring/evaluator.py"), "PluginDefinitionEvaluator._evaluate_verified_definition", "verified_open_file:group.package.revision_handle"): 1,
+    (Path("src/loushang/harness/resources/plugins/python_symbols.py"), "load_verified_plugin_python_module", "verified_open_file:revision_handle"): 1,
     (Path("src/loushang/harness/plugin_authoring/coordinator.py"), "PluginDeclarationCoordinator._read_and_decode_document", "verified_open_file:handle"): 1,
     (Path("src/loushang/harness/resources/packages/catalog.py"), "load_package_catalog", "json_decode"): 1,
     (Path("src/loushang/harness/resources/packages/catalog.py"), "load_package_catalog", "path_read"): 1,
@@ -2536,9 +2536,9 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
         "package-materializer",
         "package-resource-mount",
         "plugin-declaration-coordinator",
-        "plugin-definition-evaluator",
         "plugin-manifest-parser",
         "plugin-strict-json-codec",
+        "verified-plugin-python-loader",
         "verified-revision-boundary",
         "verified-revision-publisher",
     }
@@ -2908,7 +2908,7 @@ def test_current_profile_graph_authority_classes_have_one_definition() -> None:
     assert _class_sites(sources, "PluginProfileResolver") == ()
 
 
-def test_plugin_layer_has_only_the_qualified_definition_loading_site() -> None:
+def test_plugin_layer_has_only_the_shared_verified_python_loading_site() -> None:
     plugin_sources = {
         path: source
         for path, source in _source_texts().items()
@@ -2928,8 +2928,8 @@ def test_plugin_layer_has_only_the_qualified_definition_loading_site() -> None:
     assert forbidden_imports == set()
     assert _executable_loading_sites(plugin_sources) == {
         (
-            Path("src/loushang/harness/plugin_authoring/evaluator.py"),
-            "_DeclaredImportPolicy._import",
+            Path("src/loushang/harness/resources/plugins/python_symbols.py"),
+            "_LockedImportPolicy._import",
         )
     }
 

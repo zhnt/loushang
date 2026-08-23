@@ -1323,6 +1323,9 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                     ),
                 )
             ) == "no_change"
+            assert session.evaluate_capability_composition_change(None) == (
+                "restart_required"
+            )
 
             await session.dispose()
 

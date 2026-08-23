@@ -2,9 +2,9 @@
 
 ## Status
 
-Target architecture, revised through multiple independent boundary,
-reference-parity, implementability, and lifecycle/security reviews; this
-revision is pending re-review. The existing Capability Graph, Runtime Profile,
+Target architecture with its internal PAP0-PAP5 foundation implemented through
+`d2b7724a`, `c8b0088c`, and `ee303971`; adopter-level `coding.lsp`,
+`coding.arch`, public SDK, and Skill convergence remain pending. The existing Capability Graph, Runtime Profile,
 Registration Scope, Extension/Resource generation, Effective Runtime, Resource
 Package, and Plugin source-management runtimes remain authoritative while this
 migration is incomplete. This document does not claim that `coding.lsp`,
@@ -23,6 +23,15 @@ remains authoritative for projection and its four independent clocks.
 This document joins their authoring, packaging, and selection entry paths. It
 does not introduce a competing Profile resolver, registration owner, graph,
 cross-owner transaction, or effective-runtime projector.
+
+The PAP5 linearization is exact: Component preparation consumes one durable
+activation decision without importing code; the existing Binder is the first
+caller of the verified factory and advances the attempt to `STARTED`; only
+successful Graph publication lets the Session root advance it to `COMMITTED`.
+The Session then captures narrow external Consumer views, stages exact owner
+generations, and becomes usable. Failure aborts every unstarted/started
+attempt, reverses staged owners, and disposes the candidate Graph. Normal
+unload reverses owner generations before Provider disposal.
 
 ## Purpose
 

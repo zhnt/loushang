@@ -1,9 +1,11 @@
 # Plugin Capability Admission PAP4 Contract
 
 Status: PAP4-1 generic Capability-owner eligibility/final admission and pure
-Product Provider-closure selection implemented. The production `coding.lsp`
-owner adapter, Component Host, activation approval, live Graph binding,
-Resource/Tool/Command admission, public SDK and MCP expansion remain closed.
+Product Provider-closure selection are implemented. PAP4R exact
+Resource/Tool/Command admission and external-Consumer root compilation landed
+at `d2b7724a`. PAP5 activation/Component Host and live Session single-Graph
+binding landed internally at `c8b0088c` and `ee303971`. The production
+`coding.lsp` adapter, public SDK and MCP expansion remain closed.
 
 This document is the normative incremental companion to
 [Unified Plugin Architecture](unified-plugin-architecture.md),
@@ -115,6 +117,31 @@ is the sole metadata tuple handed to the existing Graph Planner.
 - outputs contain strict JSON data and no callables; and
 - the new symbols remain absent from the frozen public Capability surface.
 
-The next PAP4 slice adds the explicit `coding.lsp` owner policy adapter and
-production declaration fixture. PAP4R/PAP5 and live binding follow separately;
-they must not be folded into this pure selection layer.
+## PAP4R/PAP5 Implemented Boundary
+
+`OwnerContributionAuthority` admits exact `resource_item`, `tool_pack`, and
+`command_pack` candidates without becoming a global owner registry.
+`ProductCompositionCompiler` preserves every admitted Consumer requirement and
+its provenance, compiles mandatory and explicitly satisfied optional roots,
+and performs no Graph planning or live publication.
+
+`CapabilityComponentHost` exact-matches the resolved admission, current owner
+and trust snapshots, published content/dependency lock, and one-shot activation
+decision. It uses the same verified Python loader as Definition evaluation and
+returns `PreparedCapabilityComponent`; it never owns a Planner, Binder,
+Projector, Session, or Registration Scope. The lazy factory first runs inside
+the existing Binder, reaches durable `STARTED`, and reaches `COMMITTED` only
+after Graph publication.
+
+`SessionCapabilityCompositionInputs` remains beside the existing staged
+Resource candidate. `AgentProductSession` merges built-ins and selected Plugin
+Providers into one plan and one existing Binder call, captures every satisfied
+external Consumer view, stages exact Tool/Command owner generations, and only
+then exposes the Session. Unload reverses owner generations before Provider
+disposal. A changed or disabled sealed composition returns
+`restart_required`; it does not hot-swap the active Session.
+
+The next adopter may add the explicit `coding.lsp` owner policy and Provider
+implementation. It must reuse these records and hosts rather than folding
+Product policy, owner admission, loading, Graph binding, or tool publication
+into an LSP-specific runtime.
