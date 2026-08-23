@@ -1,7 +1,7 @@
 # Plugin Lifecycle PLC2 Contract
 
-Status: PLC2-1, PLC2-2, PLC2-3, PLC2-4A, PLC2-4B and PLC2-4C implemented;
-PLC2-4D not started. This document
+Status: PLC2-1, PLC2-2, PLC2-3 and PLC2-4A through PLC2-4D implemented. This
+document
 narrows the PLC2 section of the
 [Unified Plugin Lifecycle And Coding Pluginization Delivery Plan](plugin-lifecycle-coding-pluginization-plan.md).
 It does not make the Plugin authoring SDK public and does not authorize live
@@ -897,3 +897,166 @@ PLC2-4C is complete only when tests prove:
 - architecture gates find no Product/Session/Graph/registration/disposer,
   package-cache, cleanup, GC, private-data or MCP dependency and no production
   caller that fabricates activation, membership or revocation evidence.
+
+## PLC2-4D Package Cleanup Lease And Recovery Gate
+
+PLC2-4D adds the internal package-lifecycle primitive that keeps Package
+Revision retention conservative across deferred cleanup and process restart.
+It does not materialize, quarantine, delete or mutate package bytes; invoke a
+disposer or compensation; discover owners; alter Instance state; publish a
+Plugin SDK; or add an MCP surface.
+
+### One Reference Projection, Not Another Instance Ledger
+
+PLC2-4D does not copy 4C Session, Agent, direct-host, independent or
+owner-generation reference counts into a second journal. The package
+lifecycle projection consumes the exact typed 4C snapshot and events and
+counts each open family member against its Package Revision. Current desired
+selections are consumed from the PLC2 desired-state ledger. Those source
+journals remain authoritative for their own facts.
+
+Only references not owned by those sources are journaled by 4D:
+
+| Reference | Durable representation |
+| --- | --- |
+| configured cold-resume retention | `PluginPackagePinV1(kind=cold_resume)` |
+| dependency/import-lock retention | `PluginPackagePinV1(kind=dependency_lock)` |
+| forensic retention | `PluginPackagePinV1(kind=forensic_retention)` |
+| deferred cleanup that may reopen package bytes or entrypoints | the journal-owned lease embedded in `PluginCleanupTaskV1` |
+
+An explicit pin contains an immutable Package Revision, a derived pin ID,
+host-issued operation/idempotency keys and an opaque holder reference. Release
+is a separate durable `PluginPackagePinReleaseV1`. Exact retry appends nothing;
+an acquisition retried after its release is rejected rather than returning a
+stale apparently-open token. Restart never infers a release.
+
+The 4D projection knows only Package Revisions present in desired-state
+history, 4C runtime evidence, explicit pins or cleanup tasks. A future package
+cache owner must intersect any GC candidate with its own immutable
+materialization inventory and recheck the candidate revisions under the cache
+gate. A 4D candidate is never permission to unlink bytes by itself.
+
+### Write-Ahead Cleanup Handoff
+
+`PluginCleanupTaskV1` embeds the exact open 4C source family and its observed
+runtime-journal revision, Installation, Instance Revision, Package Revision,
+coordination mode/ID, optional exact PLC2-4B retirement target, structural
+cleanup kind, host operation/idempotency keys, opaque cleanup reference, a
+derived cleanup ID and a derived journal-owned package lease ID.
+
+Only one-member `direct_host` and `owner_generation` families may hand off
+cleanup in PLC2-4D. Session, Agent and independent acquisitions are released
+by their own Product owners and are already projected from 4C while open.
+
+For graceful drain:
+
+- the exact source family must be open on a `DRAINING` Instance;
+- the task coordination ID is the exact 4A retirement ID;
+- the exact 4B owner plan must already be sealed; and
+- an owner-generation task names exactly one target from that sealed plan,
+  while a direct-host task has no retirement target.
+
+For security revoke, the source Instance must be `REVOKING`, the coordination
+ID is the exact 4C revocation ID and no graceful retirement target is claimed.
+
+The only supported handoff seam first durably appends/replays the cleanup task
+and its package lease, then asks 4C to release the exact source family. If the
+second step fails or the process stops between the two steps, both references
+may remain, but the cleanup lease is reconstructible and the package remains
+pinned. No cleanup task is synthesized from a retirement intent, owner result,
+Instance `RETIRED` state or package-cache observation.
+
+### Attempts, Terminal Failure And Repair
+
+`PluginCleanupAttemptV1` records the cleanup ID, contiguous positive attempt,
+host-issued operation/idempotency keys, one structural redacted result code,
+disposition and optional retry-not-before epoch milliseconds. Dispositions are
+exactly:
+
+| Disposition | Effect |
+| --- | --- |
+| `succeeded` | closes the journal-owned cleanup lease |
+| `retryable_failure` | keeps the lease open and permits the next contiguous attempt |
+| `terminal_failure` | keeps the lease open, blocks another attempt and requires package quarantine/repair attention |
+
+Unknown exceptions, logs, package bytes, credentials and private Plugin data
+are never stored as cleanup results.
+
+A terminal failure can advance only through a durable
+`PluginCleanupRepairDecisionV1`:
+
+- `retry` keeps the lease open and permits the next attempt; or
+- `safe_abandon` records explicit authority and a structural reason, closes
+  the lease, and represents the acknowledgement required before retention can
+  clear.
+
+Repair sequence and cleanup attempt remain separately contiguous. Exact retry
+is inert; conflicting operation/idempotency, attempt or repair evidence fails
+closed. There is no automatic retry scheduler, disposer, compensation runner,
+backoff sleep or cache quarantine mutation in PLC2-4D.
+
+### Startup Recovery Barrier And Conservative GC Candidate
+
+Every `PluginPackageLifecycleLedger` is constructed with one host-issued
+startup ID. A previous process's barrier does not authorize the new startup.
+`PluginPackageRecoveryBarrierV1` records the startup ID, exact observed desired,
+4C runtime and pre-barrier package-journal revisions, the complete sorted open
+pin/cleanup lease sets, host operation/idempotency keys and an opaque recovery
+reference. Replay verifies those open sets against the preceding journal
+state.
+
+Before the current startup barrier is durably complete, no Package Revision is
+reported GC-eligible. Unknown/incomplete cleanup tasks, retryable failures and
+terminal failures all remain pinned after restart. A partial final journal
+record is repairable; a complete invalid record, non-contiguous sequence or
+contradictory source evidence fails closed.
+
+After recovery, `PluginPackageGcCandidateV1` is an immutable projection token.
+It records the Package Revision, current desired inventory revision, current
+4C runtime revision, current 4D journal revision and recovery barrier ID. A
+candidate exists only when all of these conditions hold in the same returned
+projection:
+
+- no current desired Installation selects the Package Revision;
+- every known 4C Instance using it is `RETIRED` and no open 4C family contains
+  it;
+- no open explicit pin or cleanup lease contains it; and
+- no unresolved terminal cleanup failure remains.
+
+Any later desired-state, runtime or 4D append makes the revision tuple stale.
+The future cache owner must re-read and exact-match the tuple under its cache
+gate before deletion. PLC2-4D exposes no delete, unlink, cache mutation or
+garbage-collector callback.
+
+### PLC2-4D Exact Error Codes
+
+| Condition | Code |
+| --- | --- |
+| unsupported pin/release/task/attempt/repair/barrier/event version | `unsupported_plugin_package_lifecycle_record_version` |
+| wrong/unknown field or invalid canonical/derived value | `invalid_plugin_package_lifecycle_record` |
+| reused operation, idempotency, pin, cleanup, attempt, repair or recovery identity | `plugin_package_lifecycle_conflict` |
+| illegal pin, handoff, attempt, repair or release transition | `invalid_plugin_package_lifecycle_transition` |
+| current startup has not completed recovery | `plugin_package_recovery_incomplete` |
+| package journal/replay/source evidence is corrupt | `plugin_package_lifecycle_journal_corrupt` |
+
+### PLC2-4D Regression Gate
+
+PLC2-4D is complete only when tests prove:
+
+- strict round trips, version/field rejection, canonical order and every
+  derived pin/task/lease/candidate identity;
+- explicit pin acquire/release/restart/idempotency and stale-token rejection;
+- exact graceful/security cleanup source validation and durable task append
+  before source-family release;
+- a failed family release leaves the cleanup task and journal lease pinned;
+- contiguous retry, terminal-failure blocking, explicit retry repair and safe
+  abandon semantics;
+- a new startup remains closed until its own exact barrier is durable and
+  recovery reconstructs every uncertain lease;
+- desired selection, non-retired Instance, open 4C family, explicit pin and
+  cleanup task independently block a shared Package Revision candidate;
+- candidate revision tuples become stale on later source or 4D changes;
+- tail repair and complete/cross-journal corruption fail closed; and
+- architecture gates find no second Instance/reference parser, package-byte or
+  cache mutation, deletion, disposer/compensation execution, Product/Session/
+  Graph/registration/private-data dependency, public SDK or MCP expansion.

@@ -75,8 +75,10 @@ planning, work event persistence, or AI provider behavior.
   action. PLC2-4B adds the durable exact-owner retirement set, sealed owner
   plan and retry-safe result aggregation. PLC2-4C adds the durable Product-host
   Instance state gate, atomic multi-Instance lease families, graceful drain,
-  security revoke and zero-reference retirement proof while keeping package
-  cleanup and GC gated behind PLC2-4D.
+  security revoke and zero-reference retirement proof. PLC2-4D adds durable
+  explicit Package Revision pins, write-ahead cleanup leases, retry/repair
+  evidence, a per-startup recovery barrier and revision-bound conservative GC
+  candidates without mutating package-cache bytes.
 - [Plugin Lifecycle PLC0 Baseline](plugin-lifecycle-plc0-baseline.md) records the
   green parser/source-sink/authority inventory, frozen foundation exports,
   forbidden peer routes, and inert published-Plugin fixture required before

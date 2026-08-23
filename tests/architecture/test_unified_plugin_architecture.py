@@ -372,6 +372,11 @@ PRE_SDK_PRIVATE_PLUGIN_SYMBOLS = frozenset(
         "PluginInstanceRevocationV1",
         "PluginInstanceRuntimeLedger",
         "PluginInstanceRuntimeSnapshotV1",
+        "PluginCleanupTaskV1",
+        "PluginPackageGcCandidateV1",
+        "PluginPackageLifecycleLedger",
+        "PluginPackagePinV1",
+        "PluginPackageRecoveryBarrierV1",
         "PluginRetirementIntentLedger",
         "PluginRetirementIntentV1",
         "PluginOwnerRetirementOutcomeV1",
@@ -3059,7 +3064,19 @@ def test_plc2_instance_runtime_is_host_gated_and_not_package_cleanup() -> None:
         "release_family",
         "complete_retirement",
     ):
-        assert _call_sites(management_sources, host_only_call) == set()
+        expected_callers = (
+            {
+                (
+                    Path(
+                        "src/loushang/harness/plugin_management/package_lifecycle.py"
+                    ),
+                    "PluginPackageLifecycleLedger.handoff_cleanup_and_release",
+                )
+            }
+            if host_only_call == "release_family"
+            else set()
+        )
+        assert _call_sites(management_sources, host_only_call) == expected_callers
     for forbidden_call in (
         ".dispose(",
         ".deactivate(",
@@ -3070,3 +3087,41 @@ def test_plc2_instance_runtime_is_host_gated_and_not_package_cleanup() -> None:
         "publish_resource(",
     ):
         assert forbidden_call not in instance_runtime
+
+
+def test_plc2_package_cleanup_is_write_ahead_inert_and_gc_rechecked() -> None:
+    contract = PLC2_CONTRACT_PATH.read_text(encoding="utf-8")
+    management_root = Path("src/loushang/harness/plugin_management")
+    management_sources = {
+        path: path.read_text(encoding="utf-8")
+        for path in management_root.rglob("*.py")
+    }
+    package_lifecycle = Path(
+        "src/loushang/harness/plugin_management/package_lifecycle.py"
+    ).read_text(encoding="utf-8")
+    package_records = Path(
+        "src/loushang/harness/plugin_management/package_records.py"
+    ).read_text(encoding="utf-8")
+
+    assert "## PLC2-4D Package Cleanup Lease And Recovery Gate" in contract
+    assert "One Reference Projection, Not Another Instance Ledger" in contract
+    assert "Write-Ahead Cleanup Handoff" in contract
+    assert "Startup Recovery Barrier And Conservative GC Candidate" in contract
+    assert "A 4D candidate is never permission to unlink bytes by itself" in contract
+    assert "PLUGIN_PACKAGE_LIFECYCLE_EVENT_CODEC" in package_records
+    assert "PluginInstanceRuntimeEventV1" in package_lifecycle
+    assert "recheck_gc_candidate" in package_lifecycle
+    assert _call_sites(management_sources, "handoff_cleanup_and_release") == set()
+    for forbidden_call in (
+        ".dispose(",
+        ".deactivate(",
+        ".unlink(",
+        ".rmdir(",
+        ".rmtree(",
+        ".delete(",
+        "register_tool(",
+        "bind_tool(",
+        "publish_resource(",
+        "mcp_",
+    ):
+        assert forbidden_call not in package_lifecycle
