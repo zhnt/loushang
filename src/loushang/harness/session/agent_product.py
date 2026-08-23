@@ -34,6 +34,10 @@ from loushang.harness.capabilities import (
     ScopedSourcePublicationReference,
     StagedResourceCompositionCandidate,
 )
+from loushang.harness.capabilities.component_host import (
+    CapabilityComponentHost,
+    PreparedCapabilityComponent,
+)
 from loushang.harness.capabilities.effective_runtime import (
     runtime_profile_fingerprint,
 )
@@ -94,6 +98,15 @@ from loushang.harness.session.agent_adapter import (
 )
 from loushang.harness.session.approval_interaction import (
     AgentSessionApprovalRuntime,
+)
+from loushang.harness.session.capability_composition_inputs import (
+    SessionCapabilityCompositionInputs,
+    SessionCapabilityConsumerCapture,
+    SessionCapabilityOwnerGenerationBinding,
+    StagedSessionCapabilityOwnerGeneration,
+    dispose_session_capability_owner_generations,
+    stage_session_capability_owner_generations,
+    validate_session_capability_owner_generation_bindings,
 )
 from loushang.harness.session.command_controller import (
     StandardSessionCommandController,
@@ -224,6 +237,12 @@ class AgentProductSession(AgentSessionAdapterMixin):
         tool_policy_evaluator: PolicyEvaluator | None = None,
         workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
         extension_declaration_preflight: ExtensionDeclarationPreflight | None = None,
+        capability_composition_inputs: SessionCapabilityCompositionInputs
+        | None = None,
+        capability_component_host: CapabilityComponentHost | None = None,
+        capability_owner_generation_bindings: tuple[
+            SessionCapabilityOwnerGenerationBinding, ...
+        ] = (),
     ) -> None:
         self.agent = agent
         self._session_default_model = agent.model
@@ -283,6 +302,42 @@ class AgentProductSession(AgentSessionAdapterMixin):
             session_id=str(self.session_manager.get_session_record().session_id)
         )
         initial_profile = capability_runtime.profile.snapshot()
+        if (
+            capability_composition_inputs is not None
+            and capability_composition_inputs.product_id != initial_profile.product_id
+        ):
+            raise ValueError("Session plugin composition belongs to another Product")
+        if (
+            capability_composition_inputs is not None
+            and capability_component_host is None
+        ):
+            raise ValueError("Session plugin composition requires a Component Host")
+        if (
+            capability_composition_inputs is None
+            and (
+                capability_component_host is not None
+                or capability_owner_generation_bindings
+            )
+        ):
+            raise ValueError("Session Component Host/owners require composition inputs")
+        self._capability_composition_inputs = capability_composition_inputs
+        self._capability_component_host = capability_component_host
+        self._capability_owner_generation_bindings = tuple(
+            capability_owner_generation_bindings
+        )
+        self._external_consumer_captures: tuple[
+            SessionCapabilityConsumerCapture, ...
+        ] = ()
+        self._capability_owner_generations: tuple[
+            StagedSessionCapabilityOwnerGeneration, ...
+        ] = ()
+        if capability_composition_inputs is not None:
+            validate_session_capability_owner_generation_bindings(
+                admissions=(
+                    capability_composition_inputs.product_composition.catalog_admissions
+                ),
+                bindings=self._capability_owner_generation_bindings,
+            )
         if (
             workspace_capability_binding is not None
             and workspace_capability_binding.provider.capability_id
@@ -354,26 +409,62 @@ class AgentProductSession(AgentSessionAdapterMixin):
         workspace_definitions = (
             (WORKSPACE_CAPABILITY_DEFINITION,) if workspace_binding is not None else ()
         )
+        built_in_definitions = (
+            MODEL_INPUT_CAPABILITY_DEFINITION,
+            RESOURCES_CAPABILITY_DEFINITION,
+            SESSION_CAPABILITY_DEFINITION,
+            *workspace_definitions,
+        )
+        built_in_providers = (
+            self._model_call_capability_binding.provider_binding.provider,
+            self._resource_capability_binding.provider,
+            self._session_capability_binding.provider,
+            *((workspace_binding.provider,) if workspace_binding is not None else ()),
+        )
+        external_definitions = (
+            tuple(
+                item.definition
+                for item in capability_composition_inputs.resolved_providers.entries
+            )
+            if capability_composition_inputs is not None
+            else ()
+        )
+        external_providers = (
+            capability_composition_inputs.resolved_providers.providers
+            if capability_composition_inputs is not None
+            else ()
+        )
+        built_in_ids = {item.capability_id for item in built_in_definitions}
+        if built_in_ids.intersection(
+            item.capability_id for item in external_definitions
+        ):
+            raise ValueError("External composition duplicates a built-in Capability")
+        graph_roots: tuple[str, ...] = (
+            MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
+        )
+        if capability_composition_inputs is not None:
+            requirements = (
+                capability_composition_inputs.product_composition.consumer_requirements
+            )
+            if MODEL_INPUT_CAPABILITY_DEFINITION.capability_id not in requirements.roots:
+                raise ValueError("Session composition must retain model-input root")
+            external_root_ids = set(requirements.roots) - built_in_ids
+            if external_root_ids != set(
+                capability_composition_inputs.resolved_providers.roots
+            ):
+                raise ValueError(
+                    "Session external Provider roots do not match Consumer roots"
+                )
+            requirements.validate_provider_metadata(
+                (*built_in_providers, *external_providers)
+            )
+            graph_roots = requirements.roots
         self._session_capability_plan = RuntimeCapabilityGraphPlanner().plan(
             CapabilityGraphPlanRequest(
                 product_id=initial_profile.product_id,
-                roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-                definitions=(
-                    MODEL_INPUT_CAPABILITY_DEFINITION,
-                    RESOURCES_CAPABILITY_DEFINITION,
-                    SESSION_CAPABILITY_DEFINITION,
-                    *workspace_definitions,
-                ),
-                providers=(
-                    self._model_call_capability_binding.provider_binding.provider,
-                    self._resource_capability_binding.provider,
-                    self._session_capability_binding.provider,
-                    *(
-                        (workspace_binding.provider,)
-                        if workspace_binding is not None
-                        else ()
-                    ),
-                ),
+                roots=graph_roots,
+                definitions=(*built_in_definitions, *external_definitions),
+                providers=(*built_in_providers, *external_providers),
             )
         )
         self._model_call_runtime = SessionModelCallRuntime(
@@ -874,53 +965,74 @@ class AgentProductSession(AgentSessionAdapterMixin):
             except BaseException as exc:
                 errors.append(exc)
         self._restore_agent_model_call_boundary()
+        owner_cleanup_failed = False
         async with self._model_call_bind_lock:
             self._model_call_consumer = None
             self._side_question_consumer = None
             self._transcript_consumer = None
-            self._resource_capability_ports.invalidate()
-            self._workspace_capability_ports.invalidate()
-            self._transcript_capability_ports.invalidate()
             staged_candidate = self._staged_resource_candidate
             staged_side_question = self._staged_side_question_candidate
-            try:
-                cleanup_codes = await self._capability_graph_binder.dispose(
-                    self._capability_graph_runtime
-                )
-                if (
-                    cleanup_codes
-                    and self._capability_graph_runtime.has_pending_retirements
-                ):
-                    errors.append(
-                        RuntimeError(
-                            "Session Capability graph cleanup remains pending: "
-                            + ", ".join(cleanup_codes)
-                        )
+            owner_generations = self._capability_owner_generations
+            if owner_generations:
+                try:
+                    await dispose_session_capability_owner_generations(
+                        owner_generations
                     )
-            except BaseException as exc:
-                errors.append(exc)
-            if staged_candidate is not None:
-                try:
-                    staged_candidate.dispose()
                 except BaseException as exc:
+                    owner_cleanup_failed = True
                     errors.append(exc)
                 else:
-                    self._staged_resource_candidate = None
-            if (
-                staged_side_question is not None
-                and staged_side_question.ownership_state == "root_owned"
-            ):
+                    self._capability_owner_generations = ()
+                    self._external_consumer_captures = ()
+            if not owner_cleanup_failed:
+                self._resource_capability_ports.invalidate()
+                self._workspace_capability_ports.invalidate()
+                self._transcript_capability_ports.invalidate()
                 try:
-                    staged_side_question.dispose()
+                    cleanup_codes = await self._capability_graph_binder.dispose(
+                        self._capability_graph_runtime
+                    )
+                    if (
+                        cleanup_codes
+                        and self._capability_graph_runtime.has_pending_retirements
+                    ):
+                        errors.append(
+                            RuntimeError(
+                                "Session Capability graph cleanup remains pending: "
+                                + ", ".join(cleanup_codes)
+                            )
+                        )
                 except BaseException as exc:
                     errors.append(exc)
-                else:
+                if staged_candidate is not None:
+                    try:
+                        staged_candidate.dispose()
+                    except BaseException as exc:
+                        errors.append(exc)
+                    else:
+                        self._staged_resource_candidate = None
+                if (
+                    staged_side_question is not None
+                    and staged_side_question.ownership_state == "root_owned"
+                ):
+                    try:
+                        staged_side_question.dispose()
+                    except BaseException as exc:
+                        errors.append(exc)
+                    else:
+                        self._staged_side_question_candidate = None
+                elif (
+                    staged_side_question is not None
+                    and staged_side_question.ownership_state == "disposed"
+                ):
                     self._staged_side_question_candidate = None
-            elif (
-                staged_side_question is not None
-                and staged_side_question.ownership_state == "disposed"
-            ):
-                self._staged_side_question_candidate = None
+        if owner_cleanup_failed:
+            primary = errors[0]
+            for cleanup_error in errors[1:]:
+                primary.add_note(
+                    f"Additional Session model-call cleanup failure: {cleanup_error!r}"
+                )
+            raise primary
         try:
             await base_dispose()
         except BaseException as exc:
@@ -978,7 +1090,25 @@ class AgentProductSession(AgentSessionAdapterMixin):
             if consumer is not None:
                 return consumer
             binding = self._model_call_capability_binding
+            prepared_components: list[PreparedCapabilityComponent] = []
+            owner_generations: tuple[
+                StagedSessionCapabilityOwnerGeneration, ...
+            ] = ()
             try:
+                composition_inputs = self._capability_composition_inputs
+                component_host = self._capability_component_host
+                if composition_inputs is not None:
+                    assert component_host is not None
+                    for request in composition_inputs.component_requests:
+                        prepared_components.append(
+                            component_host.prepare_component(
+                                request.resolved,
+                                package=request.package,
+                                owner_snapshot=request.owner_snapshot,
+                                trust_snapshot=request.trust_snapshot,
+                                decision_id=request.activation_decision_id,
+                            )
+                        )
                 await self._capability_graph_binder.bind(
                     self._capability_graph_runtime,
                     self._session_capability_plan,
@@ -989,10 +1119,35 @@ class AgentProductSession(AgentSessionAdapterMixin):
                             self._resource_capability_binding,
                             self._session_capability_binding,
                             self._workspace_capability_binding,
+                            *(item.binding for item in prepared_components),
                         )
                         if item is not None
                     ),
                 )
+                for prepared in prepared_components:
+                    prepared.commit_after_graph_publication()
+                external_captures: tuple[
+                    SessionCapabilityConsumerCapture, ...
+                ] = ()
+                if composition_inputs is not None:
+                    external_captures = tuple(
+                        SessionCapabilityConsumerCapture(
+                            entry=entry,
+                            facets=self._capability_graph_runtime.capture(
+                                entry.requirement
+                            ),
+                        )
+                        for entry in composition_inputs.product_composition.consumer_requirements.satisfied_entries
+                    )
+                    owner_generations = (
+                        await stage_session_capability_owner_generations(
+                            admissions=(
+                                composition_inputs.product_composition.catalog_admissions
+                            ),
+                            bindings=self._capability_owner_generation_bindings,
+                            captures=external_captures,
+                        )
+                    )
                 consumer = SessionModelCallCapabilityConsumer(
                     self._capability_graph_runtime.capture(
                         MODEL_INPUT_PREPARATION_REQUIREMENT
@@ -1024,7 +1179,30 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     )
                 )
             except BaseException as error:
+                owner_cleanup_failed = False
+                if owner_generations:
+                    try:
+                        await dispose_session_capability_owner_generations(
+                            owner_generations
+                        )
+                    except BaseException as cleanup_error:
+                        owner_cleanup_failed = True
+                        self._capability_owner_generations = owner_generations
+                        error.add_note(
+                            "Session owner generation rollback also failed: "
+                            f"{cleanup_error!r}"
+                        )
+                for prepared in reversed(prepared_components):
+                    try:
+                        prepared.abort_uncommitted()
+                    except BaseException as cleanup_error:
+                        error.add_note(
+                            "Prepared component cancellation also failed: "
+                            f"{cleanup_error!r}"
+                        )
                 if (
+                    not owner_cleanup_failed
+                    and
                     self._capability_graph_runtime.snapshot is not None
                     and not self._capability_graph_runtime.is_closed
                 ):
@@ -1113,10 +1291,23 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 process=workspace_process,
             )
             self._transcript_capability_ports.install(transcript_consumer)
+            self._external_consumer_captures = external_captures
+            self._capability_owner_generations = owner_generations
             self._transcript_consumer = transcript_consumer
             self._side_question_consumer = side_question
             self._model_call_consumer = consumer
             return consumer
+
+    def evaluate_capability_composition_change(
+        self,
+        candidate: SessionCapabilityCompositionInputs | None,
+    ) -> Literal["no_change", "restart_required"]:
+        """A live sealed Session never hot-swaps its pinned plugin graph."""
+
+        current = self._capability_composition_inputs
+        if current is None or candidate is None:
+            return "no_change" if current is candidate else "restart_required"
+        return current.compare(candidate)
 
     def _current_profile_fingerprint(self) -> str:
         return runtime_profile_fingerprint(self.capability_profile.snapshot())
