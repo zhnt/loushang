@@ -76,6 +76,7 @@ class PluginDeclarationBuilder:
         }
         self._declarations: dict[str, PluginDeclaration] = {}
         self._frozen = False
+        self._built_declarations: tuple[PluginDeclaration, ...] | None = None
 
     def add_capability_provider(
         self,
@@ -222,14 +223,28 @@ class PluginDeclarationBuilder:
                 + ", ".join(unconsumed)
             )
         self._frozen = True
-        return tuple(
+        self._built_declarations = tuple(
             self._declarations[contribution_id]
             for contribution_id in sorted(self._declarations)
         )
+        return self._built_declarations
 
     def _require_open(self) -> None:
         if self._frozen:
             raise RuntimeError("Plugin declaration builder is frozen")
+
+    def _validate_definition_result(
+        self,
+        value: object,
+    ) -> tuple[PluginDeclaration, ...]:
+        """Accept only the exact tuple produced by this builder's ``build``."""
+
+        if not self._frozen:
+            raise ValueError("Plugin Definition did not freeze its declaration builder")
+        declarations = self._built_declarations
+        if declarations is None or value is not declarations:
+            raise ValueError("Plugin Definition returned foreign declaration IR")
+        return declarations
 
 
 __all__ = ["PluginDeclarationBuilder"]

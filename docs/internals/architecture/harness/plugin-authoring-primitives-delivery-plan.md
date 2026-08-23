@@ -795,6 +795,9 @@ selection remain available.
 
 ### PAP3: Verified Plugin Definition Evaluation
 
+Implementation status (2026-08-23): complete as a private, explicitly injected
+Coordinator path. It has no production Host construction or public SDK export.
+
 Scope:
 
 - introduce the internal `PluginDefinition` Protocol and evaluator;

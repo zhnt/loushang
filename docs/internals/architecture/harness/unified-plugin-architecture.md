@@ -485,12 +485,12 @@ Reservation gate and completed declaration evidence are different types:
   use state.
 
 `PluginSelectionResolver.finalize()` accepts only the source-appropriate
-evidence. A positive decision reference alone cannot become a candidate. Until
-PLC3 supplies a durable consumption receipt, PLC1B keeps in-process Builder
-codec tests isolated from the Coordinator. If any accepted group is executable,
-the Coordinator accepts no declaration input, aborts as
-`execution_not_consumed`, and constructs no Batch or candidate. Only document
-batches can become inert candidates in PLC1B.
+evidence. A positive decision reference alone cannot become a candidate. PLC3
+now supplies the durable consumption receipt and a private verified Definition
+evaluator to an explicitly injected Coordinator. The production
+`PluginDeclarationHost` still injects no evaluator, so an executable accepted
+group there aborts as `execution_not_consumed` and constructs no Batch or
+candidate. Document batches remain independently inert.
 
 An accepted preflight token has exactly one aggregate state machine:
 
@@ -553,12 +553,12 @@ verified revision only after decision consumption, then attaches
 batches and finalizes the preflight once. Resource-only and declarative
 external-service Plugins need no Python import.
 
-PLC1B proves successful single-finalization only with document-only one- and
-multi-group preflights. A mixed document/in-process PLC1B fixture proves source
-partitioning and no import, then fails `execution_not_consumed`, transitions
-the aggregate to `ABORTED`, and calls `finalize()` zero times. PLC3 owns the
-first successful mixed-source evaluation, join, and exactly-once finalization
-proof after durable receipt evidence exists.
+PLC1B proved successful single-finalization only with document-only one- and
+multi-group preflights. Its mixed document/in-process fixture still proves the
+production-closed `execution_not_consumed` path and calls `finalize()` zero times.
+PLC3-3 now separately proves the internal successful mixed-source evaluation,
+complete Batch join and exactly-once finalization after durable receipt evidence
+exists, plus zero finalization when a later executable group fails.
 
 A candidate internal authoring seam is:
 

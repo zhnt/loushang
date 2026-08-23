@@ -33,7 +33,9 @@ from loushang.harness.resources.plugins.declarations import (
 )
 from loushang.harness.resources.plugins.selection import (
     PLUGIN_EXECUTION_APPROVAL_SUBJECT_VERSION,
+    PLUGIN_EXECUTION_RECEIPT_VERSION,
     PluginExecutionApprovalSubject,
+    PluginExecutionConsumptionReceiptV1,
     PluginExecutionDecisionCurrent,
     PluginExecutionDecisionLookupResult,
     PluginExecutionDecisionMissing,
@@ -44,7 +46,6 @@ from loushang.harness.resources.plugins.selection import (
 PLUGIN_APPROVAL_AUTHORIZATION_VERSION = 1
 PLUGIN_APPROVAL_DECISION_RECORD_VERSION = 1
 PLUGIN_EXECUTION_USE_VERSION = 1
-PLUGIN_EXECUTION_RECEIPT_VERSION = 1
 PLUGIN_EXECUTION_JOURNAL_EVENT_VERSION = 1
 
 PluginExecutionJournalScopeKind = Literal["installation", "workspace"]
@@ -602,66 +603,6 @@ class PluginImportRealmRefV1:
             )
         except (TypeError, ValueError) as exc:
             raise _invalid_record(str(exc)) from exc
-
-
-@dataclass(frozen=True, slots=True)
-class PluginExecutionConsumptionReceiptV1:
-    decision_id: str
-    execution_use_id: str
-    host_boot_id: str
-    import_realm_id: str
-    instance_revision_ref: PluginInstanceRevisionRef
-    policy_revision: str
-    preflight_use_id: str
-    revocation_epoch: int
-    source_group_id: str
-    source_trust_policy_revision: str
-    subject_digest: str
-    state: Literal["EVALUATED"] = "EVALUATED"
-    receipt_version: int = PLUGIN_EXECUTION_RECEIPT_VERSION
-
-    def __post_init__(self) -> None:
-        _require_hex(self.decision_id, length=48, name="decision id")
-        _require_hex(self.execution_use_id, length=48, name="execution use id")
-        _require_hex(self.host_boot_id, length=32, name="host boot id")
-        _require_hex(self.import_realm_id, length=32, name="import realm id")
-        if not isinstance(self.instance_revision_ref, PluginInstanceRevisionRef):
-            raise TypeError("Execution receipt requires an instance revision ref")
-        _require_nonempty(self.policy_revision, name="policy revision")
-        _require_hex(self.preflight_use_id, length=48, name="preflight use id")
-        _require_non_negative_integer(
-            self.revocation_epoch,
-            name="revocation epoch",
-        )
-        _require_sha256(self.source_group_id, name="source group id")
-        _require_nonempty(
-            self.source_trust_policy_revision,
-            name="source trust policy revision",
-        )
-        _require_sha256(self.subject_digest, name="subject digest")
-        if self.state != "EVALUATED":
-            raise ValueError("Plugin execution receipt requires EVALUATED state")
-        _require_version(
-            self.receipt_version,
-            expected=PLUGIN_EXECUTION_RECEIPT_VERSION,
-        )
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "decisionId": self.decision_id,
-            "executionUseId": self.execution_use_id,
-            "hostBootId": self.host_boot_id,
-            "importRealmId": self.import_realm_id,
-            "instanceRevisionRef": self.instance_revision_ref.to_dict(),
-            "policyRevision": self.policy_revision,
-            "preflightUseId": self.preflight_use_id,
-            "receiptVersion": self.receipt_version,
-            "revocationEpoch": self.revocation_epoch,
-            "sourceGroupId": self.source_group_id,
-            "sourceTrustPolicyRevision": self.source_trust_policy_revision,
-            "state": self.state,
-            "subjectDigest": self.subject_digest,
-        }
 
 
 @dataclass(frozen=True, slots=True)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from loushang.harness.plugin_authoring.evaluator import PluginDefinitionEvaluator
 from loushang.harness.resources.plugins.declarations import (
     PluginDeclarationDocument,
     PluginDeclarationDocumentCodec,
@@ -11,6 +12,7 @@ from loushang.harness.resources.plugins.selection import (
     AcceptedPluginPreflight,
     PluginDeclarationBatch,
     PluginDeclarationDataOnlyGate,
+    PluginDeclarationExecutionPreflightGate,
     PluginDeclarationSourceGroup,
     PluginSelection,
     PluginSelectionError,
@@ -21,19 +23,31 @@ from loushang.harness.resources.plugins.selection import (
 class PluginDeclarationCoordinator:
     """Consume one accepted preflight through its sole terminal owner."""
 
-    def __init__(self, resolver: PluginSelectionResolver) -> None:
+    def __init__(
+        self,
+        resolver: PluginSelectionResolver,
+        *,
+        execution_evaluator: PluginDefinitionEvaluator | None = None,
+    ) -> None:
         if not isinstance(resolver, PluginSelectionResolver):
             raise TypeError("Plugin declaration Coordinator requires a Resolver")
+        if execution_evaluator is not None and not isinstance(
+            execution_evaluator,
+            PluginDefinitionEvaluator,
+        ):
+            raise TypeError("Plugin declaration Coordinator requires an evaluator")
         self._resolver = resolver
+        self._execution_evaluator = execution_evaluator
 
     def finalize(self, accepted: AcceptedPluginPreflight) -> PluginSelection:
         if not isinstance(accepted, AcceptedPluginPreflight):
             raise TypeError("Plugin declaration Coordinator requires accepted preflight")
         self._resolver._peek_active(accepted)
-        if any(
+        has_executable_group = any(
             not isinstance(group.gate, PluginDeclarationDataOnlyGate)
             for group in accepted.source_groups
-        ):
+        )
+        if has_executable_group and self._execution_evaluator is None:
             self._resolver._abort(accepted)
             raise PluginSelectionError(
                 "Executable Plugin declaration was not consumed by an evaluator.",
@@ -42,7 +56,7 @@ class PluginDeclarationCoordinator:
 
         try:
             batches = tuple(
-                self._consume_document_group(accepted, group)
+                self._consume_group(accepted, group)
                 for group in accepted.source_groups
             )
             return self._resolver._finalize(accepted, batches)
@@ -58,14 +72,32 @@ class PluginDeclarationCoordinator:
             self._abort_after_failure(accepted)
             raise
 
-    def _consume_document_group(
+    def _consume_group(
         self,
         accepted: AcceptedPluginPreflight,
         group: PluginDeclarationSourceGroup,
     ) -> PluginDeclarationBatch:
         lease = self._resolver._claim_group(accepted, group)
         try:
-            batch = self._decode_document_group(group)
+            if isinstance(group.gate, PluginDeclarationDataOnlyGate):
+                batch = self._decode_document_group(group)
+            else:
+                if not isinstance(
+                    group.gate,
+                    PluginDeclarationExecutionPreflightGate,
+                ):
+                    raise TypeError(
+                        "Plugin declaration SourceGroup has an invalid gate"
+                    )
+                evaluator = self._execution_evaluator
+                if evaluator is None:
+                    raise PluginSelectionError(
+                        "Executable Plugin declaration was not consumed by "
+                        "an evaluator.",
+                        code="execution_not_consumed",
+                    )
+                permit = self._resolver._issue_execution_start_permit(lease)
+                batch = evaluator.evaluate(group, permit)
         except BaseException:
             self._resolver._settle_group(lease, succeeded=False)
             raise

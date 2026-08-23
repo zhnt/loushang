@@ -64,6 +64,10 @@ RAW_JSON_DECODER_MODULES = {
 RAW_JSON_DECODER_FUNCTIONS = {"decode", "from_json", "load", "loads"}
 EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
     (
+        Path("src/loushang/harness/plugin_authoring/evaluator.py"),
+        "PluginDefinitionEvaluator._evaluate_verified_definition",
+    ): "plugin-definition-evaluator",
+    (
         Path("src/loushang/harness/plugin_authoring/coordinator.py"),
         "PluginDeclarationCoordinator._read_and_decode_document",
     ): "plugin-declaration-coordinator",
@@ -117,6 +121,7 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
     ): "package-resource-mount",
 }
 EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS = {
+    (Path("src/loushang/harness/plugin_authoring/evaluator.py"), "PluginDefinitionEvaluator._evaluate_verified_definition", "verified_open_file:group.package.revision_handle"): 1,
     (Path("src/loushang/harness/plugin_authoring/coordinator.py"), "PluginDeclarationCoordinator._read_and_decode_document", "verified_open_file:handle"): 1,
     (Path("src/loushang/harness/resources/packages/catalog.py"), "load_package_catalog", "json_decode"): 1,
     (Path("src/loushang/harness/resources/packages/catalog.py"), "load_package_catalog", "path_read"): 1,
@@ -362,7 +367,11 @@ PRE_SDK_PRIVATE_PLUGIN_SYMBOLS = frozenset(
         "PluginContributionSemanticFingerprint",
         "PluginDeclarationBuilder",
         "PluginDefinition",
+        "PluginDefinitionEvaluationError",
         "PluginDefinitionEvaluator",
+        "PluginExecutionConsumptionReceiptV1",
+        "PluginImportRealm",
+        "PluginInProcessEvaluatedEvidence",
         "PluginManagementCommandV1",
         "PluginManagementOperationEventV1",
         "PluginManagementOperationResultV1",
@@ -2420,6 +2429,7 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
         "package-materializer",
         "package-resource-mount",
         "plugin-declaration-coordinator",
+        "plugin-definition-evaluator",
         "plugin-manifest-parser",
         "plugin-strict-json-codec",
         "verified-revision-boundary",
@@ -2791,7 +2801,7 @@ def test_current_profile_graph_authority_classes_have_one_definition() -> None:
     assert _class_sites(sources, "PluginProfileResolver") == ()
 
 
-def test_inert_plugin_layer_has_no_live_runtime_or_product_dependencies() -> None:
+def test_plugin_layer_has_only_the_qualified_definition_loading_site() -> None:
     plugin_sources = {
         path: source
         for path, source in _source_texts().items()
@@ -2809,7 +2819,12 @@ def test_inert_plugin_layer_has_no_live_runtime_or_product_dependencies() -> Non
     }
 
     assert forbidden_imports == set()
-    assert _executable_loading_sites(plugin_sources) == set()
+    assert _executable_loading_sites(plugin_sources) == {
+        (
+            Path("src/loushang/harness/plugin_authoring/evaluator.py"),
+            "_DeclaredImportPolicy._import",
+        )
+    }
 
 
 def test_plugin_foundation_public_exports_are_frozen_before_sdk() -> None:
@@ -3130,7 +3145,7 @@ def test_plc2_package_cleanup_is_write_ahead_inert_and_gc_rechecked() -> None:
         assert forbidden_call not in package_lifecycle
 
 
-def test_plc3_start_and_recovery_are_internal_atomic_and_not_executable() -> None:
+def test_plc3_verified_evaluation_is_internal_and_production_host_closed() -> None:
     contract = PLC3_CONTRACT_PATH.read_text(encoding="utf-8")
     approval_execution_path = Path(
         "src/loushang/harness/approval/plugin_execution.py"
@@ -3143,8 +3158,22 @@ def test_plc3_start_and_recovery_are_internal_atomic_and_not_executable() -> Non
         "src/loushang/harness/approval/__init__.py"
     ).read_text(encoding="utf-8")
     coordinator = PLUGIN_DECLARATION_COORDINATOR_PATH.read_text(encoding="utf-8")
+    evaluator_path = Path(
+        "src/loushang/harness/plugin_authoring/evaluator.py"
+    )
+    import_realm_path = Path(
+        "src/loushang/harness/plugin_authoring/import_realm.py"
+    )
+    evaluator = evaluator_path.read_text(encoding="utf-8")
+    import_realm = import_realm_path.read_text(encoding="utf-8")
+    authoring_exports = Path(
+        "src/loushang/harness/plugin_authoring/__init__.py"
+    ).read_text(encoding="utf-8")
+    declaration_host = Path(
+        "src/loushang/harness/plugin_authoring/host.py"
+    ).read_text(encoding="utf-8")
 
-    assert "Status: PLC3-2 aggregate start permit and durable execution-use" in (
+    assert "Status: PLC3-3 verified Definition evaluation and mixed-source join" in (
         contract
     )
     assert "A durable approved decision is necessary but not\nsufficient" in contract
@@ -3152,14 +3181,23 @@ def test_plc3_start_and_recovery_are_internal_atomic_and_not_executable() -> Non
         contract
     )
     assert "one-event multi-use recovery" in contract
-    assert "PLC3-3 must compose these primitives without merging their owners" in (
-        contract
-    )
+    assert "claim group\n-> issue aggregate start permit" in contract
+    assert "The next slice is PLC4/PAP4 exact Capability owner admission" in contract
     assert "PluginExecutionDecisionJournal" not in approval_exports
     assert "PluginExecutionStartPermit" not in public_plugins.__all__
     assert "execution_not_consumed" in coordinator
-    assert not Path("src/loushang/harness/plugin_authoring/evaluator.py").exists()
-    assert not Path("src/loushang/harness/plugin_authoring/import_realm.py").exists()
+    assert evaluator_path.exists()
+    assert import_realm_path.exists()
+    assert "PluginDefinitionEvaluator" not in authoring_exports
+    assert "PluginImportRealm" not in authoring_exports
+    assert "execution_evaluator=" not in declaration_host
+    assert "VerifiedRevisionHandle.open_file()" in contract
+    assert "PluginExecutionDecisionJournal" in evaluator
+    assert "PluginExecutionStartPermit" in evaluator
+    assert "sys.path" not in evaluator
+    assert "sys.modules" not in evaluator
+    assert "PluginImportRealm" in import_realm
+    assert "plugin_import_realm_polluted" in import_realm
     assert approval_execution.count("append_jsonl_record(") == 1
     assert "append_jsonl_records(" not in approval_execution
     assert "_ExecutionConsumedV1" in approval_execution
@@ -3185,3 +3223,12 @@ def test_plc3_start_and_recovery_are_internal_atomic_and_not_executable() -> Non
         "mcp_",
     ):
         assert forbidden not in approval_execution
+    for forbidden in (
+        "RuntimeCapabilityGraphBinder",
+        "RegistrationScope",
+        "WorkspaceToolRegistry",
+        "SessionFacade",
+        "McpSurfaceGeneration",
+        "mcp_",
+    ):
+        assert forbidden not in evaluator

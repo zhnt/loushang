@@ -900,6 +900,10 @@ Exit gate:
 
 ### PLC3: Executable Trust And Definition Evaluation
 
+Implementation status (2026-08-23): the internal PLC3-1 through PLC3-3 path is
+complete and regression-gated. Production `PluginDeclarationHost` ingress and
+all PLC4 owner admission/binding remain disabled.
+
 Scope:
 
 - complete PAP2 durable Approval-owner decision issue/query/consume/revoke and

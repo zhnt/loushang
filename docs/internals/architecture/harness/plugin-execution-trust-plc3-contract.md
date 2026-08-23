@@ -1,8 +1,8 @@
 # Plugin Execution Trust PLC3 Contract
 
-Status: PLC3-2 aggregate start permit and durable execution-use recovery
-implemented; import-realm loading, Definition evaluation, mixed-source join
-and all live owner binding remain closed.
+Status: PLC3-3 verified Definition evaluation and mixed-source join implemented;
+production Host ingress, live owner binding, public SDK and MCP expansion remain
+closed.
 
 This document is the normative incremental companion to
 [Unified Plugin Architecture](unified-plugin-architecture.md),
@@ -15,7 +15,8 @@ without claiming that any installed or approved Plugin may execute.
 ## Ownership And Non-Effect Boundary
 
 `loushang.harness.approval.plugin_execution.PluginExecutionDecisionJournal`
-remains the sole durable authority added by PLC3-1/2. One journal belongs to
+remains the sole durable authority added by PLC3-1/2 and consumed by PLC3-3.
+One journal belongs to
 exactly one `installation` or `workspace` scope and survives Session close.
 The existing Session grant store is not reused, and Plugin management,
 selection, authoring, Product adapters and UI do not own peer decision state.
@@ -37,9 +38,12 @@ does not:
 - change a Session, Capability Graph, Resource generation or Model Input; or
 - add an MCP server, tool or integration path.
 
-The existing Coordinator therefore continues to reject every executable group
-as `execution_not_consumed`. A durable approved decision is necessary but not
-sufficient execution authority; the new primitives have no production caller.
+The Coordinator accepts executable groups only when its internal construction
+receives the PLC3-3 evaluator. The production `PluginDeclarationHost` injects
+no evaluator and therefore continues to reject every executable group as
+`execution_not_consumed`. A durable approved decision is necessary but not
+sufficient execution authority; the executable path still has no production
+caller.
 
 ## Scope And Approval Subject
 
@@ -75,6 +79,47 @@ No Approval, Product, loader or owner callback runs while the aggregate lock is
 held. A rejected permit does not settle the claim; the worker must still settle
 so close can finish. This is an internal race primitive, not permission to
 import a Definition.
+
+## Verified Definition Evaluator And Import Realm
+
+PLC3-3 adds one internal `PluginDefinitionEvaluator` and one caller-owned,
+process-wide `PluginImportRealm`. Neither is a package export. The production
+Host constructs neither. An explicitly injected Coordinator performs the exact
+sequence:
+
+```text
+claim group
+-> issue aggregate start permit
+-> verify revision handle and dependency lock
+-> preflight clean compatible realm
+-> atomically consume durable decision
+-> reserve exact realm/use
+-> persist STARTING
+-> read entrypoint bytes through VerifiedRevisionHandle.open_file()
+-> compile/invoke Definition with its source-group-bound Builder
+-> persist EVALUATED or FAILED_AFTER_START
+-> commit or quarantine realm
+-> project exact receipt and in_process_evaluated evidence
+-> join every Batch and finalize once
+```
+
+There is no await, mutable package-path reopen or Product callback between the
+verified handle read and loader invocation. The evaluator does not change
+`sys.path`, does not register its transient module in `sys.modules`, and does
+not load a local helper by mutable path. Standard-library imports, the narrow
+Harness authoring API and exact installed distributions named by the immutable
+dependency lock are eligible. Relative and package-local transitive imports are
+rejected in this first evaluator arm. The lock is a compatibility contract, not
+a security sandbox: an in-process Definition is explicitly host-equivalent
+trusted and still requires the complete Approval Subject.
+
+One realm binds one `hostBootId`, serializes one active import, and accumulates
+compatible exact distribution versions. A different locked version fails
+before import. Any loader exception or uncertainty after start permanently
+marks that realm `polluted`; no cache cleanup or in-process retry is attempted.
+If realm reservation or the durable `STARTING` transition loses before loader
+entry, the evaluator best-effort persists `CANCELLED_BEFORE_START`. Recovery
+remains the authority for any ambiguous not-started record.
 
 ## Durable Records
 
@@ -271,7 +316,7 @@ selection view only for a matching unexpired `AVAILABLE` or `DENIED` record.
 Consumed, revoked, expired, wrong-scope and unknown decisions project `missing`;
 the consuming command still reports the exact terminal reason.
 
-## PLC3-1/2 Exact Error Codes
+## PLC3 Exact Error Codes
 
 | Condition | Code |
 | --- | --- |
@@ -287,6 +332,9 @@ the consuming command still reports the exact terminal reason.
 | unsupported or invalid durable record | `unsupported_plugin_execution_journal_record_version` / `invalid_plugin_execution_journal_record` |
 | non-replayable complete journal | `plugin_execution_journal_corrupt` |
 | aggregate close wins / repeat / document group | `preflight_closing` / `plugin_execution_start_permit_consumed` / `plugin_execution_start_not_applicable` |
+| realm polluted / busy / wrong boot | `plugin_import_realm_polluted` / `plugin_import_realm_busy` / `plugin_import_realm_host_mismatch` |
+| locked dependency conflict / unavailable | `plugin_import_dependency_conflict` / `plugin_import_dependency_unavailable` |
+| Definition failure after start | `plugin_definition_evaluation_failed` |
 
 ## Regression Gate And Next Slice
 
@@ -296,12 +344,15 @@ executable claim, strict state transitions, exact receipt shape and realm
 binding, one-event multi-use recovery, idempotent repeated recovery and
 polluted-realm projection without cleanup.
 
-PLC3-3 must compose these primitives without merging their owners: exact claim,
-aggregate start permit, durable consume, durable `STARTING`, then—and only
-then—one verified-handle import-realm evaluator. Import success advances to
-`EVALUATED`; any exception after start advances to `FAILED_AFTER_START` and
-quarantines that realm. PLC3-3 must then prove mixed document/executable
-join-before-single-finalization while the production Coordinator remains
-closed until the whole sequence passes. Public exports, general plugin SDK,
-production Host ingress and MCP expansion remain forbidden until the complete
-PLC3 exit gate passes.
+PLC3-3 regression tests now prove verified-byte evaluation despite source-tree
+mutation, source-bound Builder output, exact current realm receipt evidence,
+undeclared local import rejection, conflicting closure fencing, permanent
+failure quarantine, fresh-decision retry rejection on a polluted realm,
+mixed document/executable join-before-single-finalization and zero finalization
+after a later executable failure.
+
+The next slice is PLC4/PAP4 exact Capability owner admission. It must consume
+the immutable candidates produced here without letting Definition evaluation
+publish a registry, Resource, Mount, live Provider or Graph generation. Public
+exports, general Plugin SDK, production Host ingress and MCP expansion remain
+forbidden until their later explicit delivery gates.

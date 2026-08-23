@@ -101,7 +101,11 @@ def test_builder_exact_matches_hand_authored_ir_and_freezes(
         )
         == payload
     )
-    assert builder.build() == (hand_authored,)
+    built = builder.build()
+    assert built == (hand_authored,)
+    assert builder._validate_definition_result(built) is built
+    with pytest.raises(ValueError, match="foreign declaration IR"):
+        builder._validate_definition_result(tuple([*built]))
     with pytest.raises(RuntimeError, match="frozen"):
         builder.build()
     with pytest.raises(RuntimeError, match="frozen"):

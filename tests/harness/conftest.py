@@ -34,6 +34,8 @@ class PublishedSyntheticPlugin:
     binding: PluginSourceBinding
     contribution: PluginContributionReservation
     import_marker: Path
+    undeclared_import_marker: Path
+    undeclared_import_trigger: Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,9 +52,51 @@ def published_synthetic_plugin(tmp_path: Path) -> Iterator[PublishedSyntheticPlu
     source_root = tmp_path / "source" / "synthetic-provider"
     source_root.mkdir(parents=True)
     import_marker = tmp_path / "entrypoint-imported.txt"
+    undeclared_import_marker = tmp_path / "undeclared-imported.txt"
+    undeclared_import_trigger = tmp_path / "enable-undeclared-import"
     (source_root / "provider.py").write_text(
         "from pathlib import Path\n"
-        f"Path({str(import_marker)!r}).write_text('imported', encoding='utf-8')\n",
+        f"if Path({str(undeclared_import_trigger)!r}).exists():\n"
+        "    import helper\n"
+        "from loushang.harness.capabilities import (\n"
+        "    CapabilityBundleProvider, CapabilityContractRange,\n"
+        ")\n"
+        "from loushang.harness.plugin_authoring.capability_provider import (\n"
+        "    CapabilityProviderDeclarationPayload, PluginSymbolReference,\n"
+        ")\n"
+        f"Path({str(import_marker)!r}).write_text('imported', encoding='utf-8')\n"
+        "def create_provider(context):\n"
+        "    raise AssertionError('declaration must not construct a provider')\n"
+        "def declare(builder):\n"
+        "    payload = CapabilityProviderDeclarationPayload(\n"
+        "        provider=CapabilityBundleProvider(\n"
+        "            capability_id='synthetic.capability',\n"
+        "            provider_id='org.loushang.synthetic/default',\n"
+        "            implementation_version=1,\n"
+        "            compatible_contract=CapabilityContractRange.exact(1),\n"
+        "            facets=('default',),\n"
+        "            required_authorities=frozenset(),\n"
+        "            source_id='plugin:synthetic-provider',\n"
+        "            selection_rule='Plugin declaration candidate',\n"
+        "        ),\n"
+        "        factory=PluginSymbolReference(\n"
+        "            path='provider.py',\n"
+        "            symbol='create_provider',\n"
+        "            execution_model='in_process',\n"
+        "        ),\n"
+        "        disposer=None,\n"
+        "    )\n"
+        "    builder.add_capability_provider(\n"
+        "        contribution_id='synthetic-provider', payload=payload,\n"
+        "    )\n"
+        "    return builder.build()\n",
+        encoding="utf-8",
+    )
+    (source_root / "helper.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(undeclared_import_marker)!r}).write_text(\n"
+        "    'undeclared-imported', encoding='utf-8',\n"
+        ")\n",
         encoding="utf-8",
     )
     (source_root / "plugin.json").write_text(
@@ -102,6 +146,8 @@ def published_synthetic_plugin(tmp_path: Path) -> Iterator[PublishedSyntheticPlu
         binding=binding,
         contribution=contribution,
         import_marker=import_marker,
+        undeclared_import_marker=undeclared_import_marker,
+        undeclared_import_trigger=undeclared_import_trigger,
     )
     assert import_marker.exists() is False
     try:
