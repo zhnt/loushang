@@ -443,6 +443,19 @@ class AgentProductSession(AgentSessionAdapterMixin):
             item.capability_id for item in external_definitions
         ):
             raise ValueError("External composition duplicates a built-in Capability")
+        if capability_composition_inputs is not None:
+            built_in_provider_by_id = {
+                item.capability_id: item for item in built_in_providers
+            }
+            if any(
+                built_in_provider_by_id.get(item.capability_id) != item
+                for item in (
+                    capability_composition_inputs.resolved_providers.prebound_providers
+                )
+            ):
+                raise ValueError(
+                    "External composition prebound Providers do not match Session built-ins"
+                )
         graph_roots: tuple[str, ...] = (
             MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
         )

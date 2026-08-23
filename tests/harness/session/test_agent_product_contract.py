@@ -25,6 +25,7 @@ from loushang.harness.approval.plugin_execution import (
 )
 from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
+    WORKSPACE_CAPABILITY_DEFINITION,
     CapabilityBundleProvider,
     CapabilityContractRange,
     CapabilityDefinition,
@@ -1206,6 +1207,15 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 definitions=(MODEL_INPUT_CAPABILITY_DEFINITION, definition),
                 optional_choices=(),
             )
+            workspace_binding = workspace_capability_provider_binding(
+                operations=LocalToolOperations(),
+                process_launcher=_UnusedWorkspaceLauncher(),
+                scope_instance_id="workspace:test",
+                binding_input_fingerprint=hashlib.sha256(
+                    b"foundation-workspace"
+                ).hexdigest(),
+                source_id="foundation-contract-test",
+            )
             resolved = ProductCapabilityProviderResolver().resolve(
                 ProductCapabilityProviderSelectionPlanV1(
                     product_id="coding",
@@ -1221,10 +1231,11 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                     ),
                     policy_revision="coding-plugin-policy-1",
                 ),
-                definitions=(definition,),
+                definitions=(definition, WORKSPACE_CAPABILITY_DEFINITION),
                 admissions=(provider_admission,),
                 owner_snapshots=(provider_authority.snapshot(),),
                 evaluated_at=150,
+                prebound_providers=(workspace_binding.provider,),
             )
             identities = iter(("1" * 48, "2" * 48))
             activation_journal = PluginActivationDecisionJournal(
@@ -1288,6 +1299,7 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 assert capture.facets.require("query") == {
                     "label": "foundation",
                     "runtime_id": "session:coding-session",
+                    "workspace_read": True,
                 }
                 _append_event(events, "tool-stage")
                 return {"generation": 1}
@@ -1325,6 +1337,7 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 capability_runtime=_capability_runtime("coding"),
                 reserve_tokens=1_111,
                 compact_percent=61.0,
+                workspace_capability_binding=workspace_binding,
                 capability_composition_inputs=composition_inputs,
                 capability_component_host=component_host,
                 capability_owner_generation_bindings=(owner_binding,),
@@ -1420,6 +1433,13 @@ def _publish_foundation_plugin(
             implementation_version=1,
             compatible_contract=CapabilityContractRange.exact(1),
             facets=("query",),
+            requirements=(
+                CapabilityRequirement(
+                    capability="harness.workspace",
+                    facets=("read",),
+                    compatible_contract=CapabilityContractRange.exact(1),
+                ),
+            ),
             source_id="plugin:foundation-sample",
             selection_rule=PLUGIN_PROVIDER_SELECTION_RULE,
         ),
@@ -1581,6 +1601,9 @@ def create_provider(context):
         {{
             "label": context.binding_inputs["label"],
             "runtime_id": context.runtime_id,
+            "workspace_read": (
+                context.dependency("harness.workspace").require("read") is not None
+            ),
         }},
     ),))
 
