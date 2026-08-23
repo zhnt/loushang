@@ -192,6 +192,34 @@ def _capability_requirement_to_dict(
     }
 
 
+def _direct_requirement_scope_is_valid(
+    consumer_scope: RuntimeCapabilityScope,
+    dependency_scope: RuntimeCapabilityScope,
+) -> bool:
+    """Return the single canonical direct-capture lifetime decision."""
+
+    return dependency_scope in _DIRECT_DEPENDENCY_SCOPES[consumer_scope]
+
+
+def _requirement_refresh_is_valid(
+    consumer_refresh: RuntimeRefreshBoundary,
+    dependency_refresh: RuntimeRefreshBoundary,
+) -> bool:
+    """Return whether a Consumer may retain the dependency refresh boundary."""
+
+    return not (consumer_refresh == "sealed" and dependency_refresh == "turn")
+
+
+_DIRECT_DEPENDENCY_SCOPES = {
+    "process": frozenset({"process"}),
+    "tenant": frozenset({"process", "tenant"}),
+    "workspace": frozenset({"process", "tenant", "workspace"}),
+    "session": frozenset({"process", "tenant", "workspace", "session"}),
+    "turn": frozenset({"process", "tenant", "workspace", "session", "turn"}),
+    "channel": frozenset({"process", "tenant", "channel"}),
+}
+
+
 __all__ = [
     "CapabilityContractRange",
     "CapabilityDefinition",
