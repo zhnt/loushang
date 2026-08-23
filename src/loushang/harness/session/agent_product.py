@@ -103,6 +103,7 @@ from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
     SessionCapabilityConsumerCapture,
     SessionCapabilityOwnerGenerationBinding,
+    SessionCapabilityOwnerGenerationStagingError,
     StagedSessionCapabilityOwnerGeneration,
     dispose_session_capability_owner_generations,
     stage_session_capability_owner_generations,
@@ -330,6 +331,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
         ] = ()
         self._capability_owner_generations: tuple[
             StagedSessionCapabilityOwnerGeneration, ...
+        ] = ()
+        self._pending_capability_components: tuple[
+            PreparedCapabilityComponent, ...
         ] = ()
         if capability_composition_inputs is not None:
             validate_session_capability_owner_generation_bindings(
@@ -973,6 +977,20 @@ class AgentProductSession(AgentSessionAdapterMixin):
             staged_candidate = self._staged_resource_candidate
             staged_side_question = self._staged_side_question_candidate
             owner_generations = self._capability_owner_generations
+            pending_components = self._pending_capability_components
+            if pending_components:
+                remaining_components: list[PreparedCapabilityComponent] = []
+                for prepared in reversed(pending_components):
+                    try:
+                        await prepared.abort_uncommitted()
+                    except BaseException as exc:
+                        remaining_components.append(prepared)
+                        errors.append(exc)
+                self._pending_capability_components = tuple(
+                    reversed(remaining_components)
+                )
+                if remaining_components:
+                    owner_cleanup_failed = True
             if owner_generations:
                 try:
                     await dispose_session_capability_owner_generations(
@@ -1139,15 +1157,19 @@ class AgentProductSession(AgentSessionAdapterMixin):
                         )
                         for entry in composition_inputs.product_composition.consumer_requirements.satisfied_entries
                     )
-                    owner_generations = (
-                        await stage_session_capability_owner_generations(
-                            admissions=(
-                                composition_inputs.product_composition.catalog_admissions
-                            ),
-                            bindings=self._capability_owner_generation_bindings,
-                            captures=external_captures,
+                    try:
+                        owner_generations = (
+                            await stage_session_capability_owner_generations(
+                                admissions=(
+                                    composition_inputs.product_composition.catalog_admissions
+                                ),
+                                bindings=self._capability_owner_generation_bindings,
+                                captures=external_captures,
+                            )
                         )
-                    )
+                    except SessionCapabilityOwnerGenerationStagingError as exc:
+                        owner_generations = exc.pending_generations
+                        raise
                 consumer = SessionModelCallCapabilityConsumer(
                     self._capability_graph_runtime.capture(
                         MODEL_INPUT_PREPARATION_REQUIREMENT
@@ -1194,8 +1216,12 @@ class AgentProductSession(AgentSessionAdapterMixin):
                         )
                 for prepared in reversed(prepared_components):
                     try:
-                        prepared.abort_uncommitted()
+                        await prepared.abort_uncommitted()
                     except BaseException as cleanup_error:
+                        self._pending_capability_components = (
+                            prepared,
+                            *self._pending_capability_components,
+                        )
                         error.add_note(
                             "Prepared component cancellation also failed: "
                             f"{cleanup_error!r}"

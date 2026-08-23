@@ -228,6 +228,19 @@ class StagedSessionCapabilityOwnerGeneration:
         self.disposed = True
 
 
+class SessionCapabilityOwnerGenerationStagingError(RuntimeError):
+    """Owner staging failed while some generations still require disposal."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        pending_generations: tuple[StagedSessionCapabilityOwnerGeneration, ...],
+    ) -> None:
+        super().__init__(message)
+        self.pending_generations = pending_generations
+
+
 async def stage_session_capability_owner_generations(
     *,
     admissions: tuple[OwnerContributionAdmissionRecord, ...],
@@ -274,14 +287,21 @@ async def stage_session_capability_owner_generations(
                 )
             )
     except BaseException as error:
+        pending: list[StagedSessionCapabilityOwnerGeneration] = []
         for generation in reversed(staged):
             try:
                 await generation.dispose_once()
             except BaseException as cleanup_error:
+                pending.append(generation)
                 error.add_note(
                     "Owner generation rollback also failed: "
                     f"{cleanup_error!r}"
                 )
+        if pending:
+            raise SessionCapabilityOwnerGenerationStagingError(
+                "Owner generation staging failed with pending rollback cleanup.",
+                pending_generations=tuple(reversed(pending)),
+            ) from error
         raise
     return tuple(staged)
 
@@ -368,6 +388,7 @@ __all__ = [
     "SessionCapabilityCompositionInputs",
     "SessionCapabilityConsumerCapture",
     "SessionCapabilityOwnerGenerationBinding",
+    "SessionCapabilityOwnerGenerationStagingError",
     "SessionCompositionChange",
     "StagedSessionCapabilityOwnerGeneration",
     "dispose_session_capability_owner_generations",

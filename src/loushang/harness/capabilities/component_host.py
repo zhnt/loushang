@@ -220,6 +220,7 @@ class _PreparedComponentAttempt:
     clock: Callable[[], int]
     started: bool = False
     disposer: CapabilityProviderDisposer | None = None
+    pending_disposal_value: CapabilityBundleValue | None = None
 
     async def create(
         self,
@@ -266,8 +267,8 @@ class _PreparedComponentAttempt:
                 )
             self.disposer = disposer
             if set(value.facet_ids) != set(self.resolved.admission.effective_facets):
-                await self._dispose_value(value, disposer=disposer)
-                self.disposer = None
+                self.pending_disposal_value = value
+                await self._dispose_pending_value()
                 raise ValueError("Component factory returned unexpected facets")
             return value
         except BaseException:
@@ -276,8 +277,8 @@ class _PreparedComponentAttempt:
 
     async def dispose(self, value: CapabilityBundleValue) -> None:
         disposer = self.disposer
-        self.disposer = None
         await self._dispose_value(value, disposer=disposer)
+        self.disposer = None
 
     def cancel_before_start(self) -> bool:
         if self.reservation.state != "CONSUMED_NOT_STARTED":
@@ -296,7 +297,11 @@ class _PreparedComponentAttempt:
             )
         self._transition("STARTED", "COMMITTED")
 
-    def abort_uncommitted(self) -> bool:
+    async def abort_uncommitted(self) -> bool:
+        cleaned_pending_value = False
+        if self.pending_disposal_value is not None:
+            await self._dispose_pending_value()
+            cleaned_pending_value = True
         if self.reservation.state == "CONSUMED_NOT_STARTED":
             self._transition(
                 "CONSUMED_NOT_STARTED",
@@ -309,7 +314,15 @@ class _PreparedComponentAttempt:
         if self.reservation.state == "STARTED":
             self._transition("STARTED", "FAILED")
             return True
-        return False
+        return cleaned_pending_value
+
+    async def _dispose_pending_value(self) -> None:
+        value = self.pending_disposal_value
+        if value is None:
+            return
+        await self._dispose_value(value, disposer=self.disposer)
+        self.pending_disposal_value = None
+        self.disposer = None
 
     def _load_symbols(
         self,
@@ -494,8 +507,8 @@ class PreparedCapabilityComponent:
     def commit_after_graph_publication(self) -> None:
         self._attempt.commit_after_graph_publication()
 
-    def abort_uncommitted(self) -> bool:
-        return self._attempt.abort_uncommitted()
+    async def abort_uncommitted(self) -> bool:
+        return await self._attempt.abort_uncommitted()
 
 
 __all__ = [

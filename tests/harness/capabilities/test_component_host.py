@@ -137,6 +137,60 @@ async def _component_host_defers_import_until_the_existing_binder_constructs(
     assert consumer.is_current is False
 
 
+def test_component_host_retries_provider_disposer_after_transient_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(
+        _component_host_retries_provider_disposer_after_transient_failure(
+            tmp_path,
+            monkeypatch,
+        )
+    )
+
+
+async def _component_host_retries_provider_disposer_after_transient_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = tmp_path / "activation.log"
+    monkeypatch.setenv("LOUSHANG_COMPONENT_TEST_MARKER", str(marker))
+    fixture = _fixture(
+        tmp_path,
+        returned_facet="query",
+        disposer_fails_once=True,
+    )
+    journal = _journal(tmp_path)
+    host = _host(journal)
+    subject = host.activation_subject(
+        fixture.resolved,
+        owner_snapshot=fixture.owner_snapshot,
+        trust_snapshot=fixture.trust_snapshot,
+    )
+    decision = _approve(journal, subject)
+    prepared = host.prepare_component(
+        fixture.resolved,
+        package=fixture.package,
+        owner_snapshot=fixture.owner_snapshot,
+        trust_snapshot=fixture.trust_snapshot,
+        decision_id=decision.decision_id,
+    )
+    runtime = RuntimeCapabilityGraphRuntime(
+        product_id="coding",
+        runtime_id="session:test",
+        profile_fingerprint="f" * 64,
+    )
+    binder = RuntimeCapabilityGraphBinder()
+    await binder.bind(runtime, fixture.plan, (prepared.binding,))
+    prepared.commit_after_graph_publication()
+
+    assert await binder.dispose(runtime) == ("provider_retirement_failed",)
+    assert runtime.has_pending_retirements is True
+    assert await binder.dispose(runtime) == ()
+    assert runtime.has_pending_retirements is False
+    assert marker.read_text(encoding="utf-8").splitlines().count("dispose") == 2
+
+
 def test_component_host_disposes_invalid_bundle_and_records_failed_attempt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -194,6 +248,62 @@ async def _component_host_disposes_invalid_bundle_and_records_failed_attempt(
     ]
 
 
+def test_component_host_retains_invalid_bundle_for_cleanup_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(
+        _component_host_retains_invalid_bundle_for_cleanup_retry(
+            tmp_path,
+            monkeypatch,
+        )
+    )
+
+
+async def _component_host_retains_invalid_bundle_for_cleanup_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = tmp_path / "activation.log"
+    monkeypatch.setenv("LOUSHANG_COMPONENT_TEST_MARKER", str(marker))
+    fixture = _fixture(
+        tmp_path,
+        returned_facet="wrong",
+        disposer_fails_once=True,
+    )
+    journal = _journal(tmp_path)
+    host = _host(journal)
+    subject = host.activation_subject(
+        fixture.resolved,
+        owner_snapshot=fixture.owner_snapshot,
+        trust_snapshot=fixture.trust_snapshot,
+    )
+    decision = _approve(journal, subject)
+    prepared = host.prepare_component(
+        fixture.resolved,
+        package=fixture.package,
+        owner_snapshot=fixture.owner_snapshot,
+        trust_snapshot=fixture.trust_snapshot,
+        decision_id=decision.decision_id,
+    )
+    runtime = RuntimeCapabilityGraphRuntime(
+        product_id="coding",
+        runtime_id="session:test",
+        profile_fingerprint="f" * 64,
+    )
+
+    with pytest.raises(CapabilityGraphBindingError):
+        await RuntimeCapabilityGraphBinder().bind(
+            runtime,
+            fixture.plan,
+            (prepared.binding,),
+        )
+
+    assert marker.read_text(encoding="utf-8").splitlines().count("dispose") == 1
+    assert await prepared.abort_uncommitted() is True
+    assert marker.read_text(encoding="utf-8").splitlines().count("dispose") == 2
+
+
 @dataclass(frozen=True)
 class _Fixture:
     package: PublishedPluginPackage
@@ -203,7 +313,12 @@ class _Fixture:
     plan: RuntimeCapabilityGraphPlan
 
 
-def _fixture(tmp_path: Path, *, returned_facet: str) -> _Fixture:
+def _fixture(
+    tmp_path: Path,
+    *,
+    returned_facet: str,
+    disposer_fails_once: bool = False,
+) -> _Fixture:
     root = tmp_path / "plugin"
     root.mkdir()
     (root / "plugin.json").write_text(
@@ -211,7 +326,10 @@ def _fixture(tmp_path: Path, *, returned_facet: str) -> _Fixture:
         encoding="utf-8",
     )
     (root / "provider.py").write_text(
-        _provider_source(returned_facet),
+        _provider_source(
+            returned_facet,
+            disposer_fails_once=disposer_fails_once,
+        ),
         encoding="utf-8",
     )
     verified = PluginRevisionStore(tmp_path / "revisions").publish(
@@ -383,7 +501,11 @@ def _approve(journal, subject):  # type: ignore[no-untyped-def]
     )
 
 
-def _provider_source(returned_facet: str) -> str:
+def _provider_source(
+    returned_facet: str,
+    *,
+    disposer_fails_once: bool = False,
+) -> str:
     return f'''\
 import os
 from pathlib import Path
@@ -394,6 +516,7 @@ from loushang.harness.capabilities.provider_binding import (
 )
 
 MARKER = Path(os.environ["LOUSHANG_COMPONENT_TEST_MARKER"])
+DISPOSER_FAILS_ONCE = {disposer_fails_once!r}
 with MARKER.open("a", encoding="utf-8") as stream:
     stream.write("import\\n")
 
@@ -411,4 +534,9 @@ def create_provider(context):
 def dispose_provider(_value):
     with MARKER.open("a", encoding="utf-8") as stream:
         stream.write("dispose\\n")
+    if (
+        DISPOSER_FAILS_ONCE
+        and MARKER.read_text(encoding="utf-8").splitlines().count("dispose") == 1
+    ):
+        raise RuntimeError("synthetic transient disposal failure")
 '''
