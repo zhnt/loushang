@@ -123,7 +123,7 @@ def is_tab_fallback_key(event: object) -> bool:
 SettingsRowSelect = Callable[[ConfigRow], object | None]
 
 
-def boolean_setting_intent(row: ConfigRow) -> InputIntent | None:
+def boolean_setting_intent(row: ConfigRow) -> InputIntent[str] | None:
     if row.disabled:
         return None
     return InputIntent(kind="setting", text=row.id, note=next_bool_value(row.value))

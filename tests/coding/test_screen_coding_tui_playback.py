@@ -11,6 +11,11 @@ from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_input import build_screen_input_router
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
+from loushang.harnesstui.conversation.input import (
+    ConversationAbortResult,
+    ConversationLocalResult,
+    ConversationSurfaceResult,
+)
 from loushang.harnesstui.status.provider import StatusProvider
 from loushang.tui import (
     FakeTerminalPort,
@@ -222,7 +227,8 @@ def test_screen_tui_playback_escape_clears_idle_draft_without_abort() -> None:
     assert all(step.flush_succeeded for step in result)
     assert app.composer.value == ""
     assert not any(
-        input_result.abort_requested for input_result in playback.input_results
+        isinstance(input_result, ConversationAbortResult)
+        for input_result in playback.input_results
     )
     assert "› draft" not in _plain_lines(result[-1].diagnostics)
     for step in result:
@@ -826,11 +832,11 @@ class _ScreenInteractivePlayback:
             )
         for event in events:
             result = self.router.handle(event)
-            if result.local_text is not None:
-                asyncio.run(self.surface_manager.handle_text(result.local_text))
-            if result.surface_intent is not None:
+            if isinstance(result, ConversationLocalResult):
+                asyncio.run(self.surface_manager.handle_text(result.text))
+            if isinstance(result, ConversationSurfaceResult):
                 asyncio.run(
-                    self.surface_manager.handle_surface_intent(result.surface_intent)
+                    self.surface_manager.handle_surface_intent(result.intent)
                 )
 
 

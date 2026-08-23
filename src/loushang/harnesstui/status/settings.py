@@ -88,7 +88,7 @@ class StatusLineSettingsPage:
             cursor=result.cursor,
         )
 
-    def _setting_intent(self, row: ConfigRow) -> InputIntent | None:
+    def _setting_intent(self, row: ConfigRow) -> InputIntent[str] | None:
         current = row_for_key(statusline_rows(self.statusline_settings), row.id)
         if current is None or current.disabled:
             return None

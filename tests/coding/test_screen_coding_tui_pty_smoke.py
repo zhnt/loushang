@@ -36,9 +36,7 @@ def test_screen_tui_tmux_pty_preserves_compact_history_and_streamed_tail(
 
     early_lines = tuple(f"PLAYBACK_EARLY_{index:03d}" for index in range(1, 81))
     after_lines = tuple(f"AFTER_COMPACT_{index:03d}" for index in range(1, 41))
-    _assert_ordered_lines(captured, early_lines)
-    _assert_ordered_lines(captured, after_lines)
-    assert captured.count(after_lines[-1]) == 1
+    _assert_lines_once_in_order(captured, (*early_lines, *after_lines))
     assert "Context compacted (500000 tokens before)" in captured
     assert "hidden summary line one" not in captured
     assert "hidden summary line two" not in captured
@@ -77,9 +75,7 @@ def test_screen_tui_tmux_pty_auto_compaction_preserves_history_and_resume(
 
     early_lines = tuple(f"AUTO_EARLY_{index:03d}" for index in range(1, 81))
     after_lines = tuple(f"AUTO_AFTER_{index:03d}" for index in range(1, 41))
-    _assert_ordered_lines(captured, early_lines)
-    _assert_ordered_lines(captured, after_lines)
-    assert captured.count(after_lines[-1]) == 1
+    _assert_lines_once_in_order(captured, (*early_lines, *after_lines))
     assert "Context compacted (" in captured
     assert "AUTO_COMPACT_PRIVATE_SUMMARY" not in captured
 
@@ -112,6 +108,36 @@ def test_screen_tui_tmux_pty_auto_compaction_preserves_history_and_resume(
     assert early_lines[-1] in jsonl
     assert after_lines[0] in jsonl
     assert after_lines[-1] in jsonl
+
+
+@pytest.mark.tui_tmux_integration
+def test_screen_tui_tmux_pty_live_resume_trim_streams_each_line_once(
+    tmp_path: Path,
+) -> None:
+    if os.name == "nt":
+        pytest.skip("tmux PTY regression uses POSIX terminals")
+    tmux = shutil.which("tmux")
+    if tmux is None and os.environ.get("LOUSHANG_REQUIRE_TMUX") == "1":
+        pytest.fail("required tmux executable was not found")
+    if tmux is None:
+        pytest.skip("tmux is not installed")
+
+    captured = _run_tmux_fixture(
+        tmp_path=tmp_path,
+        tmux=tmux,
+        fixture_name="resume_trim_pty_fixture.py",
+        ready_name="resume-trim-playback.ready",
+        socket_name=f"loushang-resume-trim-{os.getpid()}",
+        session_name="resume-trim",
+        ready_timeout_seconds=30,
+        visible_sentinel="POST_RESUME_040",
+    )
+
+    # Only the settled prefix is guaranteed to have entered native history.
+    # The still-visible old tail is intentionally overwritten by replacement.
+    old_lines = tuple(f"PRE_RESUME_{index:03d}" for index in range(1, 41))
+    post_lines = tuple(f"POST_RESUME_{index:03d}" for index in range(1, 41))
+    _assert_lines_once_in_order(captured, (*old_lines, *post_lines))
 
 
 def _run_tmux_fixture(
@@ -203,9 +229,9 @@ def _run_tmux_fixture(
         )
 
 
-def _assert_ordered_lines(captured: str, lines: tuple[str, ...]) -> None:
+def _assert_lines_once_in_order(captured: str, lines: tuple[str, ...]) -> None:
     counts = {line: captured.count(line) for line in lines}
-    assert all(count >= 1 for count in counts.values()), (counts, captured)
+    assert all(count == 1 for count in counts.values()), (counts, captured)
     positions = [captured.find(line) for line in lines]
     assert positions == sorted(positions)
 

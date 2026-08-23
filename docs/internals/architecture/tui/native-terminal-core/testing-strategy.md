@@ -49,6 +49,16 @@ Use the playback harness to script input, product events, streaming chunks,
 surface events, and resize events. Assert both logical transcript and terminal
 operations.
 
+Playback frames are also reusable terminal-operation traces: a successful trace
+can be replayed against a fresh FakeTerminal without invoking the renderer.
+When native scrollback is preserved, the trace contract rejects erase-display
+operations (`clear_screen` and `clear_from_cursor`), because emulator history
+behavior for those operations is not portable. JSONL artifacts include the
+scrollback-size delta and safety result; `--include-frames` also includes the
+concrete operation payloads and serialized output. FakeTerminal keeps scrollback in immutable
+shared chunks so long-session replay remains append-linear while old frame
+snapshots stay stable.
+
 Examples:
 
 - submit prompt, stream assistant, commit worked divider
@@ -128,7 +138,10 @@ shared real CLI `/quit` contract in
 
 tmux is a separate terminal-implementation integration. Its marker only proves
 pane history and scrollback behavior and must not be used as the Windows
-equivalent of ConPTY.
+equivalent of ConPTY. Marker assertions require every settled history line to
+appear exactly once and in order. The tmux suite includes live transcript
+replacement, line-budget trimming, and post-resume streaming so FakeTerminal's
+portable screen model is not the sole oracle for emulator-specific history.
 
 Run the local collections with:
 

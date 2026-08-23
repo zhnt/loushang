@@ -14,7 +14,7 @@ For lifecycle wiring, see [TUI Runner](tui-runner.md).
 | --- | --- | --- |
 | `TextInput` | Single-line fields such as search, filters, and small prompts. | Grapheme cluster |
 | `Composer` | Multi-line prompt editors, bottom-frame composers, paste markers, history, and completions. | Composer atom |
-| `InputRouter` | User-like routing for Composer key, text, paste, completion, history, submit, and surface events. | Composer atom |
+| `InputRouter` | User-like editor routing plus neutral `submit` and `prompt_cancel` intents. | Composer atom |
 | `SelectionRange` / `SelectionController` | Reusable anchor/focus selection state. | Supplied by the owning buffer |
 
 Editing indexes are not terminal cell columns. Wide CJK, emoji, combining
@@ -83,9 +83,99 @@ assert composer.value == "alpha beta"
 result = composer.render(RenderConstraints(width=72, max_height=6))
 ```
 
+`InputRouter` is conversation-neutral. A non-empty Enter produces one `submit`
+intent; an unconsumed Escape or Ctrl+C produces `prompt_cancel`. Active
+surfaces, focused editors, completions, and pending character jumps keep their
+existing priority and may consume cancellation first. The application decides
+whether a neutral submit starts work, queues a follow-up, or steers an active
+run, and whether prompt cancellation exits, clears, or aborts work.
+Harness-backed conversation applications should use Harnesstui's
+`ConversationInputRouter` for that run-state policy.
+
+Harness declares steering and follow-up delivery through
+`SessionInputCapabilities`. Harnesstui uses a steer-first primary-submit policy
+and deterministically falls back to follow-up when steering is unavailable.
+Physical keys remain independently configurable: Enter is
+`tui.input.submit`, while explicit follow-up is
+`conversation.input.followUp` (Alt+Enter by default). Idle Alt+Enter remains
+`tui.input.newLine`; `ConversationInputRouter` resolves the running-state
+priority.
+
+Keybinding defaults are composed by owner. Generic TUI provides the Core
+`TUI_CORE_KEYBINDING_CATALOG`; HarnessTUI adds conversation or continuity
+catalogs when those surfaces are constructed. Duplicate action definitions
+fail during catalog composition, while user overrides are retained until the
+owning catalog is available. Clipboard-image paste is the conversation action
+`conversation.input.pasteImage` (Ctrl+V by default).
+
+### Input intent contract
+
+`InputIntent` is one runtime data class with an open, typed kind parameter.
+Generic surfaces and admitted presentation adapters use `InputIntent[str]`;
+owners may define narrower `Literal` aliases for the kinds they produce.
+`InputRouter` directly produces only the narrow prompt kinds `submit`,
+`prompt_cancel`, and `invalidate_render`, while surface kinds are forwarded
+without reinterpretation.
+
+`InputIntentKind` remains temporarily importable as a `str` compatibility
+alias, not as a central registry of allowed kinds. New production annotations
+should use `InputIntent[str]` or an owner-local narrow alias. External kinds
+should be owner-qualified, such as `example_plugin.openArtifact`, although the
+runtime envelope intentionally accepts every string for compatibility. Future
+Harness Plugin declarations stay independent of TUI; only an owning
+presentation adapter may translate an admitted declaration into an
+`InputIntent[str]`.
+
+Prompt editing mechanics are shared below the two routers. Neutral helpers in
+`loushang.tui.input` apply text or character jumps, paste text, force explicit
+Tab completion, and perform vertical/history/page navigation. They mutate only
+the supplied editor target and return no TUI or conversation intent. Each
+router keeps its existing ordering and translates a handled action into its
+own result: generic `InputRouter` returns no intent, while
+`ConversationInputRouter` returns `ConversationInputHandled`.
+
+Submit, cancel, resize, surface routing, clipboard images, local commands,
+completion Enter, and running steer/follow-up policy are deliberately not part
+of those shared helpers because their ordering or meaning differs by owner.
+
+Production conversation-router construction uses one standard factory contract
+owned with HarnessTUI conversation input and re-exported by the screen runner.
+The clipboard-enabled builder is a compatible extension that only exposes
+optional environment and test dependencies. Product adapters bind their policy
+and profile, then pass that factory directly without a type cast. This contract
+is an input-composition seam; it does not define a plugin lifecycle.
+
+Coding's `run_coding_tui()` accepts that immutable screen run profile at its
+composition-root boundary and defaults to `CODING_SCREEN_RUN_PROFILE`. A Product
+adapter may inject another profile without changing HarnessTUI or the screen
+binding; the entry point only passes the selected value through and performs no
+plugin discovery or lifecycle management.
+
 Composer selections use atom indexes. Normal text is split into grapheme-like
 text atoms; large paste markers are single atoms and are never split by range
 editing.
+
+## Pre-1.0 InputRouter Migration
+
+The generic router no longer owns conversation state. This is an intentional
+pre-1.0 breaking boundary:
+
+| Old API | Harness-backed replacement | Generic application replacement |
+| --- | --- | --- |
+| `InputRouter(running=...)` | Project state into `ConversationInputRouter`. | Interpret generic `submit` from application state. |
+| `steering_supported=...` | Project Harness `SessionInputCapabilities`; let Harnesstui `ConversationInputPolicy` select steer-first and fallback. | Interpret the projected capability in the application adapter. |
+| `submit(mode=...)` | Use the HarnessTUI running-submit route. | Call zero-argument `submit()` and apply application policy to its result. |
+| Third/fourth positional state arguments | Use explicit HarnessTUI configuration. | Use keyword-only generic configuration plus application state. |
+
+Only `composer` and `surface_host` remain positional. `width`, `height`,
+`keybindings`, and `target` are keyword-only. Legacy calls such as
+`InputRouter(composer, None, True)` now raise `TypeError` instead of silently
+binding `True` to `width`.
+
+The former `app.clipboard.pasteImage` setting is replaced by
+`conversation.input.pasteImage`. This pre-1.0 rename reflects that clipboard
+images are a shared HarnessTUI conversation capability rather than a Coding
+application action.
 
 ## Default Editing Keys
 

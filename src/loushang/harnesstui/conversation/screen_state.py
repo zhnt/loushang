@@ -3,6 +3,9 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
+from loushang.harnesstui.conversation.input_policy import (
+    ConversationInputCapabilities,
+)
 from loushang.harnesstui.status.line import StatusLineSettings
 from loushang.tui.transcript import (
     AssistantMessageRecord,
@@ -35,6 +38,9 @@ class ScreenConversationState:
     active_started_at: float | None = None
     pending_followups: list[str] = field(default_factory=list)
     pending_steers: list[str] = field(default_factory=list)
+    input_capabilities: ConversationInputCapabilities = field(
+        default_factory=ConversationInputCapabilities
+    )
     interruption_message: str | None = None
     status_message: str | None = None
     model_label: str | None = None

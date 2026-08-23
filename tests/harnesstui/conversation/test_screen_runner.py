@@ -53,7 +53,11 @@ def test_prompt_handler_ignores_attachments_for_text_only_handler() -> None:
 
 
 def test_conversation_screen_forwards_neutral_attachments_end_to_end() -> None:
-    from loushang.harnesstui.conversation.input import ConversationInputResult
+    from loushang.harnesstui.conversation.input import (
+        ConversationInputIgnored,
+        ConversationInputResult,
+        ConversationPromptResult,
+    )
     from loushang.harnesstui.conversation.screen_runner import (
         run_conversation_screen,
     )
@@ -62,6 +66,7 @@ def test_conversation_screen_forwards_neutral_attachments_end_to_end() -> None:
     app = _RunnerApp()
     attachment = object()
     seen: dict[str, object] = {}
+    other_actions: list[str] = []
 
     class Router:
         def __init__(self, **_kwargs: object) -> None:
@@ -69,11 +74,11 @@ def test_conversation_screen_forwards_neutral_attachments_end_to_end() -> None:
 
         def handle(self, event: object) -> ConversationInputResult:
             if getattr(event, "kind", None) != "text":
-                return ConversationInputResult(render_requested=False)
+                return ConversationInputIgnored()
             app.state.active_started_at = app.now()
-            return ConversationInputResult(
-                prompt_text="describe",
-                prompt_attachments=(attachment,),
+            return ConversationPromptResult(
+                text="describe",
+                attachments=(attachment,),
             )
 
     async def handle_prompt(
@@ -90,7 +95,11 @@ def test_conversation_screen_forwards_neutral_attachments_end_to_end() -> None:
             stdin=StringIO("x"),
             stdout=StringIO(),
             handle_prompt=handle_prompt,
-            on_abort=lambda: None,
+            handle_local=lambda _text: other_actions.append("local"),
+            handle_steer=lambda _text: other_actions.append("steer"),
+            handle_followup=lambda _text: other_actions.append("follow_up"),
+            handle_surface_intent=lambda _intent: other_actions.append("surface"),
+            on_abort=lambda: other_actions.append("abort"),
             should_exit=lambda _text: False,
             terminal_mode_factory=lambda _stdin, _stdout: nullcontext(object()),
             terminal_size_provider=lambda: TerminalSize(columns=80, rows=24),
@@ -105,6 +114,7 @@ def test_conversation_screen_forwards_neutral_attachments_end_to_end() -> None:
         "text": "describe",
         "attachments": (attachment,),
     }
+    assert other_actions == []
 
 
 def test_finish_active_task_preserves_success_error_and_cancellation_state() -> None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from loushang.harnesstui.selection.model import (
     MODEL_SELECTOR_SELECTED_STYLE,
     ModelSelectorSurface,
+    _screen_input_intent_or_none,
 )
 from loushang.tui import InputEvent, InputIntent, RenderConstraints, SelectItem
 from loushang.tui.cell_width import strip_control_sequences
@@ -24,6 +25,23 @@ def test_model_selector_surface_keeps_selected_item_and_style() -> None:
     assert intent == InputIntent(kind="select", text="model-2")
     assert MODEL_SELECTOR_SELECTED_STYLE == {"color": 33, "bold": True}
     assert rendered.lines[1].text.startswith("\x1b[1;38;5;33m> 2. model-2")
+
+
+def test_model_selector_structural_adapter_preserves_open_intent_kinds() -> None:
+    class StructuralIntent:
+        def __init__(self, kind: str) -> None:
+            self.kind = kind
+            self.text = "model-2"
+            self.note = "plugin"
+
+    for kind in ("example_plugin.openArtifact", ""):
+        assert _screen_input_intent_or_none(StructuralIntent(kind)) == InputIntent(
+            kind=kind,
+            text="model-2",
+            note="plugin",
+        )
+
+    assert _screen_input_intent_or_none(object()) is None
 
 
 def test_model_selector_surface_preserves_long_endpoint_identity_when_space_allows() -> (

@@ -97,10 +97,21 @@ async def run_continuity_picker(
             # Stop the loop even if the user never presses another key.
             run_context.request_stop(0)
 
+    def activation_done_callback(
+        target: ContinuityTarget,
+    ) -> Callable[[asyncio.Task[object]], None]:
+        def on_activation_done(task: asyncio.Task[object]) -> None:
+            _on_activation_done(task, target)
+
+        return on_activation_done
+
     def start(context: TuiRunContext) -> None:
         nonlocal run_context, load_task
         run_context = context
         load_task = asyncio.create_task(content.start())
+
+    async def activate_target(target: ContinuityTarget) -> object:
+        return await activate(target)
 
     async def handle_input(
         event: InputEvent,
@@ -123,11 +134,9 @@ async def run_continuity_picker(
                     continue
                 if not content.begin_activation():
                     return TuiInputResult(render_requested=True)
-                activation = asyncio.create_task(activate(target))
+                activation = asyncio.create_task(activate_target(target))
                 activation_task = activation
-                activation.add_done_callback(
-                    lambda task, target=target: _on_activation_done(task, target)
-                )
+                activation.add_done_callback(activation_done_callback(target))
                 return TuiInputResult(render_requested=True)
             if kind in {"surface_close", "dialog_cancel"}:
                 return context.stop()

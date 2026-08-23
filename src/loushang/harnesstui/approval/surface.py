@@ -92,7 +92,7 @@ class PermissionsCenterSurface:
         self.focused = False
         self._retained.blur()
 
-    def handle_input(self, event: InputEvent) -> InputIntent | bool | None:
+    def handle_input(self, event: InputEvent) -> InputIntent[str] | bool | None:
         value = _event_value(event)
         if value is None:
             return None
@@ -300,7 +300,7 @@ class PermissionsCenterSurface:
             RenderLine("Enter confirm · Esc back"),
         ]
 
-    def _profile_action(self, profile_id: str) -> InputIntent:
+    def _profile_action(self, profile_id: str) -> InputIntent[str]:
         return InputIntent(
             kind="permission_profile_action",
             text=f"set-profile:{self.selected_scope}:{profile_id}",

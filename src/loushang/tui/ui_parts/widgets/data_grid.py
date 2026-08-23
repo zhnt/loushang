@@ -8,7 +8,7 @@ from dataclasses import dataclass, field, replace
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from math import isfinite
 from types import MappingProxyType
-from typing import Literal, TextIO
+from typing import Any, Literal, TextIO, TypedDict, Unpack, cast
 
 from loushang.tui.cell_width import (
     autowrap_safe_width,
@@ -35,6 +35,37 @@ DataGridFilterMode = Literal["contains", "prefix"]
 DataGridCellKey = tuple[str, str]
 
 DATA_GRID_SEPARATOR = "  "
+
+
+class _DataGridOptions(TypedDict, total=False):
+    active_row_key: str | None
+    active_column_key: str | None
+    cursor_mode: DataGridCursorMode
+    selection_mode: DataGridSelectionMode
+    show_header: bool
+    show_row_labels: bool
+    fixed_columns: int
+    zebra_stripes: bool
+    empty_text: str
+    wrap_rows: bool
+    wrap_columns: bool
+    theme: ThemeResolver | None
+    focused: bool
+
+
+class _CsvReaderOptions(TypedDict, total=False):
+    fieldnames: Sequence[str] | None
+    restkey: str | None
+    restval: str | None
+    delimiter: str
+    quotechar: str | None
+    escapechar: str | None
+    doublequote: bool
+    skipinitialspace: bool
+    lineterminator: str
+    quoting: Literal[0, 1, 2, 3]
+    strict: bool
+
 
 __all__ = [
     "CompactNumberFormatter",
@@ -362,7 +393,7 @@ class DataGrid:
         *,
         columns: Sequence[DataGridColumn] | None = None,
         row_key_field: str | None = None,
-        **grid_options: object,
+        **grid_options: Unpack[_DataGridOptions],
     ) -> DataGrid:
         normalized_records = _normalize_adapter_records(records)
         grid_columns = tuple(columns) if columns is not None else _columns_from_records(normalized_records)
@@ -377,7 +408,7 @@ class DataGrid:
         records_key: str = "records",
         columns: Sequence[DataGridColumn] | None = None,
         row_key_field: str | None = None,
-        **grid_options: object,
+        **grid_options: Unpack[_DataGridOptions],
     ) -> DataGrid:
         payload = _json_payload(data)
         records = _records_from_json_payload(payload, records_key=records_key)
@@ -392,7 +423,7 @@ class DataGrid:
         row_key_field: str | None = None,
         dialect: str = "excel",
         csv_options: Mapping[str, object] | None = None,
-        **grid_options: object,
+        **grid_options: Unpack[_DataGridOptions],
     ) -> DataGrid:
         records, header_columns = _records_from_csv(data, dialect=dialect, csv_options=csv_options)
         return cls.from_records(
@@ -1878,7 +1909,7 @@ def _normalize_adapter_records(records: Iterable[Mapping[str, object]]) -> tuple
     return tuple(normalized)
 
 
-def _string_key_record(record: Mapping[object, object]) -> dict[str, object]:
+def _string_key_record(record: Mapping[Any, object]) -> dict[str, object]:
     result: dict[str, object] = {}
     for key, value in record.items():
         text_key = str(key)
@@ -1958,7 +1989,8 @@ def _records_from_csv(
     stream = io.StringIO(data) if isinstance(data, str) else data
     if not hasattr(stream, "read"):
         raise TypeError("CSV data must be a string or text stream")
-    reader = csv.DictReader(stream, dialect=dialect, **dict(csv_options or {}))
+    reader_options = cast(_CsvReaderOptions, dict(csv_options or {}))
+    reader = csv.DictReader(stream, dialect=dialect, **reader_options)
     if not reader.fieldnames:
         raise ValueError("CSV input must include a header row")
     fieldnames = tuple(str(field) for field in reader.fieldnames)

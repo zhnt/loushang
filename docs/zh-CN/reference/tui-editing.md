@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | `TextInput` | 搜索、过滤、小型 prompt 等单行输入。 | Grapheme cluster |
 | `Composer` | 多行 prompt 编辑器、bottom-frame composer、paste marker、历史和 completion。 | Composer atom |
-| `InputRouter` | 按真实用户输入路径路由 Composer 的 key、text、paste、completion、history、submit 和 surface event。 | Composer atom |
+| `InputRouter` | 按真实用户输入路径处理编辑，并产生中立的 `submit`、`prompt_cancel` intent。 | Composer atom |
 | `SelectionRange` / `SelectionController` | 可复用的 anchor/focus selection 状态。 | 由所属 buffer 决定 |
 
 编辑索引不是终端显示列。CJK、emoji、组合字符和 paste marker 都保持稳定的逻辑索引；显示宽度只属于渲染和 hit-test 层。
@@ -73,7 +73,81 @@ assert composer.value == "alpha beta"
 result = composer.render(RenderConstraints(width=72, max_height=6))
 ```
 
+`InputRouter` 不理解会话运行态。非空 Enter 只产生一个 `submit` intent；
+未被消费的 Escape 或 Ctrl+C 产生 `prompt_cancel`。活跃 surface、聚焦编辑器、
+completion 和待完成的字符跳转仍拥有更高优先级，可以先消费取消键。应用适配层
+决定中立提交是启动任务、排队 follow-up 还是 steer 当前任务，也决定 prompt
+cancel 是退出、清空还是中断工作。基于 Harness 的会话应用应使用 Harnesstui 的
+`ConversationInputRouter` 承担运行态策略。
+
+Harness 通过 `SessionInputCapabilities` 声明 steer 与 follow-up 交付能力；
+Harnesstui 默认对运行中的普通提交采用 steer-first，并在 steer 不可用时确定性
+降级为 follow-up。物理键位独立配置：Enter 仍是 `tui.input.submit`，显式
+follow-up 使用 `conversation.input.followUp`（默认 Alt+Enter）。空闲时 Alt+Enter
+仍按 `tui.input.newLine` 插入换行，运行态优先级由 `ConversationInputRouter` 解释。
+
+快捷键默认值按所有者组合。通用 TUI 提供 Core
+`TUI_CORE_KEYBINDING_CATALOG`；HarnessTUI 在构造会话或 continuity surface 时
+追加相应 catalog。重复 action 定义会在组合时直接失败，用户覆盖则保留到对应
+catalog 加载后再解析。剪贴板图片粘贴使用会话 action
+`conversation.input.pasteImage`（默认 Ctrl+V）。
+
+### 输入意图契约
+
+`InputIntent` 保持为一个运行时数据类，并以开放的 kind 类型参数表达所有者词表。
+通用 surface 和经过准入的 presentation adapter 使用 `InputIntent[str]`；各所有者
+可以为自己产生的 kind 定义更窄的 `Literal` 别名。`InputRouter` 直接产生的词表仅限
+`submit`、`prompt_cancel` 与 `invalidate_render`，surface 意图则原样转发，不重新解释。
+
+`InputIntentKind` 暂时仍可导入，但它只是 `str` 兼容别名，不再是中央允许列表。
+新的生产注解应使用 `InputIntent[str]` 或所有者本地的窄别名。外部 kind 建议使用
+`example_plugin.openArtifact` 这类所有者限定名；为保持兼容，运行时 envelope 仍
+有意接受任意字符串。未来的 Harness Plugin 声明不依赖 TUI；只有承担所有权的
+presentation adapter 才能在准入后把声明转换为 `InputIntent[str]`。
+
+两个 Router 下方共享 Prompt 编辑机械。`loushang.tui.input` 中的中立 helper
+负责普通文本或字符跳转、粘贴、显式 Tab completion，以及垂直移动、历史和翻页。
+它们只修改传入的 editor target，不产生 TUI intent 或 conversation result。
+两个 Router 各自保留原有分支顺序，并把“已处理”转换为自己的结果：通用
+`InputRouter` 不返回 intent，`ConversationInputRouter` 返回
+`ConversationInputHandled`。
+
+提交、取消、resize、surface 路由、剪贴板图片、本地命令、completion Enter，
+以及运行中的 steer/follow-up 策略不会进入这些共享 helper，因为它们的顺序或
+含义由不同所有者决定。
+
+生产环境中的会话 Router 构造只使用一个标准 Factory 契约。该契约与
+HarnessTUI 会话输入放在同一 owner 中，并由 screen runner 重导出。带剪贴板
+能力的 Builder 是兼容扩展，只额外暴露可选的环境与测试依赖。产品适配器绑定
+自己的策略和 profile 后直接传入该 Factory，不再使用类型强制转换。这个契约
+只是输入装配接缝，并不定义插件生命周期。
+
+Coding 的 `run_coding_tui()` 在组合根边界接受这个不可变的 screen run profile，
+默认值仍是 `CODING_SCREEN_RUN_PROFILE`。Product adapter 可以注入其他 profile，
+不必修改 HarnessTUI 或 screen binding；该入口只负责透传已选值，不执行插件
+发现或生命周期管理。
+
 Composer selection 使用 atom 索引。普通文本会拆成类 grapheme 的文本 atom；大型 paste marker 是单个 atom，range edit 不会把它拆开。
+
+## Pre-1.0 InputRouter 迁移
+
+通用 Router 不再拥有会话状态。这是一次有意的 pre-1.0 边界收窄：
+
+| 旧 API | 基于 Harness 的替代方式 | 通用应用的替代方式 |
+| --- | --- | --- |
+| `InputRouter(running=...)` | 将状态投影给 `ConversationInputRouter`。 | 由应用状态解释通用 `submit`。 |
+| `steering_supported=...` | 由 Harness `SessionInputCapabilities` 声明能力，Harnesstui `ConversationInputPolicy` 选择 steer-first 与降级。 | 在应用适配层解释能力投影。 |
+| `submit(mode=...)` | 使用 HarnessTUI 的运行中提交路由。 | 调用无参数 `submit()`，再由应用解释结果。 |
+| 第三个/第四个位置状态参数 | 改用显式 HarnessTUI 配置。 | 改用仅限关键字的通用配置与应用状态。 |
+
+只有 `composer` 和 `surface_host` 仍可作为位置参数；`width`、`height`、
+`keybindings` 和 `target` 都必须使用关键字。旧调用
+`InputRouter(composer, None, True)` 现在会抛出 `TypeError`，不会把 `True`
+静默绑定到 `width`。
+
+原 `app.clipboard.pasteImage` 配置已替换为
+`conversation.input.pasteImage`。这是一次 pre-1.0 重命名，用于明确剪贴板图片是
+HarnessTUI 公共会话能力，而不是 Coding 应用私有 action。
 
 ## 默认编辑快捷键
 

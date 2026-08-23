@@ -6,6 +6,8 @@ import pytest
 
 from loushang.harness.runtime import SessionOperationResult
 from loushang.harness.session import (
+    SessionInputCapabilities,
+    SessionInputCapability,
     SessionLifecycleOperationPorts,
     SessionOperationAvailability,
     SessionOperationCapability,
@@ -14,6 +16,7 @@ from loushang.harness.session import (
     SessionPromptRequest,
     current_session_operation_resolver,
     require_active_session,
+    session_operation_resolver,
 )
 
 
@@ -218,6 +221,60 @@ def test_session_operation_runtime_rejects_unbound_operation_group() -> None:
     assert not runtime.availability.supports(SessionOperationCapability.MAINTENANCE)
     with pytest.raises(SessionOperationUnavailableError, match="maintenance"):
         runtime.abort_compaction()
+
+
+def test_session_operation_runtime_declares_standard_input_capabilities() -> None:
+    runtime = SessionOperationRuntime(_Control())
+
+    assert runtime.input_capabilities.supports(SessionInputCapability.STEER)
+    assert runtime.input_capabilities.supports(SessionInputCapability.FOLLOW_UP)
+
+
+def test_session_operation_runtime_enforces_declared_input_capabilities() -> None:
+    control = _Control()
+    runtime = SessionOperationRuntime(
+        control,
+        input_capabilities=SessionInputCapabilities.from_capabilities(
+            (SessionInputCapability.FOLLOW_UP,)
+        ),
+    )
+
+    runtime.follow_up("later")
+    with pytest.raises(SessionOperationUnavailableError, match="steer"):
+        runtime.steer("now")
+
+    assert control.follow_up_messages == [("later", None)]
+    assert control.steering == []
+
+
+def test_session_operation_runtime_hides_input_capabilities_without_input_group() -> (
+    None
+):
+    runtime = SessionOperationRuntime(
+        _Control(),
+        availability=SessionOperationAvailability.from_capabilities(
+            (SessionOperationCapability.MAINTENANCE,)
+        ),
+    )
+
+    assert runtime.input_capabilities.capabilities == frozenset()
+
+
+def test_session_operation_resolver_exposes_capabilities_without_resolving_control() -> (
+    None
+):
+    def fail_if_resolved() -> _Control:
+        raise AssertionError("capability inspection must not resolve control")
+
+    resolve = session_operation_resolver(
+        fail_if_resolved,
+        input_capabilities=SessionInputCapabilities.from_capabilities(
+            (SessionInputCapability.FOLLOW_UP,)
+        ),
+    )
+
+    assert not resolve.input_capabilities.supports(SessionInputCapability.STEER)
+    assert resolve.input_capabilities.supports(SessionInputCapability.FOLLOW_UP)
 
 
 def test_session_prompt_request_requires_non_empty_text() -> None:

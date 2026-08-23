@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import inspect
+import pickle
+from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Literal
 
 import pytest
 
 from loushang.tui import (
+    TUI_CORE_KEYBINDING_CATALOG,
     CommandSurface,
     CompletionItem,
     CompletionProvider,
@@ -15,6 +18,7 @@ from loushang.tui import (
     InputIntent,
     InputReader,
     InputRouter,
+    KeybindingCatalog,
     KeybindingConflict,
     KeybindingManager,
     RenderConstraints,
@@ -26,8 +30,13 @@ from loushang.tui import (
     TextInput,
 )
 from loushang.tui.input import (
+    apply_prompt_paste,
+    apply_prompt_text,
+    prompt_jump_direction_for_key,
     route_editor_editing_key,
     route_editor_selection_key,
+    route_prompt_explicit_completion_key,
+    route_prompt_vertical_navigation_key,
 )
 
 
@@ -44,6 +53,30 @@ class EscConsumer(FocusableMixin):
         if isinstance(event, InputEvent) and event.kind == "key" and event.key == "esc":
             return InputIntent(kind="surface_close")
         return None
+
+
+def test_input_intent_preserves_runtime_dataclass_value_protocol() -> None:
+    intent = InputIntent(
+        kind="example_plugin.openArtifact",
+        text="artifact-42",
+        note="preview",
+    )
+
+    assert asdict(intent) == {
+        "kind": "example_plugin.openArtifact",
+        "text": "artifact-42",
+        "note": "preview",
+    }
+    assert repr(intent) == (
+        "InputIntent(kind='example_plugin.openArtifact', "
+        "text='artifact-42', note='preview')"
+    )
+    assert intent == InputIntent(
+        kind="example_plugin.openArtifact",
+        text="artifact-42",
+        note="preview",
+    )
+    assert pickle.loads(pickle.dumps(intent)) == intent
 
 
 class DecliningEditorFocus(FocusableMixin):
@@ -419,7 +452,6 @@ def test_keybinding_manager_normalizes_legacy_alt_arrow_aliases() -> None:
 
     assert manager.matches("alt_left", "tui.editor.cursorWordLeft")
     assert manager.matches("alt_right", "tui.editor.cursorWordRight")
-    assert manager.matches("alt_up", "tui.queue.editLast")
     assert manager.matches("alt_down", "tui.select.down")
 
 
@@ -438,6 +470,66 @@ def test_keybinding_manager_matches_default_redo_key() -> None:
     assert not manager.matches("ctrl+shift+z", "tui.editor.redo")
 
 
+def test_keybinding_manager_extends_definitions_without_losing_user_overrides() -> None:
+    manager = KeybindingManager({"conversation.input.followUp": ("ctrl+enter",)})
+
+    extended = manager.with_definitions({"conversation.input.followUp": ("alt+enter",)})
+
+    assert manager.keys_for("conversation.input.followUp") == ()
+    assert extended.keys_for("conversation.input.followUp") == ("ctrl+enter",)
+    assert extended.keys_for("tui.input.submit") == ("enter",)
+
+
+def test_keybinding_catalog_composes_plugin_actions_with_user_overrides() -> None:
+    plugin_catalog = KeybindingCatalog.from_definitions(
+        {"plugin.action": "ctrl+p"}
+    )
+    catalog = TUI_CORE_KEYBINDING_CATALOG.compose(plugin_catalog)
+    manager = KeybindingManager(
+        {"plugin.action": ("alt+p",)},
+        catalog=catalog,
+    )
+
+    assert manager.keys_for("tui.input.submit") == ("enter",)
+    assert manager.keys_for("plugin.action") == ("alt+p",)
+
+
+def test_composed_catalog_reports_cross_owner_user_binding_conflicts() -> None:
+    catalog = TUI_CORE_KEYBINDING_CATALOG.compose(
+        KeybindingCatalog.from_definitions({"plugin.action": ("ctrl+p",)})
+    )
+    manager = KeybindingManager(
+        {
+            "tui.input.submit": ("ctrl+p",),
+            "plugin.action": ("ctrl+p",),
+        },
+        catalog=catalog,
+    )
+
+    assert manager.conflicts() == (
+        KeybindingConflict(
+            key="ctrl+p",
+            action_ids=("plugin.action", "tui.input.submit"),
+        ),
+    )
+
+
+def test_keybinding_catalog_rejects_duplicate_action_ownership() -> None:
+    first = KeybindingCatalog.from_definitions({"plugin.action": ("ctrl+p",)})
+    second = KeybindingCatalog.from_definitions({"plugin.action": ("alt+p",)})
+
+    with pytest.raises(ValueError, match="plugin.action"):
+        first.compose(second)
+
+
+def test_tui_core_keybinding_catalog_excludes_upper_layer_actions() -> None:
+    manager = KeybindingManager()
+
+    assert manager.keys_for("conversation.input.pasteImage") == ()
+    assert manager.keys_for("tui.queue.editLast") == ()
+    assert manager.keys_for("tui.continuity.preview") == ()
+
+
 def test_keybinding_manager_matches_terminal_underscore_undo_alias() -> None:
     manager = KeybindingManager()
 
@@ -453,6 +545,71 @@ def test_input_router_rejects_missing_prompt_target() -> None:
 def test_input_router_rejects_composer_and_target_together() -> None:
     with pytest.raises(TypeError, match="composer or target"):
         InputRouter(composer=Composer(prompt="> "), target=FakePromptTarget())
+
+
+def test_input_router_constructor_exposes_only_generic_configuration() -> None:
+    parameters = inspect.signature(InputRouter).parameters
+
+    assert tuple(parameters) == (
+        "composer",
+        "surface_host",
+        "width",
+        "height",
+        "keybindings",
+        "target",
+    )
+    assert parameters["composer"].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+    assert parameters["surface_host"].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+    assert all(
+        parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
+        for name in ("width", "height", "keybindings", "target")
+    )
+    router_fields = {router_field.name: router_field for router_field in fields(InputRouter)}
+    assert "running" not in router_fields
+    assert "steering_supported" not in router_fields
+    assert router_fields["_jump_mode"].init is False
+
+    with pytest.raises(TypeError):
+        InputRouter(Composer(prompt="> "), None, True)
+
+
+def test_input_router_submit_accepts_no_conversation_mode() -> None:
+    composer = Composer(prompt="> ")
+    composer.insert_text("later")
+    router = InputRouter(composer=composer)
+
+    assert tuple(inspect.signature(InputRouter.submit).parameters) == ("self",)
+    assert router.submit() == (InputIntent(kind="submit", text="later"),)
+
+    with pytest.raises(TypeError):
+        router.submit(mode="steer")  # type: ignore[call-arg]
+
+
+def test_input_router_submit_is_conversation_neutral() -> None:
+    composer = Composer(prompt="> ")
+    composer.insert_text("later")
+    router = InputRouter(composer=composer)
+
+    assert router.route(InputEvent(kind="key", key="enter")) == (
+        InputIntent(kind="submit", text="later"),
+    )
+
+
+@pytest.mark.parametrize("cancel_key", ["escape", "ctrl_c"])
+def test_input_router_unconsumed_cancel_emits_prompt_cancel(cancel_key: str) -> None:
+    router = InputRouter(composer=Composer(prompt="> "))
+
+    assert router.route(InputEvent(kind="key", key=cancel_key)) == (
+        InputIntent(kind="prompt_cancel"),
+    )
+
+
+def test_input_router_does_not_own_conversation_queue_editing() -> None:
+    composer = Composer(prompt="> ")
+    router = InputRouter(composer=composer)
+
+    assert router.route(InputEvent(kind="key", key="alt+up")) == ()
+    assert composer.value == ""
 
 
 def test_input_router_routes_text_paste_and_submit_through_target() -> None:
@@ -482,6 +639,87 @@ def test_editor_key_helpers_route_to_target_operations() -> None:
     assert route_editor_selection_key(target, "shift+left")
 
     assert target.calls == ["move_left", "select_char_left"]
+
+
+def test_prompt_text_and_paste_primitives_apply_only_editor_mechanics() -> None:
+    target = FakePromptTarget()
+
+    apply_prompt_text(target, "alpha")
+    apply_prompt_text(target, "x", jump_direction="forward")
+    apply_prompt_paste(target, "beta\ngamma")
+
+    assert target.calls == [
+        "insert_text:alpha",
+        "jump_to_char:forward:x",
+        "paste:beta\ngamma",
+    ]
+
+
+def test_prompt_jump_direction_uses_configured_core_actions() -> None:
+    keybindings = KeybindingManager(
+        {
+            "tui.editor.jumpForward": ("alt+f",),
+            "tui.editor.jumpBackward": ("alt+b",),
+        }
+    )
+
+    assert prompt_jump_direction_for_key("alt+f", keybindings=keybindings) == "forward"
+    assert prompt_jump_direction_for_key("alt+b", keybindings=keybindings) == "backward"
+    assert prompt_jump_direction_for_key("enter", keybindings=keybindings) is None
+
+
+def test_prompt_explicit_completion_primitive_refreshes_before_applying() -> None:
+    target = FakePromptTarget()
+
+    assert not route_prompt_explicit_completion_key(target, "enter")
+    assert route_prompt_explicit_completion_key(target, "tab")
+    assert target.calls == [
+        "refresh_completions:True:True",
+        "apply_selected_completion",
+    ]
+
+
+def test_prompt_vertical_navigation_primitive_handles_history_and_pages() -> None:
+    target = FakePromptTarget(value="draft")
+
+    assert route_prompt_vertical_navigation_key(
+        target,
+        "up",
+        width=7,
+        height=3,
+    )
+    target.browsing_history = True
+    assert route_prompt_vertical_navigation_key(
+        target,
+        "down",
+        width=7,
+        height=3,
+    )
+    assert route_prompt_vertical_navigation_key(
+        target,
+        "pageUp",
+        width=7,
+        height=3,
+    )
+    assert route_prompt_vertical_navigation_key(
+        target,
+        "pageDown",
+        width=7,
+        height=1,
+    )
+    assert not route_prompt_vertical_navigation_key(
+        target,
+        "enter",
+        width=7,
+        height=3,
+    )
+    assert target.calls == [
+        "move_visual_up:7",
+        "history_previous",
+        "history_next",
+        "move_visual_page_up:7:3",
+        "move_visual_page_down:7:2",
+    ]
 
 
 def test_input_router_alt_angle_moves_to_line_boundaries() -> None:
@@ -530,14 +768,15 @@ def test_input_router_jump_mode_moves_to_next_or_previous_character() -> None:
     assert composer.value == "bc ef abc"
 
 
-def test_input_router_escape_cancels_jump_mode_without_editing() -> None:
+@pytest.mark.parametrize("cancel_key", ["escape", "ctrl_c"])
+def test_input_router_cancel_terminates_pending_jump_without_prompt_cancel(cancel_key: str) -> None:
     composer = Composer(prompt="> ")
     composer.insert_text("abc def")
     composer.move_to_line_start()
     router = InputRouter(composer=composer)
 
     assert router.route(InputEvent(kind="key", key="ctrl+]")) == ()
-    assert router.route(InputEvent(kind="key", key="escape")) == ()
+    assert router.route(InputEvent(kind="key", key=cancel_key)) == ()
     assert router.route(InputEvent(kind="text", text="d")) == ()
 
     assert composer.value == "dabc def"
@@ -740,16 +979,37 @@ def test_input_router_shift_tab_selects_previous_completion_without_applying() -
     assert composer.value == "/hello"
 
 
-def test_input_router_escape_closes_completion_before_running_abort() -> None:
+def test_input_router_escape_closes_completion_before_prompt_cancel() -> None:
     composer = Composer(prompt="> ")
     composer.insert_text("/he")
     composer.set_completion_items((CompletionItem(value="/help", label="/help"),))
-    router = InputRouter(composer=composer, running=True, width=20)
+    router = InputRouter(composer=composer, width=20)
 
     assert router.route(InputEvent(kind="key", key="escape")) == ()
 
     assert composer.value == "/he"
     assert not composer.has_completions
+
+
+@pytest.mark.parametrize("custom_overlap", [False, True])
+def test_input_router_completion_wins_after_pending_jump_cancel(custom_overlap: bool) -> None:
+    keybindings = (
+        KeybindingManager({"tui.editor.jumpForward": ("escape",)})
+        if custom_overlap
+        else KeybindingManager()
+    )
+    composer = Composer(prompt="> ")
+    composer.insert_text("abc def")
+    composer.move_to_line_start()
+    router = InputRouter(composer=composer, keybindings=keybindings)
+    pending_jump_key = "ctrl+alt+]" if custom_overlap else "ctrl+]"
+
+    assert router.route(InputEvent(kind="key", key=pending_jump_key)) == ()
+    composer.set_completion_items((CompletionItem(value="abc", label="abc"),))
+    assert router.route(InputEvent(kind="key", key="escape")) == ()
+    assert not composer.has_completions
+    assert router.route(InputEvent(kind="text", text="d")) == ()
+    assert composer.value == "dabc def"
 
 
 def test_input_router_enter_submits_text_without_applying_completion() -> None:
@@ -859,21 +1119,21 @@ def test_input_router_ctrl_j_and_alt_enter_insert_explicit_newline() -> None:
     assert composer.value == "first\nsecond\n"
 
 
-def test_input_router_alt_up_requests_edit_last_queued_prompt() -> None:
-    composer = Composer(prompt="> ")
-    router = InputRouter(composer=composer)
-
-    assert router.route(InputEvent(kind="key", key="alt_up")) == (InputIntent(kind="command", note="edit_last_queued_prompt"),)
-    assert composer.value == ""
-
-
-def test_surface_receives_escape_before_active_run_abort() -> None:
+@pytest.mark.parametrize("custom_overlap", [False, True])
+def test_surface_receives_cancel_after_pending_jump(custom_overlap: bool) -> None:
+    keybindings = (
+        KeybindingManager({"tui.editor.jumpForward": ("escape",)})
+        if custom_overlap
+        else KeybindingManager()
+    )
     composer = Composer(prompt="> ")
     focus = EscConsumer()
     host = SurfaceHost()
     host.open_surface(Surface(renderable=DummyRenderable(), focus_target=focus))
-    router = InputRouter(composer=composer, surface_host=host, running=True)
+    router = InputRouter(composer=composer, surface_host=host, keybindings=keybindings)
+    pending_jump_key = "ctrl+alt+]" if custom_overlap else "ctrl+]"
 
+    assert router.route(InputEvent(kind="key", key=pending_jump_key)) == ()
     intents = router.route(InputEvent(kind="key", key="esc"))
 
     assert intents == (InputIntent(kind="surface_close"),)
@@ -950,6 +1210,31 @@ def test_input_router_surface_intent_wins_before_focused_editor_fallback() -> No
     assert host.entries == []
 
 
+def test_input_router_forwards_owner_qualified_surface_intent_unchanged() -> None:
+    class PluginSurfaceFocus(FocusableMixin):
+        def handle_input(self, event: Any) -> InputIntent[str] | None:
+            if isinstance(event, InputEvent) and event.kind == "key":
+                return InputIntent(
+                    kind="example_plugin.openArtifact",
+                    text="artifact-42",
+                    note="preview",
+                )
+            return None
+
+    host = SurfaceHost()
+    focus = PluginSurfaceFocus()
+    host.open_surface(Surface(renderable=DummyRenderable(), focus_target=focus))
+    router = InputRouter(composer=Composer(prompt="> "), surface_host=host)
+
+    assert router.route(InputEvent(kind="key", key="enter")) == (
+        InputIntent(
+            kind="example_plugin.openArtifact",
+            text="artifact-42",
+            note="preview",
+        ),
+    )
+
+
 def test_input_router_does_not_submit_prompt_while_focused_editor_target_is_active() -> None:
     prompt = Composer(prompt="> ")
     prompt.insert_text("prompt")
@@ -962,14 +1247,58 @@ def test_input_router_does_not_submit_prompt_while_focused_editor_target_is_acti
     assert prompt.value == "prompt"
 
 
-def test_input_router_does_not_abort_running_prompt_while_focused_editor_target_is_active() -> None:
+@pytest.mark.parametrize("custom_overlap", [False, True])
+def test_focused_editor_receives_cancel_after_pending_jump(custom_overlap: bool) -> None:
+    class RecordingEditorFocus(DecliningEditorFocus):
+        def __init__(self, target: object) -> None:
+            super().__init__(target)
+            self.keys: list[str] = []
+
+        def handle_input(self, event: Any) -> bool:
+            if isinstance(event, InputEvent) and event.kind == "key":
+                self.keys.append(event.key)
+            return False
+
+    keybindings = (
+        KeybindingManager({"tui.editor.jumpForward": ("escape",)})
+        if custom_overlap
+        else KeybindingManager()
+    )
     prompt = Composer(prompt="> ")
+    prompt.insert_text("abc def")
+    prompt.move_to_line_start()
+    router = InputRouter(composer=prompt, keybindings=keybindings)
+    pending_jump_key = "ctrl+alt+]" if custom_overlap else "ctrl+]"
+    assert router.route(InputEvent(kind="key", key=pending_jump_key)) == ()
+
     field = TextInput()
+    focus = RecordingEditorFocus(field.editor_input_target())
     host = SurfaceHost()
-    host.open_surface(Surface(renderable=DummyRenderable(), focus_target=DecliningEditorFocus(field.editor_input_target())))
-    router = InputRouter(composer=prompt, surface_host=host, running=True)
+    handle = host.open_surface(Surface(renderable=DummyRenderable(), focus_target=focus))
+    router.surface_host = host
 
     assert router.route(InputEvent(kind="key", key="escape")) == ()
+    assert focus.keys == ["esc"]
+
+    handle.close(reason="test")
+    assert router.route(InputEvent(kind="text", text="d")) == ()
+    assert prompt.value == "dabc def"
+
+
+def test_custom_jump_cancel_overlap_without_pending_jump_emits_prompt_cancel() -> None:
+    composer = Composer(prompt="> ")
+    composer.insert_text("abc def")
+    composer.move_to_line_start()
+    router = InputRouter(
+        composer=composer,
+        keybindings=KeybindingManager({"tui.editor.jumpForward": ("escape",)}),
+    )
+
+    assert router.route(InputEvent(kind="key", key="escape")) == (
+        InputIntent(kind="prompt_cancel"),
+    )
+    assert router.route(InputEvent(kind="text", text="d")) == ()
+    assert composer.value == "dabc def"
 
 
 def test_input_router_prompt_jump_text_wins_before_focused_editor_fallback() -> None:
@@ -1004,22 +1333,6 @@ def test_input_router_does_not_leak_searchable_surface_text_to_prompt() -> None:
     assert tuple(item.selected_value for item in surface._filtered_items) == ("/status",)
 
 
-def test_ctrl_c_during_running_turn_routes_abort_intent() -> None:
-    composer = Composer(prompt="> ")
-    router = InputRouter(composer=composer, running=True)
-
-    intents = router.route(InputEvent(kind="key", key="ctrl_c"))
-
-    assert intents == (InputIntent(kind="abort"),)
-
-
-def test_escape_when_idle_does_not_create_abort_intent() -> None:
-    composer = Composer(prompt="> ")
-    router = InputRouter(composer=composer, running=False)
-
-    assert router.route(InputEvent(kind="key", key="esc")) == ()
-
-
 def test_alt_enter_inserts_explicit_newline_without_submit() -> None:
     composer = Composer(prompt="> ")
     composer.insert_text("first")
@@ -1037,36 +1350,3 @@ def test_resize_and_sigwinch_events_request_render_invalidation() -> None:
 
     assert router.route(InputEvent(kind="resize", columns=120, rows=50)) == (InputIntent(kind="invalidate_render"),)
     assert router.route(InputEvent(kind="signal", signal="sigwinch")) == (InputIntent(kind="invalidate_render"),)
-
-
-def test_enter_while_running_queues_follow_up_and_clears_composer() -> None:
-    composer = Composer(prompt="> ")
-    composer.insert_text("later")
-    router = InputRouter(composer=composer, running=True)
-
-    intents = router.route(InputEvent(kind="key", key="enter"))
-
-    assert intents == (InputIntent(kind="follow_up", text="later"),)
-    assert composer.value == ""
-
-
-def test_configured_steer_submit_routes_steer_when_supported() -> None:
-    composer = Composer(prompt="> ")
-    composer.insert_text("look at logs")
-    router = InputRouter(composer=composer, running=True, steering_supported=True)
-
-    intents = router.submit(mode="steer")
-
-    assert intents == (InputIntent(kind="steer", text="look at logs"),)
-    assert composer.value == ""
-
-
-def test_unavailable_steer_downgrades_to_visible_follow_up() -> None:
-    composer = Composer(prompt="> ")
-    composer.insert_text("look at logs")
-    router = InputRouter(composer=composer, running=True, steering_supported=False)
-
-    intents = router.submit(mode="steer")
-
-    assert intents == (InputIntent(kind="follow_up", text="look at logs", note="steer_unavailable"),)
-    assert composer.value == ""

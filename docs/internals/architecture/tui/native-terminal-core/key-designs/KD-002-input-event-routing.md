@@ -18,10 +18,12 @@ in this order:
 5. global keybindings
 
 The generic prompt route uses a `PromptInputTarget` boundary. `InputRouter`
-owns routing priority and prompt intents, while concrete editors provide
-operations through target adapters such as `ComposerInputTarget`. Product
-adapters may reuse target helper functions, but they keep their own routing
-order when product semantics differ.
+owns editor routing priority and emits only neutral prompt intents such as
+`submit` and `prompt_cancel`, while concrete editors provide operations through
+target adapters such as `ComposerInputTarget`. Application adapters interpret
+those intents from their own state. Harness-backed conversations use
+Harnesstui's `ConversationInputRouter` for running submit, follow-up, steer,
+queue restore, and abort policy instead of teaching generic TUI about a run.
 
 Focused surface editors may expose an editor target through
 `editor_input_target()`. `SurfaceHost.route_input_result()` distinguishes
@@ -30,14 +32,16 @@ surface intents from consumed events without changing the compatibility
 surface-first: surface intents win, consumed surface events stop fallback, and
 only declined events may route ordinary text, paste, selection, and editing keys
 to the focused editor target. Prompt-only actions such as submit, newline,
-history, completion, queue editing, and jump setup do not mutate prompt state
+history, completion, and jump setup do not mutate prompt state
 while a focused editor target owns the editing lane.
 
 Keybindings are configuration-owned by the runtime or product adapter. The
 coding product adapter loads configured keybindings from settings and passes
 them into the native input router. UI parts may handle routed events, but they
-should return semantic intents such as submit, move selection, close surface,
-approval decision, abort, change model, or open command surface.
+should return semantic intents such as submit, prompt cancel, move selection,
+close surface, approval decision, change model, or open command surface.
+Conversation abort and queue actions belong to the HarnessTUI or Product
+adapter that knows the active run state.
 
 ## Capability Detection And Startup Handshake
 
@@ -98,12 +102,17 @@ normalized input events:
 - paste marker is an editor atom that may stand in for a large payload while the
   full payload remains available for submission
 
-These editor primitives are local to the focused prompt target until the product
-adapter receives a submit, steer, or follow-up intent.
+These editor primitives are local to the focused prompt target until the generic
+router emits `submit` or `prompt_cancel`. The application or HarnessTUI adapter
+then applies run-state and capability policy.
 
 ## Test Obligations
 
-- active surfaces receive Esc before run abort handling
+- active surfaces receive cancel before generic `prompt_cancel` or HarnessTUI
+  abort handling
+- Escape and Ctrl+C that terminate pending jump mode emit no prompt cancel
+- active surfaces, focused editors, and completion cancellation keep priority
+  over prompt cancel, including overlapping custom bindings
 - paste newlines do not accidentally submit prompts
 - paste control sequences are not executed
 - CSI-u Ctrl+letter encodings inside bracketed paste become literal paste text

@@ -7,6 +7,11 @@ from typing import Any, cast
 
 from loushang.ai.model import ModelSelection
 from loushang.harness.commands import CommandDescriptor
+from loushang.harness.session import (
+    SessionInputCapabilities,
+    SessionInputCapability,
+    session_operation_resolver,
+)
 from loushang.harnesstui.conversation.agent_application import (
     AgentPlainConversationApplicationBinding,
     AgentScreenConversationApplicationBinding,
@@ -124,6 +129,48 @@ def test_agent_screen_application_binding_prepares_shared_state() -> None:
             },
         )
     ]
+
+
+def test_agent_screen_application_binding_projects_harness_input_capabilities() -> None:
+    session = _Session()
+
+    class App:
+        state = SimpleNamespace(running=False)
+
+        def set_statusline_settings(self, settings: object) -> None:
+            self.settings = settings
+
+    def fail_if_resolved() -> Any:
+        raise AssertionError("capability projection must not resolve a Session")
+
+    get_operations = session_operation_resolver(
+        fail_if_resolved,
+        input_capabilities=SessionInputCapabilities.from_capabilities(
+            (SessionInputCapability.FOLLOW_UP,)
+        ),
+    )
+    binding = AgentScreenConversationApplicationBinding(
+        session=session,
+        app=cast(Any, App()),
+        action_host=cast(Any, object()),
+        build_surface=lambda _status: _Surface(),
+        startup=_startup(),
+        interaction_context=cast(Any, nullcontext()),
+        profile=ConversationScreenRunProfile(
+            input_router_factory=None,
+            interruption_message="Interrupted",
+            cancellation_message="Cancelled",
+        ),
+        trace=lambda _name, **_data: None,
+        stdout=cast(Any, SimpleNamespace(write=lambda _value: None)),
+        now=lambda: 1.0,
+        get_operations=get_operations,
+    )
+
+    prepared = binding.prepare()
+
+    assert prepared.input_capabilities.steer is False
+    assert prepared.input_capabilities.follow_up is True
 
 
 def test_agent_screen_surface_ports_bind_structural_research_session() -> None:

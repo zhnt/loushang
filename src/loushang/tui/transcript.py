@@ -306,7 +306,7 @@ def render_transcript_records(
         markdown_streaming_key=markdown_streaming_key,
     )
     rendered = view.render(RenderConstraints(width=width, max_height=max_height))
-    return rendered.lines
+    return tuple(rendered.lines)
 
 
 def _record_is_transient(record: DisplayRecord) -> bool:

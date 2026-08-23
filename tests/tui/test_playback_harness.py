@@ -225,6 +225,8 @@ def test_playback_result_writes_jsonl_for_manual_inspection(tmp_path) -> None:
             "changed_visible_lines": 1,
             "synchronized": False,
             "clear_scrollback_emitted": False,
+            "native_scrollback_safe": True,
+            "scrollback_size": {"before": 0, "after": 0, "delta": 0},
             "visible_lines": ["hello", "", "", "", ""],
             "scrollback_lines": [],
         }
@@ -306,6 +308,13 @@ def test_playback_result_writes_trace_and_final_screen_artifacts(tmp_path) -> No
     trace_row = json.loads(artifacts.trace.read_text(encoding="utf-8"))
     assert trace_row["operation_class"] == "changed_range_update"
     assert trace_row["serialized_output"] == "hello"
+    assert trace_row["native_scrollback_safe"] is True
+    assert trace_row["scrollback_size"] == {
+        "before": 0,
+        "after": 0,
+        "delta": 0,
+    }
+    assert trace_row["operation_trace"] == [{"kind": "write", "text": "hello"}]
     assert artifacts.screen.read_text(encoding="utf-8") == "hello\n\n\n\n"
     assert artifacts.terminal.read_text(encoding="utf-8") == "hello\n\n\n\n"
 
@@ -929,7 +938,8 @@ def test_playback_step_asserts_operation_class_and_scrollback_policy() -> None:
             clear_scrollback_policy="disabled",
             operations=(
                 TerminalOperation.begin_synchronized_update(),
-                TerminalOperation.clear_screen(),
+                TerminalOperation.move_cursor(row=0, column=0),
+                TerminalOperation.clear_line(),
                 TerminalOperation.write(f"{size.columns}x{size.rows}"),
                 TerminalOperation.end_synchronized_update(),
             ),
@@ -943,10 +953,94 @@ def test_playback_step_asserts_operation_class_and_scrollback_policy() -> None:
 
     step.assert_operation_class("resize_repaint")
     step.assert_no_clear_scrollback()
+    step.assert_native_scrollback_safe()
     assert step.diagnostics.width_changed is True
     assert step.diagnostics.height_changed is True
     assert step.frame is not None
     assert step.frame.clear_scrollback_emitted is False
+
+
+def test_playback_step_rejects_history_sensitive_erase_when_preserving_scrollback() -> (
+    None
+):
+    harness = PlaybackHarness(
+        render=lambda _event, _size, _previous: RenderDiagnostics(
+            current_logical_lines=("unsafe",),
+            operation_class="baseline_repaint",
+            operations=(
+                TerminalOperation.clear_from_cursor(),
+                TerminalOperation.clear_screen(),
+            ),
+        )
+    )
+
+    step = harness.play([PlaybackEvent("render")])[0]
+
+    assert step.native_scrollback_safe is False
+    with pytest.raises(
+        AssertionError,
+        match="preserved native scrollback.*clear_from_cursor, clear_screen",
+    ):
+        step.assert_native_scrollback_safe()
+
+
+def test_playback_result_replays_successful_terminal_trace_without_renderer() -> None:
+    frames = iter(
+        (
+            (TerminalOperation.write("first"),),
+            (
+                TerminalOperation.move_cursor(row=0, column=0),
+                TerminalOperation.clear_line(),
+                TerminalOperation.write("second"),
+            ),
+        )
+    )
+    harness = PlaybackHarness(
+        render=lambda _event, _size, _previous: RenderDiagnostics(
+            current_logical_lines=("frame",),
+            operations=next(frames),
+        ),
+        port=FakeTerminalPort(size=TerminalSize(columns=20, rows=5)),
+    )
+    steps = harness.play(
+        [PlaybackEvent("render"), PlaybackEvent.resize(columns=30, rows=6)]
+    )
+    result = PlaybackResult(steps=steps, port=harness.port)
+
+    replayed = result.replay_terminal_trace()
+
+    assert replayed.size() == TerminalSize(columns=30, rows=6)
+    assert replayed.screen == harness.port.screen
+    assert tuple(frame.operations for frame in replayed.frames) == tuple(
+        step.diagnostics.operations for step in steps
+    )
+
+
+def test_fake_terminal_long_history_is_append_optimized_and_snapshot_stable() -> None:
+    port = FakeTerminalPort(size=TerminalSize(columns=20, rows=3))
+    lines = tuple(f"line {index:04d}" for index in range(2_048))
+
+    port.flush((TerminalOperation.write("\r\n".join(lines)),))
+    snapshot = port.screen
+    port.flush(
+        (
+            TerminalOperation.newline(),
+            TerminalOperation.write("line 2048"),
+        )
+    )
+
+    assert snapshot.scrollback_lines + snapshot.visible_lines == lines
+    assert snapshot.scrollback_lines[0] == "line 0000"
+    assert snapshot.scrollback_lines[-1] == "line 2044"
+    assert snapshot.scrollback_lines[-3:] == (
+        "line 2042",
+        "line 2043",
+        "line 2044",
+    )
+    assert port.screen.scrollback_lines + port.screen.visible_lines == (
+        *lines,
+        "line 2048",
+    )
 
 
 def test_playback_step_asserts_explicit_clear_scrollback() -> None:
@@ -974,6 +1068,7 @@ def test_playback_step_asserts_explicit_clear_scrollback() -> None:
 
     step.assert_operation_class("recovery_repaint")
     step.assert_has_clear_scrollback()
+    step.assert_native_scrollback_safe()
     assert step.diagnostics.clear_scrollback_emitted is True
     assert step.frame is not None
     assert step.frame.clear_scrollback_emitted is True

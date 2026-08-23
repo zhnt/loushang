@@ -31,6 +31,7 @@ from loushang.harnesstui.conversation.application_host import (
     run_prepared_screen_conversation,
 )
 from loushang.harnesstui.conversation.host import (
+    ConversationScreenRunProfile,
     run_action_host_conversation_screen,
 )
 from loushang.harnesstui.conversation.run_context import (
@@ -52,6 +53,7 @@ async def run_coding_tui(
     stdout: TextIO,
     stderr: TextIO,
     verbose: bool = False,
+    screen_run_profile: ConversationScreenRunProfile = CODING_SCREEN_RUN_PROFILE,
 ) -> int:
     return await run_tui_launch_shell(
         stdin=stdin,
@@ -66,6 +68,7 @@ async def run_coding_tui(
                 stdout=stdout,
                 stderr=stderr,
                 verbose=verbose,
+                screen_run_profile=screen_run_profile,
             ),
             run_plain=partial(
                 _run_plain_tui,
@@ -90,6 +93,7 @@ async def _run_screen_interactive_tui(
     stdout: TextIO,
     stderr: TextIO,
     verbose: bool,
+    screen_run_profile: ConversationScreenRunProfile,
 ) -> int:
     snapshot = await load_coding_tui_startup_view(runtime=runtime, session=session)
     app = ScreenCodingTuiApp(
@@ -155,7 +159,7 @@ async def _run_screen_interactive_tui(
             cwd=snapshot.cwd,
             mode="tui",
         ),
-        profile=CODING_SCREEN_RUN_PROFILE,
+        profile=screen_run_profile,
         trace=_trace,
         stdout=stdout,
         now=time.monotonic,

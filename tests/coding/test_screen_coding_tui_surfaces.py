@@ -17,6 +17,9 @@ from loushang.harness.multiagent import (
     MultiAgentControl,
 )
 from loushang.harnesstui.conversation.fork import ForkPromptSurface
+from loushang.harnesstui.conversation.input_policy import (
+    ConversationInputCapabilities,
+)
 from loushang.harnesstui.multiagent import AgentTreeSurface
 from loushang.harnesstui.selection.model import (
     ModelSelectorSurface as SharedModelSelectorSurface,
@@ -331,8 +334,8 @@ def test_screen_surface_model_selection_error_stays_in_tui() -> None:
     rendered = app.render(RenderConstraints(width=100, max_height=24))
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
     assert expected_error in " ".join(plain_lines)
-    assert any("/fork and select the image prompt" in line for line in plain_lines)
-    assert any("/compact works" in line for line in plain_lines)
+    assert any("/branch and select the image prompt" in line for line in plain_lines)
+    assert "/compact works" in " ".join(plain_lines)
     assert any("moonshot:test-endpoint:kimi-for-coding" in line for line in plain_lines)
     assert any(line.text.startswith("\x1b[91mError:") for line in rendered.lines)
     assert any(
@@ -388,6 +391,26 @@ def test_screen_surface_manager_opens_non_model_surfaces_in_runtime_overlay_host
 
         manager.close_surface()
         assert app.surface_host.entries == []
+
+
+def test_screen_surface_manager_renders_resolved_conversation_hotkeys() -> None:
+    class CustomHotkeySession(_Session):
+        def get_keybindings(self) -> dict[str, tuple[str, ...]]:
+            return {"conversation.input.followUp": ("ctrl+enter",)}
+
+    app = _app()
+    app.surface_host = SurfaceHost()
+    app.state.input_capabilities = ConversationInputCapabilities(
+        steer=True,
+        follow_up=False,
+    )
+    manager = _manager(app, CustomHotkeySession())
+
+    asyncio.run(manager.handle_text("/hotkeys"))
+
+    text = "\n".join(_surface_plain_lines(_only_overlay_view(app)))
+    assert "Running Ctrl+Enter: follow-up unavailable" in text
+    assert "Running Alt+Enter: queue follow-up" not in text
 
 
 def test_screen_surface_manager_opens_resume_as_full_screen_continuity_page() -> None:
@@ -453,7 +476,7 @@ def test_screen_surface_manager_opens_live_agent_tree_page() -> None:
     asyncio.run(scenario())
 
 
-def test_screen_surface_manager_forks_selected_prompt_and_restores_composer() -> None:
+def test_screen_surface_manager_branches_from_selected_prompt_and_restores_composer() -> None:
     session = _Session()
     session.fork_messages = [
         {"entry_id": "entry-1", "text": "first prompt"},
@@ -484,9 +507,10 @@ def test_screen_surface_manager_forks_selected_prompt_and_restores_composer() ->
             status_provider=_status_provider(app),
         )
 
-        assert manager.is_local_command("/fork")
+        assert manager.is_local_command("/branch")
+        assert not manager.is_local_command("/fork")
         assert not manager.is_local_command("/fork entry-2 before")
-        await manager.handle_text("/fork")
+        await manager.handle_text("/branch")
 
         view = _only_overlay_view(app)
         assert view.purpose == "fork"
@@ -502,7 +526,7 @@ def test_screen_surface_manager_forks_selected_prompt_and_restores_composer() ->
 
         assert runtime.calls == [("entry-2", "before")]
         assert app.composer.value == "latest prompt"
-        assert app.state.status_message == "Forked from selected prompt"
+        assert app.state.status_message == "Branched from selected prompt"
         assert app.surface_host.entries == []
 
     asyncio.run(scenario())

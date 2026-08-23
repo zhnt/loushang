@@ -2,39 +2,19 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import InitVar, dataclass, field
-from typing import Literal, Protocol, cast
+from dataclasses import KW_ONLY, InitVar, dataclass, field
+from typing import Generic, Literal, Protocol, TypeAlias, TypeVar, cast
 
 from loushang.tui.framework import SurfaceHost
 from loushang.tui.keybindings import KeybindingManager, normalize_key_id
 from loushang.tui.ui_parts import Composer
 
 InputEventKind = Literal["key", "text", "paste", "resize", "focus", "mouse", "signal"]
-InputIntentKind = Literal[
-    "submit",
-    "follow_up",
-    "steer",
-    "abort",
-    "surface_close",
-    "invalidate_render",
-    "select",
-    "complete",
-    "command",
-    "setting",
-    "approve",
-    "approve_session",
-    "approval_decision",
-    "permission_profile_action",
-    "reject",
-    "dialog_confirm",
-    "dialog_cancel",
-    "question_submit",
-    "question_cancel",
-    "command_select",
-    "command_cancel",
-    "consumed",
-]
-SubmitMode = Literal["submit", "follow_up", "steer"]
+_InputIntentKindT = TypeVar("_InputIntentKindT", bound=str, covariant=True)
+# Temporary import-path compatibility; production annotations use precise envelopes.
+InputIntentKind: TypeAlias = str
+PromptInputIntentKind: TypeAlias = Literal["submit", "prompt_cancel", "invalidate_render"]
+PromptJumpDirection: TypeAlias = Literal["forward", "backward"]
 KeyEventType = Literal["press", "repeat", "release"]
 
 ESC = "\x1b"
@@ -292,10 +272,22 @@ class InputEvent:
 
 
 @dataclass(frozen=True, slots=True)
-class InputIntent:
-    kind: InputIntentKind
+class InputIntent(Generic[_InputIntentKindT]):
+    kind: _InputIntentKindT
     text: str = ""
     note: str = ""
+
+
+PromptInputIntent: TypeAlias = InputIntent[PromptInputIntentKind]
+
+
+def _prompt_input_intent(
+    kind: PromptInputIntentKind,
+    *,
+    text: str = "",
+    note: str = "",
+) -> PromptInputIntent:
+    return InputIntent(kind=kind, text=text, note=note)
 
 
 @dataclass(frozen=True, slots=True)
@@ -383,7 +375,7 @@ class PromptInputTarget(EditorInputTarget, Protocol):
 
     def move_visual_page_down(self, *, width: int, visible_lines: int) -> None: ...
 
-    def jump_to_char(self, text: str, *, direction: Literal["forward", "backward"]) -> None: ...
+    def jump_to_char(self, text: str, *, direction: PromptJumpDirection) -> None: ...
 
     def refresh_completions(self, *, force: bool = False, explicit: bool = False) -> None: ...
 
@@ -511,7 +503,7 @@ class ComposerInputTarget:
     def move_visual_page_down(self, *, width: int, visible_lines: int) -> None:
         self.composer.move_visual_page_down(width=width, visible_lines=visible_lines)
 
-    def jump_to_char(self, text: str, *, direction: Literal["forward", "backward"]) -> None:
+    def jump_to_char(self, text: str, *, direction: PromptJumpDirection) -> None:
         self.composer.jump_to_char(text, direction=direction)
 
     def refresh_completions(self, *, force: bool = False, explicit: bool = False) -> None:
@@ -693,7 +685,7 @@ class InputReader:
 
 @dataclass(frozen=True, slots=True)
 class _SurfaceRoute:
-    intents: tuple[InputIntent, ...] = ()
+    intents: tuple[InputIntent[str], ...] = ()
     consumed: bool = False
 
 
@@ -701,13 +693,12 @@ class _SurfaceRoute:
 class InputRouter:
     composer: Composer | None = None
     surface_host: SurfaceHost | None = None
-    running: bool = False
-    steering_supported: bool = False
+    _: KW_ONLY
     width: int = 80
     height: int = 24
     keybindings: KeybindingManager | None = None
-    _jump_mode: Literal["forward", "backward"] | None = None
     target: InitVar[PromptInputTarget | None] = None
+    _jump_mode: PromptJumpDirection | None = field(default=None, init=False)
     _target: PromptInputTarget = field(init=False, repr=False)
 
     def __post_init__(self, target: PromptInputTarget | None) -> None:
@@ -721,21 +712,26 @@ class InputRouter:
             return
         raise TypeError("InputRouter requires composer or target")
 
-    def route(self, event: InputEvent) -> tuple[InputIntent, ...]:
+    def route(self, event: InputEvent) -> tuple[InputIntent[str], ...]:
         target = self._target
         if event.kind == "key" and event.event_type == "release":
             return ()
         if event.kind == "key":
-            if self._jump_mode is not None:
-                keybindings = self._keybindings()
-                if keybindings.matches(event.key, "tui.editor.jumpForward") or keybindings.matches(
-                    event.key,
-                    "tui.editor.jumpBackward",
-                ):
-                    self._jump_mode = None
-                    return ()
-                self._jump_mode = None
             keybindings = self._keybindings()
+            is_cancel = keybindings.matches(event.key, "tui.select.cancel")
+            jump_direction = prompt_jump_direction_for_key(
+                event.key,
+                keybindings=keybindings,
+            )
+            cancelled_pending_jump = False
+            if self._jump_mode is not None:
+                if jump_direction is not None:
+                    self._jump_mode = None
+                    if not is_cancel:
+                        return ()
+                else:
+                    self._jump_mode = None
+                cancelled_pending_jump = is_cancel
             surface_route = self._route_surface_first(event)
             if surface_route.intents:
                 return surface_route.intents
@@ -752,37 +748,31 @@ class InputRouter:
                 return ()
             if target.has_completions and route_prompt_completion_key(target, event.key, keybindings=keybindings):
                 return ()
-            if keybindings.matches(event.key, "tui.select.cancel") and self.running:
-                return (InputIntent(kind="abort"),)
-            if keybindings.matches(event.key, "tui.editor.jumpForward"):
-                self._jump_mode = "forward"
+            if is_cancel:
+                if cancelled_pending_jump:
+                    return ()
+                return (_prompt_input_intent("prompt_cancel"),)
+            if jump_direction is not None:
+                self._jump_mode = jump_direction
                 return ()
-            if keybindings.matches(event.key, "tui.editor.jumpBackward"):
-                self._jump_mode = "backward"
-                return ()
-            if keybindings.matches(event.key, "tui.queue.editLast"):
-                return (InputIntent(kind="command", note="edit_last_queued_prompt"),)
-            if keybindings.matches(event.key, "tui.input.tab"):
-                target.refresh_completions(force=True, explicit=True)
-                if target.has_completions:
-                    target.apply_selected_completion()
+            if route_prompt_explicit_completion_key(
+                target,
+                event.key,
+                keybindings=keybindings,
+            ):
                 return ()
             if keybindings.matches(event.key, "tui.input.submit"):
                 return self.submit()
             if keybindings.matches(event.key, "tui.input.newLine"):
                 target.insert_newline()
                 return ()
-            if keybindings.matches(event.key, "tui.editor.cursorUp"):
-                self._move_up_or_history()
-                return ()
-            if keybindings.matches(event.key, "tui.editor.cursorDown"):
-                self._move_down_or_history()
-                return ()
-            if keybindings.matches(event.key, "tui.editor.pageUp"):
-                target.move_visual_page_up(width=self.width, visible_lines=self._composer_page_lines())
-                return ()
-            if keybindings.matches(event.key, "tui.editor.pageDown"):
-                target.move_visual_page_down(width=self.width, visible_lines=self._composer_page_lines())
+            if route_prompt_vertical_navigation_key(
+                target,
+                event.key,
+                keybindings=keybindings,
+                width=self.width,
+                height=self.height,
+            ):
                 return ()
             if route_editor_editing_key(target, event.key, keybindings=keybindings):
                 return ()
@@ -795,13 +785,17 @@ class InputRouter:
                 return ()
             focused_target = self._focused_editor_target()
             if focused_target is not None:
-                focused_target.paste(event.text)
+                apply_prompt_paste(focused_target, event.text)
                 return ()
-            target.paste(event.text)
+            apply_prompt_paste(target, event.text)
             return ()
         if event.kind == "text":
             if self._jump_mode is not None:
-                target.jump_to_char(event.text, direction=self._jump_mode)
+                apply_prompt_text(
+                    target,
+                    event.text,
+                    jump_direction=self._jump_mode,
+                )
                 self._jump_mode = None
                 return ()
             surface_route = self._route_surface_first(event)
@@ -813,26 +807,20 @@ class InputRouter:
             if focused_target is not None:
                 focused_target.insert_text(event.text)
                 return ()
-            target.insert_text(event.text)
+            apply_prompt_text(target, event.text)
             return ()
         if event.kind == "resize" or (event.kind == "signal" and event.signal == "sigwinch"):
-            return (InputIntent(kind="invalidate_render"),)
+            return (_prompt_input_intent("invalidate_render"),)
         return ()
 
-    def submit(self, *, mode: SubmitMode = "submit") -> tuple[InputIntent, ...]:
+    def submit(self) -> tuple[PromptInputIntent, ...]:
         target = self._target
         text = target.value
         if not text:
             return ()
         target.add_history(text)
         target.clear()
-        if not self.running:
-            return (InputIntent(kind="submit", text=text),)
-        if mode == "steer":
-            if self.steering_supported:
-                return (InputIntent(kind="steer", text=text),)
-            return (InputIntent(kind="follow_up", text=text, note="steer_unavailable"),)
-        return (InputIntent(kind="follow_up", text=text),)
+        return (_prompt_input_intent("submit", text=text),)
 
     def _route_surface_first(self, event: InputEvent) -> _SurfaceRoute:
         if self.surface_host is None:
@@ -860,30 +848,13 @@ class InputRouter:
         target = current()
         return cast(EditorInputTarget, target) if target is not None else None
 
-    def _move_up_or_history(self) -> None:
-        target = self._target
-        if target.browsing_history:
-            target.history_previous()
-        elif not target.value or not target.move_visual_up(width=self.width):
-            target.history_previous()
-
-    def _move_down_or_history(self) -> None:
-        target = self._target
-        if target.browsing_history:
-            target.history_next()
-        elif not target.value or not target.move_visual_down(width=self.width):
-            target.history_next()
-
     def _keybindings(self) -> KeybindingManager:
         if self.keybindings is None:
             self.keybindings = KeybindingManager()
         return self.keybindings
 
-    def _composer_page_lines(self) -> int:
-        return max(2, min(10, self.height))
 
-
-def _input_intents(result: object) -> tuple[InputIntent, ...]:
+def _input_intents(result: object) -> tuple[InputIntent[str], ...]:
     if result is None:
         return ()
     if isinstance(result, InputIntent):
@@ -937,6 +908,81 @@ def _split_paste_payload_and_pending_end_marker(text: str) -> tuple[str, str]:
         if BRACKETED_PASTE_END.startswith(suffix):
             return text[:-length], suffix
     return text, ""
+
+
+def prompt_jump_direction_for_key(
+    key: str,
+    *,
+    keybindings: KeybindingManager | None = None,
+) -> PromptJumpDirection | None:
+    keybindings = keybindings or KeybindingManager()
+    if keybindings.matches(key, "tui.editor.jumpForward"):
+        return "forward"
+    if keybindings.matches(key, "tui.editor.jumpBackward"):
+        return "backward"
+    return None
+
+
+def apply_prompt_text(
+    target: PromptInputTarget,
+    text: str,
+    *,
+    jump_direction: PromptJumpDirection | None = None,
+) -> None:
+    if jump_direction is not None:
+        target.jump_to_char(text, direction=jump_direction)
+        return
+    target.insert_text(text)
+
+
+def apply_prompt_paste(target: EditorInputTarget, text: str) -> None:
+    target.paste(text)
+
+
+def route_prompt_explicit_completion_key(
+    target: PromptInputTarget,
+    key: str,
+    *,
+    keybindings: KeybindingManager | None = None,
+) -> bool:
+    keybindings = keybindings or KeybindingManager()
+    if not keybindings.matches(key, "tui.input.tab"):
+        return False
+    target.refresh_completions(force=True, explicit=True)
+    if target.has_completions:
+        target.apply_selected_completion()
+    return True
+
+
+def route_prompt_vertical_navigation_key(
+    target: PromptInputTarget,
+    key: str,
+    *,
+    width: int,
+    height: int,
+    keybindings: KeybindingManager | None = None,
+) -> bool:
+    keybindings = keybindings or KeybindingManager()
+    if keybindings.matches(key, "tui.editor.cursorUp"):
+        if target.browsing_history:
+            target.history_previous()
+        elif not target.value or not target.move_visual_up(width=width):
+            target.history_previous()
+        return True
+    if keybindings.matches(key, "tui.editor.cursorDown"):
+        if target.browsing_history:
+            target.history_next()
+        elif not target.value or not target.move_visual_down(width=width):
+            target.history_next()
+        return True
+    visible_lines = max(2, min(10, height))
+    if keybindings.matches(key, "tui.editor.pageUp"):
+        target.move_visual_page_up(width=width, visible_lines=visible_lines)
+        return True
+    if keybindings.matches(key, "tui.editor.pageDown"):
+        target.move_visual_page_down(width=width, visible_lines=visible_lines)
+        return True
+    return False
 
 
 def route_editor_editing_key(

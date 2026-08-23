@@ -109,6 +109,10 @@ router.route(InputEvent(kind="key", key="shift+left"))
 router.route(InputEvent(kind="key", key="ctrl+k"))
 ```
 
+通用 `InputRouter` 只产生中立的 `submit` 和 `prompt_cancel` intent，具体含义由
+应用结合自身状态决定。基于 Harness 的会话如果需要运行中提交、steer/follow-up、
+队列恢复和中断语义，应使用 Harnesstui 的 `ConversationInputRouter`。
+
 `TextInput` selection 索引用 grapheme cluster。`Composer` selection 索引用 composer atom，因此 paste marker 会保持原子性。显示宽度由渲染层处理。
 
 ## 示例

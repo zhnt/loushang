@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, cast, runtime_checkable
 
 from loushang.tui.cell_width import (
     autowrap_safe_width,
@@ -784,7 +784,7 @@ def surface_presentation(
         or raw in _OVERLAY_PRESENTATIONS
         or raw in _PAGE_PRESENTATIONS
     ):
-        return raw
+        return cast(SurfacePresentation, raw)
     return default
 
 
@@ -808,7 +808,7 @@ def surface_is_bottom_exclusive(surface: object) -> bool:
 
 def _compose_overlay(
     base_lines: list[str],
-    overlay_lines: tuple[RenderLine, ...] | list[RenderLine],
+    overlay_lines: Sequence[RenderLine],
     *,
     row: int,
     column: int,

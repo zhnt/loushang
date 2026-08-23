@@ -130,11 +130,11 @@ def build_standard_agent_screen_surface_workflow_ports(
         candidates: list[ForkPromptCandidate] = []
         for value in getter():
             if not isinstance(value, Mapping):
-                raise TypeError("Fork prompt candidates must be mappings")
+                raise TypeError("Branch prompt candidates must be mappings")
             entry_id = value.get("entry_id")
             text = value.get("text")
             if not isinstance(entry_id, str) or not entry_id.strip():
-                raise TypeError("Fork prompt candidates require an entry_id")
+                raise TypeError("Branch prompt candidates require an entry_id")
             if isinstance(text, str) and text.strip():
                 candidates.append(ForkPromptCandidate(entry_id=entry_id, text=text))
         return build_fork_prompt_surface_view(
@@ -146,18 +146,18 @@ def build_standard_agent_screen_surface_workflow_ports(
         if runtime is None:
             raise RuntimeError("Session runtime is not available")
         if not isinstance(target, str) or not target.strip():
-            raise TypeError("Fork requires a selected prompt")
+            raise TypeError("Branch requires a selected prompt")
         operation = getattr(runtime, "fork_session_operation", None)
         if not callable(operation):
-            raise RuntimeError("Session forking is not available")
+            raise RuntimeError("Session branching is not available")
         result = await operation(target, position="before")
         if getattr(result, "cancelled", False):
-            raise RuntimeError("Session fork was cancelled")
+            raise RuntimeError("Session branch was cancelled")
         selected_text = getattr(result, "payload", None)
         if not isinstance(selected_text, str):
-            raise RuntimeError("Forked session did not return the selected prompt")
+            raise RuntimeError("Branched session did not return the selected prompt")
         return ScreenSurfaceForkResult(
-            status="Forked from selected prompt",
+            status="Branched from selected prompt",
             composer_text=selected_text,
         )
 

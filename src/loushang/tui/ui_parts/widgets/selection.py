@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loushang.tui.core import RenderConstraints, RenderResult
 from loushang.tui.theme import ThemeResolver
 
+if TYPE_CHECKING:
+    from loushang.tui.surfaces import SelectItem
+
 
 @dataclass(slots=True)
 class SelectList:
-    items: list[object] | tuple[object, ...]
+    items: list[SelectItem] | tuple[SelectItem, ...]
     max_visible: int = 5
     close_on_escape: bool = False
     theme: ThemeResolver | None = None

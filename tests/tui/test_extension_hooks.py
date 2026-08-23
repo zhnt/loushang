@@ -140,6 +140,21 @@ def test_extension_input_adapter_receives_normalized_events_only() -> None:
     assert not hasattr(renderable, "handle_raw_input")
 
 
+def test_extension_input_adapter_preserves_owner_qualified_intent_kind() -> None:
+    api = PublicTuiApi(extension_id="example_plugin", host=ExtensionHost())
+    expected = InputIntent(
+        kind="example_plugin.openArtifact",
+        text="artifact-42",
+        note="preview",
+    )
+    renderable = api.adapt_renderable(
+        lambda constraints: ["plugin"],
+        on_input=lambda event: expected,
+    )
+
+    assert renderable.handle_input(InputEvent(kind="key", key="enter")) is expected
+
+
 def test_dispose_extension_removes_widgets_status_and_surfaces() -> None:
     extension_host = ExtensionHost()
     surface_host = SurfaceHost()

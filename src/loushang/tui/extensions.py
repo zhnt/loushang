@@ -11,7 +11,7 @@ from loushang.tui.ui_parts import StatusField
 
 WidgetPlacement = Literal["above_composer", "below_composer"]
 RenderFactory = Callable[[RenderConstraints], RenderResult | list[str] | tuple[str, ...]]
-InputFactory = Callable[[InputEvent], InputIntent | None]
+InputFactory = Callable[[InputEvent], InputIntent[str] | None]
 
 
 @dataclass(slots=True)
@@ -193,7 +193,7 @@ class RenderableAdapter:
     def blur(self) -> None:
         self.focused = False
 
-    def handle_input(self, event: InputEvent) -> InputIntent | None:
+    def handle_input(self, event: InputEvent) -> InputIntent[str] | None:
         if self.on_input is None:
             return None
         return self.on_input(event)

@@ -16,7 +16,6 @@ from loushang.harnesstui.conversation.host import (
 )
 from loushang.harnesstui.conversation.screen_runner import (
     AbortHandler,
-    ConversationInputResultPort,
     ConversationInputRouterFactoryPort,
     ConversationScreenPort,
     LocalCommandPredicate,
@@ -52,9 +51,9 @@ def coding_scenario_input_router_factory(
     keybindings: KeybindingManager | KeybindingConfig | None,
     width: int,
     height: int,
-) -> ConversationPlaybackInputRouterPort[ConversationInputResultPort]:
+) -> ConversationPlaybackInputRouterPort:
     return cast(
-        ConversationPlaybackInputRouterPort[ConversationInputResultPort],
+        ConversationPlaybackInputRouterPort,
         build_screen_input_router(
             app=cast(ScreenCodingTuiApp, app),
             should_exit=should_exit,

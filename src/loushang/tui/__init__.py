@@ -94,6 +94,8 @@ from loushang.tui.input import (
     sanitize_paste_text,
 )
 from loushang.tui.keybindings import (
+    TUI_CORE_KEYBINDING_CATALOG,
+    KeybindingCatalog,
     KeybindingConfig,
     KeybindingConflict,
     KeybindingManager,
@@ -476,6 +478,7 @@ __all__ = [
     "ImageProtocol",
     "ImageProtocolSelection",
     "InfoPanel",
+    "KeybindingCatalog",
     "KeybindingConfig",
     "KeybindingConflict",
     "KeybindingManager",
@@ -598,6 +601,7 @@ __all__ = [
     "TextField",
     "TextFormatter",
     "TextInput",
+    "TUI_CORE_KEYBINDING_CATALOG",
     "Toggle",
     "Toolbar",
     "ToolbarAction",

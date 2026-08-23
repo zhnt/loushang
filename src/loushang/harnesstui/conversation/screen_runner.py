@@ -5,17 +5,30 @@ import inspect
 import shutil
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager
-from typing import Any, Protocol, TextIO
+from typing import Any, Protocol, TextIO, TypeAlias, assert_never
 
 from loushang.harnesstui.conversation.input import (
+    ConversationAbortResult,
+    ConversationClipboardResult,
+    ConversationExitResult,
+    ConversationFollowupResult,
+    ConversationInputHandled,
+    ConversationInputIgnored,
+    ConversationInputResult,
     ConversationInputRouter,
+    ConversationInputRouterFactoryPort,
+    ConversationInputRouterPort,
+    ConversationLocalResult,
+    ConversationPromptResult,
     ConversationScreenInputPort,
+    ConversationSteerResult,
+    ConversationSurfaceResult,
 )
 from loushang.harnesstui.surface.controller import promote_pending_page_surface
 from loushang.tui import _runner_utils
 from loushang.tui.core import RenderConstraints, RenderResult
 from loushang.tui.framework import SurfaceHost
-from loushang.tui.input import InputEvent, InputIntent, InputReader
+from loushang.tui.input import InputIntent, InputReader
 from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
 from loushang.tui.render_loop import RenderLoop
 from loushang.tui.runtime import TuiRuntime
@@ -32,7 +45,7 @@ from loushang.tui.terminal_session import TerminalSession
 HandlerResult = Awaitable[int | None] | int | None
 PromptHandler = Callable[..., HandlerResult]
 TextHandler = Callable[..., HandlerResult]
-SurfaceIntentHandler = Callable[[InputIntent], HandlerResult]
+SurfaceIntentHandler = Callable[[InputIntent[str]], HandlerResult]
 AbortHandler = Callable[[], Awaitable[object] | object]
 ShouldExit = Callable[[str], bool]
 LocalCommandPredicate = Callable[[str], bool]
@@ -70,62 +83,7 @@ class ConversationScreenPort(ConversationScreenInputPort, Protocol):
     def elapsed_seconds(self) -> float: ...
 
 
-class ConversationInputResultPort(Protocol):
-    """Neutral routed action consumed by a conversation screen runner."""
-
-    @property
-    def prompt_text(self) -> str | None: ...
-
-    @property
-    def prompt_attachments(self) -> tuple[object, ...] | None: ...
-
-    @property
-    def local_text(self) -> str | None: ...
-
-    @property
-    def steer_text(self) -> str | None: ...
-
-    @property
-    def steer_attachments(self) -> tuple[object, ...] | None: ...
-
-    @property
-    def followup_text(self) -> str | None: ...
-
-    @property
-    def followup_attachments(self) -> tuple[object, ...] | None: ...
-
-    @property
-    def surface_intent(self) -> InputIntent | None: ...
-
-    @property
-    def abort_requested(self) -> bool: ...
-
-    @property
-    def exit_code(self) -> int | None: ...
-
-    @property
-    def render_requested(self) -> bool: ...
-
-
-class ConversationInputRouterPort(Protocol):
-    """Route one decoded terminal input event to a neutral action."""
-
-    def handle(self, event: InputEvent) -> ConversationInputResultPort: ...
-
-
-class ConversationInputRouterFactoryPort(Protocol):
-    """Construct the product's conversation input adapter."""
-
-    def __call__(
-        self,
-        *,
-        app: ConversationScreenPort,
-        should_exit: ShouldExit,
-        is_local_command: LocalCommandPredicate,
-        keybindings: KeybindingManager | KeybindingConfig | None,
-        width: int,
-        height: int,
-    ) -> ConversationInputRouterPort: ...
+ConversationInputResultPort: TypeAlias = ConversationInputResult
 
 
 _finish_tui_exit = _runner_utils.finish_tui_exit
@@ -295,14 +253,14 @@ async def run_conversation_screen(
 
                 for event in input_events:
                     result = router.handle(event)
-                    if result.exit_code is not None:
+                    if isinstance(result, ConversationExitResult):
                         runtime.render_now()
                         return _finish_tui_exit(
                             runtime=runtime,
                             stdout=stdout,
                             exit_code=result.exit_code,
                         )
-                    if result.abort_requested:
+                    if isinstance(result, ConversationAbortResult):
                         interrupt_pending_steer = pop_interrupt_pending_steer(app)
                         await abort_active(
                             app=app,
@@ -324,68 +282,77 @@ async def run_conversation_screen(
                             active_prompt_started_at = app.state.active_started_at
                             runtime.render_now()
                         continue
-                    if result.prompt_text is not None:
+                    if isinstance(result, ConversationPromptResult):
                         active_prompt_started_at = app.state.active_started_at
                         active_task = asyncio.create_task(
                             run_prompt_handler(
                                 handle_prompt,
-                                result.prompt_text,
-                                attachments=result.prompt_attachments,
+                                result.text,
+                                attachments=result.attachments,
                             )
                         )
-                    if result.local_text is not None and handle_local is not None:
-                        exit_code = await run_text_handler(
-                            handle_local,
-                            result.local_text,
-                        )
-                        if exit_code is not None:
-                            runtime.render_now()
-                            return _finish_tui_exit(
-                                runtime=runtime,
-                                stdout=stdout,
-                                exit_code=exit_code,
+                    elif isinstance(result, ConversationLocalResult):
+                        if handle_local is not None:
+                            exit_code = await run_text_handler(
+                                handle_local,
+                                result.text,
                             )
-                    if result.steer_text is not None and handle_steer is not None:
-                        exit_code = await run_text_handler(
-                            handle_steer,
-                            result.steer_text,
-                            attachments=result.steer_attachments,
-                        )
-                        if exit_code is not None:
-                            runtime.render_now()
-                            return _finish_tui_exit(
-                                runtime=runtime,
-                                stdout=stdout,
-                                exit_code=exit_code,
+                            if exit_code is not None:
+                                runtime.render_now()
+                                return _finish_tui_exit(
+                                    runtime=runtime,
+                                    stdout=stdout,
+                                    exit_code=exit_code,
+                                )
+                    elif isinstance(result, ConversationSteerResult):
+                        if handle_steer is not None:
+                            exit_code = await run_text_handler(
+                                handle_steer,
+                                result.text,
+                                attachments=result.attachments,
                             )
-                    if result.followup_text is not None and handle_followup is not None:
-                        exit_code = await run_text_handler(
-                            handle_followup,
-                            result.followup_text,
-                            attachments=result.followup_attachments,
-                        )
-                        if exit_code is not None:
-                            runtime.render_now()
-                            return _finish_tui_exit(
-                                runtime=runtime,
-                                stdout=stdout,
-                                exit_code=exit_code,
+                            if exit_code is not None:
+                                runtime.render_now()
+                                return _finish_tui_exit(
+                                    runtime=runtime,
+                                    stdout=stdout,
+                                    exit_code=exit_code,
+                                )
+                    elif isinstance(result, ConversationFollowupResult):
+                        if handle_followup is not None:
+                            exit_code = await run_text_handler(
+                                handle_followup,
+                                result.text,
+                                attachments=result.attachments,
                             )
-                    if (
-                        result.surface_intent is not None
-                        and handle_surface_intent is not None
-                    ):
-                        exit_code = await run_surface_intent_handler(
-                            handle_surface_intent,
-                            result.surface_intent,
-                        )
-                        if exit_code is not None:
-                            runtime.render_now()
-                            return _finish_tui_exit(
-                                runtime=runtime,
-                                stdout=stdout,
-                                exit_code=exit_code,
+                            if exit_code is not None:
+                                runtime.render_now()
+                                return _finish_tui_exit(
+                                    runtime=runtime,
+                                    stdout=stdout,
+                                    exit_code=exit_code,
+                                )
+                    elif isinstance(result, ConversationSurfaceResult):
+                        if handle_surface_intent is not None:
+                            exit_code = await run_surface_intent_handler(
+                                handle_surface_intent,
+                                result.intent,
                             )
+                            if exit_code is not None:
+                                runtime.render_now()
+                                return _finish_tui_exit(
+                                    runtime=runtime,
+                                    stdout=stdout,
+                                    exit_code=exit_code,
+                                )
+                    elif isinstance(result, ConversationClipboardResult):
+                        pass
+                    elif isinstance(result, ConversationInputHandled):
+                        pass
+                    elif isinstance(result, ConversationInputIgnored):
+                        pass
+                    else:
+                        assert_never(result)
                     if result.render_requested:
                         _request_runtime_render(runtime, "input")
     finally:
@@ -522,7 +489,7 @@ async def call_text_handler(
 
 async def run_surface_intent_handler(
     handler: SurfaceIntentHandler,
-    intent: InputIntent,
+    intent: InputIntent[str],
 ) -> int | None:
     result = await maybe_await(handler(intent))
     return result if isinstance(result, int) else None

@@ -11,6 +11,8 @@ from loushang.harness.approval import ApprovalOutcome
 from loushang.harness.presentation import RenderableToolDefinition
 from loushang.harness.session import (
     SessionApprovalInteractionPort,
+    SessionInputCapabilities,
+    SessionInputCapability,
     SessionOperationResolver,
 )
 from loushang.harness.session.model_selection import (
@@ -37,6 +39,9 @@ from loushang.harnesstui.conversation.application_host import (
 )
 from loushang.harnesstui.conversation.control import ConversationActionHost
 from loushang.harnesstui.conversation.host import ConversationScreenRunProfile
+from loushang.harnesstui.conversation.input_policy import (
+    ConversationInputCapabilities,
+)
 from loushang.harnesstui.conversation.intents import (
     QuitIntent,
     parse_conversation_intent,
@@ -141,6 +146,15 @@ async def load_agent_conversation_startup_view(
     )
 
 
+def _project_session_input_capabilities(
+    declared: SessionInputCapabilities,
+) -> ConversationInputCapabilities:
+    return ConversationInputCapabilities(
+        steer=declared.supports(SessionInputCapability.STEER),
+        follow_up=declared.supports(SessionInputCapability.FOLLOW_UP),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
     """Prepare shared Agent screen state around Product UI components."""
@@ -198,6 +212,12 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
                 if queue == "steering"
                 else operations.get_follow_up_messages()
             )
+
+        input_capabilities = (
+            _project_session_input_capabilities(self.get_operations.input_capabilities)
+            if self.get_operations is not None
+            else ConversationInputCapabilities()
+        )
 
         def refresh_session_label() -> None:
             self.app.state.session_label = session_label(active_session())
@@ -261,6 +281,7 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
                 if settings_manager is not None
                 else None
             ),
+            input_capabilities=input_capabilities,
             history_records=history_records,
             transcript_source_factory=lambda: MaterializedTranscriptSource(
                 materialize_records=materialize_history,

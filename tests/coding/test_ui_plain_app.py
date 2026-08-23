@@ -319,8 +319,14 @@ def test_build_plain_coding_tui_app_wires_info_panel_presenter() -> None:
         session_id = "sid"
         session_name = "session-name"
 
+        def __init__(self) -> None:
+            self.settings_manager = self
+
         def get_thinking_level(self) -> str:
             return "high"
+
+        def get_keybindings(self) -> dict[str, tuple[str, ...]]:
+            return {"conversation.input.followUp": ("ctrl+enter",)}
 
     class Renderer:
         def render_status(self, text: str) -> None:
@@ -365,6 +371,7 @@ def test_build_plain_coding_tui_app_wires_info_panel_presenter() -> None:
     assert emitted == []
     assert seen and seen[0].title == "Hotkeys"
     assert "Running Enter: steer current run" in seen[0].lines
+    assert "Running Ctrl+Enter: queue follow-up" in seen[0].lines
 
 
 class _Writer:

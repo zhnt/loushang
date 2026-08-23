@@ -2,15 +2,104 @@ from __future__ import annotations
 
 import os
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from dataclasses import replace as dataclass_replace
 from pathlib import Path
-from typing import Protocol, TextIO, TypeVar, runtime_checkable
+from typing import Protocol, TextIO, TypeVar, overload, runtime_checkable
 
 from loushang.tui.cell_width import _extract_control_sequence
 
 T = TypeVar("T")
+
+_HISTORY_CHUNK_SIZE = 64
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class _PersistentLineHistory(Sequence[str]):
+    """Immutable append-optimized line history used by deterministic playback."""
+
+    _previous: _PersistentLineHistory | None = None
+    _chunk: tuple[str, ...] = ()
+    _length: int = 0
+
+    @classmethod
+    def empty(cls) -> _PersistentLineHistory:
+        return cls()
+
+    @classmethod
+    def from_lines(cls, lines: Sequence[str]) -> _PersistentLineHistory:
+        history = cls.empty()
+        for start in range(0, len(lines), _HISTORY_CHUNK_SIZE):
+            chunk = tuple(lines[start : start + _HISTORY_CHUNK_SIZE])
+            history = cls(
+                _previous=history if history else None,
+                _chunk=chunk,
+                _length=history._length + len(chunk),
+            )
+        return history
+
+    def append(self, line: str) -> _PersistentLineHistory:
+        if len(self._chunk) < _HISTORY_CHUNK_SIZE:
+            return _PersistentLineHistory(
+                _previous=self._previous,
+                _chunk=(*self._chunk, line),
+                _length=self._length + 1,
+            )
+        return _PersistentLineHistory(
+            _previous=self,
+            _chunk=(line,),
+            _length=self._length + 1,
+        )
+
+    def __bool__(self) -> bool:
+        return self._length > 0
+
+    def __len__(self) -> int:
+        return self._length
+
+    def __iter__(self) -> Iterator[str]:
+        chunks: list[tuple[str, ...]] = []
+        history: _PersistentLineHistory | None = self
+        while history is not None:
+            if history._chunk:
+                chunks.append(history._chunk)
+            history = history._previous
+        for chunk in reversed(chunks):
+            yield from chunk
+
+    @overload
+    def __getitem__(self, index: int) -> str: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> tuple[str, ...]: ...
+
+    def __getitem__(self, index: int | slice) -> str | tuple[str, ...]:
+        if isinstance(index, slice):
+            return tuple(self)[index]
+        normalized = index if index >= 0 else self._length + index
+        if normalized < 0 or normalized >= self._length:
+            raise IndexError("line history index out of range")
+        history: _PersistentLineHistory | None = self
+        while history is not None:
+            chunk_start = history._length - len(history._chunk)
+            if normalized >= chunk_start:
+                return history._chunk[normalized - chunk_start]
+            history = history._previous
+        raise IndexError("line history index out of range")
+
+    def __add__(self, other: Sequence[str]) -> tuple[str, ...]:
+        return (*self, *other)
+
+    def __radd__(self, other: Sequence[str]) -> tuple[str, ...]:
+        return (*other, *self)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Sequence) or isinstance(other, (str, bytes)):
+            return False
+        return len(self) == len(other) and all(
+            left == right for left, right in zip(self, other, strict=True)
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,7 +264,9 @@ class FakeScreen:
     size: TerminalSize
     visible_lines: tuple[str, ...]
     cell_styles: tuple[tuple[FakeCellStyle, ...], ...]
-    scrollback_lines: tuple[str, ...] = ()
+    scrollback_lines: Sequence[str] = field(
+        default_factory=_PersistentLineHistory.empty
+    )
     cursor_row: int = 0
     cursor_column: int = 0
     viewport_top: int = 0
@@ -248,7 +339,7 @@ class FakeScreen:
             )
         if operation.kind == "clear_scrollback":
             return self._replace(
-                scrollback_lines=(),
+                scrollback_lines=_PersistentLineHistory.empty(),
                 viewport_top=0,
                 scrollback_cleared=True,
             )
@@ -330,7 +421,9 @@ class FakeScreen:
                 size=self.size,
                 visible_lines=(*self.visible_lines[1:], ""),
                 cell_styles=(*self.cell_styles[1:], _empty_style_row(self.size.columns)),
-                scrollback_lines=(*self.scrollback_lines, self.visible_lines[0]),
+                scrollback_lines=_append_history_line(
+                    self.scrollback_lines, self.visible_lines[0]
+                ),
                 cursor_row=self.size.rows - 1,
                 cursor_column=0,
                 viewport_top=self.viewport_top + 1,
@@ -353,7 +446,9 @@ class FakeScreen:
                 size=self.size,
                 visible_lines=(*self.visible_lines[1:], ""),
                 cell_styles=(*self.cell_styles[1:], _empty_style_row(self.size.columns)),
-                scrollback_lines=(*self.scrollback_lines, self.visible_lines[0]),
+                scrollback_lines=_append_history_line(
+                    self.scrollback_lines, self.visible_lines[0]
+                ),
                 cursor_row=bottom,
                 cursor_column=0,
                 viewport_top=self.viewport_top + 1,
@@ -420,7 +515,7 @@ class FakeScreen:
         *,
         visible_lines: tuple[str, ...] | None = None,
         cell_styles: tuple[tuple[FakeCellStyle, ...], ...] | None = None,
-        scrollback_lines: tuple[str, ...] | None = None,
+        scrollback_lines: Sequence[str] | None = None,
         cursor_row: int | None = None,
         cursor_column: int | None = None,
         viewport_top: int | None = None,
@@ -444,6 +539,14 @@ class FakeScreen:
             autowrap_pending=self.autowrap_pending if autowrap_pending is None else autowrap_pending,
             active_style=self.active_style if active_style is None else active_style,
         )
+
+
+def _append_history_line(
+    history: Sequence[str], line: str
+) -> _PersistentLineHistory:
+    if not isinstance(history, _PersistentLineHistory):
+        history = _PersistentLineHistory.from_lines(history)
+    return history.append(line)
 
 
 def _empty_style_row(columns: int) -> tuple[FakeCellStyle, ...]:

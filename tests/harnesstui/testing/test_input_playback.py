@@ -3,10 +3,26 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 
+from loushang.harnesstui.conversation.attachments import (
+    PromptImageAttachmentOutcome,
+)
+from loushang.harnesstui.conversation.input import (
+    ConversationAbortResult,
+    ConversationClipboardResult,
+    ConversationExitResult,
+    ConversationFollowupResult,
+    ConversationInputHandled,
+    ConversationInputIgnored,
+    ConversationLocalResult,
+    ConversationPromptResult,
+    ConversationSteerResult,
+    ConversationSurfaceResult,
+)
 from loushang.harnesstui.conversation.screen_state import ScreenConversationState
 from loushang.harnesstui.testing.input_playback import (
     ConversationInputPlayback,
     ConversationInputScenario,
+    default_conversation_result_payload,
 )
 from loushang.tui.core import (
     CURSOR_MARKER,
@@ -14,6 +30,7 @@ from loushang.tui.core import (
     RenderResult,
 )
 from loushang.tui.framework import SurfaceHost
+from loushang.tui.input import InputIntent
 from loushang.tui.playback import PlaybackEvent
 from loushang.tui.ui_parts.composer import Composer
 
@@ -85,6 +102,56 @@ def test_input_scenario_is_a_product_neutral_fluent_recipe() -> None:
     result.assert_composer_text("")
 
 
+def test_default_result_payload_preserves_legacy_schema_for_every_variant() -> None:
+    neutral = {
+        "prompt_text": None,
+        "prompt_attachment_count": 0,
+        "local_text": None,
+        "steer_text": None,
+        "steer_attachment_count": 0,
+        "followup_text": None,
+        "followup_attachment_count": 0,
+        "surface_intent": None,
+        "abort_requested": False,
+        "exit_code": None,
+        "render_requested": True,
+    }
+    cases = (
+        (ConversationInputHandled(), {}),
+        (ConversationInputIgnored(), {"render_requested": False}),
+        (
+            ConversationPromptResult(text="prompt", attachments=(object(),)),
+            {"prompt_text": "prompt", "prompt_attachment_count": 1},
+        ),
+        (ConversationLocalResult(text="/local"), {"local_text": "/local"}),
+        (
+            ConversationSteerResult(text="steer", attachments=(object(),)),
+            {"steer_text": "steer", "steer_attachment_count": 1},
+        ),
+        (
+            ConversationFollowupResult(text="later", attachments=(object(),)),
+            {"followup_text": "later", "followup_attachment_count": 1},
+        ),
+        (
+            ConversationSurfaceResult(intent=InputIntent(kind="select", text="one")),
+            {"surface_intent": {"kind": "select", "text": "one"}},
+        ),
+        (
+            ConversationClipboardResult(
+                outcome=PromptImageAttachmentOutcome(kind="empty")
+            ),
+            {},
+        ),
+        (ConversationAbortResult(), {"abort_requested": True}),
+        (ConversationExitResult(exit_code=7), {"exit_code": 7}),
+    )
+
+    for result, changed in cases:
+        assert dict(default_conversation_result_payload(result)) == (
+            neutral | changed
+        )
+
+
 def test_input_playback_artifact_uses_injected_snapshot_and_result_payload(
     tmp_path,
 ) -> None:
@@ -93,7 +160,7 @@ def test_input_playback_artifact_uses_injected_snapshot_and_result_payload(
         app,
         state_snapshot=lambda current: {"draft": current.composer.value},
         result_payload=lambda result: {
-            "submitted": result.prompt_text is not None,
+            "submitted": isinstance(result, ConversationPromptResult),
         },
     )
     result = playback.run((PlaybackEvent.input("question"), PlaybackEvent.input("\r")))

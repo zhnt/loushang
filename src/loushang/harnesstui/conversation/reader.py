@@ -66,7 +66,7 @@ class TranscriptReaderSurface:
     def blur(self) -> None:
         self.focused = False
 
-    def handle_input(self, event: InputEvent) -> InputIntent:
+    def handle_input(self, event: InputEvent) -> InputIntent[str]:
         if self._search_editing:
             return self._handle_search_input(event)
         if event.kind == "text":
@@ -208,7 +208,7 @@ class TranscriptReaderSurface:
         self._search_matches = ()
         self._search_match_index = 0
 
-    def _handle_search_input(self, event: InputEvent) -> InputIntent:
+    def _handle_search_input(self, event: InputEvent) -> InputIntent[str]:
         if event.kind == "text":
             self._search_draft += event.text
             return _CONSUMED

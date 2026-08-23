@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Literal
+from typing import Literal, TypedDict, Unpack, cast, overload
 
 from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
@@ -15,6 +15,19 @@ _NowMs = Callable[[], int]
 _VALID_KINDS = frozenset({"info", "success", "warning", "danger"})
 
 __all__ = ["Toast", "ToastKind", "ToastStack"]
+
+
+class _ToastOptions(TypedDict, total=False):
+    title: str
+    kind: ToastKind
+    value: str
+    duration_ms: int | None
+    created_at_ms: int | None
+    dismissible: bool
+
+
+class _ToastOverrides(_ToastOptions, total=False):
+    message: str
 
 
 def _monotonic_ms() -> int:
@@ -102,11 +115,17 @@ class ToastStack:
             visible = tuple(reversed(visible))
         return visible[: self.max_visible]
 
-    def push(self, toast: Toast | str, **overrides: object) -> str:
+    @overload
+    def push(self, toast: str, **overrides: Unpack[_ToastOptions]) -> str: ...
+
+    @overload
+    def push(self, toast: Toast, **overrides: Unpack[_ToastOverrides]) -> str: ...
+
+    def push(self, toast: Toast | str, **overrides: Unpack[_ToastOverrides]) -> str:
         if isinstance(toast, str):
             if "message" in overrides:
                 raise TypeError("Toast message cannot be overridden when pushing a string")
-            candidate = Toast(toast, **overrides)
+            candidate = Toast(toast, **cast(_ToastOptions, overrides))
         elif isinstance(toast, Toast):
             candidate = replace(toast, **overrides) if overrides else toast
         else:

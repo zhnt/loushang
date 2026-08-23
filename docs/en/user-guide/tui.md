@@ -109,6 +109,11 @@ router.route(InputEvent(kind="key", key="shift+left"))
 router.route(InputEvent(kind="key", key="ctrl+k"))
 ```
 
+The generic `InputRouter` emits neutral `submit` and `prompt_cancel` intents;
+your application decides what they mean for its current state. Use Harnesstui's
+`ConversationInputRouter` when a Harness-backed conversation needs running
+submit, steer/follow-up, queue restore, and abort semantics.
+
 `TextInput` selection indexes are grapheme clusters. `Composer` selection indexes are composer atoms, so paste markers remain atomic. Display width is handled by rendering.
 
 ## Examples

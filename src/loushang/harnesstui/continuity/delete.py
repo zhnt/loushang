@@ -29,7 +29,7 @@ class DeleteContinuityConfirmation:
     target: ContinuityTarget
     title: str
 
-    def handle_input(self, event: InputEvent) -> InputIntent | None:
+    def handle_input(self, event: InputEvent) -> InputIntent[str] | None:
         if event.kind != "key":
             return None
         if event.key == "enter":

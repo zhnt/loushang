@@ -129,7 +129,7 @@ class Tabs:
             return None
         return index
 
-    def _move_selection(self, delta: int) -> bool | None:
+    def _move_selection(self, delta: int) -> object:
         enabled = self._enabled_indices()
         if not enabled:
             return None
@@ -147,7 +147,7 @@ class Tabs:
             return False
         return self._set_value(self.tabs[next_index].value)
 
-    def _jump_selection(self, *, first: bool) -> bool | None:
+    def _jump_selection(self, *, first: bool) -> object:
         enabled = self._enabled_indices()
         if not enabled:
             return None

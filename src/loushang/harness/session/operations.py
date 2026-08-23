@@ -20,8 +20,6 @@ from loushang.harness.session.facade import (
     require_active_session_control,
 )
 
-SessionOperationResolver = Callable[[], "SessionOperationRuntime"]
-
 
 class SessionOperationCapability(str, Enum):
     """A coherent group of optional Product session operations."""
@@ -34,8 +32,44 @@ class SessionOperationCapability(str, Enum):
     MAINTENANCE = "maintenance"
 
 
+class SessionInputCapability(str, Enum):
+    """One input-delivery action guaranteed by a bound Harness session."""
+
+    STEER = "steer"
+    FOLLOW_UP = "follow_up"
+
+
 class SessionOperationUnavailableError(RuntimeError):
     """Raised when a Product did not bind an optional operation group."""
+
+
+@dataclass(frozen=True)
+class SessionInputCapabilities:
+    """Explicit input-delivery capabilities for one session binding."""
+
+    capabilities: frozenset[SessionInputCapability]
+
+    @classmethod
+    def standard(cls) -> "SessionInputCapabilities":
+        """Declare the steer and follow-up guarantees of the standard Session."""
+
+        return cls(frozenset(SessionInputCapability))
+
+    @classmethod
+    def from_capabilities(
+        cls,
+        capabilities: Iterable[SessionInputCapability],
+    ) -> "SessionInputCapabilities":
+        return cls(frozenset(capabilities))
+
+    def supports(self, capability: SessionInputCapability) -> bool:
+        return capability in self.capabilities
+
+    def require(self, capability: SessionInputCapability) -> None:
+        if not self.supports(capability):
+            raise SessionOperationUnavailableError(
+                f"Session input capability is unavailable: {capability.value}"
+            )
 
 
 @dataclass(frozen=True)
@@ -115,6 +149,7 @@ class SessionOperationRuntime:
         control: SessionControlPort,
         *,
         availability: SessionOperationAvailability | None = None,
+        input_capabilities: SessionInputCapabilities | None = None,
         lifecycle: SessionLifecycleOperationPorts | None = None,
     ) -> None:
         self._control = control
@@ -123,11 +158,22 @@ class SessionOperationRuntime:
             if availability is None
             else availability
         )
+        self._input_capabilities = (
+            SessionInputCapabilities.standard()
+            if input_capabilities is None
+            else input_capabilities
+        )
         self._lifecycle = lifecycle
 
     @property
     def availability(self) -> SessionOperationAvailability:
         return self._availability
+
+    @property
+    def input_capabilities(self) -> SessionInputCapabilities:
+        if not self._availability.supports(SessionOperationCapability.INPUT):
+            return SessionInputCapabilities.from_capabilities(())
+        return self._input_capabilities
 
     async def prompt(
         self,
@@ -203,10 +249,12 @@ class SessionOperationRuntime:
 
     def steer(self, text: str, *, images: Iterable[ImagePart] = ()) -> None:
         self._require(SessionOperationCapability.INPUT)
+        self._input_capabilities.require(SessionInputCapability.STEER)
         self._control.steer(text, images=list(images) or None)
 
     def follow_up(self, text: str, *, images: Iterable[ImagePart] = ()) -> None:
         self._require(SessionOperationCapability.INPUT)
+        self._input_capabilities.require(SessionInputCapability.FOLLOW_UP)
         self._control.follow_up(text, images=list(images) or None)
 
     @property
@@ -319,11 +367,43 @@ class SessionOperationRuntime:
         return self._lifecycle
 
 
+@dataclass(frozen=True)
+class SessionOperationResolver:
+    """Callable binding whose capabilities can be inspected without a Session.
+
+    Resolving operations may require an active Session and must therefore stay
+    lazy.  Capability declarations are immutable binding metadata, so Product
+    adapters can project them before a Session exists without crossing that
+    runtime boundary.
+    """
+
+    get_control: Callable[[], SessionControlPort]
+    lifecycle: SessionLifecycleOperationPorts | None = None
+    availability: SessionOperationAvailability | None = None
+    declared_input_capabilities: SessionInputCapabilities | None = None
+
+    @property
+    def input_capabilities(self) -> SessionInputCapabilities:
+        availability = self.availability or SessionOperationAvailability.standard()
+        if not availability.supports(SessionOperationCapability.INPUT):
+            return SessionInputCapabilities.from_capabilities(())
+        return self.declared_input_capabilities or SessionInputCapabilities.standard()
+
+    def __call__(self) -> SessionOperationRuntime:
+        return SessionOperationRuntime(
+            self.get_control(),
+            availability=self.availability,
+            input_capabilities=self.declared_input_capabilities,
+            lifecycle=self.lifecycle,
+        )
+
+
 def current_session_operation_resolver(
     runtime: object,
     *,
     lifecycle: SessionLifecycleOperationPorts | None = None,
     availability: SessionOperationAvailability | None = None,
+    input_capabilities: SessionInputCapabilities | None = None,
 ) -> SessionOperationResolver:
     """Build a resolver that never retains a control from a replaced Session."""
 
@@ -331,6 +411,7 @@ def current_session_operation_resolver(
         lambda: require_active_session_control(runtime),
         lifecycle=lifecycle,
         availability=availability,
+        input_capabilities=input_capabilities,
     )
 
 
@@ -339,20 +420,21 @@ def session_operation_resolver(
     *,
     lifecycle: SessionLifecycleOperationPorts | None = None,
     availability: SessionOperationAvailability | None = None,
+    input_capabilities: SessionInputCapabilities | None = None,
 ) -> SessionOperationResolver:
     """Build a resolver from a Product-owned current-control callback."""
 
-    def resolve() -> SessionOperationRuntime:
-        return SessionOperationRuntime(
-            get_control(),
-            availability=availability,
-            lifecycle=lifecycle,
-        )
-
-    return resolve
+    return SessionOperationResolver(
+        get_control=get_control,
+        lifecycle=lifecycle,
+        availability=availability,
+        declared_input_capabilities=input_capabilities,
+    )
 
 
 __all__ = [
+    "SessionInputCapabilities",
+    "SessionInputCapability",
     "SessionOperationResolver",
     "SessionOperationAvailability",
     "SessionOperationCapability",

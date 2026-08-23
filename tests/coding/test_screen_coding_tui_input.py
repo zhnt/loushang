@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+from loushang.harnesstui.conversation.input import (
+    ConversationFollowupResult,
+    ConversationInputHandled,
+    ConversationLocalResult,
+    ConversationPromptResult,
+    ConversationSteerResult,
+    ConversationSurfaceResult,
+)
 from loushang.tui import CompletionItem, InputEvent, InputIntent
 from loushang.tui.transcript import UserPromptRecord
 
@@ -21,7 +29,7 @@ def test_screen_input_router_idle_enter_starts_prompt_and_clears_composer() -> N
         InputEvent(kind="key", key="enter")
     )
 
-    assert result.prompt_text == "你好"
+    assert result == ConversationPromptResult(text="你好")
     assert app.composer.value == ""
     assert app.state.running is True
     assert isinstance(app.state.records[0], UserPromptRecord)
@@ -46,8 +54,7 @@ def test_screen_input_router_running_enter_queues_steer() -> None:
         InputEvent(kind="key", key="enter")
     )
 
-    assert result.prompt_text is None
-    assert result.steer_text == "请用中文"
+    assert result == ConversationSteerResult(text="请用中文")
     assert app.composer.value == ""
     assert app.state.pending_steers == ["请用中文"]
 
@@ -69,8 +76,7 @@ def test_screen_input_router_idle_escape_submits_pending_steer() -> None:
         InputEvent(kind="key", key="escape")
     )
 
-    assert result.prompt_text is None
-    assert result.steer_text == "你好"
+    assert result == ConversationSteerResult(text="你好")
     assert app.state.pending_steers == []
 
 
@@ -95,7 +101,7 @@ def test_screen_input_router_idle_interrupt_message_prefers_pending_steer() -> N
         InputEvent(kind="key", key="escape")
     )
 
-    assert result.steer_text == "你好"
+    assert result == ConversationSteerResult(text="你好")
     assert app.state.pending_steers == []
     assert app.composer.value == "草稿"
 
@@ -118,8 +124,32 @@ def test_screen_input_router_running_alt_enter_queues_followup() -> None:
         InputEvent(kind="key", key="alt+enter")
     )
 
-    assert result.followup_text == "继续"
+    assert result == ConversationFollowupResult(text="继续")
     assert app.composer.value == ""
+    assert app.state.pending_followups == ["继续"]
+
+
+def test_screen_input_router_honors_product_followup_keybinding() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import build_screen_input_router
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+        now=lambda: 12.0,
+    )
+    app.start_prompt("当前代码有啥？", started_at=10.0)
+    app.composer.set_text("继续")
+
+    result = build_screen_input_router(
+        app,
+        should_exit=lambda text: False,
+        keybindings={"conversation.input.followUp": ("ctrl+enter",)},
+    ).handle(InputEvent(kind="key", key="ctrl+enter"))
+
+    assert result == ConversationFollowupResult(text="继续")
     assert app.state.pending_followups == ["继续"]
 
 
@@ -142,7 +172,7 @@ def test_screen_input_router_escape_closes_completion_before_running_abort() -> 
         InputEvent(kind="key", key="escape")
     )
 
-    assert result.abort_requested is False
+    assert isinstance(result, ConversationInputHandled)
     assert app.state.running is True
     assert app.composer.value == "/he"
     assert not app.composer.has_completions
@@ -168,7 +198,7 @@ def test_screen_input_router_enter_applies_slash_completion_before_submit() -> N
         is_local_command=lambda text: text == "/model",
     ).handle(InputEvent(kind="key", key="enter"))
 
-    assert result.local_text == "/model"
+    assert result == ConversationLocalResult(text="/model")
     assert app.composer.value == ""
 
 
@@ -330,10 +360,11 @@ def test_screen_input_router_pastes_clipboard_image_as_attachment(tmp_path) -> N
     app.composer.insert_text("describe it")
     submit_result = router.handle(InputEvent(kind="key", key="enter"))
 
-    assert submit_result.prompt_text == "@.clips/clipboard-abc123.png describe it"
-    assert submit_result.prompt_attachments is not None
-    assert submit_result.prompt_attachments[0].mime_type == "image/png"
-    assert submit_result.prompt_attachments[0].bytes == payload
+    assert isinstance(submit_result, ConversationPromptResult)
+    assert submit_result.text == "@.clips/clipboard-abc123.png describe it"
+    assert submit_result.attachments is not None
+    assert submit_result.attachments[0].mime_type == "image/png"
+    assert submit_result.attachments[0].bytes == payload
 
 
 def test_screen_input_router_reports_empty_clipboard_image_without_editing(
@@ -535,8 +566,9 @@ def test_screen_input_router_orders_clipboard_images_by_marker_position(
 
     submit_result = router.handle(InputEvent(kind="key", key="enter"))
 
-    assert submit_result.prompt_attachments is not None
-    assert [image.bytes for image in submit_result.prompt_attachments] == [
+    assert isinstance(submit_result, ConversationPromptResult)
+    assert submit_result.attachments is not None
+    assert [image.bytes for image in submit_result.attachments] == [
         b"second",
         b"first",
     ]
@@ -574,13 +606,15 @@ def test_screen_input_router_uses_default_workspace_clipboard_directory_and_clea
     assert app.composer.value == f"{marker} "
 
     first_submit = router.handle(InputEvent(kind="key", key="enter"))
-    assert first_submit.prompt_attachments is not None
+    assert isinstance(first_submit, ConversationPromptResult)
+    assert first_submit.attachments is not None
 
     app.complete_run(elapsed_seconds=0.1)
     app.composer.set_text(f"reuse {marker}")
     second_submit = router.handle(InputEvent(kind="key", key="enter"))
 
-    assert second_submit.prompt_attachments is None
+    assert isinstance(second_submit, ConversationPromptResult)
+    assert second_submit.attachments is None
     assert saved_path.read_bytes() == b"png"
 
 
@@ -628,7 +662,7 @@ def test_screen_input_router_routes_local_slash_command_without_starting_prompt(
         is_local_command=lambda text: text == "/model",
     ).handle(InputEvent(kind="key", key="enter"))
 
-    assert result.local_text == "/model"
+    assert result == ConversationLocalResult(text="/model")
     assert app.composer.value == ""
     assert app.state.records == []
     assert app.state.running is False
@@ -660,7 +694,9 @@ def test_screen_input_router_routes_active_surface_before_composer() -> None:
         InputEvent(kind="key", key="enter")
     )
 
-    assert result.surface_intent == InputIntent(kind="select", text="chosen")
+    assert result == ConversationSurfaceResult(
+        intent=InputIntent(kind="select", text="chosen")
+    )
     assert app.composer.value == "draft"
     assert app.state.records == []
 
@@ -691,7 +727,9 @@ def test_screen_input_router_routes_runtime_overlay_before_composer() -> None:
         InputEvent(kind="key", key="enter")
     )
 
-    assert result.surface_intent == InputIntent(kind="command", text="/model")
+    assert result == ConversationSurfaceResult(
+        intent=InputIntent(kind="command", text="/model")
+    )
     assert app.composer.value == "draft"
     assert app.state.records == []
 
@@ -718,8 +756,7 @@ def test_screen_input_router_ctrl_o_opens_transcript_reader_overlay() -> None:
         InputEvent(kind="key", key="ctrl+o")
     )
 
-    assert result.render_requested is True
-    assert result.surface_intent is None
+    assert isinstance(result, ConversationInputHandled)
     assert len(app.surface_host.entries) == 1
     assert isinstance(
         app.surface_host.entries[0].surface.renderable, TranscriptReaderSurface
@@ -1017,8 +1054,7 @@ def test_screen_input_router_reader_strict_modal_consumes_tab_without_completion
     router.handle(InputEvent(kind="key", key="ctrl+o"))
     result = router.handle(InputEvent(kind="key", key="tab"))
 
-    assert result.render_requested is True
-    assert result.surface_intent is None
+    assert isinstance(result, ConversationInputHandled)
     assert len(app.surface_host.entries) == 1
     assert app.composer.value == "/mo"
     assert app.composer.has_completions
@@ -1047,7 +1083,9 @@ def test_screen_input_router_reader_ctrl_c_closes_then_text_routes_to_composer()
     close_result = router.handle(InputEvent(kind="key", key="ctrl+c"))
     text_result = router.handle(InputEvent(kind="text", text="x"))
 
-    assert close_result.surface_intent == InputIntent(kind="surface_close")
+    assert close_result == ConversationSurfaceResult(
+        intent=InputIntent(kind="surface_close")
+    )
     assert app.surface_host.entries == []
     assert text_result.render_requested is True
     assert app.composer.value == "x"

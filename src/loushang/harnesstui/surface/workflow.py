@@ -92,7 +92,7 @@ class ScreenSurfaceCommand:
 
 @dataclass(frozen=True, slots=True)
 class ScreenSurfaceForkResult:
-    """Effects produced after a Product forks one selected prompt."""
+    """Effects produced after a Product branches from one selected prompt."""
 
     status: str
     composer_text: str | None = None
@@ -148,7 +148,7 @@ def _is_image_capability_error(error: Exception) -> bool:
 
 def _image_model_selection_recovery_hint() -> str:
     return (
-        "To use it: Esc, then /new, or /fork and select the image prompt (or an "
+        "To use it: Esc, then /new, or /branch and select the image prompt (or an "
         "earlier one). /compact works only after the image leaves recent context "
         "(~32K tokens by default)."
     )
@@ -235,10 +235,10 @@ class ScreenSurfaceWorkflow:
     def current(self) -> ScreenSurfaceView | object | None:
         return self.coordinator.current
 
-    async def handle_intent(self, intent: InputIntent) -> int | None:
+    async def handle_intent(self, intent: InputIntent[str]) -> int | None:
         return await self.coordinator.handle_intent(intent)
 
-    async def handle_surface_intent(self, intent: InputIntent) -> int | None:
+    async def handle_surface_intent(self, intent: InputIntent[str]) -> int | None:
         return await self.handle_intent(intent)
 
     def is_local_command(self, text: str) -> bool:
@@ -832,7 +832,7 @@ def normalize_standard_conversation_interactive_command(
         return ScreenSurfaceCommand("resume_session")
     if text.strip() == "/delete":
         return ScreenSurfaceCommand("delete_session")
-    if text.strip() == "/fork":
+    if text.strip() == "/branch":
         return ScreenSurfaceCommand("fork_session")
     if text.strip() == "/rename":
         return ScreenSurfaceCommand("rename_session")

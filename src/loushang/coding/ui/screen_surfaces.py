@@ -83,7 +83,7 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             ),
             build_settings_content=self._build_settings_content,
             terminal_diagnostics=self._terminal_diagnostics,
-            hotkeys=format_hotkeys,
+            hotkeys=self._format_hotkeys,
             request_render=app.request_render,
             on_approval=on_approval,
             command_catalog=command_catalog,
@@ -115,6 +115,14 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         if self.runtime is None:
             return self.session
         return current_agent_runtime_session(self.runtime, self.session)
+
+    def _format_hotkeys(self) -> str:
+        settings_manager = getattr(self._current_session(), "settings_manager", None)
+        get_keybindings = getattr(settings_manager, "get_keybindings", None)
+        return format_hotkeys(
+            get_keybindings() if callable(get_keybindings) else None,
+            capabilities=self.coding_app.state.input_capabilities,
+        )
 
     async def _build_settings_content(self) -> object:
         session = self._current_session()

@@ -21,6 +21,12 @@ from loushang.harnesstui.continuity import (
     build_continuity_surface_view,
     run_continuity_picker,
 )
+from loushang.harnesstui.continuity.keybindings import (
+    CONTINUITY_DOMAIN_ACTION,
+    CONTINUITY_PREVIEW_ACTION,
+    CONTINUITY_SORT_ACTION,
+    continuity_keybinding_manager,
+)
 from loushang.harnesstui.surface.controller import normalize_surface_intent
 from loushang.tui import (
     InputEvent,
@@ -35,6 +41,15 @@ from loushang.tui import (
 @dataclass
 class _Provider:
     descriptor: ContinuityProviderDescriptor
+
+
+def test_continuity_keybinding_catalog_owns_continuity_actions() -> None:
+    manager = continuity_keybinding_manager()
+
+    assert manager.keys_for(CONTINUITY_PREVIEW_ACTION) == ("space",)
+    assert manager.keys_for(CONTINUITY_DOMAIN_ACTION) == ("tab",)
+    assert manager.keys_for(CONTINUITY_SORT_ACTION) == ("ctrl+s",)
+    assert continuity_keybinding_manager(manager) is manager
 
 
 def _reference(hub: "_Hub") -> StableContinuityReference:

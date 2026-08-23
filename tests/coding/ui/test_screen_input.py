@@ -3,7 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.screen_input import build_screen_input_router
+from loushang.coding.ui.screen_input import (
+    CODING_SCREEN_RUN_PROFILE,
+    build_screen_input_router,
+)
 from loushang.harnesstui.conversation.agent_binding import (
     agent_image_parts_from_prompt_attachments,
 )
@@ -20,6 +23,22 @@ def _app(*, cwd: str = "/repo") -> ScreenCodingTuiApp:
         session_label="abcd",
         now=lambda: 12.0,
     )
+
+
+def test_coding_screen_profile_uses_the_standard_input_factory_contract() -> None:
+    factory = CODING_SCREEN_RUN_PROFILE.input_router_factory
+    assert factory is build_screen_input_router
+
+    router = factory(
+        app=_app(),
+        should_exit=lambda _text: False,
+        is_local_command=lambda _text: False,
+        keybindings=None,
+        width=80,
+        height=24,
+    )
+
+    assert router.handle(InputEvent(kind="text", text="hello")).kind == "handled"
 
 
 def test_prompt_image_attachments_convert_at_the_agent_boundary() -> None:
@@ -61,7 +80,7 @@ def test_coding_input_binding_follows_a_replaced_app(tmp_path: Path) -> None:
     )
 
 
-def test_coding_input_binding_preserves_product_clipboard_status_copy(
+def test_coding_input_binding_uses_shared_clipboard_status_copy(
     tmp_path: Path,
 ) -> None:
     def fail_to_read():

@@ -780,7 +780,9 @@ def test_command_controller_executes_builtin_runtime_session_commands(tmp_path) 
     results = [
         asyncio.run(controller.execute_command_async("/new", "")),
         asyncio.run(controller.execute_command_async("/resume", "/tmp/session.jsonl")),
+        asyncio.run(controller.execute_command_async("/fork", "")),
         asyncio.run(controller.execute_command_async("/fork", "entry-1 before")),
+        asyncio.run(controller.execute_command_async("/branch", "entry-1 before")),
         asyncio.run(controller.execute_command_async("/clone", "")),
         asyncio.run(
             controller.execute_command_async(
@@ -812,6 +814,18 @@ def test_command_controller_executes_builtin_runtime_session_commands(tmp_path) 
             "source": "builtin",
             "command": "fork",
             "status": "ok",
+            "result": {"cancelled": False},
+        },
+        {
+            "source": "builtin",
+            "command": "fork",
+            "status": "ok",
+            "result": {"cancelled": False, "selected_text": "selected"},
+        },
+        {
+            "source": "builtin",
+            "command": "branch",
+            "status": "ok",
             "result": {"cancelled": False, "selected_text": "selected"},
         },
         {
@@ -836,6 +850,8 @@ def test_command_controller_executes_builtin_runtime_session_commands(tmp_path) 
     assert calls == [
         ("new", None),
         ("resume", ("/tmp/session.jsonl", None)),
+        ("clone", None),
+        ("fork", ("entry-1", {"position": "before"})),
         ("fork", ("entry-1", {"position": "before"})),
         ("clone", None),
         ("tree", ("entry-2", {"summarize": True, "label": "chosen"})),
@@ -882,6 +898,10 @@ def test_command_controller_projects_standard_session_argument_errors(tmp_path) 
     resume = asyncio.run(controller.execute_command_async("/resume", ""))
     new = asyncio.run(controller.execute_command_async("/new", "/tmp/project"))
     fork = asyncio.run(controller.execute_command_async("/fork", "entry elsewhere"))
+    branch = asyncio.run(controller.execute_command_async("/branch", ""))
+    invalid_branch = asyncio.run(
+        controller.execute_command_async("/branch", "entry elsewhere")
+    )
     tree = asyncio.run(controller.execute_command_async("/tree", ""))
 
     assert resume is not None
@@ -904,6 +924,20 @@ def test_command_controller_projects_standard_session_argument_errors(tmp_path) 
         "command": "fork",
         "status": "error",
         "message": "Unsupported fork position: elsewhere",
+    }
+    assert branch is not None
+    assert branch.result == {
+        "source": "builtin",
+        "command": "branch",
+        "status": "error",
+        "message": "Usage: /branch <entry-id> [before|at]",
+    }
+    assert invalid_branch is not None
+    assert invalid_branch.result == {
+        "source": "builtin",
+        "command": "branch",
+        "status": "error",
+        "message": "Unsupported branch position: elsewhere",
     }
     assert tree is not None
     assert tree.result == {

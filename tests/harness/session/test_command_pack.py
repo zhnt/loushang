@@ -195,8 +195,12 @@ def test_standard_session_command_pack_parses_lifecycle_and_tree_arguments() -> 
         asyncio.run(
             execute_standard_session_command_async("resume", "session-2", ports)
         ),
+        asyncio.run(execute_standard_session_command_async("fork", "", ports)),
         asyncio.run(
             execute_standard_session_command_async("fork", "entry-1 before", ports)
+        ),
+        asyncio.run(
+            execute_standard_session_command_async("branch", "entry-2 at", ports)
         ),
         asyncio.run(execute_standard_session_command_async("clone", "", ports)),
         asyncio.run(
@@ -216,6 +220,9 @@ def test_standard_session_command_pack_parses_lifecycle_and_tree_arguments() -> 
     invalid_fork = asyncio.run(
         execute_standard_session_command_async("fork", "entry-1 elsewhere", ports)
     )
+    missing_branch = asyncio.run(
+        execute_standard_session_command_async("branch", "", ports)
+    )
 
     assert all(
         result is not None and result.disposition == "completed" for result in results
@@ -230,10 +237,15 @@ def test_standard_session_command_pack_parses_lifecycle_and_tree_arguments() -> 
     assert invalid_fork.disposition == "invalid_arguments"
     assert invalid_fork.error_code == "invalid_fork_position"
     assert invalid_fork.value == "elsewhere"
+    assert missing_branch is not None
+    assert missing_branch.disposition == "invalid_arguments"
+    assert missing_branch.error_code == "missing_record_id"
     assert calls == [
         ("new", None),
         ("resume", ("session-2", None)),
+        ("clone", None),
         ("fork", ("entry-1", {"position": "before"})),
+        ("fork", ("entry-2", {"position": "at"})),
         ("clone", None),
         (
             "tree",

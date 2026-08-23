@@ -21,7 +21,16 @@ The standard groups are:
 JSON command name, a correlation id, Pi aliases, or a response envelope.
 `SessionOperationAvailability` is explicit: an unbound group fails with
 `SessionOperationUnavailableError`, rather than relying on an optional method
-or an implementation-specific `getattr` check.
+or an implementation-specific `getattr` check. Within the input group,
+`SessionInputCapabilities` separately declares steer and follow-up delivery.
+The standard Session guarantees both; restricted bindings may expose either
+action, and `SessionOperationRuntime` enforces the declaration before invoking
+the control port. Queue modes such as `all` and `one-at-a-time` remain
+delivery-drain policy and do not select a UI submit action.
+
+`SessionOperationResolver` carries the immutable input declaration as binding
+metadata. Adapters may inspect it without resolving an active Session; calling
+the resolver remains reserved for actual session operations.
 
 ## Ownership
 

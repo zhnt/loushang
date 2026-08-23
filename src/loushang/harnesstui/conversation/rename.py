@@ -31,7 +31,7 @@ class SessionRenameSurface:
     def editor_input_target(self) -> object:
         return self._input.editor_input_target()
 
-    def handle_input(self, event: InputEvent) -> InputIntent | None:
+    def handle_input(self, event: InputEvent) -> InputIntent[str] | None:
         if event.kind == "key" and event.key == "enter":
             return InputIntent(kind="select", text=self.value)
         if event.kind == "key" and event.key in {"esc", "escape"}:

@@ -14,6 +14,9 @@ from loushang.harnesstui.conversation.application_host import (
     run_prepared_screen_conversation,
 )
 from loushang.harnesstui.conversation.host import ConversationScreenRunProfile
+from loushang.harnesstui.conversation.input_policy import (
+    ConversationInputCapabilities,
+)
 from loushang.harnesstui.conversation.screen_app import ScreenConversationApp
 from loushang.harnesstui.conversation.screen_frame import (
     ScreenFrameCopy,
@@ -155,6 +158,9 @@ def test_prepared_screen_host_installs_state_and_unwinds_in_reverse() -> None:
     async def screen_runner(**kwargs: Any) -> int:
         events.append("runner")
         assert kwargs["app"].state.records == [UserPromptRecord("old prompt")]
+        assert kwargs["app"].state.input_capabilities == (
+            ConversationInputCapabilities()
+        )
         assert kwargs["app"].transcript_source_factory is not None
         return 7
 

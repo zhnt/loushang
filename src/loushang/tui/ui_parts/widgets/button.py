@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, TypedDict, Unpack
 
 from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
@@ -14,6 +14,15 @@ from loushang.tui.ui_parts.widgets._utils import (
 )
 
 ButtonKind = Literal["default", "primary", "danger", "ghost"]
+
+
+class _ButtonOptions(TypedDict, total=False):
+    kind: ButtonKind
+    disabled: bool
+    on_press: Callable[[], object] | None
+    theme: ThemeResolver | None
+    theme_token: str | None
+    focused: bool
 
 
 @dataclass(slots=True)
@@ -51,7 +60,9 @@ class Button:
         return RenderResult.from_lines([RenderLine(rendered)][: constraints.max_height], constraints=constraints)
 
 
-def IconButton(icon: str, *, label: str = "", **kwargs: object) -> Button:
+def IconButton(
+    icon: str, *, label: str = "", **kwargs: Unpack[_ButtonOptions]
+) -> Button:
     return Button(label=label, icon=icon, **kwargs)
 
 

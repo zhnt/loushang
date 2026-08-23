@@ -29,6 +29,7 @@ SurfaceEventSource = Literal[
     "command",
     "settings",
     "session",
+    "session_cancel",
     "delete",
     "fork",
     "rename",
@@ -124,7 +125,7 @@ class ScreenSurfaceCoordinator:
             return self._active_overlay_view
         return self.app.active_surface
 
-    async def handle_intent(self, intent: InputIntent) -> int | None:
+    async def handle_intent(self, intent: InputIntent[str]) -> int | None:
         surface = self.current
         if not isinstance(surface, ScreenSurfaceView):
             return None
@@ -285,7 +286,7 @@ class ScreenSurfaceCoordinator:
 
 
 def normalize_surface_intent(
-    intent: InputIntent,
+    intent: InputIntent[str],
     surface: ScreenSurfaceView,
 ) -> SurfaceEvent | None:
     """Convert generic TUI intent into a neutral framed-surface event."""

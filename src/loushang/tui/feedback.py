@@ -161,7 +161,7 @@ class CancellableLoader(Loader):
     on_abort: Callable[[], None] | None = None
     aborted: bool = False
 
-    def handle_input(self, event: InputEvent) -> InputIntent | None:
+    def handle_input(self, event: InputEvent) -> InputIntent[str] | None:
         if event.kind != "key" or event.key not in {"esc", "escape", "ctrl_c", "ctrl+c"}:
             return None
         self.abort()

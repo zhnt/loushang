@@ -282,8 +282,9 @@ def test_screen_coding_tui_long_stream_commits_history_without_partial_scroll_re
     assert protected_steps
     assert all("Working" in _visible_text(port) for _step in protected_steps)
     assert all(
-        TerminalOperation.clear_from_cursor() in step.diagnostics.operations
-        for step in protected_steps[-1:]
+        TerminalOperation.clear_from_cursor() not in step.diagnostics.operations
+        and TerminalOperation.clear_line() in step.diagnostics.operations
+        for step in protected_steps
     )
     assert all(
         operation.kind not in {"set_scroll_region", "reset_scroll_region"}
@@ -638,6 +639,68 @@ def test_screen_coding_tui_resumed_long_transcript_input_and_timer_share_bounded
 
     assert all("Working" in scenario.visible_text() for _ in (1, 3))
     scenario.assert_visible_contains("› x")
+
+
+def test_screen_coding_tui_live_resume_rebases_scrollback_before_streaming() -> None:
+    scenario = ScreenTuiScenario(width=100, height=18, now=3.0)
+    app = scenario.app
+    app.start_prompt("existing turn", started_at=0.0)
+    scenario.render()
+    app.begin_assistant()
+    app.append_assistant_chunk("existing answer")
+    scenario.render()
+    app.end_assistant()
+    app.complete_run(elapsed_seconds=1.0)
+    scenario.render()
+
+    app.replace_transcript_window(
+        build_synthetic_long_transcript_records(
+            turns=40,
+            tail_tool_output_lines=600,
+        ),
+        reason="resume",
+    )
+    app.trim_active_transcript_window()
+    assert app.state.evicted_prefix_record_count > 0
+    rebase = scenario.render()
+
+    rebase.assert_operation_class("managed_viewport_repaint")
+    rebase.assert_no_clear_scrollback()
+    assert TerminalOperation.clear_screen() not in rebase.diagnostics.operations
+    assert rebase.diagnostics.scrollback_frontier_rebased is True
+
+    app.start_prompt("post resume turn", started_at=0.0)
+    scenario.render()
+    app.begin_assistant()
+    sentinels = tuple(f"POST_RESUME_{index:03d}" for index in range(24))
+    streaming_steps = []
+    for start in range(0, len(sentinels), 4):
+        app.append_assistant_chunk("\n".join(sentinels[start : start + 4]) + "\n")
+        streaming_steps.append(scenario.render())
+
+    terminal_text = strip_control_sequences(
+        "\n".join(
+            (
+                *scenario.port.screen.scrollback_lines,
+                *scenario.port.screen.visible_lines,
+            )
+        )
+    )
+
+    assert any(
+        step.diagnostics.operation_class == "protected_append_update"
+        for step in streaming_steps
+    )
+    assert all(
+        TerminalOperation.clear_screen() not in step.diagnostics.operations
+        and TerminalOperation.clear_from_cursor() not in step.diagnostics.operations
+        and TerminalOperation.clear_scrollback() not in step.diagnostics.operations
+        for step in streaming_steps
+    )
+    assert all(terminal_text.count(sentinel) == 1 for sentinel in sentinels)
+    assert [terminal_text.index(sentinel) for sentinel in sentinels] == sorted(
+        terminal_text.index(sentinel) for sentinel in sentinels
+    )
 
 
 def _app() -> ScreenCodingTuiApp:

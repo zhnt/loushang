@@ -1280,7 +1280,88 @@ def test_changed_range_above_viewport_rewrites_managed_viewport_without_clearing
     step.assert_operation_class("managed_viewport_repaint")
     step.assert_no_clear_scrollback()
     assert TerminalOperation.clear_screen() not in step.diagnostics.operations
+    assert TerminalOperation.clear_from_cursor() not in step.diagnostics.operations
     assert step.diagnostics.repaint_reason == "changed_range_above_viewport"
+
+
+@pytest.mark.parametrize("viewport_advance", (5, 6, 15))
+def test_changed_range_above_viewport_commits_large_advance_without_gaps(
+    viewport_advance: int,
+) -> None:
+    initial_lines = tuple(f"line {index}" for index in range(5))
+    root = StaticRoot(initial_lines)
+    port = FakeTerminalPort(size=TerminalSize(columns=30, rows=5))
+    runtime = TuiRuntime(
+        render_loop=RenderLoop(root, clear_scrollback_policy="disabled"),
+        terminal=port,
+    )
+    runtime.render_now()
+    root.lines = (
+        "LINE 0",
+        *tuple(f"line {index}" for index in range(1, 5 + viewport_advance)),
+    )
+
+    step = runtime.render_now()
+
+    step.assert_operation_class("managed_viewport_repaint")
+    step.assert_no_clear_scrollback()
+    assert TerminalOperation.clear_screen() not in step.diagnostics.operations
+    assert TerminalOperation.clear_from_cursor() not in step.diagnostics.operations
+    assert step.diagnostics.repaint_reason == "changed_range_above_viewport"
+    assert step.diagnostics.viewport_top - step.diagnostics.previous_viewport_top == viewport_advance
+    assert port.screen.scrollback_lines + port.screen.visible_lines == root.lines
+
+
+def test_trimmed_transcript_rebases_scrollback_before_protected_append() -> None:
+    history = tuple(f"history {index}" for index in range(12))
+    footer = (
+        "",
+        "working 1.00s",
+        "",
+        f"› {CURSOR_MARKER}",
+        "",
+        "status running",
+    )
+    root = TextRoot("\n".join((*history, *footer)))
+    port = FakeTerminalPort(size=TerminalSize(columns=40, rows=8))
+    render_loop = RenderLoop(root, clear_scrollback_policy="disabled")
+    runtime = TuiRuntime(render_loop=render_loop, terminal=port)
+    runtime.render_now()
+    physical_before_trim = port.screen.scrollback_lines + port.screen.visible_lines
+
+    root.text = "\n".join((*history[-2:], *footer))
+    render_loop.reset_baseline("transcript_window_trimmed:active_line_budget")
+    rebase = runtime.render_now()
+
+    rebase.assert_operation_class("managed_viewport_repaint")
+    rebase.assert_no_clear_scrollback()
+    assert TerminalOperation.clear_screen() not in rebase.diagnostics.operations
+    assert TerminalOperation.clear_from_cursor() not in rebase.diagnostics.operations
+    assert rebase.diagnostics.scrollback_frontier_rebased is True
+    assert port.screen.scrollback_lines + port.screen.visible_lines == physical_before_trim
+
+    root.text = "\n".join((*history[-2:], "append 0", "append 1", *footer))
+    first_append = runtime.render_now()
+    root.text = "\n".join(
+        (*history[-2:], "append 0", "append 1", "append 2", "append 3", *footer)
+    )
+    second_append = runtime.render_now()
+
+    first_append.assert_operation_class("protected_append_update")
+    second_append.assert_operation_class("protected_append_update")
+    assert port.screen.scrollback_lines + port.screen.visible_lines == (
+        *history,
+        "append 0",
+        "append 1",
+        "append 2",
+        "append 3",
+        "",
+        "working 1.00s",
+        "",
+        "›",
+        "",
+        "status running",
+    )
 
 
 def test_baseline_reset_repaints_active_screen_without_diffing_against_old_lines() -> None:
@@ -1295,10 +1376,42 @@ def test_baseline_reset_repaints_active_screen_without_diffing_against_old_lines
 
     step.assert_operation_class("baseline_repaint")
     step.assert_no_clear_scrollback()
+    assert TerminalOperation.clear_screen() not in step.diagnostics.operations
+    assert TerminalOperation.clear_from_cursor() not in step.diagnostics.operations
+    assert TerminalOperation.clear_line() in step.diagnostics.operations
     assert step.diagnostics.repaint_kind == "recovery"
     assert step.diagnostics.repaint_reason == "transcript_window_replaced"
+    assert step.diagnostics.scrollback_frontier_rebased is True
     assert step.diagnostics.previous_rendered_lines == ("old transcript", "status")
     assert step.diagnostics.current_logical_lines == ("compacted summary", "recent suffix", "status")
+
+
+def test_failed_trimmed_rebase_flush_does_not_advance_scrollback_frontier() -> None:
+    initial_lines = tuple(f"history {index}" for index in range(20))
+    root = StaticRoot(initial_lines)
+    port = FakeTerminalPort(size=TerminalSize(columns=30, rows=5))
+    render_loop = RenderLoop(root, clear_scrollback_policy="disabled")
+    runtime = TuiRuntime(render_loop=render_loop, terminal=port)
+    runtime.render_now()
+    committed_revision = render_loop.committed_frame_revision
+    committed_frontier = render_loop.scrollback_viewport_top
+    screen_before = port.screen
+
+    root.lines = initial_lines[-5:]
+    render_loop.reset_baseline("transcript_window_trimmed:active_line_budget")
+    port.fail_next_flush(RuntimeError("write failed"))
+
+    with pytest.raises(RuntimeError, match="write failed"):
+        runtime.render_now()
+
+    assert render_loop.committed_frame_revision == committed_revision
+    assert render_loop.scrollback_viewport_top == committed_frontier
+    assert port.screen == screen_before
+
+    retry = runtime.render_now()
+
+    assert retry.diagnostics.scrollback_frontier_rebased is True
+    assert render_loop.scrollback_viewport_top == retry.diagnostics.viewport_top
 
 
 def test_failed_runtime_flush_does_not_advance_render_loop_snapshot() -> None:

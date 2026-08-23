@@ -5,7 +5,7 @@ import inspect
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from functools import lru_cache
+from functools import lru_cache, partial
 from typing import Protocol, TypeAlias, cast
 
 from markdown_it import MarkdownIt
@@ -993,7 +993,8 @@ def _render_markdown_blocks(
         if render_cache is not None and index < stable_block_count:
             block_lines = render_cache.get_or_render(
                 (block, *block_cache_context),
-                lambda block=block: _render_markdown_block(
+                partial(
+                    _render_markdown_block,
                     block,
                     width=width,
                     theme=theme,

@@ -11,7 +11,7 @@ from loushang.tui.core import (
 )
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.widgets._utils import callback_result
-from loushang.tui.ui_parts.widgets.tabs import TabItem, Tabs
+from loushang.tui.ui_parts.widgets.tabs import TabFocusState, TabItem, Tabs
 
 __all__ = ["TabGroup", "TabPage"]
 
@@ -269,7 +269,7 @@ class TabGroup:
         self._tabs.level = self.level
         self._tabs.selected_focus = self._selected_focus_state()
 
-    def _selected_focus_state(self) -> str:
+    def _selected_focus_state(self) -> TabFocusState:
         if not self.focused:
             return "none"
         return "header" if self.header_focused else "content"

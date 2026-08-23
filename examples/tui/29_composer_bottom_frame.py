@@ -18,6 +18,7 @@ from loushang.tui import (
     InputEvent,
     InputReader,
     InputRouter,
+    KeybindingManager,
     MarkdownRenderer,
     PendingQueueView,
     PendingSection,
@@ -39,6 +40,7 @@ from loushang.tui import (
     WorkedDividerRecord,
     WorkingLine,
     apply_theme_style,
+    normalize_key_id,
     truncate_to_width,
     visible_width,
     wrap_cells,
@@ -541,6 +543,7 @@ async def run_interactive(*, stdin: TextIO, stdout: TextIO, min_run_seconds: flo
     stdout.write("\n")
     stdout.flush()
     active_task: asyncio.Task[int | None] | None = None
+    keybindings = KeybindingManager()
     with TerminalInputMode(stdin=stdin, stdout=stdout):
         runtime.render_now()
         while True:
@@ -561,42 +564,63 @@ async def run_interactive(*, stdin: TextIO, stdout: TextIO, min_run_seconds: flo
                 return 0
             exit_requested = False
             for event in reader.feed(data):
-                if _idle_exit_requested(event, app):
-                    exit_requested = True
-                    break
+                was_running = app.running
+                is_cancel = _matches_action(
+                    event,
+                    keybindings=keybindings,
+                    action="tui.select.cancel",
+                )
+                is_ctrl_c = _matches_key(event, "ctrl+c")
+                had_completions = app.composer.has_completions
+                if _matches_action(
+                    event,
+                    keybindings=keybindings,
+                    action="tui.queue.editLast",
+                ):
+                    restored = app.pop_last_queued()
+                    if restored is not None:
+                        app.composer.set_text(restored)
                 router = InputRouter(
                     composer=app.composer,
-                    running=app.running,
                     width=runtime.terminal.size().columns,
+                    keybindings=keybindings,
                 )
-                for intent in router.route(event):
-                    if intent.kind == "submit":
-                        if _is_exit_command(intent.text):
-                            exit_requested = True
-                            break
-                        runtime.render_now()
-                        active_task = app.start_prompt(
-                            intent.text,
-                            duration_seconds=random.uniform(min_run_seconds, max_run_seconds),
-                        )
-                    elif intent.kind == "follow_up":
-                        if _is_exit_command(intent.text):
-                            if active_task is not None and not active_task.done():
-                                active_task.cancel()
-                            exit_requested = True
-                            break
+                intents = router.route(event)
+                if is_cancel and not had_completions:
+                    # The current router returns no idle cancel intent while the
+                    # conversation-neutral router emits ``prompt_cancel``. The
+                    # demo owns the policy in both cases and executes it once.
+                    if was_running:
+                        app.abort(active_task)
+                        active_task = None
+                    elif is_ctrl_c:
+                        exit_requested = True
+                    if exit_requested:
+                        break
+                    continue
+                for intent in intents:
+                    if intent.kind != "submit":
+                        continue
+                    if _is_exit_command(intent.text):
+                        if active_task is not None and not active_task.done():
+                            active_task.cancel()
+                        exit_requested = True
+                        break
+                    if app.running:
                         stripped = intent.text.strip()
                         if stripped.startswith("/steer "):
                             app.queue_steer(stripped[len("/steer ") :])
                         else:
                             app.queue_followup(intent.text)
-                    elif intent.kind == "abort":
-                        app.abort(active_task)
-                        active_task = None
-                    elif intent.kind == "command" and intent.note == "edit_last_queued_prompt":
-                        restored = app.pop_last_queued()
-                        if restored is not None:
-                            app.composer.set_text(restored)
+                        continue
+                    runtime.render_now()
+                    active_task = app.start_prompt(
+                        intent.text,
+                        duration_seconds=random.uniform(
+                            min_run_seconds,
+                            max_run_seconds,
+                        ),
+                    )
                 if exit_requested:
                     break
             runtime.render_now()
@@ -621,8 +645,17 @@ async def _drain_finished_task(
     return next_task, True
 
 
-def _idle_exit_requested(event: InputEvent, app: ComposerBottomFrameDemo) -> bool:
-    return event.kind == "key" and event.key == "ctrl_c" and not app.running
+def _matches_action(
+    event: InputEvent,
+    *,
+    keybindings: KeybindingManager,
+    action: str,
+) -> bool:
+    return event.kind == "key" and keybindings.matches(event.key, action)
+
+
+def _matches_key(event: InputEvent, key: str) -> bool:
+    return event.kind == "key" and normalize_key_id(event.key) == key
 
 
 def _is_exit_command(text: str) -> bool:

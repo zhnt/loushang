@@ -2,11 +2,21 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any, Generic, Self, TypeVar, cast
+from typing import Any, Generic, Self, TypeVar, assert_never, cast
 
-from loushang.harnesstui.conversation.input import ConversationInputRouter
-from loushang.harnesstui.conversation.screen_runner import (
-    ConversationInputResultPort,
+from loushang.harnesstui.conversation.input import (
+    ConversationAbortResult,
+    ConversationClipboardResult,
+    ConversationExitResult,
+    ConversationFollowupResult,
+    ConversationInputHandled,
+    ConversationInputIgnored,
+    ConversationInputResult,
+    ConversationInputRouter,
+    ConversationLocalResult,
+    ConversationPromptResult,
+    ConversationSteerResult,
+    ConversationSurfaceResult,
 )
 from loushang.harnesstui.testing.ports import (
     ConversationPlaybackAppPort,
@@ -48,23 +58,49 @@ def default_conversation_state_snapshot(
 
 
 def default_conversation_result_payload(
-    result: ConversationInputResultPort,
+    result: ConversationInputResult,
 ) -> Mapping[str, object]:
     """Serialize the neutral action surface of an input result."""
 
-    return {
-        "prompt_text": result.prompt_text,
-        "prompt_attachment_count": _attachment_count(result.prompt_attachments),
-        "local_text": result.local_text,
-        "steer_text": result.steer_text,
-        "steer_attachment_count": _attachment_count(result.steer_attachments),
-        "followup_text": result.followup_text,
-        "followup_attachment_count": _attachment_count(result.followup_attachments),
-        "surface_intent": _surface_intent_payload(result.surface_intent),
-        "abort_requested": result.abort_requested,
-        "exit_code": result.exit_code,
+    payload: dict[str, object] = {
+        "prompt_text": None,
+        "prompt_attachment_count": 0,
+        "local_text": None,
+        "steer_text": None,
+        "steer_attachment_count": 0,
+        "followup_text": None,
+        "followup_attachment_count": 0,
+        "surface_intent": None,
+        "abort_requested": False,
+        "exit_code": None,
         "render_requested": result.render_requested,
     }
+    if isinstance(result, ConversationPromptResult):
+        payload["prompt_text"] = result.text
+        payload["prompt_attachment_count"] = _attachment_count(result.attachments)
+    elif isinstance(result, ConversationLocalResult):
+        payload["local_text"] = result.text
+    elif isinstance(result, ConversationSteerResult):
+        payload["steer_text"] = result.text
+        payload["steer_attachment_count"] = _attachment_count(result.attachments)
+    elif isinstance(result, ConversationFollowupResult):
+        payload["followup_text"] = result.text
+        payload["followup_attachment_count"] = _attachment_count(result.attachments)
+    elif isinstance(result, ConversationSurfaceResult):
+        payload["surface_intent"] = _surface_intent_payload(result.intent)
+    elif isinstance(result, ConversationAbortResult):
+        payload["abort_requested"] = True
+    elif isinstance(result, ConversationExitResult):
+        payload["exit_code"] = result.exit_code
+    elif isinstance(result, ConversationClipboardResult):
+        pass
+    elif isinstance(result, ConversationInputHandled):
+        pass
+    elif isinstance(result, ConversationInputIgnored):
+        pass
+    else:
+        assert_never(result)
+    return payload
 
 
 class ConversationInputPlayback(Generic[AppT]):
@@ -85,8 +121,8 @@ class ConversationInputPlayback(Generic[AppT]):
     ) -> None:
         self.app = app
         self.reader = InputReader()
-        self.input_results: list[ConversationInputResultPort] = []
-        self.step_input_results: list[tuple[ConversationInputResultPort, ...]] = []
+        self.input_results: list[ConversationInputResult] = []
+        self.step_input_results: list[tuple[ConversationInputResult, ...]] = []
         self.step_state_snapshots: list[dict[str, object]] = []
         self._state_snapshot = state_snapshot or default_conversation_state_snapshot
         self._result_payload = result_payload or default_conversation_result_payload
@@ -143,7 +179,7 @@ class ConversationInputPlayback(Generic[AppT]):
         size: TerminalSize,
         _previous: RenderDiagnostics | None,
     ) -> RenderDiagnostics:
-        step_results: list[ConversationInputResultPort] = []
+        step_results: list[ConversationInputResult] = []
         if event.kind == "resize":
             _resize_router(self.router, size)
         elif event.kind == "input":
@@ -168,8 +204,8 @@ class ConversationInputPlayback(Generic[AppT]):
 class ConversationInputPlaybackResult(PlaybackResult, Generic[AppT]):
     """Terminal frames paired with neutral routed actions and state snapshots."""
 
-    input_results: tuple[ConversationInputResultPort, ...]
-    step_input_results: tuple[tuple[ConversationInputResultPort, ...], ...]
+    input_results: tuple[ConversationInputResult, ...]
+    step_input_results: tuple[tuple[ConversationInputResult, ...], ...]
     step_state_snapshots: tuple[dict[str, object], ...]
     app: AppT
     result_payload: ConversationResultPayloadPort
@@ -178,29 +214,51 @@ class ConversationInputPlaybackResult(PlaybackResult, Generic[AppT]):
         assert self.app.composer.value == expected
 
     def assert_prompt_texts(self, *expected: str) -> None:
-        assert _text_results(self.input_results, "prompt_text") == list(expected)
+        assert [
+            result.text
+            for result in self.input_results
+            if isinstance(result, ConversationPromptResult)
+        ] == list(expected)
 
     def assert_local_texts(self, *expected: str) -> None:
-        assert _text_results(self.input_results, "local_text") == list(expected)
+        assert [
+            result.text
+            for result in self.input_results
+            if isinstance(result, ConversationLocalResult)
+        ] == list(expected)
 
     def assert_steer_texts(self, *expected: str) -> None:
-        assert _text_results(self.input_results, "steer_text") == list(expected)
+        assert [
+            result.text
+            for result in self.input_results
+            if isinstance(result, ConversationSteerResult)
+        ] == list(expected)
 
     def assert_followup_texts(self, *expected: str) -> None:
-        assert _text_results(self.input_results, "followup_text") == list(expected)
+        assert [
+            result.text
+            for result in self.input_results
+            if isinstance(result, ConversationFollowupResult)
+        ] == list(expected)
 
     def assert_surface_intents(self, *expected: tuple[str, str]) -> None:
         assert [
-            (result.surface_intent.kind, result.surface_intent.text)
+            (result.intent.kind, result.intent.text)
             for result in self.input_results
-            if result.surface_intent is not None
+            if isinstance(result, ConversationSurfaceResult)
         ] == list(expected)
 
     def assert_abort_requested(self) -> None:
-        assert any(result.abort_requested for result in self.input_results)
+        assert any(
+            isinstance(result, ConversationAbortResult)
+            for result in self.input_results
+        )
 
     def assert_no_abort_requested(self) -> None:
-        assert not any(result.abort_requested for result in self.input_results)
+        assert not any(
+            isinstance(result, ConversationAbortResult)
+            for result in self.input_results
+        )
 
     def assert_pending_steers(self, *expected: str) -> None:
         assert self.app.state.pending_steers == list(expected)
@@ -298,7 +356,7 @@ def _default_input_router_factory(
     keybindings: KeybindingManager | KeybindingConfig | None,
     width: int,
     height: int,
-) -> ConversationPlaybackInputRouterPort[ConversationInputResultPort]:
+) -> ConversationPlaybackInputRouterPort:
     return ConversationInputRouter(
         app=app,
         should_exit=should_exit,
@@ -310,7 +368,7 @@ def _default_input_router_factory(
 
 
 def _resize_router(
-    router: ConversationPlaybackInputRouterPort[ConversationInputResultPort],
+    router: ConversationPlaybackInputRouterPort,
     size: TerminalSize,
 ) -> None:
     if hasattr(router, "width"):
@@ -323,18 +381,10 @@ def _attachment_count(attachments: tuple[object, ...] | None) -> int:
     return len(attachments or ())
 
 
-def _surface_intent_payload(intent: InputIntent | None) -> dict[str, str] | None:
+def _surface_intent_payload(intent: InputIntent[str] | None) -> dict[str, str] | None:
     if intent is None:
         return None
     return {"kind": intent.kind, "text": intent.text}
-
-
-def _text_results(
-    results: tuple[ConversationInputResultPort, ...],
-    attribute: str,
-) -> list[str]:
-    values = [getattr(result, attribute) for result in results]
-    return [value for value in values if isinstance(value, str)]
 
 
 __all__ = [

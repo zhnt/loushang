@@ -289,6 +289,8 @@ if TYPE_CHECKING:
         model_identity_data,
     )
     from loushang.harness.session.operations import (
+        SessionInputCapabilities,
+        SessionInputCapability,
         SessionLifecycleOperationPorts,
         SessionOperationAvailability,
         SessionOperationCapability,
@@ -527,6 +529,8 @@ _EXPORT_MODULES = {
     "SessionMaintenanceBinding": "loushang.harness.session.bindings",
     "SessionModelBinding": "loushang.harness.session.bindings",
     "SessionModelPort": "loushang.harness.session.facade_optional",
+    "SessionInputCapabilities": "loushang.harness.session.operations",
+    "SessionInputCapability": "loushang.harness.session.operations",
     "SessionPackagePort": "loushang.harness.session.facade_optional",
     "SessionOperationAvailability": "loushang.harness.session.operations",
     "SessionOperationCapability": "loushang.harness.session.operations",

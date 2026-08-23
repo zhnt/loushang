@@ -8,7 +8,7 @@ import sys
 import threading
 import time
 import weakref
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable, Coroutine
 from contextlib import suppress
 from dataclasses import dataclass
 from functools import partial
@@ -51,7 +51,7 @@ class RuntimeLike(Protocol):
     def render_now(self) -> Any: ...
 
 
-InputChunkReader = Callable[[TextIO], Awaitable[str]]
+InputChunkReader = Callable[[TextIO], Coroutine[Any, Any, str]]
 
 
 @dataclass(slots=True)

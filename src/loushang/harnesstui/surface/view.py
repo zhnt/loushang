@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 from loushang.tui import (
     CursorDeclaration,
@@ -14,7 +14,6 @@ from loushang.tui import (
     RenderResult,
 )
 from loushang.tui.cell_width import truncate_to_width, wrap_ansi, wrap_cells
-from loushang.tui.input import InputIntentKind
 from loushang.tui.theme import ThemeResolver, apply_theme_style
 
 ScreenSurfacePurpose = Literal[
@@ -71,7 +70,7 @@ class ScreenSurfaceView(FocusableMixin):
         target = getattr(self.content, "editor_input_target", None)
         return target() if callable(target) else None
 
-    def handle_input(self, event: InputEvent) -> InputIntent | None:
+    def handle_input(self, event: InputEvent) -> InputIntent[str] | None:
         if self.purpose == "info":
             if event.kind == "key" and event.key in {"enter", "space", "escape", "esc"}:
                 return InputIntent(kind="surface_close")
@@ -174,7 +173,7 @@ class ScreenSurfaceView(FocusableMixin):
             return event
         return replace(event, mouse_row=event.mouse_row - self._last_content_start_row)
 
-    def _handle_info_scroll_input(self, key: str) -> InputIntent | None:
+    def _handle_info_scroll_input(self, key: str) -> InputIntent[str] | None:
         page = max(1, self._last_info_body_height)
         if key == "down":
             return self._scroll_info(1)
@@ -190,10 +189,10 @@ class ScreenSurfaceView(FocusableMixin):
             return self._set_info_scroll(self._max_info_scroll_offset())
         return None
 
-    def _scroll_info(self, delta: int) -> InputIntent | None:
+    def _scroll_info(self, delta: int) -> InputIntent[str] | None:
         return self._set_info_scroll(self._info_scroll_offset + delta)
 
-    def _set_info_scroll(self, offset: int) -> InputIntent | None:
+    def _set_info_scroll(self, offset: int) -> InputIntent[str] | None:
         max_offset = self._max_info_scroll_offset()
         next_offset = max(0, min(offset, max_offset))
         if next_offset == self._info_scroll_offset:
@@ -237,14 +236,14 @@ class ScreenSurfaceView(FocusableMixin):
         return apply_theme_style(text, self.theme.resolve(token))
 
 
-def _screen_input_intent_or_none(result: object) -> InputIntent | None:
+def _screen_input_intent_or_none(result: object) -> InputIntent[str] | None:
     if isinstance(result, InputIntent):
         return result
     kind = getattr(result, "kind", None)
     if not isinstance(kind, str):
         return None
     return InputIntent(
-        kind=cast(InputIntentKind, kind),
+        kind=kind,
         text=str(getattr(result, "text", "")),
         note=str(getattr(result, "note", "")),
     )

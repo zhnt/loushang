@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import importlib
 import sys
 from typing import Protocol
 
@@ -134,7 +135,10 @@ class DefaultTerminalPlatformAdapter:
         if _apple_shift_pressed_via_quartz():
             return True
         try:
-            from loushang.tui.native_modifiers import is_shift_pressed
+            native_modifiers = importlib.import_module(
+                "loushang.tui.native_modifiers"
+            )
+            is_shift_pressed = getattr(native_modifiers, "is_shift_pressed")
         except Exception:
             return False
         try:
@@ -155,12 +159,13 @@ def _windows_stream_handle(stream: object, kernel32: object, std_handle: int) ->
     fileno = getattr(stream, "fileno", None)
     if callable(fileno):
         try:
-            import msvcrt
-
-            return int(msvcrt.get_osfhandle(fileno()))
+            msvcrt = importlib.import_module("msvcrt")
+            get_osfhandle = getattr(msvcrt, "get_osfhandle")
+            return int(get_osfhandle(fileno()))
         except Exception:
             pass
-    return int(kernel32.GetStdHandle(std_handle))
+    get_std_handle = getattr(kernel32, "GetStdHandle")
+    return int(get_std_handle(std_handle))
 
 
 def _windows_console_input_mode(mode: int, *, vt_input: bool) -> int:

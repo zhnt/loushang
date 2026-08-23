@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Protocol, TypeGuard
 
 from loushang.tui.cell_width import autowrap_safe_width, truncate_to_width
 from loushang.tui.core import RenderConstraints, RenderLine, RenderResult
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.ui_parts.widgets._utils import style_text
+
+
+class _FocusableBody(Protocol):
+    def focus(self) -> None: ...
+
+    def blur(self) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,7 +160,7 @@ def _dialog_result(
     return RenderResult.from_lines(lines[: constraints.max_height], constraints=constraints)
 
 
-def _is_focusable(value: object) -> bool:
+def _is_focusable(value: object) -> TypeGuard[_FocusableBody]:
     return all(callable(getattr(value, name, None)) for name in ("focus", "blur"))
 
 

@@ -84,7 +84,7 @@ class AgentTreeSurface:
             return "Up/Down/Page scroll · Esc close"
         return "Esc close"
 
-    def handle_input(self, event: InputEvent) -> InputIntent | None:
+    def handle_input(self, event: InputEvent) -> InputIntent[str] | None:
         if event.kind != "key":
             return None
         if event.key in {"escape", "esc", "enter"}:
@@ -164,10 +164,10 @@ class AgentTreeSurface:
             )
         return lines
 
-    def _scroll(self, delta: int) -> InputIntent | None:
+    def _scroll(self, delta: int) -> InputIntent[str] | None:
         return self._set_scroll(self._scroll_offset + delta)
 
-    def _set_scroll(self, offset: int) -> InputIntent | None:
+    def _set_scroll(self, offset: int) -> InputIntent[str] | None:
         next_offset = max(0, min(offset, self._max_scroll_offset()))
         if next_offset == self._scroll_offset:
             return None

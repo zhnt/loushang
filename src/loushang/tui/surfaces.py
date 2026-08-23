@@ -16,7 +16,7 @@ from loushang.tui.core import (
     RenderResult,
 )
 from loushang.tui.fuzzy import fuzzy_match
-from loushang.tui.input import InputEvent, InputIntent, InputIntentKind
+from loushang.tui.input import InputEvent, InputIntent
 from loushang.tui.theme import ThemeResolver, ThemeStyle, apply_theme_style
 from loushang.tui.ui_parts.text_input import TextInput
 
@@ -45,7 +45,7 @@ SelectionChangeHandler = Callable[[SelectItem | None], None]
 class SelectionSurface:
     items: list[SelectItem] | tuple[SelectItem, ...]
     max_visible: int = 5
-    select_kind: InputIntentKind = "select"
+    select_kind: str = "select"
     empty_text: str = "No matching items"
     selected_index: int = 0
     focused: bool = False
@@ -105,7 +105,7 @@ class SelectionSurface:
             return ""
         return self._filter_input.value
 
-    def handle_input(self, event: InputEvent) -> InputIntent | bool | None:
+    def handle_input(self, event: InputEvent) -> InputIntent[str] | bool | None:
         if self.enable_search and event.kind == "text":
             filter_input = self._ensure_filter_input()
             filter_input.handle_input(event)
@@ -410,7 +410,7 @@ class ApprovalSurface:
     def blur(self) -> None:
         self.focused = False
 
-    def handle_input(self, event: InputEvent) -> InputIntent | None:
+    def handle_input(self, event: InputEvent) -> InputIntent[str] | None:
         if event.kind == "text":
             value = event.text.strip().lower()
         elif event.kind == "key":
@@ -505,9 +505,11 @@ class ApprovalSurface:
         self,
     ) -> tuple[ApprovalChoice, ...]:
         if self.options:
-            choices = list(self.options)
-            self.selected_index = max(0, min(self.selected_index, len(choices) - 1))
-            return tuple(choices)
+            configured_choices = list(self.options)
+            self.selected_index = max(
+                0, min(self.selected_index, len(configured_choices) - 1)
+            )
+            return tuple(configured_choices)
         choices: list[ApprovalChoice] = [
             ApprovalChoice("allow_once", "Allow this action once", "y"),
         ]
@@ -526,7 +528,7 @@ class ApprovalSurface:
         self.selected_index = max(0, min(self.selected_index, len(choices) - 1))
         return tuple(choices)
 
-    def _intent(self, value: str) -> InputIntent:
+    def _intent(self, value: str) -> InputIntent[str]:
         return InputIntent(
             kind="approval_decision",
             text=value,
@@ -571,7 +573,7 @@ class DialogSurface:
     def blur(self) -> None:
         self.focused = False
 
-    def handle_input(self, event: InputEvent) -> InputIntent | None:
+    def handle_input(self, event: InputEvent) -> InputIntent[str] | None:
         if event.kind != "key":
             return None
         if event.key == "enter":

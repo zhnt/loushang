@@ -12,7 +12,7 @@ __all__ = ["SelectionController"]
 class SelectionController:
     length: Callable[[], int]
     cursor: Callable[[], int]
-    set_cursor: Callable[[int], None]
+    set_cursor: Callable[[int], object]
     _selection: SelectionRange | None = None
 
     @property

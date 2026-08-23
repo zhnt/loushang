@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from loushang.tui.core import RenderConstraints, RenderResult
 from loushang.tui.theme import ThemeResolver
@@ -317,7 +317,7 @@ class DirectoryTree:
             return False
         return not (self.ignore_matcher is not None and self.ignore_matcher(path))
 
-    def _sort_tuple(self, path: Path) -> object:
+    def _sort_tuple(self, path: Path) -> tuple[Any, ...]:
         if self.sort_key is not None:
             return (self.sort_key(path), path.name.casefold(), path.name)
         return (path.name.casefold(), path.name)

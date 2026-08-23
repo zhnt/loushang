@@ -74,7 +74,7 @@ def test_standard_agent_surfaces_bind_structural_product_session_operations() ->
     fork_surface = ports.build_fork_surface()
     assert fork_surface.purpose == "fork"
     result = asyncio.run(ports.fork_session("entry-1"))
-    assert result.status == "Forked from selected prompt"
+    assert result.status == "Branched from selected prompt"
     assert result.composer_text == "Investigate this."
 
     assert asyncio.run(ports.rename_session("New research")) == (

@@ -3,17 +3,21 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
+from typing import TypedDict, Unpack
 
 from loushang.tui.core import RenderConstraints, RenderResult
 from loushang.tui.extensions import ExtensionHandle
 from loushang.tui.framework import (
     Container,
     Focusable,
+    OverlayAnchor,
     Renderable,
     ScreenRoot,
+    SizeValue,
     Surface,
     SurfaceHandle,
     SurfaceHost,
+    SurfacePresentation,
 )
 from loushang.tui.playback import PlaybackStep
 from loushang.tui.render_loop import RenderLoop
@@ -24,9 +28,27 @@ from loushang.tui.terminal import (
     TerminalOperation,
     TerminalPort,
     TerminalProgressReporter,
+    TerminalSize,
 )
 
 InputListener = Callable[[object], object]
+
+
+class _SurfaceOptions(TypedDict, total=False):
+    presentation: SurfacePresentation
+    captures_focus: bool
+    non_capturing: bool
+    row: SizeValue | None
+    column: SizeValue | None
+    col: SizeValue | None
+    width: SizeValue | None
+    min_width: int | None
+    max_height: SizeValue | None
+    anchor: OverlayAnchor
+    offset_x: int
+    offset_y: int
+    margin: int | dict[str, int] | None
+    visible: Callable[[TerminalSize], bool] | None
 
 
 @dataclass(slots=True)
@@ -62,7 +84,7 @@ class Tui:
         renderable: Renderable,
         *,
         focus_target: Focusable | None = None,
-        **surface_options: object,
+        **surface_options: Unpack[_SurfaceOptions],
     ) -> SurfaceHandle:
         target = focus_target or (renderable if isinstance(renderable, Focusable) else None)
         surface = Surface(renderable=renderable, focus_target=target, **surface_options)

@@ -214,24 +214,22 @@ async def execute_standard_session_command_async(
                 )
             return StandardSessionCommandResult.unavailable(command_id)
         case StandardSessionCommandId.FORK:
-            if ports.fork_session is None:
-                return StandardSessionCommandResult.unavailable(command_id)
+            tokens = _split_args(args)
+            if not tokens:
+                if ports.clone_session is None:
+                    return StandardSessionCommandResult.unavailable(command_id)
+                return StandardSessionCommandResult.completed(
+                    command_id,
+                    await _resolve(ports.clone_session()),
+                )
+            return await _execute_branch_command(command_id, tokens, ports)
+        case StandardSessionCommandId.BRANCH:
             tokens = _split_args(args)
             if not tokens:
                 return StandardSessionCommandResult.invalid_arguments(
                     command_id, "missing_record_id"
                 )
-            options: dict[str, object] = {}
-            if len(tokens) > 1:
-                if tokens[1] not in {"before", "at"}:
-                    return StandardSessionCommandResult.invalid_arguments(
-                        command_id, "invalid_fork_position", tokens[1]
-                    )
-                options["position"] = tokens[1]
-            return StandardSessionCommandResult.completed(
-                command_id,
-                await _resolve(ports.fork_session(tokens[0], options or None)),
-            )
+            return await _execute_branch_command(command_id, tokens, ports)
         case StandardSessionCommandId.CLONE:
             if ports.clone_session is None:
                 return StandardSessionCommandResult.unavailable(command_id)
@@ -264,6 +262,28 @@ async def execute_standard_session_command_async(
             return StandardSessionCommandResult.completed(
                 command_id, await _resolve(ports.get_changelog(args))
             )
+
+
+async def _execute_branch_command(
+    command_id: StandardSessionCommandId,
+    tokens: list[str],
+    ports: StandardSessionCommandPorts,
+) -> StandardSessionCommandResult:
+    """Fork one explicit transcript position for /branch or advanced /fork."""
+
+    if ports.fork_session is None:
+        return StandardSessionCommandResult.unavailable(command_id)
+    options: dict[str, object] = {}
+    if len(tokens) > 1:
+        if tokens[1] not in {"before", "at"}:
+            return StandardSessionCommandResult.invalid_arguments(
+                command_id, "invalid_fork_position", tokens[1]
+            )
+        options["position"] = tokens[1]
+    return StandardSessionCommandResult.completed(
+        command_id,
+        await _resolve(ports.fork_session(tokens[0], options or None)),
+    )
 
 
 async def _resolve(value: object | Awaitable[object]) -> object:

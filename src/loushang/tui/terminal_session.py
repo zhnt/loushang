@@ -4,6 +4,7 @@ import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
+from types import TracebackType
 from typing import Literal, TextIO
 
 from loushang.tui.input import InputEvent
@@ -108,7 +109,12 @@ class TerminalSession:
         self._entered = True
         return self
 
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> Literal[False]:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool | None:
         if not self._entered or self._mode is None:
             return False
         self._entered = False
@@ -137,7 +143,7 @@ class TerminalSession:
                 _disable_windows_vt_output(self.platform_adapter)
                 self._windows_output_mode_active = False
                 self._windows_vt_output_active = False
-        return suppress  # type: ignore[return-value]
+        return suppress
 
     def consume_control_events(self, events: tuple[InputEvent, ...]) -> None:
         if self._keyboard_controller is not None:

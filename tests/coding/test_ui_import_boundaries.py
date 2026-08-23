@@ -420,6 +420,13 @@ def test_mode_is_only_the_coding_tui_composition_root() -> None:
     ):
         assert token in source
 
+    assert (
+        "screen_run_profile: ConversationScreenRunProfile = "
+        "CODING_SCREEN_RUN_PROFILE" in source
+    )
+    assert "profile=screen_run_profile" in source
+    assert "profile=CODING_SCREEN_RUN_PROFILE" not in source
+
     for token in (
         "class _CodingTuiSessionPort",
         "build_agent_screen_conversation_projection",
@@ -833,7 +840,9 @@ def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
     assert offenders == []
 
 
-def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() -> None:
+def test_shared_conversation_interaction_separates_product_and_clipboard_policy() -> (
+    None
+):
     shared = "\n".join(
         Path(f"src/loushang/harnesstui/conversation/{module}.py").read_text(
             encoding="utf-8"
@@ -871,6 +880,9 @@ def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() ->
     screen_input = Path("src/loushang/coding/ui/screen_input.py").read_text(
         encoding="utf-8"
     )
+    clipboard_policy = Path(
+        "src/loushang/harnesstui/conversation/clipboard_policy.py"
+    ).read_text(encoding="utf-8")
     product_binding = Path("src/loushang/coding/ui/product_binding.py").read_text(
         encoding="utf-8"
     )
@@ -885,10 +897,15 @@ def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() ->
     assert "Operation aborted" in screen_input
     assert "ImagePart" not in screen_input
     assert "ImagePart" in product_binding
-    assert '".loushang" / "clipboard"' in screen_input
+    assert '".loushang" / "clipboard"' not in screen_input
+    assert '".loushang" / "clipboard"' in clipboard_policy
+    assert "Attached clipboard image: " in clipboard_policy
+    assert "ClipboardImageInputProfile" not in screen_input
     assert "class ScreenInputResult" not in screen_input
     assert "class ScreenInputRouter" not in screen_input
     assert "bind_clipboard_image_input_router(" in screen_input
+    assert "ConversationInputRouterFactoryPort" not in screen_input
+    assert "cast(" not in screen_input
     assert "PromptIntent" in intents
     assert "BashIntent" in intents
     assert "ConversationRoutingProfile" in shared

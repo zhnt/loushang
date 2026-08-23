@@ -2,7 +2,11 @@
 
 ## Status
 
-Draft for implementation planning.
+Partially superseded by
+[TUI/HarnessTUI Input Ownership Boundary](2026-08-22-tui-harnesstui-input-ownership-boundary-design.md).
+The target-adapter and focused-editor design remains valid. Statements that
+generic `InputRouter` owns running abort, steer, follow-up, or queued-message
+semantics are historical and no longer describe the current contract.
 
 ## Context
 

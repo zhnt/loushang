@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol, TextIO
 
 from loushang.harnesstui.conversation.control import ConversationActionHost
 from loushang.harnesstui.conversation.host import (
     ConversationScreenRunProfile,
+)
+from loushang.harnesstui.conversation.input_policy import (
+    ConversationInputCapabilities,
 )
 from loushang.harnesstui.conversation.plain_app import PlainConversationApp
 from loushang.harnesstui.conversation.run_context import (
@@ -40,7 +43,7 @@ class PreparedScreenSurfacePort(Protocol):
 
     async def handle_text(self, text: str) -> int | None: ...
 
-    async def handle_surface_intent(self, intent: InputIntent) -> int | None: ...
+    async def handle_surface_intent(self, intent: InputIntent[str]) -> int | None: ...
 
     def is_local_command(self, text: str) -> bool: ...
 
@@ -114,6 +117,9 @@ class PreparedScreenConversationRun:
     should_exit: ShouldExit
     trace: TraceFn
     keybindings: KeybindingManager | KeybindingConfig | None = None
+    input_capabilities: ConversationInputCapabilities = field(
+        default_factory=ConversationInputCapabilities
+    )
     history_records: tuple[DisplayRecord, ...] = ()
     transcript_source_factory: Callable[[], TranscriptSource] | None = None
     completion_provider: object | None = None
@@ -176,6 +182,7 @@ async def run_prepared_screen_conversation(
 
 
 def _install_screen_state(run: PreparedScreenConversationRun) -> None:
+    run.app.state.input_capabilities = run.input_capabilities
     run.app.transcript_source_factory = run.transcript_source_factory
     if run.history_records:
         run.app.replace_transcript_window(run.history_records, reason="resume")

@@ -3,9 +3,11 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Protocol, TypeVar
 
-from loushang.harnesstui.conversation.input import ConversationScreenInputPort
+from loushang.harnesstui.conversation.input import (
+    ConversationInputResult,
+    ConversationScreenInputPort,
+)
 from loushang.harnesstui.conversation.screen_runner import (
-    ConversationInputResultPort,
     LocalCommandPredicate,
     ShouldExit,
 )
@@ -16,11 +18,6 @@ from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
 
 AppT_co = TypeVar("AppT_co", covariant=True)
 AppT_contra = TypeVar("AppT_contra", contravariant=True)
-InputResultT_co = TypeVar(
-    "InputResultT_co",
-    bound=ConversationInputResultPort,
-    covariant=True,
-)
 
 
 class ConversationPlaybackAppPort(ConversationScreenInputPort, Protocol):
@@ -31,12 +28,10 @@ class ConversationPlaybackAppPort(ConversationScreenInputPort, Protocol):
     def render(self, constraints: RenderConstraints) -> RenderResult: ...
 
 
-class ConversationPlaybackInputRouterPort(
-    Protocol[InputResultT_co],
-):
+class ConversationPlaybackInputRouterPort(Protocol):
     """Product adapter that routes one decoded input event."""
 
-    def handle(self, event: InputEvent) -> InputResultT_co: ...
+    def handle(self, event: InputEvent) -> ConversationInputResult: ...
 
 
 class ConversationPlaybackInputRouterFactoryPort(Protocol):
@@ -51,7 +46,7 @@ class ConversationPlaybackInputRouterFactoryPort(Protocol):
         keybindings: KeybindingManager | KeybindingConfig | None,
         width: int,
         height: int,
-    ) -> ConversationPlaybackInputRouterPort[ConversationInputResultPort]: ...
+    ) -> ConversationPlaybackInputRouterPort: ...
 
 
 class ConversationStateSnapshotPort(Protocol[AppT_contra]):
@@ -65,7 +60,7 @@ class ConversationResultPayloadPort(Protocol):
 
     def __call__(
         self,
-        result: ConversationInputResultPort,
+        result: ConversationInputResult,
     ) -> Mapping[str, object]: ...
 
 

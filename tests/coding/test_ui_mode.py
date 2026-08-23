@@ -124,10 +124,18 @@ class _Session:
 
 
 def test_run_coding_tui_uses_screen_loop_for_interactive_terminal(monkeypatch) -> None:
+    from dataclasses import replace
+
     from loushang.coding.ui import mode
+    from loushang.coding.ui.screen_input import CODING_SCREEN_RUN_PROFILE
 
     session = _Session()
     captured: dict[str, object] = {}
+    custom_profile = replace(
+        CODING_SCREEN_RUN_PROFILE,
+        interruption_message="Plugin interrupted",
+        cancellation_message="Plugin cancelled",
+    )
 
     async def fake_screen_loop(**kwargs):
         captured.update(kwargs)
@@ -148,6 +156,7 @@ def test_run_coding_tui_uses_screen_loop_for_interactive_terminal(monkeypatch) -
             stdin=_TTYStringIO(),
             stdout=_TTYStringIO(),
             stderr=StringIO(),
+            screen_run_profile=custom_profile,
         )
     )
 
@@ -156,7 +165,7 @@ def test_run_coding_tui_uses_screen_loop_for_interactive_terminal(monkeypatch) -
     assert captured["action_host"].__class__.__name__ == (
         "PresentedConversationActionHost"
     )
-    assert captured["profile"].__class__.__name__ == "ConversationScreenRunProfile"
+    assert captured["profile"] is custom_profile
     assert callable(captured["handle_local"])
     assert callable(captured["handle_surface_intent"])
 
