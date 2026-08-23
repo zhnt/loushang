@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-import builtins
 import importlib.metadata
-import re
-import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from contextlib import suppress
-from types import ModuleType
 from typing import Protocol, cast
 
 from loushang.harness.approval.plugin_execution import (
@@ -28,6 +24,9 @@ from loushang.harness.resources.plugins.dependencies import (
     PluginDependencyClosureLock,
 )
 from loushang.harness.resources.plugins.locators import parse_plugin_entrypoint
+from loushang.harness.resources.plugins.python_symbols import (
+    load_verified_plugin_python_module,
+)
 from loushang.harness.resources.plugins.selection import (
     PluginDeclarationBatch,
     PluginDeclarationExecutionPreflightGate,
@@ -325,75 +324,22 @@ class PluginDefinitionEvaluator:
         if entrypoint is None:
             raise ValueError("Executable declaration source has no entrypoint")
         relative_path, symbol = parse_plugin_entrypoint(entrypoint)
-        with group.package.revision_handle.open_file(relative_path) as stream:
-            source = stream.read()
-        import_policy = _DeclaredImportPolicy(dependency_lock)
-        module = ModuleType(
-            "_loushang_plugin_definition_"
-            + group.source_group_fingerprint[:16]
+        module = load_verified_plugin_python_module(
+            revision_handle=group.package.revision_handle,
+            dependency_lock=dependency_lock,
+            relative_path=relative_path.as_posix(),
+            module_name=(
+                "_loushang_plugin_definition_"
+                + group.source_group_fingerprint[:16]
+            ),
+            host_api_prefixes=_HOST_API_PREFIXES,
         )
-        virtual_filename = f"<plugin:{group.source_group_id[:16]}>"
-        module.__dict__.update(
-            {
-                "__builtins__": import_policy.builtins,
-                "__file__": virtual_filename,
-                "__package__": "",
-            }
-        )
-        code = compile(
-            source,
-            virtual_filename,
-            "exec",
-            dont_inherit=True,
-        )
-        exec(code, module.__dict__)
-        definition = _resolve_symbol(module, symbol)
+        definition = module.resolve(symbol)
         if not callable(definition):
             raise TypeError("Plugin Definition entrypoint must be callable")
         builder = PluginDeclarationBuilder(source_group=group)
         result = cast(PluginDefinition, definition)(builder)
         return builder._validate_definition_result(result)
-
-
-class _DeclaredImportPolicy:
-    def __init__(self, dependency_lock: PluginDependencyClosureLock) -> None:
-        locked_names = {
-            distribution.name for distribution in dependency_lock.python_distributions
-        }
-        package_distributions = importlib.metadata.packages_distributions()
-        self._allowed_roots = frozenset(
-            package
-            for package, distributions in package_distributions.items()
-            if any(
-                _normalize_distribution_name(item) in locked_names
-                for item in distributions
-            )
-        )
-        values = dict(vars(builtins))
-        values["__import__"] = self._import
-        self.builtins: Mapping[str, object] = values
-
-    def _import(
-        self,
-        name: str,
-        globals: Mapping[str, object] | None = None,
-        locals: Mapping[str, object] | None = None,
-        fromlist: tuple[str, ...] = (),
-        level: int = 0,
-    ) -> object:
-        if level:
-            raise ImportError("Relative imports are not available to Plugin Definitions")
-        root = name.partition(".")[0]
-        if not (
-            root in sys.stdlib_module_names
-            or root in self._allowed_roots
-            or any(
-                name == prefix or name.startswith(prefix + ".")
-                for prefix in _HOST_API_PREFIXES
-            )
-        ):
-            raise ImportError("Plugin Definition import is outside its locked closure")
-        return builtins.__import__(name, globals, locals, fromlist, level)
 
 
 def _decision_for_gate(
@@ -417,17 +363,6 @@ def _decision_for_gate(
             code="plugin_execution_decision_not_current",
         )
     return decision
-
-
-def _resolve_symbol(module: ModuleType, symbol: str) -> object:
-    value: object = module
-    for part in symbol.split("."):
-        value = getattr(value, part)
-    return value
-
-
-def _normalize_distribution_name(value: str) -> str:
-    return re.sub(r"[-_.]+", "-", value).lower()
 
 
 def _realm_evaluation_error(
