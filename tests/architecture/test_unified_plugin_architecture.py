@@ -30,6 +30,9 @@ PLC1B_CONTRACT_PATH = Path(
 PLC2_CONTRACT_PATH = Path(
     "docs/internals/architecture/harness/plugin-lifecycle-plc2-contract.md"
 )
+PLC3_CONTRACT_PATH = Path(
+    "docs/internals/architecture/harness/plugin-execution-trust-plc3-contract.md"
+)
 CAPABILITY_LIFECYCLE_PATH = Path(
     "docs/internals/architecture/harness/capability-dependency-and-mount-lifecycle.md"
 )
@@ -3125,3 +3128,44 @@ def test_plc2_package_cleanup_is_write_ahead_inert_and_gc_rechecked() -> None:
         "mcp_",
     ):
         assert forbidden_call not in package_lifecycle
+
+
+def test_plc3_approval_journal_is_atomic_internal_and_not_executable() -> None:
+    contract = PLC3_CONTRACT_PATH.read_text(encoding="utf-8")
+    approval_execution_path = Path(
+        "src/loushang/harness/approval/plugin_execution.py"
+    )
+    approval_execution = approval_execution_path.read_text(encoding="utf-8")
+    approval_exports = Path(
+        "src/loushang/harness/approval/__init__.py"
+    ).read_text(encoding="utf-8")
+    coordinator = PLUGIN_DECLARATION_COORDINATOR_PATH.read_text(encoding="utf-8")
+
+    assert "Status: PLC3-1 durable Approval journal implemented" in contract
+    assert "A durable approved decision is necessary but not\nsufficient" in contract
+    assert "Consumption and reservation creation are therefore one replay transition" in (
+        contract
+    )
+    assert "PLC3-2 must add the aggregate-owned opaque start permit" in contract
+    assert "PluginExecutionDecisionJournal" not in approval_exports
+    assert "execution_not_consumed" in coordinator
+    assert not Path("src/loushang/harness/plugin_authoring/evaluator.py").exists()
+    assert not Path("src/loushang/harness/plugin_authoring/import_realm.py").exists()
+    assert approval_execution.count("append_jsonl_record(") == 1
+    assert "append_jsonl_records(" not in approval_execution
+    assert "_ExecutionConsumedV1" in approval_execution
+    assert "PluginExecutionUseReservationV1" in approval_execution
+    assert "consumption_state=\"CONSUMED\"" in approval_execution
+    for forbidden in (
+        "VerifiedRevisionHandle",
+        "import_module",
+        "exec_module",
+        "PluginDeclarationHost",
+        "RuntimeCapabilityGraphBinder",
+        "RegistrationScope",
+        "WorkspaceToolRegistry",
+        "SessionFacade",
+        "McpSurfaceGeneration",
+        "mcp_",
+    ):
+        assert forbidden not in approval_execution
