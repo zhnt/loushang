@@ -1010,6 +1010,8 @@ Scope:
   `resource.source` component generations under the Resource owner;
 - preserve native filesystem Skills with no Plugin manifest while adapting
   admitted package and embedded/OEM Resources to the same candidate schema;
+- normalize every admitted item and Extension `resources_discover` contribution
+  through one exact-generation source snapshot before the only final merge;
 - make one Catalog snapshot and exact lazy-body receipt authoritative, with
   `ResourceBundle` retained only as a compatibility projection;
 - stage one transferable Resource owner generation before Session publication,
@@ -1027,6 +1029,9 @@ Exit gate:
   parity fixtures, and every conflict is source-explainable;
 - source/engine component activation, publication, refresh pinning, reverse
   disposal, and exact unload pass failure-injection tests;
+- initial discovery is synchronous/budgeted, native body identity is bound at
+  discovery, refresh classification precedes mount/handle mutation, and
+  Extension/Catalog/projection publication is one transaction;
 - native/package/embedded sources use one Catalog path and exact source
   generation handles; and
 - a committed model request retains exact Skill content and digest across file

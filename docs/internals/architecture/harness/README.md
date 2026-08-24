@@ -53,8 +53,9 @@ planning, work event persistence, or AI provider behavior.
 - [Resource Catalog And Source Pluginization Plan](resource-catalog-pluginization-plan.md)
   defines PAP5.5/PLC4.5: one Resource-owner Catalog authority, an exclusive
   Catalog-engine component, aggregate filesystem/package/embedded source
-  components, typed lazy loads and Skill projection, exact-generation
-  lifecycle, and manifest-free native `SKILL.md` compatibility before LSP.
+  components, Extension-generation snapshot normalization, typed lazy loads and
+  Skill projection, exact-generation lifecycle, and manifest-free native
+  `SKILL.md` compatibility before LSP.
 - [Plugin Declaration Foundation PLC1B Contract](plugin-declaration-foundation-plc1b-contract.md)
   freezes the no-self-reference source/group identity layers, exact v2 wire and
   hash records, canonical document bytes, accepted-attempt evidence, group-

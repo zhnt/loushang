@@ -251,7 +251,10 @@ model. The target tagged union is:
 
 Only the initial production set is in the first implementation scope:
 `capability_provider`, `resource_item`, `tool_pack`, and `command_pack`.
-`capability_component` follows after the complete-Bundle LSP path is stable.
+PLC4.5 adds only the two internal Resource-owner `capability_component` schemas
+`resource.catalog_engine` and `resource.source` before LSP. Generic, public, or
+cross-owner component authoring follows after the complete-Bundle LSP path is
+stable.
 
 These tags classify contributions, not packages. A canonical Plugin package
 does not declare one `pluginType`, numeric hierarchy, or capability bitmap.
@@ -995,10 +998,14 @@ Scope:
   two Resource schemas `resource.catalog_engine` and `resource.source`;
 - select one Catalog engine, aggregate filesystem/admitted-package/embedded
   source generations, and publish one immutable Catalog generation;
+- normalize admitted items and Extension-generation hook output through one
+  exact-generation source-snapshot ingress;
 - retain native `SKILL.md` loading without Plugin packaging;
 - adopt one prepared Resource owner generation through the existing
   `harness.resources` Provider and the single Session Graph;
-- bind exact lazy body loads to source generation and content digest; and
+- bind exact lazy body loads to source generation and content digest;
+- bind native body identity during discovery, classify refresh before mutating
+  mounts/handles, and preserve old generation handles to drain; and
 - cut CLI, activation, prompt, command, refresh, and Model Input Skill callers
   to one focused Resource Consumer before deleting peer Loader paths.
 

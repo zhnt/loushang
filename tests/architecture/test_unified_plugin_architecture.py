@@ -3388,7 +3388,7 @@ def test_pap55_resource_catalog_plan_preserves_one_owner_and_native_skills() -> 
         "`ResourceBundle` as a compatibility projection",
         "the Catalog never imports or starts it",
         "`PreparedResourceOwnerGeneration`",
-        "`StagedResourceCompositionCandidate` remains the sole Resource Profile",
+        "`StagedResourceCompositionCandidate` remains the sole\nResource Profile",
         "RCP0 through RCP5 precede the `coding.lsp` production migration",
         "new MCP functionality",
     ):
@@ -3400,3 +3400,38 @@ def test_pap55_resource_catalog_plan_preserves_one_owner_and_native_skills() -> 
     assert "resource-catalog-pluginization-plan.md" in lifecycle
     assert "resource-catalog-pluginization-plan.md" in readme
     assert "Source implementation and merge remain PLC8 work" not in authoring
+
+
+def test_pap55_review_corrections_freeze_single_catalog_ingress_and_custody() -> None:
+    plan = RESOURCE_CATALOG_PLAN_PATH.read_text(encoding="utf-8")
+    lifecycle = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
+    extension_resources = Path(
+        "src/loushang/harness/extensions/resources.py"
+    ).read_text(encoding="utf-8")
+
+    for required in (
+        "There is no direct candidate ingress beside `ResourceSourceSnapshot`.",
+        "one `extension_generation` source snapshot",
+        "generation-scoped body-read adapter",
+        "one synchronous, no-await commit publishes Extension state, Catalog",
+        "`discover_initial` to be synchronous, non-awaiting",
+        "lazy loading delays only body injection, never body identity",
+        "may narrow a handle's relative subtree or filters, but may not name",
+        "The producer union has no ambiguous nullable peers",
+        "The independent content-origin union is",
+        "is exclusively held as a child of the existing\n"
+        "`StagedResourceCompositionCandidate`",
+        "ResourceRefreshClassification",
+        "`restart_required` returns without mutating the active Session",
+        "replace Package Catalog's effective `ResourceLoader.discover_resources()`",
+        "delete production effective-selection imports of `ResourceSnapshot`",
+    ):
+        assert required in plan
+
+    assert "admitted data-only Resource candidates;" not in plan
+    assert "declared_content_digest (optional)" not in plan
+    assert "Catalog\nengine alone chooses effective entries" not in plan
+    assert "`capability_component` follows after the complete-Bundle" not in lifecycle
+    assert "PLC4.5 adds only the two internal Resource-owner" in lifecycle
+    assert "return bundle.merge(" in extension_resources
+    assert "delete direct post-Catalog bundle merge authority" in plan
