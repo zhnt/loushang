@@ -15,6 +15,7 @@ from loushang.harness.capabilities.component_contracts import (
     _require_nonnegative_integer,
     _require_sha256,
 )
+from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
 
 CAPABILITY_COMPONENT_CANDIDATE_VERSION = 1
 CAPABILITY_COMPONENT_ADMISSION_VERSION = 1
@@ -42,6 +43,8 @@ class CapabilityComponentCandidate:
     source_trust_class: str
     source_trust_policy_revision: str
     source_trusted: bool
+    package_source_identity: str | None = None
+    instance_revision_ref: PluginInstanceRevisionRef | None = None
     requested_authorities: tuple[str, ...] = ()
     candidate_version: int = CAPABILITY_COMPONENT_CANDIDATE_VERSION
 
@@ -61,6 +64,24 @@ class CapabilityComponentCandidate:
             _require_nonempty(value, name=name)
         if not isinstance(self.source_trusted, bool):
             raise TypeError("Component source trust decision must be a bool")
+        if self.binding_spec.source_kind == "plugin":
+            _require_nonempty(
+                self.package_source_identity,
+                name="component package source identity",
+            )
+            if not isinstance(self.instance_revision_ref, PluginInstanceRevisionRef):
+                raise TypeError("Plugin component requires an instance revision ref")
+            if self.instance_revision_ref.plugin_id != self.binding_spec.plugin_id:
+                raise ValueError(
+                    "Component instance revision must match its binding Plugin"
+                )
+        elif (
+            self.package_source_identity is not None
+            or self.instance_revision_ref is not None
+        ):
+            raise ValueError(
+                "First-party component must not carry Plugin instance provenance"
+            )
         authorities = _normalized_names(
             self.requested_authorities,
             name="component requested authority",
@@ -85,6 +106,12 @@ class CapabilityComponentCandidate:
             "candidateVersion": self.candidate_version,
             "componentId": self.component_id,
             "definition": self.definition.to_dict(),
+            "instanceRevisionRef": (
+                None
+                if self.instance_revision_ref is None
+                else self.instance_revision_ref.to_dict()
+            ),
+            "packageSourceIdentity": self.package_source_identity,
             "productId": self.product_id,
             "productPolicyRevision": self.product_policy_revision,
             "requestedAuthorities": list(self.requested_authorities),

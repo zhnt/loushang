@@ -12,15 +12,19 @@
   records, atomic owner generations, cancellation-safe reverse rollback,
   generation-pinned Consumer leases, and exact-binding disposal. It is not
   exported by `harness.capabilities`, imported by a production caller, or wired
-  to the current resource loader. The distinct external owner-component Host,
-  durable activation Subject, first-party Catalog/native-source components,
-  and shadow generation runner remain pending. RCP1 adds only the private `_catalog_records`,
-  `_catalog_engine`, and `_catalog_shadow` modules. No production caller imports
-  them, `harness.resources` does not export them, and they publish no Graph,
-  Provider, source-component, refresh, or load authority. The current
-  `ResourceLoader`,
-  `ResourceSnapshot`, `ResourceBundle`, and `SkillLoader` paths remain the
-  implemented runtime until a phase below passes its cutover gate.
+  to the current resource loader. The second unpublished slice adds the distinct
+  external `CapabilityOwnerComponentHost`, an independently fingerprinted
+  owner-component activation Subject, verified Plugin revision/import-realm
+  construction, current-authority revalidation, and durable
+  consume/start/commit/recovery transitions without changing the legacy
+  complete-Bundle Subject bytes. First-party Catalog/native-source components
+  and the shadow generation runner remain pending. RCP1 adds only the private
+  `_catalog_records`, `_catalog_engine`, and `_catalog_shadow` modules. No
+  production caller imports them, `harness.resources` does not export them, and
+  they publish no Graph, Provider, source-component, refresh, or load authority.
+  The current `ResourceLoader`, `ResourceSnapshot`, `ResourceBundle`, and
+  `SkillLoader` paths remain the implemented runtime until a phase below passes
+  its cutover gate.
 - Baseline: `main` at `e55db475`, tracked by issue `#495`.
 - Review status: three independent architecture, lifecycle, and security reviews
   completed against `541408d0`. They conditionally accepted RCP0 only and
@@ -1009,10 +1013,13 @@ Status: in progress. The first foundation slice completes the inert Definition
 through Binding chain and an unpublished owner-generation runtime. It proves
 construction, cancellation, reverse rollback, atomic publication, exact old-
 generation pinning, drain, retryable retirement, and exact-binding disposal.
-It deliberately does not reuse `CapabilityComponentHost` or the complete-
-Bundle Provider activation Subject. No Resource authority changes in this
-slice; Host preparation and the two first-party Resource contributions are the
-next RCP2 increment.
+The second slice adds `CapabilityOwnerComponentHost` and a tagged
+`OwnerComponentActivationApprovalSubject`. It reuses the durable activation-use
+state machine and verified ImportRealm but neither overloads
+`CapabilityComponentHost` nor serializes a component as the complete-Bundle
+Provider Subject. No Resource authority changes in these slices; the two
+first-party Resource contributions and unpublished shadow runner are the next
+RCP2 increment.
 
 - implement the minimum `CapabilityComponentDefinition` and exact
   candidate/admission/selection/binding/generation chain;

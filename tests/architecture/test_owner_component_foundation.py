@@ -10,6 +10,7 @@ FOUNDATION_MODULES = {
     CAPABILITY_ROOT / "component_selection.py",
     CAPABILITY_ROOT / "component_binding.py",
     CAPABILITY_ROOT / "component_runtime.py",
+    CAPABILITY_ROOT / "owner_component_host.py",
 }
 
 
@@ -66,6 +67,12 @@ def test_owner_component_foundation_does_not_create_another_graph_or_registry() 
 
 def test_complete_bundle_component_host_is_not_silently_overloaded() -> None:
     host = (CAPABILITY_ROOT / "component_host.py").read_text(encoding="utf-8")
+    owner_host = (CAPABILITY_ROOT / "owner_component_host.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "CapabilityOwnerComponent" not in host
     assert "CapabilityBundleProviderBinding" in host
+    assert "OwnerComponentActivationApprovalSubject" in owner_host
+    assert "ContributionActivationApprovalSubject" not in owner_host
+    assert "CapabilityBundleProviderBinding" not in owner_host
