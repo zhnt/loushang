@@ -12,7 +12,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypeAlias
+from typing import TypeAlias, cast
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources._catalog_records import (
@@ -305,7 +305,10 @@ def project_shadow_compatibility_bundle(
         ),
         key=_legacy_context_projection_key,
     )
-    contexts = tuple(binding.descriptor for binding in context_bindings)
+    contexts = tuple(
+        cast(PromptFragmentDescriptor, binding.descriptor)
+        for binding in context_bindings
+    )
     prompts = tuple(
         binding.descriptor
         for binding in selected

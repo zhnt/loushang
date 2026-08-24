@@ -178,10 +178,12 @@ description.
   approval, production-sample, SDK-publication, Skill, and peer-route deletion
   gates before implementation.
 - [Resource Catalog And Source Pluginization Plan](resource-catalog-pluginization-plan.md)
-  is the proposed PAP5.5/PLC4.5 contract and migration sequence for making the
+  is the frozen PAP5.5/PLC4.5 contract and migration sequence for making the
   Catalog engine and source/loading mechanisms owner-defined Plugin components
   while keeping Resource items, native Skills, the Package Catalog, and the
-  single Session Graph in their existing authorities.
+  single Session Graph in their existing authorities. RCP0-RCP2 are complete;
+  the first-party engine/native source now run only in an unpublished shadow
+  owner generation, with no production Resource cutover yet.
 - [Resource Catalog RCP0 Baseline](resource-catalog-rcp0-baseline.md) is the
   source-backed legacy-authority and parity companion used to prevent a second
   discovery, merge, Skill fallback, or Package-summary path during migration.

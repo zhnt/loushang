@@ -68,10 +68,10 @@ executable rather than treating all three sites as runtime authority.
 | --- | --- | --- |
 | `_loader_discovery.py` | Coordinates project/user/package discovery and switches. | Split native work into RCP2 and package work into RCP3; delete the legacy coordinator in RCP5. |
 | `_loader_discovery_builtin.py` | Reads import-package built-ins. | Adapt as embedded/OEM source in RCP3; delete the legacy entry in RCP5. |
-| `_loader_discovery_context.py` | Walks AGENTS/compatibility context files. | Move behind the native source in RCP2; delete the legacy entry in RCP5. |
-| `_loader_discovery_filesystem.py` | Scans prompt/Skill/Extension/theme directories. | Move behind the native source in RCP2; delete the legacy entry in RCP5. |
+| `_loader_discovery_context.py` | Walks AGENTS/compatibility context files. | RCP2 implements the bounded handle-scoped native shadow route; keep this production oracle until the RCP4 single-publication cutover and delete its legacy entry in RCP5. |
+| `_loader_discovery_filesystem.py` | Scans prompt/Skill/Extension/theme directories. | RCP2 implements the bounded native shadow route and shares pure prompt/Skill parsing plus Skill-ignore semantics; keep this production oracle until the RCP4 cutover and delete its legacy entry in RCP5. |
 | `_loader_discovery_temporary.py` | Scans Product-supplied one-session paths. | Adapt as a Host-approved native/temporary source mode in RCP3; delete the legacy entry in RCP5. |
-| `_loader_descriptor_parsing.py` | Pure prompt/Skill text-to-descriptor parsing helpers. | Reuse only behind source normalization in RCP2/RCP3; remove legacy descriptor authority in RCP5. |
+| `_loader_descriptor_parsing.py` | Legacy import adapter to the shared pure prompt/Skill text parser. | RCP2 moved implementation to `_descriptor_parsing.py`; remove this compatibility edge with the legacy discovery route in RCP5. |
 | `_loader_package_policy.py` | Normalizes package filters, diagnostics, and counts. | Move pure inventory/filter work to the RCP3 package source/summary port; remove effective-selection coupling in RCP5. |
 | `_loader_types.py` | Defines legacy discovery/intermediate records. | RCP1 parity input only; replace with canonical source/candidate records and remove production use in RCP5. |
 | `_loader_pipeline.py` | Builds the effective `ResourceSnapshot`. | RCP1 parity oracle; remove production construction/import in RCP5. |

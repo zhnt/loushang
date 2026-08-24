@@ -12,6 +12,10 @@ FOUNDATION_MODULES = {
     CAPABILITY_ROOT / "component_runtime.py",
     CAPABILITY_ROOT / "owner_component_host.py",
 }
+PRIVATE_FOUNDATION_CONSUMERS = {
+    Path("src/loushang/harness/resource_catalog/components.py"),
+    Path("src/loushang/harness/resource_catalog/shadow.py"),
+}
 
 
 def _imported_modules(path: Path) -> set[str]:
@@ -31,8 +35,7 @@ def _imported_modules(path: Path) -> set[str]:
 def _imports_foundation(path: Path) -> bool:
     return any(
         module.startswith("loushang.harness.capabilities.component_")
-        and module
-        not in {"loushang.harness.capabilities.component_host"}
+        and module not in {"loushang.harness.capabilities.component_host"}
         for module in _imported_modules(path)
     )
 
@@ -41,7 +44,9 @@ def test_owner_component_foundation_is_unpublished_and_unmounted() -> None:
     assert all(path.is_file() for path in FOUNDATION_MODULES)
     production_paths = set(Path("src/loushang").rglob("*.py")) - FOUNDATION_MODULES
 
-    assert not {path for path in production_paths if _imports_foundation(path)}
+    assert {
+        path for path in production_paths if _imports_foundation(path)
+    } == PRIVATE_FOUNDATION_CONSUMERS
     public_surface = (CAPABILITY_ROOT / "__init__.py").read_text(encoding="utf-8")
     assert "CapabilityComponentDefinition" not in public_surface
     assert "CapabilityOwnerComponentRuntime" not in public_surface

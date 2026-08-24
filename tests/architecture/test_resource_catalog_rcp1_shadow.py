@@ -12,11 +12,18 @@ from loushang.harness.resources._catalog_records import (
 )
 
 RESOURCE_ROOT = Path("src/loushang/harness/resources")
+ORCHESTRATION_ROOT = Path("src/loushang/harness/resource_catalog")
 RCP1_MODULES = {
     RESOURCE_ROOT / "_catalog_engine.py",
     RESOURCE_ROOT / "_catalog_records.py",
     RESOURCE_ROOT / "_catalog_shadow.py",
 }
+RCP2_MODULES = {
+    RESOURCE_ROOT / "_catalog_native_source.py",
+    ORCHESTRATION_ROOT / "components.py",
+    ORCHESTRATION_ROOT / "shadow.py",
+}
+PRIVATE_CATALOG_MODULES = RCP1_MODULES | RCP2_MODULES
 
 
 def _imports_catalog_module(path: Path) -> bool:
@@ -86,9 +93,9 @@ def test_rcp1_records_match_the_frozen_field_contracts() -> None:
     )
 
 
-def test_rcp1_catalog_remains_private_and_unmounted() -> None:
-    assert all(path.is_file() for path in RCP1_MODULES)
-    production_paths = set(Path("src/loushang").rglob("*.py")) - RCP1_MODULES
+def test_resource_catalog_shadow_remains_private_and_unmounted() -> None:
+    assert all(path.is_file() for path in PRIVATE_CATALOG_MODULES)
+    production_paths = set(Path("src/loushang").rglob("*.py")) - PRIVATE_CATALOG_MODULES
 
     assert not {path for path in production_paths if _imports_catalog_module(path)}
     assert "_catalog" not in (RESOURCE_ROOT / "__init__.py").read_text(encoding="utf-8")

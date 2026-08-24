@@ -6,8 +6,8 @@
   Plugin lifecycle, exact-owner admission, Session Graph, Resource generation,
   and Model Input boundaries. It does not amend those boundaries implicitly.
 - Design status: RCP0 contract frozen; final narrow freeze re-review passed.
-- Implementation status: RCP0 and RCP1 are complete on the Harness lane; RCP2
-  is in progress. Its first unpublished foundation slice implements the generic
+- Implementation status: RCP0, RCP1, and RCP2 are complete on the Harness lane.
+  RCP2's first unpublished foundation slice implements the generic
   `CapabilityComponentDefinition`, exact candidate/admission/selection/binding
   records, atomic owner generations, cancellation-safe reverse rollback,
   generation-pinned Consumer leases, and exact-binding disposal. It is not
@@ -17,11 +17,15 @@
   owner-component activation Subject, verified Plugin revision/import-realm
   construction, current-authority revalidation, and durable
   consume/start/commit/recovery transitions without changing the legacy
-  complete-Bundle Subject bytes. First-party Catalog/native-source components
-  and the shadow generation runner remain pending. RCP1 adds only the private
-  `_catalog_records`, `_catalog_engine`, and `_catalog_shadow` modules. No
+  complete-Bundle Subject bytes. Its final unpublished slice adds the exclusive
+  standard Catalog engine and aggregate native source as exact first-party
+  contributions, Host-minted `context`/`standard`/`combined` root handles,
+  synchronous bounded no-follow discovery, generation-retained exact body
+  bytes, owner-validated Catalog proposals, and a disposable shadow-generation
+  runner beside the current loader. All Catalog/RCP2 modules remain private: no
   production caller imports them, `harness.resources` does not export them, and
-  they publish no Graph, Provider, source-component, refresh, or load authority.
+  the shadow runner publishes no Graph, Provider, refresh, or live load
+  authority.
   The current `ResourceLoader`, `ResourceSnapshot`, `ResourceBundle`, and
   `SkillLoader` paths remain the implemented runtime until a phase below passes
   its cutover gate.
@@ -1009,7 +1013,7 @@ caller has changed authority.
 
 ### RCP2: Implement owner-component lifecycle
 
-Status: in progress. The first foundation slice completes the inert Definition
+Status: complete. The first foundation slice completes the inert Definition
 through Binding chain and an unpublished owner-generation runtime. It proves
 construction, cancellation, reverse rollback, atomic publication, exact old-
 generation pinning, drain, retryable retirement, and exact-binding disposal.
@@ -1017,9 +1021,22 @@ The second slice adds `CapabilityOwnerComponentHost` and a tagged
 `OwnerComponentActivationApprovalSubject`. It reuses the durable activation-use
 state machine and verified ImportRealm but neither overloads
 `CapabilityComponentHost` nor serializes a component as the complete-Bundle
-Provider Subject. No Resource authority changes in these slices; the two
-first-party Resource contributions and unpublished shadow runner are the next
-RCP2 increment.
+Provider Subject. The final slice packages the standard engine and native
+filesystem source as first-party contributions and runs their exact admitted
+bindings in an unpublished Resource owner generation. The source receives only
+Host-minted layout-scoped root handles; root kind, class, scope, order, and root
+policy enter binding/source-generation identity. Discovery is synchronous,
+budget/deadline/cancellation checked, no-follow, and retains the exact bytes
+whose digest and length entered each model-visible candidate. Lazy load serves
+only that still-live generation. The pure owner validator independently
+recomputes the proposal from the same immutable source/policy inputs.
+Executable assembly and the runner live in the private sibling
+`harness.resource_catalog` orchestration package, which depends one-way on
+`capabilities` and `resources`; placing them inside `resources` would create a
+forbidden package cycle because Capability admission already consumes Plugin
+revision records. Legacy and native discovery share source-neutral conventions,
+prompt/Skill parsing, and Skill-ignore matching rather than cloning those
+declaration rules.
 
 - implement the minimum `CapabilityComponentDefinition` and exact
   candidate/admission/selection/binding/generation chain;
@@ -1033,7 +1050,13 @@ Exit: construction, cancellation, rollback, publication, drain, and disposal
 are proven without a second Graph or live registry; current Product behavior is
 unchanged. Initial discovery is synchronous/budgeted, owner components use the
 frozen custody state machine, and narrow contexts are not described as process
-isolation.
+isolation. The exit gate is satisfied by side-by-side legacy/native fixtures,
+project-over-user precedence, retained-byte lazy loading after path mutation,
+foreign-generation rejection, root/symlink narrowing, budget/cancellation
+control flow, owner proposal rejection, and private/unmounted architecture
+gates. The temporary shadow discovery route is not a new production peer: RCP4
+performs the single publication cutover and RCP5 deletes the legacy loader
+route.
 
 ### RCP3: Converge package and embedded sources
 
