@@ -335,9 +335,11 @@ Such a descriptor may reference only a package-contained verified locator or
 an opaque root/collection handle already minted by the Host and approved by the
 Product. It may narrow a handle's relative subtree or filters, but may not name
 an absolute host path, create a new root, widen the effective handle set,
-select implementation code, or add authority. Source class, effective handle
-set/root-policy fingerprint, and Product policy revision enter the source
-generation/binding identity.
+select implementation code, or add authority. The allowed source-class set,
+effective handle set/root-policy fingerprint, and Product policy revision enter
+the source generation/binding identity. The Resource owner stamps or validates
+each candidate's actual class/scope/order facts against that generation; a
+descriptor cannot self-assign priority.
 
 ## Canonical Catalog Records
 
@@ -370,12 +372,9 @@ identity.
 ```text
 source_id
 product_id
-scope_id
 generation
-source_class
 source_policy_fingerprint
 producer (strict tagged union)
-content_origin (strict tagged union)
 ```
 
 The producer union has no ambiguous nullable peers:
@@ -396,7 +395,9 @@ extension_owner:
   extension_owner_fingerprint
 ```
 
-The independent content-origin union is:
+`ResourceSourceGenerationRef` therefore names the common executable/owner
+generation, not one candidate's precedence or content provenance.
+The independent content-origin union is candidate-scoped:
 
 ```text
 verified_plugin_resource:
@@ -424,8 +425,9 @@ extension_output:
 ```
 
 One Extension-owner snapshot may aggregate several routed Extensions: the
-producer names the exact runtime generation/set, while each candidate's content
-origin names its contributing Extension and route. This keeps executable
+generation producer names the exact runtime generation/set, while each
+candidate names its own source class/scope/order and contributing Extension/
+route content origin. This keeps executable
 producer identity separate from content origin: the same
 first-party source-component implementation can read native, verified-package,
 or embedded content without erasing either provenance. Native and embedded
@@ -463,6 +465,10 @@ description
 media_type
 invocation_policy
 source_generation_ref
+source_class
+scope_id
+source_root_order
+content_origin (strict tagged union)
 opaque_locator
 discovery_fingerprint
 candidate_fingerprint
@@ -470,6 +476,13 @@ expected_content_digest
 expected_content_length
 diagnostics
 ```
+
+The Resource owner derives or verifies `source_class`, `scope_id`,
+`source_root_order`, and `content_origin` from admitted handles, Product root
+order, package admission, or the exact Extension route. They are evidence for
+the owner-supplied merge policy, not contributor-assigned priority. The
+candidate fingerprint covers those validated fields together with identity,
+generation, locator, invocation/media facts, and expected content identity.
 
 The opaque locator is meaningful only to the named source generation. It is not
 a general filesystem path and cannot be used with another source. Expected

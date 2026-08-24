@@ -431,6 +431,12 @@ def _legacy_loader_import_edges(
     return edges
 
 
+def _text_record_fields(document: str, heading: str) -> tuple[str, ...]:
+    section = document.split(heading, maxsplit=1)[1]
+    block = section.split("```text", maxsplit=1)[1].split("```", maxsplit=1)[0]
+    return tuple(line.strip() for line in block.splitlines() if line.strip())
+
+
 def test_rcp0_baseline_is_indexed_and_does_not_claim_runtime_implementation() -> None:
     baseline = BASELINE_PATH.read_text(encoding="utf-8")
     plan = PLAN_PATH.read_text(encoding="utf-8")
@@ -666,6 +672,31 @@ def test_rcp0_target_records_diagnostics_and_forbidden_routes_are_frozen() -> No
         "LoadedResource",
     ):
         assert f"`{record}`" in baseline
+    assert _text_record_fields(plan, "### `ResourceSourceGenerationRef`") == (
+        "source_id",
+        "product_id",
+        "generation",
+        "source_policy_fingerprint",
+        "producer (strict tagged union)",
+    )
+    assert _text_record_fields(plan, "### `ResourceCandidateSummary`") == (
+        "identity",
+        "canonical_name",
+        "description",
+        "media_type",
+        "invocation_policy",
+        "source_generation_ref",
+        "source_class",
+        "scope_id",
+        "source_root_order",
+        "content_origin (strict tagged union)",
+        "opaque_locator",
+        "discovery_fingerprint",
+        "candidate_fingerprint",
+        "expected_content_digest",
+        "expected_content_length",
+        "diagnostics",
+    )
     diagnostic_codes = (
         "resource_source_discovery_failed",
         "resource_source_discovery_budget_exceeded",
