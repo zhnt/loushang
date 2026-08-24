@@ -35,9 +35,9 @@ security, and sequencing. This companion answers four narrower questions:
 
 | Private module | RCP1 role | Explicit non-authority |
 | --- | --- | --- |
-| `harness.resources._catalog_records` | Immutable v2 identity, provenance, candidate, source/Catalog snapshot, decision, activation, handle, body, and receipt records with canonical fingerprints and proposal accounting. | Not exported from `harness.resources`; owns no store, loader, Graph, Session, or disposer. |
+| `harness.resources._catalog_records` | Immutable v2 identity, provenance, candidate, source/Catalog snapshot, decision, activation, handle, body, and receipt records with canonical fingerprints, exact producer/content-origin matching, generation-scoped diagnostics, and proposal accounting. | Not exported from `harness.resources`; owns no store, loader, Graph, Session, or disposer. |
 | `harness.resources._catalog_engine` | Pure deterministic strict/permissive/additive merge proposal over canonical source snapshots. | Performs no discovery, body load, filesystem access, refresh, or publication. |
-| `harness.resources._catalog_shadow` | One-way `ResourceSnapshot` normalization, parity report, and disposable compatibility projection. | Requires caller-supplied generation/content provenance and is imported only by tests; it cannot mint live provenance or replace the committed Bundle. |
+| `harness.resources._catalog_shadow` | One-way `ResourceSnapshot` normalization, parity report, and disposable compatibility projection. | Requires caller-supplied generation/content provenance and owner source facts, validates them against legacy evidence, and is imported only by tests; it cannot mint live provenance or replace the committed Bundle. |
 
 The exact `ResourceSnapshot` constructor inventory therefore contains one new
 private test-projection site in `_catalog_shadow` beside the two frozen

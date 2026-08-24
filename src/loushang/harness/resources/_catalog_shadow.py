@@ -35,6 +35,7 @@ from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
     ResourceSnapshot,
+    ResourceSourceKind,
     SkillDescriptor,
     ThemeDescriptor,
 )
@@ -54,10 +55,17 @@ class LegacyShadowAdaptationError(ValueError):
 @dataclass(frozen=True)
 class LegacyCandidateProvenance:
     source_generation_ref: ResourceSourceGenerationRef
+    source_class: ResourceSourceKind
+    scope_id: str
+    source_root_order: int
     content_origin: ResourceContentOrigin
     opaque_locator: str
 
     def __post_init__(self) -> None:
+        if not self.scope_id:
+            raise ValueError("Legacy shadow scope id must be non-empty.")
+        if self.source_root_order < 0:
+            raise ValueError("Legacy shadow source root order cannot be negative.")
         if not self.opaque_locator:
             raise ValueError("Legacy shadow opaque locator must be non-empty.")
 
@@ -288,12 +296,16 @@ def project_shadow_compatibility_bundle(
         for entry in catalog_snapshot.effective_entries
         for fingerprint in entry.candidate_fingerprints
     ]
-    contexts = tuple(
-        binding.descriptor
-        for binding in selected
-        if binding.resource_kind == "context"
-        and isinstance(binding.descriptor, PromptFragmentDescriptor)
+    context_bindings = sorted(
+        (
+            binding
+            for binding in selected
+            if binding.resource_kind == "context"
+            and isinstance(binding.descriptor, PromptFragmentDescriptor)
+        ),
+        key=_legacy_context_projection_key,
     )
+    contexts = tuple(binding.descriptor for binding in context_bindings)
     prompts = tuple(
         binding.descriptor
         for binding in selected
@@ -351,6 +363,26 @@ def _candidate_descriptors(
     )
 
 
+def _legacy_context_projection_key(
+    binding: LegacyShadowCandidateBinding,
+) -> tuple[int, int, str, str]:
+    descriptor = binding.descriptor
+    assert isinstance(descriptor, PromptFragmentDescriptor)
+    source_rank = {
+        "user_global": 0,
+        "project_local": 1,
+        "temporary": 2,
+        "external_package": 3,
+        "built_in": 4,
+    }[descriptor.source_kind]
+    return (
+        source_rank,
+        descriptor.source_root_order,
+        descriptor.canonical_name or descriptor.name,
+        binding.candidate_fingerprint,
+    )
+
+
 def _is_frozen_extension_collision(
     *,
     identity: ResourceIdentity,
@@ -392,6 +424,14 @@ def _adapt_descriptor(
     discovery_request_fingerprint: str,
     provenance: LegacyCandidateProvenance,
 ) -> ResourceCandidateSummary:
+    if (
+        descriptor.source_kind != provenance.source_class
+        or descriptor.source_scope != provenance.scope_id
+        or descriptor.source_root_order != provenance.source_root_order
+    ):
+        raise LegacyShadowAdaptationError(
+            "Legacy descriptor facts do not match owner-supplied source facts."
+        )
     identity = ResourceIdentity(
         resource_kind=resource_kind,
         schema_id=f"loushang.resource.{resource_kind}",
@@ -437,9 +477,9 @@ def _adapt_descriptor(
             reason="legacy_snapshot_shadow",
         ),
         source_generation_ref=provenance.source_generation_ref,
-        source_class=descriptor.source_kind,
-        scope_id=descriptor.source_scope,
-        source_root_order=descriptor.source_root_order,
+        source_class=provenance.source_class,
+        scope_id=provenance.scope_id,
+        source_root_order=provenance.source_root_order,
         content_origin=provenance.content_origin,
         opaque_locator=provenance.opaque_locator,
         discovery_fingerprint=fingerprint_catalog_value(
@@ -448,7 +488,10 @@ def _adapt_descriptor(
                 "discoveryRequestFingerprint": discovery_request_fingerprint,
                 "identity": identity.to_payload(),
                 "opaqueLocator": provenance.opaque_locator,
+                "scopeId": provenance.scope_id,
+                "sourceClass": provenance.source_class,
                 "sourceGeneration": provenance.source_generation_ref.to_payload(),
+                "sourceRootOrder": provenance.source_root_order,
             },
         ),
         expected_content_digest=expected_digest,

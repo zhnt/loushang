@@ -160,6 +160,13 @@ class ResourceSourceGenerationRef:
             ResourceComponentProducer | ExtensionOwnerProducer,
         ):
             raise TypeError("Resource source producer must use one tagged variant.")
+        if (
+            isinstance(self.producer, ExtensionOwnerProducer)
+            and self.generation != self.producer.extension_generation
+        ):
+            raise ValueError(
+                "Resource source generation must match its exact Extension generation."
+            )
 
     def to_payload(self) -> dict[str, object]:
         return {
@@ -411,6 +418,7 @@ class ResourceCandidateSummary:
         _validate_content_origin(
             source_class=self.source_class,
             content_origin=self.content_origin,
+            source_generation_ref=self.source_generation_ref,
         )
         _require_non_empty(self.opaque_locator, name="Resource opaque locator")
         _require_opaque_locator(self.opaque_locator)
@@ -444,6 +452,18 @@ class ResourceCandidateSummary:
             != self.diagnostics
         ):
             raise ValueError("Resource candidate diagnostics must be canonical.")
+        for diagnostic in self.diagnostics:
+            if diagnostic.identity is not None and diagnostic.identity != self.identity:
+                raise ValueError(
+                    "Resource candidate diagnostic must match the candidate identity."
+                )
+            if (
+                diagnostic.source_id is not None
+                and diagnostic.source_id != self.source_generation_ref.source_id
+            ):
+                raise ValueError(
+                    "Resource candidate diagnostic must match the source generation."
+                )
         expected_candidate_fingerprint = fingerprint_catalog_value(
             "loushang.resource-candidate/v2",
             _candidate_payload(
@@ -602,6 +622,24 @@ class ResourceSourceSnapshot:
             != self.diagnostics
         ):
             raise ValueError("Resource source diagnostics must be canonical.")
+        candidate_identities = {
+            candidate.identity for candidate in self.candidate_summaries
+        }
+        for diagnostic in self.diagnostics:
+            if (
+                diagnostic.source_id is not None
+                and diagnostic.source_id != self.source_generation_ref.source_id
+            ):
+                raise ValueError(
+                    "Resource source diagnostic must match the source generation."
+                )
+            if (
+                diagnostic.identity is not None
+                and diagnostic.identity not in candidate_identities
+            ):
+                raise ValueError(
+                    "Resource source diagnostic names a foreign candidate identity."
+                )
         expected = _source_snapshot_fingerprint(
             source_generation_ref=self.source_generation_ref,
             discovery_request_fingerprint=self.discovery_request_fingerprint,
@@ -1060,6 +1098,7 @@ class ResourceLoadHandle:
         _require_digest(self.snapshot_fingerprint, name="Load snapshot fingerprint")
         _require_digest(self.candidate_fingerprint, name="Load candidate fingerprint")
         _require_non_empty(self.opaque_locator, name="Load opaque locator")
+        _require_opaque_locator(self.opaque_locator)
         _require_digest(
             self.expected_content_digest,
             name="Load expected content digest",
@@ -1084,6 +1123,9 @@ class ResourceBodyRead:
 
     def __post_init__(self) -> None:
         _require_non_empty(self.opaque_locator, name="Body-read opaque locator")
+        _require_opaque_locator(self.opaque_locator)
+        if not isinstance(self.body, bytes):
+            raise TypeError("Resource body read must contain immutable bytes.")
         _require_digest(
             self.observed_content_digest,
             name="Observed Resource content digest",
@@ -1156,6 +1198,8 @@ class LoadedResource:
     body: bytes
 
     def __post_init__(self) -> None:
+        if not isinstance(self.body, bytes):
+            raise TypeError("Loaded Resource body must contain immutable bytes.")
         if len(self.body) != self.receipt.content_length:
             raise ValueError("Loaded Resource length does not match its receipt.")
         if hashlib.sha256(self.body).hexdigest() != self.receipt.content_digest:
@@ -1252,9 +1296,23 @@ def _validate_content_origin(
     *,
     source_class: ResourceSourceKind,
     content_origin: ResourceContentOrigin,
+    source_generation_ref: ResourceSourceGenerationRef,
 ) -> None:
     if isinstance(content_origin, ExtensionOutputOrigin):
+        producer = source_generation_ref.producer
+        if not isinstance(producer, ExtensionOwnerProducer):
+            raise ValueError(
+                "Extension output must belong to an Extension owner producer."
+            )
+        if content_origin.extension_generation_ref != producer.extension_generation:
+            raise ValueError(
+                "Extension output must belong to the exact Extension generation."
+            )
         return
+    if isinstance(source_generation_ref.producer, ExtensionOwnerProducer):
+        raise ValueError(
+            "An Extension owner producer may emit only extension_output candidates."
+        )
     allowed = (
         isinstance(content_origin, VerifiedPluginResourceOrigin)
         if source_class == "external_package"
@@ -1264,6 +1322,16 @@ def _validate_content_origin(
     )
     if not allowed:
         raise ValueError("Resource content origin does not match its source class.")
+    if isinstance(content_origin, NativeHostOrigin):
+        expected_scope = {
+            "project_local": "workspace",
+            "user_global": "user",
+            "temporary": "temporary",
+        }[source_class]
+        if content_origin.workspace_or_user_scope != expected_scope:
+            raise ValueError(
+                "Native Host content origin scope does not match its source class."
+            )
 
 
 def _require_opaque_locator(value: str) -> None:

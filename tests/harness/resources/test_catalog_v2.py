@@ -13,10 +13,13 @@ from loushang.harness.resources._catalog_engine import (
 from loushang.harness.resources._catalog_records import (
     NO_BODY_MEDIA_TYPE,
     EmbeddedOemOrigin,
+    ExtensionOutputOrigin,
+    ExtensionOwnerProducer,
     NativeHostOrigin,
     ResourceActivationPolicySnapshot,
     ResourceBodyRead,
     ResourceCandidateSummary,
+    ResourceCatalogDiagnostic,
     ResourceCatalogHandle,
     ResourceComponentProducer,
     ResourceIdentity,
@@ -50,6 +53,21 @@ def _source_ref(source_id: str = "native") -> ResourceSourceGenerationRef:
             binding_fingerprint=_digest(f"binding:{source_id}"),
             plugin_instance_revision_ref="first-party",
             package_content_digest=_digest("first-party-package"),
+        ),
+    )
+
+
+def _extension_source_ref() -> ResourceSourceGenerationRef:
+    return ResourceSourceGenerationRef(
+        source_id="extension-output",
+        product_id="coding",
+        generation="extension-generation-1",
+        source_policy_fingerprint=_digest("extension-policy"),
+        producer=ExtensionOwnerProducer(
+            runtime_id="extension-runtime-1",
+            extension_generation="extension-generation-1",
+            extension_set_fingerprint=_digest("extension-set"),
+            extension_owner_fingerprint=_digest("extension-owner"),
         ),
     )
 
@@ -110,7 +128,17 @@ def _candidate(
         ),
         source_generation_ref=source_generation_ref,
         source_class=source_class,  # type: ignore[arg-type]
-        scope_id="project",
+        scope_id=(
+            "package"
+            if source_class == "external_package"
+            else "builtin"
+            if source_class == "built_in"
+            else "user"
+            if source_class == "user_global"
+            else "temporary"
+            if source_class == "temporary"
+            else "project"
+        ),
         source_root_order=root_order,
         content_origin=content_origin,
         opaque_locator=f"{public_id}/{locator_suffix}",
@@ -415,6 +443,105 @@ def test_candidate_rejects_tampering_foreign_origin_and_locator_escape() -> None
                 root_policy_fingerprint=_digest("wrong-root"),
                 workspace_or_user_scope="workspace",
             ),
+        )
+
+
+def test_extension_origin_must_match_the_exact_extension_owner_generation() -> None:
+    candidate = _candidate("review")
+    extension_origin = ExtensionOutputOrigin(
+        extension_generation_ref="extension-generation-1",
+        extension_id="review-extension",
+        route_id="resources-discover-1",
+        route_set_fingerprint=_digest("route-set"),
+        hook_snapshot_fingerprint=_digest("hook-snapshot"),
+    )
+
+    with pytest.raises(ValueError, match="Extension owner producer"):
+        replace(candidate, content_origin=extension_origin)
+
+    extension_source = _extension_source_ref()
+    with pytest.raises(ValueError, match="exact Extension generation"):
+        build_candidate_summary(
+            identity=candidate.identity,
+            canonical_name=candidate.canonical_name,
+            description=candidate.description,
+            media_type=candidate.media_type,
+            invocation_policy=candidate.invocation_policy,
+            source_generation_ref=extension_source,
+            source_class="project_local",
+            scope_id="project",
+            source_root_order=0,
+            content_origin=replace(
+                extension_origin,
+                extension_generation_ref="extension-generation-2",
+            ),
+            opaque_locator=candidate.opaque_locator,
+            discovery_fingerprint=candidate.discovery_fingerprint,
+            expected_content_digest=candidate.expected_content_digest,
+            expected_content_length=candidate.expected_content_length,
+        )
+
+
+def test_candidate_and_source_diagnostics_cannot_cross_identity_or_generation() -> None:
+    candidate = _candidate("review")
+    foreign_identity = ResourceIdentity(
+        "skill",
+        "loushang.resource.skill",
+        1,
+        "foreign",
+    )
+
+    with pytest.raises(ValueError, match="candidate identity"):
+        build_candidate_summary(
+            identity=candidate.identity,
+            canonical_name=candidate.canonical_name,
+            description=candidate.description,
+            media_type=candidate.media_type,
+            invocation_policy=candidate.invocation_policy,
+            source_generation_ref=candidate.source_generation_ref,
+            source_class=candidate.source_class,
+            scope_id=candidate.scope_id,
+            source_root_order=candidate.source_root_order,
+            content_origin=candidate.content_origin,
+            opaque_locator=candidate.opaque_locator,
+            discovery_fingerprint=candidate.discovery_fingerprint,
+            expected_content_digest=candidate.expected_content_digest,
+            expected_content_length=candidate.expected_content_length,
+            diagnostics=(
+                ResourceCatalogDiagnostic(
+                    code="resource_source_snapshot_invalid",
+                    reason="foreign_identity",
+                    identity=foreign_identity,
+                    source_id=candidate.source_generation_ref.source_id,
+                ),
+            ),
+        )
+
+    with pytest.raises(ValueError, match="source generation"):
+        build_source_snapshot(
+            source_generation_ref=candidate.source_generation_ref,
+            discovery_request_fingerprint=_digest("request"),
+            candidate_summaries=(candidate,),
+            diagnostics=(
+                ResourceCatalogDiagnostic(
+                    code="resource_source_snapshot_invalid",
+                    reason="foreign_source",
+                    source_id="foreign-source",
+                ),
+            ),
+        )
+
+
+def test_body_records_require_immutable_bytes() -> None:
+    candidate = _candidate("review")
+
+    with pytest.raises(TypeError, match="immutable bytes"):
+        ResourceBodyRead(
+            source_generation_ref=candidate.source_generation_ref,
+            opaque_locator=candidate.opaque_locator,
+            body="not-bytes",  # type: ignore[arg-type]
+            observed_content_digest=candidate.expected_content_digest or "",
+            observed_content_length=9,
         )
 
 

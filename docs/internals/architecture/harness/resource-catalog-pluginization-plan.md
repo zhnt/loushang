@@ -29,8 +29,12 @@
   frozen records, deterministic kind policies, strict proposal validation,
   explicit-provenance legacy adaptation, compatibility projection, and the one
   evidence-checked Extension collision exception. Its focused and full
-  Resource-domain suites pass; it has not yet received an independent RCP1
-  code re-review.
+  Resource-domain suites pass. A subsequent primary-agent narrow authority
+  review required owner-supplied source class/scope/root-order facts, exact
+  `extension_output`/Extension-owner-generation matching, generation-scoped
+  diagnostics, immutable body bytes, and context projection-order parity; those
+  corrections are implemented and green. RCP1 has not yet received an
+  independent code re-review.
 - Scope: pluginize the Resource catalog mechanism and Resource source/loading
   mechanisms, converge Skill onto a typed Resource projection, and retain plain
   native `SKILL.md` loading.
@@ -974,8 +978,11 @@ forbidden-route fixture. RCP1 may not begin before a narrow freeze re-review.
 Status: complete. The implementation is private and shadow-only; its
 architecture gate forbids imports from production modules and top-level
 publication. The legacy adapter requires caller-supplied source-generation and
-content-origin evidence, and the compatibility `ResourceBundle` it creates is
-a disposable test projection rather than a live candidate or refresh input.
+content-origin evidence plus owner-supplied source class, scope, and root order,
+which must match the frozen legacy evidence. Extension output must belong to
+the exact Extension-owner generation. The compatibility `ResourceBundle` it
+creates is a disposable test projection rather than a live candidate or
+refresh input.
 
 - add immutable identity, candidate, snapshot, decision, activation, handle,
   loaded-body, and receipt records;

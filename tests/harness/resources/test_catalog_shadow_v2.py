@@ -100,6 +100,9 @@ def test_legacy_snapshot_adapter_is_explicitly_provenance_supplied_and_pure(
         source_root = descriptor.source_root  # type: ignore[attr-defined]
         return LegacyCandidateProvenance(
             source_generation_ref=source_ref,
+            source_class=descriptor.source_kind,  # type: ignore[attr-defined]
+            scope_id=descriptor.source_scope,  # type: ignore[attr-defined]
+            source_root_order=descriptor.source_root_order,  # type: ignore[attr-defined]
             content_origin=NativeHostOrigin(
                 host_root_handle_id="legacy-root-handle",
                 root_policy_fingerprint=_digest("root-policy"),
@@ -167,6 +170,9 @@ def test_shadow_report_does_not_hide_unapproved_differences(tmp_path: Path) -> N
         discovery_request_fingerprint=_digest("request"),
         provenance_resolver=lambda _descriptor: LegacyCandidateProvenance(
             source_generation_ref=source_ref,
+            source_class="project_local",
+            scope_id="project",
+            source_root_order=0,
             content_origin=NativeHostOrigin(
                 host_root_handle_id="legacy-root-handle",
                 root_policy_fingerprint=_digest("root-policy"),
@@ -340,6 +346,9 @@ def test_shadow_catalog_matches_current_kind_specific_resolvers() -> None:
             )
         return LegacyCandidateProvenance(
             source_generation_ref=source_ref,
+            source_class=source_kind,
+            scope_id=descriptor.source_scope,  # type: ignore[attr-defined]
+            source_root_order=descriptor.source_root_order,  # type: ignore[attr-defined]
             content_origin=origin,
             opaque_locator=(
                 f"{source_kind}/{descriptor.source_root_order}/"  # type: ignore[attr-defined]
@@ -418,6 +427,9 @@ def test_shadow_report_requires_explicit_opt_in_for_frozen_extension_exception(
         if descriptor is extension_skill:
             return LegacyCandidateProvenance(
                 source_generation_ref=extension_source_ref,
+                source_class="project_local",
+                scope_id="project",
+                source_root_order=0,
                 content_origin=ExtensionOutputOrigin(
                     extension_generation_ref="extension-generation-1",
                     extension_id="resource-parity-extension",
@@ -429,6 +441,9 @@ def test_shadow_report_requires_explicit_opt_in_for_frozen_extension_exception(
             )
         return LegacyCandidateProvenance(
             source_generation_ref=native_source_ref,
+            source_class="project_local",
+            scope_id="project",
+            source_root_order=0,
             content_origin=NativeHostOrigin(
                 host_root_handle_id="legacy-root-handle",
                 root_policy_fingerprint=_digest("root-policy"),
@@ -466,3 +481,126 @@ def test_shadow_report_requires_explicit_opt_in_for_frozen_extension_exception(
     assert (
         report.known_exceptions[0].reason == "legacy_extension_post_discovery_collision"
     )
+
+
+def test_shadow_adapter_rejects_owner_facts_that_do_not_match_legacy_evidence(
+    tmp_path: Path,
+) -> None:
+    skill = SkillDescriptor(
+        name="review",
+        content="Review changes.",
+        source_path=tmp_path / "review" / "SKILL.md",
+        source_root=tmp_path,
+    )
+    legacy = ResourceSnapshot(
+        cwd=tmp_path,
+        active_skill_descriptors=(skill,),
+        candidate_skill_descriptors=(skill,),
+    )
+
+    with pytest.raises(
+        LegacyShadowAdaptationError,
+        match="owner-supplied source facts",
+    ):
+        adapt_legacy_resource_snapshot(
+            legacy,
+            discovery_request_fingerprint=_digest("request"),
+            provenance_resolver=lambda _descriptor: LegacyCandidateProvenance(
+                source_generation_ref=_source_ref(),
+                source_class="temporary",
+                scope_id="temporary",
+                source_root_order=0,
+                content_origin=NativeHostOrigin(
+                    host_root_handle_id="temporary-root",
+                    root_policy_fingerprint=_digest("temporary-root"),
+                    workspace_or_user_scope="temporary",
+                ),
+                opaque_locator="review/SKILL.md",
+            ),
+        )
+
+
+def test_shadow_context_projection_preserves_user_then_outer_to_inner_project_order(
+    tmp_path: Path,
+) -> None:
+    user = PromptFragmentDescriptor(
+        name="AGENTS.md",
+        id="user.agents",
+        text="user",
+        prompt_kind="agents_md",
+        source_path=tmp_path / "user" / "AGENTS.md",
+        source_root=tmp_path / "user",
+        source_kind="user_global",
+        source_scope="user",
+        source_root_order=0,
+    )
+    outer = PromptFragmentDescriptor(
+        name="AGENTS.md",
+        id="project.agents",
+        text="outer",
+        prompt_kind="agents_md",
+        source_path=tmp_path / "project" / "AGENTS.md",
+        source_root=tmp_path / "project",
+        source_root_order=0,
+    )
+    inner = PromptFragmentDescriptor(
+        name="AGENTS.md",
+        id="project.agents",
+        text="inner",
+        prompt_kind="agents_md",
+        source_path=tmp_path / "project" / "inner" / "AGENTS.md",
+        source_root=tmp_path / "project" / "inner",
+        source_root_order=1,
+    )
+    legacy = ResourceSnapshot(
+        cwd=tmp_path,
+        active_agents_descriptor=inner,
+        active_context_descriptors=(user, outer, inner),
+        candidate_agents_descriptors=(user, outer, inner),
+    )
+    source_ref = _source_ref()
+
+    def provenance(descriptor: object) -> LegacyCandidateProvenance:
+        return LegacyCandidateProvenance(
+            source_generation_ref=source_ref,
+            source_class=descriptor.source_kind,  # type: ignore[attr-defined]
+            scope_id=descriptor.source_scope,  # type: ignore[attr-defined]
+            source_root_order=descriptor.source_root_order,  # type: ignore[attr-defined]
+            content_origin=NativeHostOrigin(
+                host_root_handle_id=f"root:{descriptor.source_kind}",  # type: ignore[attr-defined]
+                root_policy_fingerprint=_digest(
+                    f"root:{descriptor.source_kind}"  # type: ignore[attr-defined]
+                ),
+                workspace_or_user_scope=(
+                    "user"
+                    if descriptor.source_kind == "user_global"  # type: ignore[attr-defined]
+                    else "workspace"
+                ),
+            ),
+            opaque_locator=(
+                f"{descriptor.source_kind}/{descriptor.source_root_order}/AGENTS.md"  # type: ignore[attr-defined]
+            ),
+        )
+
+    adapted = adapt_legacy_resource_snapshot(
+        legacy,
+        discovery_request_fingerprint=_digest("context-request"),
+        provenance_resolver=provenance,
+    )
+    catalog = compose_resource_catalog(
+        adapted.source_snapshots,
+        catalog_generation=1,
+        engine_binding_fingerprint=_digest("engine"),
+        merge_policy=default_resource_merge_policy(),
+        activation_policy=build_activation_policy_snapshot(
+            policy_revision="activation-v1"
+        ),
+    )
+    projected = project_shadow_compatibility_bundle(
+        adaptation=adapted,
+        catalog_snapshot=catalog,
+        cwd=tmp_path,
+    )
+
+    assert projected.prompt_fragments == ["user", "outer", "inner"]
+    assert projected.agents_md == "inner"
