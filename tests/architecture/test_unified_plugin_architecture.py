@@ -36,6 +36,9 @@ PLC3_CONTRACT_PATH = Path(
 PAP4_CONTRACT_PATH = Path(
     "docs/internals/architecture/harness/plugin-capability-admission-pap4-contract.md"
 )
+RESOURCE_CATALOG_PLAN_PATH = Path(
+    "docs/internals/architecture/harness/resource-catalog-pluginization-plan.md"
+)
 CAPABILITY_LIFECYCLE_PATH = Path(
     "docs/internals/architecture/harness/capability-dependency-and-mount-lifecycle.md"
 )
@@ -3361,3 +3364,39 @@ def test_pap5_session_root_is_the_only_graph_planning_site() -> None:
 
     assert "RuntimeCapabilityGraphPlanner" not in model_call
     assert agent_product.count("RuntimeCapabilityGraphPlanner().plan(") == 1
+
+
+def test_pap55_resource_catalog_plan_preserves_one_owner_and_native_skills() -> None:
+    plan = RESOURCE_CATALOG_PLAN_PATH.read_text(encoding="utf-8")
+    authoring = AUTHORING_PLAN_PATH.read_text(encoding="utf-8")
+    lifecycle = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
+    readme = README_PATH.read_text(encoding="utf-8")
+
+    for required in (
+        "Pluginize mechanisms, not every piece of content.",
+        "`resource.catalog_engine`",
+        "`resource.source`",
+        "Both are `capability_component` contributions",
+        "`harness.resources` Capability Provider remains the only top-level",
+        "A native filesystem Skill remains loadable",
+        "without a Plugin manifest",
+        "The engine also does not own precedence",
+        "an owner validator canonicalizes",
+        "Package Catalog; never choose effective Resources",
+        "focused `resource.catalog`\nand `resource.load` facets",
+        "there is no `skill.catalog` facet",
+        "`ResourceBundle` as a compatibility projection",
+        "the Catalog never imports or starts it",
+        "`PreparedResourceOwnerGeneration`",
+        "`StagedResourceCompositionCandidate` remains the sole Resource Profile",
+        "RCP0 through RCP5 precede the `coding.lsp` production migration",
+        "new MCP functionality",
+    ):
+        assert required in plan
+
+    assert "### PAP5.5: Resource Catalog And Source Component Foundation" in authoring
+    assert "### PLC4.5: Resource Catalog And Source Component Foundation" in lifecycle
+    assert "resource-catalog-pluginization-plan.md" in authoring
+    assert "resource-catalog-pluginization-plan.md" in lifecycle
+    assert "resource-catalog-pluginization-plan.md" in readme
+    assert "Source implementation and merge remain PLC8 work" not in authoring

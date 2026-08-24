@@ -20,7 +20,8 @@
   unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
-  `coding.base`, `coding.arch`, management control, and later Skill adoption.
+  `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
+  Skill catalog convergence, and later public SDK stabilization.
 - Authority: the accepted
   [Unified Plugin Architecture](unified-plugin-architecture.md),
   [Capability Composition Lifecycle Authority Plan](composition-lifecycle-authority-plan.md),
@@ -59,12 +60,14 @@ restore and freeze the source-backed architecture baseline
   -> close executable approval and verified Definition evaluation
   -> add exact-owner admission for Resource and Capability contributions
   -> bind through existing Resource generations and the existing Session Graph
+  -> implement Resource-owner components, one Catalog, and typed lazy Resource
+     loading while retaining manifest-free native Skills
   -> prove both no-code Resource and executable Capability fixtures
   -> migrate coding.lsp and delete its peer runtime path
   -> migrate coding.base and delete CLI/bootstrap peer registrations
   -> migrate coding.arch and prove a second Capability/optional dependency
   -> stabilize the public author SDK
-  -> converge Skill sources on the Resource path
+  -> stabilize the Resource/Skill author SDK over the converged path
   -> finish management projections, isolation, retained-version GC and UX
 ```
 
@@ -93,6 +96,8 @@ Two controlled overlaps are allowed:
    packaged and selected as Plugins.
 7. Preserve exact owner publication, disposal, Model Input reconstruction, and
    Product-neutral Harness boundaries.
+8. Make one Resource Catalog authoritative before LSP/Base/Arch migrations so
+   later Product Plugins do not bind to legacy Loader or Skill fallback paths.
 
 ## Non-Goals
 
@@ -979,6 +984,37 @@ Exit gate:
   Product runtime Consumer path and never look up a Provider directly; and
 - no second Graph, Resource candidate, registry bag, or effective clock exists.
 
+### PLC4.5: Resource Catalog And Source Component Foundation
+
+The normative plan is
+[Resource Catalog And Source Pluginization Plan](resource-catalog-pluginization-plan.md).
+
+Scope:
+
+- implement the minimum exact-owner `capability_component` lifecycle for the
+  two Resource schemas `resource.catalog_engine` and `resource.source`;
+- select one Catalog engine, aggregate filesystem/admitted-package/embedded
+  source generations, and publish one immutable Catalog generation;
+- retain native `SKILL.md` loading without Plugin packaging;
+- adopt one prepared Resource owner generation through the existing
+  `harness.resources` Provider and the single Session Graph;
+- bind exact lazy body loads to source generation and content digest; and
+- cut CLI, activation, prompt, command, refresh, and Model Input Skill callers
+  to one focused Resource Consumer before deleting peer Loader paths.
+
+Exit gate:
+
+- one Catalog and one Resource-owner merge policy choose every effective Skill;
+- Package Catalog remains non-effective installation inventory;
+- Resource component changes require a new Session, while accepted content-only
+  refresh publishes only at the next Resource/Model Input boundary;
+- exact old generations drain and disposers cannot remove sibling sources; and
+- no public universal component SDK, `harness.skills`, per-Skill Plugin, or MCP
+  expansion is introduced.
+
+This is the first production owner-component aggregation proof. It does not
+replace PLC5 as the first production complete-Bundle Provider/Graph proof.
+
 ### PLC5: `coding.lsp.default` Production Provider
 
 Scope and gates are PAP6, including packaging the complete Bundle, narrow
@@ -1042,8 +1078,8 @@ Scope:
 - provide validation without import and a separate approved execution
   conformance command;
 - keep each `SKILL.md` a `resource_item`;
-- converge filesystem, embedded and admitted-package Skill sources on one
-  Resource-owned catalog snapshot and lazy body loader; and
+- stabilize the PLC4.5 filesystem, embedded and admitted-package Skill path and
+  expose only the proven data-only helpers and advanced component surface; and
 - route Skill scripts through existing Tool/Policy/Approval/Sandbox execution.
 
 Exit gate:
@@ -1074,7 +1110,7 @@ Exit gate:
 
 ## Proposed Sequencing Revisions
 
-This coordinating plan proposes two explicit revisions to the accepted UPA
+This coordinating plan proposes three explicit revisions to the accepted UPA
 delivery order. They require architecture approval before implementation
 claims the revised milestone names:
 
@@ -1083,12 +1119,15 @@ claims the revised milestone names:
    GC and destructive cleanup in the final closure; and
 2. deliver production `coding.base` after `coding.lsp` but before
    `coding.arch`. The Base shadow package may start earlier, while the public
-   SDK remains gated on all three production samples.
+   SDK remains gated on all three production samples; and
+3. insert PLC4.5 before `coding.lsp` to implement the internal Resource Catalog
+   and source-component foundation, while leaving universal public component
+   authoring and SDK stabilization in PLC8.
 
-This ordering proves one executable Capability first, then closes the default
-Product composition and removal of duplicate base paths, then proves a second
-Capability and optional dependency. It does not weaken the existing stable-SDK
-gate.
+This ordering first closes the shared Resource aggregation substrate, then
+proves one executable complete-Bundle Capability, closes the default Product
+composition and duplicate base paths, and finally proves a second Capability
+and optional dependency. It does not weaken the existing stable-SDK gate.
 
 ## Verification Matrix
 

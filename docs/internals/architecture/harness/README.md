@@ -48,8 +48,13 @@ planning, work event persistence, or AI provider behavior.
   the Coordinator one finalize/abort/expire transition, keeps Resource/Tool/
   Command contributions orthogonal to Capability Providers, and then proceeds
   through durable execution approval, owner admission, and LSP production proof.
-  Skill-provider convergence remains subordinate and the stable public SDK
-  stays gated by the broader production combination evidence.
+  PAP5.5 now moves internal Resource Catalog/Skill-path convergence before LSP,
+  while the stable public SDK stays gated by broader production evidence.
+- [Resource Catalog And Source Pluginization Plan](resource-catalog-pluginization-plan.md)
+  defines PAP5.5/PLC4.5: one Resource-owner Catalog authority, an exclusive
+  Catalog-engine component, aggregate filesystem/package/embedded source
+  components, typed lazy loads and Skill projection, exact-generation
+  lifecycle, and manifest-free native `SKILL.md` compatibility before LSP.
 - [Plugin Declaration Foundation PLC1B Contract](plugin-declaration-foundation-plc1b-contract.md)
   freezes the no-self-reference source/group identity layers, exact v2 wire and
   hash records, canonical document bytes, accepted-attempt evidence, group-
@@ -167,6 +172,11 @@ description.
   [self-review](plugin-authoring-primitives-plan-review.md) records the required
   approval, production-sample, SDK-publication, Skill, and peer-route deletion
   gates before implementation.
+- [Resource Catalog And Source Pluginization Plan](resource-catalog-pluginization-plan.md)
+  is the proposed PAP5.5/PLC4.5 contract and migration sequence for making the
+  Catalog engine and source/loading mechanisms owner-defined Plugin components
+  while keeping Resource items, native Skills, the Package Catalog, and the
+  single Session Graph in their existing authorities.
 - [Plugin Declaration Foundation PLC1B Contract](plugin-declaration-foundation-plc1b-contract.md)
   is the normative PLC1B-1 schema/state companion to UPA and both delivery
   plans; its final narrow freeze review passed at `3f53a5af` with zero P0/P1.
