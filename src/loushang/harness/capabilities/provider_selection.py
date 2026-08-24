@@ -6,7 +6,10 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import Never, Protocol, TypeVar
 
-from loushang.harness.capabilities.contracts import CapabilityDefinition
+from loushang.harness.capabilities.contracts import (
+    CapabilityDefinition,
+    CapabilityRequirement,
+)
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderAdmissionRecord,
     CapabilityProviderBindingSpec,
@@ -351,11 +354,75 @@ class ProductCapabilityProviderResolver:
         optional_decisions: list[CapabilityOptionalRequirementDecision] = []
         used_prebound: set[str] = set()
 
+        def visit_requirements(
+            requester_capability_id: str,
+            requirements: tuple[CapabilityRequirement, ...],
+        ) -> None:
+            for requirement in requirements:
+                if requirement.optional:
+                    if requirement.capability in prebound_by_capability:
+                        visit(requirement.capability)
+                        optional_decisions.append(
+                            CapabilityOptionalRequirementDecision(
+                                requester_capability_id=requester_capability_id,
+                                capability_id=requirement.capability,
+                                satisfied=True,
+                                selected_candidate_fingerprint=(
+                                    _prebound_provider_fingerprint(
+                                        prebound_by_capability[
+                                            requirement.capability
+                                        ]
+                                    )
+                                ),
+                            )
+                        )
+                        continue
+                    dependency_choices = choices_by_capability.get(
+                        requirement.capability,
+                        [],
+                    )
+                    if not dependency_choices:
+                        optional_decisions.append(
+                            CapabilityOptionalRequirementDecision(
+                                requester_capability_id=requester_capability_id,
+                                capability_id=requirement.capability,
+                                satisfied=False,
+                                selected_candidate_fingerprint=None,
+                            )
+                        )
+                        continue
+                    visit(requirement.capability)
+                    dependency = selected[requirement.capability]
+                    optional_decisions.append(
+                        CapabilityOptionalRequirementDecision(
+                            requester_capability_id=requester_capability_id,
+                            capability_id=requirement.capability,
+                            satisfied=True,
+                            selected_candidate_fingerprint=(
+                                dependency.choice.candidate_fingerprint
+                            ),
+                        )
+                    )
+                    continue
+                visit(requirement.capability)
+
         def visit(capability_id: str) -> None:
-            if capability_id in selected or capability_id in visiting:
+            if (
+                capability_id in selected
+                or capability_id in used_prebound
+                or capability_id in visiting
+            ):
                 return
             if capability_id in prebound_by_capability:
                 used_prebound.add(capability_id)
+                visiting.add(capability_id)
+                try:
+                    visit_requirements(
+                        capability_id,
+                        prebound_by_capability[capability_id].requirements,
+                    )
+                finally:
+                    visiting.remove(capability_id)
                 return
             choices = choices_by_capability.get(capability_id, [])
             if not choices:
@@ -412,53 +479,10 @@ class ProductCapabilityProviderResolver:
             selected[capability_id] = entry
             visiting.add(capability_id)
             try:
-                for requirement in admission.provider.requirements:
-                    if requirement.optional:
-                        if requirement.capability in prebound_by_capability:
-                            visit(requirement.capability)
-                            optional_decisions.append(
-                                CapabilityOptionalRequirementDecision(
-                                    requester_capability_id=capability_id,
-                                    capability_id=requirement.capability,
-                                    satisfied=True,
-                                    selected_candidate_fingerprint=(
-                                        _prebound_provider_fingerprint(
-                                            prebound_by_capability[
-                                                requirement.capability
-                                            ]
-                                        )
-                                    ),
-                                )
-                            )
-                            continue
-                        dependency_choices = choices_by_capability.get(
-                            requirement.capability,
-                            [],
-                        )
-                        if not dependency_choices:
-                            optional_decisions.append(
-                                CapabilityOptionalRequirementDecision(
-                                    requester_capability_id=capability_id,
-                                    capability_id=requirement.capability,
-                                    satisfied=False,
-                                    selected_candidate_fingerprint=None,
-                                )
-                            )
-                            continue
-                        visit(requirement.capability)
-                        dependency = selected[requirement.capability]
-                        optional_decisions.append(
-                            CapabilityOptionalRequirementDecision(
-                                requester_capability_id=capability_id,
-                                capability_id=requirement.capability,
-                                satisfied=True,
-                                selected_candidate_fingerprint=(
-                                    dependency.choice.candidate_fingerprint
-                                ),
-                            )
-                        )
-                        continue
-                    visit(requirement.capability)
+                visit_requirements(
+                    capability_id,
+                    admission.provider.requirements,
+                )
             finally:
                 visiting.remove(capability_id)
 

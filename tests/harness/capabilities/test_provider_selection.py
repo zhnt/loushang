@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from loushang.harness.capabilities import (
@@ -134,6 +136,61 @@ def test_product_resolver_satisfies_plugin_dependency_from_prebound_provider() -
         )
     )
     assert graph.binding_order == ("harness.base", "app.root")
+
+
+def test_product_resolver_traverses_prebound_provider_dependencies() -> None:
+    admissions, snapshots, definitions = _admitted_graph()
+    root = next(item for item in admissions if item.capability_id == "app.root")
+    base = next(item for item in admissions if item.capability_id == "harness.base")
+    optional = next(
+        item for item in admissions if item.capability_id == "harness.optional"
+    )
+    selected_snapshots = tuple(
+        item
+        for item in snapshots
+        if item.capability_id in {"app.root", "harness.optional"}
+    )
+    prebound_base = replace(
+        base.provider,
+        requirements=(
+            CapabilityRequirement(
+                capability="harness.optional",
+                facets=("default",),
+                compatible_contract=CapabilityContractRange.exact(1),
+            ),
+        ),
+    )
+
+    resolved = ProductCapabilityProviderResolver().resolve(
+        _plan(
+            _choice(admissions, "app.root"),
+            _choice(admissions, "harness.optional"),
+        ),
+        definitions=definitions,
+        admissions=(root, optional),
+        owner_snapshots=selected_snapshots,
+        evaluated_at=150,
+        prebound_providers=(prebound_base,),
+    )
+
+    assert tuple(item.capability_id for item in resolved.entries) == (
+        "app.root",
+        "harness.optional",
+    )
+    assert resolved.prebound_providers == (prebound_base,)
+    graph = RuntimeCapabilityGraphPlanner().plan(
+        CapabilityGraphPlanRequest(
+            product_id="app",
+            roots=resolved.roots,
+            definitions=definitions,
+            providers=(*resolved.prebound_providers, *resolved.providers),
+        )
+    )
+    assert graph.binding_order == (
+        "harness.optional",
+        "harness.base",
+        "app.root",
+    )
 
 
 @pytest.mark.parametrize(

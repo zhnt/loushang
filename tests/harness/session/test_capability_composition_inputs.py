@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 
 import pytest
 
@@ -21,6 +22,7 @@ from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityOwnerAuthorityGate,
     SessionCapabilityOwnerGenerationBinding,
     SessionCapabilityOwnerGenerationStagingError,
+    StagedSessionCapabilityOwnerGeneration,
     dispose_session_capability_owner_generations,
     stage_session_capability_owner_generations,
 )
@@ -115,6 +117,84 @@ async def _owner_staging_rechecks_expiry_before_live_generation() -> None:
             captures=(),
         )
     assert staged is False
+
+
+def test_owner_authority_gate_rejects_wrong_current_snapshot_identities() -> None:
+    admission = _admission(owner_id="product.tools", contribution_id="tools-a")
+    wrong = _admission(owner_id="product.tools.other", contribution_id="tools-b")
+    gate = _authority_gate(admission)
+    wrong_candidate = wrong.candidate
+    wrong_owner = OwnerContributionAuthority(
+        OwnerContributionPolicy(
+            owner_id=wrong.owner_id,
+            contribution_kind=wrong.contribution_kind,
+            product_id=wrong.product_id,
+            policy_revision=admission.owner_policy_revision,
+            revocation_epoch=admission.revocation_epoch,
+            allowed_source_trust_classes=(wrong_candidate.source_trust_class,),
+            allowed_collection_ids=(wrong_candidate.contribution.collection_id,),
+            allowed_requirement_bindings=("direct",),
+            consumer_scope=wrong.consumer_scope,
+            consumer_refresh_boundary=wrong.consumer_refresh_boundary,
+        )
+    ).snapshot()
+    wrong_trust = PluginSourceTrustSnapshotV1(
+        plugin_id=wrong.plugin_id,
+        package_source_identity=wrong_candidate.package_source_identity,
+        source_trust_class=admission.candidate.source_trust_class,
+        source_trust_policy_revision=(
+            admission.candidate.source_trust_policy_revision
+        ),
+        trusted=True,
+    )
+
+    with pytest.raises(ValueError, match="identity"):
+        replace(
+            gate,
+            owner_snapshot_reader=lambda _owner, _kind, _product: wrong_owner,
+            trust_snapshot_reader=lambda _plugin, _source: wrong_trust,
+        ).validate(admission)
+
+
+def test_owner_generation_disposal_is_single_flight() -> None:
+    asyncio.run(_owner_generation_disposal_is_single_flight())
+
+
+async def _owner_generation_disposal_is_single_flight() -> None:
+    admission = _admission(owner_id="product.tools", contribution_id="tools-a")
+    started = asyncio.Event()
+    release = asyncio.Event()
+    attempts = 0
+
+    async def dispose(_value: object) -> None:
+        nonlocal attempts
+        attempts += 1
+        started.set()
+        await release.wait()
+
+    binding = SessionCapabilityOwnerGenerationBinding(
+        owner_id=admission.owner_id,
+        contribution_kind=admission.contribution_kind,
+        plugin_id=admission.plugin_id,
+        contribution_id=admission.contribution_id,
+        admission_fingerprint=admission.fingerprint,
+        authority_gate=_authority_gate(admission),
+        stage=lambda _captures: object(),
+        dispose=dispose,
+    )
+    generation = StagedSessionCapabilityOwnerGeneration(
+        binding=binding,
+        value=object(),
+    )
+    first = asyncio.create_task(generation.dispose_once())
+    await started.wait()
+    second = asyncio.create_task(generation.dispose_once())
+    await asyncio.sleep(0)
+    assert attempts == 1
+    release.set()
+    await asyncio.gather(first, second)
+    assert generation.disposed is True
+    assert attempts == 1
 
 
 def _admission(*, owner_id: str, contribution_id: str):  # type: ignore[no-untyped-def]

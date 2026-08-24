@@ -366,11 +366,12 @@ class _PreparedComponentAttempt:
                     "Component factory must return a CapabilityBundleValue"
                 )
             self.disposer = disposer
+            self.pending_disposal_value = value
             if set(value.facet_ids) != set(self.resolved.admission.effective_facets):
-                self.pending_disposal_value = value
                 await self._dispose_pending_value()
                 raise ValueError("Component factory returned unexpected facets")
             self._transition("STARTING", "STARTED")
+            self.pending_disposal_value = None
             return value
         except BaseException:
             self._try_fail_active_use()

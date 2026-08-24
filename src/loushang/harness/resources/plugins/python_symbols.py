@@ -1,4 +1,4 @@
-"""Single verified Python module/symbol loading path for in-process Plugins."""
+"""Verified source loading with direct-import checks for host-equivalent Plugins."""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ def load_verified_plugin_python_module(
     module_name: str,
     host_api_prefixes: tuple[str, ...],
 ) -> VerifiedPluginPythonModule:
-    """Compile and execute one verified package-local source file exactly once."""
+    """Compile one verified source file with non-sandbox direct-import checks."""
 
     if not isinstance(revision_handle, VerifiedRevisionHandle):
         raise TypeError("Plugin Python loader requires a verified revision handle")
@@ -65,7 +65,7 @@ def load_verified_plugin_python_module(
     revision_handle.verify()
     with revision_handle.open_file(path) as stream:
         source = stream.read()
-    import_policy = _LockedImportPolicy(
+    import_policy = _DirectImportPolicy(
         dependency_lock,
         host_api_prefixes=prefixes,
     )
@@ -86,7 +86,7 @@ def load_verified_plugin_python_module(
     )
 
 
-class _LockedImportPolicy:
+class _DirectImportPolicy:
     def __init__(
         self,
         dependency_lock: PluginDependencyClosureLock,
@@ -94,7 +94,7 @@ class _LockedImportPolicy:
         host_api_prefixes: tuple[str, ...],
     ) -> None:
         locked_names: dict[str, str] = {}
-        distribution_roots: dict[str, Path] = {}
+        distribution_paths: dict[str, tuple[Path, ...]] = {}
         for distribution in dependency_lock.python_distributions:
             normalized_name = _normalize_distribution_name(distribution.name)
             try:
@@ -104,17 +104,22 @@ class _LockedImportPolicy:
             installed_version = installed.version
             if installed_version != distribution.version:
                 raise ImportError("A locked Plugin dependency version drifted")
+            files = installed.files
+            if files is None:
+                raise ImportError("A locked Plugin dependency origin is unverifiable")
             locked_names[normalized_name] = distribution.version
-            distribution_roots[normalized_name] = Path(
-                str(installed.locate_file(""))
-            ).resolve()
+            distribution_paths[normalized_name] = tuple(
+                Path(str(installed.locate_file(item))).resolve()
+                for item in files
+            )
         package_distributions = importlib.metadata.packages_distributions()
-        self._allowed_distribution_roots = {
+        self._allowed_distribution_paths = {
             package: tuple(
-                distribution_roots[normalized]
+                path
                 for item in distributions
                 if (normalized := _normalize_distribution_name(item))
                 in locked_names
+                for path in distribution_paths[normalized]
             )
             for package, distributions in package_distributions.items()
             if any(
@@ -160,10 +165,12 @@ class _LockedImportPolicy:
         )
         if root in sys.stdlib_module_names:
             self._require_stdlib_origin(name)
-        elif root in self._allowed_distribution_roots:
+        elif root in self._allowed_distribution_paths:
             self._require_distribution_origin(name, root=root)
         elif not is_host_api:
-            raise ImportError("Plugin import is outside its locked closure")
+            raise ImportError(
+                "Plugin import is outside its declared direct-import boundary"
+            )
         return builtins.__import__(name, globals, locals, fromlist, level)
 
     def _require_stdlib_origin(self, name: str) -> None:
@@ -182,9 +189,22 @@ class _LockedImportPolicy:
 
     def _require_distribution_origin(self, name: str, *, root: str) -> None:
         spec = importlib.util.find_spec(name)
-        allowed = self._allowed_distribution_roots[root]
-        paths = () if spec is None else _spec_paths(spec)
-        if not paths or any(not _is_within(path, allowed) for path in paths):
+        if spec is None:
+            raise ImportError("Plugin dependency import cannot be resolved")
+        allowed = self._allowed_distribution_paths[root]
+        origin = getattr(spec, "origin", None)
+        if isinstance(origin, str) and origin not in {"built-in", "frozen"}:
+            if Path(origin).resolve() not in allowed:
+                raise ImportError("Plugin dependency import origin is outside its lock")
+            return
+        locations = getattr(spec, "submodule_search_locations", None)
+        if locations is None:
+            raise ImportError("Plugin dependency import origin is outside its lock")
+        location_paths = tuple(Path(item).resolve() for item in locations)
+        if not location_paths or any(
+            not any(path == location or path.is_relative_to(location) for path in allowed)
+            for location in location_paths
+        ):
             raise ImportError("Plugin dependency import origin is outside its lock")
 
 

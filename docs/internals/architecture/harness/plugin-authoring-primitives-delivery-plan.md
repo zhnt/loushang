@@ -824,7 +824,9 @@ Exit gate:
 
 - disabled/denied code is observably never imported;
 - source mutation after publication cannot affect evaluation;
-- undeclared transitive imports and conflicting locked closures fail closed;
+- unverifiable direct imports and conflicting declared locks fail closed;
+- transitive/dynamic import isolation is explicitly deferred to an isolated
+  worker rather than claimed by the host-equivalent direct loader;
 - document/in-process mixed-source success evaluates each executable group once,
   joins the complete evidence set and finalizes exactly once;
 - a later-group failure after decision consumption aborts the aggregate once,

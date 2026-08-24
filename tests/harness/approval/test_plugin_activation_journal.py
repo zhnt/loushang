@@ -136,6 +136,45 @@ def test_activation_consumption_rechecks_subject_policy_trust_epoch_and_expiry(
     assert expiry.value.code == "plugin_activation_decision_expired"
 
 
+def test_activation_start_rechecks_retained_authority_after_consumption(
+    tmp_path: Path,
+) -> None:
+    retained_live = [True]
+    journal = _journal(
+        tmp_path,
+        retained_authority_validator=lambda _authorization: retained_live[0],
+    )
+    subject = _subject()
+    decision = journal.issue_activation_decision(
+        subject,
+        disposition="approved",
+        authorization=PluginApprovalAuthorizationV1.retained_grant(
+            actor_id="operator:alice",
+            source="test-policy",
+            authority_id="grant:plugin-activation",
+        ),
+        issued_at_unix_ms=1_000,
+        expires_at_unix_ms=3_000,
+        expected_journal_revision=0,
+    )
+    reservation = journal.consume_activation_decision(
+        subject,
+        decision_id=decision.decision_id,
+        host_boot_id="3" * 32,
+        import_realm_id="4" * 32,
+        expected_journal_revision=1,
+    )
+    retained_live[0] = False
+
+    with pytest.raises(PluginActivationJournalError) as caught:
+        journal.validate_activation_use_current(
+            reservation,
+            expected_state="CONSUMED_NOT_STARTED",
+        )
+
+    assert caught.value.code == "plugin_activation_authorization_stale"
+
+
 def test_activation_decision_revocation_is_durable_and_blocks_consumption(
     tmp_path: Path,
 ) -> None:
@@ -229,13 +268,40 @@ def test_recovery_cancels_unstarted_and_fails_possibly_started_attempts(
     }
 
 
-def _journal(tmp_path: Path, *, now: int = 2_000) -> PluginActivationDecisionJournal:
+def test_recovery_does_not_fail_live_attempt_from_current_boot(tmp_path: Path) -> None:
+    journal = _journal(tmp_path)
+    reservation = _consume(journal, _issue(journal).decision_id)
+    starting = journal.transition_activation_use(
+        reservation.activation_use_id,
+        expected_state="CONSUMED_NOT_STARTED",
+        target_state="STARTING",
+        host_boot_id="3" * 32,
+        import_realm_id="4" * 32,
+        transitioned_at_unix_ms=2_100,
+        expected_journal_revision=2,
+    )
+
+    assert journal.recover_activation_uses(
+        current_host_boot_id="3" * 32,
+        recovered_at_unix_ms=2_500,
+        expected_journal_revision=3,
+    ) == ()
+    assert journal.snapshot().activation_uses == (starting,)
+
+
+def _journal(
+    tmp_path: Path,
+    *,
+    now: int = 2_000,
+    retained_authority_validator=lambda _authorization: False,  # type: ignore[no-untyped-def]
+) -> PluginActivationDecisionJournal:
     ids = iter(("1" * 48, "2" * 48, "5" * 48, "6" * 48))
     return PluginActivationDecisionJournal(
         tmp_path / "activation.jsonl",
         scope_id="workspace:test",
         identity_factory=lambda: next(ids),
         clock=lambda: now,
+        retained_authority_validator=retained_authority_validator,
     )
 
 

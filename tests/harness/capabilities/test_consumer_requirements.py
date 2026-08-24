@@ -247,7 +247,7 @@ def test_compiler_rejects_public_catalog_identity_owned_by_two_owners() -> None:
         contribution_id="tools-a",
         contribution=CatalogConsumerContributionSpec(
             contribution_kind="tool_pack",
-            catalog_id="shared.tools",
+            catalog_id="product-a.tools",
             catalog_revision=1,
             item_ids=("query",),
         ),
@@ -257,7 +257,7 @@ def test_compiler_rejects_public_catalog_identity_owned_by_two_owners() -> None:
         contribution_id="tools-b",
         contribution=CatalogConsumerContributionSpec(
             contribution_kind="tool_pack",
-            catalog_id="shared.tools",
+            catalog_id="product-b.tools",
             catalog_revision=1,
             item_ids=("query",),
         ),

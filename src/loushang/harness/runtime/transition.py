@@ -28,6 +28,7 @@ class SessionTransitionHost(Generic[S]):
         self._before_invalidate = before_invalidate
         self._before_invalidate_observers: list[LifecycleCallback] = []
         self._after_invalidate_observers: list[LifecycleCallback] = []
+        self._pending_retirements: list[S] = []
         self._notifying_after_invalidate = False
         self._lock = asyncio.Lock()
         self._lock_owner: asyncio.Task[object] | None = None
@@ -36,6 +37,10 @@ class SessionTransitionHost(Generic[S]):
     @property
     def current(self) -> S | None:
         return self._current
+
+    @property
+    def pending_retirements(self) -> tuple[S, ...]:
+        return tuple(self._pending_retirements)
 
     def set_rebind(self, callback: SessionCallback[S] | None) -> None:
         self._rebind = callback
@@ -113,6 +118,7 @@ class SessionTransitionHost(Generic[S]):
     ) -> S:
         self._reject_reentrant_after_invalidate_transition()
         async with self.transition():
+            await self._retry_pending_retirements()
             if prepare is not None:
                 await _invoke_session_callback(prepare, next_session)
 
@@ -124,7 +130,7 @@ class SessionTransitionHost(Generic[S]):
                 )
                 self._current = None
                 try:
-                    await _invoke_session_callback(self._dispose, previous)
+                    await self._dispose_or_retain(previous)
                 finally:
                     await self._notify_after_invalidate()
 
@@ -142,15 +148,45 @@ class SessionTransitionHost(Generic[S]):
     ) -> None:
         self._reject_reentrant_after_invalidate_transition()
         async with self.transition():
+            await self._retry_pending_retirements()
             current = self._current
             if current is None:
                 return
             await self._prepare_release(current, before_release=before_release)
             self._current = None
             try:
-                await _invoke_session_callback(self._dispose, current)
+                await self._dispose_or_retain(current)
             finally:
                 await self._notify_after_invalidate()
+
+    async def _dispose_or_retain(self, session: S) -> None:
+        try:
+            await _invoke_session_callback(self._dispose, session)
+        except BaseException:
+            if not any(item is session for item in self._pending_retirements):
+                self._pending_retirements.append(session)
+            raise
+
+    async def _retry_pending_retirements(self) -> None:
+        if not self._pending_retirements:
+            return
+        pending = tuple(self._pending_retirements)
+        remaining: list[S] = []
+        errors: list[BaseException] = []
+        for session in pending:
+            try:
+                await _invoke_session_callback(self._dispose, session)
+            except BaseException as exc:
+                remaining.append(session)
+                errors.append(exc)
+        self._pending_retirements = remaining
+        if errors:
+            primary = errors[0]
+            for additional in errors[1:]:
+                primary.add_note(
+                    f"Additional Session retirement failure: {additional!r}"
+                )
+            raise primary
 
     async def _prepare_release(
         self,

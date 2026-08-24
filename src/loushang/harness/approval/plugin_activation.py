@@ -1093,6 +1093,14 @@ class PluginActivationDecisionJournal:
                     "Plugin activation decision expired before execution start",
                     code="plugin_activation_decision_expired",
                 )
+            if (
+                decision.authorization.authorization_kind != "direct"
+                and not self._retained_authority_validator(decision.authorization)
+            ):
+                raise self._error(
+                    "Retained activation authorization is no longer live",
+                    code="plugin_activation_authorization_stale",
+                )
 
     def transition_activation_use(
         self,
@@ -1165,9 +1173,9 @@ class PluginActivationDecisionJournal:
             ):
                 if current.state in _TERMINAL_USE_STATES:
                     continue
+                if current.host_boot_id == current_host_boot_id:
+                    continue
                 if current.state == "CONSUMED_NOT_STARTED":
-                    if current.host_boot_id == current_host_boot_id:
-                        continue
                     recovered.append(
                         replace(current, state="CANCELLED_BEFORE_START")
                     )

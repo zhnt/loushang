@@ -987,6 +987,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
             self._model_call_consumer = None
             self._side_question_consumer = None
             self._transcript_consumer = None
+            self._resource_capability_ports.invalidate()
+            self._workspace_capability_ports.invalidate()
+            self._transcript_capability_ports.invalidate()
             staged_candidate = self._staged_resource_candidate
             staged_side_question = self._staged_side_question_candidate
             owner_generations = self._capability_owner_generations
@@ -1016,9 +1019,6 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     self._capability_owner_generations = ()
                     self._external_consumer_captures = ()
             if not owner_cleanup_failed:
-                self._resource_capability_ports.invalidate()
-                self._workspace_capability_ports.invalidate()
-                self._transcript_capability_ports.invalidate()
                 try:
                     cleanup_codes = await self._capability_graph_binder.dispose(
                         self._capability_graph_runtime
@@ -1120,6 +1120,15 @@ class AgentProductSession(AgentSessionAdapterMixin):
             consumer = self._model_call_consumer
             if consumer is not None:
                 return consumer
+            if (
+                self._capability_owner_generations
+                or self._pending_capability_components
+                or self._capability_graph_runtime.has_pending_retirements
+            ):
+                raise RuntimeError(
+                    "Session Capability composition cleanup is pending; "
+                    "the Session must retire before another prepare."
+                )
             binding = self._model_call_capability_binding
             prepared_components: list[PreparedCapabilityComponent] = []
             owner_generations: tuple[

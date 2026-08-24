@@ -525,6 +525,7 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
     ) -> None:
         current = self.current_session
         if current is None:
+            await self._host.dispose_current()
             return
         transition = SessionLifecycleTransition(
             reason=reason,

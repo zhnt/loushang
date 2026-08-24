@@ -2471,7 +2471,8 @@ def test_revision_retention_and_python_import_realm_are_closed_for_v1() -> None:
     )
     assert "digest-qualified import realm" in architecture
     assert "process-wide import-realm gate" in architecture
-    assert "`RESERVED -> LOADING -> LOADED`" in architecture
+    assert "declared Plugin\nnamespace/digest" in architecture
+    assert "does not claim a complete transitive-import\nclosure" in architecture
     assert "VerifiedRevisionHandle" in architecture
     assert "data-generation/schema" in architecture
     assert "`UPDATE_STAGED`, then `MIGRATING`" in architecture
@@ -2929,7 +2930,7 @@ def test_plugin_layer_has_only_the_shared_verified_python_loading_site() -> None
     assert _executable_loading_sites(plugin_sources) == {
         (
             Path("src/loushang/harness/resources/plugins/python_symbols.py"),
-            "_LockedImportPolicy._import",
+            "_DirectImportPolicy._import",
         )
     }
 
@@ -3268,11 +3269,17 @@ def test_plc3_verified_evaluation_is_internal_and_production_host_closed() -> No
     evaluator_path = Path(
         "src/loushang/harness/plugin_authoring/evaluator.py"
     )
-    import_realm_path = Path(
+    compatibility_import_realm_path = Path(
         "src/loushang/harness/plugin_authoring/import_realm.py"
+    )
+    import_realm_path = Path(
+        "src/loushang/harness/resources/plugins/import_realm.py"
     )
     evaluator = evaluator_path.read_text(encoding="utf-8")
     import_realm = import_realm_path.read_text(encoding="utf-8")
+    compatibility_import_realm = compatibility_import_realm_path.read_text(
+        encoding="utf-8"
+    )
     authoring_exports = Path(
         "src/loushang/harness/plugin_authoring/__init__.py"
     ).read_text(encoding="utf-8")
@@ -3295,6 +3302,7 @@ def test_plc3_verified_evaluation_is_internal_and_production_host_closed() -> No
     assert "execution_not_consumed" in coordinator
     assert evaluator_path.exists()
     assert import_realm_path.exists()
+    assert compatibility_import_realm_path.exists()
     assert "PluginDefinitionEvaluator" not in authoring_exports
     assert "PluginImportRealm" not in authoring_exports
     assert "execution_evaluator=" not in declaration_host
@@ -3305,6 +3313,8 @@ def test_plc3_verified_evaluation_is_internal_and_production_host_closed() -> No
     assert "sys.modules" not in evaluator
     assert "PluginImportRealm" in import_realm
     assert "plugin_import_realm_polluted" in import_realm
+    assert "Compatibility import" in compatibility_import_realm
+    assert "plugin_import_realm_polluted" not in compatibility_import_realm
     assert approval_execution.count("append_jsonl_record(") == 1
     assert "append_jsonl_records(" not in approval_execution
     assert "_ExecutionConsumedV1" in approval_execution
@@ -3339,3 +3349,15 @@ def test_plc3_verified_evaluation_is_internal_and_production_host_closed() -> No
         "mcp_",
     ):
         assert forbidden not in evaluator
+
+
+def test_pap5_session_root_is_the_only_graph_planning_site() -> None:
+    model_call = Path(
+        "src/loushang/harness/session/model_call.py"
+    ).read_text(encoding="utf-8")
+    agent_product = Path(
+        "src/loushang/harness/session/agent_product.py"
+    ).read_text(encoding="utf-8")
+
+    assert "RuntimeCapabilityGraphPlanner" not in model_call
+    assert agent_product.count("RuntimeCapabilityGraphPlanner().plan(") == 1

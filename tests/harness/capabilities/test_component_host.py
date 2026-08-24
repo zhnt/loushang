@@ -304,6 +304,70 @@ async def _component_host_retains_invalid_bundle_for_cleanup_retry(
     assert marker.read_text(encoding="utf-8").splitlines().count("dispose") == 2
 
 
+def test_component_host_retains_valid_bundle_when_started_transition_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(
+        _component_host_retains_valid_bundle_when_started_transition_fails(
+            tmp_path,
+            monkeypatch,
+        )
+    )
+
+
+async def _component_host_retains_valid_bundle_when_started_transition_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = tmp_path / "activation.log"
+    monkeypatch.setenv("LOUSHANG_COMPONENT_TEST_MARKER", str(marker))
+    fixture = _fixture(tmp_path, returned_facet="query")
+    journal = _journal(tmp_path)
+    host = _host(journal, fixture)
+    subject = host.activation_subject(
+        fixture.resolved,
+        owner_snapshot=fixture.owner_snapshot,
+        trust_snapshot=fixture.trust_snapshot,
+    )
+    decision = _approve(journal, subject)
+    prepared = host.prepare_component(
+        fixture.resolved,
+        package=fixture.package,
+        owner_snapshot=fixture.owner_snapshot,
+        trust_snapshot=fixture.trust_snapshot,
+        decision_id=decision.decision_id,
+    )
+    original_transition = journal.transition_activation_use
+
+    def fail_started_transition(*args, **kwargs):  # type: ignore[no-untyped-def]
+        if kwargs.get("target_state") == "STARTED":
+            raise RuntimeError("synthetic STARTED persistence failure")
+        return original_transition(*args, **kwargs)
+
+    monkeypatch.setattr(journal, "transition_activation_use", fail_started_transition)
+    runtime = RuntimeCapabilityGraphRuntime(
+        product_id="coding",
+        runtime_id="session:test",
+        profile_fingerprint="f" * 64,
+    )
+
+    with pytest.raises(CapabilityGraphBindingError):
+        await RuntimeCapabilityGraphBinder().bind(
+            runtime,
+            fixture.plan,
+            (prepared.binding,),
+        )
+
+    assert marker.read_text(encoding="utf-8").splitlines() == ["import", "create"]
+    assert await prepared.abort_uncommitted() is True
+    assert marker.read_text(encoding="utf-8").splitlines() == [
+        "import",
+        "create",
+        "dispose",
+    ]
+
+
 def test_component_host_rechecks_current_authority_before_factory_execution(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

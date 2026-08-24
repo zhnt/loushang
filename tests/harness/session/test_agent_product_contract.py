@@ -850,6 +850,93 @@ def test_graph_owned_transcript_release_retries_after_index_publication(
     asyncio.run(scenario())
 
 
+def test_prepare_fails_closed_without_touching_graph_when_owner_cleanup_is_pending(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        transcript = await _new_transcript(tmp_path, product_id="cleanup-debt")
+        session = _ContractProductSession(
+            product_id="cleanup-debt",
+            transcript=transcript,
+            capability_runtime=_capability_runtime("cleanup-debt"),
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+        await session.prepare_model_call_runtime()
+        consumer = session._model_call_consumer
+        assert consumer is not None
+        session._model_call_consumer = None
+        session._capability_owner_generations = (object(),)  # type: ignore[assignment]
+
+        async def unexpected_bind(*_args: object) -> None:
+            raise AssertionError("pending cleanup must not start another bind")
+
+        session._capability_graph_binder.bind = unexpected_bind  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="cleanup is pending"):
+            await session.prepare_model_call_runtime()
+
+        assert session._capability_graph_runtime.is_closed is False
+        assert session._capability_graph_runtime.snapshot is not None
+        session._capability_owner_generations = ()
+        session._model_call_consumer = consumer
+        await session.dispose()
+        assert disposed_transcripts == ["cleanup-debt-session"]
+
+    asyncio.run(scenario())
+
+
+def test_owner_cleanup_failure_invalidates_public_capability_ports(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        transcript = await _new_transcript(tmp_path, product_id="owner-port-close")
+        session = _ContractProductSession(
+            product_id="owner-port-close",
+            transcript=transcript,
+            capability_runtime=_capability_runtime("owner-port-close"),
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+        await session.prepare_model_call_runtime()
+
+        class _RetryableGeneration:
+            disposed = False
+            attempts = 0
+
+            async def dispose_once(self) -> None:
+                self.attempts += 1
+                if self.attempts == 1:
+                    raise RuntimeError("synthetic owner cleanup failure")
+                self.disposed = True
+
+        generation = _RetryableGeneration()
+        session._capability_owner_generations = (generation,)  # type: ignore[assignment]
+
+        with pytest.raises(RuntimeError, match="synthetic owner cleanup failure"):
+            await session.dispose()
+
+        with pytest.raises(RuntimeError, match="ports are disposed"):
+            await session.get_workspace_process_launcher().start(
+                ProcessLaunchRequest(
+                    command=("synthetic",),
+                    cwd=str(tmp_path),
+                    effective_environment=(),
+                ),
+                correlation_id="owner-port-close",
+            )
+
+        await session.dispose()
+        assert generation.disposed is True
+        assert disposed_transcripts == ["owner-port-close-session"]
+
+    asyncio.run(scenario())
+
+
 def test_source_publication_does_not_mix_partial_extension_provenance(
     tmp_path: Path,
 ) -> None:
@@ -1398,6 +1485,20 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                     ),
                 )
             ) == "no_change"
+            assert session.evaluate_capability_composition_change(
+                replace(
+                    composition_inputs,
+                    component_requests=(
+                        replace(
+                            component_request,
+                            trust_snapshot=replace(
+                                trust_snapshot,
+                                trusted=False,
+                            ),
+                        ),
+                    ),
+                )
+            ) == "restart_required"
             assert session.evaluate_capability_composition_change(None) == (
                 "restart_required"
             )

@@ -92,6 +92,31 @@ def test_verified_loader_rejects_locked_distribution_version_drift(
         )
 
 
+def test_verified_loader_accepts_exact_locked_distribution_file_origin(
+    tmp_path: Path,
+) -> None:
+    handle = _revision(tmp_path, "import pytest\nVALUE = pytest.__name__\n")
+    dependency_lock = PluginDependencyClosureLock(
+        package_content_digest=handle.content_digest,
+        python_distributions=(
+            PluginPythonDistributionLock(
+                name="pytest",
+                version=importlib.metadata.version("pytest"),
+            ),
+        ),
+    )
+
+    module = load_verified_plugin_python_module(
+        revision_handle=handle.revision_handle,
+        dependency_lock=dependency_lock,
+        relative_path="provider.py",
+        module_name="_exact_distribution_origin_test",
+        host_api_prefixes=("loushang.harness.capabilities",),
+    )
+
+    assert module.resolve("VALUE") == "pytest"
+
+
 def _revision(tmp_path: Path, source: str):  # type: ignore[no-untyped-def]
     root = tmp_path / ("plugin-" + str(len(tuple(tmp_path.iterdir()))))
     root.mkdir()

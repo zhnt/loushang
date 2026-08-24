@@ -64,9 +64,7 @@ def test_exact_owner_admits_resource_and_catalog_consumer_without_widening() -> 
         "loushang.skill:skills/review/SKILL.md",
     )
     assert resource_admission.requirements == ()
-    assert tool_admission.admitted_identities == (
-        "product.tools:semantic.lookup",
-    )
+    assert tool_admission.admitted_identities == ("semantic.lookup",)
     assert tool_admission.requirements == tool.contribution.requirements
     assert tool_admission.to_dict()["candidate"]["sourceTrusted"] is True
 

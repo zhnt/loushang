@@ -1109,24 +1109,27 @@ then the Product Host drains Sessions using the old revision and restarts
 before importing the new one. Resource/declarative or isolated-service
 revisions may coexist when their own owner contracts permit it.
 
-The same interpreter also has a process-wide import-realm gate and import-
-closure ledger. Under that gate, check and reservation are one atomic operation:
-every module, distribution, native extension and locked dependency identity
-moves through `RESERVED -> LOADING -> LOADED` or `FAILED`. Concurrent candidates
-cannot both observe an empty ledger. A same-name/different-digest or incompatible
-dependency claim fails closed and requires a host restart with one compatible
-set or an isolated worker.
+The same interpreter also has a process-wide import-realm gate. Under that
+gate, check and reservation are one atomic operation for the declared Plugin
+namespace/digest and distribution-version facts. Concurrent candidates cannot
+both observe an empty ledger. A same-name/different-digest or incompatible
+declared dependency claim fails closed and requires a host restart with one
+compatible set or an isolated worker. Module/native/transitive identities are
+not part of the current in-process ledger.
 
 The mature target may install a host-owned meta-path/loader adapter that maps
 every transitive module and native extension to a locked closure. The current
 host-equivalent PAP5 Python arm deliberately supports a narrower proof: it
 loads the entrypoint only through `VerifiedRevisionHandle`, exact-checks every
-declared installed distribution version, rejects mutable standard-library or
-dependency origins before ordinary import, and denies dynamic import
-facilities. The Import Realm additionally locks Plugin namespace to package
-digest for the Host boot. Unsupported namespace/native/dynamic cases require
-an isolated worker or clean Host restart; this policy is compatibility and
-integrity enforcement, not a malicious-code sandbox.
+declared installed distribution version and file origin, and rejects mutable
+origins or dynamic-import facilities only when they pass through the source
+module's direct import hook. Python modules reached transitively or through an
+already imported module's object graph do not pass through that hook. The
+Import Realm locks the declared Plugin namespace/digest and distribution
+versions for the Host boot, but does not claim a complete transitive-import
+closure. Plugins requiring enforceable dependency isolation use an isolated
+worker or clean Host restart; this boundary is compatibility evidence for
+host-equivalent trusted code, not a malicious-code sandbox.
 
 There is no sequential Graph/Extension/Resource publish followed by snapshot
 restoration. Publication of an owner generation is its linearization point.
@@ -1820,9 +1823,9 @@ The architecture is complete only when these statements are executable:
 - incompatible private-data migration never races an old writer and failed
   migration leaves both old pointers intact; selection/data cutover and new-
   writer admission share one CAS gate;
-- in-process imports atomically reserve their locked closure and a host loader
-  rejects undeclared transitive imports; incompatible/native cases restart or
-  use an isolated worker;
+- in-process imports atomically reserve their declared compatibility lock and
+  the direct source loader rejects unverifiable direct origins; enforceable
+  transitive/native isolation requires a clean Host or isolated worker;
 - every Plugin management adapter submits one typed durable command to
   `PluginManagementService`; no adapter mutates config/materialization/refresh;
 - MCP v1 exposes only statically reserved/declared/admitted Tools and a dynamic

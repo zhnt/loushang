@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from hashlib import sha256
-from typing import Literal, TypeAlias
+from typing import Literal, TypeAlias, cast
 
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCapabilityConsumerRequirementEntry,
@@ -30,6 +31,7 @@ from loushang.harness.resources.plugins.selection import (
     PluginSourceTrustSnapshotV1,
 )
 from loushang.harness.resources.plugins.types import PublishedPluginPackage
+from loushang.harness.runtime.registration import _await_cancellation_atomic
 
 SessionCompositionChange = Literal["no_change", "restart_required"]
 
@@ -146,6 +148,29 @@ class SessionCapabilityCompositionInputs:
                 self.product_composition.consumer_requirements.fingerprint
             ),
             "providerClosure": self.resolved_providers.semantic_fingerprint,
+            "providerAuthorities": [
+                {
+                    "capabilityId": item.capability_id,
+                    "ownerSnapshot": item.owner_snapshot.to_dict(),
+                    "trustSnapshot": {
+                        "packageSourceIdentity": (
+                            item.trust_snapshot.package_source_identity
+                        ),
+                        "pluginId": item.trust_snapshot.plugin_id,
+                        "sourceTrustClass": (
+                            item.trust_snapshot.source_trust_class
+                        ),
+                        "sourceTrustPolicyRevision": (
+                            item.trust_snapshot.source_trust_policy_revision
+                        ),
+                        "trusted": item.trust_snapshot.trusted,
+                        "trustSnapshotVersion": (
+                            item.trust_snapshot.trust_snapshot_version
+                        ),
+                    },
+                }
+                for item in self.component_requests
+            ],
             "resourceAdmissions": [
                 item.fingerprint
                 for item in self.product_composition.resource_admissions
@@ -229,8 +254,12 @@ class SessionCapabilityOwnerAuthorityGate:
         if (
             admission.product_id != context.product_id
             or candidate.scope_id != context.scope_id
+            or candidate.product_policy_revision
+            != context.product_policy_revision
         ):
-            raise ValueError("Owner admission belongs to another Product or scope")
+            raise ValueError(
+                "Owner admission belongs to another Product, scope, or policy"
+            )
         now = self.clock()
         if isinstance(now, bool) or not isinstance(now, int) or now < 0:
             raise ValueError("Owner authority gate clock must be non-negative integer")
@@ -247,22 +276,52 @@ class SessionCapabilityOwnerAuthorityGate:
             admission.contribution_kind,
             admission.product_id,
         )
+        expected_owner = next(
+            (
+                item
+                for item in context.owner_snapshots
+                if item.owner_id == admission.owner_id
+                and item.contribution_kind == admission.contribution_kind
+                and item.product_id == admission.product_id
+            ),
+            None,
+        )
         if (
-            owner.policy_revision != admission.owner_policy_revision
+            expected_owner is None
+            or owner != expected_owner
+            or owner.owner_id != admission.owner_id
+            or owner.contribution_kind != admission.contribution_kind
+            or owner.product_id != admission.product_id
+            or owner.policy_revision != admission.owner_policy_revision
             or owner.revocation_epoch != admission.revocation_epoch
         ):
-            raise ValueError("Owner contribution authority is stale")
+            raise ValueError("Owner contribution authority identity is stale")
         trust = self.trust_snapshot_reader(
             admission.plugin_id,
             candidate.package_source_identity,
         )
+        expected_trust = next(
+            (
+                item
+                for item in context.trust_snapshots
+                if item.plugin_id == admission.plugin_id
+                and item.package_source_identity
+                == candidate.package_source_identity
+            ),
+            None,
+        )
         if (
-            not trust.trusted
+            expected_trust is None
+            or trust != expected_trust
+            or trust.plugin_id != admission.plugin_id
+            or trust.package_source_identity
+            != candidate.package_source_identity
+            or not trust.trusted
             or trust.source_trust_class != candidate.source_trust_class
             or trust.source_trust_policy_revision
             != candidate.source_trust_policy_revision
         ):
-            raise ValueError("Owner contribution source trust is stale")
+            raise ValueError("Owner contribution source trust identity is stale")
 
 
 @dataclass(frozen=True, slots=True)
@@ -318,10 +377,28 @@ class StagedSessionCapabilityOwnerGeneration:
     binding: SessionCapabilityOwnerGenerationBinding
     value: object = field(repr=False)
     disposed: bool = False
+    _dispose_task: asyncio.Task[None] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     async def dispose_once(self) -> None:
         if self.disposed:
             return
+        task = self._dispose_task
+        if task is None:
+            task = asyncio.create_task(self._dispose())
+            self._dispose_task = task
+        try:
+            await _await_cancellation_atomic(task)
+        except BaseException:
+            if self._dispose_task is task:
+                self._dispose_task = None
+            raise
+
+    async def _dispose(self) -> None:
         result = self.binding.dispose(self.value)
         if inspect.isawaitable(result):
             await result
@@ -379,14 +456,26 @@ async def stage_session_capability_owner_generations(
             )
             binding.authority_gate.validate(admission)
             result = binding.stage(owner_captures)
+            stage_cancellation: asyncio.CancelledError | None = None
             if inspect.isawaitable(result):
-                result = await result
+                stage_task = asyncio.create_task(
+                    _await_owner_stage(cast(Awaitable[object], result))
+                )
+                try:
+                    result = await _await_cancellation_atomic(stage_task)
+                except asyncio.CancelledError as exc:
+                    if stage_task.cancelled():
+                        raise
+                    result = stage_task.result()
+                    stage_cancellation = exc
             staged.append(
                 StagedSessionCapabilityOwnerGeneration(
                     binding=binding,
                     value=result,
                 )
             )
+            if stage_cancellation is not None:
+                raise stage_cancellation
     except BaseException as error:
         pending: list[StagedSessionCapabilityOwnerGeneration] = []
         for generation in reversed(staged):
@@ -405,6 +494,10 @@ async def stage_session_capability_owner_generations(
             ) from error
         raise
     return tuple(staged)
+
+
+async def _await_owner_stage(awaitable: Awaitable[object]) -> object:
+    return await awaitable
 
 
 def validate_session_capability_owner_generation_bindings(

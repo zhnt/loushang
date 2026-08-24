@@ -141,7 +141,7 @@ class CatalogConsumerContributionSpec:
 
     @property
     def admitted_identities(self) -> tuple[str, ...]:
-        return tuple(f"{self.catalog_id}:{item_id}" for item_id in self.item_ids)
+        return self.item_ids
 
     def to_dict(self) -> dict[str, object]:
         return {
