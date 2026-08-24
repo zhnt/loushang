@@ -5,8 +5,9 @@
 - Authority: proposed implementation plan under the accepted Harness Capability,
   Plugin lifecycle, exact-owner admission, Session Graph, Resource generation,
   and Model Input boundaries. It does not amend those boundaries implicitly.
-- Design status: proposed.
-- Implementation status: not started. The current `ResourceLoader`,
+- Design status: RCP0 contract frozen pending narrow freeze re-review.
+- Implementation status: RCP0 baseline implemented and verified locally; RCP1
+  has not started. The current `ResourceLoader`,
   `ResourceSnapshot`, `ResourceBundle`, and `SkillLoader` paths remain the
   implemented runtime until a phase below passes its cutover gate.
 - Baseline: `main` at `e55db475`, tracked by issue `#495`.
@@ -31,6 +32,9 @@ The accepted
 [Extension And Resource Generation Lifecycle](extension-generation-lifecycle-boundary.md),
 and [Session Resource Refresh Runtime Boundary](session-resource-refresh-boundary.md)
 remain authoritative wherever this plan is silent.
+The source-backed [RCP0 Baseline](resource-catalog-rcp0-baseline.md) freezes the
+implemented caller/sink inventory, parity anchors, and per-path disposition;
+it does not introduce target runtime authority.
 
 ## Executive Decision
 
@@ -495,6 +499,29 @@ Candidate, effective-entry, source, and diagnostic collections are canonical
 identity-sorted. The fingerprint excludes wall-clock time and object addresses.
 `complete=false` is explicit evidence and Product policy decides whether an
 optional-source failure may publish a degraded snapshot.
+
+### Stable diagnostic taxonomy
+
+RCP0 freezes the following minimum owner-visible codes:
+
+```text
+resource_source_discovery_failed
+resource_source_discovery_budget_exceeded
+resource_source_snapshot_invalid
+resource_catalog_proposal_invalid
+resource_body_identity_mismatch
+resource_catalog_generation_stale
+resource_component_start_failed
+resource_component_dispose_failed
+resource_extension_snapshot_invalid
+```
+
+The code names the stable failure class. Structured metadata carries phase,
+source/producer/generation identity, redacted cause, and a finite reason such as
+duplicate identity, locator escape, non-canonical order, policy mismatch, or
+foreign generation. Implementations must not mint one code per component,
+source kind, or exception text. `restart_required` is a refresh classification,
+not a failure code.
 
 ### `ResourceLoadReceipt` and `LoadedResource`
 

@@ -56,6 +56,10 @@ planning, work event persistence, or AI provider behavior.
   components, Extension-generation snapshot normalization, typed lazy loads and
   Skill projection, exact-generation lifecycle, and manifest-free native
   `SKILL.md` compatibility before LSP.
+- [Resource Catalog RCP0 Baseline](resource-catalog-rcp0-baseline.md) freezes
+  the implemented discovery/sink inventory, precedence and Extension parity,
+  Package-mount custody, and the exact RCP3/RCP4/RCP5 deletion ledger without
+  claiming that the target Catalog runtime exists.
 - [Plugin Declaration Foundation PLC1B Contract](plugin-declaration-foundation-plc1b-contract.md)
   freezes the no-self-reference source/group identity layers, exact v2 wire and
   hash records, canonical document bytes, accepted-attempt evidence, group-
@@ -178,6 +182,9 @@ description.
   Catalog engine and source/loading mechanisms owner-defined Plugin components
   while keeping Resource items, native Skills, the Package Catalog, and the
   single Session Graph in their existing authorities.
+- [Resource Catalog RCP0 Baseline](resource-catalog-rcp0-baseline.md) is the
+  source-backed legacy-authority and parity companion used to prevent a second
+  discovery, merge, Skill fallback, or Package-summary path during migration.
 - [Plugin Declaration Foundation PLC1B Contract](plugin-declaration-foundation-plc1b-contract.md)
   is the normative PLC1B-1 schema/state companion to UPA and both delivery
   plans; its final narrow freeze review passed at `3f53a5af` with zero P0/P1.
