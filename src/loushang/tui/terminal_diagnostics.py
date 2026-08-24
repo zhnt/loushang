@@ -22,6 +22,7 @@ def format_terminal_diagnostics(terminal_context: object) -> str:
                 (
                     f"keyboard_protocol_state: {_diagnostic_value(diagnostics, 'keyboard_protocol_state')}",
                     f"mouse_mode_active: {_format_bool(_diagnostic_value(diagnostics, 'mouse_mode_active'))}",
+                    f"runtime_mouse_selection_owner: {_diagnostic_value(diagnostics, 'mouse_selection_owner')}",
                     f"cell_size: {_format_cell_size(_diagnostic_value(diagnostics, 'cell_size'))}",
                     f"runtime_image_protocol: {_diagnostic_value(diagnostics, 'image_protocol')}",
                     f"alternate_screen_active: {_format_bool(_diagnostic_value(diagnostics, 'alternate_screen'))}",

@@ -107,6 +107,17 @@ def build_tree_fixture(root: Path) -> None:
     (root / "empty").mkdir()
 
 
+def _create_directory_symlink(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError as error:
+        if getattr(error, "winerror", None) == 1314:
+            pytest.skip(
+                "Windows directory symlinks require Developer Mode or elevation"
+            )
+        raise
+
+
 def test_directory_tree_scans_root_directory_first_and_exposes_visible_entries(tmp_path: Path) -> None:
     build_tree_fixture(tmp_path)
 
@@ -485,7 +496,7 @@ def test_directory_tree_root_symlink_is_traversed_but_public_paths_stay_lexical(
     target.mkdir()
     (target / "child.txt").write_text("", encoding="utf-8")
     link = tmp_path / "link-root"
-    link.symlink_to(target, target_is_directory=True)
+    _create_directory_symlink(link, target)
 
     tree = DirectoryTree(root=link)
 
@@ -499,7 +510,7 @@ def test_directory_tree_descendant_symlink_directory_is_selectable_leaf(tmp_path
     real.mkdir()
     (real / "inside.txt").write_text("", encoding="utf-8")
     link = tmp_path / "linked"
-    link.symlink_to(real, target_is_directory=True)
+    _create_directory_symlink(link, real)
 
     tree = DirectoryTree(root=tmp_path, expanded_paths=(link,), active_path=link)
     tree.focus()

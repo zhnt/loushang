@@ -145,6 +145,18 @@ def test_unknown_terminal_is_conservative() -> None:
         enable_focus_events=True,
         capability_sources=("keyboard:kitty_then_modify_other_keys",),
     )
+    assert capabilities.effective_mouse_selection_owner == "terminal"
+    assert capabilities.application_mouse_tracking_enabled is False
+
+
+def test_legacy_mouse_flag_upgrades_selection_ownership_to_application() -> None:
+    capabilities = TerminalRuntimeCapabilities(
+        enable_mouse=True,
+        mouse_selection_owner="terminal",
+    )
+
+    assert capabilities.effective_mouse_selection_owner == "application"
+    assert capabilities.application_mouse_tracking_enabled is True
 
 
 def test_colorterm_truecolor_enables_truecolor_for_unknown_terminal() -> None:
@@ -193,6 +205,7 @@ def test_terminal_capability_diagnostics_include_runtime_fields() -> None:
     assert "hyperlinks: true" in diagnostics
     assert "image_protocol: kitty" in diagnostics
     assert "keyboard_protocol_strategy: kitty_then_modify_other_keys" in diagnostics
+    assert "mouse_selection_owner: terminal" in diagnostics
     assert "alternate_screen: false" in diagnostics
     assert "tmux_passthrough: false" in diagnostics
     assert "windows_vt_input: false" in diagnostics

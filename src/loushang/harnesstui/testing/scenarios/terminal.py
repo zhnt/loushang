@@ -153,8 +153,8 @@ class _TerminalRecipes(Generic[AppT]):
         mode = _RecordingTerminalMode(cleanup_calls)
         capabilities = TerminalRuntimeCapabilities(
             keyboard_protocol_strategy="kitty_then_modify_other_keys",
-            enable_mouse=True,
             query_cell_size=True,
+            mouse_selection_owner="application",
         )
 
         async def handle_prompt(text: str) -> None:

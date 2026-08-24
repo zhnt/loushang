@@ -4,6 +4,7 @@ from io import StringIO
 from typing import Literal
 
 from loushang.tui.input import InputEvent
+from loushang.tui.terminal_backends import NativeTerminalPlatform
 from loushang.tui.terminal_capabilities import TerminalRuntimeCapabilities
 from loushang.tui.terminal_image import CellDimensions
 from loushang.tui.terminal_session import TerminalSession
@@ -205,9 +206,9 @@ def test_terminal_session_falls_back_to_modify_other_keys_after_deadline_and_dis
     assert "\x1b[<u" not in output
 
 
-def test_terminal_session_enables_and_disables_mouse_mode_when_capability_enabled() -> None:
+def test_terminal_session_enables_mouse_tracking_when_application_owns_selection() -> None:
     stdout = StringIO()
-    capabilities = TerminalRuntimeCapabilities(enable_mouse=True)
+    capabilities = TerminalRuntimeCapabilities(mouse_selection_owner="application")
 
     with TerminalSession(
         stdin=StringIO(),
@@ -222,6 +223,23 @@ def test_terminal_session_enables_and_disables_mouse_mode_when_capability_enable
     assert "\x1b[?1006h" in output
     assert "\x1b[?1006l" in output
     assert "\x1b[?1002l" in output
+
+
+def test_terminal_session_preserves_legacy_enable_mouse_compatibility() -> None:
+    stdout = StringIO()
+
+    with TerminalSession(
+        stdin=StringIO(),
+        stdout=stdout,
+        capabilities=TerminalRuntimeCapabilities(enable_mouse=True),
+        mode_factory=lambda _stdin, _stdout, _capabilities: _RecordingMode(),
+    ):
+        pass
+
+    assert all(
+        sequence in stdout.getvalue()
+        for sequence in ("\x1b[?1002h", "\x1b[?1006h")
+    )
 
 
 def test_terminal_session_disables_mouse_mode_before_exit_drain() -> None:
@@ -248,21 +266,22 @@ def test_terminal_session_disables_mouse_mode_before_exit_drain() -> None:
 
 def test_terminal_session_keeps_mouse_mode_off_by_default() -> None:
     stdout = StringIO()
-    capabilities = TerminalRuntimeCapabilities(enable_mouse=False)
+    capabilities = TerminalRuntimeCapabilities()
 
     with TerminalSession(
         stdin=StringIO(),
         stdout=stdout,
         capabilities=capabilities,
         mode_factory=lambda _stdin, _stdout, _capabilities: _RecordingMode(),
-    ):
-        pass
+    ) as session:
+        diagnostics = session.diagnostics()
 
     output = stdout.getvalue()
     assert "\x1b[?1002h" not in output
     assert "\x1b[?1006h" not in output
     assert "\x1b[?1006l" not in output
     assert "\x1b[?1002l" not in output
+    assert diagnostics.mouse_selection_owner == "terminal"
 
 
 def test_terminal_session_diagnostics_report_runtime_state() -> None:
@@ -299,6 +318,7 @@ def test_terminal_session_diagnostics_report_runtime_state() -> None:
 
     assert diagnostics.keyboard_protocol_state == "kitty"
     assert diagnostics.mouse_mode_active is True
+    assert diagnostics.mouse_selection_owner == "application"
     assert diagnostics.cell_size == CellDimensions(width_px=9, height_px=18)
     assert diagnostics.image_protocol == "kitty"
     assert diagnostics.alternate_screen is True
@@ -419,6 +439,69 @@ def test_terminal_session_enables_windows_vt_output_before_terminal_mode_writes(
     assert calls == ["mode:enter", "mode:exit"]
 
 
+def test_terminal_session_uses_native_ports_instead_of_legacy_platform_names() -> (
+    None
+):
+    console_mode = _RecordingConsoleMode()
+    modifier_keys = _RecordingModifierKeys(shift_pressed=True)
+    native_platform = NativeTerminalPlatform(
+        console_mode=console_mode,
+        modifier_keys=modifier_keys,
+    )
+    capabilities = TerminalRuntimeCapabilities(
+        windows_vt_input=True,
+        apple_terminal_normalization=True,
+    )
+
+    with TerminalSession(
+        stdin=StringIO(),
+        stdout=StringIO(),
+        capabilities=capabilities,
+        mode_factory=lambda _stdin, _stdout, _capabilities: _RecordingMode(),
+        platform_adapter=_UnexpectedPlatformAdapter(),
+        native_platform=native_platform,
+    ) as session:
+        assert session.normalize_input_chunk("\r") == "\x1b[13;2u"
+
+    assert console_mode.calls == [
+        "enable_output",
+        "enable_input:True",
+        "mode_configured",
+        "disable_input",
+        "disable_output",
+    ]
+    assert modifier_keys.calls == ["shift_pressed"]
+
+
+def test_terminal_session_releases_native_selection_when_application_owns_mouse() -> None:
+    console_mode = _RecordingConsoleMode()
+    native_platform = NativeTerminalPlatform(
+        console_mode=console_mode,
+        modifier_keys=_RecordingModifierKeys(shift_pressed=False),
+    )
+    capabilities = TerminalRuntimeCapabilities(
+        windows_vt_input=True,
+        mouse_selection_owner="application",
+    )
+
+    with TerminalSession(
+        stdin=StringIO(),
+        stdout=StringIO(),
+        capabilities=capabilities,
+        mode_factory=lambda _stdin, _stdout, _capabilities: _RecordingMode(),
+        native_platform=native_platform,
+    ):
+        pass
+
+    assert console_mode.calls == [
+        "enable_output",
+        "enable_input:False",
+        "mode_configured",
+        "disable_input",
+        "disable_output",
+    ]
+
+
 def test_terminal_session_normalizes_apple_terminal_shift_enter_before_input_parsing() -> None:
     platform = _RecordingPlatformAdapter(shift_pressed=True)
     capabilities = TerminalRuntimeCapabilities(apple_terminal_normalization=True)
@@ -532,3 +615,56 @@ class _RecordingPlatformAdapter:
     def apple_shift_pressed(self) -> bool:
         self.calls.append("apple_shift_pressed")
         return self.shift_pressed
+
+
+class _RecordingConsoleMode:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def enable_vt_input(
+        self,
+        stdin: object,
+        *,
+        preserve_native_selection: bool = False,
+    ) -> bool:
+        del stdin
+        self.calls.append(f"enable_input:{preserve_native_selection}")
+        return True
+
+    def disable_vt_input(self) -> None:
+        self.calls.append("disable_input")
+
+    def enable_vt_output(self, stdout: object) -> bool:
+        del stdout
+        self.calls.append("enable_output")
+        return True
+
+    def disable_vt_output(self) -> None:
+        self.calls.append("disable_output")
+
+    def mode_configured(self) -> bool:
+        self.calls.append("mode_configured")
+        return True
+
+    def vt_input_active(self) -> bool:
+        return True
+
+    def vt_output_active(self) -> bool:
+        return True
+
+
+class _RecordingModifierKeys:
+    def __init__(self, *, shift_pressed: bool) -> None:
+        self._shift_pressed = shift_pressed
+        self.calls: list[str] = []
+
+    def shift_pressed(self) -> bool:
+        self.calls.append("shift_pressed")
+        return self._shift_pressed
+
+
+class _UnexpectedPlatformAdapter:
+    def __getattribute__(self, name: str) -> object:
+        if name.startswith("__"):
+            return super().__getattribute__(name)
+        raise AssertionError(f"legacy platform adapter was used: {name}")

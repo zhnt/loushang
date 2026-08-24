@@ -71,9 +71,7 @@ jobs:
 
       - name: Shared terminal platform units
         run: >-
-          uv run pytest tests/tui/test_terminal_platform.py
-          tests/tui/test_terminal_session.py tests/tui/test_terminal_input.py
-          --strict-markers --strict-config
+          uv run python scripts/run_tui_platform_tests.py shared
           --junitxml=.artifacts/terminal-platform-shared.xml -q
 
       - name: Reject empty, skipped, or failing shared report
@@ -82,13 +80,22 @@ jobs:
       - name: POSIX terminal platform units
         if: runner.os == 'Linux'
         run: >-
-          uv run pytest tests/tui/test_terminal_input_posix.py
-          --strict-markers --strict-config
+          uv run python scripts/run_tui_platform_tests.py posix
           --junitxml=.artifacts/terminal-platform-posix.xml -q
 
       - name: Reject empty, skipped, or failing POSIX report
         if: runner.os == 'Linux'
         run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/terminal-platform-posix.xml
+
+      - name: Windows terminal platform units
+        if: runner.os == 'Windows'
+        run: >-
+          uv run python scripts/run_tui_platform_tests.py windows
+          --junitxml=.artifacts/terminal-platform-windows.xml -q
+
+      - name: Reject empty, skipped, or failing Windows report
+        if: runner.os == 'Windows'
+        run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/terminal-platform-windows.xml
 
   native-terminal:
     name: native-terminal (${{ matrix.backend }})
@@ -100,8 +107,10 @@ jobs:
         include:
           - os: ubuntu-24.04
             backend: posix-pty
+            profile: posix
           - os: windows-2022
             backend: conpty
+            profile: windows
     steps:
       - uses: actions/checkout@v4
 
@@ -121,10 +130,7 @@ jobs:
         env:
           LOUSHANG_REQUIRED_TERMINAL_BACKEND: ${{ matrix.backend }}
         run: >-
-          uv run pytest tests/tui/test_terminal_query_responder.py
-          tests/tui/test_terminal_process_backend.py
-          tests/coding/test_cli_terminal_contract.py
-          --strict-markers --strict-config
+          uv run python scripts/run_tui_native_tests.py ${{ matrix.profile }}
           --junitxml=.artifacts/native-terminal.xml -q
 
       - name: Reject empty, skipped, failing, or wrong-backend report

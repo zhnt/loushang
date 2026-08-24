@@ -120,12 +120,46 @@ Examples:
 
 ### 5. Native Terminal Transport Tests
 
+Keep terminal evidence in four separate layers. A test may depend inward on a
+more deterministic layer, but must not use a host transport as the oracle for
+portable rendering or input semantics.
+
+| Layer | Owner and evidence | Local entrypoint |
+| --- | --- | --- |
+| FakeTerminal/playback | portable input, rendering, control-sequence lifecycle, and screen state | `make test-tui-input-playback` |
+| simulated platform backend | pure Python Windows, POSIX, and Darwin adapter behavior with injected OS modules | `uv run python scripts/run_tui_platform_tests.py current -q` |
+| native PTY/ConPTY transport | real process, pipe, resize, Unicode, platform query boundary, and teardown behavior | `make test-tui-native` |
+| live terminal smoke | emulator selection, IME, clipboard, and user-visible restoration | manual checklist below |
+
+`--skip-host-runtime` skips the native PTY/ConPTY layer but not simulated
+platform units or FakeTerminal/playback. Live POSIX `termios`/PTY tests are
+explicitly skipped on Windows; injected POSIX backend units remain portable and
+continue to run there. Conversely, Windows backend units use fake console and
+kernel APIs and do not require a real Windows console.
+
 Run the same test-only terminal driver contract over a POSIX PTY on Linux and
 ConPTY on Windows. These tests prove structured argv, cwd/environment handling,
 Unicode and VT transport, resize, exit status, large output drain, terminal
-query response, bounded timeout, process-tree termination, and idempotent
-cleanup. They do not claim exact final screen state; FakeTerminal/playback owns
-that evidence.
+query boundaries, bounded timeout, process-tree termination, and idempotent
+cleanup. They do not claim exact final screen state or exact ConPTY byte counts;
+FakeTerminal/playback owns screen evidence and ConPTY exposes a reconstructed
+renderer stream rather than transparent application stdout.
+
+The real CLI contract follows the same split. Shared assertions cover launch,
+`/quit`, exit status, bracketed-paste/focus mode pairing, and reader cleanup.
+The POSIX-only contract observes raw cursor-hide and synchronized-output
+lifecycle sequences. The Windows-only contract checks ConPTY's renderer-visible
+final cursor restoration; it does not require ConHost to replay every
+application control sequence byte-for-byte.
+
+Terminal query evidence is deliberately split. The portable responder unit
+contract proves incremental cross-chunk recognition, configured replies, and
+fail-closed unknown blocking queries. POSIX PTY additionally proves the full
+application DSR -> responder -> input loop because the master observes raw
+application output. ConPTY mediates application output through ConHost before
+the client pipe, so its Windows-only native contract proves that boundary and
+does not pretend an application DSR was observable. Product probes on Windows
+must retain bounded fallback behavior.
 
 The Windows backend calls the system ConPTY API through a test-only `ctypes`
 wrapper, explicitly selects ConPTY, and owns its pipes, HPCON, process handle,
@@ -148,8 +182,24 @@ Run the local collections with:
 ```bash
 make test-tui-render-contract
 make test-tui-terminal-platform
+make test-tui-input-playback
 make test-tui-native
 ```
+
+GNU Make is only a convenience wrapper. Windows PowerShell should use the
+cross-platform Python entrypoints directly:
+
+```powershell
+uv run python scripts/run_tui_platform_tests.py current -q
+uv run python scripts/run_tui_native_tests.py current -q
+uv run python scripts/run_tui_playback.py composer-selection-stress bracketed-paste-large-marker mouse-select-active-surface screen-loop-terminal-session-cleanup screen-loop-ctrl-c-abort-running
+```
+
+The platform runner owns four non-overlapping profiles: `shared`, `windows`,
+`posix`, and `current`. CI invokes `shared` plus exactly one host profile;
+developers normally invoke `current`. The native runner separately composes a
+shared process contract with exactly one host-specific file and rejects a
+Windows profile on POSIX or a POSIX profile on Windows before pytest starts.
 
 CI runs deterministic and platform jobs on fixed Ubuntu 24.04 and Windows
 Server 2022 runners, runs the shared native contract with
@@ -181,6 +231,11 @@ visually:
 - scrolling up while output continues
 - IME candidate window placement
 - terminal restoration after Ctrl-C, Esc abort, exception, and normal exit
+- default mouse drag selects terminal text without inserting SGR fragments
+- application-owned selection surfaces receive clicks without disabling normal
+  terminal selection in sessions that did not opt in
+- paste text containing emoji, press Ctrl-C and then Enter, and verify no UTF-8
+  surrogate encoding error reaches the shell
 - narrow terminal status truncation
 - modifier-key variants for Shift+Enter, Alt+Enter, Ctrl+Shift+Left/Right, and
   terminal-specific option/meta behavior

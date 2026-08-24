@@ -96,8 +96,43 @@ def test_testing_strategy_separates_native_terminal_and_tmux_evidence() -> None:
     assert "explicitly selects ConPTY" in strategy
     assert "test_cli_terminal_contract.py" in strategy
     assert "tmux is a separate terminal-implementation integration" in strategy
+    assert "make test-tui-input-playback" in strategy
     assert "make test-tui-native" in strategy
+    assert "ConPTY exposes a reconstructed" in strategy
+    assert "POSIX PTY additionally proves the full" in strategy
+    assert "The real CLI contract follows the same split" in strategy
     assert "fails closed" in strategy
+
+
+def test_terminal_test_entrypoints_separate_simulated_and_host_runtime() -> None:
+    makefile = Path("Makefile").read_text(encoding="utf-8")
+    runner = Path("scripts/run_tui_platform_tests.py").read_text(encoding="utf-8")
+    native_runner = Path("scripts/run_tui_native_tests.py").read_text(
+        encoding="utf-8"
+    )
+    backend = Path("tests/tui/test_terminal_process_backend.py").read_text(
+        encoding="utf-8"
+    )
+    product = Path("tests/coding/test_cli_terminal_contract.py").read_text(
+        encoding="utf-8"
+    )
+    posix = Path("tests/tui/test_terminal_input_posix.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "test-tui-input-playback:" in makefile
+    assert "scripts/run_tui_platform_tests.py current" in makefile
+    assert "test_terminal_input_windows.py" in runner
+    assert "test_terminal_input_posix_backend.py" in runner
+    assert "SHARED_TEST_PATHS" in runner
+    assert "WINDOWS_TEST_PATHS" in runner
+    assert "POSIX_TEST_PATHS" in runner
+    assert "test_terminal_process_backend_posix.py" in native_runner
+    assert "test_terminal_process_backend_windows.py" in native_runner
+    assert "selected_test_paths" in native_runner
+    assert "requires_host_runtime" in backend
+    assert "requires_host_runtime" in product
+    assert 'os.name == "nt"' in posix
 
 
 @pytest.mark.tui_render_contract

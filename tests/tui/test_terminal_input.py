@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
-import sys
-import threading
-import time
-from contextlib import suppress
+from dataclasses import dataclass
 from io import StringIO
-from types import SimpleNamespace
 from typing import Any
+
+import pytest
 
 from loushang.tui.input import (
     BRACKETED_PASTE_END,
@@ -33,124 +30,43 @@ def test_terminal_input_mode_does_not_write_modes_for_non_tty_streams() -> None:
     assert stdout.getvalue() == ""
 
 
-def test_terminal_input_mode_writes_control_modes_on_windows_without_posix_modules(
+def test_terminal_input_mode_holds_native_lease_until_protocol_cleanup(
     monkeypatch: Any,
 ) -> None:
-    monkeypatch.setattr(sys, "platform", "win32")
-
-    original_import_module = importlib.import_module
-
-    def fake_import_module(name: str, package: str | None = None) -> object:
-        if name in {"termios", "tty"}:
-            raise ModuleNotFoundError(f"No module named {name!r}")
-        return original_import_module(name, package)
-
-    monkeypatch.setattr("importlib.import_module", fake_import_module)
+    lease = _ModeLease()
+    factory = _ModeFactory(lease)
     stdout = StringIO()
+    monkeypatch.setattr(
+        "loushang.tui.terminal_input.native_terminal_mode_factory",
+        lambda _platform: factory,
+    )
+    monkeypatch.setattr(
+        "loushang.tui.terminal_input.drain_input", lambda *args, **kwargs: ""
+    )
 
-    with TerminalInputMode(stdin=_TtyInput(), stdout=stdout, keyboard_protocols=False):
-        pass
+    with TerminalInputMode(
+        stdin=_TtyInput(), stdout=stdout, keyboard_protocols=False
+    ):
+        assert lease.restore_calls == 0
 
+    assert factory.open_calls == 1
+    assert lease.restore_calls == 1
     assert stdout.getvalue() == "\x1b[?2004h\x1b[?1004h\x1b[?2004l\x1b[?1004l"
 
 
-def test_read_input_chunk_or_render_tick_waits_for_windows_tty_input(
+def test_terminal_input_mode_restores_native_lease_when_protocol_startup_fails(
     monkeypatch: Any,
 ) -> None:
-    monkeypatch.setattr(sys, "platform", "win32")
-    _install_fake_msvcrt(monkeypatch, kbhit=lambda: False)
-
-    result = asyncio.run(
-        read_input_chunk_or_render_tick(
-            _TtyInput(), runtime=_Runtime(), active_task=None, idle_wakeup_ms=1
-        )
+    lease = _ModeLease()
+    monkeypatch.setattr(
+        "loushang.tui.terminal_input.native_terminal_mode_factory",
+        lambda _platform: _ModeFactory(lease),
     )
 
-    assert result is None
+    with pytest.raises(RuntimeError, match="write failed"):
+        TerminalInputMode(stdin=_TtyInput(), stdout=_FailingOutput()).__enter__()
 
-
-def test_read_input_chunk_reads_windows_tty_key(monkeypatch: Any) -> None:
-    monkeypatch.setattr(sys, "platform", "win32")
-    _install_fake_msvcrt(monkeypatch, chars=["x"])
-
-    result = asyncio.run(read_input_chunk(_TtyInput()))
-
-    assert result == "x"
-
-
-def test_windows_blocking_key_read_does_not_block_render_wakeup(monkeypatch: Any) -> None:
-    monkeypatch.setattr(sys, "platform", "win32")
-
-    def slow_getwch() -> str:
-        time.sleep(0.05)
-        return "x"
-
-    _install_fake_msvcrt(monkeypatch, kbhit=lambda: True, getwch=slow_getwch)
-
-    async def run() -> tuple[str | None, int]:
-        runtime = _DeferredRuntime()
-        render_wakeup = asyncio.Event()
-
-        async def active() -> None:
-            await asyncio.sleep(0.02)
-
-        async def wake_later() -> None:
-            await asyncio.sleep(0.001)
-            render_wakeup.set()
-
-        active_task = asyncio.create_task(active())
-        wake_task = asyncio.create_task(wake_later())
-        result = await read_input_chunk_or_render_tick(
-            _TtyInput(),
-            runtime=runtime,
-            active_task=active_task,
-            render_wakeup=render_wakeup,
-        )
-        await wake_task
-        return result, runtime.rendered
-
-    result, rendered = asyncio.run(run())
-
-    assert result is None
-    assert rendered >= 1
-
-
-def test_windows_canceled_key_read_is_reused_by_next_reader(monkeypatch: Any) -> None:
-    monkeypatch.setattr(sys, "platform", "win32")
-    calls: list[str] = []
-    started = threading.Event()
-    kbhit_calls = 0
-
-    def kbhit() -> bool:
-        nonlocal kbhit_calls
-        kbhit_calls += 1
-        return kbhit_calls == 1
-
-    def slow_getwch() -> str:
-        calls.append("start")
-        started.set()
-        time.sleep(0.02)
-        calls.append("end")
-        return "h"
-
-    _install_fake_msvcrt(monkeypatch, kbhit=kbhit, getwch=slow_getwch)
-
-    async def run() -> str:
-        first = asyncio.create_task(read_input_chunk(_TtyInput()))
-        while not started.is_set():
-            await asyncio.sleep(0.001)
-        first.cancel()
-        with suppress(asyncio.CancelledError):
-            await first
-        while calls != ["start", "end"]:
-            await asyncio.sleep(0.001)
-        return await asyncio.wait_for(read_input_chunk(_TtyInput()), timeout=0.1)
-
-    result = asyncio.run(run())
-
-    assert result == "h"
-    assert calls == ["start", "end"]
-    assert kbhit_calls == 1
+    assert lease.restore_calls == 1
 
 
 def test_read_input_chunk_or_render_tick_reads_raw_stringio_escape_without_tail_joining() -> (
@@ -509,26 +425,29 @@ class _DelayedInputReader:
 
 
 class _TtyInput:
-    def fileno(self) -> int:
-        return 42
-
     def isatty(self) -> bool:
         return True
 
 
-def _install_fake_msvcrt(
-    monkeypatch: Any,
-    *,
-    chars: list[str] | None = None,
-    kbhit: object | None = None,
-    getwch: object | None = None,
-) -> None:
-    pending = list(chars or ())
-    fake_msvcrt = SimpleNamespace(
-        kbhit=kbhit or (lambda: bool(pending)),
-        getwch=getwch or (lambda: pending.pop(0)),
-    )
-    monkeypatch.setattr(
-        "loushang.tui.terminal_input._load_windows_console_module",
-        lambda: fake_msvcrt,
-    )
+@dataclass
+class _ModeLease:
+    restore_calls: int = 0
+
+    def restore(self) -> None:
+        self.restore_calls += 1
+
+
+@dataclass
+class _ModeFactory:
+    lease: _ModeLease
+    open_calls: int = 0
+
+    def open(self, _stdin: object) -> _ModeLease:
+        self.open_calls += 1
+        return self.lease
+
+
+class _FailingOutput(StringIO):
+    def write(self, value: str) -> int:
+        del value
+        raise RuntimeError("write failed")

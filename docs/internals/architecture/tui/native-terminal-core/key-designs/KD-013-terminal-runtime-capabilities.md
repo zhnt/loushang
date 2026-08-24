@@ -92,7 +92,9 @@ Suggested capability fields:
 - `query_cell_size`: `bool`
 - `enable_bracketed_paste`: `bool`
 - `enable_focus_events`: `bool`
-- `enable_mouse`: `bool`
+- `mouse_selection_owner`: `terminal` or `application`
+- `enable_mouse`: legacy compatibility input; `true` resolves ownership to
+  `application`
 - `alternate_screen`: `bool`
 - `windows_vt_input`: `bool`
 - `termux_session`: `bool`
@@ -161,6 +163,14 @@ mode, output capability, and protocol negotiation. `TuiRuntime` should stay
 focused on rendering and terminal writes. Renderers, theme, Markdown, and image
 adapters consume the session capability snapshot through explicit parameters or
 application state, not by probing environment variables themselves.
+
+Internally, `TerminalSession` consumes a `NativeTerminalPlatform` composed from
+the small `NativeConsoleMode` and `NativeModifierKeys` ports. The default path
+selects those ports lazily from the host platform. `platform_adapter=` remains a
+compatibility input only: it is converted once at the session boundary and its
+platform-named methods are not called from the session lifecycle itself. An
+explicit `native_platform=` takes precedence for deterministic tests and custom
+composition.
 
 ### InputReader
 
@@ -296,9 +306,22 @@ Terminal sequence vocabulary belongs in the glossary. Runtime ownership is:
 Product code must receive normalized events and capability booleans, not raw
 terminal control sequences.
 
-Mouse sequences are application events after they are parsed, but mouse mode
-enablement is a terminal session capability. If mouse interaction is added,
-`TerminalSession` owns DECSET setup and teardown such as SGR mouse mode.
+Mouse handling has three separate owners:
+
+- `TerminalRuntimeCapabilities.mouse_selection_owner` expresses product-neutral
+  session policy. The default is `terminal`, so ordinary host text selection is
+  preserved.
+- `TerminalSession` maps `application` ownership to DECSET setup and teardown:
+  button-event tracking (`1002`) plus SGR coordinates (`1006`). It never enables
+  all-motion tracking (`1003`) by default.
+- `NativeConsoleMode` maps the neutral `preserve_native_selection` intent onto
+  host APIs. On Win32 this means preserving the original Quick Edit flag for
+  terminal ownership and clearing it only for application ownership.
+
+`InputReader` continues to parse mouse sequences independently of this policy.
+Product surfaces receive normalized mouse events and do not emit or interpret
+DECSET sequences themselves. The old `enable_mouse=True` flag remains a
+compatibility input and resolves to application ownership.
 
 Synchronized update mode is owned by the terminal writer/render loop. KD-013 does
 not move that responsibility into input session code.
@@ -341,8 +364,9 @@ InputReader -> InputBatch
    Windows VT input.
 6. Start keyboard protocol negotiation.
 7. Query cell size only when useful and safe.
-8. Enable mouse mode only when the application has explicitly requested mouse
-   interaction.
+8. Preserve host text selection by default. Enable application mouse tracking
+   only when `mouse_selection_owner=application` (or the legacy compatibility
+   flag requests it).
 9. Start the render loop after the terminal session is ready.
 
 Startup must not block basic UI rendering indefinitely. Runtime negotiation
@@ -376,6 +400,7 @@ Useful diagnostics:
 - keyboard protocol state
 - cell size status
 - mouse mode status
+- effective mouse selection owner
 - Windows VT input status
 - Termux or Apple Terminal special handling status
 - reasons that enabled or disabled a capability
@@ -437,8 +462,8 @@ Diagnostics should be printable without requiring a live TUI session.
 
 ### P1: Platform Boundaries
 
-- Put Windows VT input enable/restore behind a `TerminalPlatformAdapter` so
-  tests can verify lifecycle without running on Windows.
+- Put Windows VT input enable/restore behind `NativeConsoleMode`; retain
+  `TerminalPlatformAdapter` only as a compatibility facade and injection bridge.
 - Normalize Apple Terminal Shift+Enter before `InputReader` parsing, using an
   ApplicationServices/Quartz Shift probe when available.
 - Treat Termux height-only resize as keyboard chrome churn, not a mandatory
@@ -475,7 +500,11 @@ Diagnostics should be printable without requiring a live TUI session.
 - image adapter falls back to text when `image_protocol=none`
 - Markdown and theme receive the same capability snapshot as the runtime
 - cell size responses update runtime state without entering scrollback
-- mouse mode is disabled by default and only enabled by explicit session policy
+- terminal-native text selection is the default mouse owner
+- application ownership enables `1002` and `1006` and restores both on exit
+- legacy `enable_mouse=True` resolves to application ownership
+- Win32 preserves Quick Edit for terminal ownership and restores the original
+  console mode on exit
 - Windows Terminal, Termux, and Apple Terminal hints are visible in diagnostics
 - Windows VT input enable/restore is idempotent and diagnostic-visible
 - Apple Terminal Return becomes `shift+enter` only when the Shift probe is true
@@ -490,5 +519,5 @@ Diagnostics should be printable without requiring a live TUI session.
 - Should keyboard protocol state be exposed in the status/debug surface?
 - Should `InputReader.feed()` switch directly to `InputBatch`, or should P0 add
   a temporary compatibility method while callers migrate?
-- Should mouse support be product opt-in per surface, or a global TUI runtime
-  setting?
+- Should a future dynamic per-surface ownership switch be added, and if so what
+  focus transition owns its balanced setup and teardown?

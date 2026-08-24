@@ -213,10 +213,97 @@ print(loushang.tui.TerminalInputMode.__name__)
     assert result.stdout.strip() == "TerminalInputMode"
 
 
+def test_terminal_input_keeps_native_backends_lazy() -> None:
+    result = _run_python_import_boundary_check(
+        """
+import sys
+
+import loushang.tui.terminal_input
+
+assert "loushang.tui.terminal_backends.posix" not in sys.modules
+assert "loushang.tui.terminal_backends.windows" not in sys.modules
+assert "loushang.tui.terminal_backends.darwin" not in sys.modules
+"""
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_terminal_input_selects_only_windows_backend() -> None:
+    result = _run_python_import_boundary_check(
+        """
+import sys
+
+from loushang.tui.terminal_backends import (
+    native_terminal_input_backend,
+    native_terminal_mode_factory,
+    native_terminal_platform,
+)
+
+native_terminal_input_backend("win32")
+native_terminal_mode_factory("win32")
+native_terminal_platform("win32")
+
+assert "loushang.tui.terminal_backends.windows" in sys.modules
+assert "loushang.tui.terminal_backends.posix" not in sys.modules
+assert "loushang.tui.terminal_backends.darwin" not in sys.modules
+"""
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_terminal_input_selects_only_posix_backend() -> None:
+    result = _run_python_import_boundary_check(
+        """
+import sys
+
+from loushang.tui.terminal_backends import (
+    native_terminal_input_backend,
+    native_terminal_mode_factory,
+    native_terminal_platform,
+)
+
+native_terminal_input_backend("linux")
+native_terminal_mode_factory("linux")
+native_terminal_platform("linux")
+
+assert "loushang.tui.terminal_backends.posix" in sys.modules
+assert "loushang.tui.terminal_backends.windows" not in sys.modules
+assert "loushang.tui.terminal_backends.darwin" not in sys.modules
+assert "termios" not in sys.modules
+assert "tty" not in sys.modules
+"""
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_terminal_platform_selects_only_darwin_backend() -> None:
+    result = _run_python_import_boundary_check(
+        """
+import sys
+
+from loushang.tui.terminal_backends import native_terminal_platform
+
+native_terminal_platform("darwin")
+
+assert "loushang.tui.terminal_backends.darwin" in sys.modules
+assert "loushang.tui.terminal_backends.posix" not in sys.modules
+assert "loushang.tui.terminal_backends.windows" not in sys.modules
+"""
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
 def test_terminal_input_mode_is_noop_without_posix_terminal_modules() -> None:
     result = _run_python_without_posix_terminal_modules(
         """
+import sys
 from io import StringIO
+
+sys.platform = "linux"
 
 from loushang.tui.terminal_input import TerminalInputMode
 

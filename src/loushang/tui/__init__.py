@@ -170,6 +170,7 @@ from loushang.tui.terminal_capabilities import (
 )
 from loushang.tui.terminal_capabilities import (
     KeyboardProtocolStrategy,
+    MouseSelectionOwner,
     TerminalEnvironment,
     TerminalRuntimeCapabilities,
     detect_terminal_capabilities,
@@ -486,6 +487,7 @@ __all__ = [
     "KeyValueList",
     "Menu",
     "MenuItem",
+    "MouseSelectionOwner",
     "NumberFormatter",
     "KeyboardProtocolStrategy",
     "KeyboardProtocolController",

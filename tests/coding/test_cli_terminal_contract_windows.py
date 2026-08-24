@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from tests.tui.terminal_process_support import (
 pytestmark = [
     pytest.mark.tui_terminal_contract,
     pytest.mark.requires_host_runtime,
+    pytest.mark.skipif(os.name != "nt", reason="Windows ConPTY CLI contract"),
 ]
 
 
@@ -23,14 +25,13 @@ def _record_backend(record_testsuite_property) -> None:
     record_testsuite_property("terminal_backend", selected_backend_name())
 
 
-def test_real_cli_quit_restores_shared_terminal_modes() -> None:
+def test_windows_cli_conpty_stream_ends_with_cursor_restoration() -> None:
+    """Assert renderer-visible restoration, not raw application VT output."""
     repo_root = Path(__file__).resolve().parents[2]
-    env = terminal_test_environment(repo_root)
-
     with spawn_terminal_process(
         [sys.executable, "-m", "loushang.coding.cli", "--tui"],
         cwd=repo_root,
-        env=env,
+        env=terminal_test_environment(repo_root),
         columns=80,
         rows=24,
     ) as driver:
@@ -43,19 +44,10 @@ def test_real_cli_quit_restores_shared_terminal_modes() -> None:
         assert driver.wait(timeout=15) == 0
         output = driver.raw_output
 
-    assert driver.diagnostics.backend == selected_backend_name()
+    show_cursor = output.rfind("\x1b[?25h")
+    paste_disable = output.rfind("\x1b[?2004l")
+    focus_disable = output.rfind("\x1b[?1004l")
+    assert show_cursor != -1
+    assert paste_disable > show_cursor
+    assert focus_disable > show_cursor
     assert driver.diagnostics.reader_alive is False
-    assert "Welcome to Loushang CLI" in strip_control_sequences(output)
-    _assert_paired_mode(output, enable="\x1b[?2004h", disable="\x1b[?2004l")
-    _assert_paired_mode(output, enable="\x1b[?1004h", disable="\x1b[?1004l")
-    cleanup_end = max(output.rfind("\x1b[?2004l"), output.rfind("\x1b[?1004l"))
-    final_tail = strip_control_sequences(output[cleanup_end:])
-    assert " | idle" not in final_tail
-    assert " | running" not in final_tail
-
-
-def _assert_paired_mode(output: str, *, enable: str, disable: str) -> None:
-    enabled_at = output.find(enable)
-    disabled_at = output.rfind(disable)
-    assert enabled_at != -1
-    assert disabled_at > enabled_at

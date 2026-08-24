@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import os
 import runpy
 import sys
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+
+pytestmark = pytest.mark.skipif(
+    os.name == "nt",
+    reason="the width probe is a POSIX termios example",
+)
 
 
 def test_width_probe_restores_termios_when_cleanup_output_fails(

@@ -238,6 +238,8 @@ headless ConPTY 不只是哑管道。当前源码审计显示产品主动发出�
 
 driver 不拥有 screen model，因此该固定 DSR 响应不代表真实最终 cursor，也不能用于验证 cursor correctness。若未来产品合同依赖真实 cursor truth，必须增加有限 VT cursor tracker，并对超出支持的控制序列 fail-closed。首版不伪装 Kitty keyboard protocol 支持；对 `ESC[?u` 保持无响应并验证产品按既有 150ms deadline 回退。hermetic 基线 profile 关闭 cell-size query；单独的 cell-size profile 对 `ESC[16t` 明确选择“无响应但产品继续运行”或返回受控的 `ESC[6;<height>;<width>t`，两条路径都需测试。主动 DSR fixture 必须验证跨 chunk query、响应格式及普通文本不被误识别；清单中任何可能阻塞且无已验证 fallback 的未知 query 都 fail-closed。
 
+2026-08-24 Windows 主机复验补充了一个必须显式建模的平台边界：POSIX PTY master 能观察应用原始 DSR，因此可以执行“应用 query -> responder -> PTY input”的端到端 fixture；ConPTY client pipe 接收的是 ConHost 根据 console screen 重建的 renderer stream，应用写出的 `ESC[5n` 会先被 ConHost 中介，并不保证原样到达 driver。即使 client 把 DSR response 写回 ConPTY input pipe，ConHost 也不保证把任意 terminal-response CSI 转成子进程可读的 console input record。故 query 证据必须拆为三块：共享 responder 增量单元合同、POSIX 专属 DSR 端到端合同、Windows 专属 ConPTY renderer mediation 与产品有界 fallback 合同。不得为了表面“双 backend 同断言”而在 ConPTY driver 中伪造 query 可见性。
+
 ### 原生 Windows 单元边界
 
 Windows CI 还必须实际执行 terminal platform/session/input 的共享及 Windows 专属集合；Ubuntu 执行共享及 POSIX 专属集合。P0 要把当前文件中依赖 `termios`/`tty` 或显式 Windows skip 的测试拆到精确集合，required job 不整文件运行后再容忍 runtime skip。
@@ -258,11 +260,11 @@ POSIX PTY 与 Windows ConPTY 执行同一组断言：
 2. 等待明确的产品 readiness 条件，而不是绑定某个 `show cursor` 实现细节。
 3. 确认欢迎内容和所需 VT 生命周期序列到达 transport。
 4. 发送 `/quit\r`，在有界时间内以退出码 0 结束。
-5. 确认启用过的 cursor、paste、mouse/focus/keyboard 等终端模式有配对的恢复序列。
+5. 确认两个 backend 都能观察到的 paste/focus 等终端模式有配对的恢复序列；cursor 与 synchronized-output 证据按 platform profile 解释。
 6. 完成有限 tail drain，输出末尾不再追加 live `idle/running` 状态。
 7. timeout 或断言失败时无子孙进程、FD、handle 或 reader thread 残留。
 
-注意：第 5、6 项只断言 transport 中发出了清理/恢复事实；最终 screen 的精确状态仍由共享 FakeTerminal playback 证明。
+注意：第 5、6 项只断言相应 transport 能观察到的清理/恢复事实；最终 screen 的精确状态仍由共享 FakeTerminal playback 证明。POSIX PTY 专属合同可断言应用原始 cursor-hide/synchronized-output 序列；ConPTY 会消费部分控制序列并重建画面，Windows 专属合同只断言 renderer-visible 的最终 cursor restoration，不要求应用控制字节逐一重放。
 
 产品合同必须使用 hermetic terminal environment：从清洗后的宿主环境构造，明确设置 `TERM`/`COLORTERM`，清除 `TMUX`、`STY`、`WT_SESSION`、`TERM_PROGRAM`、Kitty/WezTerm/Ghostty、SSH/WSL 等会改变 capability detection 的身份变量。Windows 环境变量按大小写不敏感方式合并，避免 `PATH`/`Path` 重复。需要验证特定宿主时另建显式 profile，不能让 CI runner 的偶然环境改变共享断言。
 
@@ -360,7 +362,7 @@ P2a 不宣称 Windows 原生 terminal contract 已完成，也不得关闭 P0 �
 
 - 落地基于 Win32 API 的强制 ConPTY backend；保持测试栈零 Windows 条件依赖，Linux 与 Windows 均不安装 pywinpty。
 - 增加 Windows native-terminal required job；显式选择 test support、backend conformance 和同一 `/quit` 产品合同路径。
-- 把 P1 的大输出、query matrix、Unicode、resize、退出码、timeout 子孙进程、输出 EOF/drain 和幂等 close 固化为双 backend conformance。
+- 把 P1 的大输出、Unicode、resize、退出码、timeout 子孙进程、输出 EOF/drain 和幂等 close 固化为双 backend 共享 conformance；query matrix 则固化为共享 responder、POSIX PTY 和 Windows ConPTY 三个内聚 profile。
 
 P2b 不允许合并“Windows job 存在但全部 skip”“ConPTY backend 尚未受进程树清理保护”或“ConPTY teardown 尚未证明 reader/handle 零残留”的中间状态。P2a 与 P2b 可以分成小步提交，但 P2b 是 Windows 原生支持声明和本轮跨平台目标的发布阻断项，不能停在 P2a 宣称完成。
 
@@ -389,6 +391,7 @@ P2b 不允许合并“Windows job 存在但全部 skip”“ConPTY backend 尚�
 | 真实 CLI TTY 识别与 `/quit` | 不适用 | 必须 | 必须 | 非核心 |
 | VT cleanup/restore 穿过 transport | operation 级 | 必须 | 必须 | 可观察 |
 | resize/Unicode/退出码 | 语义级 | 必须 | 必须 | 非核心 |
+| 应用 DSR 原样可观察 | responder 单元级 | 必须 | 不声明（ConHost 中介） | emulator 专属 |
 | timeout/进程树/handle 清理 | 不适用 | 必须 | 必须 | fixture 清理 |
 | pane scrollback/history | 模型级 | 不声明 | 不声明 | 必须 |
 

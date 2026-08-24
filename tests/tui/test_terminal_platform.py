@@ -1,97 +1,141 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+from dataclasses import dataclass, field
 
-from loushang.tui import terminal_platform
-from loushang.tui.terminal_platform import DefaultTerminalPlatformAdapter
+from loushang.tui.terminal_backends import (
+    NativeTerminalPlatform,
+    NeutralConsoleMode,
+    NeutralModifierKeys,
+)
+from loushang.tui.terminal_platform import (
+    DefaultTerminalPlatformAdapter,
+    adapt_terminal_platform_adapter,
+)
 
-ENABLE_QUICK_EDIT_MODE = 0x0040
-ENABLE_EXTENDED_FLAGS = 0x0080
-ENABLE_VIRTUAL_TERMINAL_INPUT = 0x0200
-ENABLE_PROCESSED_OUTPUT = 0x0001
-ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
 
+def test_default_terminal_platform_adapter_delegates_to_small_native_ports() -> None:
+    console_mode = _RecordingConsoleMode()
+    modifier_keys = _RecordingModifierKeys()
+    adapter = DefaultTerminalPlatformAdapter(
+        platform=NativeTerminalPlatform(
+            console_mode=console_mode,
+            modifier_keys=modifier_keys,
+        )
+    )
 
-def test_windows_console_input_mode_disables_quick_edit_and_enables_vt(monkeypatch) -> None:
-    initial_mode = ENABLE_QUICK_EDIT_MODE | 0x0004
-    kernel32 = _FakeKernel32(initial_mode=initial_mode)
-    monkeypatch.setattr(terminal_platform.sys, "platform", "win32")
-    monkeypatch.setattr(terminal_platform.ctypes, "windll", SimpleNamespace(kernel32=kernel32), raising=False)
-
-    adapter = DefaultTerminalPlatformAdapter()
-
-    assert adapter.enable_windows_vt_input(object()) is True
-
-    expected_mode = (initial_mode | ENABLE_EXTENDED_FLAGS | ENABLE_VIRTUAL_TERMINAL_INPUT) & ~ENABLE_QUICK_EDIT_MODE
-    assert kernel32.set_modes == [expected_mode]
+    assert adapter.enable_windows_vt_output("stdout") is True
+    assert adapter.enable_windows_vt_input("stdin") is True
     assert adapter.windows_console_mode_configured() is True
     assert adapter.windows_vt_input_active() is True
-
-    adapter.disable_windows_vt_input()
-
-    assert kernel32.set_modes == [expected_mode, initial_mode]
-    assert adapter.windows_console_mode_configured() is False
-    assert adapter.windows_vt_input_active() is False
-
-
-def test_windows_console_input_mode_disables_quick_edit_when_vt_input_is_rejected(monkeypatch) -> None:
-    initial_mode = ENABLE_QUICK_EDIT_MODE | 0x0004
-    kernel32 = _FakeKernel32(initial_mode=initial_mode, reject_vt_input=True)
-    monkeypatch.setattr(terminal_platform.sys, "platform", "win32")
-    monkeypatch.setattr(terminal_platform.ctypes, "windll", SimpleNamespace(kernel32=kernel32), raising=False)
-
-    adapter = DefaultTerminalPlatformAdapter()
-
-    assert adapter.enable_windows_vt_input(object()) is False
-
-    vt_mode = (initial_mode | ENABLE_EXTENDED_FLAGS | ENABLE_VIRTUAL_TERMINAL_INPUT) & ~ENABLE_QUICK_EDIT_MODE
-    quick_edit_mode = (initial_mode | ENABLE_EXTENDED_FLAGS) & ~ENABLE_QUICK_EDIT_MODE
-    assert kernel32.set_modes == [vt_mode, quick_edit_mode]
-    assert adapter.windows_console_mode_configured() is True
-    assert adapter.windows_vt_input_active() is False
-
-    adapter.disable_windows_vt_input()
-
-    assert kernel32.set_modes == [vt_mode, quick_edit_mode, initial_mode]
-    assert adapter.windows_console_mode_configured() is False
-
-
-def test_windows_console_output_mode_enables_vt_processing_and_restores(monkeypatch) -> None:
-    initial_mode = 0x0002
-    kernel32 = _FakeKernel32(initial_mode=initial_mode)
-    monkeypatch.setattr(terminal_platform.sys, "platform", "win32")
-    monkeypatch.setattr(terminal_platform.ctypes, "windll", SimpleNamespace(kernel32=kernel32), raising=False)
-
-    adapter = DefaultTerminalPlatformAdapter()
-
-    assert adapter.enable_windows_vt_output(object()) is True
-
-    expected_mode = initial_mode | ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING
-    assert kernel32.set_modes == [expected_mode]
     assert adapter.windows_vt_output_active() is True
-
+    assert adapter.apple_shift_pressed() is True
+    adapter.disable_windows_vt_input()
     adapter.disable_windows_vt_output()
 
-    assert kernel32.set_modes == [expected_mode, initial_mode]
+    assert console_mode.calls == [
+        "enable_output:stdout",
+        "enable_input:stdin:preserve_selection=False",
+        "mode_configured",
+        "input_active",
+        "output_active",
+        "disable_input",
+        "disable_output",
+    ]
+    assert modifier_keys.calls == ["shift_pressed"]
+
+
+def test_neutral_terminal_platform_has_no_native_side_effects() -> None:
+    adapter = DefaultTerminalPlatformAdapter(
+        platform=NativeTerminalPlatform(
+            console_mode=NeutralConsoleMode(),
+            modifier_keys=NeutralModifierKeys(),
+        )
+    )
+
+    assert adapter.enable_windows_vt_output(object()) is False
+    assert adapter.enable_windows_vt_input(object()) is False
+    assert adapter.windows_console_mode_configured() is False
+    assert adapter.windows_vt_input_active() is False
     assert adapter.windows_vt_output_active() is False
+    assert adapter.apple_shift_pressed() is False
+    adapter.disable_windows_vt_input()
+    adapter.disable_windows_vt_output()
 
 
-class _FakeKernel32:
-    def __init__(self, *, initial_mode: int, reject_vt_input: bool = False) -> None:
-        self.initial_mode = initial_mode
-        self.reject_vt_input = reject_vt_input
-        self.set_modes: list[int] = []
+def test_legacy_adapter_bridge_tolerates_older_missing_optional_hooks() -> None:
+    adapter = _MinimalLegacyAdapter()
+    platform = adapt_terminal_platform_adapter(adapter)  # type: ignore[arg-type]
 
-    def GetStdHandle(self, _handle_id: int) -> int:
-        return 123
+    assert platform.console_mode.enable_vt_output(object()) is False
+    assert platform.console_mode.enable_vt_input("stdin") is True
+    assert platform.console_mode.mode_configured() is False
+    assert platform.console_mode.vt_input_active() is False
+    assert platform.console_mode.vt_output_active() is False
+    assert platform.modifier_keys.shift_pressed() is True
+    platform.console_mode.disable_vt_input()
+    platform.console_mode.disable_vt_output()
 
-    def GetConsoleMode(self, _handle: object, mode_ptr: object) -> int:
-        mode_ptr._obj.value = self.initial_mode
-        return 1
+    assert adapter.calls == ["enable_input:stdin", "shift_pressed", "disable_input"]
 
-    def SetConsoleMode(self, _handle: object, mode: object) -> int:
-        value = int(getattr(mode, "value", mode))
-        self.set_modes.append(value)
-        if self.reject_vt_input and value & ENABLE_VIRTUAL_TERMINAL_INPUT:
-            return 0
-        return 1
+
+@dataclass
+class _RecordingConsoleMode:
+    calls: list[str] = field(default_factory=list)
+
+    def enable_vt_input(
+        self,
+        stdin: object,
+        *,
+        preserve_native_selection: bool = False,
+    ) -> bool:
+        self.calls.append(
+            f"enable_input:{stdin}:preserve_selection={preserve_native_selection}"
+        )
+        return True
+
+    def disable_vt_input(self) -> None:
+        self.calls.append("disable_input")
+
+    def enable_vt_output(self, stdout: object) -> bool:
+        self.calls.append(f"enable_output:{stdout}")
+        return True
+
+    def disable_vt_output(self) -> None:
+        self.calls.append("disable_output")
+
+    def mode_configured(self) -> bool:
+        self.calls.append("mode_configured")
+        return True
+
+    def vt_input_active(self) -> bool:
+        self.calls.append("input_active")
+        return True
+
+    def vt_output_active(self) -> bool:
+        self.calls.append("output_active")
+        return True
+
+
+@dataclass
+class _RecordingModifierKeys:
+    calls: list[str] = field(default_factory=list)
+
+    def shift_pressed(self) -> bool:
+        self.calls.append("shift_pressed")
+        return True
+
+
+@dataclass
+class _MinimalLegacyAdapter:
+    calls: list[str] = field(default_factory=list)
+
+    def enable_windows_vt_input(self, stdin: object) -> bool:
+        self.calls.append(f"enable_input:{stdin}")
+        return True
+
+    def disable_windows_vt_input(self) -> None:
+        self.calls.append("disable_input")
+
+    def apple_shift_pressed(self) -> bool:
+        self.calls.append("shift_pressed")
+        return True

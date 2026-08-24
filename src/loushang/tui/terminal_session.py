@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -9,8 +10,13 @@ from typing import Literal, TextIO
 
 from loushang.tui.input import InputEvent
 from loushang.tui.keyboard_protocol import KeyboardProtocolController
+from loushang.tui.terminal_backends import (
+    NativeTerminalPlatform,
+    native_terminal_platform,
+)
 from loushang.tui.terminal_capabilities import (
     ImageProtocol,
+    MouseSelectionOwner,
     TerminalEnvironment,
     TerminalRuntimeCapabilities,
     detect_terminal_capabilities,
@@ -20,8 +26,8 @@ from loushang.tui.terminal_image import CellDimensions
 from loushang.tui.terminal_input import TerminalInputMode, drain_input, stream_is_tty
 from loushang.tui.terminal_platform import (
     APPLE_TERMINAL_SHIFT_ENTER_SEQUENCE,
-    DefaultTerminalPlatformAdapter,
     TerminalPlatformAdapter,
+    adapt_terminal_platform_adapter,
 )
 
 TerminalModeFactory = Callable[[TextIO, TextIO, TerminalRuntimeCapabilities], AbstractContextManager[object]]
@@ -52,6 +58,7 @@ class TerminalSessionDiagnostics:
     termux_session: bool
     is_multiplexer: bool
     inside_ssh: bool
+    mouse_selection_owner: MouseSelectionOwner = "terminal"
 
 
 @dataclass(slots=True)
@@ -69,6 +76,7 @@ class TerminalSession:
     drain_max_duration: float = 1.0
     platform_adapter: TerminalPlatformAdapter | None = None
     cell_size: CellDimensions | None = None
+    native_platform: NativeTerminalPlatform | None = None
     _mode: AbstractContextManager[object] | None = field(default=None, init=False, repr=False)
     _keyboard_controller: KeyboardProtocolController | None = field(default=None, init=False, repr=False)
     _mouse_mode_active: bool = field(default=False, init=False, repr=False)
@@ -83,11 +91,10 @@ class TerminalSession:
             self.environment = terminal_environment_from_env()
         if self.capabilities is None:
             self.capabilities = detect_terminal_capabilities(self.environment)
-        if self.platform_adapter is None:
-            self.platform_adapter = DefaultTerminalPlatformAdapter()
+        native_platform = self._native_platform()
         if self.capabilities.windows_vt_input and self._control_writes_allowed():
-            self._windows_vt_output_active = _enable_windows_vt_output(
-                self.platform_adapter, self.stdout
+            self._windows_vt_output_active = (
+                native_platform.console_mode.enable_vt_output(self.stdout)
             )
             self._windows_output_mode_active = self._windows_vt_output_active
         if self._control_writes_allowed() and self.capabilities.alternate_screen:
@@ -96,12 +103,25 @@ class TerminalSession:
         self._mode = factory(self.stdin, self.stdout, self.capabilities)
         self._mode.__enter__()
         if self.capabilities.windows_vt_input and self._control_writes_allowed():
-            self._windows_vt_input_active = bool(self.platform_adapter.enable_windows_vt_input(self.stdin))
-            self._windows_console_mode_active = _windows_console_mode_configured(self.platform_adapter)
+            self._windows_vt_input_active = bool(
+                native_platform.console_mode.enable_vt_input(
+                    self.stdin,
+                    preserve_native_selection=(
+                        self.capabilities.effective_mouse_selection_owner
+                        == "terminal"
+                    ),
+                )
+            )
+            self._windows_console_mode_active = (
+                native_platform.console_mode.mode_configured()
+            )
         if self._control_writes_allowed() and self.capabilities.keyboard_protocol_strategy != "legacy":
             self._keyboard_controller = KeyboardProtocolController(strategy=self.capabilities.keyboard_protocol_strategy)
             self._write_sequences(self._keyboard_controller.startup_sequences(now_ms=self.now_ms()))
-        if self._control_writes_allowed() and self.capabilities.enable_mouse:
+        if (
+            self._control_writes_allowed()
+            and self.capabilities.application_mouse_tracking_enabled
+        ):
             self._write_sequences(MOUSE_ENABLE_SEQUENCES)
             self._mouse_mode_active = True
         if self._control_writes_allowed() and self.capabilities.query_cell_size:
@@ -130,8 +150,9 @@ class TerminalSession:
                 idle_timeout=self.drain_idle_timeout,
                 max_duration=self.drain_max_duration,
             )
-        if self._windows_console_mode_active and self.platform_adapter is not None:
-            self.platform_adapter.disable_windows_vt_input()
+        native_platform = self._native_platform()
+        if self._windows_console_mode_active:
+            native_platform.console_mode.disable_vt_input()
             self._windows_console_mode_active = False
             self._windows_vt_input_active = False
         try:
@@ -139,8 +160,8 @@ class TerminalSession:
         finally:
             if self.capabilities is not None and self.capabilities.alternate_screen and self._control_writes_allowed():
                 self._write_sequences((ALTERNATE_SCREEN_DISABLE_SEQUENCE,))
-            if self._windows_output_mode_active and self.platform_adapter is not None:
-                _disable_windows_vt_output(self.platform_adapter)
+            if self._windows_output_mode_active:
+                native_platform.console_mode.disable_vt_output()
                 self._windows_output_mode_active = False
                 self._windows_vt_output_active = False
         return suppress
@@ -167,7 +188,7 @@ class TerminalSession:
         if (
             data == "\r"
             and capabilities.apple_terminal_normalization
-            and self._platform_adapter().apple_shift_pressed()
+            and self._native_platform().modifier_keys.shift_pressed()
         ):
             return APPLE_TERMINAL_SHIFT_ENTER_SEQUENCE
         return data
@@ -188,6 +209,7 @@ class TerminalSession:
             termux_session=capabilities.termux_session,
             is_multiplexer=capabilities.is_multiplexer,
             inside_ssh=capabilities.inside_ssh,
+            mouse_selection_owner=capabilities.effective_mouse_selection_owner,
         )
 
     def _keyboard_protocol_state(self) -> KeyboardProtocolRuntimeState:
@@ -221,10 +243,15 @@ class TerminalSession:
             return
         self.cell_size = CellDimensions(width_px=width, height_px=height)
 
-    def _platform_adapter(self) -> TerminalPlatformAdapter:
-        if self.platform_adapter is None:
-            self.platform_adapter = DefaultTerminalPlatformAdapter()
-        return self.platform_adapter
+    def _native_platform(self) -> NativeTerminalPlatform:
+        if self.native_platform is None:
+            if self.platform_adapter is not None:
+                self.native_platform = adapt_terminal_platform_adapter(
+                    self.platform_adapter
+                )
+            else:
+                self.native_platform = native_terminal_platform(sys.platform)
+        return self.native_platform
 
 
 def _default_mode_factory(
@@ -240,32 +267,6 @@ def _default_mode_factory(
         keyboard_protocols=False,
         drain_on_exit=False,
     )
-
-
-def _windows_console_mode_configured(adapter: TerminalPlatformAdapter | None) -> bool:
-    if adapter is None:
-        return False
-    configured = getattr(adapter, "windows_console_mode_configured", None)
-    if callable(configured):
-        return bool(configured())
-    return False
-
-
-def _enable_windows_vt_output(adapter: TerminalPlatformAdapter | None, stdout: TextIO) -> bool:
-    if adapter is None:
-        return False
-    enable = getattr(adapter, "enable_windows_vt_output", None)
-    if not callable(enable):
-        return False
-    return bool(enable(stdout))
-
-
-def _disable_windows_vt_output(adapter: TerminalPlatformAdapter | None) -> None:
-    if adapter is None:
-        return
-    disable = getattr(adapter, "disable_windows_vt_output", None)
-    if callable(disable):
-        disable()
 
 
 __all__ = [

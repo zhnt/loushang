@@ -20,6 +20,7 @@ def _parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("resize")
     subparsers.add_parser("query")
+    subparsers.add_parser("query-output")
 
     large = subparsers.add_parser("large")
     large.add_argument("--size", type=int, default=200_000)
@@ -53,6 +54,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.scenario == "query":
         _enable_immediate_input()
+        print("QUERY_MODE_READY", flush=True)
         sys.stdout.write("\x1b[")
         sys.stdout.flush()
         time.sleep(0.01)
@@ -75,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write("LARGE_BEGIN")
         for index, offset in enumerate(range(0, args.size, 1000)):
             chunk_size = min(1000, args.size - offset)
-            sys.stdout.write(("界" * chunk_size) + f"LARGE_CHUNK:{index}:")
+            sys.stdout.write(("x" * chunk_size) + f"LARGE_CHUNK:{index}:")
             sys.stdout.flush()
             if _read_characters(1) != "c":
                 return 10
@@ -84,6 +86,14 @@ def main(argv: list[str] | None = None) -> int:
         if _read_characters(1) != "c":
             return 10
         return args.code
+    if args.scenario == "query-output":
+        sys.stdout.write("\x1b[")
+        sys.stdout.flush()
+        time.sleep(0.01)
+        sys.stdout.write("5n")
+        sys.stdout.flush()
+        print("QUERY_OUTPUT_DONE", flush=True)
+        return 0
     if args.scenario == "tree":
         child = subprocess.Popen(
             [sys.executable, "-c", "import time; time.sleep(60)"],
@@ -106,9 +116,9 @@ def _enable_immediate_input() -> None:
         import ctypes
         import msvcrt
 
-        # ConPTY delivers terminal responses as VT input only when the child
-        # console requests that mode. Disable cooked line/echo handling so a
-        # split DSR response is observable character-for-character.
+        # Keep the fixture aligned with the product's Windows console mode.
+        # ConPTY still mediates which terminal input sequences become console
+        # records, so application DSR integration is covered only by POSIX PTY.
         handle = ctypes.c_void_p(msvcrt.get_osfhandle(sys.stdin.fileno()))
         mode = ctypes.c_uint32()
         if not ctypes.windll.kernel32.GetConsoleMode(handle, ctypes.byref(mode)):

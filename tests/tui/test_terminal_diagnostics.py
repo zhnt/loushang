@@ -28,6 +28,7 @@ def test_format_terminal_diagnostics_preserves_capability_and_runtime_output() -
     runtime_diagnostics = SimpleNamespace(
         keyboard_protocol_state="kitty",
         mouse_mode_active=True,
+        mouse_selection_owner="application",
         cell_size=SimpleNamespace(width_px=9, height_px=18),
         image_protocol="kitty",
         alternate_screen=True,
@@ -56,6 +57,7 @@ def test_format_terminal_diagnostics_preserves_capability_and_runtime_output() -
         "image_protocol: kitty\n"
         "keyboard_protocol_strategy: kitty_then_modify_other_keys\n"
         "query_cell_size: true\n"
+        "mouse_selection_owner: terminal\n"
         "alternate_screen: true\n"
         "tmux_passthrough: false\n"
         "windows_vt_input: false\n"
@@ -65,6 +67,7 @@ def test_format_terminal_diagnostics_preserves_capability_and_runtime_output() -
         "\n"
         "keyboard_protocol_state: kitty\n"
         "mouse_mode_active: true\n"
+        "runtime_mouse_selection_owner: application\n"
         "cell_size: 9x18\n"
         "runtime_image_protocol: kitty\n"
         "alternate_screen_active: true\n"
@@ -91,6 +94,7 @@ def test_format_terminal_diagnostics_preserves_unknown_runtime_values() -> None:
     assert format_terminal_diagnostics(context) == (
         "keyboard_protocol_state: <unknown>\n"
         "mouse_mode_active: <unknown>\n"
+        "runtime_mouse_selection_owner: <unknown>\n"
         "cell_size: <unknown>\n"
         "runtime_image_protocol: <unknown>\n"
         "alternate_screen_active: <unknown>\n"

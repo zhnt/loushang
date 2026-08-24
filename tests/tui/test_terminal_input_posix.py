@@ -4,12 +4,19 @@ import os
 from io import StringIO
 from typing import Any
 
+import pytest
+
 from loushang.tui.keyboard_protocol import (
     KITTY_QUERY_SEQUENCE,
     MODIFY_OTHER_KEYS_DISABLE_SEQUENCE,
     MODIFY_OTHER_KEYS_ENABLE_SEQUENCE,
 )
 from loushang.tui.terminal_input import TerminalInputMode, drain_input
+
+pytestmark = pytest.mark.skipif(
+    os.name == "nt",
+    reason="requires a live POSIX termios/PTY host",
+)
 
 
 def test_terminal_input_mode_enables_and_restores_tty_modes(monkeypatch: Any) -> None:

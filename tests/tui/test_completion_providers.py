@@ -4,6 +4,8 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
+
 from loushang.tui import (
     CompletionCancellationToken,
     CompletionContext,
@@ -383,34 +385,45 @@ def test_path_completion_provider_respects_gitignore_for_recursive_at_paths(tmp_
     assert provider.get_suggestions(("@build/module",), 0, len("@build/module")) is None
 
 
-def test_path_completion_provider_uses_fd_for_recursive_at_paths(tmp_path: Path) -> None:
+def test_path_completion_provider_uses_fd_for_recursive_at_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.tui.completion as completion_module
     from loushang.tui import PathCompletionProvider
 
-    args_file = tmp_path / "fd-args.txt"
     fake_fd = tmp_path / "fd"
-    fake_fd.write_text(
-        "#!/bin/sh\n"
-        f"printf '%s\\n' \"$@\" > {args_file}\n"
-        "printf 'src/module.py\\n'\n"
-        "printf 'src/pkg/\\n'\n",
-        encoding="utf-8",
-    )
-    fake_fd.chmod(0o755)
+    fake_fd.touch()
+    commands: list[list[str]] = []
 
-    # macOS takes ~0.3s to first-exec a freshly written script, exceeding the
-    # provider's default 0.25s fd timeout; give the fake fd a generous budget.
+    def run_fd(
+        args: list[str],
+        *,
+        timeout_seconds: float,
+        cancellation_token: object,
+    ) -> tuple[str, ...]:
+        del timeout_seconds, cancellation_token
+        commands.append(args)
+        return ("src/module.py", "src/pkg/")
+
+    monkeypatch.setattr(
+        completion_module,
+        "_run_fd_command",
+        run_fd,
+    )
+
     provider = PathCompletionProvider(
         base_path=tmp_path,
         recursive=True,
         fd_path=fake_fd,
-        fd_timeout_seconds=5.0,
     )
 
     suggestions = provider.get_suggestions(("@module",), 0, len("@module"))
 
     assert suggestions is not None
     assert [item.value for item in suggestions.items] == ["@src/module.py"]
-    args = args_file.read_text(encoding="utf-8").splitlines()
+    assert len(commands) == 1
+    args = commands[0]
     assert "--base-directory" in args
     assert str(tmp_path) in args
     assert "--hidden" in args

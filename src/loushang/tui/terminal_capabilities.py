@@ -8,6 +8,7 @@ from typing import Literal
 
 ImageProtocol = Literal["kitty", "iterm2", "none"]
 KeyboardProtocolStrategy = Literal["kitty_then_modify_other_keys", "modify_other_keys", "legacy"]
+MouseSelectionOwner = Literal["terminal", "application"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +50,19 @@ class TerminalRuntimeCapabilities:
     is_multiplexer: bool = False
     inside_ssh: bool = False
     capability_sources: tuple[str, ...] = ()
+    mouse_selection_owner: MouseSelectionOwner = "terminal"
+
+    @property
+    def effective_mouse_selection_owner(self) -> MouseSelectionOwner:
+        """Resolve the explicit policy while preserving the legacy mouse flag."""
+
+        if self.enable_mouse:
+            return "application"
+        return self.mouse_selection_owner
+
+    @property
+    def application_mouse_tracking_enabled(self) -> bool:
+        return self.effective_mouse_selection_owner == "application"
 
 
 def terminal_environment_from_env(
@@ -184,6 +198,7 @@ def format_terminal_capability_diagnostics(
         ("image_protocol", caps.image_protocol),
         ("keyboard_protocol_strategy", caps.keyboard_protocol_strategy),
         ("query_cell_size", _format_bool(caps.query_cell_size)),
+        ("mouse_selection_owner", caps.effective_mouse_selection_owner),
         ("alternate_screen", _format_bool(caps.alternate_screen)),
         ("tmux_passthrough", _format_bool(caps.tmux_passthrough)),
         ("windows_vt_input", _format_bool(caps.windows_vt_input)),
@@ -221,6 +236,7 @@ def _format_bool(value: bool) -> str:
 __all__ = [
     "ImageProtocol",
     "KeyboardProtocolStrategy",
+    "MouseSelectionOwner",
     "TerminalEnvironment",
     "TerminalRuntimeCapabilities",
     "detect_terminal_capabilities",
