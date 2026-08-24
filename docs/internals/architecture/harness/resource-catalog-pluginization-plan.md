@@ -7,7 +7,14 @@
   and Model Input boundaries. It does not amend those boundaries implicitly.
 - Design status: RCP0 contract frozen; final narrow freeze re-review passed.
 - Implementation status: RCP0 and RCP1 are complete on the Harness lane; RCP2
-  has not started. RCP1 adds only the private `_catalog_records`,
+  is in progress. Its first unpublished foundation slice implements the generic
+  `CapabilityComponentDefinition`, exact candidate/admission/selection/binding
+  records, atomic owner generations, cancellation-safe reverse rollback,
+  generation-pinned Consumer leases, and exact-binding disposal. It is not
+  exported by `harness.capabilities`, imported by a production caller, or wired
+  to the current resource loader. The distinct external owner-component Host,
+  durable activation Subject, first-party Catalog/native-source components,
+  and shadow generation runner remain pending. RCP1 adds only the private `_catalog_records`,
   `_catalog_engine`, and `_catalog_shadow` modules. No production caller imports
   them, `harness.resources` does not export them, and they publish no Graph,
   Provider, source-component, refresh, or load authority. The current
@@ -997,6 +1004,15 @@ exception, which is reported explicitly and remains non-live until RCP4; no live
 caller has changed authority.
 
 ### RCP2: Implement owner-component lifecycle
+
+Status: in progress. The first foundation slice completes the inert Definition
+through Binding chain and an unpublished owner-generation runtime. It proves
+construction, cancellation, reverse rollback, atomic publication, exact old-
+generation pinning, drain, retryable retirement, and exact-binding disposal.
+It deliberately does not reuse `CapabilityComponentHost` or the complete-
+Bundle Provider activation Subject. No Resource authority changes in this
+slice; Host preparation and the two first-party Resource contributions are the
+next RCP2 increment.
 
 - implement the minimum `CapabilityComponentDefinition` and exact
   candidate/admission/selection/binding/generation chain;
