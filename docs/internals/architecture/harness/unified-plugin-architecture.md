@@ -3,13 +3,13 @@
 ## Status
 
 Target architecture with its internal PAP0-PAP5 foundation implemented and its
-first independent-review hardening complete on the PAP5 delivery branch;
-adopter-level `coding.lsp`,
-`coding.arch`, public SDK, and Skill convergence remain pending. The existing Capability Graph, Runtime Profile,
-Registration Scope, Extension/Resource generation, Effective Runtime, Resource
-Package, and Plugin source-management runtimes remain authoritative while this
-migration is incomplete. This document does not claim that `coding.lsp`,
-`coding.arch`, or the unified Plugin lifecycle are already implemented.
+three-round independent-review hardening complete on the PAP5 delivery branch;
+adopter-level `coding.lsp`, `coding.arch`, public SDK, and Skill convergence
+remain pending. The existing Capability Graph, Runtime Profile, Registration
+Scope, Extension/Resource generation, Effective Runtime, Resource Package, and
+Plugin source-management runtimes remain authoritative while this migration is
+incomplete. This document does not claim that `coding.lsp`, `coding.arch`, or
+the unified Plugin lifecycle are already implemented.
 
 Canonical Product, Capability, Mount, Package, Plugin, Extension, and Resource
 terms remain defined by the

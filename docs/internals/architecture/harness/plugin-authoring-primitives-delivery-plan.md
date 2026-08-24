@@ -16,9 +16,11 @@
   MCP functionality.
 - Review status: self-reviewed in
   [Plugin Authoring Primitives Plan Review](plugin-authoring-primitives-plan-review.md).
-  The implemented source-changing slice remains local and still requires an
-  independent review against the source tree and executable gates before PR
-  publication.
+  Three independent source reviews and the final freeze re-review are complete;
+  their lifecycle, authority, import-boundary, Provider-resolution, and
+  single-Graph findings were closed through `a38c59dd`. Focused regressions,
+  Harness Ruff/mypy/full tests, and architecture-documentation gates are green
+  for PR publication.
 
 This plan specializes the broader
 [Unified Plugin Architecture](unified-plugin-architecture.md). The accepted
