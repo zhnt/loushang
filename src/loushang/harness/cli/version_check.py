@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+import gzip
 import inspect
+import json
 import os
 import re
+import urllib.error
+import urllib.request
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-
-import httpx
 
 DEFAULT_VERSION_CHECK_TIMEOUT_SECONDS = 10.0
 VersionFetcher = Callable[..., object | Awaitable[object]]
@@ -73,7 +76,7 @@ async def get_latest_package_version(
         "accept": "application/json",
     }
     if fetcher is None:
-        payload: object = await _httpx_fetch_version(
+        payload: object = await _urllib_fetch_version(
             profile.endpoint,
             headers=headers,
             timeout=timeout_seconds,
@@ -116,18 +119,45 @@ async def check_for_new_package_version(
     return None
 
 
-async def _httpx_fetch_version(
+async def _urllib_fetch_version(
     url: str,
     *,
     headers: Mapping[str, str],
     timeout: float,
 ) -> dict[str, object] | None:
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.get(url, headers=dict(headers))
-    if response.status_code < 200 or response.status_code >= 300:
+    return await asyncio.to_thread(
+        _urllib_fetch_version_sync,
+        url,
+        headers=dict(headers),
+        timeout=timeout,
+    )
+
+
+def _urllib_fetch_version_sync(
+    url: str,
+    *,
+    headers: Mapping[str, str],
+    timeout: float,
+) -> dict[str, object] | None:
+    request = urllib.request.Request(url, headers=dict(headers))
+    opener = urllib.request.build_opener(_NoRedirects())
+    try:
+        with opener.open(request, timeout=timeout) as response:
+            body = response.read()
+            if response.headers.get("Content-Encoding") == "gzip":
+                body = gzip.decompress(body)
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
         return None
-    payload = response.json()
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return None
     return payload if isinstance(payload, dict) else None
+
+
+class _NoRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 def _parse_package_version(version: str) -> ParsedVersion | None:
