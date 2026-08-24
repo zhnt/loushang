@@ -6,7 +6,7 @@
   Plugin lifecycle, exact-owner admission, Session Graph, Resource generation,
   and Model Input boundaries. It does not amend those boundaries implicitly.
 - Design status: RCP0 contract frozen pending narrow freeze re-review.
-- Implementation status: RCP0 baseline implemented and verified locally; RCP1
+- Implementation status: RCP0 freeze-review corrections are in progress; RCP1
   has not started. The current `ResourceLoader`,
   `ResourceSnapshot`, `ResourceBundle`, and `SkillLoader` paths remain the
   implemented runtime until a phase below passes its cutover gate.
@@ -15,8 +15,12 @@
   completed against `541408d0`. They conditionally accepted RCP0 only and
   identified the Extension/Catalog transaction, candidate normalization,
   content identity, custody, refresh classification, root authority, bootstrap
-  synchrony, sequencing, and peer-deletion contracts corrected below. A narrow
-  freeze re-review remains required before RCP1.
+  synchrony, sequencing, and peer-deletion contracts corrected below. The first
+  narrow freeze re-review against `811f0fdb` found no P0 but rejected RCP0 exit
+  because the Skill parity oracle, dynamic Extension/Skill ingress, legacy
+  discovery/import, refresh-handle, Extension collision, and body-load
+  diagnostic freezes were incomplete. Those corrections are represented below;
+  a narrow recheck remains required before RCP1.
 - Scope: pluginize the Resource catalog mechanism and Resource source/loading
   mechanisms, converge Skill onto a typed Resource projection, and retain plain
   native `SKILL.md` loading.
@@ -386,9 +390,9 @@ resource_component:
   package_content_digest
 
 extension_owner:
-  extension_id
   runtime_id
   extension_generation
+  extension_set_fingerprint
   extension_owner_fingerprint
 ```
 
@@ -413,11 +417,16 @@ embedded_oem:
 
 extension_output:
   extension_generation_ref
+  extension_id
+  route_id
   route_set_fingerprint
   hook_snapshot_fingerprint
 ```
 
-This keeps executable producer identity separate from content origin: the same
+One Extension-owner snapshot may aggregate several routed Extensions: the
+producer names the exact runtime generation/set, while each candidate's content
+origin names its contributing Extension and route. This keeps executable
+producer identity separate from content origin: the same
 first-party source-component implementation can read native, verified-package,
 or embedded content without erasing either provenance. Native and embedded
 origins receive Host-minted immutable revision evidence without pretending to
@@ -435,11 +444,15 @@ complete
 snapshot_fingerprint
 ```
 
-The snapshot is the sole Catalog candidate ingress. Its candidates and
-diagnostics are canonical identity-sorted, every candidate refers back to the
-same source generation, and duplicate identity inside the snapshot fails. An
-Extension hook snapshot obeys the same record even though its producer is the
-Extension owner rather than a `resource.source` component.
+The snapshot is the sole Catalog candidate ingress. Its candidates are
+canonical `(ResourceIdentity, candidate_fingerprint)`-sorted, diagnostics are
+canonical identity/code-sorted, every candidate refers back to the
+same source generation, and an exact duplicate candidate fingerprint/locator
+inside the snapshot fails. Repeated logical `ResourceIdentity` values remain
+distinct candidate evidence for the kind-specific collision policy; they are
+not silently deduplicated before a merge decision. An Extension hook snapshot
+obeys the same record even though its producer is the Extension owner rather
+than a `resource.source` component.
 
 ### `ResourceCandidateSummary`
 
@@ -452,6 +465,7 @@ invocation_policy
 source_generation_ref
 opaque_locator
 discovery_fingerprint
+candidate_fingerprint
 expected_content_digest
 expected_content_length
 diagnostics
@@ -495,8 +509,10 @@ complete
 snapshot_fingerprint
 ```
 
-Candidate, effective-entry, source, and diagnostic collections are canonical
-identity-sorted. The fingerprint excludes wall-clock time and object addresses.
+Candidate collections are canonical `(ResourceIdentity,
+candidate_fingerprint)`-sorted; effective-entry, source, and diagnostic
+collections use their declared canonical identities. The fingerprint excludes
+wall-clock time and object addresses.
 `complete=false` is explicit evidence and Product policy decides whether an
 optional-source failure may publish a degraded snapshot.
 
@@ -509,6 +525,8 @@ resource_source_discovery_failed
 resource_source_discovery_budget_exceeded
 resource_source_snapshot_invalid
 resource_catalog_proposal_invalid
+resource_body_read_failed
+resource_body_validation_failed
 resource_body_identity_mismatch
 resource_catalog_generation_stale
 resource_component_start_failed
@@ -522,6 +540,25 @@ duplicate identity, locator escape, non-canonical order, policy mismatch, or
 foreign generation. Implementations must not mint one code per component,
 source kind, or exception text. `restart_required` is a refresh classification,
 not a failure code.
+
+The phase-to-code mapping is fixed:
+
+| Phase/outcome | Code |
+| --- | --- |
+| Source invocation or source I/O before a snapshot exists | `resource_source_discovery_failed` |
+| Discovery count/depth/time/body-identity budget | `resource_source_discovery_budget_exceeded` |
+| Source snapshot structure, provenance, locator, duplicate-candidate, or canonical-order rejection | `resource_source_snapshot_invalid` |
+| Engine output omission, foreign candidate/locator, owner-policy mismatch, or non-canonical proposal | `resource_catalog_proposal_invalid` |
+| Exact body adapter I/O or decode failure before owner validation | `resource_body_read_failed` |
+| Owner schema/media/encoding/body-size validation failure | `resource_body_validation_failed` |
+| Observed digest/length differs from the selected candidate | `resource_body_identity_mismatch` |
+| Catalog/source generation lease is stale, retiring, or disposed | `resource_catalog_generation_stale` |
+| Owner-component start or dispose failure | `resource_component_start_failed` / `resource_component_dispose_failed` |
+| Extension hook output/body adapter cannot be frozen under its exact generation | `resource_extension_snapshot_invalid` |
+
+Cancellation remains control flow and is propagated. If Product diagnostics
+record the cancelled operation, they use the phase's stable code plus a finite
+`reason="cancelled"`; exception text appears only in redacted metadata.
 
 ### `ResourceLoadReceipt` and `LoadedResource`
 
@@ -553,20 +590,40 @@ The first cutover preserves the current source priority exactly:
 temporary > project_local > user_global > external_package > built_in
 ```
 
-Within a class, Product-declared root order is retained. New canonical
-tie-breakers use stable source identity, contribution identity, canonical
-Resource identity, and contained relative locator; absolute host paths and
-discovery completion order must not decide a winner. Any behavior difference
-from the current `_loader_precedence` rules needs an explicit parity exception
-fixture and Product decision.
+Within a class, Product-declared root order participates only where the
+Resource-kind policy permits a winner. New canonical tie-breakers use stable
+source identity, contribution identity, canonical Resource identity, and
+contained relative locator; absolute host paths and discovery completion order
+must not decide a winner. Any behavior difference from the current
+`_loader_precedence` and `_loader_resolution` rules needs an explicit parity
+exception fixture and Product decision.
 
 Merge is Resource-kind-specific:
 
-- named Skills, themes, templates, and exclusive assets select one winner;
+- named Skills and prompt templates select the sole candidate at the highest
+  source precedence; multiple enabled candidates at that same precedence reject
+  the logical identity with `same_precedence_conflict` and no winner;
+- themes and other permissive exclusive assets select one winner by source
+  precedence, Product root order, and the stable tie-break;
+- Extension descriptors retain the current ordered-additive rule: all enabled
+  candidates remain active and the decision records the first ordered candidate
+  only as explanatory evidence, not an exclusive winner;
 - context files and explicitly additive prompt collections retain an ordered
   admitted set under their existing nearest-scope semantics; and
-- duplicate identity within one source generation is invalid rather than
-  silently last-write-wins.
+- an exact duplicate candidate fingerprint/locator within one source generation
+  is invalid rather than silently last-write-wins.
+
+Extension hook Resource candidates inherit the admitted owning Extension
+descriptor's source class, scope/root-order facts, and exact Extension
+generation provenance. They receive no special priority. At RCP4 cutover they
+enter the same kind-specific policy as base candidates. This is one explicit
+Product-approved parity exception: the legacy post-discovery
+`ResourceBundle.merge()` currently retains duplicate named Skills/prompts in
+route order, whereas the joint Catalog transaction will resolve or reject them
+exactly like any other candidates. RCP0 freezes both the old behavior and this
+cutover decision; RCP1 shadow comparison reports the known exception instead of
+pretending byte-for-byte Bundle parity, and no live behavior changes before
+RCP4.
 
 Every conflict produces a `ResourceMergeDecision` naming all candidates,
 winner or rejection, policy revision, and reason. Input order does not affect
@@ -899,7 +956,9 @@ forbidden-route fixture. RCP1 may not begin before a narrow freeze re-review.
 - prove order independence and current precedence parity.
 
 Exit: shadow Catalog fingerprints and compatibility bundles match current
-supported fixtures; no live caller has changed authority.
+supported fixtures except the frozen Extension post-discovery collision parity
+exception, which is reported explicitly and remains non-live until RCP4; no live
+caller has changed authority.
 
 ### RCP2: Implement owner-component lifecycle
 

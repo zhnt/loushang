@@ -13,6 +13,7 @@ PLAN_PATH = Path(
 )
 README_PATH = Path("docs/internals/architecture/harness/README.md")
 SOURCE_ROOT = Path("src/loushang")
+LEGACY_LOADER_ROOT = Path("src/loushang/harness/resources")
 
 EXPECTED_CALL_SITES = {
     "discover_resources": {
@@ -130,17 +131,41 @@ EXPECTED_CALL_SITES = {
     },
 }
 
-EXPECTED_RESOURCE_BUNDLE_SKILL_LOAD_SITES = {
+EXPECTED_SKILLS_ATTRIBUTE_LOAD_SITES = {
     (
         Path("src/loushang/harness/commands/resources.py"),
         "list_resource_command_descriptors",
     ),
+    (
+        Path("src/loushang/harness/config/agent/_settings_codec.py"),
+        "_serialize_package_source",
+    ),
     (Path("src/loushang/harness/extensions/resources.py"), "_merge_contribution"),
+    (
+        Path("src/loushang/harness/resources/_loader_discovery.py"),
+        "_apply_resource_switches",
+    ),
+    (
+        Path("src/loushang/harness/resources/_loader_discovery.py"),
+        "_discover_external_package_resources",
+    ),
+    (
+        Path("src/loushang/harness/resources/_loader_pipeline.py"),
+        "_ResourceDiscoveries.skills",
+    ),
+    (
+        Path("src/loushang/harness/resources/_loader_pipeline.py"),
+        "_discover_snapshot",
+    ),
     (
         Path("src/loushang/harness/resources/activation.py"),
         "ResourceActivation.active_skills",
     ),
     (Path("src/loushang/harness/resources/activation.py"), "apply_disabled_skills"),
+    (
+        Path("src/loushang/harness/resources/packages/source.py"),
+        "PackageSourceConfig.filtered",
+    ),
     (
         Path("src/loushang/harness/resources/types.py"),
         "ResourceBundle.merge",
@@ -157,6 +182,51 @@ EXPECTED_RESOURCE_BUNDLE_SKILL_LOAD_SITES = {
         Path("src/loushang/harness/session/agent_product.py"),
         "AgentProductSession._composition_ports",
     ),
+    (Path("src/loushang/method/loader.py"), "MethodLoader.discover_methods"),
+}
+
+LEGACY_LOADER_MODULES = (
+    "_loader_discovery.py",
+    "_loader_discovery_builtin.py",
+    "_loader_discovery_context.py",
+    "_loader_discovery_filesystem.py",
+    "_loader_discovery_temporary.py",
+    "_loader_descriptor_parsing.py",
+    "_loader_package_policy.py",
+    "_loader_pipeline.py",
+    "_loader_precedence.py",
+    "_loader_resolution.py",
+    "_loader_types.py",
+)
+
+EXPECTED_LEGACY_LOADER_IMPORT_EDGES = {
+    (LEGACY_LOADER_ROOT / importer, imported)
+    for importer, imported in (
+        ("_loader_discovery.py", "_loader_discovery_filesystem"),
+        ("_loader_discovery.py", "_loader_package_policy"),
+        ("_loader_discovery.py", "_loader_types"),
+        ("_loader_discovery_builtin.py", "_loader_descriptor_parsing"),
+        ("_loader_discovery_builtin.py", "_loader_types"),
+        ("_loader_discovery_context.py", "_loader_types"),
+        ("_loader_discovery_filesystem.py", "_loader_descriptor_parsing"),
+        ("_loader_discovery_filesystem.py", "_loader_types"),
+        ("_loader_discovery_temporary.py", "_loader_descriptor_parsing"),
+        ("_loader_discovery_temporary.py", "_loader_discovery_filesystem"),
+        ("_loader_discovery_temporary.py", "_loader_types"),
+        ("_loader_package_policy.py", "_loader_types"),
+        ("_loader_pipeline.py", "_loader_discovery"),
+        ("_loader_pipeline.py", "_loader_discovery_builtin"),
+        ("_loader_pipeline.py", "_loader_discovery_context"),
+        ("_loader_pipeline.py", "_loader_discovery_temporary"),
+        ("_loader_pipeline.py", "_loader_resolution"),
+        ("_loader_pipeline.py", "_loader_types"),
+        ("_loader_precedence.py", "_loader_types"),
+        ("_loader_resolution.py", "_loader_precedence"),
+        ("_loader_resolution.py", "_loader_types"),
+        ("loader.py", "_loader_package_policy"),
+        ("loader.py", "_loader_pipeline"),
+        ("loader.py", "_loader_types"),
+    )
 }
 
 
@@ -301,16 +371,64 @@ def _named_attribute_load_sites(
     return sites
 
 
-def _literal_sites(sources: Mapping[Path, str], value: str) -> set[Path]:
-    return {
-        path
-        for path, source in sources.items()
-        if value in source
-        and any(
-            isinstance(node, ast.Constant) and node.value == value
-            for node in ast.walk(ast.parse(source, filename=str(path)))
-        )
-    }
+def _getattr_sites(
+    sources: Mapping[Path, str],
+    *,
+    receiver_name: str,
+    attribute_name: str,
+) -> set[tuple[Path, str]]:
+    sites: set[tuple[Path, str]] = set()
+    for path, source in sources.items():
+        if "getattr" not in source or attribute_name not in source:
+            continue
+        for qualified, function in _qualified_functions(source, filename=path):
+            if any(
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "getattr"
+                and len(node.args) >= 2
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id == receiver_name
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value == attribute_name
+                for parent in _code_unit_nodes(function.body)
+                for node in ast.walk(parent)
+            ):
+                sites.add((path, qualified))
+    return sites
+
+
+def _keyword_sites(
+    sources: Mapping[Path, str],
+    keyword_name: str,
+) -> set[tuple[Path, str]]:
+    sites: set[tuple[Path, str]] = set()
+    for path, source in sources.items():
+        if keyword_name not in source:
+            continue
+        for qualified, function in _qualified_functions(source, filename=path):
+            if any(
+                isinstance(node, ast.keyword) and node.arg == keyword_name
+                for parent in _code_unit_nodes(function.body)
+                for node in ast.walk(parent)
+            ):
+                sites.add((path, qualified))
+    return sites
+
+
+def _legacy_loader_import_edges(
+    sources: Mapping[Path, str],
+) -> set[tuple[Path, str]]:
+    prefix = "loushang.harness.resources."
+    edges: set[tuple[Path, str]] = set()
+    for path, source in sources.items():
+        for node in ast.walk(ast.parse(source, filename=str(path))):
+            if not isinstance(node, ast.ImportFrom) or node.module is None:
+                continue
+            if not node.module.startswith(f"{prefix}_loader"):
+                continue
+            edges.add((path, node.module.removeprefix(prefix)))
+    return edges
 
 
 def test_rcp0_baseline_is_indexed_and_does_not_claim_runtime_implementation() -> None:
@@ -334,16 +452,21 @@ def test_rcp0_discovery_and_projection_caller_inventory_is_exact() -> None:
 
 def test_rcp0_skill_fallback_projection_and_eager_body_sinks_are_exact() -> None:
     sources = _source_texts()
-    resource_bundle_sources = {
-        path: source for path, source in sources.items() if "ResourceBundle" in source
-    }
+    skill_listing_path = Path("src/loushang/harness/cli/skill_listing.py")
 
-    assert _literal_sites(sources, "get_skills") == {
-        Path("src/loushang/harness/cli/skill_listing.py")
-    }
+    assert _getattr_sites(
+        sources,
+        receiver_name="bundle",
+        attribute_name="skills",
+    ) == {(skill_listing_path, "list_skill_records")}
+    assert _getattr_sites(
+        sources,
+        receiver_name="loader",
+        attribute_name="get_skills",
+    ) == {(skill_listing_path, "list_skill_records")}
+    assert _call_sites(sources, "get_skills") == set()
     assert (
-        _attribute_load_sites(resource_bundle_sources, "skills")
-        == EXPECTED_RESOURCE_BUNDLE_SKILL_LOAD_SITES
+        _attribute_load_sites(sources, "skills") == EXPECTED_SKILLS_ATTRIBUTE_LOAD_SITES
     )
     assert _named_attribute_load_sites(
         sources,
@@ -393,12 +516,139 @@ def test_rcp0_legacy_authority_mount_and_extension_merge_inventory_is_exact() ->
         (extension_path, "ExtensionResourceRuntime._finish"),
         (extension_path, "_merge_contribution"),
     }
-    for module in (
-        "_loader_precedence.py",
-        "_loader_resolution.py",
-        "_loader_pipeline.py",
-    ):
+    for module in LEGACY_LOADER_MODULES:
         assert (Path("src/loushang/harness/resources") / module).is_file()
+    assert _legacy_loader_import_edges(sources) == EXPECTED_LEGACY_LOADER_IMPORT_EDGES
+
+
+def test_rcp0_initial_and_refresh_extension_ingress_inventory_is_exact() -> None:
+    sources = _source_texts()
+    bootstrap_path = Path("src/loushang/harness/bootstrap.py")
+    extension_runtime_path = Path("src/loushang/harness/extensions/runtime.py")
+    refresh_path = Path("src/loushang/harness/resources/refresh.py")
+    session_refresh_path = Path("src/loushang/harness/session/resource_refresh.py")
+
+    assert _call_sites(sources, "rediscover_resources") == {
+        (bootstrap_path, "ResourceBootstrapRuntime.activate_extensions")
+    }
+    assert _keyword_sites(sources, "rediscover_resources") == {
+        (bootstrap_path, "create_standard_resource_bootstrap_runtime")
+    }
+    assert _call_sites(sources, "RuntimeResourceDiscovery") == {
+        (session_refresh_path, "SessionResourceRefreshRuntime.__post_init__")
+    }
+    assert _getattr_sites(
+        sources,
+        receiver_name="runtime",
+        attribute_name="discover_resources",
+    ) == {
+        (refresh_path, "RuntimeResourceDiscovery.discover"),
+        (refresh_path, "RuntimeResourceDiscovery.discover_async"),
+    }
+    assert _getattr_sites(
+        sources,
+        receiver_name="runtime",
+        attribute_name="discover_resources_async",
+    ) == {(refresh_path, "RuntimeResourceDiscovery.discover_async")}
+    assert _call_sites(
+        {extension_runtime_path: sources[extension_runtime_path]},
+        "discover",
+    ) == {(extension_runtime_path, "ExtensionRuntime.discover_resources")}
+    assert _call_sites(
+        {extension_runtime_path: sources[extension_runtime_path]},
+        "discover_async",
+    ) == {(extension_runtime_path, "ExtensionRuntime.discover_resources_async")}
+    assert _keyword_sites(sources, "discover_resource") == {
+        (session_refresh_path, "SessionResourceRefreshRuntime.__post_init__")
+    }
+    assert _keyword_sites(sources, "discover_resource_async") == {
+        (session_refresh_path, "SessionResourceRefreshRuntime.__post_init__")
+    }
+
+
+def test_rcp0_refresh_mount_mutation_and_close_inventory_is_exact() -> None:
+    sources = _source_texts()
+    adapter_path = Path("src/loushang/harness/session/agent_adapter.py")
+    loader_path = Path("src/loushang/harness/resources/loader.py")
+    roots_path = Path("src/loushang/harness/resources/packages/roots.py")
+    package_session_path = Path("src/loushang/harness/resources/packages/session.py")
+    bootstrap_configuration_path = Path(
+        "src/loushang/harness/session/bootstrap_configuration.py"
+    )
+
+    assert _call_sites(sources, "_configure_package_resource_roots") == {
+        (adapter_path, "AgentSessionAdapterMixin._prepare_resource_refresh")
+    }
+    assert _call_sites(sources, "configure_package_resource_roots") == {
+        (package_session_path, "SessionPackageController.refresh_package_resources"),
+        (adapter_path, "AgentSessionAdapterMixin._configure_package_resource_roots"),
+    }
+    assert _call_sites(sources, "configure_resource_loader_roots") == {
+        (
+            package_session_path,
+            "SessionPackageController.configure_package_resource_roots",
+        ),
+        (
+            bootstrap_configuration_path,
+            "StandardAgentSessionConfigurationRuntime._resource_roots",
+        ),
+    }
+    assert _call_sites(sources, "set_package_mounts") == {
+        (loader_path, "ResourceLoader.set_package_roots"),
+        (roots_path, "configure_resource_loader_roots"),
+    }
+    assert _call_sites(sources, "_close_mounts") == {
+        (roots_path, "configure_resource_loader_roots")
+    }
+    assert _call_sites(
+        {loader_path: sources[loader_path], roots_path: sources[roots_path]},
+        "close",
+    ) == {
+        (loader_path, "ResourceLoader.__del__"),
+        (loader_path, "ResourceLoader.close"),
+        (loader_path, "ResourceLoader.set_package_mounts"),
+        (roots_path, "_close_mounts"),
+        (roots_path, "_upsert_package_mount"),
+        (roots_path, "resolve_package_resource_roots"),
+    }
+    assert _keyword_sites(sources, "prepare_refresh") == {
+        (
+            Path("src/loushang/harness/session/resource_refresh.py"),
+            "SessionResourceRefreshRuntime.__post_init__",
+        )
+    }
+    assert _keyword_sites(sources, "prepare_resource_refresh") == {
+        (
+            Path("src/loushang/harness/session/agent_product.py"),
+            "AgentProductSession._composition_ports",
+        ),
+        (
+            Path("src/loushang/harness/session/composition.py"),
+            "_build_foundation_runtimes",
+        ),
+        (
+            Path("src/loushang/harness/session/composition.py"),
+            "_legacy_composition_inputs",
+        ),
+    }
+
+
+def test_rcp0_package_catalog_has_only_the_frozen_legacy_resource_bridge() -> None:
+    sources = _source_texts()
+    package_catalog_path = Path("src/loushang/harness/resources/packages/catalog.py")
+    package_catalog = sources[package_catalog_path]
+
+    assert _call_sites(
+        {package_catalog_path: package_catalog},
+        "discover_resources",
+    ) == {(package_catalog_path, "_summarize_package_resources")}
+    for target_catalog_symbol in (
+        "ResourceCatalogSnapshot",
+        "ResourceSourceSnapshot",
+        "ResourceCatalogEngine",
+        "resource.catalog",
+    ):
+        assert target_catalog_symbol not in package_catalog
 
 
 def test_rcp0_target_records_diagnostics_and_forbidden_routes_are_frozen() -> None:
@@ -416,17 +666,24 @@ def test_rcp0_target_records_diagnostics_and_forbidden_routes_are_frozen() -> No
         "LoadedResource",
     ):
         assert f"`{record}`" in baseline
-    for code in (
+    diagnostic_codes = (
         "resource_source_discovery_failed",
         "resource_source_discovery_budget_exceeded",
         "resource_source_snapshot_invalid",
         "resource_catalog_proposal_invalid",
+        "resource_body_read_failed",
+        "resource_body_validation_failed",
         "resource_body_identity_mismatch",
         "resource_catalog_generation_stale",
         "resource_component_start_failed",
         "resource_component_dispose_failed",
         "resource_extension_snapshot_invalid",
-    ):
+    )
+    taxonomy = plan.split("### Stable diagnostic taxonomy", maxsplit=1)[1]
+    code_block = taxonomy.split("```text", maxsplit=1)[1].split("```", maxsplit=1)[0]
+    assert tuple(code_block.split()) == diagnostic_codes
+    assert len(set(diagnostic_codes)) == len(diagnostic_codes)
+    for code in diagnostic_codes:
         assert code in plan
     for required in (
         "root_owned -> graph_constructing -> graph_owned -> retiring -> disposed",
@@ -435,5 +692,9 @@ def test_rcp0_target_records_diagnostics_and_forbidden_routes_are_frozen() -> No
         "Package Catalog choosing effective Resources",
         "Extension output merging effective Resources after final Catalog composition",
         "an owner component creating another Graph, registry, nested Plugin host, or\n  MCP route",
+        "Root order does not break this strict conflict.",
+        "The current post-discovery Extension hook path is a separately frozen legacy\nbehavior",
+        "Initial Session bootstrap is a direct two-phase visible path",
+        "pure classification before mutation",
     ):
         assert required in baseline

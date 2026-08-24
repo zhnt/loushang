@@ -10,6 +10,10 @@
 - Implementation status: RCP0 baseline only. No Catalog engine, source
   component, owner-component lifecycle, or `harness.resources` v2 facet exists
   yet.
+- Review status: the first freeze re-review rejected commit `811f0fdb` with no
+  P0 because its Skill oracle and executable inventories were incomplete. This
+  revision corrects those contracts; RCP1 remains blocked pending a narrow
+  recheck.
 - Cutover rule: an inventory entry may change only in its named phase, with its
   replacement parity green in the same change. Moving a call without removing
   the old authority does not satisfy a disposition.
@@ -30,12 +34,31 @@ security, and sequencing. This companion answers four narrower questions:
 | `harness.resources._loader_pipeline` | Aggregates source discoveries and constructs the authoritative `ResourceSnapshot`. | Becomes the RCP1 parity oracle; no production effective-selection import after RCP5. |
 | `harness.resources._loader_resolution` | Resolves same-identity winners and emits `ResourceMergeDecision`. | Move the behavior into the owner-supplied policy/validator in RCP1; no production import after RCP5. |
 | `harness.resources._loader_precedence` | Owns the implemented priority and stable candidate ordering. | Freeze unchanged into the RCP1 owner policy; no production import after RCP5. |
+| `harness.resources._loader_discovery*`, `_loader_descriptor_parsing`, `_loader_package_policy`, and `_loader_types` | Own native/package/context/temporary discovery, parsing, filtering, and legacy intermediate records below the pipeline. | Adapt pure parsers behind RCP2/RCP3 source generations; remove legacy discovery authority/import edges in RCP5. |
 | `harness.resources.types.ResourceSnapshot` | Holds current candidates, winners, diagnostics, and merge decisions. | RCP1 shadow input only; compatibility projection source in RCP4; no production effective authority after RCP5. |
 | `harness.resources.types.ResourceBundle` | Mutable-list compatibility projection consumed by Session/Product code. | Project from one captured Catalog generation in RCP4; never regain discovery or winner authority. |
 | `harness.resources.skills.SkillLoader` | Wraps `ResourceLoader` and owns a private disabled-name overlay. | Narrow Skill Consumer adapter in RCP5, then delete private discovery/cache/activation state. |
 | `harness.extensions.resources.ExtensionResourceRuntime` | Runs `resources_discover` and directly appends contributions with `ResourceBundle.merge()`. | Normalize one Extension-owner-generation source snapshot and join the RCP4 publication transaction; remove direct merge authority by RCP5. |
+| `harness.bootstrap.ResourceBootstrapRuntime` | Initial Session first discovers a base Bundle, then creates the Extension runtime and calls the `rediscover_resources` port. | RCP4 replaces the two-stage visible path with the joint unpublished Extension/Catalog candidate. |
+| `harness.resources.refresh.RuntimeResourceDiscovery` | Dynamically probes `discover_resources`/`discover_resources_async` and lets active refresh append Extension output after reload. | RCP4 routes this adapter into the joint transaction; no post-Catalog dynamic rediscovery remains. |
 | `harness.resources.packages.catalog._summarize_package_resources` | Constructs a Resource loader, performs effective discovery, and derives an inventory summary. | Replace with a pure inventory/summarization port in RCP3. The Package Catalog remains distinct from the Resource Catalog. |
 | `harness.resources.packages.mounts.PackageResourceMount` | Carries package roots, filters, optional verified revision leases, contained reads, and close. | Transfer exact handles to RCP3 source generations; never expose raw mount/path authority to the engine. |
+
+### Legacy module disposition ledger
+
+| Module | Current role | Named phase |
+| --- | --- | --- |
+| `_loader_discovery.py` | Coordinates project/user/package discovery and switches. | Split native work into RCP2 and package work into RCP3; delete the legacy coordinator in RCP5. |
+| `_loader_discovery_builtin.py` | Reads import-package built-ins. | Adapt as embedded/OEM source in RCP3; delete the legacy entry in RCP5. |
+| `_loader_discovery_context.py` | Walks AGENTS/compatibility context files. | Move behind the native source in RCP2; delete the legacy entry in RCP5. |
+| `_loader_discovery_filesystem.py` | Scans prompt/Skill/Extension/theme directories. | Move behind the native source in RCP2; delete the legacy entry in RCP5. |
+| `_loader_discovery_temporary.py` | Scans Product-supplied one-session paths. | Adapt as a Host-approved native/temporary source mode in RCP3; delete the legacy entry in RCP5. |
+| `_loader_descriptor_parsing.py` | Pure prompt/Skill text-to-descriptor parsing helpers. | Reuse only behind source normalization in RCP2/RCP3; remove legacy descriptor authority in RCP5. |
+| `_loader_package_policy.py` | Normalizes package filters, diagnostics, and counts. | Move pure inventory/filter work to the RCP3 package source/summary port; remove effective-selection coupling in RCP5. |
+| `_loader_types.py` | Defines legacy discovery/intermediate records. | RCP1 parity input only; replace with canonical source/candidate records and remove production use in RCP5. |
+| `_loader_pipeline.py` | Builds the effective `ResourceSnapshot`. | RCP1 parity oracle; remove production construction/import in RCP5. |
+| `_loader_resolution.py` | Applies strict, permissive, and additive kind policies. | Freeze into RCP1 owner policy/validator; remove production import in RCP5. |
+| `_loader_precedence.py` | Applies source precedence and ordering. | Freeze into RCP1 owner policy/validator; remove production import in RCP5. |
 
 ## Frozen Production Caller Inventory
 
@@ -89,21 +112,22 @@ Consumer. RCP5 removes Resource/Skill compatibility getter authority.
 
 ### Skill list and eager-body sinks
 
-The CLI dynamically reads `session.resource_bundle.skills` and falls back to
-`getattr(session.resource_loader, "get_skills")`. The fallback is RCP5 deletion
-debt, not an alternate supported Catalog route.
+The CLI dynamically reads `getattr(session.resource_bundle, "skills")` and
+falls back to `getattr(session.resource_loader, "get_skills")`. The executable
+inventory freezes both receiver/operation pairs and also freezes that there are
+zero direct `get_skills()` production calls. The fallback is RCP5 deletion debt,
+not an alternate supported Catalog route.
 
-Files that both know `ResourceBundle` and directly load a `.skills` attribute
-currently contain these qualified sites:
-
-- `commands.resources.list_resource_command_descriptors`;
-- `extensions.resources._merge_contribution`;
-- `resources.activation.ResourceActivation.active_skills`;
-- `resources.activation.apply_disabled_skills`;
-- `resources.types.ResourceBundle.merge`;
-- `session.agent_adapter.AgentSessionAdapterMixin._before_agent_start_system_prompt_options`;
-- `session.agent_adapter.AgentSessionAdapterMixin._resource_watch_paths`; and
-- `session.agent_product.AgentProductSession._composition_ports`.
+The AST `.skills` candidate inventory is intentionally broader than files that
+import `ResourceBundle`, so Protocol/dynamic paths cannot disappear from the
+gate. Effective/projection sinks are
+`commands.resources.list_resource_command_descriptors`,
+`extensions.resources._merge_contribution`, both `resources.activation`
+paths, `ResourceBundle.merge`, both `AgentSessionAdapterMixin` paths, and
+`MethodLoader.discover_methods`. The same inventory separately records legacy
+pipeline/discovery field reads and unrelated configuration/source-filter/port
+field reads; those candidates must be classified rather than silently filtered
+out by an import-name heuristic.
 
 Three production sites directly read an eager Skill body:
 `capabilities.prompt_preflight._preflight_resource_input` and
@@ -112,7 +136,7 @@ while `method.skill_adapter.method_from_skill` reads the compatible
 `SkillResourceLike` projection. RCP5 moves all three to an exact Catalog load
 receipt; summaries and Method projection must not silently read a changed body.
 
-### Package mounts and Extension merges
+### Package mounts, refresh mutation, and Extension ingress
 
 `PackageResourceMount` is constructed only by
 `resources.loader._package_mounts_from_legacy_roots` and
@@ -120,11 +144,45 @@ receipt; summaries and Method projection must not silently read a changed body.
 second path the source-generation input and removes the legacy loader mount
 constructor after parity.
 
+The current active-refresh mutation chain is also frozen:
+
+```text
+AgentSessionAdapterMixin._prepare_resource_refresh
+  -> settings_manager.reload()
+  -> SessionPackageController.configure_package_resource_roots
+  -> configure_resource_loader_roots
+  -> ResourceLoader.set_package_mounts
+  -> close every replaced VerifiedRevisionHandle immediately
+  -> ResourceLoader.reload_resources
+```
+
+`SessionPackageController.refresh_package_resources` is a second caller of the
+same configure-then-refresh sequence. Error construction also closes unresolved
+mounts in `resolve_package_resource_roots`/`configure_resource_loader_roots`.
+These are honest legacy semantics, not the target. RCP4 replaces the whole
+active path with pure classification before mutation; `restart_required`
+changes nothing, and an adopted generation closes handles only after Consumer
+and load leases drain. The initial bootstrap call to
+`configure_resource_loader_roots` remains a distinct, pre-publication RCP3
+source preparation path.
+
 Direct Extension Resource merges are currently limited to
 `ExtensionResourceRuntime._finish` and `_merge_contribution`. These are
 explicit migration debt. RCP4 replaces their publication role with one
 Extension-generation `ResourceSourceSnapshot`; RCP5's final gate requires zero
 direct Extension `ResourceBundle.merge()` publication sites.
+
+The dynamic ingress inventory additionally freezes:
+
+- initial `ResourceBootstrapRuntime.activate_extensions -> rediscover_resources`;
+- `ExtensionRuntime.discover_resources -> ExtensionResourceRuntime.discover`;
+- `ExtensionRuntime.discover_resources_async -> ExtensionResourceRuntime.discover_async`;
+- `RuntimeResourceDiscovery.discover/discover_async` probing both method names
+  with `getattr`; and
+- the Session `ResourceRefreshCoordinator` sync/async callback wiring.
+
+Every one of these receives an RCP4 joint-transaction disposition. Deleting only
+the direct Bundle merges while leaving a dynamic callback is not a cutover.
 
 ## Frozen Behavior Parity
 
@@ -136,12 +194,30 @@ The implemented source priority is exactly:
 temporary > project_local > user_global > external_package > built_in
 ```
 
-Within one source class, lower `source_root_order` wins before canonical name
-and source path ordering. Disabled candidates cannot win. Every collision
-retains candidate evidence and one winner/reason in `ResourceMergeDecision`.
-RCP1 shadow output must match this behavior before any caller moves. A proposed
-canonical tie-break difference needs an explicit Product-approved exception;
-it cannot arrive as incidental refactoring.
+Resolution is Resource-kind-specific:
+
+| Kind | Implemented behavior |
+| --- | --- |
+| Named Skill and prompt template | The sole candidate in the highest source-precedence tier wins with `source_precedence`; two enabled candidates in that tier reject the identity with no winner and `same_precedence_conflict`. Root order does not break this strict conflict. |
+| Theme/permissive exclusive | One winner by source precedence, lower `source_root_order`, canonical name, and path; collisions use `precedence_and_tiebreak`. |
+| Extension descriptor | Ordered additive: all enabled candidates remain active after precedence sorting; `all_enabled_candidates_active` records the group. |
+| Context | Existing nearest-scope/ordered context semantics outside named prompt collision. |
+
+Disabled candidates cannot win or become active. Every collision retains
+candidate evidence and one decision/reason. RCP1 shadow output must match these
+rules before any caller moves. A canonical tie-break difference needs an
+explicit Product-approved exception; it cannot arrive as incidental
+refactoring.
+
+The current post-discovery Extension hook path is a separately frozen legacy
+behavior: `ResourceBundle.merge()` appends base and hook-produced duplicate
+named Resources in route order, including disabled descriptors. At RCP4 the
+joint Catalog applies the normal kind-specific policy instead. Extension hook
+candidates inherit their owning Extension descriptor's admitted source class,
+scope/root-order facts, and exact generation; they receive no special priority.
+This duplicate-resolution change is the one Product-approved parity exception,
+must be reported by RCP1 shadow comparison, and cannot affect live behavior
+before RCP4.
 
 Executable parity anchors are:
 
@@ -156,13 +232,29 @@ Executable parity anchors are:
   normalization, ordering, diagnostics, async handling, and `fail_chain`; and
 - `tests/harness/resources/packages/test_catalog.py` for Package Catalog
   Product-profile summaries.
+- `tests/harness/test_bootstrap.py` for initial discover/flags/Extension
+  rediscovery order; and
+- `tests/harness/session/test_resource_refresh.py` for active staged publication,
+  rollback/restoration, revision restoration, and retirement order.
 
-### Current Extension publication chain
+### Current Extension publication chains
 
-The implemented chain is intentionally recorded as legacy behavior:
+Initial Session bootstrap is a direct two-phase visible path, not an existing
+staged joint publication:
 
 ```text
 ResourceLoader produces base ResourceBundle
+  -> ResourceBootstrapRuntime creates ExtensionRuntime from base descriptors
+  -> apply Extension flags
+  -> rediscover_resources calls ExtensionRuntime.discover_resources(base)
+  -> ExtensionResourceRuntime appends hook output
+  -> bootstrap returns the appended Bundle and ExtensionRuntime
+```
+
+Active Extension replacement uses a different staged chain:
+
+```text
+ResourceLoader reloads base ResourceBundle
   -> PreparedExtensionGeneration.discover_resources_async(bundle)
   -> ExtensionResourceRuntime appends hook output to a new ResourceBundle
   -> candidate.activate(bindings)
@@ -170,11 +262,14 @@ ResourceLoader produces base ResourceBundle
   -> prior Extension generation retires
 ```
 
-This is already one staged Extension publication boundary, but it is not yet
-the target single Catalog composition. RCP4 must preserve rollback and visible
-output while moving hook output before the final Catalog proposal and publishing
-Extension state, Catalog generation, and read-only projection in one no-await
-commit. No intermediate Bundle is a second Catalog generation.
+Only the second chain already has a staged Extension publication boundary;
+neither chain has the target single Catalog composition. RCP4 replaces both:
+initial construction keeps everything unpublished until the Session Graph/joint
+commit, while active replacement preserves the existing preflight, rollback,
+view/revision restoration, commit-before-retire, and cancelled-cleanup evidence.
+Both move hook output before the final Catalog proposal and publish Extension
+state, Catalog generation, and read-only projection in one no-await commit. No
+intermediate Bundle is a second Catalog generation.
 
 ## Frozen Target Contract Surface
 
@@ -216,7 +311,11 @@ before the target symbols exist:
 
 RCP0 does not forbid the explicitly inventoried legacy sites before their named
 cutover phase. It forbids adding another site or declaring the existing debt a
-new extension point.
+new extension point. Until RCP3, Package Catalog has exactly one allowed legacy
+bridge, `_summarize_package_resources -> ResourceLoader.discover_resources`;
+it may not import target `ResourceCatalogSnapshot`, `ResourceSourceSnapshot`,
+Catalog-engine, or `resource.catalog` symbols. RCP3 deletes the bridge rather
+than replacing it with a call to the effective Catalog.
 
 ## RCP0 Exit Gate
 
