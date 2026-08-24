@@ -15,6 +15,7 @@ ORCHESTRATION_ROOT = Path("src/loushang/harness/resource_catalog")
 COMPONENTS_PATH = ORCHESTRATION_ROOT / "components.py"
 NATIVE_SOURCE_PATH = RESOURCE_ROOT / "_catalog_native_source.py"
 SHADOW_RUNNER_PATH = ORCHESTRATION_ROOT / "shadow.py"
+PREPARED_GENERATION_PATH = ORCHESTRATION_ROOT / "generation.py"
 
 
 def _imported_modules(path: Path) -> set[str]:
@@ -39,9 +40,9 @@ def test_rcp2_first_party_definitions_are_owned_narrow_component_seams() -> None
     assert RESOURCE_CATALOG_ENGINE_DEFINITION.owner_id == "harness"
     assert RESOURCE_SOURCE_DEFINITION.owner_id == "harness"
     assert RESOURCE_CATALOG_ENGINE_DEFINITION.compatible_bundle_contract.minimum == 1
-    assert RESOURCE_CATALOG_ENGINE_DEFINITION.compatible_bundle_contract.maximum == 1
+    assert RESOURCE_CATALOG_ENGINE_DEFINITION.compatible_bundle_contract.maximum == 2
     assert RESOURCE_SOURCE_DEFINITION.compatible_bundle_contract.minimum == 1
-    assert RESOURCE_SOURCE_DEFINITION.compatible_bundle_contract.maximum == 1
+    assert RESOURCE_SOURCE_DEFINITION.compatible_bundle_contract.maximum == 2
     assert RESOURCE_CATALOG_ENGINE_DEFINITION.service_references == ()
     assert RESOURCE_SOURCE_DEFINITION.service_references == ()
 
@@ -107,6 +108,7 @@ def test_rcp2_shadow_runner_is_private_and_has_no_production_importer() -> None:
         COMPONENTS_PATH,
         NATIVE_SOURCE_PATH,
         SHADOW_RUNNER_PATH,
+        PREPARED_GENERATION_PATH,
         RESOURCE_ROOT / "_catalog_engine.py",
         RESOURCE_ROOT / "_catalog_records.py",
         RESOURCE_ROOT / "_catalog_shadow.py",
@@ -123,3 +125,16 @@ def test_rcp2_shadow_runner_is_private_and_has_no_production_importer() -> None:
         )
     }
     assert "_catalog" not in (RESOURCE_ROOT / "__init__.py").read_text(encoding="utf-8")
+
+
+def test_rcp4_prepared_generation_is_the_only_shadow_to_provider_bridge() -> None:
+    production_paths = set(Path("src/loushang").rglob("*.py")) - {
+        PREPARED_GENERATION_PATH,
+    }
+
+    assert PREPARED_GENERATION_PATH.is_file()
+    assert not {
+        path
+        for path in production_paths
+        if "loushang.harness.resource_catalog.shadow" in _imported_modules(path)
+    }

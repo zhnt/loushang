@@ -6,7 +6,8 @@
   Plugin lifecycle, exact-owner admission, Session Graph, Resource generation,
   and Model Input boundaries. It does not amend those boundaries implicitly.
 - Design status: RCP0 contract frozen; final narrow freeze re-review passed.
-- Implementation status: RCP0 through RCP3 are complete on the Harness lane.
+- Implementation status: RCP0 through RCP3 are complete on the Harness lane;
+  RCP4 has started with its first unpublished Provider-mount foundation slice.
   RCP2's first unpublished foundation slice implements the generic
   `CapabilityComponentDefinition`, exact candidate/admission/selection/binding
   records, atomic owner generations, cancellation-safe reverse rollback,
@@ -22,10 +23,10 @@
   contributions, Host-minted `context`/`standard`/`combined` root handles,
   synchronous bounded no-follow discovery, generation-retained exact body
   bytes, owner-validated Catalog proposals, and a disposable shadow-generation
-  runner beside the current loader. All Catalog/RCP2/RCP3 modules remain private:
-  no production caller imports them, `harness.resources` does not export them, and
-  the shadow runner publishes no Graph, Provider, refresh, or live load
-  authority.
+  runner beside the current loader. Catalog records, sources, and orchestration
+  remain private, and `harness.resources` does not export them. The RCP4
+  preparation bridge is their sole path toward a Provider; no Session bootstrap,
+  refresh route, or compatibility projection calls that bridge yet.
   RCP3 adds admitted-package and embedded/OEM source components beside the
   native source. Capability-aware orchestration converts exact Resource-owner
   admission into a capability-neutral verified input with an independently
@@ -35,8 +36,15 @@
   All three sources emit the same candidate/snapshot records and compose through
   the same engine. Package Catalog summary construction now delegates to a pure
   inventory port and performs no effective Resource discovery or selection.
-  These RCP3 paths remain unpublished shadow infrastructure; RCP4 production
-  mounting and the legacy-loader cutover have not started.
+  The first RCP4 slice adds the internal v2 Definition and focused
+  `resource.catalog`/`resource.load` requirements, makes one prepared owner
+  generation the exclusive asynchronous child of the existing staged Resource
+  candidate, and lets the Resources Provider adopt that complete candidate once.
+  Real isolated Graph tests prove root rollback, cancellation, successful load,
+  Graph reuse rejection of a second content generation, retryable graph-owned
+  retirement, and exact disposal. The Session's joint Extension/Catalog
+  publication, active refresh, compatibility projection, and legacy-loader
+  cutover remain pending.
   The current `ResourceLoader`, `ResourceSnapshot`, `ResourceBundle`, and
   `SkillLoader` paths remain the implemented runtime until a phase below passes
   its cutover gate.
@@ -1104,6 +1112,16 @@ canonicalizes, and exclusively publishes them. Package Catalog performs no
 effective Resource selection.
 
 ### RCP4: Mount Resource Catalog generation
+
+Status: first unpublished mount-foundation slice complete. The v1 Provider path
+is unchanged when no prepared generation exists. A candidate with one prepared
+generation selects only contract/provider v2, contributes the two Catalog/load
+facets, transfers parent and child through the same
+`root_owned -> graph_constructing -> graph_owned` boundary, and retires the
+child before its parent mechanisms. Provider construction fingerprints include
+the selected owner-component binding identity but exclude Catalog snapshot and
+body identity. This slice is exercised through a real isolated Capability Graph;
+it is not yet called by Session bootstrap and therefore is not the live cutover.
 
 - introduce the internal `harness.resources` v2 Catalog/load facets and exact
   Consumer requirements;

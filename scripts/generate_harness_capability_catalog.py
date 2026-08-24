@@ -96,6 +96,26 @@ SOURCE_BACKED_SEAMS = (
     ),
     CapabilitySeam(
         definition=(
+            "loushang.harness.capabilities.resources_contracts:"
+            "RESOURCES_CAPABILITY_DEFINITION_V2"
+        ),
+        providers=(
+            "loushang.harness.capabilities.resources_provider:"
+            "resources_capability_provider_binding",
+        ),
+        consumers=(
+            (
+                "loushang.harness.capabilities.resources_consumers:"
+                "ResourceCatalogCapabilityConsumer",
+                (
+                    "loushang.harness.capabilities.resources_contracts:"
+                    "RESOURCES_CATALOG_LOAD_REQUIREMENT",
+                ),
+            ),
+        ),
+    ),
+    CapabilitySeam(
+        definition=(
             "loushang.harness.capabilities.session_contracts:"
             "SESSION_CAPABILITY_DEFINITION"
         ),
@@ -233,23 +253,33 @@ def load_catalog_entries() -> tuple[tuple[CapabilitySeam, CapabilityDefinition],
         )
 
     loaded: list[tuple[CapabilitySeam, CapabilityDefinition]] = []
-    capability_ids: set[str] = set()
+    capability_versions: set[tuple[str, int]] = set()
     for seam in SOURCE_BACKED_SEAMS:
         definition = _resolve(seam.definition)
         if not isinstance(definition, CapabilityDefinition):
             raise TypeError(
                 f"catalog Definition has wrong type: {_label(seam.definition)}"
             )
-        if definition.capability_id in capability_ids:
+        identity = (definition.capability_id, definition.contract_version)
+        if identity in capability_versions:
             raise RuntimeError(
-                f"duplicate catalog Capability id: {definition.capability_id}"
+                "duplicate catalog Capability contract: "
+                f"{definition.capability_id}@{definition.contract_version}"
             )
-        capability_ids.add(definition.capability_id)
+        capability_versions.add(identity)
         _validate_providers(seam)
         _validate_consumers(seam, definition)
         _validate_production_mounts(seam)
         loaded.append((seam, definition))
-    return tuple(sorted(loaded, key=lambda item: item[1].capability_id))
+    return tuple(
+        sorted(
+            loaded,
+            key=lambda item: (
+                item[1].capability_id,
+                item[1].contract_version,
+            ),
+        )
+    )
 
 
 def render_catalog() -> str:

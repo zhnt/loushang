@@ -29,8 +29,11 @@ from loushang.harness.capabilities.providers import CapabilityBundleProvider
 from loushang.harness.capabilities.resources_contracts import (
     COMMAND_PACKS_FACET,
     PROMPT_SECTIONS_FACET,
+    RESOURCE_CATALOG_FACET,
+    RESOURCE_LOAD_FACET,
     RESOURCE_RUNTIME_FACET,
     RESOURCES_CAPABILITY_DEFINITION,
+    RESOURCES_CAPABILITY_DEFINITION_V2,
     SKILL_ACTIVATION_FACET,
     TOOL_PACKS_FACET,
 )
@@ -79,8 +82,8 @@ class _StagedResources:
             return value[0]
         return value
 
-    def dispose(self) -> None:
-        self.candidate._dispose_graph_owned()
+    async def dispose(self) -> None:
+        await self.candidate._dispose_graph_owned_async()
 
 
 @dataclass(frozen=True)
@@ -151,6 +154,26 @@ class _PackFacet:
         return value
 
 
+@dataclass(frozen=True)
+class _ResourceCatalogFacet:
+    _owner: _StagedResources = field(repr=False, compare=False)
+
+    @property
+    def snapshot(self) -> object:
+        return self._owner.candidate.resource_catalog_snapshot
+
+
+@dataclass(frozen=True)
+class _ResourceLoadFacet:
+    _owner: _StagedResources = field(repr=False, compare=False)
+
+    def load_handle(self, identity: object) -> object:
+        return self._owner.candidate.resource_load_handle(identity)
+
+    async def load(self, handle: object) -> object:
+        return await self._owner.candidate.load_resource(handle)
+
+
 def resources_capability_provider_binding(
     *,
     profile: ResolvedRuntimeProfile,
@@ -175,6 +198,18 @@ def resources_capability_provider_binding(
             raise ValueError(
                 "staged resource candidate does not match the declared Profile"
             )
+    prepared_generation_fingerprint = (
+        None
+        if staged_candidate is None
+        else staged_candidate.resource_owner_generation_binding_fingerprint
+    )
+    has_prepared_generation = prepared_generation_fingerprint is not None
+    definition = (
+        RESOURCES_CAPABILITY_DEFINITION_V2
+        if has_prepared_generation
+        else RESOURCES_CAPABILITY_DEFINITION
+    )
+    provider_version = 2 if has_prepared_generation else 1
     implementations = tuple(
         implementation
         for implementation in (
@@ -184,13 +219,23 @@ def resources_capability_provider_binding(
         if implementation.slot in RESOURCE_CAPABILITY_SLOT_KEYS
     )
     provider = CapabilityBundleProvider(
-        capability_id=RESOURCES_CAPABILITY_DEFINITION.capability_id,
-        provider_id=provider_id,
-        implementation_version=1,
-        compatible_contract=CapabilityContractRange.exact(
-            RESOURCES_CAPABILITY_DEFINITION.contract_version
+        capability_id=(
+            RESOURCES_CAPABILITY_DEFINITION_V2.capability_id
+            if has_prepared_generation
+            else RESOURCES_CAPABILITY_DEFINITION.capability_id
         ),
-        facets=RESOURCES_CAPABILITY_DEFINITION.facets,
+        provider_id=provider_id,
+        implementation_version=provider_version,
+        compatible_contract=CapabilityContractRange.exact(
+            RESOURCES_CAPABILITY_DEFINITION_V2.contract_version
+            if has_prepared_generation
+            else RESOURCES_CAPABILITY_DEFINITION.contract_version
+        ),
+        facets=(
+            RESOURCES_CAPABILITY_DEFINITION_V2.facets
+            if has_prepared_generation
+            else RESOURCES_CAPABILITY_DEFINITION.facets
+        ),
         source_id=source_id,
         selection_rule="Product resource mechanism selections",
     )
@@ -202,33 +247,56 @@ def resources_capability_provider_binding(
             binding = binder.bind_sync(focused_profile)
             owner = _BoundResources(binding=binding, binder=binder)
         else:
+            if (
+                staged_candidate.resource_owner_generation_binding_fingerprint
+                != prepared_generation_fingerprint
+            ):
+                raise RuntimeError(
+                    "Staged Resource owner generation changed after Provider binding"
+                )
             staged_candidate._begin_graph_construction()
             owner = _StagedResources(staged_candidate)
         try:
-            value = CapabilityBundleValue(
-                facets=(
-                    CapabilityFacetBinding(
-                        RESOURCE_RUNTIME_FACET,
-                        _ResourceRuntimeFacet(owner),
-                    ),
-                    CapabilityFacetBinding(
-                        PROMPT_SECTIONS_FACET,
-                        _PromptSectionsFacet(owner),
-                    ),
-                    CapabilityFacetBinding(
-                        SKILL_ACTIVATION_FACET,
-                        _SkillActivationFacet(owner),
-                    ),
-                    CapabilityFacetBinding(
-                        TOOL_PACKS_FACET,
-                        _PackFacet(owner, TOOL_PACKS_SLOT.key),
-                    ),
-                    CapabilityFacetBinding(
-                        COMMAND_PACKS_FACET,
-                        _PackFacet(owner, COMMAND_PACKS_SLOT.key),
-                    ),
+            facets = [
+                CapabilityFacetBinding(
+                    RESOURCE_RUNTIME_FACET,
+                    _ResourceRuntimeFacet(owner),
+                ),
+                CapabilityFacetBinding(
+                    PROMPT_SECTIONS_FACET,
+                    _PromptSectionsFacet(owner),
+                ),
+                CapabilityFacetBinding(
+                    SKILL_ACTIVATION_FACET,
+                    _SkillActivationFacet(owner),
+                ),
+                CapabilityFacetBinding(
+                    TOOL_PACKS_FACET,
+                    _PackFacet(owner, TOOL_PACKS_SLOT.key),
+                ),
+                CapabilityFacetBinding(
+                    COMMAND_PACKS_FACET,
+                    _PackFacet(owner, COMMAND_PACKS_SLOT.key),
+                ),
+            ]
+            if has_prepared_generation:
+                if not isinstance(owner, _StagedResources):
+                    raise RuntimeError(
+                        "Resource Catalog v2 requires a staged owner generation"
+                    )
+                facets.extend(
+                    (
+                        CapabilityFacetBinding(
+                            RESOURCE_CATALOG_FACET,
+                            _ResourceCatalogFacet(owner),
+                        ),
+                        CapabilityFacetBinding(
+                            RESOURCE_LOAD_FACET,
+                            _ResourceLoadFacet(owner),
+                        ),
+                    )
                 )
-            )
+            value = CapabilityBundleValue(facets=tuple(facets))
             if staged_candidate is not None:
                 staged_candidate._commit_graph_ownership()
         except BaseException:
@@ -239,11 +307,15 @@ def resources_capability_provider_binding(
             raise
         return value
 
-    def dispose(value: CapabilityBundleValue) -> None:
+    async def dispose(value: CapabilityBundleValue) -> None:
         resource_facet = value.require(RESOURCE_RUNTIME_FACET)
         if not isinstance(resource_facet, _ResourceRuntimeFacet):
             raise TypeError("resources Provider received an alien Bundle value")
-        resource_facet._owner.dispose()
+        owner = resource_facet._owner
+        if isinstance(owner, _StagedResources):
+            await owner.dispose()
+        else:
+            owner.dispose()
 
     return CapabilityBundleProviderBinding(
         provider=provider,
@@ -252,6 +324,11 @@ def resources_capability_provider_binding(
             profile=focused_profile,
             scope_instance_id=scope_instance_id,
             provider_id=provider_id,
+            contract_version=definition.contract_version,
+            provider_version=provider_version,
+            owner_generation_binding_fingerprint=(
+                prepared_generation_fingerprint if has_prepared_generation else None
+            ),
         ),
         create=create,
         dispose=dispose,
@@ -263,17 +340,37 @@ def _binding_input_fingerprint(
     profile: ResolvedRuntimeProfile,
     scope_instance_id: str,
     provider_id: str,
+    contract_version: int,
+    provider_version: int,
+    owner_generation_binding_fingerprint: str | None,
 ) -> str:
-    payload = dump_json_value(
-        {
+    if contract_version == 1:
+        payload_value: dict[str, object] = {
             "schemaVersion": 1,
             "capabilityId": RESOURCES_CAPABILITY_DEFINITION.capability_id,
-            "contractVersion": RESOURCES_CAPABILITY_DEFINITION.contract_version,
+            "contractVersion": 1,
             "providerId": provider_id,
             "providerVersion": 1,
             "scopeInstanceId": scope_instance_id,
             "profile": profile.snapshot().to_json(),
-        },
+        }
+    else:
+        if owner_generation_binding_fingerprint is None:
+            raise ValueError(
+                "Resources v2 fingerprint requires an owner generation binding"
+            )
+        payload_value = {
+            "schemaVersion": 2,
+            "capabilityId": RESOURCES_CAPABILITY_DEFINITION_V2.capability_id,
+            "contractVersion": contract_version,
+            "providerId": provider_id,
+            "providerVersion": provider_version,
+            "scopeInstanceId": scope_instance_id,
+            "profile": profile.snapshot().to_json(),
+            "ownerGenerationBindingFingerprint": (owner_generation_binding_fingerprint),
+        }
+    payload = dump_json_value(
+        payload_value,
         name="resources binding-input fingerprint",
         sort_keys=True,
     ).encode("utf-8")

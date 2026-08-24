@@ -15,13 +15,22 @@ from loushang.harness.capabilities.prompt import PreparedPrompt, PromptSection
 from loushang.harness.capabilities.resources_contracts import (
     COMMAND_PACKS_FACET,
     PROMPT_SECTIONS_FACET,
+    RESOURCE_CATALOG_FACET,
+    RESOURCE_LOAD_FACET,
     RESOURCE_RUNTIME_FACET,
     RESOURCES_ACTIVATION_REQUIREMENT,
+    RESOURCES_CATALOG_LOAD_REQUIREMENT,
     RESOURCES_COMMAND_PACK_REQUIREMENT,
     RESOURCES_PROMPT_REQUIREMENT,
     RESOURCES_TOOL_PACK_REQUIREMENT,
     SKILL_ACTIVATION_FACET,
     TOOL_PACKS_FACET,
+)
+from loushang.harness.resources._catalog_records import (
+    LoadedResource,
+    ResourceCatalogSnapshot,
+    ResourceIdentity,
+    ResourceLoadHandle,
 )
 from loushang.harness.resources.activation import ResourceActivation
 from loushang.harness.resources.types import ResourceBundle
@@ -52,13 +61,26 @@ class _PromptFacet(Protocol):
     def compose(self, sections: Iterable[PromptSection]) -> PreparedPrompt: ...
 
 
+class _ResourceCatalogFacet(Protocol):
+    @property
+    def snapshot(self) -> ResourceCatalogSnapshot: ...
+
+
+class _ResourceLoadFacet(Protocol):
+    def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle: ...
+
+    async def load(self, handle: ResourceLoadHandle) -> LoadedResource: ...
+
+
 @dataclass(frozen=True)
 class ResourceActivationCapabilityConsumer:
     facets: CapabilityFacetSet
 
     def __post_init__(self) -> None:
         if self.facets.requirement != RESOURCES_ACTIVATION_REQUIREMENT:
-            raise ValueError("resource activation Consumer received the wrong facet view")
+            raise ValueError(
+                "resource activation Consumer received the wrong facet view"
+            )
 
     def apply_skill_activation(
         self,
@@ -98,7 +120,9 @@ class ResourceToolPackCapabilityConsumer:
 
     def __post_init__(self) -> None:
         if self.facets.requirement != RESOURCES_TOOL_PACK_REQUIREMENT:
-            raise ValueError("resource Tool-pack Consumer received the wrong facet view")
+            raise ValueError(
+                "resource Tool-pack Consumer received the wrong facet view"
+            )
 
     def compose(
         self,
@@ -113,7 +137,9 @@ class ResourceCommandPackCapabilityConsumer:
 
     def __post_init__(self) -> None:
         if self.facets.requirement != RESOURCES_COMMAND_PACK_REQUIREMENT:
-            raise ValueError("resource Command-pack Consumer received the wrong facet view")
+            raise ValueError(
+                "resource Command-pack Consumer received the wrong facet view"
+            )
 
     def compose(
         self,
@@ -122,8 +148,39 @@ class ResourceCommandPackCapabilityConsumer:
         return cast(_PackFacet, self.facets.require(COMMAND_PACKS_FACET)).compose(packs)
 
 
+@dataclass(frozen=True)
+class ResourceCatalogCapabilityConsumer:
+    """Exact-generation Catalog/load view for internal Resource consumers."""
+
+    facets: CapabilityFacetSet
+
+    def __post_init__(self) -> None:
+        if self.facets.requirement != RESOURCES_CATALOG_LOAD_REQUIREMENT:
+            raise ValueError("Resource Catalog Consumer received the wrong facet view")
+
+    @property
+    def snapshot(self) -> ResourceCatalogSnapshot:
+        return cast(
+            _ResourceCatalogFacet,
+            self.facets.require(RESOURCE_CATALOG_FACET),
+        ).snapshot
+
+    def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle:
+        return cast(
+            _ResourceLoadFacet,
+            self.facets.require(RESOURCE_LOAD_FACET),
+        ).load_handle(identity)
+
+    async def load(self, handle: ResourceLoadHandle) -> LoadedResource:
+        return await cast(
+            _ResourceLoadFacet,
+            self.facets.require(RESOURCE_LOAD_FACET),
+        ).load(handle)
+
+
 __all__ = [
     "ResourceActivationCapabilityConsumer",
+    "ResourceCatalogCapabilityConsumer",
     "ResourceCommandPackCapabilityConsumer",
     "ResourcePromptCapabilityConsumer",
     "ResourceToolPackCapabilityConsumer",

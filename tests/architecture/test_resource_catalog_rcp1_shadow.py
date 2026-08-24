@@ -13,6 +13,7 @@ from loushang.harness.resources._catalog_records import (
 
 RESOURCE_ROOT = Path("src/loushang/harness/resources")
 ORCHESTRATION_ROOT = Path("src/loushang/harness/resource_catalog")
+CAPABILITY_ROOT = Path("src/loushang/harness/capabilities")
 RCP1_MODULES = {
     RESOURCE_ROOT / "_catalog_engine.py",
     RESOURCE_ROOT / "_catalog_records.py",
@@ -29,7 +30,11 @@ RCP3_MODULES = {
     RESOURCE_ROOT / "_catalog_source_contracts.py",
     ORCHESTRATION_ROOT / "inputs.py",
 }
-PRIVATE_CATALOG_MODULES = RCP1_MODULES | RCP2_MODULES | RCP3_MODULES
+RCP4_MODULES = {
+    ORCHESTRATION_ROOT / "generation.py",
+    CAPABILITY_ROOT / "resources_consumers.py",
+}
+PRIVATE_CATALOG_MODULES = RCP1_MODULES | RCP2_MODULES | RCP3_MODULES | RCP4_MODULES
 
 
 def _imports_catalog_module(path: Path) -> bool:
@@ -99,7 +104,7 @@ def test_rcp1_records_match_the_frozen_field_contracts() -> None:
     )
 
 
-def test_resource_catalog_shadow_remains_private_and_unmounted() -> None:
+def test_resource_catalog_internals_remain_confined_to_migration_modules() -> None:
     assert all(path.is_file() for path in PRIVATE_CATALOG_MODULES)
     production_paths = set(Path("src/loushang").rglob("*.py")) - PRIVATE_CATALOG_MODULES
 

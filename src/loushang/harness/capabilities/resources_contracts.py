@@ -13,6 +13,8 @@ PROMPT_SECTIONS_FACET = "prompt.sections"
 SKILL_ACTIVATION_FACET = "skill.activation"
 TOOL_PACKS_FACET = "tool.packs"
 COMMAND_PACKS_FACET = "command.packs"
+RESOURCE_CATALOG_FACET = "resource.catalog"
+RESOURCE_LOAD_FACET = "resource.load"
 
 RESOURCES_CAPABILITY_DEFINITION = CapabilityDefinition(
     capability_id="harness.resources",
@@ -24,6 +26,24 @@ RESOURCES_CAPABILITY_DEFINITION = CapabilityDefinition(
         SKILL_ACTIVATION_FACET,
         TOOL_PACKS_FACET,
         COMMAND_PACKS_FACET,
+    ),
+    scope="session",
+    refresh_boundary="sealed",
+    phase="bootstrap",
+)
+
+RESOURCES_CAPABILITY_DEFINITION_V2 = CapabilityDefinition(
+    capability_id="harness.resources",
+    owner_id="harness",
+    contract_version=2,
+    facets=(
+        RESOURCE_RUNTIME_FACET,
+        PROMPT_SECTIONS_FACET,
+        SKILL_ACTIVATION_FACET,
+        TOOL_PACKS_FACET,
+        COMMAND_PACKS_FACET,
+        RESOURCE_CATALOG_FACET,
+        RESOURCE_LOAD_FACET,
     ),
     scope="session",
     refresh_boundary="sealed",
@@ -61,13 +81,34 @@ RESOURCES_SESSION_COMPOSITION_REQUIREMENT = CapabilityRequirement(
     ),
     compatible_contract=CapabilityContractRange.exact(1),
 )
+RESOURCES_CATALOG_REQUIREMENT = CapabilityRequirement(
+    capability="harness.resources",
+    facets=(RESOURCE_CATALOG_FACET,),
+    compatible_contract=CapabilityContractRange.exact(2),
+)
+RESOURCES_LOAD_REQUIREMENT = CapabilityRequirement(
+    capability="harness.resources",
+    facets=(RESOURCE_LOAD_FACET,),
+    compatible_contract=CapabilityContractRange.exact(2),
+)
+RESOURCES_CATALOG_LOAD_REQUIREMENT = CapabilityRequirement(
+    capability="harness.resources",
+    facets=(RESOURCE_CATALOG_FACET, RESOURCE_LOAD_FACET),
+    compatible_contract=CapabilityContractRange.exact(2),
+)
 
 __all__ = [
     "COMMAND_PACKS_FACET",
     "PROMPT_SECTIONS_FACET",
+    "RESOURCE_CATALOG_FACET",
+    "RESOURCE_LOAD_FACET",
     "RESOURCES_ACTIVATION_REQUIREMENT",
     "RESOURCES_CAPABILITY_DEFINITION",
+    "RESOURCES_CAPABILITY_DEFINITION_V2",
+    "RESOURCES_CATALOG_LOAD_REQUIREMENT",
+    "RESOURCES_CATALOG_REQUIREMENT",
     "RESOURCES_COMMAND_PACK_REQUIREMENT",
+    "RESOURCES_LOAD_REQUIREMENT",
     "RESOURCES_PROMPT_REQUIREMENT",
     "RESOURCES_SESSION_COMPOSITION_REQUIREMENT",
     "RESOURCES_TOOL_PACK_REQUIREMENT",
