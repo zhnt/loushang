@@ -437,15 +437,16 @@ def _text_record_fields(document: str, heading: str) -> tuple[str, ...]:
     return tuple(line.strip() for line in block.splitlines() if line.strip())
 
 
-def test_rcp0_baseline_is_indexed_and_does_not_claim_runtime_implementation() -> None:
+def test_rcp0_baseline_is_indexed_and_distinguishes_inert_rcp1_implementation() -> None:
     baseline = BASELINE_PATH.read_text(encoding="utf-8")
     plan = PLAN_PATH.read_text(encoding="utf-8")
     readme = README_PATH.read_text(encoding="utf-8")
 
     assert "resource-catalog-rcp0-baseline.md" in plan
     assert readme.count("resource-catalog-rcp0-baseline.md") == 2
-    assert "RCP0 baseline only" in baseline
-    assert "No Catalog engine, source\n  component" in baseline
+    assert "RCP1 now adds an inert shadow companion" in baseline
+    assert "no\n  production caller imports them" in baseline
+    assert "No source component, owner-component\n  lifecycle" in baseline
     assert "grants no new public API" in baseline
 
 
@@ -499,6 +500,10 @@ def test_rcp0_legacy_authority_mount_and_extension_merge_inventory_is_exact() ->
     extension_path = Path("src/loushang/harness/extensions/resources.py")
 
     assert _call_sites(sources, "ResourceSnapshot") == {
+        (
+            Path("src/loushang/harness/resources/_catalog_shadow.py"),
+            "project_shadow_compatibility_bundle",
+        ),
         (
             Path("src/loushang/harness/resources/_loader_pipeline.py"),
             "_discover_snapshot",

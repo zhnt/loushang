@@ -6,8 +6,12 @@
   Plugin lifecycle, exact-owner admission, Session Graph, Resource generation,
   and Model Input boundaries. It does not amend those boundaries implicitly.
 - Design status: RCP0 contract frozen; final narrow freeze re-review passed.
-- Implementation status: RCP0 complete; RCP1 is authorized but has not started.
-  The current `ResourceLoader`,
+- Implementation status: RCP0 and RCP1 are complete on the Harness lane; RCP2
+  has not started. RCP1 adds only the private `_catalog_records`,
+  `_catalog_engine`, and `_catalog_shadow` modules. No production caller imports
+  them, `harness.resources` does not export them, and they publish no Graph,
+  Provider, source-component, refresh, or load authority. The current
+  `ResourceLoader`,
   `ResourceSnapshot`, `ResourceBundle`, and `SkillLoader` paths remain the
   implemented runtime until a phase below passes its cutover gate.
 - Baseline: `main` at `e55db475`, tracked by issue `#495`.
@@ -21,7 +25,12 @@
   discovery/import, refresh-handle, Extension collision, and body-load
   diagnostic freezes were incomplete. Corrections at `ed364062` and
   `b387d542` closed every finding. Final independent architecture, lifecycle,
-  and security rechecks each passed with no P0/P1; RCP1 may begin.
+  and security rechecks each passed with no P0/P1. RCP1 then implemented the
+  frozen records, deterministic kind policies, strict proposal validation,
+  explicit-provenance legacy adaptation, compatibility projection, and the one
+  evidence-checked Extension collision exception. Its focused and full
+  Resource-domain suites pass; it has not yet received an independent RCP1
+  code re-review.
 - Scope: pluginize the Resource catalog mechanism and Resource source/loading
   mechanisms, converge Skill onto a typed Resource projection, and retain plain
   native `SKILL.md` loading.
@@ -961,6 +970,12 @@ independent-review P1 above is represented by an executable contract/parity or
 forbidden-route fixture. RCP1 may not begin before a narrow freeze re-review.
 
 ### RCP1: Implement one inert Catalog core
+
+Status: complete. The implementation is private and shadow-only; its
+architecture gate forbids imports from production modules and top-level
+publication. The legacy adapter requires caller-supplied source-generation and
+content-origin evidence, and the compatibility `ResourceBundle` it creates is
+a disposable test projection rather than a live candidate or refresh input.
 
 - add immutable identity, candidate, snapshot, decision, activation, handle,
   loaded-body, and receipt records;

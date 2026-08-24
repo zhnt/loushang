@@ -7,14 +7,18 @@
   It records the implemented legacy runtime; it is not the target Catalog
   contract and grants no new public API.
 - Frozen source baseline: `0de16c72`, tracked by issue `#495`.
-- Implementation status: RCP0 baseline only. No Catalog engine, source
-  component, owner-component lifecycle, or `harness.resources` v2 facet exists
+- Implementation status: the RCP0 legacy baseline remains authoritative, and
+  RCP1 now adds an inert shadow companion. A private pure Catalog engine,
+  immutable records, and explicit-provenance legacy adapter exist, but no
+  production caller imports them. No source component, owner-component
+  lifecycle, mounted Catalog generation, or `harness.resources` v2 facet exists
   yet.
 - Review status: the first freeze re-review rejected commit `811f0fdb` with no
   P0 because its Skill oracle and executable inventories were incomplete.
   Corrections at `ed364062` and candidate-provenance closure at `b387d542`
   passed final independent architecture, lifecycle, and security rechecks with
-  no P0/P1. The RCP0 gate is complete and RCP1 is authorized.
+  no P0/P1. The RCP0 gate is complete. RCP1 is implemented and locally green,
+  but has not yet received an independent RCP1 code re-review.
 - Cutover rule: an inventory entry may change only in its named phase, with its
   replacement parity green in the same change. Moving a call without removing
   the old authority does not satisfy a disposition.
@@ -27,14 +31,27 @@ security, and sequencing. This companion answers four narrower questions:
 3. which current behaviors must remain equal through shadow/cutover; and
 4. in which phase each legacy path is adapted or deleted.
 
+## RCP1 Shadow Additions With No Runtime Authority
+
+| Private module | RCP1 role | Explicit non-authority |
+| --- | --- | --- |
+| `harness.resources._catalog_records` | Immutable v2 identity, provenance, candidate, source/Catalog snapshot, decision, activation, handle, body, and receipt records with canonical fingerprints and proposal accounting. | Not exported from `harness.resources`; owns no store, loader, Graph, Session, or disposer. |
+| `harness.resources._catalog_engine` | Pure deterministic strict/permissive/additive merge proposal over canonical source snapshots. | Performs no discovery, body load, filesystem access, refresh, or publication. |
+| `harness.resources._catalog_shadow` | One-way `ResourceSnapshot` normalization, parity report, and disposable compatibility projection. | Requires caller-supplied generation/content provenance and is imported only by tests; it cannot mint live provenance or replace the committed Bundle. |
+
+The exact `ResourceSnapshot` constructor inventory therefore contains one new
+private test-projection site in `_catalog_shadow` beside the two frozen
+production constructors. The RCP1 architecture gate keeps that distinction
+executable rather than treating all three sites as runtime authority.
+
 ## Current Authorities
 
 | Implemented symbol/path | Current authority | Target disposition |
 | --- | --- | --- |
-| `harness.resources.loader.ResourceLoader` | Owns discovery request construction, mount verification/swap, committed `ResourceSnapshot`, reload, and compatibility getters. | Shadow-adapt in RCP1; project from the captured Catalog generation in RCP4; forwarding-only and then deleted in RCP5. |
-| `harness.resources._loader_pipeline` | Aggregates source discoveries and constructs the authoritative `ResourceSnapshot`. | Becomes the RCP1 parity oracle; no production effective-selection import after RCP5. |
-| `harness.resources._loader_resolution` | Resolves same-identity winners and emits `ResourceMergeDecision`. | Move the behavior into the owner-supplied policy/validator in RCP1; no production import after RCP5. |
-| `harness.resources._loader_precedence` | Owns the implemented priority and stable candidate ordering. | Freeze unchanged into the RCP1 owner policy; no production import after RCP5. |
+| `harness.resources.loader.ResourceLoader` | Owns discovery request construction, mount verification/swap, committed `ResourceSnapshot`, reload, and compatibility getters. | Shadow-adapted by the private RCP1 test bridge; project from the captured Catalog generation in RCP4; forwarding-only and then deleted in RCP5. |
+| `harness.resources._loader_pipeline` | Aggregates source discoveries and constructs the authoritative `ResourceSnapshot`. | Serves as the RCP1 parity oracle; no production effective-selection import after RCP5. |
+| `harness.resources._loader_resolution` | Resolves same-identity winners and emits `ResourceMergeDecision`. | Behavior is mirrored by the RCP1 pure policy/validator; no production import after RCP5. |
+| `harness.resources._loader_precedence` | Owns the implemented priority and stable candidate ordering. | Priority is frozen in the RCP1 policy; no production import after RCP5. |
 | `harness.resources._loader_discovery*`, `_loader_descriptor_parsing`, `_loader_package_policy`, and `_loader_types` | Own native/package/context/temporary discovery, parsing, filtering, and legacy intermediate records below the pipeline. | Adapt pure parsers behind RCP2/RCP3 source generations; remove legacy discovery authority/import edges in RCP5. |
 | `harness.resources.types.ResourceSnapshot` | Holds current candidates, winners, diagnostics, and merge decisions. | RCP1 shadow input only; compatibility projection source in RCP4; no production effective authority after RCP5. |
 | `harness.resources.types.ResourceBundle` | Mutable-list compatibility projection consumed by Session/Product code. | Project from one captured Catalog generation in RCP4; never regain discovery or winner authority. |
