@@ -15,6 +15,7 @@ from loushang.harnesstui.testing.screen_loop_playback import (
 )
 from loushang.tui.core import RenderConstraints, RenderResult
 from loushang.tui.framework import SurfaceHost
+from loushang.tui.input import BRACKETED_PASTE_END, BRACKETED_PASTE_START
 from loushang.tui.terminal_capabilities import TerminalRuntimeCapabilities
 from loushang.tui.ui_parts.composer import Composer
 
@@ -134,6 +135,40 @@ def test_screen_loop_playback_runs_scripted_chunks_through_shared_runner() -> No
     result.assert_no_clear_screen()
     assert prompts == ["hello"]
     assert result.state_snapshot["running"] is False
+
+
+def test_screen_loop_playback_preserves_focus_and_paste_tails_at_idle_deadline() -> (
+    None
+):
+    prompts: list[str] = []
+    playback = ConversationScreenLoopPlayback(
+        app_factory=_app_factory,
+        interruption_message="interrupted",
+        cancellation_message="cancelled",
+        width=40,
+        height=8,
+    )
+
+    async def handle_prompt(text: str) -> None:
+        prompts.append(text)
+
+    pasted = "hello"
+    result = playback.run(
+        (0.00, "\x1b"),
+        (0.01, "[I"),
+        (0.02, BRACKETED_PASTE_START[:3]),
+        (0.03, f"{BRACKETED_PASTE_START[3:]}{pasted}"),
+        (0.04, BRACKETED_PASTE_END[:3]),
+        (0.05, BRACKETED_PASTE_END[3:]),
+        (0.06, "\r"),
+        (0.08, ""),
+        handle_prompt=handle_prompt,
+    )
+
+    result.assert_exit_code(0)
+    assert prompts == [pasted]
+    assert "[I" not in result.output
+    assert "[201~" not in result.output
 
 
 def test_screen_loop_scenario_builds_timed_input_recipe() -> None:

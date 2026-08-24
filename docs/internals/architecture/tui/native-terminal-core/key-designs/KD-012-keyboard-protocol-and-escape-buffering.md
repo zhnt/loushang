@@ -68,6 +68,13 @@ product layer. Concrete backends are imported lazily so importing
 `loushang.tui` on Windows never imports POSIX terminal modules, and importing it
 on POSIX never imports Windows console code.
 
+Windows Terminal exposes VT input through `msvcrt.getwch()` one UTF-16 unit at
+a time. The Windows transport may therefore retain a short, bounded burst after
+an initial `ESC` and forward that burst as one chunk. This is transport-level
+coalescing, not a second escape parser: the backend does not classify focus,
+paste, mouse, or keyboard sequences, and `InputReader` remains their only
+semantic owner.
+
 ### Keyboard Protocol Controller
 
 Keyboard protocol negotiation is a small runtime state machine. It may live in
@@ -133,6 +140,12 @@ sequences. The runtime handles that ambiguity with a pending-buffer deadline:
 
 The idle deadline is a last-resort decision for true standalone Escape. It is
 not a general delay added to every input event.
+
+The shared native loops currently use a centralized 30ms idle deadline. When a
+read and that deadline become ready on the same event-loop turn, the read gets
+one final scheduling opportunity before the pending buffer is flushed. This
+prevents a completed focus or bracketed-paste tail from being discarded at the
+deadline boundary while keeping terminal-runtime wakeups independent.
 
 ## Native Loop Contract
 
@@ -239,6 +252,10 @@ completeness rules.
 - absence of Kitty response enables modifyOtherKeys fallback.
 - bracketed paste remains atomic and is not affected by Escape idle flushing.
 - OSC, DCS, APC, mouse, and focus sequences can arrive split across chunks.
+- Windows `getwch()` focus and bracketed-paste bursts reach `InputReader`
+  without exposing `[I` or `[201~` as composer text.
+- screen-loop playback splits focus and bracketed-paste markers across the idle
+  boundary and submits only the pasted payload.
 - active surfaces receive normalized Escape before global abort handling.
 - slash completion closes on Escape without leaking raw escape fragments.
 - `/quit` or another exit command leaves no buffered tail that can corrupt the

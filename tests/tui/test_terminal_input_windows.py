@@ -9,6 +9,7 @@ from io import StringIO
 from types import SimpleNamespace
 from typing import Any
 
+from loushang.tui.input import InputEvent, InputReader
 from loushang.tui.terminal_backends.windows import WINDOWS_CONSOLE_INPUT
 from loushang.tui.terminal_input import (
     TerminalInputMode,
@@ -51,6 +52,56 @@ def test_read_input_chunk_reads_tty_key(monkeypatch: Any) -> None:
     result = asyncio.run(read_input_chunk(_TtyInput()))
 
     assert result == "x"
+
+
+def test_read_input_chunk_keeps_windows_focus_report_atomic(monkeypatch: Any) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+    _install_fake_console(monkeypatch, chars=["\x1b", "[", "I"])
+
+    result = asyncio.run(read_input_chunk(_TtyInput()))
+
+    assert result == "\x1b[I"
+    assert InputReader().feed(result) == (
+        InputEvent(kind="focus", focused=True, raw="\x1b[I"),
+    )
+
+
+def test_read_input_chunk_keeps_windows_bracketed_paste_atomic(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+    sequence = "\x1b[200~hello\x1b[201~"
+    _install_fake_console(monkeypatch, chars=list(sequence))
+
+    result = asyncio.run(read_input_chunk(_TtyInput()))
+
+    assert result == sequence
+    assert InputReader().feed(result) == (InputEvent(kind="paste", text="hello"),)
+
+
+def test_read_input_chunk_waits_for_fragmented_windows_focus_tail(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+    pending = ["\x1b", "[", "I"]
+    checks = 0
+
+    def kbhit() -> bool:
+        nonlocal checks
+        checks += 1
+        if checks == 2:
+            return False
+        return bool(pending)
+
+    _install_fake_console(
+        monkeypatch,
+        kbhit=kbhit,
+        getwch=lambda: pending.pop(0),
+    )
+
+    result = asyncio.run(read_input_chunk(_TtyInput()))
+
+    assert result == "\x1b[I"
 
 
 def test_read_input_chunk_combines_utf16_surrogate_pair(monkeypatch: Any) -> None:

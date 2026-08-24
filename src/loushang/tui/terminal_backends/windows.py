@@ -41,6 +41,10 @@ _HIGH_SURROGATE_END = 0xDBFF
 _LOW_SURROGATE_START = 0xDC00
 _LOW_SURROGATE_END = 0xDFFF
 _REPLACEMENT_CHARACTER = "\ufffd"
+_ESCAPE = "\x1b"
+_INPUT_POLL_INTERVAL_SECONDS = 0.001
+_ESCAPE_BURST_IDLE_SECONDS = 0.01
+_ESCAPE_BURST_MAX_CHARS = 4096
 
 ConsoleModuleLoader = Callable[[], Any | None]
 Kernel32Loader = Callable[[], Any | None]
@@ -88,7 +92,7 @@ class WindowsConsoleInput:
                     return await self._read_from_module_async(console)
             except (OSError, ValueError):
                 return ""
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(_INPUT_POLL_INTERVAL_SECONDS)
 
     def read_chunk_blocking(self, stdin: Any) -> str:
         del stdin
@@ -339,6 +343,13 @@ WINDOWS_TERMINAL_MODE = WindowsTerminalMode()
 
 
 def _read_from_module(console: Any) -> str:
+    chunk = _read_logical_character(console)
+    if chunk != _ESCAPE:
+        return chunk
+    return chunk + _read_escape_burst(console)
+
+
+def _read_logical_character(console: Any) -> str:
     char = console.getwch()
     if char in {"\x00", "\xe0"}:
         extended = console.getwch()
@@ -357,6 +368,40 @@ def _read_from_module(console: Any) -> str:
     if _is_low_surrogate(char):
         return _REPLACEMENT_CHARACTER
     return char
+
+
+def _read_escape_burst(console: Any) -> str:
+    """Keep one Windows VT burst together before generic input parsing.
+
+    ``msvcrt.getwch()`` exposes Windows Terminal VT input one UTF-16 unit at a
+    time. Focus reports and bracketed-paste markers therefore arrive as an
+    initial Escape followed by ordinary-looking characters. The application
+    parser deliberately owns their meaning; this physical backend only keeps
+    the already-arriving console burst atomic so the parser's Escape timeout
+    cannot expose tails such as ``[I`` or ``[201~`` as user text.
+    """
+
+    chunks: list[str] = []
+    size = 0
+    idle_deadline = time.monotonic() + _ESCAPE_BURST_IDLE_SECONDS
+    while size < _ESCAPE_BURST_MAX_CHARS:
+        try:
+            has_input = bool(console.kbhit())
+        except (OSError, ValueError):
+            break
+        if not has_input:
+            if time.monotonic() >= idle_deadline:
+                break
+            time.sleep(_INPUT_POLL_INTERVAL_SECONDS)
+            continue
+        chunk = _read_logical_character(console)
+        if not chunk:
+            break
+        remaining = _ESCAPE_BURST_MAX_CHARS - size
+        chunks.append(chunk[:remaining])
+        size += min(len(chunk), remaining)
+        idle_deadline = time.monotonic() + _ESCAPE_BURST_IDLE_SECONDS
+    return "".join(chunks)
 
 
 def _windows_stream_handle(

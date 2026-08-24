@@ -236,6 +236,10 @@ visually:
   terminal selection in sessions that did not opt in
 - paste text containing emoji, press Ctrl-C and then Enter, and verify no UTF-8
   surrogate encoding error reaches the shell
+- on Windows, switch focus away from and back to the terminal while the
+  composer is active; verify the focus report does not insert `[I`
+- on Windows, copy `hello`, right-click paste into the composer, and verify the
+  draft is exactly `hello` with no `[200~` or `[201~` marker fragments
 - narrow terminal status truncation
 - modifier-key variants for Shift+Enter, Alt+Enter, Ctrl+Shift+Left/Right, and
   terminal-specific option/meta behavior

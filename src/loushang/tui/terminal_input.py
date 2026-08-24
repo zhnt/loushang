@@ -23,6 +23,7 @@ class RuntimeLike(Protocol):
 
 
 InputChunkReader = Callable[[TextIO], Coroutine[Any, Any, str]]
+ESCAPE_SEQUENCE_IDLE_TIMEOUT_MS = 30
 
 
 @dataclass(slots=True)
@@ -200,7 +201,16 @@ async def read_input_chunk_or_render_tick(
                 return None
             if render_wakeup_fired:
                 continue
-            if timeout_reason in {"pending_input", "idle_wakeup"}:
+            if timeout_reason == "pending_input":
+                # A terminal tail can become readable on the same event-loop
+                # turn as its idle deadline. Give the read task one final
+                # scheduling opportunity so a completed chunk is not dropped
+                # merely because the timeout callback won the first race.
+                await asyncio.sleep(0)
+                if input_task.done():
+                    return input_task.result()
+                return None
+            if timeout_reason == "idle_wakeup":
                 return None
             runtime.render_now()
     finally:
@@ -229,6 +239,7 @@ def stream_is_tty(stream: Any) -> bool:
     isatty = getattr(stream, "isatty", None)
     return bool(callable(isatty) and isatty())
 __all__ = [
+    "ESCAPE_SEQUENCE_IDLE_TIMEOUT_MS",
     "TerminalInputMode",
     "drain_input",
     "read_input_chunk",

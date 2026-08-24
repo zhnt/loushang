@@ -27,6 +27,7 @@ from loushang.tui.terminal import (
     terminal_size_from_environment,
 )
 from loushang.tui.terminal_input import (
+    ESCAPE_SEQUENCE_IDLE_TIMEOUT_MS,
     InputChunkReader,
     read_input_chunk_or_render_tick,
 )
@@ -163,7 +164,11 @@ class TuiRunner:
                         active_task=None,
                         input_chunk_reader=self.input_chunk_reader,
                         render_wakeup=render_wakeup,
-                        pending_input_idle_ms=10 if reader.has_pending else None,
+                        pending_input_idle_ms=(
+                            ESCAPE_SEQUENCE_IDLE_TIMEOUT_MS
+                            if reader.has_pending
+                            else None
+                        ),
                         idle_wakeup_ms=terminal_runtime_wakeup_ms(terminal_context),
                     )
                     if data is None:
