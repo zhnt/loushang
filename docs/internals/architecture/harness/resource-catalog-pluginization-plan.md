@@ -5,9 +5,9 @@
 - Authority: proposed implementation plan under the accepted Harness Capability,
   Plugin lifecycle, exact-owner admission, Session Graph, Resource generation,
   and Model Input boundaries. It does not amend those boundaries implicitly.
-- Design status: RCP0 contract frozen pending narrow freeze re-review.
-- Implementation status: RCP0 freeze-review corrections are in progress; RCP1
-  has not started. The current `ResourceLoader`,
+- Design status: RCP0 contract frozen; final narrow freeze re-review passed.
+- Implementation status: RCP0 complete; RCP1 is authorized but has not started.
+  The current `ResourceLoader`,
   `ResourceSnapshot`, `ResourceBundle`, and `SkillLoader` paths remain the
   implemented runtime until a phase below passes its cutover gate.
 - Baseline: `main` at `e55db475`, tracked by issue `#495`.
@@ -19,8 +19,9 @@
   narrow freeze re-review against `811f0fdb` found no P0 but rejected RCP0 exit
   because the Skill parity oracle, dynamic Extension/Skill ingress, legacy
   discovery/import, refresh-handle, Extension collision, and body-load
-  diagnostic freezes were incomplete. Those corrections are represented below;
-  a narrow recheck remains required before RCP1.
+  diagnostic freezes were incomplete. Corrections at `ed364062` and
+  `b387d542` closed every finding. Final independent architecture, lifecycle,
+  and security rechecks each passed with no P0/P1; RCP1 may begin.
 - Scope: pluginize the Resource catalog mechanism and Resource source/loading
   mechanisms, converge Skill onto a typed Resource projection, and retain plain
   native `SKILL.md` loading.

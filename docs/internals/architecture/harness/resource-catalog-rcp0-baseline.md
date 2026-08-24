@@ -11,9 +11,10 @@
   component, owner-component lifecycle, or `harness.resources` v2 facet exists
   yet.
 - Review status: the first freeze re-review rejected commit `811f0fdb` with no
-  P0 because its Skill oracle and executable inventories were incomplete. This
-  revision corrects those contracts; RCP1 remains blocked pending a narrow
-  recheck.
+  P0 because its Skill oracle and executable inventories were incomplete.
+  Corrections at `ed364062` and candidate-provenance closure at `b387d542`
+  passed final independent architecture, lifecycle, and security rechecks with
+  no P0/P1. The RCP0 gate is complete and RCP1 is authorized.
 - Cutover rule: an inventory entry may change only in its named phase, with its
   replacement parity green in the same change. Moving a call without removing
   the old authority does not satisfy a disposition.
