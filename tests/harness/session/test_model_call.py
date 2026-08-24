@@ -23,10 +23,13 @@ from loushang.coding.compaction.profiles import (
 )
 from loushang.foundation.json import JSONValue
 from loushang.harness.capabilities import (
+    MODEL_INPUT_CAPABILITY_DEFINITION,
     MODEL_INPUT_PREPARATION_REQUIREMENT,
     CapabilityBundleProvider,
+    CapabilityGraphPlanRequest,
     RegistrationInventoryEntry,
     RuntimeCapabilityGraphBinder,
+    RuntimeCapabilityGraphPlanner,
     RuntimeCapabilityGraphProjector,
     RuntimeCapabilityGraphRuntime,
     standard_capability_composition_plan,
@@ -131,6 +134,14 @@ class _ModelCallTestRoot:
             profile_fingerprint_provider=lambda: self.current_profile_fingerprint,
             turn_performance=turn_performance,
         )
+        self._plan = RuntimeCapabilityGraphPlanner().plan(
+            CapabilityGraphPlanRequest(
+                product_id=profile_snapshot.product_id,
+                roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
+                definitions=(MODEL_INPUT_CAPABILITY_DEFINITION,),
+                providers=(self._binding.provider_binding.provider,),
+            )
+        )
         self._runtime = SessionModelCallRuntime(
             transcript=session,
             ensure_consumer=self._ensure_consumer,
@@ -145,7 +156,7 @@ class _ModelCallTestRoot:
             if self._consumer is None:
                 await self._binder.bind(
                     self.graph_runtime,
-                    self._binding.plan,
+                    self._plan,
                     (self._binding.provider_binding,),
                 )
                 self._consumer = SessionModelCallCapabilityConsumer(

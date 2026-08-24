@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TypeAlias
 
@@ -110,6 +110,11 @@ class CapabilityProviderContext:
         compare=False,
     )
     dependencies: tuple[CapabilityDependencyBinding, ...] = ()
+    binding_inputs: Mapping[str, object] = field(
+        default_factory=dict,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -141,6 +146,8 @@ class CapabilityProviderContext:
         if len(set(capability_ids)) != len(capability_ids):
             raise ValueError("Provider dependencies must not repeat a Capability")
         object.__setattr__(self, "dependencies", dependencies)
+        if not isinstance(self.binding_inputs, Mapping):
+            raise TypeError("Provider binding inputs must be a mapping")
 
     def dependency(self, capability_id: str) -> CapabilityDependencyBinding:
         for dependency in self.dependencies:

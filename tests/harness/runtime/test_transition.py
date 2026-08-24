@@ -173,6 +173,30 @@ def test_transition_host_does_not_publish_session_after_dispose_failure() -> Non
     assert host.current is None
 
 
+def test_transition_host_retries_retained_disposal_after_failure() -> None:
+    attempts = 0
+
+    async def dispose(session: str) -> None:
+        nonlocal attempts
+        assert session == "first"
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("dispose failed transiently")
+
+    host = SessionTransitionHost("first", dispose=dispose)
+
+    async def scenario() -> None:
+        with pytest.raises(RuntimeError, match="transiently"):
+            await host.dispose_current()
+        assert host.current is None
+        await host.dispose_current()
+
+    asyncio.run(scenario())
+
+    assert attempts == 2
+    assert host.current is None
+
+
 def test_transition_host_serializes_concurrent_replacements() -> None:
     dispose_started = asyncio.Event()
     dispose_release = asyncio.Event()

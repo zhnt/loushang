@@ -16,11 +16,13 @@ def test_import_realm_commits_one_compatible_locked_closure() -> None:
 
     realm.preflight(
         host_boot_id="2" * 32,
+        package_namespace="sample",
         dependency_lock=dependency_lock,
     )
     lease = realm.reserve(
         host_boot_id="2" * 32,
         execution_use_id="3" * 48,
+        package_namespace="sample",
         dependency_lock=dependency_lock,
     )
     result = realm.execute(lease, lambda: "evaluated")
@@ -34,6 +36,9 @@ def test_import_realm_commits_one_compatible_locked_closure() -> None:
         "lockedDistributions": [
             {"name": "example-runtime", "version": "1.0"},
         ],
+        "lockedPackages": [
+            {"packageContentDigest": "4" * 64, "pluginId": "sample"},
+        ],
         "state": "clean",
     }
 
@@ -44,12 +49,14 @@ def test_import_realm_rejects_busy_and_conflicting_closures() -> None:
     first = realm.reserve(
         host_boot_id="2" * 32,
         execution_use_id="3" * 48,
+        package_namespace="sample",
         dependency_lock=first_lock,
     )
 
     try:
         realm.preflight(
             host_boot_id="2" * 32,
+            package_namespace="sample",
             dependency_lock=first_lock,
         )
     except PluginImportRealmError as exc:
@@ -61,6 +68,7 @@ def test_import_realm_rejects_busy_and_conflicting_closures() -> None:
     committed = realm.reserve(
         host_boot_id="2" * 32,
         execution_use_id="4" * 48,
+        package_namespace="sample",
         dependency_lock=first_lock,
     )
     realm.execute(committed, lambda: None)
@@ -69,6 +77,7 @@ def test_import_realm_rejects_busy_and_conflicting_closures() -> None:
     try:
         realm.preflight(
             host_boot_id="2" * 32,
+            package_namespace="sample",
             dependency_lock=_lock(("example-runtime", "2.0")),
         )
     except PluginImportRealmError as exc:
@@ -83,6 +92,7 @@ def test_import_exception_pollutes_realm_and_blocks_new_reservations() -> None:
     lease = realm.reserve(
         host_boot_id="2" * 32,
         execution_use_id="3" * 48,
+        package_namespace="sample",
         dependency_lock=dependency_lock,
     )
 
@@ -99,6 +109,7 @@ def test_import_exception_pollutes_realm_and_blocks_new_reservations() -> None:
     try:
         realm.preflight(
             host_boot_id="2" * 32,
+            package_namespace="sample",
             dependency_lock=dependency_lock,
         )
     except PluginImportRealmError as exc:
@@ -107,11 +118,35 @@ def test_import_exception_pollutes_realm_and_blocks_new_reservations() -> None:
         raise AssertionError("polluted import realm was accepted")
 
 
+def test_import_realm_rejects_different_revision_of_committed_package() -> None:
+    realm = PluginImportRealm(import_realm_id_factory=lambda: "1" * 32)
+    first = realm.reserve(
+        host_boot_id="2" * 32,
+        execution_use_id="3" * 48,
+        package_namespace="sample",
+        dependency_lock=_lock(package_content_digest="4" * 64),
+    )
+    realm.execute(first, lambda: None)
+    realm.commit(first)
+
+    try:
+        realm.preflight(
+            host_boot_id="2" * 32,
+            package_namespace="sample",
+            dependency_lock=_lock(package_content_digest="5" * 64),
+        )
+    except PluginImportRealmError as exc:
+        assert exc.code == "plugin_import_package_revision_conflict"
+    else:
+        raise AssertionError("different package revision was accepted")
+
+
 def _lock(
     *distributions: tuple[str, str],
+    package_content_digest: str = "4" * 64,
 ) -> PluginDependencyClosureLock:
     return PluginDependencyClosureLock(
-        package_content_digest="4" * 64,
+        package_content_digest=package_content_digest,
         python_distributions=tuple(
             PluginPythonDistributionLock(name=name, version=version)
             for name, version in distributions
