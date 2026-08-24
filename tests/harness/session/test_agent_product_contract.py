@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -16,13 +17,43 @@ from loushang.ai.model import Capabilities, Model
 from loushang.ai.options import CallOptions
 from loushang.ai.prepared_request import PreparedModelRequest
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
+from loushang.harness.approval.plugin_activation import (
+    PluginActivationDecisionJournal,
+)
+from loushang.harness.approval.plugin_execution import (
+    PluginApprovalAuthorizationV1,
+)
 from loushang.harness.capabilities import (
+    MODEL_INPUT_CAPABILITY_DEFINITION,
+    WORKSPACE_CAPABILITY_DEFINITION,
+    CapabilityBundleProvider,
+    CapabilityContractRange,
+    CapabilityDefinition,
+    CapabilityRequirement,
     StagedResourceCompositionCandidate,
     stage_resource_composition_candidate,
     standard_capability_composition_plan,
 )
+from loushang.harness.capabilities.component_host import CapabilityComponentHost
+from loushang.harness.capabilities.consumer_requirements import (
+    ProductCompositionAuthorityContext,
+    ProductCompositionCompiler,
+)
+from loushang.harness.capabilities.contribution_admission import (
+    OwnerContributionAuthority,
+    OwnerContributionPolicy,
+)
+from loushang.harness.capabilities.provider_admission import (
+    CapabilityProviderOwnerAuthority,
+    CapabilityProviderOwnerPolicy,
+)
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
+)
+from loushang.harness.capabilities.provider_selection import (
+    ProductCapabilityProviderChoice,
+    ProductCapabilityProviderResolver,
+    ProductCapabilityProviderSelectionPlanV1,
 )
 from loushang.harness.capabilities.workspace_provider import (
     workspace_capability_provider_binding,
@@ -34,6 +65,50 @@ from loushang.harness.config.agent import (
     SettingsManager,
 )
 from loushang.harness.conversation import ConversationKey, MemoryConversationStore
+from loushang.harness.plugin_authoring.capability_provider import (
+    PLUGIN_PROVIDER_SELECTION_RULE,
+    CapabilityProviderDeclarationPayload,
+    PluginSymbolReference,
+)
+from loushang.harness.plugin_authoring.consumer_pack import (
+    ToolPackDeclarationPayload,
+)
+from loushang.harness.plugin_authoring.contribution_admission import (
+    prepare_owner_contribution_candidate,
+)
+from loushang.harness.plugin_authoring.host import PluginDeclarationHost
+from loushang.harness.plugin_authoring.provider_admission import (
+    prepare_capability_provider_candidate,
+)
+from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.plugins.authority import (
+    PluginResolutionAuthority,
+    PluginRuntimeResolution,
+)
+from loushang.harness.resources.plugins.declarations import (
+    PluginContributionReservation,
+    PluginDeclaration,
+    PluginDeclarationDocument,
+    PluginDeclarationDocumentCodec,
+    PluginDeclarationSource,
+)
+from loushang.harness.resources.plugins.import_realm import PluginImportRealm
+from loushang.harness.resources.plugins.selection import (
+    PendingOnlyPluginExecutionDecisionLookup,
+    PluginContributionRef,
+    PluginEffectiveConfigurationEntry,
+    PluginEffectiveConfigurationSetV1,
+    PluginInstanceRevisionRef,
+    PluginPreflightContextV1,
+    PluginSelection,
+    PluginSelectionPlanV2,
+    PluginSourceTrustSnapshotV1,
+)
+from loushang.harness.resources.plugins.types import (
+    PluginSource,
+    PluginSourceBinding,
+    PublishedPluginPackage,
+)
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime import (
     CancellationSignal,
@@ -47,6 +122,13 @@ from loushang.harness.runtime.session_operations import (
 )
 from loushang.harness.runtime.transition import SessionTransitionHost
 from loushang.harness.session import AgentProductSession
+from loushang.harness.session.capability_composition_inputs import (
+    SessionCapabilityComponentRequest,
+    SessionCapabilityCompositionInputs,
+    SessionCapabilityConsumerCapture,
+    SessionCapabilityOwnerAuthorityGate,
+    SessionCapabilityOwnerGenerationBinding,
+)
 from loushang.harness.transcript import (
     AgentTranscriptLifecycle,
     AgentTranscriptProfile,
@@ -101,6 +183,12 @@ class _ContractProductSession(AgentProductSession):
         reserve_tokens: int,
         compact_percent: float,
         workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
+        capability_composition_inputs: SessionCapabilityCompositionInputs
+        | None = None,
+        capability_component_host: CapabilityComponentHost | None = None,
+        capability_owner_generation_bindings: tuple[
+            SessionCapabilityOwnerGenerationBinding, ...
+        ] = (),
     ) -> None:
         self.product_id = product_id
         self.executor_calls: list[tuple[str, str | None]] = []
@@ -171,6 +259,11 @@ class _ContractProductSession(AgentProductSession):
                 )
             ),
             workspace_capability_binding=workspace_capability_binding,
+            capability_composition_inputs=capability_composition_inputs,
+            capability_component_host=capability_component_host,
+            capability_owner_generation_bindings=(
+                capability_owner_generation_bindings
+            ),
         )
 
     async def _before_product_compaction(
@@ -757,6 +850,93 @@ def test_graph_owned_transcript_release_retries_after_index_publication(
     asyncio.run(scenario())
 
 
+def test_prepare_fails_closed_without_touching_graph_when_owner_cleanup_is_pending(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        transcript = await _new_transcript(tmp_path, product_id="cleanup-debt")
+        session = _ContractProductSession(
+            product_id="cleanup-debt",
+            transcript=transcript,
+            capability_runtime=_capability_runtime("cleanup-debt"),
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+        await session.prepare_model_call_runtime()
+        consumer = session._model_call_consumer
+        assert consumer is not None
+        session._model_call_consumer = None
+        session._capability_owner_generations = (object(),)  # type: ignore[assignment]
+
+        async def unexpected_bind(*_args: object) -> None:
+            raise AssertionError("pending cleanup must not start another bind")
+
+        session._capability_graph_binder.bind = unexpected_bind  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="cleanup is pending"):
+            await session.prepare_model_call_runtime()
+
+        assert session._capability_graph_runtime.is_closed is False
+        assert session._capability_graph_runtime.snapshot is not None
+        session._capability_owner_generations = ()
+        session._model_call_consumer = consumer
+        await session.dispose()
+        assert disposed_transcripts == ["cleanup-debt-session"]
+
+    asyncio.run(scenario())
+
+
+def test_owner_cleanup_failure_invalidates_public_capability_ports(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        transcript = await _new_transcript(tmp_path, product_id="owner-port-close")
+        session = _ContractProductSession(
+            product_id="owner-port-close",
+            transcript=transcript,
+            capability_runtime=_capability_runtime("owner-port-close"),
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+        )
+        await session.prepare_model_call_runtime()
+
+        class _RetryableGeneration:
+            disposed = False
+            attempts = 0
+
+            async def dispose_once(self) -> None:
+                self.attempts += 1
+                if self.attempts == 1:
+                    raise RuntimeError("synthetic owner cleanup failure")
+                self.disposed = True
+
+        generation = _RetryableGeneration()
+        session._capability_owner_generations = (generation,)  # type: ignore[assignment]
+
+        with pytest.raises(RuntimeError, match="synthetic owner cleanup failure"):
+            await session.dispose()
+
+        with pytest.raises(RuntimeError, match="ports are disposed"):
+            await session.get_workspace_process_launcher().start(
+                ProcessLaunchRequest(
+                    command=("synthetic",),
+                    cwd=str(tmp_path),
+                    effective_environment=(),
+                ),
+                correlation_id="owner-port-close",
+            )
+
+        await session.dispose()
+        assert generation.disposed is True
+        assert disposed_transcripts == ["owner-port-close-session"]
+
+    asyncio.run(scenario())
+
+
 def test_source_publication_does_not_mix_partial_extension_provenance(
     tmp_path: Path,
 ) -> None:
@@ -1020,6 +1200,550 @@ def test_workspace_signature_flows_through_session_into_model_input(
         assert first["harness.model_input"] != second["harness.model_input"]
 
     asyncio.run(scenario())
+
+
+def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        events = tmp_path / "foundation-events.log"
+        fixture = _publish_foundation_plugin(tmp_path, events=events)
+        try:
+            selection = _foundation_selection(fixture)
+            assert events.exists() is False
+            definition = CapabilityDefinition(
+                capability_id="coding.foundation",
+                owner_id="coding",
+                contract_version=1,
+                facets=("query",),
+                scope="session",
+                refresh_boundary="sealed",
+                phase="final",
+            )
+            candidates = {
+                item.declaration.kind: item for item in selection.candidates
+            }
+            provider_candidate = prepare_capability_provider_candidate(
+                selection,
+                candidates["capability_provider"],
+                definition=definition,
+            )
+            provider_authority = CapabilityProviderOwnerAuthority(
+                CapabilityProviderOwnerPolicy(
+                    capability_id=definition.capability_id,
+                    owner_id=definition.owner_id,
+                    policy_revision="coding-foundation-owner-1",
+                    revocation_epoch=3,
+                    allowed_provider_ids=(
+                        "org.loushang.coding.foundation/default",
+                    ),
+                    allowed_source_trust_classes=("host-equivalent-local",),
+                    authority_ceiling=(),
+                )
+            )
+            eligibility = provider_authority.grant_eligibility(
+                provider_candidate,
+                issued_at=100,
+                expires_at=400,
+            )
+            provider_admission = provider_authority.admit(
+                provider_candidate,
+                eligibility=eligibility,
+                issued_at=120,
+                expires_at=350,
+            )
+            owner_candidate = prepare_owner_contribution_candidate(
+                selection,
+                candidates["tool_pack"],
+            )
+            owner_authority = OwnerContributionAuthority(
+                OwnerContributionPolicy(
+                    owner_id="coding.tools",
+                    contribution_kind="tool_pack",
+                    product_id="coding",
+                    policy_revision="coding-tools-owner-1",
+                    revocation_epoch=2,
+                    allowed_source_trust_classes=("host-equivalent-local",),
+                    allowed_collection_ids=("coding.tools",),
+                    allowed_requirement_bindings=("direct",),
+                    consumer_scope="session",
+                    consumer_refresh_boundary="sealed",
+                )
+            )
+            owner_admission = owner_authority.admit(
+                owner_candidate,
+                issued_at=120,
+                expires_at=350,
+            )
+            [trust_snapshot] = selection.plan.source_trust_snapshots
+            compilation = ProductCompositionCompiler().compile(
+                authority_context=ProductCompositionAuthorityContext(
+                    product_id="coding",
+                    scope_id="workspace:test",
+                    product_policy_revision="coding-plugin-policy-1",
+                    evaluated_at=150,
+                    owner_snapshots=(owner_authority.snapshot(),),
+                    trust_snapshots=(trust_snapshot,),
+                ),
+                mandatory_roots=(
+                    MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
+                ),
+                admissions=(owner_admission,),
+                definitions=(MODEL_INPUT_CAPABILITY_DEFINITION, definition),
+                optional_choices=(),
+            )
+            workspace_binding = workspace_capability_provider_binding(
+                operations=LocalToolOperations(),
+                process_launcher=_UnusedWorkspaceLauncher(),
+                scope_instance_id="workspace:test",
+                binding_input_fingerprint=hashlib.sha256(
+                    b"foundation-workspace"
+                ).hexdigest(),
+                source_id="foundation-contract-test",
+            )
+            provider_plan = ProductCapabilityProviderSelectionPlanV1(
+                product_id="coding",
+                roots=(definition.capability_id,),
+                choices=(
+                    ProductCapabilityProviderChoice(
+                        capability_id=definition.capability_id,
+                        provider_id=provider_admission.provider.provider_id,
+                        candidate_fingerprint=(
+                            provider_admission.candidate_fingerprint
+                        ),
+                    ),
+                ),
+                policy_revision="coding-plugin-policy-1",
+            )
+            provider_resolver = ProductCapabilityProviderResolver()
+            resolved = provider_resolver.resolve(
+                provider_plan,
+                definitions=(definition, WORKSPACE_CAPABILITY_DEFINITION),
+                admissions=(provider_admission,),
+                owner_snapshots=(provider_authority.snapshot(),),
+                evaluated_at=150,
+                prebound_providers=(workspace_binding.provider,),
+            )
+            identities = iter(("1" * 48, "2" * 48))
+            activation_journal = PluginActivationDecisionJournal(
+                tmp_path / "foundation-activation.jsonl",
+                scope_id="workspace:test",
+                identity_factory=lambda: next(identities),
+                clock=lambda: 150,
+            )
+            component_host = CapabilityComponentHost(
+                decision_journal=activation_journal,
+                import_realm=PluginImportRealm(
+                    import_realm_id_factory=lambda: "4" * 32
+                ),
+                host_boot_id="3" * 32,
+                clock=lambda: 150,
+                owner_snapshot_reader=(
+                    lambda _capability_id: provider_authority.snapshot()
+                ),
+                trust_snapshot_reader=(
+                    lambda _plugin_id, _source_identity: trust_snapshot
+                ),
+                product_policy_revision_reader=(
+                    lambda _product_id, _scope_id: "coding-plugin-policy-1"
+                ),
+            )
+            [resolved_provider] = resolved.entries
+            subject = component_host.activation_subject(
+                resolved_provider,
+                owner_snapshot=provider_authority.snapshot(),
+                trust_snapshot=trust_snapshot,
+            )
+            decision = activation_journal.issue_activation_decision(
+                subject,
+                disposition="approved",
+                authorization=PluginApprovalAuthorizationV1.direct(
+                    actor_id="operator:test",
+                    source="foundation-session-test",
+                ),
+                issued_at_unix_ms=140,
+                expires_at_unix_ms=300,
+                expected_journal_revision=0,
+            )
+            component_request = SessionCapabilityComponentRequest(
+                resolved=resolved_provider,
+                package=fixture.package,
+                owner_snapshot=provider_authority.snapshot(),
+                trust_snapshot=trust_snapshot,
+                activation_decision_id=decision.decision_id,
+            )
+            composition_inputs = SessionCapabilityCompositionInputs(
+                product_composition=compilation,
+                resolved_providers=resolved,
+                component_requests=(component_request,),
+            )
+            reevaluated_providers = provider_resolver.resolve(
+                provider_plan,
+                definitions=(definition, WORKSPACE_CAPABILITY_DEFINITION),
+                admissions=(provider_admission,),
+                owner_snapshots=(provider_authority.snapshot(),),
+                evaluated_at=151,
+                prebound_providers=(workspace_binding.provider,),
+            )
+            reevaluated_inputs = SessionCapabilityCompositionInputs(
+                product_composition=replace(
+                    compilation,
+                    authority_context=replace(
+                        compilation.authority_context,
+                        evaluated_at=151,
+                    ),
+                ),
+                resolved_providers=reevaluated_providers,
+                component_requests=(
+                    replace(
+                        component_request,
+                        resolved=reevaluated_providers.entries[0],
+                    ),
+                ),
+            )
+            assert composition_inputs.compare(reevaluated_inputs) == "no_change"
+
+            async def stage_tools(
+                captures: tuple[SessionCapabilityConsumerCapture, ...],
+            ) -> object:
+                [capture] = captures
+                assert capture.entry.admission_fingerprint == owner_admission.fingerprint
+                assert capture.facets.require("query") == {
+                    "label": "foundation",
+                    "runtime_id": "session:coding-session",
+                    "workspace_read": True,
+                }
+                _append_event(events, "tool-stage")
+                return {"generation": 1}
+
+            async def dispose_tools(value: object) -> None:
+                assert value == {"generation": 1}
+                _append_event(events, "tool-dispose")
+
+            owner_binding = SessionCapabilityOwnerGenerationBinding(
+                owner_id=owner_admission.owner_id,
+                contribution_kind=owner_admission.contribution_kind,
+                plugin_id=owner_admission.plugin_id,
+                contribution_id=owner_admission.contribution_id,
+                admission_fingerprint=owner_admission.fingerprint,
+                authority_gate=SessionCapabilityOwnerAuthorityGate(
+                    authority_context=compilation.authority_context,
+                    owner_snapshot_reader=(
+                        lambda _owner, _kind, _product: owner_authority.snapshot()
+                    ),
+                    trust_snapshot_reader=(
+                        lambda _plugin, _source: trust_snapshot
+                    ),
+                    product_policy_revision_reader=(
+                        lambda _product, _scope: "coding-plugin-policy-1"
+                    ),
+                    clock=lambda: 150,
+                ),
+                stage=stage_tools,
+                dispose=dispose_tools,
+            )
+            transcript = await _new_transcript(tmp_path, product_id="coding")
+            session = _ContractProductSession(
+                product_id="coding",
+                transcript=transcript,
+                capability_runtime=_capability_runtime("coding"),
+                reserve_tokens=1_111,
+                compact_percent=61.0,
+                workspace_capability_binding=workspace_binding,
+                capability_composition_inputs=composition_inputs,
+                capability_component_host=component_host,
+                capability_owner_generation_bindings=(owner_binding,),
+            )
+
+            assert events.exists() is False
+            assert activation_journal.snapshot().activation_uses == ()
+            await session.prepare_model_call_runtime()
+
+            snapshot = session._capability_graph_runtime.snapshot
+            assert snapshot is not None
+            assert "coding.foundation" in {
+                item.capability_id for item in snapshot.nodes
+            }
+            assert activation_journal.snapshot().activation_uses[0].state == (
+                "COMMITTED"
+            )
+            assert events.read_text(encoding="utf-8").splitlines() == [
+                "provider-import",
+                "provider-create",
+                "tool-stage",
+            ]
+            assert session.evaluate_capability_composition_change(
+                replace(
+                    composition_inputs,
+                    component_requests=(
+                        replace(
+                            component_request,
+                            activation_decision_id="9" * 48,
+                        ),
+                    ),
+                )
+            ) == "no_change"
+            assert session.evaluate_capability_composition_change(
+                replace(
+                    composition_inputs,
+                    component_requests=(
+                        replace(
+                            component_request,
+                            trust_snapshot=replace(
+                                trust_snapshot,
+                                trusted=False,
+                            ),
+                        ),
+                    ),
+                )
+            ) == "restart_required"
+            assert session.evaluate_capability_composition_change(None) == (
+                "restart_required"
+            )
+
+            await session.dispose()
+
+            assert events.read_text(encoding="utf-8").splitlines() == [
+                "provider-import",
+                "provider-create",
+                "tool-stage",
+                "tool-dispose",
+                "provider-dispose",
+            ]
+            assert disposed_transcripts == ["coding-session"]
+        finally:
+            fixture.runtime.close()
+
+    asyncio.run(scenario())
+
+
+@dataclass(frozen=True, slots=True)
+class _FoundationPluginFixture:
+    runtime: PluginRuntimeResolution
+    package: PublishedPluginPackage
+    binding: PluginSourceBinding
+    contributions: tuple[PluginContributionReservation, ...]
+
+
+def _publish_foundation_plugin(
+    tmp_path: Path,
+    *,
+    events: Path,
+) -> _FoundationPluginFixture:
+    source_root = tmp_path / "foundation-plugin"
+    declarations_root = source_root / "declarations"
+    declarations_root.mkdir(parents=True)
+    source = PluginDeclarationSource.document("declarations/foundation.json")
+    contributions = (
+        PluginContributionReservation(
+            contribution_id="foundation-provider",
+            kind="capability_provider",
+            owner="coding.foundation",
+            declaration_source=source,
+            contribution_execution_model="in_process",
+            requested_authorities=(),
+        ),
+        PluginContributionReservation(
+            contribution_id="foundation-tools",
+            kind="tool_pack",
+            owner="coding.tools",
+            declaration_source=source,
+            contribution_execution_model="data_only",
+            requested_authorities=(),
+        ),
+    )
+    provider_payload = CapabilityProviderDeclarationPayload(
+        provider=CapabilityBundleProvider(
+            capability_id="coding.foundation",
+            provider_id="org.loushang.coding.foundation/default",
+            implementation_version=1,
+            compatible_contract=CapabilityContractRange.exact(1),
+            facets=("query",),
+            requirements=(
+                CapabilityRequirement(
+                    capability="harness.workspace",
+                    facets=("read",),
+                    compatible_contract=CapabilityContractRange.exact(1),
+                ),
+            ),
+            source_id="plugin:foundation-sample",
+            selection_rule=PLUGIN_PROVIDER_SELECTION_RULE,
+        ),
+        factory=PluginSymbolReference(
+            path="provider.py",
+            symbol="create_provider",
+            execution_model="in_process",
+        ),
+        disposer=PluginSymbolReference(
+            path="provider.py",
+            symbol="dispose_provider",
+            execution_model="in_process",
+        ),
+        binding_inputs={"label": "foundation"},
+    )
+    tool_payload = ToolPackDeclarationPayload(
+        catalog_id="coding.tools",
+        catalog_revision=1,
+        item_ids=("foundation-query",),
+        owner_namespace="coding.tools",
+        requirements=(
+            CapabilityRequirement(
+                capability="coding.foundation",
+                facets=("query",),
+                compatible_contract=CapabilityContractRange.exact(1),
+            ),
+        ),
+    )
+    payloads = (provider_payload.to_dict(), tool_payload.to_dict())
+    declarations = tuple(
+        PluginDeclaration(
+            plugin_id="foundation-sample",
+            contribution_id=contribution.contribution_id,
+            kind=contribution.kind,
+            owner=contribution.owner,
+            reservation_fingerprint=contribution.fingerprint,
+            source_descriptor_fingerprint=(
+                contribution.source_descriptor_fingerprint
+            ),
+            source_kind=contribution.declaration_source.kind,
+            payload=payload,
+        )
+        for contribution, payload in zip(contributions, payloads, strict=True)
+    )
+    (declarations_root / "foundation.json").write_bytes(
+        PluginDeclarationDocumentCodec.encode_bytes(
+            PluginDeclarationDocument(declarations=declarations)
+        )
+    )
+    (source_root / "provider.py").write_text(
+        _foundation_provider_source(events),
+        encoding="utf-8",
+    )
+    (source_root / "plugin.json").write_text(
+        json.dumps(
+            {
+                "name": "foundation-sample",
+                "version": "1",
+                "contributionIndex": {
+                    "version": 2,
+                    "items": [item.to_dict() for item in contributions],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    authority = PluginResolutionAuthority()
+    inspection = authority.inspect(PluginSource(path=source_root))
+    runtime = authority.publish_runtime(
+        (inspection,),
+        binding_store=PackageMaterializer(
+            install_root=tmp_path / "foundation-installed",
+            plugin_revision_root=tmp_path / "foundation-revisions",
+        ),
+    )
+    [package] = runtime.packages
+    [binding] = runtime.bindings
+    return _FoundationPluginFixture(
+        runtime=runtime,
+        package=package,
+        binding=binding,
+        contributions=package.contribution_index.items,
+    )
+
+
+def _foundation_selection(fixture: _FoundationPluginFixture) -> PluginSelection:
+    plugin_id = fixture.package.manifest.name
+    plan = PluginSelectionPlanV2(
+        context=PluginPreflightContextV1(
+            product_id="coding",
+            scope_id="workspace:test",
+            policy_revision="coding-plugin-policy-1",
+            instance_revision_refs=(
+                PluginInstanceRevisionRef(
+                    instance_id="foundation-sample@workspace:test",
+                    plugin_id=plugin_id,
+                    revision=1,
+                ),
+            ),
+        ),
+        selected_plugin_ids=(plugin_id,),
+        selected_contributions=tuple(
+            PluginContributionRef(plugin_id, item.contribution_id)
+            for item in fixture.contributions
+        ),
+        source_trust_snapshots=(
+            PluginSourceTrustSnapshotV1(
+                plugin_id=plugin_id,
+                package_source_identity=fixture.binding.source_identity,
+                source_trust_class="host-equivalent-local",
+                source_trust_policy_revision="trust-1",
+                trusted=True,
+            ),
+        ),
+        effective_configuration_set=PluginEffectiveConfigurationSetV1(
+            entries=tuple(
+                PluginEffectiveConfigurationEntry(
+                    plugin_id=plugin_id,
+                    contribution_id=item.contribution_id,
+                    configuration=(
+                        {"label": "foundation"}
+                        if item.kind == "capability_provider"
+                        else {}
+                    ),
+                )
+                for item in fixture.contributions
+            )
+        ),
+        allowed_authority_ceiling=(),
+    )
+    result = PluginDeclarationHost().resolve(
+        (fixture.package,),
+        bindings=(fixture.binding,),
+        plan=plan,
+        decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+    )
+    assert isinstance(result, PluginSelection)
+    return result
+
+
+def _foundation_provider_source(events: Path) -> str:
+    return f'''\
+from pathlib import Path
+
+from loushang.harness.capabilities.provider_binding import (
+    CapabilityBundleValue,
+    CapabilityFacetBinding,
+)
+
+EVENTS = Path({str(events)!r})
+with EVENTS.open("a", encoding="utf-8") as stream:
+    stream.write("provider-import\\n")
+
+def create_provider(context):
+    with EVENTS.open("a", encoding="utf-8") as stream:
+        stream.write("provider-create\\n")
+    return CapabilityBundleValue((CapabilityFacetBinding(
+        "query",
+        {{
+            "label": context.binding_inputs["label"],
+            "runtime_id": context.runtime_id,
+            "workspace_read": (
+                context.dependency("harness.workspace").require("read") is not None
+            ),
+        }},
+    ),))
+
+def dispose_provider(_value):
+    with EVENTS.open("a", encoding="utf-8") as stream:
+        stream.write("provider-dispose\\n")
+'''
+
+
+def _append_event(path: Path, event: str) -> None:
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(event + "\n")
 
 
 def _bind_transcript_factory(

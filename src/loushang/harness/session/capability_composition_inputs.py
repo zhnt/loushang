@@ -1,0 +1,592 @@
+"""Immutable plugin graph inputs and exact-owner Consumer generation staging."""
+
+from __future__ import annotations
+
+import asyncio
+import inspect
+import json
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
+from hashlib import sha256
+from typing import Literal, TypeAlias, cast
+
+from loushang.harness.capabilities.consumer_requirements import (
+    ProductCapabilityConsumerRequirementEntry,
+    ProductCompositionAuthorityContext,
+    ProductCompositionCompilation,
+)
+from loushang.harness.capabilities.contribution_admission import (
+    OwnerContributionAdmissionRecord,
+    OwnerContributionSnapshot,
+)
+from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
+from loushang.harness.capabilities.provider_admission import (
+    CapabilityProviderOwnerSnapshot,
+)
+from loushang.harness.capabilities.provider_selection import (
+    ResolvedCapabilityProvider,
+    ResolvedCapabilityProviderSet,
+)
+from loushang.harness.resources.plugins.selection import (
+    PluginSourceTrustSnapshotV1,
+)
+from loushang.harness.resources.plugins.types import PublishedPluginPackage
+from loushang.harness.runtime.registration import _await_cancellation_atomic
+
+SessionCompositionChange = Literal["no_change", "restart_required"]
+
+
+@dataclass(frozen=True, slots=True)
+class SessionCapabilityComponentRequest:
+    """Data/evidence needed for one Component Host activation consumption."""
+
+    resolved: ResolvedCapabilityProvider
+    package: PublishedPluginPackage = field(repr=False, compare=False)
+    owner_snapshot: CapabilityProviderOwnerSnapshot
+    trust_snapshot: PluginSourceTrustSnapshotV1
+    activation_decision_id: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.resolved, ResolvedCapabilityProvider):
+            raise TypeError("Component request requires a resolved Provider")
+        if not isinstance(self.package, PublishedPluginPackage):
+            raise TypeError("Component request requires a published Plugin package")
+        if not isinstance(self.owner_snapshot, CapabilityProviderOwnerSnapshot):
+            raise TypeError("Component request requires an owner snapshot")
+        if not isinstance(self.trust_snapshot, PluginSourceTrustSnapshotV1):
+            raise TypeError("Component request requires a trust snapshot")
+        _require_hex(
+            self.activation_decision_id,
+            length=48,
+            name="activation decision id",
+        )
+        spec = self.resolved.binding_spec
+        if (
+            self.package.manifest.name != spec.plugin_id
+            or self.package.content_digest != spec.package_content_digest
+            or self.package.dependency_lock.digest != spec.dependency_lock_digest
+        ):
+            raise ValueError("Component request package does not exact-match Provider")
+
+    @property
+    def capability_id(self) -> str:
+        return self.resolved.capability_id
+
+
+@dataclass(frozen=True, slots=True)
+class SessionCapabilityCompositionInputs:
+    """Pinned external Provider/Consumer facts merged into one Session graph."""
+
+    product_composition: ProductCompositionCompilation
+    resolved_providers: ResolvedCapabilityProviderSet
+    component_requests: tuple[SessionCapabilityComponentRequest, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.product_composition, ProductCompositionCompilation):
+            raise TypeError("Session composition requires Product compilation")
+        if not isinstance(self.resolved_providers, ResolvedCapabilityProviderSet):
+            raise TypeError("Session composition requires resolved Providers")
+        requirements = self.product_composition.consumer_requirements
+        if requirements.product_id != self.resolved_providers.product_id:
+            raise ValueError("Session composition Product facts do not match")
+        authority_context = self.product_composition.authority_context
+        if (
+            authority_context.product_id != self.resolved_providers.product_id
+            or authority_context.product_policy_revision
+            != self.resolved_providers.product_policy_revision
+        ):
+            raise ValueError("Session composition authority facts do not match")
+        if any(
+            item.admission.candidate.scope_id != authority_context.scope_id
+            for item in self.resolved_providers.entries
+        ):
+            raise ValueError("Session composition scope facts do not match")
+        admissions = (
+            *self.product_composition.resource_admissions,
+            *self.product_composition.catalog_admissions,
+        )
+        if any(item.product_id != requirements.product_id for item in admissions):
+            raise ValueError("Session contribution admission belongs to another Product")
+        requests = tuple(self.component_requests)
+        if any(
+            not isinstance(item, SessionCapabilityComponentRequest)
+            for item in requests
+        ):
+            raise TypeError("Session component requests have invalid type")
+        if requests != tuple(sorted(requests, key=lambda item: item.capability_id)):
+            raise ValueError("Session component requests must be Capability-sorted")
+        request_ids = tuple(item.capability_id for item in requests)
+        entry_ids = tuple(item.capability_id for item in self.resolved_providers.entries)
+        if request_ids != entry_ids:
+            raise ValueError("Session component requests must cover resolved Providers")
+        if any(
+            request.resolved is not entry
+            for request, entry in zip(
+                requests,
+                self.resolved_providers.entries,
+                strict=True,
+            )
+        ):
+            raise ValueError("Session component request does not retain exact resolution")
+        object.__setattr__(self, "component_requests", requests)
+
+    @property
+    def product_id(self) -> str:
+        return self.resolved_providers.product_id
+
+    @property
+    def composition_fingerprint(self) -> str:
+        document = {
+            "authorityContext": (
+                self.product_composition.authority_context.semantic_fingerprint
+            ),
+            "catalogAdmissions": [
+                item.fingerprint
+                for item in self.product_composition.catalog_admissions
+            ],
+            "consumerRequirements": (
+                self.product_composition.consumer_requirements.fingerprint
+            ),
+            "providerClosure": self.resolved_providers.semantic_fingerprint,
+            "providerAuthorities": [
+                {
+                    "capabilityId": item.capability_id,
+                    "ownerSnapshot": item.owner_snapshot.to_dict(),
+                    "trustSnapshot": {
+                        "packageSourceIdentity": (
+                            item.trust_snapshot.package_source_identity
+                        ),
+                        "pluginId": item.trust_snapshot.plugin_id,
+                        "sourceTrustClass": (
+                            item.trust_snapshot.source_trust_class
+                        ),
+                        "sourceTrustPolicyRevision": (
+                            item.trust_snapshot.source_trust_policy_revision
+                        ),
+                        "trusted": item.trust_snapshot.trusted,
+                        "trustSnapshotVersion": (
+                            item.trust_snapshot.trust_snapshot_version
+                        ),
+                    },
+                }
+                for item in self.component_requests
+            ],
+            "resourceAdmissions": [
+                item.fingerprint
+                for item in self.product_composition.resource_admissions
+            ],
+        }
+        payload = json.dumps(
+            document,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        return sha256(b"loushang.session-capability-composition/v1\0" + payload).hexdigest()
+
+    def compare(self, other: SessionCapabilityCompositionInputs) -> SessionCompositionChange:
+        if not isinstance(other, SessionCapabilityCompositionInputs):
+            raise TypeError("Session composition comparison requires exact inputs")
+        return (
+            "no_change"
+            if self.composition_fingerprint == other.composition_fingerprint
+            else "restart_required"
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SessionCapabilityConsumerCapture:
+    """One exact per-contribution Consumer view captured after graph publication."""
+
+    entry: ProductCapabilityConsumerRequirementEntry
+    facets: CapabilityFacetSet = field(repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.entry, ProductCapabilityConsumerRequirementEntry):
+            raise TypeError("Session Consumer capture requires a requirement entry")
+        if not isinstance(self.facets, CapabilityFacetSet):
+            raise TypeError("Session Consumer capture requires a facet set")
+        if self.facets.requirement != self.entry.requirement:
+            raise ValueError("Session Consumer capture does not match its entry")
+
+
+OwnerGenerationStage: TypeAlias = Callable[
+    [tuple[SessionCapabilityConsumerCapture, ...]],
+    object | Awaitable[object],
+]
+OwnerGenerationDispose: TypeAlias = Callable[[object], None | Awaitable[None]]
+
+
+@dataclass(frozen=True, slots=True)
+class SessionCapabilityOwnerAuthorityGate:
+    """Host-owned last-moment authority gate for Tool/Command generation staging."""
+
+    authority_context: ProductCompositionAuthorityContext
+    owner_snapshot_reader: Callable[
+        [str, str, str], OwnerContributionSnapshot
+    ] = field(repr=False, compare=False)
+    trust_snapshot_reader: Callable[
+        [str, str], PluginSourceTrustSnapshotV1
+    ] = field(repr=False, compare=False)
+    product_policy_revision_reader: Callable[[str, str], str] = field(
+        repr=False,
+        compare=False,
+    )
+    clock: Callable[[], int] = field(repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.authority_context, ProductCompositionAuthorityContext):
+            raise TypeError("Owner authority gate requires a composition context")
+        if not all(
+            callable(item)
+            for item in (
+                self.owner_snapshot_reader,
+                self.trust_snapshot_reader,
+                self.product_policy_revision_reader,
+                self.clock,
+            )
+        ):
+            raise TypeError("Owner authority gate requires current authority readers")
+
+    def validate(self, admission: OwnerContributionAdmissionRecord) -> None:
+        context = self.authority_context
+        candidate = admission.candidate
+        if (
+            admission.product_id != context.product_id
+            or candidate.scope_id != context.scope_id
+            or candidate.product_policy_revision
+            != context.product_policy_revision
+        ):
+            raise ValueError(
+                "Owner admission belongs to another Product, scope, or policy"
+            )
+        now = self.clock()
+        if isinstance(now, bool) or not isinstance(now, int) or now < 0:
+            raise ValueError("Owner authority gate clock must be non-negative integer")
+        if not admission.issued_at <= now < admission.expires_at:
+            raise ValueError("Owner contribution admission is not current")
+        current_product_policy = self.product_policy_revision_reader(
+            context.product_id,
+            context.scope_id,
+        )
+        if current_product_policy != candidate.product_policy_revision:
+            raise ValueError("Owner contribution Product policy is stale")
+        owner = self.owner_snapshot_reader(
+            admission.owner_id,
+            admission.contribution_kind,
+            admission.product_id,
+        )
+        expected_owner = next(
+            (
+                item
+                for item in context.owner_snapshots
+                if item.owner_id == admission.owner_id
+                and item.contribution_kind == admission.contribution_kind
+                and item.product_id == admission.product_id
+            ),
+            None,
+        )
+        if (
+            expected_owner is None
+            or owner != expected_owner
+            or owner.owner_id != admission.owner_id
+            or owner.contribution_kind != admission.contribution_kind
+            or owner.product_id != admission.product_id
+            or owner.policy_revision != admission.owner_policy_revision
+            or owner.revocation_epoch != admission.revocation_epoch
+        ):
+            raise ValueError("Owner contribution authority identity is stale")
+        trust = self.trust_snapshot_reader(
+            admission.plugin_id,
+            candidate.package_source_identity,
+        )
+        expected_trust = next(
+            (
+                item
+                for item in context.trust_snapshots
+                if item.plugin_id == admission.plugin_id
+                and item.package_source_identity
+                == candidate.package_source_identity
+            ),
+            None,
+        )
+        if (
+            expected_trust is None
+            or trust != expected_trust
+            or trust.plugin_id != admission.plugin_id
+            or trust.package_source_identity
+            != candidate.package_source_identity
+            or not trust.trusted
+            or trust.source_trust_class != candidate.source_trust_class
+            or trust.source_trust_policy_revision
+            != candidate.source_trust_policy_revision
+        ):
+            raise ValueError("Owner contribution source trust identity is stale")
+
+
+@dataclass(frozen=True, slots=True)
+class SessionCapabilityOwnerGenerationBinding:
+    """Exact Tool/Command owner adapter; it receives only declared Consumers."""
+
+    owner_id: str
+    contribution_kind: str
+    plugin_id: str
+    contribution_id: str
+    admission_fingerprint: str
+    authority_gate: SessionCapabilityOwnerAuthorityGate = field(
+        repr=False,
+        compare=False,
+    )
+    stage: OwnerGenerationStage = field(repr=False, compare=False)
+    dispose: OwnerGenerationDispose = field(repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("Consumer owner id", self.owner_id),
+            ("Consumer contribution kind", self.contribution_kind),
+            ("Consumer Plugin id", self.plugin_id),
+            ("Consumer contribution id", self.contribution_id),
+        ):
+            _require_nonempty(value, name=name)
+        _require_hex(
+            self.admission_fingerprint,
+            length=64,
+            name="Consumer admission fingerprint",
+        )
+        if not isinstance(self.authority_gate, SessionCapabilityOwnerAuthorityGate):
+            raise TypeError("Owner generation binding requires an authority gate")
+        if not callable(self.stage) or not callable(self.dispose):
+            raise TypeError("Owner generation stage/dispose must be callable")
+
+    def matches(self, admission: OwnerContributionAdmissionRecord) -> bool:
+        return (
+            self.owner_id == admission.owner_id
+            and self.contribution_kind == admission.contribution_kind
+            and self.plugin_id == admission.plugin_id
+            and self.contribution_id == admission.contribution_id
+            and self.admission_fingerprint == admission.fingerprint
+            and self.authority_gate.authority_context.product_id
+            == admission.product_id
+            and self.authority_gate.authority_context.scope_id
+            == admission.candidate.scope_id
+        )
+
+
+@dataclass(slots=True)
+class StagedSessionCapabilityOwnerGeneration:
+    binding: SessionCapabilityOwnerGenerationBinding
+    value: object = field(repr=False)
+    disposed: bool = False
+    _dispose_task: asyncio.Task[None] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+    )
+
+    async def dispose_once(self) -> None:
+        if self.disposed:
+            return
+        task = self._dispose_task
+        if task is None:
+            task = asyncio.create_task(self._dispose())
+            self._dispose_task = task
+        try:
+            await _await_cancellation_atomic(task)
+        except BaseException:
+            if self._dispose_task is task:
+                self._dispose_task = None
+            raise
+
+    async def _dispose(self) -> None:
+        result = self.binding.dispose(self.value)
+        if inspect.isawaitable(result):
+            await result
+        self.disposed = True
+
+
+class SessionCapabilityOwnerGenerationStagingError(RuntimeError):
+    """Owner staging failed while some generations still require disposal."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        pending_generations: tuple[StagedSessionCapabilityOwnerGeneration, ...],
+    ) -> None:
+        super().__init__(message)
+        self.pending_generations = pending_generations
+
+
+async def stage_session_capability_owner_generations(
+    *,
+    admissions: tuple[OwnerContributionAdmissionRecord, ...],
+    bindings: tuple[SessionCapabilityOwnerGenerationBinding, ...],
+    captures: tuple[SessionCapabilityConsumerCapture, ...],
+) -> tuple[StagedSessionCapabilityOwnerGeneration, ...]:
+    """Stage exact owners transactionally after Consumer capture."""
+
+    admission_values, binding_values = (
+        validate_session_capability_owner_generation_bindings(
+            admissions=admissions,
+            bindings=bindings,
+        )
+    )
+
+    captures_by_admission: dict[str, list[SessionCapabilityConsumerCapture]] = {}
+    for capture in captures:
+        captures_by_admission.setdefault(
+            capture.entry.admission_fingerprint,
+            [],
+        ).append(capture)
+    if set(captures_by_admission) - {
+        item.fingerprint for item in admission_values
+    }:
+        raise ValueError("Consumer capture belongs to an unknown owner admission")
+
+    staged: list[StagedSessionCapabilityOwnerGeneration] = []
+    try:
+        for admission, binding in zip(
+            admission_values,
+            binding_values,
+            strict=True,
+        ):
+            owner_captures = tuple(
+                captures_by_admission.get(admission.fingerprint, ())
+            )
+            binding.authority_gate.validate(admission)
+            result = binding.stage(owner_captures)
+            stage_cancellation: asyncio.CancelledError | None = None
+            if inspect.isawaitable(result):
+                stage_task = asyncio.create_task(
+                    _await_owner_stage(cast(Awaitable[object], result))
+                )
+                try:
+                    result = await _await_cancellation_atomic(stage_task)
+                except asyncio.CancelledError as exc:
+                    if stage_task.cancelled():
+                        raise
+                    result = stage_task.result()
+                    stage_cancellation = exc
+            staged.append(
+                StagedSessionCapabilityOwnerGeneration(
+                    binding=binding,
+                    value=result,
+                )
+            )
+            if stage_cancellation is not None:
+                raise stage_cancellation
+    except BaseException as error:
+        pending: list[StagedSessionCapabilityOwnerGeneration] = []
+        for generation in reversed(staged):
+            try:
+                await generation.dispose_once()
+            except BaseException as cleanup_error:
+                pending.append(generation)
+                error.add_note(
+                    "Owner generation rollback also failed: "
+                    f"{cleanup_error!r}"
+                )
+        if pending:
+            raise SessionCapabilityOwnerGenerationStagingError(
+                "Owner generation staging failed with pending rollback cleanup.",
+                pending_generations=tuple(reversed(pending)),
+            ) from error
+        raise
+    return tuple(staged)
+
+
+async def _await_owner_stage(awaitable: Awaitable[object]) -> object:
+    return await awaitable
+
+
+def validate_session_capability_owner_generation_bindings(
+    *,
+    admissions: tuple[OwnerContributionAdmissionRecord, ...],
+    bindings: tuple[SessionCapabilityOwnerGenerationBinding, ...],
+) -> tuple[
+    tuple[OwnerContributionAdmissionRecord, ...],
+    tuple[SessionCapabilityOwnerGenerationBinding, ...],
+]:
+    admission_values = tuple(sorted(admissions, key=lambda item: item.fingerprint))
+    binding_values = tuple(
+        sorted(bindings, key=lambda item: item.admission_fingerprint)
+    )
+    if any(
+        not isinstance(item, OwnerContributionAdmissionRecord)
+        for item in admission_values
+    ):
+        raise TypeError("Catalog admissions have invalid type")
+    if any(
+        not isinstance(item, SessionCapabilityOwnerGenerationBinding)
+        for item in binding_values
+    ):
+        raise TypeError("Owner generation bindings have invalid type")
+    if len({item.fingerprint for item in admission_values}) != len(admission_values):
+        raise ValueError("Catalog admissions must be unique")
+    if len({item.admission_fingerprint for item in binding_values}) != len(
+        binding_values
+    ):
+        raise ValueError("Owner generation bindings must be unique")
+    if len(admission_values) != len(binding_values) or any(
+        not binding.matches(admission)
+        for admission, binding in zip(
+            admission_values,
+            binding_values,
+            strict=True,
+        )
+    ):
+        raise ValueError("Owner generation bindings do not exact-match admissions")
+    return admission_values, binding_values
+
+
+async def dispose_session_capability_owner_generations(
+    generations: tuple[StagedSessionCapabilityOwnerGeneration, ...],
+) -> None:
+    errors: list[BaseException] = []
+    for generation in reversed(generations):
+        try:
+            await generation.dispose_once()
+        except BaseException as exc:
+            errors.append(exc)
+    if errors:
+        primary = errors[0]
+        for cleanup_error in errors[1:]:
+            primary.add_note(
+                "Additional owner generation cleanup failure: "
+                f"{cleanup_error!r}"
+            )
+        raise primary
+
+
+def _require_nonempty(value: object, *, name: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"{name} must be a string")
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError(f"{name} must not be empty")
+    return normalized
+
+
+def _require_hex(value: object, *, length: int, name: str) -> None:
+    if (
+        not isinstance(value, str)
+        or len(value) != length
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise ValueError(f"{name} must be {length} lowercase hexadecimal characters")
+
+
+__all__ = [
+    "SessionCapabilityComponentRequest",
+    "SessionCapabilityCompositionInputs",
+    "SessionCapabilityConsumerCapture",
+    "SessionCapabilityOwnerGenerationBinding",
+    "SessionCapabilityOwnerGenerationStagingError",
+    "SessionCapabilityOwnerAuthorityGate",
+    "SessionCompositionChange",
+    "StagedSessionCapabilityOwnerGeneration",
+    "dispose_session_capability_owner_generations",
+    "stage_session_capability_owner_generations",
+    "validate_session_capability_owner_generation_bindings",
+]

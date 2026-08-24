@@ -26,7 +26,6 @@ from loushang.harness.capabilities import (
     CapabilityContractRange,
     CapabilityDependencyBinding,
     CapabilityFacetBinding,
-    CapabilityGraphPlanRequest,
     CapabilityProviderContext,
     EffectiveRuntimeDiff,
     EffectiveRuntimeView,
@@ -34,8 +33,6 @@ from loushang.harness.capabilities import (
     RegistrationExplanation,
     RegistrationInventoryEntry,
     RegistrationInventorySnapshot,
-    RuntimeCapabilityGraphPlan,
-    RuntimeCapabilityGraphPlanner,
     RuntimeCapabilityGraphProjector,
     RuntimeProfileSlotExplanation,
     ScopedSourcePublicationReference,
@@ -50,16 +47,10 @@ from loushang.harness.capabilities.model_input_contracts import (
     MODEL_INPUT_PREPARATION_FACET,
     MODEL_INPUT_PREPARATION_REQUIREMENT,
 )
-from loushang.harness.capabilities.resources_contracts import (
-    RESOURCES_CAPABILITY_DEFINITION,
-)
 from loushang.harness.capabilities.session_contracts import (
     SESSION_CAPABILITY_DEFINITION,
     SESSION_TRANSCRIPT_REQUIREMENT,
     TRANSCRIPT_PROFILE_FACET,
-)
-from loushang.harness.capabilities.workspace_contracts import (
-    WORKSPACE_CAPABILITY_DEFINITION,
 )
 from loushang.harness.runtime import RuntimeProfileSnapshot
 from loushang.harness.session.turn_performance import TurnStartPerformanceRuntime
@@ -267,9 +258,8 @@ class SessionModelCallCapabilityConsumer:
 
 @dataclass(frozen=True)
 class SessionModelCallCapabilityBinding:
-    """Immutable graph inputs assembled for the Session composition root."""
+    """Immutable built-in Provider input for the Session composition root."""
 
-    plan: RuntimeCapabilityGraphPlan
     provider_binding: CapabilityBundleProviderBinding
 
 
@@ -338,25 +328,6 @@ def build_session_model_call_capability_binding(
         source_id="builtin",
         selection_rule="Product durable Model Input selection",
     )
-    plan = RuntimeCapabilityGraphPlanner().plan(
-        CapabilityGraphPlanRequest(
-            product_id=product_id,
-            roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-            definitions=(
-                MODEL_INPUT_CAPABILITY_DEFINITION,
-                *((SESSION_CAPABILITY_DEFINITION,) if session_provider else ()),
-                *((RESOURCES_CAPABILITY_DEFINITION,) if resources_provider else ()),
-                *((WORKSPACE_CAPABILITY_DEFINITION,) if workspace_provider else ()),
-            ),
-            providers=(
-                provider,
-                *((session_provider,) if session_provider else ()),
-                *((resources_provider,) if resources_provider else ()),
-                *((workspace_provider,) if workspace_provider else ()),
-            ),
-        )
-    )
-
     def build_value(
         transcript_port: ModelInputTranscriptPort,
     ) -> CapabilityBundleValue:
@@ -392,7 +363,6 @@ def build_session_model_call_capability_binding(
             )
 
     return SessionModelCallCapabilityBinding(
-        plan=plan,
         provider_binding=CapabilityBundleProviderBinding(
             provider=provider,
             scope_instance_id=runtime_id,

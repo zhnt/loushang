@@ -2,13 +2,14 @@
 
 ## Status
 
-Target architecture, revised through multiple independent boundary,
-reference-parity, implementability, and lifecycle/security reviews; this
-revision is pending re-review. The existing Capability Graph, Runtime Profile,
-Registration Scope, Extension/Resource generation, Effective Runtime, Resource
-Package, and Plugin source-management runtimes remain authoritative while this
-migration is incomplete. This document does not claim that `coding.lsp`,
-`coding.arch`, or the unified Plugin lifecycle are already implemented.
+Target architecture with its internal PAP0-PAP5 foundation implemented and its
+three-round independent-review hardening complete on the PAP5 delivery branch;
+adopter-level `coding.lsp`, `coding.arch`, public SDK, and Skill convergence
+remain pending. The existing Capability Graph, Runtime Profile, Registration
+Scope, Extension/Resource generation, Effective Runtime, Resource Package, and
+Plugin source-management runtimes remain authoritative while this migration is
+incomplete. This document does not claim that `coding.lsp`, `coding.arch`, or
+the unified Plugin lifecycle are already implemented.
 
 Canonical Product, Capability, Mount, Package, Plugin, Extension, and Resource
 terms remain defined by the
@@ -23,6 +24,26 @@ remains authoritative for projection and its four independent clocks.
 This document joins their authoring, packaging, and selection entry paths. It
 does not introduce a competing Profile resolver, registration owner, graph,
 cross-owner transaction, or effective-runtime projector.
+
+The PAP5 linearization is exact: Component preparation consumes one durable
+activation decision without importing code; the existing Binder is the first
+caller of the verified factory, while `STARTED` is persisted only after the
+factory returns a validated Bundle; only successful Graph publication lets the
+Session root advance it to `COMMITTED`. The Host bootstrap recovers incomplete
+uses before new preparation, and the factory boundary re-reads current Product,
+Owner and Trust authority plus admission/decision time windows.
+The Session then captures narrow external Consumer views, stages exact owner
+generations, and becomes usable. Failure aborts every unstarted/started
+attempt, reverses staged owners, and disposes the candidate Graph. Normal
+unload reverses owner generations before Provider disposal.
+
+Product Provider resolution may consume exact built-in/prebound Provider facts
+as dependency closure members without manufacturing Plugin admissions for
+them. They remain metadata-only inputs to the same single Graph transaction,
+and the Session rejects a prebound fact that differs from its actual built-in
+binding. Audit fingerprints retain evaluation time; Session semantic
+fingerprints exclude observation time while retaining authority, admission,
+package, dependency and Provider facts.
 
 ## Purpose
 
@@ -1088,22 +1109,27 @@ then the Product Host drains Sessions using the old revision and restarts
 before importing the new one. Resource/declarative or isolated-service
 revisions may coexist when their own owner contracts permit it.
 
-The same interpreter also has a process-wide import-realm gate and import-
-closure ledger. Under that gate, check and reservation are one atomic operation:
-every module, distribution, native extension and locked dependency identity
-moves through `RESERVED -> LOADING -> LOADED` or `FAILED`. Concurrent candidates
-cannot both observe an empty ledger. A same-name/different-digest or incompatible
-dependency claim fails closed and requires a host restart with one compatible
-set or an isolated worker.
+The same interpreter also has a process-wide import-realm gate. Under that
+gate, check and reservation are one atomic operation for the declared Plugin
+namespace/digest and distribution-version facts. Concurrent candidates cannot
+both observe an empty ledger. A same-name/different-digest or incompatible
+declared dependency claim fails closed and requires a host restart with one
+compatible set or an isolated worker. Module/native/transitive identities are
+not part of the current in-process ledger.
 
-The admitted import realm installs a host-owned meta-path/loader adapter that
-maps every transitive module and native extension to the locked closure and a
-`VerifiedRevisionHandle`; undeclared fallback through ordinary mutable
-`sys.path` is rejected. Failed reservations remain visible until rollback under
-the same gate. If the platform, packaging format or native loader cannot prove
-this closure, the Plugin must use an isolated worker or a clean host restart.
-Plugin-qualified entry module names alone never pretend to isolate transitive
-imports through shared `sys.modules`.
+The mature target may install a host-owned meta-path/loader adapter that maps
+every transitive module and native extension to a locked closure. The current
+host-equivalent PAP5 Python arm deliberately supports a narrower proof: it
+loads the entrypoint only through `VerifiedRevisionHandle`, exact-checks every
+declared installed distribution version and file origin, and rejects mutable
+origins or dynamic-import facilities only when they pass through the source
+module's direct import hook. Python modules reached transitively or through an
+already imported module's object graph do not pass through that hook. The
+Import Realm locks the declared Plugin namespace/digest and distribution
+versions for the Host boot, but does not claim a complete transitive-import
+closure. Plugins requiring enforceable dependency isolation use an isolated
+worker or clean Host restart; this boundary is compatibility evidence for
+host-equivalent trusted code, not a malicious-code sandbox.
 
 There is no sequential Graph/Extension/Resource publish followed by snapshot
 restoration. Publication of an owner generation is its linearization point.
@@ -1797,9 +1823,9 @@ The architecture is complete only when these statements are executable:
 - incompatible private-data migration never races an old writer and failed
   migration leaves both old pointers intact; selection/data cutover and new-
   writer admission share one CAS gate;
-- in-process imports atomically reserve their locked closure and a host loader
-  rejects undeclared transitive imports; incompatible/native cases restart or
-  use an isolated worker;
+- in-process imports atomically reserve their declared compatibility lock and
+  the direct source loader rejects unverifiable direct origins; enforceable
+  transitive/native isolation requires a clean Host or isolated worker;
 - every Plugin management adapter submits one typed durable command to
   `PluginManagementService`; no adapter mutates config/materialization/refresh;
 - MCP v1 exposes only statically reserved/declared/admitted Tools and a dynamic

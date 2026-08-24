@@ -106,12 +106,15 @@ claim group
 There is no await, mutable package-path reopen or Product callback between the
 verified handle read and loader invocation. The evaluator does not change
 `sys.path`, does not register its transient module in `sys.modules`, and does
-not load a local helper by mutable path. Standard-library imports, the narrow
-Harness authoring API and exact installed distributions named by the immutable
-dependency lock are eligible. Relative and package-local transitive imports are
-rejected in this first evaluator arm. The lock is a compatibility contract, not
-a security sandbox: an in-process Definition is explicitly host-equivalent
-trusted and still requires the complete Approval Subject.
+not load a local helper by mutable path. Direct source imports may use the
+standard library, the narrow Harness authoring API and exact installed
+distribution files named by the immutable dependency lock. Relative imports
+are rejected in this first evaluator arm. Imports reached through another
+module's globals or transitive imports use ordinary Python semantics and are
+not claimed as an enforceable closure. The lock is a compatibility contract,
+not a security sandbox: an in-process Definition is explicitly host-equivalent
+trusted and still requires the complete Approval Subject; stronger isolation
+requires an isolated worker.
 
 One realm binds one `hostBootId`, serializes one active import, and accumulates
 compatible exact distribution versions. A different locked version fails

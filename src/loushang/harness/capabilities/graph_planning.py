@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from loushang.harness.capabilities.contracts import (
     CapabilityDefinition,
     CapabilityRequirement,
+    _direct_requirement_scope_is_valid,
+    _requirement_refresh_is_valid,
 )
 from loushang.harness.capabilities.providers import CapabilityBundleProvider
 
@@ -446,7 +448,10 @@ class RuntimeCapabilityGraphPlanner:
             )
         if requirement.binding == "stable_reference":
             return
-        if dependency.scope not in _DIRECT_DEPENDENCY_SCOPES[consumer.scope]:
+        if not _direct_requirement_scope_is_valid(
+            consumer.scope,
+            dependency.scope,
+        ):
             diagnostics.append(
                 CapabilityGraphDiagnostic(
                     code="scope_inversion",
@@ -455,9 +460,9 @@ class RuntimeCapabilityGraphPlanner:
                     dependency_id=dependency.capability_id,
                 )
             )
-        if (
-            consumer.refresh_boundary == "sealed"
-            and dependency.refresh_boundary == "turn"
+        if not _requirement_refresh_is_valid(
+            consumer.refresh_boundary,
+            dependency.refresh_boundary,
         ):
             diagnostics.append(
                 CapabilityGraphDiagnostic(
@@ -467,16 +472,6 @@ class RuntimeCapabilityGraphPlanner:
                     dependency_id=dependency.capability_id,
                 )
             )
-
-
-_DIRECT_DEPENDENCY_SCOPES = {
-    "process": frozenset({"process"}),
-    "tenant": frozenset({"process", "tenant"}),
-    "workspace": frozenset({"process", "tenant", "workspace"}),
-    "session": frozenset({"process", "tenant", "workspace", "session"}),
-    "turn": frozenset({"process", "tenant", "workspace", "session", "turn"}),
-    "channel": frozenset({"process", "tenant", "channel"}),
-}
 
 
 def _index_definitions(

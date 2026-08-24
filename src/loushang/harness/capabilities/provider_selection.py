@@ -6,7 +6,10 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import Never, Protocol, TypeVar
 
-from loushang.harness.capabilities.contracts import CapabilityDefinition
+from loushang.harness.capabilities.contracts import (
+    CapabilityDefinition,
+    CapabilityRequirement,
+)
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderAdmissionRecord,
     CapabilityProviderBindingSpec,
@@ -201,6 +204,7 @@ class ResolvedCapabilityProviderSet:
     product_policy_revision: str
     evaluated_at: int
     entries: tuple[ResolvedCapabilityProvider, ...]
+    prebound_providers: tuple[CapabilityBundleProvider, ...]
     optional_decisions: tuple[CapabilityOptionalRequirementDecision, ...]
     set_version: int
 
@@ -228,7 +232,17 @@ class ResolvedCapabilityProviderSet:
             set(entry_ids)
         ):
             raise ValueError("Resolved Provider entries must be sorted and unique")
-        if not set(roots).issubset(entry_ids):
+        prebound = tuple(self.prebound_providers)
+        if any(not isinstance(item, CapabilityBundleProvider) for item in prebound):
+            raise TypeError("Resolved prebound Providers have invalid type")
+        prebound_ids = tuple(item.capability_id for item in prebound)
+        if prebound_ids != tuple(sorted(prebound_ids)) or len(prebound_ids) != len(
+            set(prebound_ids)
+        ):
+            raise ValueError("Resolved prebound Providers must be sorted and unique")
+        if set(entry_ids).intersection(prebound_ids):
+            raise ValueError("Resolved external and prebound Providers overlap")
+        if not set(roots).issubset(set(entry_ids).union(prebound_ids)):
             raise ValueError("Resolved Provider entries must cover Product roots")
         optional = tuple(self.optional_decisions)
         if any(
@@ -245,6 +259,7 @@ class ResolvedCapabilityProviderSet:
         )
         object.__setattr__(self, "roots", roots)
         object.__setattr__(self, "entries", entries)
+        object.__setattr__(self, "prebound_providers", prebound)
         object.__setattr__(self, "optional_decisions", optional)
 
     @property
@@ -262,12 +277,27 @@ class ResolvedCapabilityProviderSet:
             self._record_document(),
         )
 
+    @property
+    def semantic_fingerprint(self) -> str:
+        """Runtime-relevant closure identity excluding observation time."""
+
+        document = self._record_document()
+        document.pop("evaluatedAt")
+        return _digest_document(
+            "loushang.resolved-capability-provider-set-semantic/v1",
+            document,
+        )
+
     def _record_document(self) -> dict[str, object]:
         return {
             "entries": [item.to_dict() for item in self.entries],
             "evaluatedAt": self.evaluated_at,
             "optionalDecisions": [
                 item.to_dict() for item in self.optional_decisions
+            ],
+            "preboundProviders": [
+                _capability_bundle_provider_to_dict(item)
+                for item in self.prebound_providers
             ],
             "productId": self.product_id,
             "productPolicyRevision": self.product_policy_revision,
@@ -293,6 +323,7 @@ class ProductCapabilityProviderResolver:
         admissions: tuple[CapabilityProviderAdmissionRecord, ...],
         owner_snapshots: tuple[CapabilityProviderOwnerSnapshot, ...],
         evaluated_at: int,
+        prebound_providers: tuple[CapabilityBundleProvider, ...] = (),
     ) -> ResolvedCapabilityProviderSet:
         if not isinstance(plan, ProductCapabilityProviderSelectionPlanV1):
             raise TypeError("Product Provider Resolver requires an exact Plan v1")
@@ -308,6 +339,10 @@ class ProductCapabilityProviderResolver:
         ):
             raise TypeError("Provider admissions have invalid type")
         snapshots_by_capability = _index_snapshots(owner_snapshots)
+        prebound_by_capability = _index_prebound_providers(
+            prebound_providers,
+            definitions_by_id=definitions_by_id,
+        )
         choices_by_capability: dict[
             str, list[ProductCapabilityProviderChoice]
         ] = {}
@@ -317,9 +352,77 @@ class ProductCapabilityProviderResolver:
         selected: dict[str, ResolvedCapabilityProvider] = {}
         visiting: set[str] = set()
         optional_decisions: list[CapabilityOptionalRequirementDecision] = []
+        used_prebound: set[str] = set()
+
+        def visit_requirements(
+            requester_capability_id: str,
+            requirements: tuple[CapabilityRequirement, ...],
+        ) -> None:
+            for requirement in requirements:
+                if requirement.optional:
+                    if requirement.capability in prebound_by_capability:
+                        visit(requirement.capability)
+                        optional_decisions.append(
+                            CapabilityOptionalRequirementDecision(
+                                requester_capability_id=requester_capability_id,
+                                capability_id=requirement.capability,
+                                satisfied=True,
+                                selected_candidate_fingerprint=(
+                                    _prebound_provider_fingerprint(
+                                        prebound_by_capability[
+                                            requirement.capability
+                                        ]
+                                    )
+                                ),
+                            )
+                        )
+                        continue
+                    dependency_choices = choices_by_capability.get(
+                        requirement.capability,
+                        [],
+                    )
+                    if not dependency_choices:
+                        optional_decisions.append(
+                            CapabilityOptionalRequirementDecision(
+                                requester_capability_id=requester_capability_id,
+                                capability_id=requirement.capability,
+                                satisfied=False,
+                                selected_candidate_fingerprint=None,
+                            )
+                        )
+                        continue
+                    visit(requirement.capability)
+                    dependency = selected[requirement.capability]
+                    optional_decisions.append(
+                        CapabilityOptionalRequirementDecision(
+                            requester_capability_id=requester_capability_id,
+                            capability_id=requirement.capability,
+                            satisfied=True,
+                            selected_candidate_fingerprint=(
+                                dependency.choice.candidate_fingerprint
+                            ),
+                        )
+                    )
+                    continue
+                visit(requirement.capability)
 
         def visit(capability_id: str) -> None:
-            if capability_id in selected or capability_id in visiting:
+            if (
+                capability_id in selected
+                or capability_id in used_prebound
+                or capability_id in visiting
+            ):
+                return
+            if capability_id in prebound_by_capability:
+                used_prebound.add(capability_id)
+                visiting.add(capability_id)
+                try:
+                    visit_requirements(
+                        capability_id,
+                        prebound_by_capability[capability_id].requirements,
+                    )
+                finally:
+                    visiting.remove(capability_id)
                 return
             choices = choices_by_capability.get(capability_id, [])
             if not choices:
@@ -376,36 +479,10 @@ class ProductCapabilityProviderResolver:
             selected[capability_id] = entry
             visiting.add(capability_id)
             try:
-                for requirement in admission.provider.requirements:
-                    if requirement.optional:
-                        dependency_choices = choices_by_capability.get(
-                            requirement.capability,
-                            [],
-                        )
-                        if not dependency_choices:
-                            optional_decisions.append(
-                                CapabilityOptionalRequirementDecision(
-                                    requester_capability_id=capability_id,
-                                    capability_id=requirement.capability,
-                                    satisfied=False,
-                                    selected_candidate_fingerprint=None,
-                                )
-                            )
-                            continue
-                        visit(requirement.capability)
-                        dependency = selected[requirement.capability]
-                        optional_decisions.append(
-                            CapabilityOptionalRequirementDecision(
-                                requester_capability_id=capability_id,
-                                capability_id=requirement.capability,
-                                satisfied=True,
-                                selected_candidate_fingerprint=(
-                                    dependency.choice.candidate_fingerprint
-                                ),
-                            )
-                        )
-                        continue
-                    visit(requirement.capability)
+                visit_requirements(
+                    capability_id,
+                    admission.provider.requirements,
+                )
             finally:
                 visiting.remove(capability_id)
 
@@ -428,6 +505,9 @@ class ProductCapabilityProviderResolver:
             product_policy_revision=plan.policy_revision,
             evaluated_at=evaluated_at,
             entries=entries,
+            prebound_providers=tuple(
+                prebound_by_capability[item] for item in sorted(used_prebound)
+            ),
             optional_decisions=optional,
             set_version=RESOLVED_CAPABILITY_PROVIDER_SET_VERSION,
         )
@@ -465,6 +545,47 @@ def _index_snapshots(
             )
         indexed[snapshot.capability_id] = snapshot
     return indexed
+
+
+def _index_prebound_providers(
+    providers: tuple[CapabilityBundleProvider, ...],
+    *,
+    definitions_by_id: dict[str, CapabilityDefinition],
+) -> dict[str, CapabilityBundleProvider]:
+    values = tuple(providers)
+    if any(not isinstance(item, CapabilityBundleProvider) for item in values):
+        raise TypeError("Prebound Providers have invalid type")
+    indexed: dict[str, CapabilityBundleProvider] = {}
+    for provider in values:
+        if provider.capability_id in indexed:
+            _raise_selection(
+                "duplicate_prebound_provider",
+                "Product supplied duplicate prebound Providers.",
+            )
+        definition = definitions_by_id.get(provider.capability_id)
+        if definition is None:
+            _raise_selection(
+                "missing_capability_definition",
+                "Prebound Provider has no Capability Definition.",
+            )
+        if (
+            not provider.compatible_contract.accepts(definition.contract_version)
+            or set(provider.facets) - set(definition.facets)
+            or set(provider.required_authorities) - set(definition.authority_ceiling)
+        ):
+            _raise_selection(
+                "invalid_prebound_provider",
+                "Prebound Provider metadata violates its Capability Definition.",
+            )
+        indexed[provider.capability_id] = provider
+    return indexed
+
+
+def _prebound_provider_fingerprint(provider: CapabilityBundleProvider) -> str:
+    return _digest_document(
+        "loushang.prebound-capability-provider/v1",
+        _capability_bundle_provider_to_dict(provider),
+    )
 
 
 def _validate_current_admission(
