@@ -55,7 +55,10 @@ planning, work event persistence, or AI provider behavior.
   Catalog-engine component, aggregate filesystem/package/embedded source
   components, Extension-generation snapshot normalization, typed lazy loads and
   Skill projection, exact-generation lifecycle, and manifest-free native
-  `SKILL.md` compatibility before LSP.
+  `SKILL.md` compatibility before LSP. RCP0-RCP3 are now implemented as private,
+  unpublished infrastructure, including verified-package and immutable embedded
+  sources plus Package Catalog's pure inventory bridge; RCP4 live mounting is
+  intentionally still pending.
 - [Resource Catalog RCP0 Baseline](resource-catalog-rcp0-baseline.md) freezes
   the implemented discovery/sink inventory, precedence and Extension parity,
   Package-mount custody, and the exact RCP3/RCP4/RCP5 deletion ledger without

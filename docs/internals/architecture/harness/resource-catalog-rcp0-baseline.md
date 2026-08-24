@@ -8,11 +8,13 @@
   contract and grants no new public API.
 - Frozen source baseline: `0de16c72`, tracked by issue `#495`.
 - Implementation status: the RCP0 legacy baseline remains authoritative, and
-  RCP1 now adds an inert shadow companion. A private pure Catalog engine,
-  immutable records, and explicit-provenance legacy adapter exist, but no
-  production caller imports them. No source component, owner-component
-  lifecycle, mounted Catalog generation, or `harness.resources` v2 facet exists
-  yet.
+  RCP1 through RCP3 now add private inert companions. The pure Catalog records
+  and engine, owner-component lifecycle, and native/package/embedded source
+  components exist, but no production caller imports them. No mounted production
+  Catalog generation or `harness.resources` v2 facet exists yet. RCP3 also
+  removed Package Catalog's effective-discovery summary bridge in favor of a
+  pure inventory port; the legacy loader remains the live Resource authority
+  until RCP4.
 - Review status: the first freeze re-review rejected commit `811f0fdb` with no
   P0 because its Skill oracle and executable inventories were incomplete.
   Corrections at `ed364062` and candidate-provenance closure at `b387d542`
@@ -59,7 +61,7 @@ executable rather than treating all three sites as runtime authority.
 | `harness.extensions.resources.ExtensionResourceRuntime` | Runs `resources_discover` and directly appends contributions with `ResourceBundle.merge()`. | Normalize one Extension-owner-generation source snapshot and join the RCP4 publication transaction; remove direct merge authority by RCP5. |
 | `harness.bootstrap.ResourceBootstrapRuntime` | Initial Session first discovers a base Bundle, then creates the Extension runtime and calls the `rediscover_resources` port. | RCP4 replaces the two-stage visible path with the joint unpublished Extension/Catalog candidate. |
 | `harness.resources.refresh.RuntimeResourceDiscovery` | Dynamically probes `discover_resources`/`discover_resources_async` and lets active refresh append Extension output after reload. | RCP4 routes this adapter into the joint transaction; no post-Catalog dynamic rediscovery remains. |
-| `harness.resources.packages.catalog._summarize_package_resources` | Constructs a Resource loader, performs effective discovery, and derives an inventory summary. | Replace with a pure inventory/summarization port in RCP3. The Package Catalog remains distinct from the Resource Catalog. |
+| `harness.resources.packages.catalog.summarize_package_resources` / `summarize_profiled_package_resources` | Delegates read-only conventional-layout counting to `PackageResourceInventoryPort`; it owns no effective winner or loaded body. | RCP3 complete. Keep the Package Catalog distinct from the Resource Catalog and retain only inventory/materialization responsibility. |
 | `harness.resources.packages.mounts.PackageResourceMount` | Carries package roots, filters, optional verified revision leases, contained reads, and close. | Transfer exact handles to RCP3 source generations; never expose raw mount/path authority to the engine. |
 
 ### Legacy module disposition ledger
@@ -91,9 +93,12 @@ intentionally not a normal typed call.
 | `harness.bootstrap.ResourceBootstrapRuntime.discover` | RCP4 captures the mounted Catalog generation. |
 | `harness.bootstrap.create_standard_resource_bootstrap_runtime` | RCP4 replaces the loader port with the Catalog bootstrap port. |
 | `resources.loader.ResourceLoader.reload_resources` | RCP5 forwarding-only, then delete. |
-| `resources.packages.catalog._summarize_package_resources` | RCP3 replace with pure package inventory summary. |
 | `resources.skills.SkillLoader.discover_skills` | RCP5 Skill Consumer, then delete. |
 | `method.loader.MethodLoader.discover_methods` | RCP5 typed Resource Consumer; no independent Method discovery. |
+
+RCP3 removed the former Package Catalog call to `discover_resources`; package
+summary functions now use only the pure package inventory port and therefore no
+longer appear in this effective-discovery caller table.
 
 ### `reload_resources`
 
@@ -156,11 +161,13 @@ receipt; summaries and Method projection must not silently read a changed body.
 
 ### Package mounts, refresh mutation, and Extension ingress
 
-`PackageResourceMount` is constructed only by
+The live `PackageResourceMount` is constructed only by
 `resources.loader._package_mounts_from_legacy_roots` and
-`resources.packages.roots.resolve_package_resource_roots`. RCP3 makes the
-second path the source-generation input and removes the legacy loader mount
-constructor after parity.
+`resources.packages.roots.resolve_package_resource_roots`. The private RCP3
+package source receives neither raw mount nor path: sibling Resource
+orchestration validates exact owner admission and acquires an independent
+verified revision lease. The two live mount constructors remain frozen legacy
+authority until the RCP4 cutover, after which RCP5 removes their loader role.
 
 The current active-refresh mutation chain is also frozen:
 
@@ -181,8 +188,9 @@ These are honest legacy semantics, not the target. RCP4 replaces the whole
 active path with pure classification before mutation; `restart_required`
 changes nothing, and an adopted generation closes handles only after Consumer
 and load leases drain. The initial bootstrap call to
-`configure_resource_loader_roots` remains a distinct, pre-publication RCP3
-source preparation path.
+`configure_resource_loader_roots` remains a distinct legacy pre-publication
+path until RCP4 replaces it with source-input preparation and joint
+publication.
 
 Direct Extension Resource merges are currently limited to
 `ExtensionResourceRuntime._finish` and `_merge_contribution`. These are
@@ -329,11 +337,13 @@ before the target symbols exist:
 
 RCP0 does not forbid the explicitly inventoried legacy sites before their named
 cutover phase. It forbids adding another site or declaring the existing debt a
-new extension point. Until RCP3, Package Catalog has exactly one allowed legacy
-bridge, `_summarize_package_resources -> ResourceLoader.discover_resources`;
-it may not import target `ResourceCatalogSnapshot`, `ResourceSourceSnapshot`,
-Catalog-engine, or `resource.catalog` symbols. RCP3 deletes the bridge rather
-than replacing it with a call to the effective Catalog.
+new extension point. RCP3 has deleted Package Catalog's former
+`_summarize_package_resources -> ResourceLoader.discover_resources` bridge; an
+architecture gate now requires the Catalog to use only its pure inventory port
+and forbids target `ResourceCatalogSnapshot`, `ResourceSourceSnapshot`,
+Catalog-engine, or `resource.catalog` symbols there. Package/embedded source
+adapters also have executable gates against Capability reverse imports, raw
+package-path reads, and nested Graph/registry/MCP routes.
 
 ## RCP0 Exit Gate
 

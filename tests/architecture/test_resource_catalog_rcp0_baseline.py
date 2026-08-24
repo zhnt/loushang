@@ -14,6 +14,11 @@ PLAN_PATH = Path(
 README_PATH = Path("docs/internals/architecture/harness/README.md")
 SOURCE_ROOT = Path("src/loushang")
 LEGACY_LOADER_ROOT = Path("src/loushang/harness/resources")
+PACKAGE_SOURCE_PATH = Path("src/loushang/harness/resources/_catalog_package_source.py")
+EMBEDDED_SOURCE_PATH = Path(
+    "src/loushang/harness/resources/_catalog_embedded_source.py"
+)
+RESOURCE_INPUTS_PATH = Path("src/loushang/harness/resource_catalog/inputs.py")
 
 EXPECTED_CALL_SITES = {
     "discover_resources": {
@@ -28,10 +33,6 @@ EXPECTED_CALL_SITES = {
         (
             Path("src/loushang/harness/resources/loader.py"),
             "ResourceLoader.reload_resources",
-        ),
-        (
-            Path("src/loushang/harness/resources/packages/catalog.py"),
-            "_summarize_package_resources",
         ),
         (
             Path("src/loushang/harness/resources/skills.py"),
@@ -165,6 +166,10 @@ EXPECTED_SKILLS_ATTRIBUTE_LOAD_SITES = {
     (
         Path("src/loushang/harness/resources/packages/source.py"),
         "PackageSourceConfig.filtered",
+    ),
+    (
+        Path("src/loushang/harness/resources/packages/inventory.py"),
+        "FilesystemPackageResourceInventory.summarize",
     ),
     (
         Path("src/loushang/harness/resources/types.py"),
@@ -431,22 +436,34 @@ def _legacy_loader_import_edges(
     return edges
 
 
+def _imported_modules(source: str, *, filename: Path) -> set[str]:
+    modules: set[str] = set()
+    for node in ast.walk(ast.parse(source, filename=str(filename))):
+        if isinstance(node, ast.ImportFrom) and node.module is not None:
+            modules.add(node.module)
+        elif isinstance(node, ast.Import):
+            modules.update(alias.name for alias in node.names)
+    return modules
+
+
 def _text_record_fields(document: str, heading: str) -> tuple[str, ...]:
     section = document.split(heading, maxsplit=1)[1]
     block = section.split("```text", maxsplit=1)[1].split("```", maxsplit=1)[0]
     return tuple(line.strip() for line in block.splitlines() if line.strip())
 
 
-def test_rcp0_baseline_is_indexed_and_distinguishes_inert_rcp1_implementation() -> None:
+def test_rcp0_baseline_is_indexed_and_distinguishes_private_rcp3_implementation() -> (
+    None
+):
     baseline = BASELINE_PATH.read_text(encoding="utf-8")
     plan = PLAN_PATH.read_text(encoding="utf-8")
     readme = README_PATH.read_text(encoding="utf-8")
 
     assert "resource-catalog-rcp0-baseline.md" in plan
     assert readme.count("resource-catalog-rcp0-baseline.md") == 2
-    assert "RCP1 now adds an inert shadow companion" in baseline
-    assert "no\n  production caller imports them" in baseline
-    assert "No source component, owner-component\n  lifecycle" in baseline
+    assert "RCP1 through RCP3 now add private inert companions" in baseline
+    assert "components exist, but no production caller imports them" in baseline
+    assert "No mounted production\n  Catalog generation" in baseline
     assert "grants no new public API" in baseline
 
 
@@ -644,15 +661,21 @@ def test_rcp0_refresh_mount_mutation_and_close_inventory_is_exact() -> None:
     }
 
 
-def test_rcp0_package_catalog_has_only_the_frozen_legacy_resource_bridge() -> None:
+def test_rcp3_package_catalog_uses_only_the_pure_inventory_bridge() -> None:
     sources = _source_texts()
     package_catalog_path = Path("src/loushang/harness/resources/packages/catalog.py")
     package_catalog = sources[package_catalog_path]
 
-    assert _call_sites(
-        {package_catalog_path: package_catalog},
-        "discover_resources",
-    ) == {(package_catalog_path, "_summarize_package_resources")}
+    assert (
+        _call_sites(
+            {package_catalog_path: package_catalog},
+            "discover_resources",
+        )
+        == set()
+    )
+    assert "summarize_package_inventory" in package_catalog
+    assert "ProfiledResourceLoader" not in package_catalog
+    assert "ResourceLoader(" not in package_catalog
     for target_catalog_symbol in (
         "ResourceCatalogSnapshot",
         "ResourceSourceSnapshot",
@@ -660,6 +683,57 @@ def test_rcp0_package_catalog_has_only_the_frozen_legacy_resource_bridge() -> No
         "resource.catalog",
     ):
         assert target_catalog_symbol not in package_catalog
+
+
+def test_rcp3_source_adapters_keep_authority_and_orchestration_boundaries() -> None:
+    sources = _source_texts()
+    package_source = sources[PACKAGE_SOURCE_PATH]
+    embedded_source = sources[EMBEDDED_SOURCE_PATH]
+    orchestration_inputs = sources[RESOURCE_INPUTS_PATH]
+
+    for path, source in (
+        (PACKAGE_SOURCE_PATH, package_source),
+        (EMBEDDED_SOURCE_PATH, embedded_source),
+    ):
+        imports = _imported_modules(source, filename=path)
+        assert not any(
+            module.startswith("loushang.harness.capabilities") for module in imports
+        )
+        assert not any(
+            token in module.lower()
+            for module in imports
+            for token in ("graph", "mcp", "registry")
+        )
+
+    assert "OwnerContributionAdmissionRecord" not in package_source
+    assert "ResourceContributionSpec" not in package_source
+    assert "PluginInstanceRevisionRef" not in package_source
+    assert "file_identity(" in package_source
+    assert ".open_file(" in package_source
+    package_tree = ast.parse(package_source, filename=str(PACKAGE_SOURCE_PATH))
+    assert not any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in {"Path", "open"}
+        for node in ast.walk(package_tree)
+    )
+
+    embedded_tree = ast.parse(embedded_source, filename=str(EMBEDDED_SOURCE_PATH))
+    embedded_source_class = next(
+        node
+        for node in embedded_tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "EmbeddedOemResourceSource"
+    )
+    embedded_runtime_source = ast.get_source_segment(
+        embedded_source,
+        embedded_source_class,
+    )
+    assert embedded_runtime_source is not None
+    assert "importlib_resources" not in embedded_runtime_source
+    assert "Traversable" not in embedded_runtime_source
+
+    assert "OwnerContributionAdmissionRecord" in orchestration_inputs
+    assert "acquire_verified_package_resource_input" in orchestration_inputs
 
 
 def test_rcp0_target_records_diagnostics_and_forbidden_routes_are_frozen() -> None:

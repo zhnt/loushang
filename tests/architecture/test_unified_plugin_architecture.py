@@ -118,6 +118,22 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
         "load_package_catalog",
     ): "package-catalog",
     (
+        Path("src/loushang/harness/resources/packages/inventory.py"),
+        "_prompt_inventory",
+    ): "package-resource-inventory",
+    (
+        Path("src/loushang/harness/resources/packages/inventory.py"),
+        "_read_skill_ignore_patterns",
+    ): "package-resource-inventory",
+    (
+        Path("src/loushang/harness/resources/packages/inventory.py"),
+        "_skill_directory_inventory",
+    ): "package-resource-inventory",
+    (
+        Path("src/loushang/harness/resources/packages/inventory.py"),
+        "_theme_inventory",
+    ): "package-resource-inventory",
+    (
         Path("src/loushang/harness/resources/packages/materializer.py"),
         "_pypi_latest_version_result",
     ): "package-materializer",
@@ -131,6 +147,11 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS = {
     (Path("src/loushang/harness/plugin_authoring/coordinator.py"), "PluginDeclarationCoordinator._read_and_decode_document", "verified_open_file:handle"): 1,
     (Path("src/loushang/harness/resources/packages/catalog.py"), "load_package_catalog", "json_decode"): 1,
     (Path("src/loushang/harness/resources/packages/catalog.py"), "load_package_catalog", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/inventory.py"), "_prompt_inventory", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/inventory.py"), "_read_skill_ignore_patterns", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/inventory.py"), "_skill_directory_inventory", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/inventory.py"), "_theme_inventory", "json_decode"): 1,
+    (Path("src/loushang/harness/resources/packages/inventory.py"), "_theme_inventory", "path_read"): 1,
     (Path("src/loushang/harness/resources/packages/manifest.py"), "resolve_package_manifest", "json_decode"): 1,
     (Path("src/loushang/harness/resources/packages/manifest.py"), "resolve_package_manifest", "path_read"): 1,
     (Path("src/loushang/harness/resources/packages/materializer.py"), "PackageMaterializer._load_lockfile", "json_decode"): 1,
@@ -2538,6 +2559,7 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
         "package-catalog",
         "package-manifest-parser",
         "package-materializer",
+        "package-resource-inventory",
         "package-resource-mount",
         "plugin-declaration-coordinator",
         "plugin-manifest-parser",

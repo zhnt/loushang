@@ -23,7 +23,13 @@ RCP2_MODULES = {
     ORCHESTRATION_ROOT / "components.py",
     ORCHESTRATION_ROOT / "shadow.py",
 }
-PRIVATE_CATALOG_MODULES = RCP1_MODULES | RCP2_MODULES
+RCP3_MODULES = {
+    RESOURCE_ROOT / "_catalog_embedded_source.py",
+    RESOURCE_ROOT / "_catalog_package_source.py",
+    RESOURCE_ROOT / "_catalog_source_contracts.py",
+    ORCHESTRATION_ROOT / "inputs.py",
+}
+PRIVATE_CATALOG_MODULES = RCP1_MODULES | RCP2_MODULES | RCP3_MODULES
 
 
 def _imports_catalog_module(path: Path) -> bool:

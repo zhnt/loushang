@@ -36,6 +36,9 @@ from loushang.harness.resources._catalog_records import (
     build_source_snapshot,
     fingerprint_catalog_value,
 )
+from loushang.harness.resources._catalog_source_contracts import (
+    ResourceDiscoveryRequest,
+)
 from loushang.harness.resources._descriptor_parsing import (
     _prompt_descriptor_from_text,
     _skill_descriptor_from_text,
@@ -411,7 +414,7 @@ class NativeFilesystemResourceSource:
 
     def discover_initial(
         self,
-        request: NativeResourceDiscoveryRequest,
+        request: ResourceDiscoveryRequest,
     ) -> ResourceSourceSnapshot:
         if self._disposed:
             _raise_stale("source_disposed")

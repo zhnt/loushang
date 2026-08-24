@@ -11,7 +11,9 @@ from loushang.harness.capabilities.component_runtime import (
     CapabilityOwnerComponentRuntime,
 )
 from loushang.harness.resource_catalog.components import (
+    EMBEDDED_RESOURCE_SOURCE_COMPONENT_ID,
     NATIVE_RESOURCE_SOURCE_COMPONENT_ID,
+    PACKAGE_RESOURCE_SOURCE_COMPONENT_ID,
     RESOURCE_CATALOG_ENGINE_COMPONENT_KIND,
     RESOURCE_SOURCE_COMPONENT_KIND,
     FirstPartyResourceComponentResolution,
@@ -20,11 +22,21 @@ from loushang.harness.resource_catalog.components import (
     resolve_first_party_resource_components,
     validate_resource_catalog_proposal,
 )
+from loushang.harness.resource_catalog.inputs import AdmittedPackageResource
+from loushang.harness.resources._catalog_embedded_source import (
+    EmbeddedResourceCollectionHandle,
+    EmbeddedResourceDiscoveryBudget,
+    build_embedded_resource_discovery_request,
+)
 from loushang.harness.resources._catalog_engine import default_resource_merge_policy
 from loushang.harness.resources._catalog_native_source import (
     NativeResourceDiscoveryBudget,
     NativeResourceRootHandle,
     build_native_resource_discovery_request,
+)
+from loushang.harness.resources._catalog_package_source import (
+    PackageResourceDiscoveryBudget,
+    build_package_resource_discovery_request,
 )
 from loushang.harness.resources._catalog_records import (
     LoadedResource,
@@ -37,6 +49,9 @@ from loushang.harness.resources._catalog_records import (
     ResourceMergePolicySnapshot,
     ResourceSourceSnapshot,
     build_activation_policy_snapshot,
+)
+from loushang.harness.resources._catalog_source_contracts import (
+    ResourceDiscoveryRequest,
 )
 from loushang.harness.resources._discovery_conventions import (
     DEFAULT_CONTEXT_FILE_NAMES,
@@ -161,12 +176,16 @@ async def run_first_party_resource_catalog_shadow(
     runtime_id: str,
     product_policy_revision: str,
     root_handles: tuple[NativeResourceRootHandle, ...],
+    package_resources: tuple[AdmittedPackageResource, ...] = (),
+    embedded_collections: tuple[EmbeddedResourceCollectionHandle, ...] = (),
     issued_at: int,
     expires_at: int,
     now: int,
     discovery_budget: NativeResourceDiscoveryBudget | None = None,
     discovery_deadline_monotonic_ns: int | None = None,
     discovery_cancellation_probe: Callable[[], bool] | None = None,
+    package_discovery_budget: PackageResourceDiscoveryBudget | None = None,
+    embedded_discovery_budget: EmbeddedResourceDiscoveryBudget | None = None,
     context_file_names: tuple[str, ...] = DEFAULT_CONTEXT_FILE_NAMES,
     merge_policy: ResourceMergePolicySnapshot | None = None,
     activation_policy: ResourceActivationPolicySnapshot | None = None,
@@ -178,6 +197,8 @@ async def run_first_party_resource_catalog_shadow(
         scope_id=scope_id,
         product_policy_revision=product_policy_revision,
         root_handles=root_handles,
+        package_resources=package_resources,
+        embedded_collections=embedded_collections,
         issued_at=issued_at,
         expires_at=expires_at,
         now=now,
@@ -189,11 +210,21 @@ async def run_first_party_resource_catalog_shadow(
         runtime_id=runtime_id,
     )
     binder = CapabilityOwnerComponentBinder()
-    bind_result = await binder.bind(
-        runtime,
-        resolution.resolved_set,
-        resolution.bindings,
-    )
+    try:
+        bind_result = await binder.bind(
+            runtime,
+            resolution.resolved_set,
+            resolution.bindings,
+        )
+    except BaseException:
+        # Passing the prepared inputs into Binding transfers their narrow leases to
+        # this owner generation. A failure before publication must return custody
+        # even when no source component was constructed for a given input.
+        for resource in package_resources:
+            resource.close()
+        for collection in embedded_collections:
+            collection.close()
+        raise
     engine_lease = runtime.capture_one(RESOURCE_CATALOG_ENGINE_COMPONENT_KIND)
     source_leases = runtime.capture_all(RESOURCE_SOURCE_COMPONENT_KIND)
     try:
@@ -205,17 +236,41 @@ async def run_first_party_resource_catalog_shadow(
             source = lease.require()
             if not isinstance(source, ResourceSourceComponent):
                 raise TypeError("Mounted Resource source payload is invalid")
-            if lease.component_id != NATIVE_RESOURCE_SOURCE_COMPONENT_ID:
-                raise TypeError("RCP2 shadow runner supports only the native source")
-            request = build_native_resource_discovery_request(
-                product_id=product_id,
-                source_generation_ref=source.source_generation_ref,
-                root_handle_ids=tuple(item.handle_id for item in root_handles),
-                context_file_names=context_file_names,
-                budget=discovery_budget,
-                deadline_monotonic_ns=discovery_deadline_monotonic_ns,
-                cancellation_probe=discovery_cancellation_probe,
-            )
+            request: ResourceDiscoveryRequest
+            if lease.component_id == NATIVE_RESOURCE_SOURCE_COMPONENT_ID:
+                request = build_native_resource_discovery_request(
+                    product_id=product_id,
+                    source_generation_ref=source.source_generation_ref,
+                    root_handle_ids=tuple(item.handle_id for item in root_handles),
+                    context_file_names=context_file_names,
+                    budget=discovery_budget,
+                    deadline_monotonic_ns=discovery_deadline_monotonic_ns,
+                    cancellation_probe=discovery_cancellation_probe,
+                )
+            elif lease.component_id == PACKAGE_RESOURCE_SOURCE_COMPONENT_ID:
+                request = build_package_resource_discovery_request(
+                    product_id=product_id,
+                    source_generation_ref=source.source_generation_ref,
+                    admission_fingerprints=tuple(
+                        item.admission.fingerprint for item in package_resources
+                    ),
+                    budget=package_discovery_budget,
+                    deadline_monotonic_ns=discovery_deadline_monotonic_ns,
+                    cancellation_probe=discovery_cancellation_probe,
+                )
+            elif lease.component_id == EMBEDDED_RESOURCE_SOURCE_COMPONENT_ID:
+                request = build_embedded_resource_discovery_request(
+                    product_id=product_id,
+                    source_generation_ref=source.source_generation_ref,
+                    collection_handle_ids=tuple(
+                        item.handle_id for item in embedded_collections
+                    ),
+                    budget=embedded_discovery_budget,
+                    deadline_monotonic_ns=discovery_deadline_monotonic_ns,
+                    cancellation_probe=discovery_cancellation_probe,
+                )
+            else:
+                raise TypeError("Unknown Resource source component")
             source_snapshots.append(source.discover_initial(request))
         effective_merge_policy = merge_policy or default_resource_merge_policy()
         effective_activation_policy = activation_policy or (

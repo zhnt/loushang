@@ -42,6 +42,7 @@ class PluginRevisionError(RuntimeError):
 class _RevisionEntry:
     kind: str
     digest: str | None = None
+    size: int | None = None
     executable: bool = False
 
 
@@ -113,7 +114,10 @@ class VerifiedRevisionHandle:
                 code="plugin_revision_changed",
                 path=self.root / logical_path,
             ) from exc
-        if sha256(data).hexdigest() != expected.digest or executable != expected.executable:
+        if (
+            sha256(data).hexdigest() != expected.digest
+            or executable != expected.executable
+        ):
             raise PluginRevisionError(
                 f"Plugin revision file changed after publication: {key}",
                 code="plugin_revision_changed",
@@ -136,6 +140,49 @@ class VerifiedRevisionHandle:
                 path=self.root / logical_path,
             )
         return cast(Literal["file", "directory"], expected.kind)
+
+    def file_identity(
+        self,
+        relative_path: str | PurePosixPath,
+    ) -> tuple[str, int]:
+        """Return immutable body identity without reopening package bytes."""
+
+        self._require_root_fd()
+        logical_path = _logical_relative_path(relative_path, root=self.root)
+        expected = self._entries.get(logical_path.as_posix())
+        if (
+            expected is None
+            or expected.kind != "file"
+            or expected.digest is None
+            or expected.size is None
+        ):
+            raise PluginRevisionError(
+                "Plugin revision file is not declared by the verified tree: "
+                f"{logical_path}",
+                code="invalid_plugin_revision_path",
+                path=self.root / logical_path,
+            )
+        return expected.digest, expected.size
+
+    def acquire(self) -> VerifiedRevisionHandle:
+        """Acquire an independently disposable lease over the same revision."""
+
+        self.verify()
+        try:
+            root_fd = os.dup(self._require_root_fd())
+        except OSError as exc:
+            raise PluginRevisionError(
+                f"Plugin revision lease could not be acquired: {self.root}: {exc}",
+                code="plugin_revision_changed",
+                path=self.root,
+            ) from exc
+        handle = object.__new__(VerifiedRevisionHandle)
+        handle.root = self.root
+        handle.content_digest = self.content_digest
+        handle._entries = MappingProxyType(dict(self._entries))
+        handle._root_fd = root_fd
+        handle._root_identity = self._root_identity
+        return handle
 
     def close(self) -> None:
         root_fd = self._root_fd
@@ -293,7 +340,9 @@ def _capture_directory(
                 code="unsafe_plugin_revision_entry",
                 path=Path(key),
             )
-        destination_path = destination / Path(*logical_path.parts) if destination else None
+        destination_path = (
+            destination / Path(*logical_path.parts) if destination else None
+        )
         if stat.S_ISDIR(metadata.st_mode):
             entries[key] = _RevisionEntry(kind="directory")
             if destination_path is not None:
@@ -318,6 +367,7 @@ def _capture_directory(
         entries[key] = _RevisionEntry(
             kind="file",
             digest=file_digest,
+            size=metadata.st_size,
             executable=executable,
         )
         if destination_path is not None:
@@ -577,9 +627,7 @@ def _freeze_tree(root: Path) -> None:
         for filename in files:
             path = current / filename
             executable = bool(path.stat().st_mode & 0o111)
-            path.chmod(
-                _FROZEN_EXECUTABLE_MODE if executable else _FROZEN_FILE_MODE
-            )
+            path.chmod(_FROZEN_EXECUTABLE_MODE if executable else _FROZEN_FILE_MODE)
         for directory in directories:
             (current / directory).chmod(_FROZEN_DIRECTORY_MODE)
     root.chmod(_FROZEN_DIRECTORY_MODE)

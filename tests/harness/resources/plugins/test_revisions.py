@@ -33,7 +33,9 @@ def test_revision_store_publishes_content_addressed_snapshot_and_keeps_source_id
     assert published.manifest_path == published.root / "plugin.json"
     assert published.manifest_digest == package.manifest_digest
     assert published.root.stat().st_mode & 0o077 == 0
-    assert (published.root / "resources" / "prompts" / "review.md").stat().st_mode & 0o077 == 0
+    assert (
+        published.root / "resources" / "prompts" / "review.md"
+    ).stat().st_mode & 0o077 == 0
     assert handle.verify() is None
     with handle.open_file("resources/prompts/review.md") as stream:
         assert stream.read() == b"review v1"
@@ -93,6 +95,24 @@ def test_equal_content_reuses_revision_but_returns_independent_handles(
     assert first_handle.closed is True
     assert second_handle.closed is False
     second_handle.verify()
+
+
+def test_revision_handle_acquires_independently_disposable_lease(
+    tmp_path: Path,
+) -> None:
+    source = _plugin(tmp_path / "source")
+    published = PluginRevisionStore(tmp_path / "revisions").publish(
+        PluginManifestParser().parse(source)
+    )
+    handle = published.revision_handle
+    assert handle is not None
+
+    acquired = handle.acquire()
+    acquired.close()
+
+    assert acquired.closed is True
+    assert handle.closed is False
+    handle.verify()
 
 
 def test_revision_store_rejects_symbolic_links_without_publishing(

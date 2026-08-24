@@ -40,6 +40,23 @@ def _digest(value: str) -> str:
     return fingerprint_catalog_value("test", value)
 
 
+def test_default_merge_policy_covers_every_declared_resource_kind() -> None:
+    policy = default_resource_merge_policy()
+
+    assert {
+        item.resource_kind: item.strategy for item in policy.kind_policies
+    } == {
+        "asset": "permissive_exclusive",
+        "context": "ordered_additive",
+        "extension": "ordered_additive",
+        "method": "strict_exclusive",
+        "prompt": "strict_exclusive",
+        "skill": "strict_exclusive",
+        "source": "permissive_exclusive",
+        "theme": "permissive_exclusive",
+    }
+
+
 def _source_ref(source_id: str = "native") -> ResourceSourceGenerationRef:
     return ResourceSourceGenerationRef(
         source_id=source_id,

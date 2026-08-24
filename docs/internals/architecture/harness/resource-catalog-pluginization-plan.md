@@ -6,7 +6,7 @@
   Plugin lifecycle, exact-owner admission, Session Graph, Resource generation,
   and Model Input boundaries. It does not amend those boundaries implicitly.
 - Design status: RCP0 contract frozen; final narrow freeze re-review passed.
-- Implementation status: RCP0, RCP1, and RCP2 are complete on the Harness lane.
+- Implementation status: RCP0 through RCP3 are complete on the Harness lane.
   RCP2's first unpublished foundation slice implements the generic
   `CapabilityComponentDefinition`, exact candidate/admission/selection/binding
   records, atomic owner generations, cancellation-safe reverse rollback,
@@ -22,10 +22,21 @@
   contributions, Host-minted `context`/`standard`/`combined` root handles,
   synchronous bounded no-follow discovery, generation-retained exact body
   bytes, owner-validated Catalog proposals, and a disposable shadow-generation
-  runner beside the current loader. All Catalog/RCP2 modules remain private: no
-  production caller imports them, `harness.resources` does not export them, and
+  runner beside the current loader. All Catalog/RCP2/RCP3 modules remain private:
+  no production caller imports them, `harness.resources` does not export them, and
   the shadow runner publishes no Graph, Provider, refresh, or live load
   authority.
+  RCP3 adds admitted-package and embedded/OEM source components beside the
+  native source. Capability-aware orchestration converts exact Resource-owner
+  admission into a capability-neutral verified input with an independently
+  disposable revision lease; the source itself reads only through that lease.
+  Embedded packages are copied once into immutable Host-minted collection
+  handles and are not reopened through import paths during discovery or load.
+  All three sources emit the same candidate/snapshot records and compose through
+  the same engine. Package Catalog summary construction now delegates to a pure
+  inventory port and performs no effective Resource discovery or selection.
+  These RCP3 paths remain unpublished shadow infrastructure; RCP4 production
+  mounting and the legacy-loader cutover have not started.
   The current `ResourceLoader`, `ResourceSnapshot`, `ResourceBundle`, and
   `SkillLoader` paths remain the implemented runtime until a phase below passes
   its cutover gate.
@@ -49,7 +60,9 @@
   `extension_output`/Extension-owner-generation matching, generation-scoped
   diagnostics, immutable body bytes, and context projection-order parity; those
   corrections are implemented and green. RCP1 has not yet received an
-  independent code re-review.
+  independent code re-review. RCP3 adds focused architecture, precedence,
+  conflict, exact-load/unload, budget, cancellation, and failed-Binding custody
+  gates; this status does not claim a new independent RCP3 code re-review.
 - Scope: pluginize the Resource catalog mechanism and Resource source/loading
   mechanisms, converge Skill onto a typed Resource projection, and retain plain
   native `SKILL.md` loading.
@@ -1059,6 +1072,23 @@ performs the single publication cutover and RCP5 deletes the legacy loader
 route.
 
 ### RCP3: Converge package and embedded sources
+
+Status: complete and unpublished. A sibling Resource orchestration adapter
+validates exact `resource_item` admission and acquires a source-owned
+`VerifiedRevisionHandle` lease, then passes only capability-neutral contribution
+facts and the verified lease into the package source. The package source has no
+Capability dependency or raw package path, binds candidate digest/length to
+`file_identity()`, and serves lazy bodies only through `open_file()` on that
+same lease. The embedded source receives immutable, eagerly copied Host-minted
+collection handles; import-package traversal occurs only during capture, not in
+the source generation. Native, package, and embedded sources share descriptor
+projection and the standard snapshot/engine path. Budget, deadline,
+cancellation, conflict, failed-Binding rollback, load, and disposal tests prove
+that source custody closes independently from the caller's original revision.
+Package Catalog now delegates summary work to a read-only inventory port and no
+longer constructs a `ResourceLoader` or invokes effective discovery. No live
+Provider, Session Graph, refresh route, or compatibility projection was changed;
+those remain RCP4 work.
 
 - adapt admitted package `resource_item` locators through verified revision
   handles;

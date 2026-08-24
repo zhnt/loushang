@@ -41,12 +41,15 @@ def default_resource_merge_policy() -> ResourceMergePolicySnapshot:
     """Build the frozen first-party RCP1 kind-policy snapshot."""
 
     return build_merge_policy_snapshot(
-        policy_revision="resource-merge-policy-v2-rcp1",
+        policy_revision="resource-merge-policy-v2-rcp3",
         kind_policies=(
+            ResourceKindMergePolicy("asset", "permissive_exclusive"),
             ResourceKindMergePolicy("context", "ordered_additive"),
             ResourceKindMergePolicy("extension", "ordered_additive"),
+            ResourceKindMergePolicy("method", "strict_exclusive"),
             ResourceKindMergePolicy("prompt", "strict_exclusive"),
             ResourceKindMergePolicy("skill", "strict_exclusive"),
+            ResourceKindMergePolicy("source", "permissive_exclusive"),
             ResourceKindMergePolicy("theme", "permissive_exclusive"),
         ),
     )
