@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,8 @@ from loushang.harness.resources._loader_types import _SourceDiscovery
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.mounts import PackageResourceMount
 from loushang.harness.resources.packages.source import PackageSourceConfig
+from loushang.harness.resources.plugins.manifest import PluginManifestParser
+from loushang.harness.resources.plugins.revisions import PluginRevisionStore
 from loushang.harness.resources.types import (
     ExtensionDescriptor,
     PromptFragmentDescriptor,
@@ -72,7 +75,9 @@ def _discovery_result(request: _ResourceDiscoveryRequest) -> _ResourceDiscoveryR
             cwd=request.cwd,
             project_resource_root=project_root,
             project_context_roots=(),
-            package_roots=request.package_roots,
+            package_mounts=request.package_mounts,
+            package_resource_candidates=(),
+            package_diagnostic_codes=(),
             user_resource_roots=request.user_resource_roots,
             explicit_user_resource_roots=request.explicit_user_roots,
             additional_extension_paths=request.additional_extension_paths,
@@ -289,6 +294,50 @@ def test_resource_loader_transfers_one_exact_catalog_input_receipt(
     loader.set_workspace_root(project_root)
     with pytest.raises(RuntimeError, match="No unclaimed"):
         loader._take_initial_resource_catalog_input_receipt()
+
+
+def test_resource_loader_receipt_carries_verified_package_candidate_facts(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    skill = source / "skills" / "review" / "SKILL.md"
+    project = tmp_path / "project"
+    skill.parent.mkdir(parents=True)
+    project.mkdir()
+    skill.write_text(
+        "---\nname: review\ndescription: Package review\n---\nReview.\n",
+        encoding="utf-8",
+    )
+    (source / "plugin.json").write_text(
+        json.dumps({"name": "review-package", "version": "1"}),
+        encoding="utf-8",
+    )
+    published = PluginRevisionStore(tmp_path / "revisions").publish(
+        PluginManifestParser().parse(source)
+    )
+    handle = published.revision_handle
+    mount = PackageResourceMount(
+        root=handle.root,
+        content_digest=handle.content_digest,
+        revision_handle=handle,
+    )
+    loader = ResourceLoader()
+    loader.set_package_mounts((mount,))
+    try:
+        loader.discover_resources(project)
+        receipt = loader._take_initial_resource_catalog_input_receipt()
+
+        assert receipt.package_mounts == (mount,)
+        assert receipt.package_roots == (handle.root,)
+        assert receipt.package_diagnostic_codes == ()
+        [candidate] = receipt.package_resource_candidates
+        assert candidate.resource_kind == "skill"
+        assert candidate.source_path == handle.root / "skills/review/SKILL.md"
+        assert candidate.source_root_order == 0
+        assert candidate.package_content_digest == handle.content_digest
+    finally:
+        loader.close()
+    assert handle.closed is True
 
 
 def test_resource_loader_mount_swap_is_atomic_and_closes_replaced_lease(

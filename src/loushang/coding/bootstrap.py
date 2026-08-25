@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
@@ -279,9 +279,15 @@ def _create_agent_session(
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
     enable_initial_resource_catalog_shadow: bool = False,
+    initial_resource_catalog_package_admissions: Sequence[Any] = (),
 ) -> AgentSession:
     if not isinstance(enable_initial_resource_catalog_shadow, bool):
         raise TypeError("initial Resource Catalog shadow flag must be a bool")
+    package_resource_admissions = tuple(initial_resource_catalog_package_admissions)
+    if package_resource_admissions and not enable_initial_resource_catalog_shadow:
+        raise ValueError(
+            "initial Resource Catalog package admissions require the shadow"
+        )
     enable_multiagent_tools = (
         enable_multiagent
         and allowed_tool_names is None
@@ -407,6 +413,7 @@ def _create_agent_session(
                     disabled_skills=(
                         services.settings_manager.get_settings().disabled_skills
                     ),
+                    package_resource_admissions=package_resource_admissions,
                 )
             )
         base_exec_service = services.exec_service or ExecService()

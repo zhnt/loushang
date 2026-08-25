@@ -10,6 +10,14 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TypeVar
 
+from loushang.harness.capabilities.contribution_admission import (
+    OwnerContributionAdmissionRecord,
+    ResourceContributionSpec,
+)
+from loushang.harness.resource_catalog.inputs import (
+    AdmittedPackageResource,
+    acquire_admitted_package_resource,
+)
 from loushang.harness.resource_catalog.session_bootstrap import (
     InitialSessionResourceCatalogBootstrap,
     InitialSessionResourceCatalogInputs,
@@ -25,9 +33,13 @@ from loushang.harness.resources._catalog_native_source import (
     NativeResourceSourceClass,
     mint_native_resource_root_handle,
 )
+from loushang.harness.resources._catalog_package_source import (
+    PackageResourceDiscoveryBudget,
+)
 from loushang.harness.resources._discovery_conventions import (
     DEFAULT_CONTEXT_FILE_NAMES,
 )
+from loushang.harness.resources.plugins.revisions import VerifiedRevisionHandle
 from loushang.harness.resources.types import ResourceBundle
 
 SessionT = TypeVar("SessionT")
@@ -101,14 +113,55 @@ class ProductEmbeddedResourceCollectionSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class ProductAdmittedPackageResourceSpec:
+    """One owner admission plus the Product-held verified revision lease."""
+
+    admission: OwnerContributionAdmissionRecord = field(repr=False)
+    revision_handle: VerifiedRevisionHandle = field(repr=False, compare=False)
+    source_root_order: int = 0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.admission, OwnerContributionAdmissionRecord):
+            raise TypeError("Product package Resource admission is invalid")
+        contribution = self.admission.candidate.contribution
+        if self.admission.contribution_kind != "resource_item" or not isinstance(
+            contribution,
+            ResourceContributionSpec,
+        ):
+            raise ValueError(
+                "Product package Resource requires resource_item admission"
+            )
+        if self.admission.owner_id != f"resources.{contribution.resource_kind}":
+            raise ValueError("Product package Resource admission owner is invalid")
+        if not isinstance(self.revision_handle, VerifiedRevisionHandle):
+            raise TypeError("Product package Resource revision handle is invalid")
+        if self.revision_handle.closed:
+            raise ValueError("Product package Resource revision handle must be live")
+        if (
+            self.admission.candidate.package_content_digest
+            != self.revision_handle.content_digest
+        ):
+            raise ValueError("Product package Resource admission must match revision")
+        if isinstance(self.source_root_order, bool) or not isinstance(
+            self.source_root_order,
+            int,
+        ):
+            raise TypeError("Product package Resource root order must be an integer")
+        if self.source_root_order < 0:
+            raise ValueError("Product package Resource root order cannot be negative")
+
+
+@dataclass(frozen=True, slots=True)
 class InitialResourceCatalogProductSelection:
-    """Exact native/embedded selection explicitly admitted by one Product."""
+    """Exact native/package/embedded selection admitted by one Product."""
 
     product_policy_revision: str
     native_roots: tuple[ProductNativeResourceRootSpec, ...] = ()
+    package_resources: tuple[ProductAdmittedPackageResourceSpec, ...] = ()
     embedded_collections: tuple[ProductEmbeddedResourceCollectionSpec, ...] = ()
     context_file_names: tuple[str, ...] = DEFAULT_CONTEXT_FILE_NAMES
     native_discovery_budget: NativeResourceDiscoveryBudget | None = None
+    package_discovery_budget: PackageResourceDiscoveryBudget | None = None
     embedded_discovery_budget: EmbeddedResourceDiscoveryBudget | None = None
 
     def __post_init__(self) -> None:
@@ -118,20 +171,30 @@ class InitialResourceCatalogProductSelection:
         ):
             raise ValueError("Product Resource policy revision must not be empty")
         native_roots = tuple(self.native_roots)
+        package_resources = tuple(self.package_resources)
         embedded_collections = tuple(self.embedded_collections)
         if any(
             not isinstance(item, ProductNativeResourceRootSpec) for item in native_roots
         ):
             raise TypeError("Product native Resource root specifications are invalid")
         if any(
+            not isinstance(item, ProductAdmittedPackageResourceSpec)
+            for item in package_resources
+        ):
+            raise TypeError("Product package Resource specifications are invalid")
+        if any(
             not isinstance(item, ProductEmbeddedResourceCollectionSpec)
             for item in embedded_collections
         ):
             raise TypeError("Product embedded Resource specifications are invalid")
-        if not native_roots and not embedded_collections:
+        if not native_roots and not package_resources and not embedded_collections:
             raise ValueError("Product Resource selection must contain a source")
         if len({item.handle_id for item in native_roots}) != len(native_roots):
             raise ValueError("Product native root ids must not repeat")
+        if len({item.admission.fingerprint for item in package_resources}) != len(
+            package_resources
+        ):
+            raise ValueError("Product package Resource admissions must not repeat")
         if len({item.collection_id for item in embedded_collections}) != len(
             embedded_collections
         ):
@@ -147,12 +210,18 @@ class InitialResourceCatalogProductSelection:
             self.native_discovery_budget, NativeResourceDiscoveryBudget
         ):
             raise TypeError("Product native Resource discovery budget is invalid")
+        if self.package_discovery_budget is not None and not isinstance(
+            self.package_discovery_budget,
+            PackageResourceDiscoveryBudget,
+        ):
+            raise TypeError("Product package Resource discovery budget is invalid")
         if self.embedded_discovery_budget is not None and not isinstance(
             self.embedded_discovery_budget,
             EmbeddedResourceDiscoveryBudget,
         ):
             raise TypeError("Product embedded Resource discovery budget is invalid")
         object.__setattr__(self, "native_roots", native_roots)
+        object.__setattr__(self, "package_resources", package_resources)
         object.__setattr__(self, "embedded_collections", embedded_collections)
         object.__setattr__(self, "context_file_names", context_file_names)
 
@@ -229,6 +298,24 @@ class InitialResourceCatalogProductAdapter:
             raise TypeError("initial Resource Catalog Product clock must return an int")
 
         selection = self.selection
+        for spec in selection.package_resources:
+            admission = spec.admission
+            if admission.product_id != product_id:
+                raise ValueError("Product package Resource admission belongs elsewhere")
+            if (
+                admission.candidate.product_policy_revision
+                != selection.product_policy_revision
+            ):
+                raise ValueError("Product package Resource admission policy is stale")
+            if (
+                admission.consumer_scope != "session"
+                or admission.consumer_refresh_boundary != "sealed"
+            ):
+                raise ValueError(
+                    "Initial Product package Resource admission must be Session-sealed"
+                )
+            if not admission.issued_at <= now <= admission.expires_at:
+                raise ValueError("Product package Resource admission is not active")
         root_handles = tuple(
             mint_native_resource_root_handle(
                 handle_id=spec.handle_id,
@@ -239,15 +326,24 @@ class InitialResourceCatalogProductAdapter:
             )
             for spec in selection.native_roots
         )
+        package_resources: list[AdmittedPackageResource] = []
         embedded_handles: list[EmbeddedResourceCollectionHandle] = []
         try:
-            for spec in selection.embedded_collections:
+            for package_spec in selection.package_resources:
+                package_resources.append(
+                    acquire_admitted_package_resource(
+                        admission=package_spec.admission,
+                        revision_handle=package_spec.revision_handle,
+                        source_root_order=package_spec.source_root_order,
+                    )
+                )
+            for embedded_spec in selection.embedded_collections:
                 embedded_handles.append(
                     mint_embedded_resource_collection_handle(
-                        collection_id=spec.collection_id,
-                        embedded_revision=spec.embedded_revision,
-                        files=spec.files,
-                        source_root_order=spec.source_root_order,
+                        collection_id=embedded_spec.collection_id,
+                        embedded_revision=embedded_spec.embedded_revision,
+                        files=embedded_spec.files,
+                        source_root_order=embedded_spec.source_root_order,
                     )
                 )
             return InitialSessionResourceCatalogBootstrap(
@@ -257,12 +353,14 @@ class InitialResourceCatalogProductAdapter:
                     resource_runtime_id=f"resource-owner:{session_id}",
                     product_policy_revision=selection.product_policy_revision,
                     root_handles=root_handles,
+                    package_resources=tuple(package_resources),
                     embedded_collections=tuple(embedded_handles),
                     issued_at=now,
                     expires_at=now + _INITIAL_ADMISSION_TTL_SECONDS,
                     now=now,
                     base_resource_bundle=base_resource_bundle,
                     discovery_budget=selection.native_discovery_budget,
+                    package_discovery_budget=(selection.package_discovery_budget),
                     embedded_discovery_budget=(selection.embedded_discovery_budget),
                     context_file_names=selection.context_file_names,
                 )
@@ -276,12 +374,21 @@ class InitialResourceCatalogProductAdapter:
                         "Partial Product embedded Resource cleanup also failed: "
                         f"{cleanup_error!r}"
                     )
+            for resource in reversed(package_resources):
+                try:
+                    resource.close()
+                except BaseException as cleanup_error:
+                    preparation_error.add_note(
+                        "Partial Product package Resource cleanup also failed: "
+                        f"{cleanup_error!r}"
+                    )
             raise
 
 
 __all__ = [
     "InitialResourceCatalogProductAdapter",
     "InitialResourceCatalogProductSelection",
+    "ProductAdmittedPackageResourceSpec",
     "ProductEmbeddedResourceCollectionSpec",
     "ProductNativeResourceRootSpec",
 ]

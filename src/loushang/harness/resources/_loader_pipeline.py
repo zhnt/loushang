@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources._catalog_input_receipt import (
+    LegacyPackageResourceCandidateFact,
+    LegacyPackageResourceKind,
     ResourceCatalogInputReceipt,
 )
 from loushang.harness.resources._loader_discovery import (
@@ -181,6 +184,7 @@ def _discover_snapshot(request: _ResourceDiscoveryRequest) -> _ResourceDiscovery
         no_extensions=request.no_extensions,
         no_themes=request.no_themes,
     )
+    package_resource_candidates = _legacy_package_resource_candidate_facts(external)
     user_global = _apply_resource_switches(
         _discover_user_global_resources(
             request.user_resource_roots,
@@ -287,7 +291,11 @@ def _discover_snapshot(request: _ResourceDiscoveryRequest) -> _ResourceDiscovery
             cwd=target,
             project_resource_root=project_root,
             project_context_roots=project_context_roots,
-            package_roots=request.package_roots,
+            package_mounts=request.package_mounts,
+            package_resource_candidates=package_resource_candidates,
+            package_diagnostic_codes=tuple(
+                diagnostic.code for diagnostic in external.diagnostics
+            ),
             user_resource_roots=request.user_resource_roots,
             explicit_user_resource_roots=request.explicit_user_roots,
             additional_extension_paths=request.additional_extension_paths,
@@ -302,6 +310,41 @@ def _discover_snapshot(request: _ResourceDiscoveryRequest) -> _ResourceDiscovery
             built_in_resource_packages=request.built_in_resource_packages,
             context_file_names=request.context_file_names,
         ),
+    )
+
+
+def _legacy_package_resource_candidate_facts(
+    discovery: _SourceDiscovery,
+) -> tuple[LegacyPackageResourceCandidateFact, ...]:
+    return (
+        *_legacy_package_resource_facts_for("prompt", discovery.prompts),
+        *_legacy_package_resource_facts_for("skill", discovery.skills),
+        *_legacy_package_resource_facts_for("extension", discovery.extensions),
+        *_legacy_package_resource_facts_for("theme", discovery.themes),
+    )
+
+
+def _legacy_package_resource_facts_for(
+    resource_kind: LegacyPackageResourceKind,
+    descriptors: Sequence[
+        PromptFragmentDescriptor
+        | SkillDescriptor
+        | ExtensionDescriptor
+        | ThemeDescriptor
+    ],
+) -> tuple[LegacyPackageResourceCandidateFact, ...]:
+    return tuple(
+        LegacyPackageResourceCandidateFact(
+            resource_kind=resource_kind,
+            source_path=descriptor.source_path,
+            source_root_order=descriptor.source_root_order,
+            package_content_digest=(
+                descriptor.revision_ref.content_digest
+                if descriptor.revision_ref is not None
+                else None
+            ),
+        )
+        for descriptor in descriptors
     )
 
 

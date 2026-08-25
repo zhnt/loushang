@@ -57,7 +57,7 @@ planning, work event persistence, or AI provider behavior.
   Skill projection, exact-generation lifecycle, and manifest-free native
   `SKILL.md` compatibility before LSP. RCP0-RCP3 are now implemented as private,
   unpublished infrastructure, including verified-package and immutable embedded
-  sources plus Package Catalog's pure inventory bridge. RCP4's seven unpublished
+  sources plus Package Catalog's pure inventory bridge. RCP4's eight unpublished
   foundations now prove candidate-owned generation transfer, the internal v2
   Catalog/load Provider, exact Extension-owner route snapshots with retained
   body reads, and a root-private joint Extension/Resource candidate through an
@@ -72,13 +72,15 @@ planning, work event persistence, or AI provider behavior.
   Resources graph input after owner-generation freeze and publishes the
   Extension/Catalog/view tuple only after Graph capture; v1 remains unchanged
   when the adapter is absent. A private reusable Product preparation adapter now
-  turns exact native/embedded selection specs into fresh per-Session opaque
-  handles under a synchronous construction-custody callback. A private Coding
+  turns exact native/package/embedded selection specs into fresh per-Session
+  opaque handles under a synchronous construction-custody callback. A private Coding
   initial shadow now consumes one same-discovery, single-take source receipt and
-  maps project/context, user, and captured built-in inputs; package, temporary,
-  kind-switch, and disabled-Skill inputs reject before handle minting. The public
-  Coding SDK and default path remain v1, and refresh, broader admission, typed
-  production consumers, and cutover remain pending.
+  maps project/context, user, captured built-in inputs, and clean verified
+  package candidates with exact owner admissions. Unverified, conventional,
+  diagnostic-bearing, incomplete, or Extension-bearing packages still reject,
+  as do temporary, kind-switch, and disabled-Skill inputs. The public Coding SDK
+  and default path remain v1, and production Plugin-selection admission, refresh,
+  broader policy parity, typed production consumers, and cutover remain pending.
 - [Resource Catalog RCP0 Baseline](resource-catalog-rcp0-baseline.md) freezes
   the implemented discovery/sink inventory, precedence and Extension parity,
   Package-mount custody, and the exact RCP3/RCP4/RCP5 deletion ledger without

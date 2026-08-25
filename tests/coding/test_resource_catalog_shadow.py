@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -14,9 +16,21 @@ from loushang.coding._resource_catalog_shadow import (
 from loushang.coding.bootstrap import _create_agent_session, create_services
 from loushang.coding.control import SettingsManager
 from loushang.coding.session_manager import SessionManager
+from loushang.harness.capabilities.contribution_admission import (
+    OwnerContributionAdmissionRecord,
+    OwnerContributionAuthority,
+    OwnerContributionCandidateEnvelope,
+    OwnerContributionPolicy,
+    ResourceContributionSpec,
+)
 from loushang.harness.resources._catalog_input_receipt import (
     ResourceCatalogInputReceipt,
 )
+from loushang.harness.resources.loader import ResourceLoader
+from loushang.harness.resources.packages.mounts import PackageResourceMount
+from loushang.harness.resources.plugins.manifest import PluginManifestParser
+from loushang.harness.resources.plugins.revisions import PluginRevisionStore
+from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
 
 
 def _model() -> Model:
@@ -43,7 +57,9 @@ def _receipt(tmp_path: Path) -> ResourceCatalogInputReceipt:
         cwd=project_root,
         project_resource_root=project_root,
         project_context_roots=(tmp_path, project_root),
-        package_roots=(),
+        package_mounts=(),
+        package_resource_candidates=(),
+        package_diagnostic_codes=(),
         user_resource_roots=(user_root,),
         explicit_user_resource_roots=frozenset({user_root}),
         additional_extension_paths=(),
@@ -60,13 +76,72 @@ def _receipt(tmp_path: Path) -> ResourceCatalogInputReceipt:
     )
 
 
+def _coding_package_skill_admission(
+    source: Path,
+    *,
+    revision_root: Path,
+    locator: str = "skills/package-review/SKILL.md",
+) -> OwnerContributionAdmissionRecord:
+    published = PluginRevisionStore(revision_root).publish(
+        PluginManifestParser().parse(source)
+    )
+    handle = published.revision_handle
+    candidate = OwnerContributionCandidateEnvelope(
+        owner_id="resources.skill",
+        plugin_id="review-package",
+        contribution_id="review-package.skill",
+        contribution=ResourceContributionSpec(
+            resource_kind="skill",
+            locator=locator,
+            locator_kind="file",
+            media_type="text/markdown",
+            schema_id="loushang.resource.skill",
+            schema_version=1,
+        ),
+        plugin_candidate_fingerprint="1" * 64,
+        declaration_fingerprint="2" * 64,
+        declaration_evidence_fingerprint="3" * 64,
+        package_content_digest=handle.content_digest,
+        dependency_lock_digest="4" * 64,
+        product_id="coding",
+        scope_id="session:test",
+        product_policy_revision="coding-resource-catalog-shadow-v2",
+        instance_revision_ref=PluginInstanceRevisionRef(
+            instance_id="review-package@coding",
+            plugin_id="review-package",
+            revision=1,
+        ),
+        package_source_identity="test:review-package",
+        source_trust_class="test_trusted",
+        source_trust_policy_revision="test-trust-v1",
+        source_trusted=True,
+    )
+    now = int(time.time())
+    admission = OwnerContributionAuthority(
+        OwnerContributionPolicy(
+            owner_id="resources.skill",
+            contribution_kind="resource_item",
+            product_id="coding",
+            policy_revision="resource-skill-owner-v1",
+            revocation_epoch=0,
+            allowed_source_trust_classes=("test_trusted",),
+            allowed_collection_ids=("loushang.resource.skill",),
+            allowed_requirement_bindings=("direct",),
+            consumer_scope="session",
+            consumer_refresh_boundary="sealed",
+        )
+    ).admit(candidate, issued_at=now - 60, expires_at=now + 3600)
+    handle.close()
+    return admission
+
+
 def test_coding_shadow_maps_one_receipt_without_bundle_inference(
     tmp_path: Path,
 ) -> None:
     adapter = build_coding_initial_resource_catalog_shadow_adapter(_receipt(tmp_path))
 
     selection = adapter.selection
-    assert selection.product_policy_revision == "coding-resource-catalog-shadow-v1"
+    assert selection.product_policy_revision == "coding-resource-catalog-shadow-v2"
     assert [item.handle_id for item in selection.native_roots] == [
         "coding-user-0",
         "coding-project-context-0",
@@ -116,7 +191,11 @@ def test_coding_shadow_preserves_disabled_context_as_standard_roots(
 @pytest.mark.parametrize(
     ("change", "disabled_skills", "reason"),
     (
-        ({"package_roots": (Path("/package"),)}, (), "package_sources"),
+        (
+            {"package_mounts": (PackageResourceMount(root=Path("/package")),)},
+            (),
+            "unverified_package_sources",
+        ),
         (
             {"additional_skill_paths": (Path("skill"),)},
             (),
@@ -141,6 +220,84 @@ def test_coding_shadow_rejects_inputs_not_covered_by_the_thin_slice(
         )
 
     assert reason in captured.value.reasons
+
+
+def test_coding_shadow_requires_exact_admission_for_verified_package_candidates(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    skill = source / "skills" / "package-review" / "SKILL.md"
+    project = tmp_path / "project"
+    skill.parent.mkdir(parents=True)
+    project.mkdir()
+    (source / "plugin.json").write_text(
+        json.dumps({"name": "review-package", "version": "1"}),
+        encoding="utf-8",
+    )
+    skill.write_text(
+        "---\nname: package-review\n"
+        "description: Package review\n---\nReview from package.\n",
+        encoding="utf-8",
+    )
+    admission = _coding_package_skill_admission(
+        source,
+        revision_root=tmp_path / "admission-revisions",
+    )
+    published = PluginRevisionStore(tmp_path / "receipt-revisions").publish(
+        PluginManifestParser().parse(source)
+    )
+    handle = published.revision_handle
+    loader = ResourceLoader(project_resource_mode="legacy")
+    loader.set_package_mounts(
+        (
+            PackageResourceMount(
+                root=handle.root,
+                content_digest=handle.content_digest,
+                revision_handle=handle,
+            ),
+        )
+    )
+    try:
+        loader.discover_resources(project)
+        receipt = loader._take_initial_resource_catalog_input_receipt()
+
+        with pytest.raises(CodingResourceCatalogShadowAdmissionError) as missing:
+            build_coding_initial_resource_catalog_shadow_adapter(receipt)
+        assert "package_candidate_without_admission" in missing.value.reasons
+
+        adapter = build_coding_initial_resource_catalog_shadow_adapter(
+            receipt,
+            package_resource_admissions=(admission,),
+            package_admission_now=int(time.time()),
+        )
+        assert len(adapter.selection.package_resources) == 1
+        assert adapter.selection.package_resources[0].revision_handle is handle
+
+        invalid_locator_admission = _coding_package_skill_admission(
+            source,
+            revision_root=tmp_path / "invalid-locator-revisions",
+            locator="/skills/package-review/SKILL.md",
+        )
+        with pytest.raises(CodingResourceCatalogShadowAdmissionError) as invalid:
+            build_coding_initial_resource_catalog_shadow_adapter(
+                receipt,
+                package_resource_admissions=(invalid_locator_admission,),
+                package_admission_now=int(time.time()),
+            )
+        assert "invalid_package_admission" in invalid.value.reasons
+
+        with pytest.raises(CodingResourceCatalogShadowAdmissionError) as diagnostic:
+            build_coding_initial_resource_catalog_shadow_adapter(
+                replace(
+                    receipt,
+                    package_diagnostic_codes=("unsupported_skill_entry",),
+                ),
+                package_resource_admissions=(admission,),
+                package_admission_now=int(time.time()),
+            )
+        assert "package_discovery_diagnostics" in diagnostic.value.reasons
+    finally:
+        loader.close()
 
 
 def test_coding_initial_catalog_shadow_publishes_project_context_and_skill(
@@ -196,6 +353,98 @@ def test_coding_initial_catalog_shadow_publishes_project_context_and_skill(
             await session.dispose()
         assert resource_candidate.ownership_state == "disposed"
         assert session._capability_graph_runtime.is_closed is True
+        assert session._capability_graph_runtime.has_pending_retirements is False
+
+    asyncio.run(scenario())
+
+
+def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        project_root = tmp_path / "project"
+        plugin_root = tmp_path / "plugin"
+        skill_root = plugin_root / "skills" / "package-review"
+        project_root.mkdir()
+        skill_root.mkdir(parents=True)
+        (plugin_root / "plugin.json").write_text(
+            json.dumps({"name": "review-package", "version": "1"}),
+            encoding="utf-8",
+        )
+        (skill_root / "SKILL.md").write_text(
+            "---\nname: package-review\n"
+            "description: Package review\n---\nReview from package.\n",
+            encoding="utf-8",
+        )
+        admission = _coding_package_skill_admission(
+            plugin_root,
+            revision_root=tmp_path / "admission-revisions",
+        )
+        project_settings_path = tmp_path / "project-settings.json"
+        project_settings_path.write_text(
+            json.dumps({"plugin_sources": [str(plugin_root)]}),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=project_settings_path,
+            )
+        )
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project_root),
+            persist=False,
+        )
+        session = _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+            enable_initial_resource_catalog_shadow=True,
+            initial_resource_catalog_package_admissions=(admission,),
+        )
+        resource_candidate = session._staged_resource_candidate
+        assert resource_candidate is not None
+        assert session.resource_bundle is not None
+        legacy_package_skill = next(
+            skill
+            for skill in session.resource_bundle.skills
+            if skill.name == "package-review"
+        )
+        try:
+            await session.prepare_model_call_runtime()
+
+            assert session.resource_bundle is not None
+            package_skill = next(
+                skill
+                for skill in session.resource_bundle.skills
+                if skill.name == "package-review"
+            )
+            assert package_skill.source_kind == "external_package"
+            assert (
+                package_skill.name,
+                package_skill.content,
+                package_skill.description,
+                package_skill.disable_model_invocation,
+                package_skill.canonical_name,
+                package_skill.source_scope,
+                package_skill.source_root_order,
+            ) == (
+                legacy_package_skill.name,
+                legacy_package_skill.content,
+                legacy_package_skill.description,
+                legacy_package_skill.disable_model_invocation,
+                legacy_package_skill.canonical_name,
+                legacy_package_skill.source_scope,
+                legacy_package_skill.source_root_order,
+            )
+            assert resource_candidate.ownership_state == "graph_owned"
+        finally:
+            await session.dispose()
+            services.resource_loader.close()
+        assert resource_candidate.ownership_state == "disposed"
         assert session._capability_graph_runtime.has_pending_retirements is False
 
     asyncio.run(scenario())

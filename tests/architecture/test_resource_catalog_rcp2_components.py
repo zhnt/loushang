@@ -237,6 +237,11 @@ def test_rcp4_product_input_adapter_is_explicit_private_and_source_narrow() -> N
         "loushang.coding",
         "loushang.harness.resources.loader",
         "loushang.harness.resources._loader_pipeline",
+    }
+    assert imports & {
+        "loushang.harness.resources._catalog_package_source",
+        "loushang.harness.resource_catalog.inputs",
+    } == {
         "loushang.harness.resources._catalog_package_source",
         "loushang.harness.resource_catalog.inputs",
     }
@@ -244,7 +249,9 @@ def test_rcp4_product_input_adapter_is_explicit_private_and_source_narrow() -> N
     source = PRODUCT_INPUTS_PATH.read_text(encoding="utf-8")
     assert "construct_session" in source
     assert "close_unprepared" in source
-    assert "package_resources" not in source
+    assert "ProductAdmittedPackageResourceSpec" in source
+    assert "acquire_admitted_package_resource" in source
+    assert "package_resources" in source
     coding_source = CODING_SHADOW_ADAPTER_PATH.read_text(encoding="utf-8")
     assert "prepare_coding_initial_resource_catalog_shadow_adapter" in coding_source
     bootstrap_source = Path("src/loushang/coding/bootstrap.py").read_text(

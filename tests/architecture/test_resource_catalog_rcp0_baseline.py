@@ -181,6 +181,10 @@ EXPECTED_SKILLS_ATTRIBUTE_LOAD_SITES = {
         "_discover_snapshot",
     ),
     (
+        Path("src/loushang/harness/resources/_loader_pipeline.py"),
+        "_legacy_package_resource_candidate_facts",
+    ),
+    (
         Path("src/loushang/harness/resources/activation.py"),
         "ResourceActivation.active_skills",
     ),

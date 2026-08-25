@@ -7,7 +7,7 @@
   and Model Input boundaries. It does not amend those boundaries implicitly.
 - Design status: RCP0 contract frozen; final narrow freeze re-review passed.
 - Implementation status: RCP0 through RCP3 are complete on the Harness lane;
-  RCP4 has started with seven unpublished foundation slices.
+  RCP4 has started with eight unpublished foundation slices.
   RCP2's first unpublished foundation slice implements the generic
   `CapabilityComponentDefinition`, exact candidate/admission/selection/binding
   records, atomic owner generations, cancellation-safe reverse rollback,
@@ -81,6 +81,11 @@
   helper can opt in and its default is false. Public/default enablement, active
   refresh, typed production Catalog/Skill consumers, and legacy-loader cutover
   remain pending.
+  The eighth slice extends that seam only for exact owner-admitted package
+  Resources. Product preparation acquires an independent verified-revision lease
+  per Session, while Coding joins admissions one-to-one with package candidates
+  observed by the same legacy discovery. Conventional directories, incomplete
+  admission sets, package diagnostics/Extensions, and subroot mounts reject.
   The current `ResourceLoader`, `ResourceSnapshot`, `ResourceBundle`, and
   `SkillLoader` paths remain the implemented runtime until a phase below passes
   its cutover gate.
@@ -1149,7 +1154,7 @@ effective Resource selection.
 
 ### RCP4: Mount Resource Catalog generation
 
-Status: seven unpublished foundation slices complete. The v1 Provider path is
+Status: eight unpublished foundation slices complete. The v1 Provider path is
 unchanged when no prepared generation exists. A candidate with one prepared
 generation selects only contract/provider v2, contributes the two Catalog/load
 facets, transfers parent and child through the same
@@ -1257,13 +1262,13 @@ thin slice:
   assigned a content-derived revision, and then passed through the existing
   embedded Product specification.
 
-Admission is deliberately fail-closed. Any enabled package root, additional
-temporary path, prompt/Skill/Extension/theme discovery switch, disabled-Skill
-selector, unavailable explicit user root, or inadmissible project root rejects
-the shadow before the reusable Product adapter mints a handle. `no_context_files`
-is represented exactly by omitting project context handles and using
-standard-only user handles. Unsupported cases continue to run normally on the
-default v1 path because the shadow is reachable only through the private
+RCP4.7 admission is deliberately fail-closed. At this slice, any enabled package
+root, additional temporary path, prompt/Skill/Extension/theme discovery switch,
+disabled-Skill selector, unavailable explicit user root, or inadmissible project
+root rejects the shadow before the reusable Product adapter mints a handle.
+`no_context_files` is represented exactly by omitting project context handles
+and using standard-only user handles. Unsupported cases continue to run normally
+on the default v1 path because the shadow is reachable only through the private
 `_create_agent_session(..., enable_initial_resource_catalog_shadow=True)` test
 and migration seam; the public Coding SDK, CLI, settings, and runtime factory do
 not expose it.
@@ -1272,15 +1277,65 @@ The shadow intentionally performs legacy discovery first to build the defensive
 Extension hook input, then performs Catalog discovery from the receipt. That
 temporary duplicate observation is measured migration debt, not two effective
 publishers: only the v2 Catalog generation publishes after Graph adoption in the
-opt-in Session. The deletion gate remains replacing the defensive hook input,
-adding package/temporary/policy parity, and removing the legacy initial discovery
-before any default cutover. Focused tests prove receipt fidelity and single-take
-custody, finite unsupported reasons, unchanged public SDK signatures, and a real
-Coding project context plus native Skill through v2 Graph publication and exact
-Session disposal.
+opt-in Session. At this slice, the deletion gate still included replacing the
+defensive hook input, adding package/temporary/policy parity, and removing the
+legacy initial discovery before any default cutover. RCP4.8 below closes only the
+exact admitted-package portion of that gate. Focused tests prove receipt fidelity
+and single-take custody, finite unsupported reasons, unchanged public SDK
+signatures, and a real Coding project context plus native Skill through v2 Graph
+publication and exact Session disposal.
 
 No refresh route, package admission, typed Skill Consumer, LSP/MCP work, public
 SDK switch, CLI setting, or default behavior changes in this slice.
+
+#### RCP4.8 implemented: admitted-package input and exact candidate join
+
+The eighth slice extends the reusable Product adapter with one typed
+`ProductAdmittedPackageResourceSpec`. The spec contains only an existing exact
+owner `resource_item` admission, the Product-held live
+`VerifiedRevisionHandle`, and the legacy source-root order. It is not a raw path
+or a new package declaration format. On each Session construction the adapter
+revalidates Product id, Product policy revision, Session-sealed refresh policy,
+admission lifetime, and package digest before acquiring a new independently
+disposable revision lease through the existing package input primitive. Reusing
+an adapter never shares the Session lease. Partial acquisition, failed Session
+construction, unpublished bootstrap disposal, and Graph retirement close only
+the acquired lease; the Product/loader-held source handle remains with its
+original owner.
+
+The same legacy discovery result now records the frozen package mounts plus the
+prompt/Skill/Extension/theme candidate paths, source-root order, revision digest,
+and diagnostic codes that it already observed. This record performs no new
+filesystem scan and carries no winner, admission, or publication authority.
+Coding joins supplied owner admissions against these candidate facts before the
+Product adapter mints any Session input. The supported set is deliberately
+narrow and exact:
+
+- every enabled mount is a live verified revision rooted at the revision root;
+- legacy package discovery emitted no diagnostics and no Extension candidate;
+- every observed prompt, Skill, or theme candidate matches exactly one admission
+  by kind, verified digest, body path, and source-root order; and
+- every supplied admission matches one observed candidate.
+
+Missing, extra, foreign, stale, expired, unverified, subroot, or otherwise
+incomplete package evidence rejects with a finite reason. A source filter is
+therefore respected only through the candidates actually emitted by the one
+legacy discovery and the exact admission set supplied for them; the adapter does
+not re-read filter configuration. Traditional path-backed package roots and
+verified Plugins that have not completed `resource_item` declaration and owner
+admission remain on v1 and fail closed in the opt-in shadow.
+
+The private Coding construction helper accepts pre-admitted package Resources
+solely as a migration/test seam. It does not run Plugin selection, grant trust,
+or manufacture owner admission. Wiring the production Plugin declaration and
+owner-admission result into Product composition is a later gate and must not be
+implemented by parsing `ResourceBundle` or loader internals. A real Coding
+Session test proves an admitted package Skill through v2 Catalog publication,
+Graph ownership, exact disposal, and zero pending retirement.
+
+No temporary-source support, disabled-Skill policy projection, kind-switch
+parity, refresh route, public SDK/CLI setting, default cutover, LSP, or MCP work
+is added in this slice.
 
 - introduce the internal `harness.resources` v2 Catalog/load facets and exact
   Consumer requirements;
