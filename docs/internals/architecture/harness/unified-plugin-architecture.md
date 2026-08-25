@@ -1514,6 +1514,23 @@ coding.lsp.default declaration
   -> sibling tool_pack binds model-visible definitions against captured facets
 ```
 
+Private rollout starts from one Product-owned
+`CodingLspPluginOptInRequest | None`. It is a request for the Coding Product
+composer to perform selection and assembly, not an already assembled Session
+composition, a boolean grant, or an Approval decision. The Product composer
+uses the existing selection, owner-admission, Provider-resolution and Approval-
+owner ports; only their exact result enters the Session. A missing request keeps
+the legacy route during migration, while an opted-in failure is fail-closed and
+never silently falls back.
+
+The mounted LSP Bundle transfers to Graph ownership exactly once. Product code
+may retain a non-owning `CodingLspSessionAccess` for status and commands, but
+legacy cleanup is a separate input and `AgentSession` never closes a Graph-owned
+runtime. Binder rollback/retirement is the sole Provider disposer. The
+first-party Provider adapter may reuse a private, narrow LSP engine API through
+an exact Loushang dependency lock; this does not widen Component Host API
+prefixes or declare a public Provider SDK.
+
 Owner-admitted Tool packs in the same selected Plugin/composition closure are
 staged by the Tool owner and become Session-visible only when the usable Product
 Session containing the mounted runtime is published. They remain sibling
@@ -1521,6 +1538,11 @@ Consumer contributions rather than fields or registrations owned by the
 Provider; this Session visibility rule is not a cross-owner publication or
 rollback transaction, and the packs are never registered early against a
 deferred LSP object.
+
+For the default package, `CodingLspToolOwner` stages invisible registration
+leases from the admitted `runtime` Consumer capture, activates them only after
+the complete Tool generation is ready, and retires them in reverse order.
+Bootstrap does not construct those Tool definitions or own their leases.
 
 An additional language server does not replace that Bundle. It declares an
 owner-schema `capability_component` referencing an admitted `external_service`;
@@ -1703,6 +1725,9 @@ implementation.
 ### UPA4: LSP Vertical Slice
 
 - package the default LSP implementation as a first-party Plugin;
+- accept only a Product-owned private opt-in request during migration; Product
+  composition still owns selection/assembly and the Approval owner still owns
+  both executable-Definition and Provider-activation decisions;
 - grant eligibility/final admission through the `coding.lsp` Capability owner,
   select through `ProductCapabilityProviderResolver`, and mount through the
   Session Graph;
@@ -1710,6 +1735,8 @@ implementation.
 - aggregate additional server components only through the `coding.lsp` owner;
 - admit the model-visible LSP Tool definitions as a sibling `tool_pack` that
   consumes the mounted runtime facet through the Tool owner;
+- expose only a non-owning Product access port and leave Provider disposal solely
+  to Graph rollback/retirement;
 - remove deferred LSP/process/Tool pre-binding paths;
 - prove alternate Provider selection, startup rollback, restart reconstruction,
   complete Model Input facts, and owner-correct disposal.

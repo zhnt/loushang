@@ -1586,6 +1586,33 @@ def test_plc1b_versioned_bytes_and_delivery_order_are_frozen() -> None:
     )
 
 
+def test_plc5_private_lsp_adopter_keeps_product_and_graph_ownership() -> None:
+    architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
+    lifecycle_plan = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
+
+    for required in (
+        "`CodingLspPluginOptInRequest | None`",
+        "not an already assembled Session\ncomposition",
+        "never silently falls back",
+        "`AgentSession` never closes a Graph-owned\nruntime",
+        "Binder rollback/retirement is the sole Provider disposer",
+        "`CodingLspToolOwner` stages invisible registration",
+        "does not widen Component Host API\nprefixes",
+    ):
+        assert required in architecture
+
+    for required in (
+        "not a boolean treated as authority",
+        "not a caller-assembled Session\n  composition",
+        "an opt-in request is neither a\n  declaration-execution decision",
+        "`AgentSession` must never call\n  `close()` on a Graph-owned LSP runtime",
+        "Bootstrap neither constructs LSP Tool definitions nor owns their leases",
+        "`CodingLspPluginConfigV1`",
+        "No per-workspace\npackage generation",
+    ):
+        assert required in lifecycle_plan
+
+
 def test_plc1b_contract_freezes_no_self_reference_and_exact_v2_records() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
     contract = PLC1B_CONTRACT_PATH.read_text(encoding="utf-8")

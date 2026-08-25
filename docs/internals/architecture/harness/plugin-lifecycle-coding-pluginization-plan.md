@@ -1061,6 +1061,39 @@ real production adopter. The next slice is the checked-in
 `coding.lsp.default` declaration/package and private opt-in bootstrap wiring;
 default cutover and old deferred-route deletion remain later PLC5 gates.
 
+The adopter-specific design review freezes the following PLC5.1 boundaries
+before implementation:
+
+- private rollout accepts one Product-owned `CodingLspPluginOptInRequest | None`,
+  not a boolean treated as authority and not a caller-assembled Session
+  composition. `None` retains the legacy route. When present, the Coding
+  Product composer alone expands the request into finalized Plugin selection,
+  exact owner admission, Provider resolution and Session assembly. The Approval
+  owner remains the sole decision issuer; an opt-in request is neither a
+  declaration-execution decision nor a Provider-activation decision;
+- the mounted LSP Bundle value transfers to Graph ownership exactly once. A
+  Graph-backed `CodingLspSessionAccess` is a non-owning query/control view;
+  legacy LSP cleanup is represented separately. `AgentSession` must never call
+  `close()` on a Graph-owned LSP runtime, and Binder rollback/retirement remains
+  its sole disposer;
+- a dedicated `CodingLspToolOwner` receives only the admitted `runtime` Consumer
+  capture, stages invisible Tool registration leases, activates them only after
+  the complete owner generation is ready, and retires them in reverse order.
+  Bootstrap neither constructs LSP Tool definitions nor owns their leases; and
+- the executable Definition reads only its own frozen effective configuration
+  through a reservation-scoped, read-only Builder accessor. A strict
+  `CodingLspPluginConfigV1` codec validates that JSON input before the Provider
+  uses it. The first-party package may exact-lock the matching Loushang
+  distribution and import a private narrow `loushang.coding.lsp._provider_api`;
+  this neither widens the Component Host API prefixes nor publishes a stable
+  third-party SDK.
+
+The checked-in package may therefore reuse the current LSP engine while the
+Plugin remains the selected lifecycle owner. Definition evaluation and Provider
+activation still cross their distinct durable Approval gates. No per-workspace
+package generation, ambient service locator, hidden fallback, or second LSP
+runtime path is introduced.
+
 Scope and gates are PAP6, including packaging the complete Bundle, narrow
 workspace requirements, Tool/runtime Session co-visibility across their exact
 owners, alternate Provider selection, rollback, replay, restart reconstruction,
@@ -1283,8 +1316,8 @@ The combined milestone is complete only when:
    executable code crosses a durable approval/import gate;
 3. the exact owner remains the only publisher and disposer for every live
    object;
-4. `coding.lsp.default` mounts through the existing Graph and its deferred and
-   early Tool paths are deleted;
+4. `coding.lsp.default` mounts through the existing Graph, the Graph remains its
+   sole runtime disposer, and its deferred and early Tool paths are deleted;
 5. `coding.base` is selected through Composition Sets, can be disabled or
    updated through Plugin management, and has no direct CLI/bootstrap peer
    registrations;
