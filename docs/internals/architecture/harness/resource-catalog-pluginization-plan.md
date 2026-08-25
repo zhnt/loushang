@@ -7,7 +7,7 @@
   and Model Input boundaries. It does not amend those boundaries implicitly.
 - Design status: RCP0 contract frozen; final narrow freeze re-review passed.
 - Implementation status: RCP0 through RCP3 are complete on the Harness lane;
-  RCP4 has started with six unpublished foundation slices.
+  RCP4 has started with seven unpublished foundation slices.
   RCP2's first unpublished foundation slice implements the generic
   `CapabilityComponentDefinition`, exact candidate/admission/selection/binding
   records, atomic owner generations, cancellation-safe reverse rollback,
@@ -73,9 +73,14 @@
   The sixth slice adds the reusable Product input adapter: immutable selection
   specs become fresh Host-minted native/embedded handles per Session, and a
   synchronous custody callback closes partial minting or failed construction
-  before transferring ownership. A source-complete Coding adapter, default live
-  enablement, active refresh, typed production Catalog/Skill consumers, and
-  legacy-loader cutover remain pending.
+  before transferring ownership. The seventh slice adds a private Coding-only
+  initial shadow: the existing discovery call emits one immutable, single-take
+  source-input receipt; Coding maps its supported project/context, user, and
+  captured built-in inputs to the Product adapter and fails closed for package,
+  temporary, kind-switch, or disabled-Skill cases. Only the private construction
+  helper can opt in and its default is false. Public/default enablement, active
+  refresh, typed production Catalog/Skill consumers, and legacy-loader cutover
+  remain pending.
   The current `ResourceLoader`, `ResourceSnapshot`, `ResourceBundle`, and
   `SkillLoader` paths remain the implemented runtime until a phase below passes
   its cutover gate.
@@ -1144,7 +1149,7 @@ effective Resource selection.
 
 ### RCP4: Mount Resource Catalog generation
 
-Status: six unpublished foundation slices complete. The v1 Provider path is
+Status: seven unpublished foundation slices complete. The v1 Provider path is
 unchanged when no prepared generation exists. A candidate with one prepared
 generation selects only contract/provider v2, contributes the two Catalog/load
 facets, transfers parent and child through the same
@@ -1208,9 +1213,9 @@ shares a generation.
 The slice deliberately supports native and embedded sources only. It exposes no
 package field, does not infer package/native/context/temporary inputs from a
 `ResourceBundle`, and therefore is not a source-completeness claim for Coding.
-The current legacy Bundle remains only the defensive Extension hook input. A
-later Coding shadow adapter must prepare a source-complete receipt and reject
-unsupported package/temporary inputs before it may invoke this primitive.
+The current legacy Bundle remains only the defensive Extension hook input.
+RCP4.7 below meets the next gate with a same-discovery source receipt and
+fail-closed unsupported-input admission before invoking this primitive.
 
 Acceptance is proven by one production-shaped sample that carries a native
 `SKILL.md` and an immutable embedded Resource through adapter construction,
@@ -1226,6 +1231,56 @@ authority, introspects private loader state, lets raw paths cross the Resource
 owner boundary, silently treats a partial source set as Coding-complete, shares
 handles between Sessions, weakens the existing joint rollback, or adds a default
 Product mount.
+
+#### RCP4.7 implemented: Coding source-input receipt and private initial shadow
+
+The seventh slice adds the first Product consumer without adding a second
+discovery entry point. `ResourceLoader` still constructs and executes the one
+legacy discovery request. That same pipeline result now also contains an
+immutable receipt of its normalized source facts: effective project Resource
+root, outer-to-inner project context roots, user roots and explicit-root marks,
+built-in import packages, enabled package roots, temporary paths, kind switches,
+context filenames, and the context switch. Mutating loader source configuration
+invalidates the receipt; each successful discovery replaces it; one private
+transfer operation consumes it exactly once. Coding never reads loader fields or
+reconstructs the receipt from a resolved `ResourceBundle`.
+
+The private Coding adapter supports the complete initial source set for this
+thin slice:
+
+- effective user roots become `user_global` combined (or standard-only) native
+  handles with their original root order;
+- the shared context search order becomes project context handles, while the
+  already-resolved effective project Resource root becomes one standard handle;
+  and
+- every built-in import package is captured once into finite immutable bytes,
+  assigned a content-derived revision, and then passed through the existing
+  embedded Product specification.
+
+Admission is deliberately fail-closed. Any enabled package root, additional
+temporary path, prompt/Skill/Extension/theme discovery switch, disabled-Skill
+selector, unavailable explicit user root, or inadmissible project root rejects
+the shadow before the reusable Product adapter mints a handle. `no_context_files`
+is represented exactly by omitting project context handles and using
+standard-only user handles. Unsupported cases continue to run normally on the
+default v1 path because the shadow is reachable only through the private
+`_create_agent_session(..., enable_initial_resource_catalog_shadow=True)` test
+and migration seam; the public Coding SDK, CLI, settings, and runtime factory do
+not expose it.
+
+The shadow intentionally performs legacy discovery first to build the defensive
+Extension hook input, then performs Catalog discovery from the receipt. That
+temporary duplicate observation is measured migration debt, not two effective
+publishers: only the v2 Catalog generation publishes after Graph adoption in the
+opt-in Session. The deletion gate remains replacing the defensive hook input,
+adding package/temporary/policy parity, and removing the legacy initial discovery
+before any default cutover. Focused tests prove receipt fidelity and single-take
+custody, finite unsupported reasons, unchanged public SDK signatures, and a real
+Coding project context plus native Skill through v2 Graph publication and exact
+Session disposal.
+
+No refresh route, package admission, typed Skill Consumer, LSP/MCP work, public
+SDK switch, CLI setting, or default behavior changes in this slice.
 
 - introduce the internal `harness.resources` v2 Catalog/load facets and exact
   Consumer requirements;

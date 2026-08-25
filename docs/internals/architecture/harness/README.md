@@ -57,7 +57,7 @@ planning, work event persistence, or AI provider behavior.
   Skill projection, exact-generation lifecycle, and manifest-free native
   `SKILL.md` compatibility before LSP. RCP0-RCP3 are now implemented as private,
   unpublished infrastructure, including verified-package and immutable embedded
-  sources plus Package Catalog's pure inventory bridge. RCP4's six unpublished
+  sources plus Package Catalog's pure inventory bridge. RCP4's seven unpublished
   foundations now prove candidate-owned generation transfer, the internal v2
   Catalog/load Provider, exact Extension-owner route snapshots with retained
   body reads, and a root-private joint Extension/Resource candidate through an
@@ -73,9 +73,12 @@ planning, work event persistence, or AI provider behavior.
   Extension/Catalog/view tuple only after Graph capture; v1 remains unchanged
   when the adapter is absent. A private reusable Product preparation adapter now
   turns exact native/embedded selection specs into fresh per-Session opaque
-  handles under a synchronous construction-custody callback. No Product invokes
-  it by default, and source-complete Coding admission, refresh, typed production
-  consumers, and cutover remain pending.
+  handles under a synchronous construction-custody callback. A private Coding
+  initial shadow now consumes one same-discovery, single-take source receipt and
+  maps project/context, user, and captured built-in inputs; package, temporary,
+  kind-switch, and disabled-Skill inputs reject before handle minting. The public
+  Coding SDK and default path remain v1, and refresh, broader admission, typed
+  production consumers, and cutover remain pending.
 - [Resource Catalog RCP0 Baseline](resource-catalog-rcp0-baseline.md) freezes
   the implemented discovery/sink inventory, precedence and Extension parity,
   Package-mount custody, and the exact RCP3/RCP4/RCP5 deletion ledger without

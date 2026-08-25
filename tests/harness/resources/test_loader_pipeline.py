@@ -5,9 +5,13 @@ from pathlib import Path
 import pytest
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
+from loushang.harness.resources._catalog_input_receipt import (
+    ResourceCatalogInputReceipt,
+)
 from loushang.harness.resources._loader_pipeline import (
     _ResourceDiscoveries,
     _ResourceDiscoveryRequest,
+    _ResourceDiscoveryResult,
 )
 from loushang.harness.resources._loader_types import _SourceDiscovery
 from loushang.harness.resources.loader import ResourceLoader
@@ -57,6 +61,32 @@ def _source_discovery(source_kind: ResourceSourceKind) -> _SourceDiscovery:
             )
         ],
         diagnostics=[DiagnosticDraft(code=name, message=name)],
+    )
+
+
+def _discovery_result(request: _ResourceDiscoveryRequest) -> _ResourceDiscoveryResult:
+    project_root = request.project_resource_root or request.cwd
+    return _ResourceDiscoveryResult(
+        snapshot=ResourceSnapshot(cwd=request.cwd),
+        catalog_input_receipt=ResourceCatalogInputReceipt(
+            cwd=request.cwd,
+            project_resource_root=project_root,
+            project_context_roots=(),
+            package_roots=request.package_roots,
+            user_resource_roots=request.user_resource_roots,
+            explicit_user_resource_roots=request.explicit_user_roots,
+            additional_extension_paths=request.additional_extension_paths,
+            additional_skill_paths=request.additional_skill_paths,
+            additional_prompt_template_paths=(request.additional_prompt_template_paths),
+            additional_theme_paths=request.additional_theme_paths,
+            no_extensions=request.no_extensions,
+            no_skills=request.no_skills,
+            no_prompt_templates=request.no_prompt_templates,
+            no_themes=request.no_themes,
+            no_context_files=request.no_context_files,
+            built_in_resource_packages=request.built_in_resource_packages,
+            context_file_names=request.context_file_names,
+        ),
     )
 
 
@@ -124,9 +154,9 @@ def test_resource_loader_passes_one_immutable_discovery_request(
     )
     captured: list[_ResourceDiscoveryRequest] = []
 
-    def discover(request: _ResourceDiscoveryRequest) -> ResourceSnapshot:
+    def discover(request: _ResourceDiscoveryRequest) -> _ResourceDiscoveryResult:
         captured.append(request)
-        return ResourceSnapshot(cwd=request.cwd)
+        return _discovery_result(request)
 
     monkeypatch.setattr(loader_module, "_discover_snapshot", discover)
     loader = ResourceLoader(
@@ -205,7 +235,15 @@ def test_resource_loader_does_not_commit_snapshot_when_revision_changes_during_d
     )
     loader.set_package_mounts((mount,))
     candidate = ResourceSnapshot(cwd=tmp_path / "candidate")
-    monkeypatch.setattr(loader_module, "_discover_snapshot", lambda request: candidate)
+
+    def discover(request: _ResourceDiscoveryRequest) -> _ResourceDiscoveryResult:
+        result = _discovery_result(request)
+        return _ResourceDiscoveryResult(
+            snapshot=candidate,
+            catalog_input_receipt=result.catalog_input_receipt,
+        )
+
+    monkeypatch.setattr(loader_module, "_discover_snapshot", discover)
 
     with pytest.raises(RuntimeError, match="revision changed"):
         loader.discover_resources(tmp_path)
@@ -213,6 +251,44 @@ def test_resource_loader_does_not_commit_snapshot_when_revision_changes_during_d
     assert loader.get_resource_snapshot() is previous
     loader.close()
     assert handle.closed is True
+
+
+def test_resource_loader_transfers_one_exact_catalog_input_receipt(
+    tmp_path: Path,
+) -> None:
+    user_root = tmp_path / "user"
+    project_root = tmp_path / "project"
+    nested = project_root / "src"
+    user_root.mkdir()
+    nested.mkdir(parents=True)
+    (project_root / "AGENTS.md").write_text("Project", encoding="utf-8")
+    loader = ResourceLoader(
+        user_resource_roots=(user_root,),
+        built_in_resource_packages=("loushang.coding.resources",),
+        context_file_names=("AGENTS.md",),
+        project_resource_mode="legacy",
+    )
+
+    loader.discover_resources(nested)
+    receipt = loader._take_initial_resource_catalog_input_receipt()
+
+    assert receipt.cwd == nested
+    assert receipt.project_resource_root == project_root
+    assert receipt.project_context_roots[-1] == nested
+    assert project_root in receipt.project_context_roots
+    assert receipt.user_resource_roots == (user_root.resolve(),)
+    assert receipt.built_in_resource_packages == ("loushang.coding.resources",)
+    assert receipt.context_file_names == ("AGENTS.md",)
+    assert receipt.package_roots == ()
+    assert receipt.has_temporary_inputs is False
+    assert receipt.has_resource_kind_switches is False
+    with pytest.raises(RuntimeError, match="No unclaimed"):
+        loader._take_initial_resource_catalog_input_receipt()
+
+    loader.discover_resources(nested)
+    loader.set_workspace_root(project_root)
+    with pytest.raises(RuntimeError, match="No unclaimed"):
+        loader._take_initial_resource_catalog_input_receipt()
 
 
 def test_resource_loader_mount_swap_is_atomic_and_closes_replaced_lease(

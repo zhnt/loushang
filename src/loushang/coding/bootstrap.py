@@ -5,11 +5,14 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 from loushang.agent import Agent, StreamFn, ThinkingLevel
 from loushang.ai.model import Model, ModelSelection
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
+from loushang.coding._resource_catalog_shadow import (
+    prepare_coding_initial_resource_catalog_shadow_adapter,
+)
 from loushang.coding.capabilities import (
     CODING_LSP_CAPABILITY,
     coding_capability_mount_mode,
@@ -32,7 +35,7 @@ from loushang.coding.lsp.runtime import (
     _bind_coding_lsp_runtime_from_launcher,
 )
 from loushang.coding.lsp.tool_pack import register_coding_lsp_tools
-from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE
+from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE, CODING_PRODUCT_ID
 from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
 from loushang.coding.resource_runtime import (
     CodingPackageMaterializer as PackageMaterializer,
@@ -275,7 +278,10 @@ def _create_agent_session(
     lsp_definitions: Iterable[LspServerDefinition] = (),
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
+    enable_initial_resource_catalog_shadow: bool = False,
 ) -> AgentSession:
+    if not isinstance(enable_initial_resource_catalog_shadow, bool):
+        raise TypeError("initial Resource Catalog shadow flag must be a bool")
     enable_multiagent_tools = (
         enable_multiagent
         and allowed_tool_names is None
@@ -393,6 +399,16 @@ def _create_agent_session(
         session_base_prompt: str,
         session_no_tools_mode: NoToolsMode | None,
     ) -> AgentSession:
+        resource_catalog_shadow_adapter = None
+        if enable_initial_resource_catalog_shadow:
+            resource_catalog_shadow_adapter = (
+                prepare_coding_initial_resource_catalog_shadow_adapter(
+                    services.resource_loader,
+                    disabled_skills=(
+                        services.settings_manager.get_settings().disabled_skills
+                    ),
+                )
+            )
         base_exec_service = services.exec_service or ExecService()
         workspace_root_path = Path(session_manager.get_cwd()).resolve()
         workspace_execution_profile = (
@@ -491,37 +507,52 @@ def _create_agent_session(
                 baseline_environment=resolved_lsp_environment,
             )
             lsp_slot.bind(lsp_runtime)
-        child_session = AgentSession(
-            agent=agent,
-            session_manager=session_manager,
-            settings_manager=services.settings_manager,
-            model_registry=services.model_registry,
-            resource_loader=services.resource_loader,
-            resource_bundle=bundle,
-            extension_runner=extension_runner,
-            tool_registry=registry,
-            allowed_tool_names=[]
-            if session_no_tools_mode == "all"
-            else allowed_tool_names,
-            active_tool_names=initial_active_tool_names,
-            default_activate_new_tools=(
-                session_no_tools_mode != "all" and active_tool_names is None
-            ),
-            show_empty_tool_prompt=session_no_tools_mode == "all",
-            base_prompt=session_base_prompt,
-            diagnostics_service=services.diagnostics_service,
-            session_start_event=session_start_event,
-            package_materializer=resolved_package_materializer,
-            exec_service=sandbox_runtime.exec_service,
-            approval_resolver=approval_resolver,
-            tool_policy_evaluator=tool_policy_evaluator,
-            capability_runtime=capability_runtime,
-            side_question_binding=side_question_binding,
-            sandbox_runtime=sandbox_runtime,
-            lsp_runtime=lsp_runtime,
-            delegated_execution_profile=delegated_execution_profile,
-            workspace_capability_binding=workspace_binding,
-        )
+
+        def construct_child_session(
+            initial_resource_catalog_bootstrap: Any | None = None,
+        ) -> AgentSession:
+            return AgentSession(
+                agent=agent,
+                session_manager=session_manager,
+                settings_manager=services.settings_manager,
+                model_registry=services.model_registry,
+                resource_loader=services.resource_loader,
+                resource_bundle=bundle,
+                extension_runner=extension_runner,
+                tool_registry=registry,
+                allowed_tool_names=[]
+                if session_no_tools_mode == "all"
+                else allowed_tool_names,
+                active_tool_names=initial_active_tool_names,
+                default_activate_new_tools=(
+                    session_no_tools_mode != "all" and active_tool_names is None
+                ),
+                show_empty_tool_prompt=session_no_tools_mode == "all",
+                base_prompt=session_base_prompt,
+                diagnostics_service=services.diagnostics_service,
+                session_start_event=session_start_event,
+                package_materializer=resolved_package_materializer,
+                exec_service=sandbox_runtime.exec_service,
+                approval_resolver=approval_resolver,
+                tool_policy_evaluator=tool_policy_evaluator,
+                capability_runtime=capability_runtime,
+                side_question_binding=side_question_binding,
+                sandbox_runtime=sandbox_runtime,
+                lsp_runtime=lsp_runtime,
+                delegated_execution_profile=delegated_execution_profile,
+                workspace_capability_binding=workspace_binding,
+                initial_resource_catalog_bootstrap=(initial_resource_catalog_bootstrap),
+            )
+
+        if resource_catalog_shadow_adapter is not None:
+            child_session = resource_catalog_shadow_adapter.construct_session(
+                product_id=CODING_PRODUCT_ID,
+                session_id=session_id,
+                base_resource_bundle=bundle,
+                construct=construct_child_session,
+            )
+        else:
+            child_session = construct_child_session()
         process_session = child_session
         if deferred_lsp_launcher is not None:
             deferred_lsp_launcher.bind(child_session.get_workspace_process_launcher())

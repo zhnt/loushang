@@ -22,6 +22,7 @@ SESSION_BOOTSTRAP_PATH = ORCHESTRATION_ROOT / "session_bootstrap.py"
 AGENT_PRODUCT_SESSION_PATH = Path("src/loushang/harness/session/agent_product.py")
 EXTENSION_RESOURCE_SOURCE_PATH = RESOURCE_ROOT / "_catalog_extension_source.py"
 EXTENSION_RESOURCE_RUNTIME_PATH = Path("src/loushang/harness/extensions/resources.py")
+CODING_SHADOW_ADAPTER_PATH = Path("src/loushang/coding/_resource_catalog_shadow.py")
 
 
 def _imported_modules(path: Path) -> set[str]:
@@ -126,11 +127,11 @@ def test_rcp2_shadow_runner_is_private_and_has_no_production_importer() -> None:
 
     forbidden_importers = set()
     for path in production_paths:
-        allowed = (
-            {"loushang.harness.resource_catalog.session_bootstrap"}
-            if path == AGENT_PRODUCT_SESSION_PATH
-            else set()
-        )
+        allowed = set()
+        if path == AGENT_PRODUCT_SESSION_PATH:
+            allowed.add("loushang.harness.resource_catalog.session_bootstrap")
+        if path == CODING_SHADOW_ADAPTER_PATH:
+            allowed.add("loushang.harness.resource_catalog.product_inputs")
         restricted = {
             imported
             for imported in _imported_modules(path)
@@ -226,12 +227,11 @@ def test_rcp4_product_input_adapter_is_explicit_private_and_source_narrow() -> N
     production_paths = set(Path("src/loushang").rglob("*.py")) - private_paths
 
     assert PRODUCT_INPUTS_PATH.is_file()
-    assert not {
+    assert {
         path
         for path in production_paths
-        if "loushang.harness.resource_catalog.product_inputs"
-        in _imported_modules(path)
-    }
+        if "loushang.harness.resource_catalog.product_inputs" in _imported_modules(path)
+    } == {CODING_SHADOW_ADAPTER_PATH}
     imports = _imported_modules(PRODUCT_INPUTS_PATH)
     assert not imports & {
         "loushang.coding",
@@ -245,3 +245,9 @@ def test_rcp4_product_input_adapter_is_explicit_private_and_source_narrow() -> N
     assert "construct_session" in source
     assert "close_unprepared" in source
     assert "package_resources" not in source
+    coding_source = CODING_SHADOW_ADAPTER_PATH.read_text(encoding="utf-8")
+    assert "prepare_coding_initial_resource_catalog_shadow_adapter" in coding_source
+    bootstrap_source = Path("src/loushang/coding/bootstrap.py").read_text(
+        encoding="utf-8"
+    )
+    assert "enable_initial_resource_catalog_shadow: bool = False" in bootstrap_source

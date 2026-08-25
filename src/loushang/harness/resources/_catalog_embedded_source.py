@@ -179,6 +179,20 @@ def capture_built_in_resource_package(
 ) -> EmbeddedResourceCollectionHandle:
     """Capture import-package bytes once; discovery never reopens the import path."""
 
+    captured = capture_built_in_resource_package_files(package)
+    return mint_embedded_resource_collection_handle(
+        collection_id=package.name,
+        embedded_revision=embedded_revision,
+        files=captured,
+        source_root_order=source_root_order,
+    )
+
+
+def capture_built_in_resource_package_files(
+    package: BuiltInResourcePackage,
+) -> Mapping[str, bytes]:
+    """Return one finite immutable byte capture for Product input preparation."""
+
     if not isinstance(package, BuiltInResourcePackage):
         raise TypeError("Embedded capture requires a built-in Resource package")
     try:
@@ -187,12 +201,7 @@ def capture_built_in_resource_package(
         _capture_traversable(root, prefix=PurePosixPath(), captured=captured)
     except (ModuleNotFoundError, OSError) as exc:
         raise ValueError("Built-in Resource package could not be captured") from exc
-    return mint_embedded_resource_collection_handle(
-        collection_id=package.name,
-        embedded_revision=embedded_revision,
-        files=captured,
-        source_root_order=source_root_order,
-    )
+    return MappingProxyType(dict(sorted(captured.items())))
 
 
 def _capture_traversable(
@@ -371,9 +380,7 @@ class EmbeddedOemResourceSource:
         self._collections = {item.handle_id: item for item in ordered}
         self._snapshot: ResourceSourceSnapshot | None = None
         self._bodies: dict[str, _EmbeddedBody] = {}
-        self._projection_bindings: tuple[
-            ResourceProjectionDescriptorBinding, ...
-        ] = ()
+        self._projection_bindings: tuple[ResourceProjectionDescriptorBinding, ...] = ()
         self._disposed = False
 
     @property
@@ -812,5 +819,6 @@ __all__ = [
     "build_embedded_resource_discovery_request",
     "build_embedded_source_generation_ref",
     "capture_built_in_resource_package",
+    "capture_built_in_resource_package_files",
     "mint_embedded_resource_collection_handle",
 ]

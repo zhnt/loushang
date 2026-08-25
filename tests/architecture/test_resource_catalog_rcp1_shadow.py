@@ -32,6 +32,7 @@ RCP3_MODULES = {
     ORCHESTRATION_ROOT / "inputs.py",
 }
 RCP4_MODULES = {
+    RESOURCE_ROOT / "_catalog_input_receipt.py",
     RESOURCE_ROOT / "_catalog_extension_source.py",
     RESOURCE_ROOT / "_catalog_projection.py",
     ORCHESTRATION_ROOT / "generation.py",
@@ -115,7 +116,11 @@ def test_resource_catalog_internals_remain_confined_to_migration_modules() -> No
     assert all(path.is_file() for path in PRIVATE_CATALOG_MODULES)
     production_paths = set(Path("src/loushang").rglob("*.py")) - PRIVATE_CATALOG_MODULES
 
-    assert not {path for path in production_paths if _imports_catalog_module(path)}
+    assert {path for path in production_paths if _imports_catalog_module(path)} == {
+        Path("src/loushang/coding/_resource_catalog_shadow.py"),
+        RESOURCE_ROOT / "_loader_pipeline.py",
+        RESOURCE_ROOT / "loader.py",
+    }
     assert "_catalog" not in (RESOURCE_ROOT / "__init__.py").read_text(encoding="utf-8")
 
 

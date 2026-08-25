@@ -8,13 +8,16 @@
   contract and grants no new public API.
 - Frozen source baseline: `0de16c72`, tracked by issue `#495`.
 - Implementation status: the RCP0 legacy baseline remains authoritative, and
-  RCP1 through RCP3 remain private foundations. RCP4 now has six unpublished
+  RCP1 through RCP3 remain private foundations. RCP4 now has seven unpublished
   slices: pure Catalog records/engine, owner-component lifecycle,
   native/package/embedded/Extension sources, the v2 Catalog/load Provider, and
   one private optional Agent Session bootstrap plus its reusable native/embedded
-  Product input adapter. Those adapters can mount an explicitly supplied joint
-  Extension/Catalog generation before Session publication. No Product invokes
-  them by default; therefore the v1 legacy loader remains the default Resource
+  Product input adapter, plus a private Coding initial shadow over a
+  same-discovery single-take input receipt. That Coding seam supports
+  project/context, user, and built-in inputs and rejects the still-unsupported
+  package, temporary, kind-switch, and disabled-Skill cases. No Product invokes
+  them by default; the private Coding migration seam is explicit. Therefore the
+  v1 legacy loader remains the default Resource
   authority and no cutover or refresh route exists yet. RCP3 also removed
   Package Catalog's effective-discovery summary bridge in favor of a pure
   inventory port.
@@ -53,7 +56,7 @@ executable rather than treating all three sites as runtime authority.
 
 | Implemented symbol/path | Current authority | Target disposition |
 | --- | --- | --- |
-| `harness.resources.loader.ResourceLoader` | Owns discovery request construction, mount verification/swap, committed `ResourceSnapshot`, reload, and compatibility getters. | Shadow-adapted by the private RCP1 test bridge; project from the captured Catalog generation in RCP4; forwarding-only and then deleted in RCP5. |
+| `harness.resources.loader.ResourceLoader` | Owns discovery request construction, mount verification/swap, committed `ResourceSnapshot`, reload, and compatibility getters. Its one discovery result now also carries the private single-take Coding shadow input receipt; the receipt has no selection or publication authority. | Shadow-adapted by the private RCP1 test bridge; project from the captured Catalog generation in RCP4; forwarding-only and then deleted in RCP5. |
 | `harness.resources._loader_pipeline` | Aggregates source discoveries and constructs the authoritative `ResourceSnapshot`. | Serves as the RCP1 parity oracle; no production effective-selection import after RCP5. |
 | `harness.resources._loader_resolution` | Resolves same-identity winners and emits `ResourceMergeDecision`. | Behavior is mirrored by the RCP1 pure policy/validator; no production import after RCP5. |
 | `harness.resources._loader_precedence` | Owns the implemented priority and stable candidate ordering. | Priority is frozen in the RCP1 policy; no production import after RCP5. |

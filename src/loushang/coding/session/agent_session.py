@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from typing import Any
 
 from loushang.agent import Agent, PrepareModelCallFn
 from loushang.ai import PreparedRequestLimits
@@ -150,13 +151,16 @@ class AgentSession(AgentProductSession):
         lsp_runtime: CodingLspRuntime | None = None,
         delegated_execution_profile: DelegatedExecutionProfile | None = None,
         workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
+        initial_resource_catalog_bootstrap: Any | None = None,
     ) -> None:
         self._sandbox_runtime = sandbox_runtime
         self._lsp_runtime = lsp_runtime
         self.delegated_execution_profile = delegated_execution_profile
         self.cwd_bound_services_audit: CwdBoundServicesAudit | None = None
         resolved_capability_runtime = capability_runtime
-        locally_created_capability_runtime: StagedResourceCompositionCandidate | None = None
+        locally_created_capability_runtime: (
+            StagedResourceCompositionCandidate | None
+        ) = None
         locally_created_side_question_binding: LegacySideQuestionBinding | None = None
         resolution = None
         if extension_runner is not None and (
@@ -224,6 +228,7 @@ class AgentSession(AgentProductSession):
                 approval_resolver=approval_resolver,
                 tool_policy_evaluator=tool_policy_evaluator,
                 workspace_capability_binding=workspace_capability_binding,
+                initial_resource_catalog_bootstrap=(initial_resource_catalog_bootstrap),
                 extension_declaration_preflight=(
                     CodingExtensionDeclarationPreflight(
                         baseline_profile=resolved_capability_runtime.profile

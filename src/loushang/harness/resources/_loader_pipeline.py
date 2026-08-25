@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
+from loushang.harness.resources._catalog_input_receipt import (
+    ResourceCatalogInputReceipt,
+)
 from loushang.harness.resources._loader_discovery import (
     _apply_resource_switches,
     _discover_external_package_resources,
@@ -17,6 +20,7 @@ from loushang.harness.resources._loader_discovery_builtin import (
 )
 from loushang.harness.resources._loader_discovery_context import (
     _discover_context_descriptors,
+    _project_context_roots,
 )
 from loushang.harness.resources._loader_discovery_temporary import (
     _discover_temporary_resources,
@@ -123,8 +127,17 @@ class _ResourceDiscoveries:
         )
 
 
-def _discover_snapshot(request: _ResourceDiscoveryRequest) -> ResourceSnapshot:
+@dataclass(frozen=True, slots=True)
+class _ResourceDiscoveryResult:
+    snapshot: ResourceSnapshot
+    catalog_input_receipt: ResourceCatalogInputReceipt
+
+
+def _discover_snapshot(request: _ResourceDiscoveryRequest) -> _ResourceDiscoveryResult:
     target = Path(request.cwd)
+    project_context_roots = (
+        () if request.no_context_files else _project_context_roots(target)
+    )
     context_descriptors: list[PromptFragmentDescriptor]
     agents_descriptor: PromptFragmentDescriptor | None
     context_diagnostics: list[DiagnosticDraft]
@@ -136,6 +149,7 @@ def _discover_snapshot(request: _ResourceDiscoveryRequest) -> ResourceSnapshot:
                 target,
                 user_resource_roots=request.user_resource_roots,
                 context_file_names=request.context_file_names,
+                project_context_roots=project_context_roots,
             )
         )
     project_context_descriptors = [
@@ -238,7 +252,7 @@ def _discover_snapshot(request: _ResourceDiscoveryRequest) -> ResourceSnapshot:
         *extension_decisions,
         *theme_decisions,
     ]
-    return ResourceSnapshot(
+    snapshot = ResourceSnapshot(
         cwd=target,
         source_kinds=_source_kinds_for(
             request.package_roots,
@@ -267,6 +281,29 @@ def _discover_snapshot(request: _ResourceDiscoveryRequest) -> ResourceSnapshot:
         diagnostics=tuple(diagnostics),
         merge_decisions=tuple(merge_decisions),
     )
+    return _ResourceDiscoveryResult(
+        snapshot=snapshot,
+        catalog_input_receipt=ResourceCatalogInputReceipt(
+            cwd=target,
+            project_resource_root=project_root,
+            project_context_roots=project_context_roots,
+            package_roots=request.package_roots,
+            user_resource_roots=request.user_resource_roots,
+            explicit_user_resource_roots=request.explicit_user_roots,
+            additional_extension_paths=request.additional_extension_paths,
+            additional_skill_paths=request.additional_skill_paths,
+            additional_prompt_template_paths=(request.additional_prompt_template_paths),
+            additional_theme_paths=request.additional_theme_paths,
+            no_extensions=request.no_extensions,
+            no_skills=request.no_skills,
+            no_prompt_templates=request.no_prompt_templates,
+            no_themes=request.no_themes,
+            no_context_files=request.no_context_files,
+            built_in_resource_packages=request.built_in_resource_packages,
+            context_file_names=request.context_file_names,
+        ),
+    )
+
 
 def _source_kinds_for(
     package_roots: tuple[Path, ...],

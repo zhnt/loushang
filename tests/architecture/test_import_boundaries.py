@@ -3555,7 +3555,8 @@ def test_harness_split_internal_owners_have_one_way_dependencies() -> None:
     assert "class _ResourceDiscoveries:" in pipeline_text
     assert "def _discover_snapshot(request: _ResourceDiscoveryRequest)" in pipeline_text
     assert "class _ResourceDiscoveryRequest:" not in loader_text
-    assert "snapshot = _discover_snapshot(request)" in loader_text
+    assert "discovery = _discover_snapshot(request)" in loader_text
+    assert "snapshot = discovery.snapshot" in loader_text
     assert "def _discover_context_descriptors" not in (
         resource_root / "_loader_discovery.py"
     ).read_text(encoding="utf-8")
