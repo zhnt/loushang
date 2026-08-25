@@ -193,6 +193,12 @@ EXPECTED_SKILLS_ATTRIBUTE_LOAD_SITES = {
         Path("src/loushang/harness/resources/packages/inventory.py"),
         "FilesystemPackageResourceInventory.summarize",
     ),
+    # The optional RCP4 Session adapter only takes a defensive Extension input
+    # copy; the final compatibility Bundle is projected from Catalog authority.
+    (
+        Path("src/loushang/harness/resource_catalog/session_bootstrap.py"),
+        "_defensive_bundle",
+    ),
     (
         Path("src/loushang/harness/resources/types.py"),
         "ResourceBundle.merge",
@@ -483,9 +489,9 @@ def test_rcp0_baseline_is_indexed_and_distinguishes_private_rcp3_implementation(
 
     assert "resource-catalog-rcp0-baseline.md" in plan
     assert readme.count("resource-catalog-rcp0-baseline.md") == 2
-    assert "RCP1 through RCP3 now add private inert companions" in baseline
-    assert "components exist, but no production caller imports them" in baseline
-    assert "No mounted production\n  Catalog generation" in baseline
+    assert "RCP1 through RCP3 remain private foundations" in baseline
+    assert "No Product constructs this adapter by default" in baseline
+    assert "default Resource authority" in baseline
     assert "grants no new public API" in baseline
 
 

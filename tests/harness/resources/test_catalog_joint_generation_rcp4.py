@@ -41,6 +41,7 @@ from loushang.harness.resource_catalog.joint_generation import (
 )
 from loushang.harness.resources._catalog_projection import ResourceCatalogProjection
 from loushang.harness.resources._catalog_records import (
+    ExtensionOwnerProducer,
     ResourceIdentity,
     build_activation_policy_snapshot,
 )
@@ -155,7 +156,6 @@ async def _prepare_root_joint(
         base_resource_bundle=ResourceBundle(cwd=tmp_path),
         bindings=bindings,
         product_id="coding",
-        extension_set_fingerprint=_digest("joint-extension-set"),
         prepare_resource_generation=prepare_resource,
     )
     return extension_runtime, extension_candidate, profile, resource_candidate, joint
@@ -240,7 +240,6 @@ async def _failed_resource_preparation_releases_source(tmp_path: Path) -> None:
             base_resource_bundle=ResourceBundle(cwd=tmp_path),
             bindings=bindings,
             product_id="coding",
-            extension_set_fingerprint=_digest("failed-extension-set"),
             prepare_resource_generation=fail_resource,
         )
 
@@ -267,6 +266,12 @@ async def _joint_projection_uses_catalog_selection(tmp_path: Path) -> None:
     ) = await _prepare_root_joint(tmp_path, disable_extension_prompt=True)
     hook_pass = extension_candidate.resource_catalog_preparation
     assert hook_pass is not None
+    producer = hook_pass.source_generation.source_snapshot.source_generation_ref.producer
+    assert isinstance(producer, ExtensionOwnerProducer)
+    assert (
+        producer.extension_set_fingerprint
+        == extension_candidate.extension_set_fingerprint
+    )
     assert [item.text for item in hook_pass.projection.prompt_descriptors] == [
         "joint extension prompt"
     ]
@@ -314,7 +319,6 @@ async def _joint_preparation_rejects_unbound_lease(tmp_path: Path) -> None:
             base_resource_bundle=ResourceBundle(cwd=tmp_path),
             bindings=bindings,
             product_id="coding",
-            extension_set_fingerprint=_digest("unbound-extension-set"),
             prepare_resource_generation=prepare_unrelated_resource,
         )
 
@@ -375,13 +379,11 @@ async def _failed_joint_preparation_preserves_graph_borrow(tmp_path: Path) -> No
             base_resource_bundle=ResourceBundle(cwd=tmp_path),
             bindings=bindings,
             product_id="coding",
-            extension_set_fingerprint=_digest("escaped-preparation-set"),
             prepare_resource_generation=escape_to_graph,
         )
 
     assert any(
-        "joint_resource_retirement_pending" in note
-        for note in caught.value.__notes__
+        "joint_resource_retirement_pending" in note for note in caught.value.__notes__
     )
     assert observed_lease is not None
     assert observed_lease.is_released is False

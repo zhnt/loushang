@@ -17,6 +17,8 @@ NATIVE_SOURCE_PATH = RESOURCE_ROOT / "_catalog_native_source.py"
 SHADOW_RUNNER_PATH = ORCHESTRATION_ROOT / "shadow.py"
 PREPARED_GENERATION_PATH = ORCHESTRATION_ROOT / "generation.py"
 JOINT_GENERATION_PATH = ORCHESTRATION_ROOT / "joint_generation.py"
+SESSION_BOOTSTRAP_PATH = ORCHESTRATION_ROOT / "session_bootstrap.py"
+AGENT_PRODUCT_SESSION_PATH = Path("src/loushang/harness/session/agent_product.py")
 EXTENSION_RESOURCE_SOURCE_PATH = RESOURCE_ROOT / "_catalog_extension_source.py"
 EXTENSION_RESOURCE_RUNTIME_PATH = Path("src/loushang/harness/extensions/resources.py")
 
@@ -112,21 +114,30 @@ def test_rcp2_shadow_runner_is_private_and_has_no_production_importer() -> None:
         NATIVE_SOURCE_PATH,
         SHADOW_RUNNER_PATH,
         PREPARED_GENERATION_PATH,
+        JOINT_GENERATION_PATH,
+        SESSION_BOOTSTRAP_PATH,
         RESOURCE_ROOT / "_catalog_engine.py",
         RESOURCE_ROOT / "_catalog_records.py",
         RESOURCE_ROOT / "_catalog_shadow.py",
     }
     production_paths = set(Path("src/loushang").rglob("*.py")) - private_paths
 
-    assert not {
-        path
-        for path in production_paths
-        if any(
-            imported.startswith("loushang.harness.resource_catalog")
-            or imported == "loushang.harness.resources._catalog_native_source"
-            for imported in _imported_modules(path)
+    forbidden_importers = set()
+    for path in production_paths:
+        allowed = (
+            {"loushang.harness.resource_catalog.session_bootstrap"}
+            if path == AGENT_PRODUCT_SESSION_PATH
+            else set()
         )
-    }
+        restricted = {
+            imported
+            for imported in _imported_modules(path)
+            if imported.startswith("loushang.harness.resource_catalog")
+            or imported == "loushang.harness.resources._catalog_native_source"
+        }
+        if restricted - allowed:
+            forbidden_importers.add(path)
+    assert not forbidden_importers
     assert "_catalog" not in (RESOURCE_ROOT / "__init__.py").read_text(encoding="utf-8")
 
 
@@ -167,9 +178,10 @@ def test_rcp4_extension_snapshot_has_one_non_publishing_runtime_bridge() -> None
     assert "_defensive_bundle" in runtime_source
 
 
-def test_rcp4_joint_generation_stays_private_and_session_neutral() -> None:
+def test_rcp4_joint_generation_has_one_private_session_bootstrap_adapter() -> None:
     production_paths = set(Path("src/loushang").rglob("*.py")) - {
         JOINT_GENERATION_PATH,
+        SESSION_BOOTSTRAP_PATH,
     }
 
     assert JOINT_GENERATION_PATH.is_file()
@@ -179,6 +191,16 @@ def test_rcp4_joint_generation_stays_private_and_session_neutral() -> None:
         if "loushang.harness.resource_catalog.joint_generation"
         in _imported_modules(path)
     }
+    assert "loushang.harness.resource_catalog.joint_generation" in _imported_modules(
+        SESSION_BOOTSTRAP_PATH
+    )
+    session_bootstrap_importers = {
+        path
+        for path in production_paths
+        if "loushang.harness.resource_catalog.session_bootstrap"
+        in _imported_modules(path)
+    }
+    assert session_bootstrap_importers == {AGENT_PRODUCT_SESSION_PATH}
     imports = _imported_modules(JOINT_GENERATION_PATH)
     assert "loushang.harness.extensions.runner" not in imports
     assert not {

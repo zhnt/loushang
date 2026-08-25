@@ -605,7 +605,7 @@ def test_cla4_resources_provider_has_one_production_mount_owner() -> None:
         {
             (
                 Path("src/loushang/harness/session/agent_product.py"),
-                "AgentProductSession.__init__",
+                "AgentProductSession._build_resource_capability_provider_binding",
             ): 1
         }
     )

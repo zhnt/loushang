@@ -79,7 +79,7 @@ RESOURCES_SESSION_COMPOSITION_REQUIREMENT = CapabilityRequirement(
         TOOL_PACKS_FACET,
         COMMAND_PACKS_FACET,
     ),
-    compatible_contract=CapabilityContractRange.exact(1),
+    compatible_contract=CapabilityContractRange(minimum=1, maximum=2),
 )
 RESOURCES_CATALOG_REQUIREMENT = CapabilityRequirement(
     capability="harness.resources",

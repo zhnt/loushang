@@ -34,6 +34,9 @@ from loushang.harness.extensions.context import (
 from loushang.harness.extensions.declarations import (
     ExtensionCapabilityDeclarationSnapshot,
 )
+from loushang.harness.extensions.declarations import (
+    extension_set_fingerprint as _extension_set_fingerprint,
+)
 from loushang.harness.extensions.generation import (
     ExtensionGenerationDisposalResult,
     ExtensionGenerationRegistrations,
@@ -117,6 +120,7 @@ class PreparedExtensionGeneration:
         self._host = host
         self._candidate = candidate
         self._capability_declarations = candidate.capability_declarations
+        self._extension_set_fingerprint = candidate.extension_set_fingerprint
         self._activated = False
         self._published = False
         self._rolled_back = False
@@ -128,6 +132,12 @@ class PreparedExtensionGeneration:
         """Return pure candidate facts before any live registration is staged."""
 
         return self._capability_declarations
+
+    @property
+    def extension_set_fingerprint(self) -> str:
+        """Return exact ordered active-Extension provenance for this candidate."""
+
+        return self._extension_set_fingerprint
 
     @property
     def lifecycle_state(self) -> str:
@@ -150,7 +160,6 @@ class PreparedExtensionGeneration:
         bundle,
         *,
         product_id: str,
-        extension_set_fingerprint: str,
     ) -> PreparedExtensionResourceCatalog:
         """Freeze one exact Resource pass while this candidate is unpublished."""
 
@@ -165,7 +174,7 @@ class PreparedExtensionGeneration:
             product_id=product_id,
             runtime_id=self._candidate.source_runtime_id,
             extension_generation=self._candidate.generation,
-            extension_set_fingerprint=extension_set_fingerprint,
+            extension_set_fingerprint=self._extension_set_fingerprint,
         )
         self._resource_catalog = prepared
         return prepared
@@ -384,6 +393,12 @@ class ExtensionRunner(ExtensionRuntime):
         return ExtensionCapabilityDeclarationSnapshot.from_extensions(
             self._active_extensions
         )
+
+    @property
+    def extension_set_fingerprint(self) -> str:
+        """Return exact ordered active-Extension provenance for this generation."""
+
+        return _extension_set_fingerprint(self._active_extensions)
 
     @property
     def registration_inventory(

@@ -57,7 +57,7 @@ planning, work event persistence, or AI provider behavior.
   Skill projection, exact-generation lifecycle, and manifest-free native
   `SKILL.md` compatibility before LSP. RCP0-RCP3 are now implemented as private,
   unpublished infrastructure, including verified-package and immutable embedded
-  sources plus Package Catalog's pure inventory bridge. RCP4's four unpublished
+  sources plus Package Catalog's pure inventory bridge. RCP4's five unpublished
   foundations now prove candidate-owned generation transfer, the internal v2
   Catalog/load Provider, exact Extension-owner route snapshots with retained
   body reads, and a root-private joint Extension/Resource candidate through an
@@ -67,9 +67,13 @@ planning, work event persistence, or AI provider behavior.
   descriptor sidecars now carry no winner authority: the Resource owner derives
   an immutable final projection only from exact Catalog effective entries,
   binds it to the Catalog snapshot, and exposes `ResourceBundle` only as a fresh
-  mutable compatibility copy. The unpublished joint commit carries that final
-  projection. Live Session wiring, refresh, production compatibility consumers,
-  and cutover remain pending.
+  mutable compatibility copy. The joint commit carries that final projection.
+  A private optional Agent Session bootstrap adapter now prepares the exact v2
+  Resources graph input after owner-generation freeze and publishes the
+  Extension/Catalog/view tuple only after Graph capture; v1 remains unchanged
+  when the adapter is absent. No Product supplies those authoritative inputs by
+  default yet, and refresh, typed production consumers, and cutover remain
+  pending.
 - [Resource Catalog RCP0 Baseline](resource-catalog-rcp0-baseline.md) freezes
   the implemented discovery/sink inventory, precedence and Extension parity,
   Package-mount custody, and the exact RCP3/RCP4/RCP5 deletion ledger without

@@ -56,6 +56,9 @@ class ExtensionResourceSourceGenerationView(Protocol):
 @runtime_checkable
 class PreparedExtensionGenerationPort(Protocol):
     @property
+    def extension_set_fingerprint(self) -> str: ...
+
+    @property
     def lifecycle_state(self) -> str: ...
 
     async def prepare_resource_catalog_generation(
@@ -63,7 +66,6 @@ class PreparedExtensionGenerationPort(Protocol):
         bundle: ResourceBundle,
         *,
         product_id: str,
-        extension_set_fingerprint: str,
     ) -> PreparedExtensionResourceCatalog: ...
 
     async def activate(self, bindings: ExtensionRuntimeBindings) -> None: ...
@@ -309,7 +311,6 @@ async def prepare_extension_resource_joint_generation(
     base_resource_bundle: ResourceBundle,
     bindings: ExtensionRuntimeBindings,
     product_id: str,
-    extension_set_fingerprint: str,
     prepare_resource_generation: PrepareResourceGeneration,
 ) -> PreparedExtensionResourceJointGeneration:
     """Prepare one Extension source, Resource generation, and staged activation."""
@@ -328,7 +329,6 @@ async def prepare_extension_resource_joint_generation(
     resource_catalog = await extension_candidate.prepare_resource_catalog_generation(
         base_resource_bundle,
         product_id=product_id,
-        extension_set_fingerprint=extension_set_fingerprint,
     )
     source_lease = resource_catalog.source_generation.borrow()
     try:
@@ -412,9 +412,11 @@ async def _rollback_failed_preparation(
         cleanup_error = exc
 
     ownership = staged_resource_candidate.ownership_state
-    if not source_lease.is_released and (
-        not owner_attached or ownership == "disposed" or not owner_borrows_lease
-    ) and ownership not in {"graph_constructing", "graph_owned", "retiring"}:
+    if (
+        not source_lease.is_released
+        and (not owner_attached or ownership == "disposed" or not owner_borrows_lease)
+        and ownership not in {"graph_constructing", "graph_owned", "retiring"}
+    ):
         # A Graph-owned candidate may still be serving through this lease. Never
         # invalidate that borrow merely because its callback violated custody.
         try:

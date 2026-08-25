@@ -8,13 +8,15 @@
   contract and grants no new public API.
 - Frozen source baseline: `0de16c72`, tracked by issue `#495`.
 - Implementation status: the RCP0 legacy baseline remains authoritative, and
-  RCP1 through RCP3 now add private inert companions. The pure Catalog records
-  and engine, owner-component lifecycle, and native/package/embedded source
-  components exist, but no production caller imports them. No mounted production
-  Catalog generation or `harness.resources` v2 facet exists yet. RCP3 also
-  removed Package Catalog's effective-discovery summary bridge in favor of a
-  pure inventory port; the legacy loader remains the live Resource authority
-  until RCP4.
+  RCP1 through RCP3 remain private foundations. RCP4 now has five unpublished
+  slices: pure Catalog records/engine, owner-component lifecycle,
+  native/package/embedded/Extension sources, the v2 Catalog/load Provider, and
+  one private optional Agent Session bootstrap adapter. That adapter can mount
+  an explicitly supplied joint Extension/Catalog generation before Session
+  publication. No Product constructs this adapter by default; therefore the v1
+  legacy loader remains the default Resource authority and no cutover or refresh
+  route exists yet. RCP3 also removed Package Catalog's effective-discovery
+  summary bridge in favor of a pure inventory port.
 - Review status: the first freeze re-review rejected commit `811f0fdb` with no
   P0 because its Skill oracle and executable inventories were incomplete.
   Corrections at `ed364062` and candidate-provenance closure at `b387d542`

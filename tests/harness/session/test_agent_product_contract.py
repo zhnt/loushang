@@ -65,6 +65,7 @@ from loushang.harness.config.agent import (
     SettingsManager,
 )
 from loushang.harness.conversation import ConversationKey, MemoryConversationStore
+from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.plugin_authoring.capability_provider import (
     PLUGIN_PROVIDER_SELECTION_RULE,
     CapabilityProviderDeclarationPayload,
@@ -79,6 +80,17 @@ from loushang.harness.plugin_authoring.contribution_admission import (
 from loushang.harness.plugin_authoring.host import PluginDeclarationHost
 from loushang.harness.plugin_authoring.provider_admission import (
     prepare_capability_provider_candidate,
+)
+from loushang.harness.resource_catalog.session_bootstrap import (
+    InitialSessionResourceCatalogBootstrap,
+    InitialSessionResourceCatalogInputs,
+)
+from loushang.harness.resources._catalog_embedded_source import (
+    EmbeddedResourceCollectionHandle,
+    mint_embedded_resource_collection_handle,
+)
+from loushang.harness.resources._catalog_native_source import (
+    mint_native_resource_root_handle,
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.plugins.authority import (
@@ -189,6 +201,11 @@ class _ContractProductSession(AgentProductSession):
         capability_owner_generation_bindings: tuple[
             SessionCapabilityOwnerGenerationBinding, ...
         ] = (),
+        resource_bundle: ResourceBundle | None = None,
+        extension_runner: ExtensionRunner | None = None,
+        initial_resource_catalog_bootstrap: (
+            InitialSessionResourceCatalogBootstrap | None
+        ) = None,
     ) -> None:
         self.product_id = product_id
         self.executor_calls: list[tuple[str, str | None]] = []
@@ -263,6 +280,11 @@ class _ContractProductSession(AgentProductSession):
             capability_component_host=capability_component_host,
             capability_owner_generation_bindings=(
                 capability_owner_generation_bindings
+            ),
+            resource_bundle=resource_bundle,
+            extension_runner=extension_runner,
+            initial_resource_catalog_bootstrap=(
+                initial_resource_catalog_bootstrap
             ),
         )
 
@@ -595,6 +617,246 @@ def test_graph_owned_compaction_views_follow_the_current_profile_selection(
 
         await session.dispose()
         assert disposed_transcripts == ["turn-profile-session"]
+
+    asyncio.run(scenario())
+
+
+def test_initial_catalog_bootstrap_publishes_one_graph_owned_session_view(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        product_id = "catalog-bootstrap"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        capability_runtime = _capability_runtime(product_id)
+        bootstrap, base_bundle = _initial_catalog_bootstrap(
+            tmp_path,
+            product_id=product_id,
+        )
+        extension_runner = ExtensionRunner([])
+        session = _ContractProductSession(
+            product_id=product_id,
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+            resource_bundle=base_bundle,
+            extension_runner=extension_runner,
+            initial_resource_catalog_bootstrap=bootstrap,
+        )
+
+        await session.prepare_model_call_runtime()
+        await session.prepare_model_call_runtime()
+
+        assert bootstrap.state == "published"
+        assert extension_runner.generation == 2
+        assert capability_runtime.ownership_state == "graph_owned"
+        assert session._staged_resource_candidate is None
+        assert session._resource_catalog_snapshot is not None
+        assert session._resource_catalog_projection is not None
+        assert session.resource_bundle is not base_bundle
+        assert session.resource_bundle is not None
+        assert [skill.name for skill in session.resource_bundle.skills] == ["review"]
+        source_reference = session._source_publication_reference()
+        assert source_reference.extension_generation == 2
+        assert source_reference.resource_revision == getattr(
+            session._resource_catalog_snapshot,
+            "catalog_generation",
+        )
+
+        await session.dispose()
+
+        assert capability_runtime.ownership_state == "disposed"
+        assert disposed_transcripts == [f"{product_id}-session"]
+
+    asyncio.run(scenario())
+
+
+def test_failed_graph_bind_rolls_back_initial_catalog_and_extension_candidates(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        product_id = "catalog-bind-failure"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        capability_runtime = _capability_runtime(product_id)
+        bootstrap, base_bundle = _initial_catalog_bootstrap(
+            tmp_path,
+            product_id=product_id,
+        )
+        extension_runner = ExtensionRunner([])
+        session = _ContractProductSession(
+            product_id=product_id,
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+            resource_bundle=base_bundle,
+            extension_runner=extension_runner,
+            initial_resource_catalog_bootstrap=bootstrap,
+        )
+
+        async def fail_bind(*_args: object) -> None:
+            raise RuntimeError("catalog graph preparation failed")
+
+        session._capability_graph_binder.bind = fail_bind  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="catalog graph preparation failed"):
+            await session.prepare_model_call_runtime()
+
+        assert bootstrap.state == "disposed"
+        assert extension_runner.generation == 1
+        assert capability_runtime.ownership_state == "disposed"
+        assert session._capability_graph_runtime.snapshot is None
+        assert session.resource_bundle is base_bundle
+
+        await session.dispose()
+        assert disposed_transcripts == [f"{product_id}-session"]
+
+    asyncio.run(scenario())
+
+
+def test_failed_initial_catalog_publication_restores_session_view_and_rolls_back(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        product_id = "catalog-publish-failure"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        capability_runtime = _capability_runtime(product_id)
+        bootstrap, base_bundle = _initial_catalog_bootstrap(
+            tmp_path,
+            product_id=product_id,
+        )
+        extension_runner = ExtensionRunner([])
+        session = _ContractProductSession(
+            product_id=product_id,
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+            resource_bundle=base_bundle,
+            extension_runner=extension_runner,
+            initial_resource_catalog_bootstrap=bootstrap,
+        )
+        original_commit = session._commit_initial_resource_publication
+
+        def fail_after_commit(
+            catalog: object,
+            projection: object,
+            bundle: ResourceBundle,
+        ) -> None:
+            original_commit(catalog, projection, bundle)
+            raise RuntimeError("catalog publication failed")
+
+        session._commit_initial_resource_publication = fail_after_commit  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="catalog publication failed"):
+            await session.prepare_model_call_runtime()
+
+        assert bootstrap.state == "disposed"
+        assert extension_runner.generation == 1
+        assert capability_runtime.ownership_state == "disposed"
+        assert session.resource_bundle is base_bundle
+        assert session._resource_catalog_snapshot is None
+        assert session._resource_catalog_projection is None
+
+        await session.dispose()
+        assert disposed_transcripts == [f"{product_id}-session"]
+
+    asyncio.run(scenario())
+
+
+def test_cancelled_initial_catalog_bootstrap_finishes_graph_and_joint_rollback(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        product_id = "catalog-cancelled"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        capability_runtime = _capability_runtime(product_id)
+        bootstrap, base_bundle = _initial_catalog_bootstrap(
+            tmp_path,
+            product_id=product_id,
+        )
+        extension_runner = ExtensionRunner([])
+        session = _ContractProductSession(
+            product_id=product_id,
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+            resource_bundle=base_bundle,
+            extension_runner=extension_runner,
+            initial_resource_catalog_bootstrap=bootstrap,
+        )
+        graph_bound = asyncio.Event()
+        never_release = asyncio.Event()
+        original_bind = session._capability_graph_binder.bind
+
+        async def pause_after_bind(runtime, plan, bindings):  # type: ignore[no-untyped-def]
+            result = await original_bind(runtime, plan, bindings)
+            graph_bound.set()
+            await never_release.wait()
+            return result
+
+        session._capability_graph_binder.bind = pause_after_bind  # type: ignore[method-assign]
+        preparation = asyncio.create_task(session.prepare_model_call_runtime())
+        await asyncio.wait_for(graph_bound.wait(), timeout=1)
+        preparation.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await preparation
+
+        assert bootstrap.state == "disposed"
+        assert extension_runner.generation == 1
+        assert capability_runtime.ownership_state == "disposed"
+        assert session._capability_graph_runtime.is_closed is True
+
+        await session.dispose()
+        assert disposed_transcripts == [f"{product_id}-session"]
+
+    asyncio.run(scenario())
+
+
+def test_unprepared_catalog_bootstrap_releases_owned_source_inputs_on_shutdown(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        product_id = "catalog-unprepared"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        embedded = mint_embedded_resource_collection_handle(
+            collection_id="catalog-unprepared-oem",
+            embedded_revision="v1",
+            files={},
+        )
+        bootstrap, base_bundle = _initial_catalog_bootstrap(
+            tmp_path,
+            product_id=product_id,
+            embedded_collections=(embedded,),
+        )
+        session = _ContractProductSession(
+            product_id=product_id,
+            transcript=transcript,
+            capability_runtime=_capability_runtime(product_id),
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+            resource_bundle=base_bundle,
+            extension_runner=ExtensionRunner([]),
+            initial_resource_catalog_bootstrap=bootstrap,
+        )
+
+        await session.dispose()
+
+        assert bootstrap.state == "disposed"
+        assert embedded.closed is True
+        assert disposed_transcripts == [f"{product_id}-session"]
 
     asyncio.run(scenario())
 
@@ -1830,6 +2092,45 @@ def _capability_runtime(product_id: str) -> StagedResourceCompositionCandidate:
         standard_capability_composition_plan(product_id=product_id)
     )
     return stage_resource_composition_candidate(profile)
+
+
+def _initial_catalog_bootstrap(
+    tmp_path: Path,
+    *,
+    product_id: str,
+    embedded_collections: tuple[EmbeddedResourceCollectionHandle, ...] = (),
+) -> tuple[InitialSessionResourceCatalogBootstrap, ResourceBundle]:
+    workspace = tmp_path / product_id
+    resource_root = workspace / ".loushang"
+    skill_root = resource_root / "skills" / "review"
+    skill_root.mkdir(parents=True)
+    (skill_root / "SKILL.md").write_text(
+        "---\nname: review\ndescription: Review changes\n---\nReview carefully.\n",
+        encoding="utf-8",
+    )
+    bundle = ResourceBundle(cwd=workspace)
+    bootstrap = InitialSessionResourceCatalogBootstrap(
+        InitialSessionResourceCatalogInputs(
+            product_id=product_id,
+            scope_id=f"session:{product_id}-session",
+            resource_runtime_id=f"resource-owner:{product_id}-session",
+            product_policy_revision="resource-policy-v1",
+            root_handles=(
+                mint_native_resource_root_handle(
+                    handle_id=f"{product_id}-resources",
+                    root=resource_root,
+                    source_class="project_local",
+                    root_kind="standard",
+                ),
+            ),
+            embedded_collections=embedded_collections,
+            issued_at=1,
+            expires_at=10,
+            now=2,
+            base_resource_bundle=bundle,
+        )
+    )
+    return bootstrap, bundle
 
 
 class _UnusedWorkspaceLauncher:

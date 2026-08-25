@@ -7,7 +7,7 @@
   and Model Input boundaries. It does not amend those boundaries implicitly.
 - Design status: RCP0 contract frozen; final narrow freeze re-review passed.
 - Implementation status: RCP0 through RCP3 are complete on the Harness lane;
-  RCP4 has started with four unpublished foundation slices.
+  RCP4 has started with five unpublished foundation slices.
   RCP2's first unpublished foundation slice implements the generic
   `CapabilityComponentDefinition`, exact candidate/admission/selection/binding
   records, atomic owner generations, cancellation-safe reverse rollback,
@@ -25,8 +25,9 @@
   bytes, owner-validated Catalog proposals, and a disposable shadow-generation
   runner beside the current loader. Catalog records, sources, and orchestration
   remain private, and `harness.resources` does not export them. The RCP4
-  preparation bridge is their sole path toward a Provider; no Session bootstrap
-  or refresh route calls that bridge yet.
+  preparation bridge is their sole path toward a Provider. One private optional
+  Agent Session bootstrap adapter now calls that bridge; no Product bootstrap
+  supplies it by default and no refresh route calls it.
   RCP3 adds admitted-package and embedded/OEM source components beside the
   native source. Capability-aware orchestration converts exact Resource-owner
   admission into a capability-neutral verified input with an independently
@@ -60,8 +61,15 @@
   for additive Extensions and user-to-inner ordering for context, and creates a
   fresh mutable `ResourceBundle` only as a compatibility copy. The joint commit
   now carries this final Catalog projection rather than the Extension hook-pass
-  Bundle. Live Session bootstrap, active refresh, production compatibility
-  consumers, and legacy-loader cutover remain pending.
+  Bundle. The fifth slice adds the optional initial-Session bridge: it derives
+  Extension-set provenance from the prepared generation, prepares the v2
+  Resources binding only after the owner generation is frozen, adopts it into
+  the Session Graph, installs the compatibility Consumer, and synchronously
+  publishes Extension state, Catalog snapshot, projection, and a fresh Bundle.
+  Graph failure, publication failure, cancellation, and unprepared shutdown all
+  reverse exact custody; absence of the adapter leaves the v1 path unchanged.
+  Product input preparation, default live enablement, active refresh, typed
+  production Catalog/Skill consumers, and legacy-loader cutover remain pending.
   The current `ResourceLoader`, `ResourceSnapshot`, `ResourceBundle`, and
   `SkillLoader` paths remain the implemented runtime until a phase below passes
   its cutover gate.
@@ -1130,7 +1138,7 @@ effective Resource selection.
 
 ### RCP4: Mount Resource Catalog generation
 
-Status: four unpublished foundation slices complete. The v1 Provider path is
+Status: five unpublished foundation slices complete. The v1 Provider path is
 unchanged when no prepared generation exists. A candidate with one prepared
 generation selects only contract/provider v2, contributes the two Catalog/load
 facets, transfers parent and child through the same
@@ -1153,9 +1161,16 @@ one immutable projection solely from Catalog effective entries, and binds that
 projection to the exact Catalog snapshot. It preserves ordered-additive
 Extension order and context ordering, returns only fresh defensive
 `ResourceBundle` compatibility copies, and changes the unpublished joint commit
-to carry the final Catalog projection instead of the hook-pass Bundle. No slice
-is called by Session bootstrap, so live publication, refresh, production
-compatibility consumers, and cutover are still pending.
+to carry the final Catalog projection instead of the hook-pass Bundle. The
+fifth adds one private optional `AgentProductSession` bootstrap adapter. Before
+Session publication it freezes the Extension candidate, prepares the Resource
+owner, replaces the construction-time v1 Resources graph input with the exact
+v2 binding, binds and captures the Graph, then publishes Extension/Catalog/view
+state through the existing no-await joint commit. It also restores the prior
+Session view on failed commit and finishes root/Graph rollback under
+cancellation. No Product constructs the authoritative adapter inputs by
+default, so Coding and other existing Products still use v1; refresh,
+production typed consumers, and cutover remain pending.
 
 - introduce the internal `harness.resources` v2 Catalog/load facets and exact
   Consumer requirements;
