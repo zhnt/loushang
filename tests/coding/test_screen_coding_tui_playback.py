@@ -637,6 +637,7 @@ def test_screen_tui_playback_smokes_terminal_context_model_selector_and_resize()
         [
             PlaybackEvent.input("\x1b[?7u\x1b[6;18;9t"),
             PlaybackEvent.input("/terminal\r"),
+            PlaybackEvent.input("\x1b[B"),
             PlaybackEvent.input("\x1b"),
             PlaybackEvent.input("/model\r"),
             PlaybackEvent.input("\x1b[B\r"),
@@ -646,9 +647,12 @@ def test_screen_tui_playback_smokes_terminal_context_model_selector_and_resize()
 
     assert all(step.flush_succeeded for step in steps)
     assert [event.signal for event in context.events] == ["kitty_protocol", "cell_size"]
-    terminal_lines = _plain_lines(steps[1].diagnostics)
-    assert any("keyboard_protocol_state: kitty" in line for line in terminal_lines)
-    assert any("cell_size: 9x18" in line for line in terminal_lines)
+    initial_terminal_lines = _plain_lines(steps[1].diagnostics)
+    scrolled_terminal_lines = _plain_lines(steps[2].diagnostics)
+    assert any(
+        "keyboard_protocol_state: kitty" in line for line in initial_terminal_lines
+    )
+    assert any("cell_size: 9x18" in line for line in scrolled_terminal_lines)
     assert session.current_model == ModelSelection(
         endpoint_id="test-endpoint", provider="openai", model_id="gpt-5.4"
     )
