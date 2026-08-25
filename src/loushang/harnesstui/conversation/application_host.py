@@ -185,8 +185,7 @@ def _install_screen_state(run: PreparedScreenConversationRun) -> None:
     run.app.state.input_capabilities = run.input_capabilities
     run.app.transcript_source_factory = run.transcript_source_factory
     if run.history_records:
-        run.app.replace_transcript_window(run.history_records, reason="resume")
-        run.app.trim_active_transcript_window()
+        run.app.install_resumed_history(run.history_records)
         run.on_history_installed(
             InstalledConversationHistory(
                 record_count=len(run.history_records),

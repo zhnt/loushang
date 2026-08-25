@@ -136,8 +136,11 @@ def test_screen_tui_tmux_pty_live_resume_trim_streams_each_line_once(
     # Only the settled prefix is guaranteed to have entered native history.
     # The still-visible old tail is intentionally overwritten by replacement.
     old_lines = tuple(f"PRE_RESUME_{index:03d}" for index in range(1, 41))
+    resumed_lines = tuple(
+        f"RESUMED_HISTORY_{index:03d}" for index in range(1, 31)
+    )
     post_lines = tuple(f"POST_RESUME_{index:03d}" for index in range(1, 41))
-    _assert_lines_once_in_order(captured, (*old_lines, *post_lines))
+    _assert_lines_once_in_order(captured, (*old_lines, *resumed_lines, *post_lines))
 
 
 def _run_tmux_fixture(

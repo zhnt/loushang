@@ -9,7 +9,7 @@ from loushang.foundation.observability import get_log
 from loushang.tui.framework import ScreenRoot as OverlayScreenRoot
 from loushang.tui.framework import Surface, SurfaceHandle, SurfaceHost
 from loushang.tui.playback import PlaybackEvent, PlaybackStep
-from loushang.tui.render_loop import RenderLoop
+from loushang.tui.render_loop import RenderBaselineReset, RenderLoop
 from loushang.tui.scheduler import (
     AnimationFrameSource,
     RenderRequestKind,
@@ -102,9 +102,11 @@ class TuiRuntime:
         consume = getattr(self.render_loop.screen_root, "consume_render_baseline_reset_reason", None)
         if not callable(consume):
             return
-        reason = consume()
-        if isinstance(reason, str) and reason:
-            self.render_loop.reset_baseline(reason)
+        reset = consume()
+        if isinstance(reset, RenderBaselineReset):
+            self.render_loop.reset_baseline(reset)
+        elif isinstance(reset, str) and reset:
+            self.render_loop.reset_baseline(reset)
 
     def request_animation_frame(self, source: AnimationFrameSource) -> RenderScheduleDecision:
         return self.scheduler.request_animation_frame(source, now_ms=self.now_ms())

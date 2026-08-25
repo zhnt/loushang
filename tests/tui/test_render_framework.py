@@ -15,6 +15,7 @@ from loushang.tui import (
     FocusableMixin,
     InputEvent,
     InputIntent,
+    RenderBaselineReset,
     RenderConstraints,
     RenderLine,
     RenderLoop,
@@ -76,9 +77,11 @@ class EditorProviderFocusTarget(FocusTarget):
 
 @dataclass
 class BaselineResetRenderable(TextRenderable):
-    reset_reason: str | None = None
+    reset_reason: str | RenderBaselineReset | None = None
 
-    def consume_render_baseline_reset_reason(self) -> str | None:
+    def consume_render_baseline_reset_reason(
+        self,
+    ) -> str | RenderBaselineReset | None:
         reason = self.reset_reason
         self.reset_reason = None
         return reason
@@ -508,13 +511,13 @@ def test_runtime_routes_input_to_overlay_surface_host() -> None:
     assert composer.focused is True
 
 
-def test_runtime_overlay_wrapper_preserves_base_baseline_reset_signal() -> None:
+def test_runtime_overlay_wrapper_defers_base_scrollback_replay_until_closed() -> None:
     base = BaselineResetRenderable(("base",), [])
     runtime = TuiRuntime(
         render_loop=RenderLoop(base),
         terminal=FakeTerminalPort(size=TerminalSize(columns=20, rows=4)),
     )
-    runtime.open_surface(
+    handle = runtime.open_surface(
         Surface(
             renderable=TextRenderable(("OV",), []),
             row=0,
@@ -524,10 +527,20 @@ def test_runtime_overlay_wrapper_preserves_base_baseline_reset_signal() -> None:
     )
     runtime.render_now()
 
-    base.reset_reason = "test_reset"
+    base.reset_reason = RenderBaselineReset(
+        reason="test_reset",
+        replay_hidden_prefix=True,
+    )
+    covered = runtime.render_now()
+
+    covered.assert_operation_class("noop")
+    assert base.reset_reason is not None
+
+    handle.close()
     step = runtime.render_now()
 
-    step.assert_operation_class("baseline_repaint")
+    step.assert_operation_class("scrollback_replay")
+    assert base.reset_reason is None
 
 
 def test_surface_host_treats_modal_presentation_as_overlay() -> None:

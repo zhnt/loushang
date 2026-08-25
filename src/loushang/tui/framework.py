@@ -349,15 +349,7 @@ class SurfaceHost:
             entry.last_row = None
             entry.last_column = None
         page_entry = self._top_page_entry(size)
-        if not any(
-            self._is_entry_visible(entry, size)
-            and (
-                surface_is_inline_presentation(entry.surface)
-                or surface_is_overlay_presentation(entry.surface)
-                or surface_is_page_presentation(entry.surface)
-            )
-            for entry in self.entries
-        ):
+        if not self.has_visible_composed_surface(size):
             return base
         first_visible_entry = 0
         if page_entry is None:
@@ -434,6 +426,36 @@ class SurfaceHost:
                 TerminalSize(columns=constraints.width, rows=visible_height)
             )
             is not None
+        )
+
+    def has_visible_composed_surface(
+        self,
+        size: TerminalSize | None = None,
+    ) -> bool:
+        """Return whether a surface currently replaces or decorates the base frame."""
+
+        current_size = size or self._last_known_size()
+        return any(
+            self._is_entry_visible(entry, current_size)
+            and (
+                surface_is_inline_presentation(entry.surface)
+                or surface_is_overlay_presentation(entry.surface)
+                or surface_is_page_presentation(entry.surface)
+            )
+            for entry in self.entries
+        )
+
+    def has_visible_baseline_blocking_surface(self) -> bool:
+        """Return whether a transient overlay or page obscures the base frame."""
+
+        size = self._last_known_size()
+        return any(
+            self._is_entry_visible(entry, size)
+            and (
+                surface_is_overlay_presentation(entry.surface)
+                or surface_is_page_presentation(entry.surface)
+            )
+            for entry in self.entries
         )
 
     def _restore_focus(
@@ -541,12 +563,13 @@ class ScreenRoot:
         )
         return self.surface_host.compose(base_result, constraints)
 
-    def consume_render_baseline_reset_reason(self) -> str | None:
+    def consume_render_baseline_reset_reason(self) -> object | None:
+        if self.surface_host.has_visible_baseline_blocking_surface():
+            return None
         consume = getattr(self.base, "consume_render_baseline_reset_reason", None)
         if not callable(consume):
             return None
-        reason = consume()
-        return reason if isinstance(reason, str) and reason else None
+        return consume()
 
 
 def _merge_surface_cursor(

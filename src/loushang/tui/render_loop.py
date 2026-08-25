@@ -27,6 +27,14 @@ ClearScrollbackPolicy = Literal["disabled", "resize", "explicit"]
 SEGMENT_RESET = "\x1b[0m\x1b]8;;\x07"
 
 
+@dataclass(frozen=True, slots=True)
+class RenderBaselineReset:
+    """Describe a one-shot reset of the committed terminal render baseline."""
+
+    reason: str
+    replay_hidden_prefix: bool = False
+
+
 @dataclass(frozen=True, slots=True, eq=False)
 class _LogicalLineSegment:
     raw_lines: tuple[str, ...]
@@ -103,6 +111,7 @@ class ScreenRoot(Protocol):
 
 
 class RenderPlanStrategyKind(Enum):
+    SCROLLBACK_REPLAY = auto()
     FIRST_RENDER = auto()
     TRANSCRIPT_WINDOW_TRIMMED_RESET = auto()
     BASELINE_RESET = auto()
@@ -118,6 +127,7 @@ class RenderPlanStrategyKind(Enum):
 
 
 DEFAULT_STRATEGY_ORDER: tuple[RenderPlanStrategyKind, ...] = (
+    RenderPlanStrategyKind.SCROLLBACK_REPLAY,
     RenderPlanStrategyKind.FIRST_RENDER,
     RenderPlanStrategyKind.TRANSCRIPT_WINDOW_TRIMMED_RESET,
     RenderPlanStrategyKind.BASELINE_RESET,
@@ -153,6 +163,9 @@ class RenderPlanContext:
     width_changed: bool
     height_changed: bool
     previous_kitty_delete_sequences: tuple[str, ...]
+    scrollback_replay_lines: Sequence[str] | None
+    scrollback_replay_cursor: CursorDeclaration | None
+    scrollback_replay_viewport_top: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,7 +178,7 @@ class RenderPlanRuntime:
     working_area_high_water_mark: int
     termux_session: bool
     clear_scrollback_policy: ClearScrollbackPolicy
-    baseline_reset_reason: str | None
+    baseline_reset: RenderBaselineReset | None
     unsafe_viewport_reason: str | None
     diagnostics: Callable[..., RenderDiagnostics]
     repaint_diagnostics: Callable[..., RenderDiagnostics]
@@ -179,6 +192,51 @@ class RenderPlanStrategy(Protocol):
     def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool: ...
 
     def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ScrollbackReplayStrategy:
+    kind: ClassVar[RenderPlanStrategyKind] = RenderPlanStrategyKind.SCROLLBACK_REPLAY
+    name: ClassVar[str] = "scrollback_replay"
+
+    def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool:
+        del context
+        return bool(
+            runtime.baseline_reset is not None
+            and runtime.baseline_reset.replay_hidden_prefix
+        )
+
+    def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics:
+        reset = runtime.baseline_reset
+        if reset is None:
+            raise AssertionError("scrollback replay planned without a baseline reset")
+        replay_lines = context.scrollback_replay_lines
+        if replay_lines is None:
+            raise AssertionError("scrollback replay planned without expanded lines")
+        return runtime.diagnostics(
+            current_lines=context.current_lines,
+            previous_lines=context.previous_lines,
+            size=context.size,
+            operation_class="scrollback_replay",
+            operations=_scrollback_replay_operations(
+                replay_lines,
+                cursor=context.scrollback_replay_cursor,
+                viewport_top=context.scrollback_replay_viewport_top,
+                size=context.size,
+                delete_kitty_image_sequences=context.previous_kitty_delete_sequences,
+            ),
+            changed_range=context.changed_range,
+            viewport_top=context.viewport_top,
+            repaint_kind="recovery",
+            repaint_reason=reset.reason,
+            scrollback_frontier_rebased=True,
+            cursor=context.cursor,
+            hardware_cursor_row=_hardware_row_after_write(
+                context.current_lines,
+                cursor=context.declared_cursor,
+            ),
+            hardware_cursor_column=context.cursor.column,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -310,12 +368,12 @@ class TranscriptWindowTrimmedResetStrategy:
 
     def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool:
         return bool(
-            runtime.baseline_reset_reason is not None
-            and runtime.baseline_reset_reason.startswith("transcript_window_trimmed:")
+            runtime.baseline_reset is not None
+            and runtime.baseline_reset.reason.startswith("transcript_window_trimmed:")
         )
 
     def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics:
-        if runtime.baseline_reset_reason is None:
+        if runtime.baseline_reset is None:
             raise AssertionError("trimmed transcript reset strategy planned without a reason")
         return runtime.managed_viewport_repaint_diagnostics(
             current_lines=context.current_lines,
@@ -324,7 +382,7 @@ class TranscriptWindowTrimmedResetStrategy:
             changed_range=context.changed_range,
             cursor=context.cursor,
             declared_cursor=context.declared_cursor,
-            repaint_reason=runtime.baseline_reset_reason,
+            repaint_reason=runtime.baseline_reset.reason,
             scrollback_frontier_rebased=True,
             delete_kitty_image_sequences=context.previous_kitty_delete_sequences,
         )
@@ -337,12 +395,12 @@ class BaselineResetStrategy:
 
     def match(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> bool:
         return bool(
-            runtime.baseline_reset_reason is not None
-            and not runtime.baseline_reset_reason.startswith("transcript_window_trimmed:")
+            runtime.baseline_reset is not None
+            and not runtime.baseline_reset.reason.startswith("transcript_window_trimmed:")
         )
 
     def plan(self, context: RenderPlanContext, *, runtime: RenderPlanRuntime) -> RenderDiagnostics:
-        if runtime.baseline_reset_reason is None:
+        if runtime.baseline_reset is None:
             raise AssertionError("baseline reset strategy planned without a reason")
         return runtime.repaint_diagnostics(
             current_lines=context.current_lines,
@@ -353,9 +411,9 @@ class BaselineResetStrategy:
             declared_cursor=context.declared_cursor,
             operation_class="baseline_repaint",
             repaint_kind="recovery",
-            repaint_reason=runtime.baseline_reset_reason,
+            repaint_reason=runtime.baseline_reset.reason,
             scrollback_frontier_rebased=_is_transcript_window_replacement(
-                runtime.baseline_reset_reason
+                runtime.baseline_reset.reason
             ),
             delete_kitty_image_sequences=context.previous_kitty_delete_sequences,
         )
@@ -593,6 +651,7 @@ class ChangedRangeStrategy:
 
 
 DEFAULT_STRATEGIES: dict[RenderPlanStrategyKind, RenderPlanStrategy] = {
+    RenderPlanStrategyKind.SCROLLBACK_REPLAY: ScrollbackReplayStrategy(),
     RenderPlanStrategyKind.FIRST_RENDER: FirstRenderStrategy(),
     RenderPlanStrategyKind.TRANSCRIPT_WINDOW_TRIMMED_RESET: TranscriptWindowTrimmedResetStrategy(),
     RenderPlanStrategyKind.BASELINE_RESET: BaselineResetStrategy(),
@@ -624,7 +683,7 @@ class RenderLoop:
     previous_cursor_row: int = 0
     previous_cursor_column: int = 0
     _unsafe_viewport_reason: str | None = None
-    _baseline_reset_reason: str | None = None
+    _baseline_reset: RenderBaselineReset | None = None
     _planned_raw_lines: Sequence[str] = ()
     _finalized_segment_cache: dict[tuple[object, object], _LogicalLineSegment] = field(
         default_factory=dict,
@@ -642,13 +701,37 @@ class RenderLoop:
     def mark_viewport_unsafe(self, reason: str) -> None:
         self._unsafe_viewport_reason = reason
 
-    def reset_baseline(self, reason: str = "baseline_reset") -> None:
-        self._baseline_reset_reason = reason
+    def reset_baseline(
+        self,
+        reset: str | RenderBaselineReset = "baseline_reset",
+    ) -> None:
+        self._baseline_reset = (
+            RenderBaselineReset(reason=reset) if isinstance(reset, str) else reset
+        )
 
     def _build_plan_context(self, size: TerminalSize) -> RenderPlanContext:
         self._planned_base_frame_revision = self.committed_frame_revision
         self._next_frame_revision += 1
         self._planned_frame_revision = self._next_frame_revision
+        scrollback_replay_lines: Sequence[str] | None = None
+        scrollback_replay_cursor: CursorDeclaration | None = None
+        scrollback_replay_viewport_top = 0
+        if self._baseline_reset is not None and self._baseline_reset.replay_hidden_prefix:
+            replay_result = self.screen_root.render(
+                RenderConstraints(
+                    width=size.columns,
+                    max_height=1_000_000,
+                    visible_height=None,
+                )
+            )
+            _replay_raw_lines, scrollback_replay_lines = self._logical_lines(
+                replay_result
+            )
+            scrollback_replay_cursor = replay_result.cursor
+            scrollback_replay_viewport_top = _viewport_top(
+                scrollback_replay_lines,
+                size,
+            )
         result = self.screen_root.render(
             RenderConstraints(width=size.columns, max_height=1_000_000, visible_height=size.rows)
         )
@@ -701,6 +784,9 @@ class RenderLoop:
             width_changed=width_changed,
             height_changed=height_changed,
             previous_kitty_delete_sequences=previous_kitty_delete_sequences,
+            scrollback_replay_lines=scrollback_replay_lines,
+            scrollback_replay_cursor=scrollback_replay_cursor,
+            scrollback_replay_viewport_top=scrollback_replay_viewport_top,
         )
 
     def _logical_lines(self, result: RenderResult) -> tuple[Sequence[str], Sequence[str]]:
@@ -753,7 +839,7 @@ class RenderLoop:
             working_area_high_water_mark=self.working_area_high_water_mark,
             termux_session=self.termux_session,
             clear_scrollback_policy=self.clear_scrollback_policy,
-            baseline_reset_reason=self._baseline_reset_reason,
+            baseline_reset=self._baseline_reset,
             unsafe_viewport_reason=self._unsafe_viewport_reason,
             diagnostics=self._diagnostics,
             repaint_diagnostics=self._repaint_diagnostics,
@@ -838,7 +924,7 @@ class RenderLoop:
         )
         self.committed_frame_revision = diagnostics.frame_revision
         self._unsafe_viewport_reason = None
-        self._baseline_reset_reason = None
+        self._baseline_reset = None
 
     def _repaint_diagnostics(
         self,
@@ -1145,6 +1231,43 @@ def _full_write_operations(
         viewport_top=viewport_top,
         current_row=max(0, len(lines) - 1),
     )
+
+
+def _scrollback_replay_operations(
+    lines: Sequence[str],
+    *,
+    cursor: CursorDeclaration | None,
+    viewport_top: int,
+    size: TerminalSize,
+    delete_kitty_image_sequences: tuple[str, ...] = (),
+) -> tuple[TerminalOperation, ...]:
+    """Seed terminal scrollback from one complete logical frame.
+
+    Clearing only the visible screen before the write prevents the displaced
+    composer from being copied into scrollback.  The scrollback buffer itself
+    is deliberately preserved.
+    """
+
+    operations: list[TerminalOperation] = [
+        TerminalOperation.hide_cursor(),
+        TerminalOperation.begin_synchronized_update(),
+        TerminalOperation.reset_scroll_region(),
+        TerminalOperation.clear_screen(),
+        *_kitty_delete_operations(delete_kitty_image_sequences),
+        *_write_lines(lines),
+        TerminalOperation.end_synchronized_update(),
+    ]
+    if cursor is not None:
+        operations.extend(
+            (
+                TerminalOperation.move_cursor(
+                    row=max(0, min(cursor.row - viewport_top, size.rows - 1)),
+                    column=cursor.column,
+                ),
+                TerminalOperation.show_cursor(),
+            )
+        )
+    return tuple(operations)
 
 
 def _repaint_operations(

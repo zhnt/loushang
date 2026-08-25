@@ -120,7 +120,7 @@ from loushang.tui.playback_suite import (
     PlaybackSuite,
     run_playback_scenarios,
 )
-from loushang.tui.render_loop import RenderLoop
+from loushang.tui.render_loop import RenderBaselineReset, RenderLoop
 from loushang.tui.runner import (
     TerminalSessionFactory,
     TerminalSizeProvider,
@@ -539,6 +539,7 @@ __all__ = [
     "Renderable",
     "RenderableAdapter",
     "RenderResult",
+    "RenderBaselineReset",
     "RenderLoop",
     "RenderRequestKind",
     "RenderScheduleDecision",

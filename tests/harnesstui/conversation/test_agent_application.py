@@ -529,17 +529,11 @@ def test_agent_screen_application_binding_owns_live_session_rebinding(
         def set_statusline_settings(self, settings: object) -> None:
             self.settings = settings
 
-        def replace_transcript_window(
+        def install_resumed_history(
             self,
             records: tuple[object, ...],
-            *,
-            reason: str,
         ) -> None:
-            del reason
             self.state.records = list(records)
-
-        def trim_active_transcript_window(self) -> None:
-            return None
 
         def request_render(self, _kind: str) -> None:
             return None

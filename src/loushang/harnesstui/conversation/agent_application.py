@@ -810,8 +810,7 @@ async def refresh_agent_screen_session(
     app.state.branch = snapshot.branch
     app.state.session_label = snapshot.session_label
     app.state.permission_profile = permission_profile_id(approval_interaction)
-    app.replace_transcript_window(history, reason="resume")
-    app.trim_active_transcript_window()
+    app.install_resumed_history(history)
     event_source.rebind(session)
     app.request_render("product")
 

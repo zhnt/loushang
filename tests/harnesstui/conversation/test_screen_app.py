@@ -7,7 +7,7 @@ from loushang.harnesstui.conversation.screen_frame import (
     ScreenFrameCopy,
     ScreenFramePresentation,
 )
-from loushang.tui import RenderConstraints
+from loushang.tui import RenderBaselineReset, RenderConstraints
 from loushang.tui.transcript import (
     AssistantMessageRecord,
     ContextCompactionRecord,
@@ -78,6 +78,28 @@ def test_screen_conversation_app_reports_window_replacement_reason_once() -> Non
 
     assert app.consume_render_baseline_reset_reason() == (
         "transcript_window_replaced:test"
+    )
+    assert app.consume_render_baseline_reset_reason() is None
+
+
+def test_screen_conversation_app_atomically_installs_bounded_resumed_history() -> (
+    None
+):
+    app = _app()
+    app.active_transcript_line_budget = 2
+
+    app.install_resumed_history(
+        (
+            UserPromptRecord("old"),
+            AssistantMessageRecord("new"),
+        )
+    )
+
+    assert app.state.records == [AssistantMessageRecord("new")]
+    assert app.state.evicted_prefix_record_count == 1
+    assert app.consume_render_baseline_reset_reason() == RenderBaselineReset(
+        reason="transcript_window_replaced:resume",
+        replay_hidden_prefix=True,
     )
     assert app.consume_render_baseline_reset_reason() is None
 

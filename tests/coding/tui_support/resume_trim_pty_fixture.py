@@ -10,6 +10,7 @@ from loushang.harnesstui.testing.performance import (
     build_synthetic_long_transcript_records,
 )
 from loushang.tui import ProcessTerminalPort, RenderLoop, TerminalSize, TuiRuntime
+from loushang.tui.transcript import UserPromptRecord
 
 
 def _render_resume_trim_playback(*, ready_file: Path) -> None:
@@ -37,14 +38,17 @@ def _render_resume_trim_playback(*, ready_file: Path) -> None:
     app.complete_run(elapsed_seconds=1.0)
     runtime.render_now()
 
-    app.replace_transcript_window(
-        build_synthetic_long_transcript_records(
+    resumed_records = (
+        *build_synthetic_long_transcript_records(
             turns=40,
             tail_tool_output_lines=600,
         ),
-        reason="resume",
+        *(
+            UserPromptRecord(f"RESUMED_HISTORY_{index:03d}")
+            for index in range(1, 31)
+        ),
     )
-    app.trim_active_transcript_window()
+    app.install_resumed_history(resumed_records)
     runtime.render_now()
 
     app.start_prompt("after live resume", started_at=2.0)

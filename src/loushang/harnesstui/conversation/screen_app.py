@@ -28,6 +28,7 @@ from loushang.tui import (
     BottomFrame,
     Composer,
     PendingQueueView,
+    RenderBaselineReset,
     RenderConstraints,
     RenderRequestKind,
     RenderResult,
@@ -91,7 +92,7 @@ class ScreenConversationApp:
     _transcript_region: TranscriptRegion = field(init=False, repr=False)
     _bottom_frame_component: BottomFrame = field(init=False, repr=False)
     _frame_presentation: ScreenFramePresentation = field(init=False, repr=False)
-    _render_baseline_reset_reason: str | None = field(
+    _render_baseline_reset_reason: str | RenderBaselineReset | None = field(
         default=None,
         init=False,
         repr=False,
@@ -256,6 +257,28 @@ class ScreenConversationApp:
             else "transcript_window_replaced"
         )
 
+    def install_resumed_history(
+        self,
+        records: Iterable[DisplayRecord],
+    ) -> None:
+        """Atomically install and bound history restored into this screen."""
+
+        source_records = tuple(records)
+        active_records, evicted_count, _changed = trim_records_to_line_budget(
+            source_records,
+            line_budget=self.active_transcript_line_budget,
+        )
+        self.state.replace_transcript_window(
+            ActiveTranscriptWindow(
+                records=active_records,
+                evicted_prefix_record_count=evicted_count,
+            )
+        )
+        self._render_baseline_reset_reason = RenderBaselineReset(
+            reason="transcript_window_replaced:resume",
+            replay_hidden_prefix=True,
+        )
+
     def compact_transcript_window(
         self,
         *,
@@ -316,7 +339,9 @@ class ScreenConversationApp:
             "transcript_window_trimmed:active_line_budget"
         )
 
-    def consume_render_baseline_reset_reason(self) -> str | None:
+    def consume_render_baseline_reset_reason(
+        self,
+    ) -> str | RenderBaselineReset | None:
         reason = self._render_baseline_reset_reason
         self._render_baseline_reset_reason = None
         return reason
