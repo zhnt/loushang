@@ -23,6 +23,24 @@ class Usage:
     total_tokens: int
     cost: UsageCost | None
 
+    @property
+    def uncached_input_tokens(self) -> int:
+        """Return the input tokens that were not served from or written to cache."""
+
+        return self.input
+
+    @property
+    def total_input_tokens(self) -> int:
+        """Return all input tokens across uncached, cache-read, and cache-write buckets."""
+
+        return self.input + self.cache_read + self.cache_write
+
+    @property
+    def computed_total_tokens(self) -> int:
+        """Return the sum of the normalized, disjoint usage components."""
+
+        return self.total_input_tokens + self.output
+
 
 @dataclass(frozen=True)
 class TextPart:

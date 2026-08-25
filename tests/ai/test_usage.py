@@ -29,6 +29,38 @@ def test_usage_is_the_stable_response_usage_name() -> None:
         "cost": None,
     }
 
+
+def test_usage_exposes_compatible_derived_token_counts() -> None:
+    usage = Usage(
+        input=10,
+        output=5,
+        cache_read=3,
+        cache_write=2,
+        total_tokens=25,
+        cost=None,
+    )
+
+    assert usage.uncached_input_tokens == 10
+    assert usage.total_input_tokens == 15
+    assert usage.computed_total_tokens == 20
+    assert usage.total_tokens == 25
+
+
+def test_usage_derived_token_counts_support_zero_values() -> None:
+    usage = Usage(
+        input=0,
+        output=0,
+        cache_read=0,
+        cache_write=0,
+        total_tokens=0,
+        cost=None,
+    )
+
+    assert usage.uncached_input_tokens == 0
+    assert usage.total_input_tokens == 0
+    assert usage.computed_total_tokens == 0
+
+
 def test_removed_usage_observation_aliases_are_not_public_api() -> None:
     assert not hasattr(ai_module, "UsageObservation")
     assert not hasattr(types_module, "UsageObservation")
