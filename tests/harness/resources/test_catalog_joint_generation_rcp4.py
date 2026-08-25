@@ -39,7 +39,11 @@ from loushang.harness.resource_catalog.joint_generation import (
     JointResourcePublication,
     prepare_extension_resource_joint_generation,
 )
-from loushang.harness.resources._catalog_records import ResourceIdentity
+from loushang.harness.resources._catalog_projection import ResourceCatalogProjection
+from loushang.harness.resources._catalog_records import (
+    ResourceIdentity,
+    build_activation_policy_snapshot,
+)
 from loushang.harness.resources.types import PromptFragmentDescriptor, ResourceBundle
 from loushang.harness.runtime import RuntimeProfileResolver
 
@@ -103,7 +107,11 @@ def _plan(binding):  # type: ignore[no-untyped-def]
     )
 
 
-async def _prepare_root_joint(tmp_path: Path):  # type: ignore[no-untyped-def]
+async def _prepare_root_joint(
+    tmp_path: Path,
+    *,
+    disable_extension_prompt: bool = False,
+):  # type: ignore[no-untyped-def]
     extension_runtime = ExtensionRunner([])
     bindings = _bindings(tmp_path)
     await extension_runtime.activate_runtime_generation(bindings)
@@ -123,6 +131,22 @@ async def _prepare_root_joint(tmp_path: Path):  # type: ignore[no-untyped-def]
             expires_at=10,
             now=2,
             extension_source_lease=source_lease,
+            projection_cwd=tmp_path,
+            activation_policy=(
+                build_activation_policy_snapshot(
+                    policy_revision="joint-disabled-prompt",
+                    disabled_identities=(
+                        ResourceIdentity(
+                            resource_kind="prompt",
+                            schema_id="loushang.resource.prompt",
+                            schema_version=1,
+                            public_id="review",
+                        ),
+                    ),
+                )
+                if disable_extension_prompt
+                else None
+            ),
         )
 
     joint = await prepare_extension_resource_joint_generation(
@@ -227,6 +251,32 @@ async def _failed_resource_preparation_releases_source(tmp_path: Path) -> None:
     assert resource_candidate.ownership_state == "disposed"
 
 
+def test_joint_projection_uses_catalog_selection_not_extension_hook_pass(
+    tmp_path: Path,
+) -> None:
+    asyncio.run(_joint_projection_uses_catalog_selection(tmp_path))
+
+
+async def _joint_projection_uses_catalog_selection(tmp_path: Path) -> None:
+    (
+        _extension_runtime,
+        extension_candidate,
+        _profile_value,
+        resource_candidate,
+        joint,
+    ) = await _prepare_root_joint(tmp_path, disable_extension_prompt=True)
+    hook_pass = extension_candidate.resource_catalog_preparation
+    assert hook_pass is not None
+    assert [item.text for item in hook_pass.projection.prompt_descriptors] == [
+        "joint extension prompt"
+    ]
+
+    assert joint.projection.to_compatibility_bundle().prompt_descriptors == []
+
+    await joint.rollback()
+    assert resource_candidate.ownership_state == "disposed"
+
+
 def test_joint_preparation_rejects_claimed_but_unbound_extension_lease(
     tmp_path: Path,
 ) -> None:
@@ -309,6 +359,7 @@ async def _failed_joint_preparation_preserves_graph_borrow(tmp_path: Path) -> No
             expires_at=10,
             now=2,
             extension_source_lease=source_lease,
+            projection_cwd=tmp_path,
         )
         binding = resources_capability_provider_binding(
             profile=profile,
@@ -372,25 +423,25 @@ async def _joint_generation_publishes_once(tmp_path: Path) -> None:
         graph,
         binder,
     ) = await _prepare_joint(tmp_path)
-    previous_bundle = ResourceBundle(cwd=tmp_path / "previous")
+    previous_projection = "previous-projection"
     visible: dict[str, object] = {
         "catalog": "previous-catalog",
-        "bundle": previous_bundle,
+        "projection": previous_projection,
     }
     commits = 0
 
-    def commit(catalog: object, bundle: ResourceBundle) -> None:
+    def commit(catalog: object, projection: ResourceCatalogProjection) -> None:
         nonlocal commits
         commits += 1
         visible["catalog"] = catalog
-        visible["bundle"] = bundle
+        visible["projection"] = projection
 
     publication = JointResourcePublication(
-        capture=lambda: (visible["catalog"], visible["bundle"]),
+        capture=lambda: (visible["catalog"], visible["projection"]),
         commit=commit,
         restore=lambda previous: visible.update(
             catalog=previous[0],  # type: ignore[index]
-            bundle=previous[1],  # type: ignore[index]
+            projection=previous[1],  # type: ignore[index]
         ),
     )
     retirement = joint.publish(publication)
@@ -399,7 +450,11 @@ async def _joint_generation_publishes_once(tmp_path: Path) -> None:
     assert extension_runtime.generation == 2
     assert resource_candidate.ownership_state == "graph_owned"
     assert visible["catalog"] is resource_candidate.resource_catalog_snapshot
-    assert visible["bundle"] is joint.projection
+    assert visible["projection"] is joint.projection
+    assert [
+        descriptor.text
+        for descriptor in joint.projection.to_compatibility_bundle().prompt_descriptors
+    ] == ["joint extension prompt"]
     assert joint.extension_source_generation.is_disposed is False
 
     await retirement.retire()
@@ -437,23 +492,26 @@ async def _joint_publication_failure_rolls_back_both_owners(tmp_path: Path) -> N
         graph,
         binder,
     ) = await _prepare_joint(tmp_path)
-    previous_bundle = ResourceBundle(cwd=tmp_path / "previous")
+    previous_projection = "previous-projection"
     visible: dict[str, object] = {
         "catalog": "previous-catalog",
-        "bundle": previous_bundle,
+        "projection": previous_projection,
     }
 
-    def fail_commit(catalog: object, bundle: ResourceBundle) -> None:
+    def fail_commit(
+        catalog: object,
+        projection: ResourceCatalogProjection,
+    ) -> None:
         visible["catalog"] = catalog
-        visible["bundle"] = bundle
+        visible["projection"] = projection
         raise RuntimeError("projection publication failed")
 
     publication = JointResourcePublication(
-        capture=lambda: (visible["catalog"], visible["bundle"]),
+        capture=lambda: (visible["catalog"], visible["projection"]),
         commit=fail_commit,
         restore=lambda previous: visible.update(
             catalog=previous[0],  # type: ignore[index]
-            bundle=previous[1],  # type: ignore[index]
+            projection=previous[1],  # type: ignore[index]
         ),
     )
 
@@ -463,7 +521,7 @@ async def _joint_publication_failure_rolls_back_both_owners(tmp_path: Path) -> N
 
     assert visible == {
         "catalog": "previous-catalog",
-        "bundle": previous_bundle,
+        "projection": previous_projection,
     }
     assert extension_runtime.generation == 1
     assert resource_candidate.ownership_state == "disposed"
@@ -488,7 +546,10 @@ async def _joint_publication_rejects_async_commit(tmp_path: Path) -> None:
     ) = await _prepare_joint(tmp_path)
     restored: list[object] = []
 
-    async def async_commit(_catalog: object, _bundle: ResourceBundle) -> None:
+    async def async_commit(
+        _catalog: object,
+        _projection: ResourceCatalogProjection,
+    ) -> None:
         raise AssertionError("async publication body must never execute")
 
     publication = JointResourcePublication(

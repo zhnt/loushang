@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from loushang.harness.capabilities.component_runtime import (
     CapabilityOwnerComponentBinder,
@@ -38,6 +39,11 @@ from loushang.harness.resources._catalog_package_source import (
     PackageResourceDiscoveryBudget,
     build_package_resource_discovery_request,
 )
+from loushang.harness.resources._catalog_projection import (
+    ResourceCatalogProjection,
+    ResourceProjectionDescriptorBinding,
+    project_resource_catalog,
+)
 from loushang.harness.resources._catalog_records import (
     ExtensionOwnerProducer,
     LoadedResource,
@@ -67,6 +73,7 @@ class UnpublishedResourceCatalogShadowGeneration:
     resolution: FirstPartyResourceComponentResolution
     catalog_snapshot: ResourceCatalogSnapshot
     source_snapshots: tuple[ResourceSourceSnapshot, ...]
+    catalog_projection: ResourceCatalogProjection | None
     _runtime: CapabilityOwnerComponentRuntime = field(repr=False)
     _binder: CapabilityOwnerComponentBinder = field(repr=False)
     _extension_source_lease: BorrowedResourceSourceGenerationLease | None = field(
@@ -219,6 +226,7 @@ async def run_first_party_resource_catalog_shadow(
     merge_policy: ResourceMergePolicySnapshot | None = None,
     activation_policy: ResourceActivationPolicySnapshot | None = None,
     extension_source_lease: BorrowedResourceSourceGenerationLease | None = None,
+    projection_cwd: Path | None = None,
 ) -> UnpublishedResourceCatalogShadowGeneration:
     """Bind, discover, compose, validate, and retain one unpublished generation."""
 
@@ -304,6 +312,7 @@ async def run_first_party_resource_catalog_shadow(
         if not isinstance(engine, ResourceCatalogEngineComponent):
             raise TypeError("Mounted Catalog engine payload is invalid")
         source_snapshots: list[ResourceSourceSnapshot] = []
+        descriptor_bindings: list[ResourceProjectionDescriptorBinding] = []
         for lease in source_leases:
             source = lease.require()
             if not isinstance(source, ResourceSourceComponent):
@@ -344,8 +353,11 @@ async def run_first_party_resource_catalog_shadow(
             else:
                 raise TypeError("Unknown Resource source component")
             source_snapshots.append(source.discover_initial(request))
+            descriptor_bindings.extend(source.projection_bindings)
         if extension_snapshot is not None:
             source_snapshots.append(extension_snapshot)
+            assert extension_source_lease is not None
+            descriptor_bindings.extend(extension_source_lease.projection_bindings)
         source_refs = tuple(
             snapshot.source_generation_ref for snapshot in source_snapshots
         )
@@ -371,6 +383,15 @@ async def run_first_party_resource_catalog_shadow(
             merge_policy=effective_merge_policy,
             activation_policy=effective_activation_policy,
         )
+        catalog_projection = (
+            project_resource_catalog(
+                catalog_snapshot=proposal,
+                cwd=projection_cwd,
+                descriptor_bindings=tuple(descriptor_bindings),
+            )
+            if projection_cwd is not None
+            else None
+        )
     except BaseException:
         try:
             await engine_lease.aclose()
@@ -388,6 +409,7 @@ async def run_first_party_resource_catalog_shadow(
         resolution=resolution,
         catalog_snapshot=proposal,
         source_snapshots=tuple(source_snapshots),
+        catalog_projection=catalog_projection,
         _runtime=runtime,
         _binder=binder,
         _extension_source_lease=extension_source_lease,

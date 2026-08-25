@@ -48,6 +48,9 @@ from loushang.harness.resources._catalog_package_source import (
     VerifiedPackageResourceInput,
     build_package_source_generation_ref,
 )
+from loushang.harness.resources._catalog_projection import (
+    ResourceProjectionDescriptorBinding,
+)
 from loushang.harness.resources._catalog_records import (
     ResourceActivationPolicySnapshot,
     ResourceBodyRead,
@@ -136,6 +139,11 @@ class ResourceCatalogEngineComponent(Protocol):
 class ResourceSourceComponent(Protocol):
     @property
     def source_generation_ref(self) -> ResourceSourceGenerationRef: ...
+
+    @property
+    def projection_bindings(
+        self,
+    ) -> tuple[ResourceProjectionDescriptorBinding, ...]: ...
 
     def discover_initial(
         self,

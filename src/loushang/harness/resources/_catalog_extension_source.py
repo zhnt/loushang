@@ -17,6 +17,10 @@ from types import MappingProxyType
 from typing import TypeAlias
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
+from loushang.harness.resources._catalog_projection import (
+    ResourceProjectionDescriptorBinding,
+    build_resource_projection_binding,
+)
 from loushang.harness.resources._catalog_records import (
     NO_BODY_MEDIA_TYPE,
     ExtensionOutputOrigin,
@@ -117,12 +121,7 @@ class ExtensionResourceRouteContribution:
             raise TypeError("Extension Resource contribution contains an invalid value")
 
 
-@dataclass(frozen=True, slots=True)
-class ExtensionResourceDescriptorBinding:
-    """Private compatibility sidecar; it has no effective-selection authority."""
-
-    candidate_fingerprint: str
-    descriptor: ExtensionResourceDescriptor
+ExtensionResourceDescriptorBinding: TypeAlias = ResourceProjectionDescriptorBinding
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +163,12 @@ class ExtensionResourceSourceGeneration:
         if self._disposed:
             self._raise_stale("source_disposed")
         return self._descriptor_bindings
+
+    @property
+    def projection_bindings(
+        self,
+    ) -> tuple[ResourceProjectionDescriptorBinding, ...]:
+        return self.descriptor_bindings
 
     @property
     def is_disposed(self) -> bool:
@@ -275,6 +280,13 @@ class ExtensionResourceSourceLease:
     def source_snapshot(self) -> ResourceSourceSnapshot:
         self._require_active()
         return self._owner.source_snapshot
+
+    @property
+    def projection_bindings(
+        self,
+    ) -> tuple[ResourceProjectionDescriptorBinding, ...]:
+        self._require_active()
+        return self._owner.projection_bindings
 
     @property
     def is_released(self) -> bool:
@@ -444,9 +456,10 @@ def freeze_extension_resource_source_generation(
             )
         candidates.append(candidate)
         bindings.append(
-            ExtensionResourceDescriptorBinding(
-                candidate_fingerprint=candidate.candidate_fingerprint,
+            build_resource_projection_binding(
+                candidate=candidate,
                 descriptor=record.descriptor,
+                body=record.body,
             )
         )
         if record.body is not None:

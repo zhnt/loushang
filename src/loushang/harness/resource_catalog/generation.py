@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal
 
 from loushang.harness.capabilities.composition_runtime import (
@@ -25,6 +26,7 @@ from loushang.harness.resources._catalog_native_source import (
 from loushang.harness.resources._catalog_package_source import (
     PackageResourceDiscoveryBudget,
 )
+from loushang.harness.resources._catalog_projection import ResourceCatalogProjection
 from loushang.harness.resources._catalog_records import (
     LoadedResource,
     ResourceActivationPolicySnapshot,
@@ -119,6 +121,16 @@ class PreparedResourceOwnerGeneration:
             raise RuntimeError("Resource owner generation is retiring or disposed")
         return self._shadow.catalog_snapshot
 
+    @property
+    def catalog_projection(self) -> ResourceCatalogProjection | None:
+        if self._ownership not in {
+            "root_owned",
+            "graph_constructing",
+            "graph_owned",
+        }:
+            raise RuntimeError("Resource owner generation is retiring or disposed")
+        return self._shadow.catalog_projection
+
     def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle:
         self._require_graph_owned()
         return self._shadow.load_handle(identity)
@@ -198,6 +210,7 @@ async def prepare_first_party_resource_owner_generation(
     merge_policy: ResourceMergePolicySnapshot | None = None,
     activation_policy: ResourceActivationPolicySnapshot | None = None,
     extension_source_lease: BorrowedResourceSourceGenerationLease | None = None,
+    projection_cwd: Path | None = None,
 ) -> None:
     """Prepare and attach one first-party generation without publishing it."""
 
@@ -224,6 +237,7 @@ async def prepare_first_party_resource_owner_generation(
         merge_policy=merge_policy,
         activation_policy=activation_policy,
         extension_source_lease=extension_source_lease,
+        projection_cwd=projection_cwd,
     )
     prepared = PreparedResourceOwnerGeneration._from_shadow(shadow)
     try:

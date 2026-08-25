@@ -7,7 +7,7 @@
   and Model Input boundaries. It does not amend those boundaries implicitly.
 - Design status: RCP0 contract frozen; final narrow freeze re-review passed.
 - Implementation status: RCP0 through RCP3 are complete on the Harness lane;
-  RCP4 has started with three unpublished foundation slices.
+  RCP4 has started with four unpublished foundation slices.
   RCP2's first unpublished foundation slice implements the generic
   `CapabilityComponentDefinition`, exact candidate/admission/selection/binding
   records, atomic owner generations, cancellation-safe reverse rollback,
@@ -25,8 +25,8 @@
   bytes, owner-validated Catalog proposals, and a disposable shadow-generation
   runner beside the current loader. Catalog records, sources, and orchestration
   remain private, and `harness.resources` does not export them. The RCP4
-  preparation bridge is their sole path toward a Provider; no Session bootstrap,
-  refresh route, or compatibility projection calls that bridge yet.
+  preparation bridge is their sole path toward a Provider; no Session bootstrap
+  or refresh route calls that bridge yet.
   RCP3 adds admitted-package and embedded/OEM source components beside the
   native source. Capability-aware orchestration converts exact Resource-owner
   admission into a capability-neutral verified input with an independently
@@ -51,11 +51,17 @@
   stealing Extension disposal authority. The joint Extension/Catalog commit
   foundation now adds an exact offered/claimed/released borrow lease, owner-side
   drain after retirement begins, one root-private Extension/Resource candidate,
-  a synchronous visible-state publication port over its unpublished hook-pass
-  projection, and cancellation-safe root or Graph rollback with retryable debt.
-  That hook-pass projection is not the final effective Catalog projection. Live
-  Session bootstrap, active refresh, production compatibility projection, and
-  legacy-loader cutover remain pending.
+  a synchronous visible-state publication port and cancellation-safe root or
+  Graph rollback with retryable debt. The fourth slice gives every native,
+  verified-package, embedded/OEM, and Extension source an immutable descriptor
+  sidecar that carries no selection authority. The Resource owner derives the
+  final projection only from exact Catalog effective entries, binds it to the
+  Catalog snapshot and selected descriptor fingerprints, retains Catalog order
+  for additive Extensions and user-to-inner ordering for context, and creates a
+  fresh mutable `ResourceBundle` only as a compatibility copy. The joint commit
+  now carries this final Catalog projection rather than the Extension hook-pass
+  Bundle. Live Session bootstrap, active refresh, production compatibility
+  consumers, and legacy-loader cutover remain pending.
   The current `ResourceLoader`, `ResourceSnapshot`, `ResourceBundle`, and
   `SkillLoader` paths remain the implemented runtime until a phase below passes
   its cutover gate.
@@ -1124,7 +1130,7 @@ effective Resource selection.
 
 ### RCP4: Mount Resource Catalog generation
 
-Status: three unpublished foundation slices complete. The v1 Provider path is
+Status: four unpublished foundation slices complete. The v1 Provider path is
 unchanged when no prepared generation exists. A candidate with one prepared
 generation selects only contract/provider v2, contributes the two Catalog/load
 facets, transfers parent and child through the same
@@ -1141,10 +1147,15 @@ Extension owner retires while draining accepted reads, and joins the prepared
 Extension and staged Resource candidates under one root-private coordinator.
 It proves one no-await visible-state commit, failed-commit restoration, exact
 lease identity, root/Graph rollback, retryable retirement debt, and
-cancellation-atomic cleanup. Its Bundle is deliberately only the root-private
-hook-pass projection, not the final effective Catalog projection. No slice is
-called by Session bootstrap, so live publication, production projection, and
-cutover are still pending.
+cancellation-atomic cleanup. The fourth makes source descriptor sidecars
+non-authoritative inputs, validates their body and candidate identity, derives
+one immutable projection solely from Catalog effective entries, and binds that
+projection to the exact Catalog snapshot. It preserves ordered-additive
+Extension order and context ordering, returns only fresh defensive
+`ResourceBundle` compatibility copies, and changes the unpublished joint commit
+to carry the final Catalog projection instead of the hook-pass Bundle. No slice
+is called by Session bootstrap, so live publication, refresh, production
+compatibility consumers, and cutover are still pending.
 
 - introduce the internal `harness.resources` v2 Catalog/load facets and exact
   Consumer requirements;

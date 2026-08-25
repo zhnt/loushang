@@ -9,9 +9,14 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from importlib import resources as importlib_resources
 from importlib.resources.abc import Traversable
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 
+from loushang.harness.resources._catalog_projection import (
+    ResourceProjectionDescriptor,
+    ResourceProjectionDescriptorBinding,
+    build_resource_projection_binding,
+)
 from loushang.harness.resources._catalog_records import (
     NO_BODY_MEDIA_TYPE,
     EmbeddedOemOrigin,
@@ -31,8 +36,12 @@ from loushang.harness.resources._catalog_records import (
 from loushang.harness.resources._catalog_source_contracts import (
     ResourceDiscoveryRequest,
 )
-from loushang.harness.resources._resource_item_projection import project_catalog_item
+from loushang.harness.resources._resource_item_projection import (
+    CatalogItemProjection,
+    project_catalog_item,
+)
 from loushang.harness.resources.builtin import BuiltInResourcePackage
+from loushang.harness.resources.types import ExtensionDescriptor, ThemeDescriptor
 
 
 class EmbeddedResourceSourceError(RuntimeError):
@@ -362,6 +371,9 @@ class EmbeddedOemResourceSource:
         self._collections = {item.handle_id: item for item in ordered}
         self._snapshot: ResourceSourceSnapshot | None = None
         self._bodies: dict[str, _EmbeddedBody] = {}
+        self._projection_bindings: tuple[
+            ResourceProjectionDescriptorBinding, ...
+        ] = ()
         self._disposed = False
 
     @property
@@ -371,6 +383,14 @@ class EmbeddedOemResourceSource:
     @property
     def is_disposed(self) -> bool:
         return self._disposed
+
+    @property
+    def projection_bindings(
+        self,
+    ) -> tuple[ResourceProjectionDescriptorBinding, ...]:
+        if self._disposed:
+            _raise_stale("source_disposed")
+        return self._projection_bindings
 
     def discover_initial(
         self,
@@ -402,6 +422,7 @@ class EmbeddedOemResourceSource:
         candidates: list[ResourceCandidateSummary] = []
         diagnostics: list[ResourceCatalogDiagnostic] = []
         bodies: dict[str, _EmbeddedBody] = {}
+        projection_bindings: list[ResourceProjectionDescriptorBinding] = []
         for handle_id in request.collection_handle_ids:
             collection = self._collections[handle_id]
             for item in _collection_items(collection):
@@ -412,7 +433,8 @@ class EmbeddedOemResourceSource:
                 )
                 metadata_length = (
                     len(body)
-                    if body is not None and item.resource_kind in {"prompt", "skill"}
+                    if body is not None
+                    and item.resource_kind in {"prompt", "skill", "theme"}
                     else 0
                 )
                 control.consume(metadata_bytes=metadata_length)
@@ -493,6 +515,20 @@ class EmbeddedOemResourceSource:
                     ),
                 )
                 candidates.append(candidate)
+                descriptor = _embedded_projection_descriptor(
+                    item=item,
+                    projection=projection,
+                    body=body,
+                    source_root_order=collection.source_root_order,
+                )
+                if descriptor is not None:
+                    projection_bindings.append(
+                        build_resource_projection_binding(
+                            candidate=candidate,
+                            descriptor=descriptor,
+                            body=body,
+                        )
+                    )
                 if body is not None:
                     assert digest is not None
                     bodies[opaque_locator] = _EmbeddedBody(
@@ -514,6 +550,12 @@ class EmbeddedOemResourceSource:
             ) from exc
         self._snapshot = snapshot
         self._bodies = bodies
+        self._projection_bindings = tuple(
+            sorted(
+                projection_bindings,
+                key=lambda item: item.candidate_fingerprint,
+            )
+        )
         return snapshot
 
     def load(self, handle: ResourceLoadHandle) -> ResourceBodyRead:
@@ -554,6 +596,7 @@ class EmbeddedOemResourceSource:
             collection.close()
         self._collections.clear()
         self._bodies.clear()
+        self._projection_bindings = ()
         self._snapshot = None
 
 
@@ -597,6 +640,53 @@ def build_embedded_source_generation_ref(
         ),
         producer=producer,
     )
+
+
+def _embedded_projection_descriptor(
+    *,
+    item: _EmbeddedItem,
+    projection: CatalogItemProjection,
+    body: bytes | None,
+    source_root_order: int,
+) -> ResourceProjectionDescriptor | None:
+    if projection.descriptor is not None:
+        return projection.descriptor
+    path = Path(item.logical_path.as_posix())
+    root = Path(item.logical_path.parts[0])
+    if item.resource_kind == "theme":
+        try:
+            content = body.decode("utf-8") if body is not None else None
+        except UnicodeDecodeError as exc:
+            raise EmbeddedResourceSourceError(
+                code="resource_source_snapshot_invalid",
+                reason="invalid_theme_encoding",
+            ) from exc
+        return ThemeDescriptor(
+            name=projection.canonical_name,
+            id=projection.public_id,
+            canonical_name=projection.canonical_name,
+            content=content,
+            source_path=path,
+            source="immutable_embedded",
+            source_kind="built_in",
+            source_scope="builtin",
+            source_root=root,
+            source_root_order=source_root_order,
+        )
+    if item.resource_kind == "extension":
+        return ExtensionDescriptor(
+            name=projection.canonical_name,
+            id=projection.public_id,
+            canonical_name=projection.canonical_name,
+            source_path=path,
+            entry_path=path,
+            source="immutable_embedded",
+            source_kind="built_in",
+            source_scope="builtin",
+            source_root=root,
+            source_root_order=source_root_order,
+        )
+    return None
 
 
 def _collection_items(

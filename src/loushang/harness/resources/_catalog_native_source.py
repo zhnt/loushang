@@ -20,6 +20,10 @@ from pathlib import Path
 from typing import Literal, TypeAlias
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
+from loushang.harness.resources._catalog_projection import (
+    ResourceProjectionDescriptorBinding,
+    build_resource_projection_binding,
+)
 from loushang.harness.resources._catalog_records import (
     NO_BODY_MEDIA_TYPE,
     NativeHostOrigin,
@@ -402,6 +406,9 @@ class NativeFilesystemResourceSource:
         self._roots = {item.handle_id: item for item in root_handles}
         self._snapshot: ResourceSourceSnapshot | None = None
         self._body_cache: dict[str, _CachedBody] = {}
+        self._projection_bindings: tuple[
+            ResourceProjectionDescriptorBinding, ...
+        ] = ()
         self._disposed = False
 
     @property
@@ -411,6 +418,14 @@ class NativeFilesystemResourceSource:
     @property
     def is_disposed(self) -> bool:
         return self._disposed
+
+    @property
+    def projection_bindings(
+        self,
+    ) -> tuple[ResourceProjectionDescriptorBinding, ...]:
+        if self._disposed:
+            _raise_stale("source_disposed")
+        return self._projection_bindings
 
     def discover_initial(
         self,
@@ -442,11 +457,17 @@ class NativeFilesystemResourceSource:
         candidates: list[ResourceCandidateSummary] = []
         diagnostics: list[ResourceCatalogDiagnostic] = []
         staged_bodies: dict[str, _CachedBody] = {}
+        projection_bindings: list[ResourceProjectionDescriptorBinding] = []
         for handle_id in request.root_handle_ids:
             control.check()
             root = self._roots[handle_id]
             root._verify_live_root()
-            root_candidates, root_diagnostics, root_bodies = _discover_root(
+            (
+                root_candidates,
+                root_diagnostics,
+                root_bodies,
+                root_projection_bindings,
+            ) = _discover_root(
                 root,
                 request=request,
                 control=control,
@@ -454,6 +475,7 @@ class NativeFilesystemResourceSource:
             )
             candidates.extend(root_candidates)
             diagnostics.extend(root_diagnostics)
+            projection_bindings.extend(root_projection_bindings)
             for locator, body in root_bodies.items():
                 if locator in staged_bodies:
                     raise NativeResourceSourceError(
@@ -475,6 +497,12 @@ class NativeFilesystemResourceSource:
                 reason="snapshot_validation_failed",
             ) from exc
         self._body_cache = staged_bodies
+        self._projection_bindings = tuple(
+            sorted(
+                projection_bindings,
+                key=lambda item: item.candidate_fingerprint,
+            )
+        )
         self._snapshot = snapshot
         return snapshot
 
@@ -512,6 +540,7 @@ class NativeFilesystemResourceSource:
         self._disposed = True
         self._snapshot = None
         self._body_cache.clear()
+        self._projection_bindings = ()
 
 
 def native_source_policy_fingerprint(
@@ -566,6 +595,7 @@ def _discover_root(
     list[ResourceCandidateSummary],
     list[ResourceCatalogDiagnostic],
     dict[str, _CachedBody],
+    list[ResourceProjectionDescriptorBinding],
 ]:
     discovered: list[tuple[str, NativeDescriptor, bytes | None, str]] = []
     diagnostics: list[ResourceCatalogDiagnostic] = []
@@ -582,6 +612,7 @@ def _discover_root(
 
     candidates: list[ResourceCandidateSummary] = []
     bodies: dict[str, _CachedBody] = {}
+    projection_bindings: list[ResourceProjectionDescriptorBinding] = []
     for resource_kind, descriptor, body, relative_path in discovered:
         candidate = _build_native_candidate(
             resource_kind=resource_kind,
@@ -593,6 +624,13 @@ def _discover_root(
             source_generation_ref=source_generation_ref,
         )
         candidates.append(candidate)
+        projection_bindings.append(
+            build_resource_projection_binding(
+                candidate=candidate,
+                descriptor=descriptor,
+                body=body,
+            )
+        )
         if body is not None:
             assert candidate.expected_content_digest is not None
             bodies[candidate.opaque_locator] = _CachedBody(
@@ -600,7 +638,7 @@ def _discover_root(
                 content_digest=candidate.expected_content_digest,
                 body=body,
             )
-    return candidates, diagnostics, bodies
+    return candidates, diagnostics, bodies, projection_bindings
 
 
 def _discover_contexts(

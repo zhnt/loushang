@@ -9,7 +9,12 @@ from loushang.harness.resources._descriptor_parsing import (
     _prompt_descriptor_from_text,
     _skill_descriptor_from_text,
 )
-from loushang.harness.resources.types import ResourceSourceKind, ResourceSourceScope
+from loushang.harness.resources.types import (
+    PromptFragmentDescriptor,
+    ResourceSourceKind,
+    ResourceSourceScope,
+    SkillDescriptor,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,6 +23,7 @@ class CatalogItemProjection:
     public_id: str
     description: str | None
     model_invocable: bool
+    descriptor: PromptFragmentDescriptor | SkillDescriptor | None = None
     diagnostic_reasons: tuple[str, ...] = ()
     valid: bool = True
 
@@ -84,6 +90,7 @@ def project_catalog_item(
             public_id=skill_descriptor.id or skill_descriptor.name,
             description=skill_descriptor.description,
             model_invocable=not skill_descriptor.disable_model_invocation,
+            descriptor=skill_descriptor,
             diagnostic_reasons=tuple(
                 draft.code for draft in skill_descriptor.diagnostics
             ),
@@ -128,6 +135,7 @@ def project_catalog_item(
             public_id=prompt_descriptor.id or prompt_descriptor.name,
             description=prompt_descriptor.description,
             model_invocable=True,
+            descriptor=prompt_descriptor,
             diagnostic_reasons=tuple(
                 draft.code for draft in prompt_descriptor.diagnostics
             ),

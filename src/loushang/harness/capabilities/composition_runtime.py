@@ -82,6 +82,9 @@ class _PreparedResourceOwnerGeneration(Protocol):
     @property
     def catalog_snapshot(self) -> object: ...
 
+    @property
+    def catalog_projection(self) -> object: ...
+
     def load_handle(self, identity: Any) -> Any: ...
 
     async def load(self, handle: Any) -> Any: ...
@@ -326,6 +329,12 @@ class StagedResourceCompositionCandidate:
         if self.__candidate.ownership != "graph_owned":
             raise RuntimeError("Resource Catalog generation is not graph-owned")
         return self._require_prepared_owner_generation().catalog_snapshot
+
+    @property
+    def resource_catalog_projection(self) -> object:
+        if self.__candidate.ownership not in {"root_owned", "graph_owned"}:
+            raise RuntimeError("Resource Catalog generation is not retained")
+        return self._require_prepared_owner_generation().catalog_projection
 
     def resource_load_handle(self, identity: object) -> object:
         if self.__candidate.ownership != "graph_owned":

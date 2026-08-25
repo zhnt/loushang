@@ -13,6 +13,8 @@ from loushang.harness.capabilities.composition_runtime import (
 )
 from loushang.harness.extensions.context import ExtensionRuntimeBindings
 from loushang.harness.extensions.resources import PreparedExtensionResourceCatalog
+from loushang.harness.resources._catalog_projection import ResourceCatalogProjection
+from loushang.harness.resources._catalog_records import ResourceCatalogSnapshot
 from loushang.harness.resources._catalog_source_contracts import (
     BorrowedResourceSourceGenerationLease,
 )
@@ -79,7 +81,7 @@ class JointResourcePublication:
     """Synchronous visible-state transaction used at the linearization point."""
 
     capture: Callable[[], object]
-    commit: Callable[[object, ResourceBundle], object]
+    commit: Callable[[object, ResourceCatalogProjection], object]
     restore: Callable[[object], object]
 
     def __post_init__(self) -> None:
@@ -109,10 +111,12 @@ class PreparedExtensionResourceJointGeneration:
         extension_candidate: PreparedExtensionGenerationPort,
         staged_resource_candidate: StagedResourceCompositionCandidate,
         resource_catalog: PreparedExtensionResourceCatalog,
+        catalog_projection: ResourceCatalogProjection,
     ) -> None:
         self._extension_candidate = extension_candidate
         self._resource_candidate = staged_resource_candidate
         self._resource_catalog = resource_catalog
+        self._catalog_projection = catalog_projection
         self._published = False
         self._retiring = False
         self._disposed = False
@@ -131,10 +135,10 @@ class PreparedExtensionResourceJointGeneration:
         return "root_owned"
 
     @property
-    def projection(self) -> ResourceBundle:
-        """Return the root-private hook-pass projection, not Catalog authority."""
+    def projection(self) -> ResourceCatalogProjection:
+        """Return the immutable view derived from exact Catalog authority."""
 
-        return self._resource_catalog.projection
+        return self._catalog_projection
 
     @property
     def extension_source_generation(self) -> ExtensionResourceSourceGenerationView:
@@ -161,6 +165,18 @@ class PreparedExtensionResourceJointGeneration:
             raise RuntimeError(
                 "Extension Resource source generation is not publishable"
             )
+        catalog_snapshot = self._resource_candidate.resource_catalog_snapshot
+        if not isinstance(catalog_snapshot, ResourceCatalogSnapshot):
+            raise TypeError("Joint Resource Catalog snapshot is invalid")
+        if (
+            self._catalog_projection.catalog_generation
+            != catalog_snapshot.catalog_generation
+            or self._catalog_projection.catalog_snapshot_fingerprint
+            != catalog_snapshot.snapshot_fingerprint
+        ):
+            raise RuntimeError(
+                "Joint Resource projection targets another Catalog generation"
+            )
         previous = _require_synchronous_result(
             publication.capture(),
             name="Joint Resource publication capture",
@@ -172,8 +188,8 @@ class PreparedExtensionResourceJointGeneration:
             commit_started = True
             result = _require_synchronous_result(
                 publication.commit(
-                    self._resource_candidate.resource_catalog_snapshot,
-                    self._resource_catalog.projection,
+                    catalog_snapshot,
+                    self._catalog_projection,
                 ),
                 name="Joint Resource publication commit",
             )
@@ -333,6 +349,9 @@ async def prepare_extension_resource_joint_generation(
             )
         if staged_resource_candidate.ownership_state != "root_owned":
             raise RuntimeError("Prepared Resource generation left root custody")
+        catalog_projection = staged_resource_candidate.resource_catalog_projection
+        if not isinstance(catalog_projection, ResourceCatalogProjection):
+            raise TypeError("Resource preparation did not retain a Catalog projection")
         await extension_candidate.activate(bindings)
     except BaseException as preparation_error:
         cleanup = asyncio.create_task(
@@ -353,6 +372,7 @@ async def prepare_extension_resource_joint_generation(
         extension_candidate=extension_candidate,
         staged_resource_candidate=staged_resource_candidate,
         resource_catalog=resource_catalog,
+        catalog_projection=catalog_projection,
     )
 
 

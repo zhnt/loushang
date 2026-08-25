@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import Awaitable
 from typing import Protocol, runtime_checkable
 
+from loushang.harness.resources._catalog_projection import (
+    ResourceProjectionDescriptorBinding,
+)
 from loushang.harness.resources._catalog_records import (
     ResourceBodyRead,
     ResourceLoadHandle,
@@ -41,6 +44,11 @@ class BorrowedResourceSourceGenerationLease(Protocol):
 
     @property
     def source_snapshot(self) -> ResourceSourceSnapshot: ...
+
+    @property
+    def projection_bindings(
+        self,
+    ) -> tuple[ResourceProjectionDescriptorBinding, ...]: ...
 
     def load(
         self,

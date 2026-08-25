@@ -64,11 +64,36 @@ def _admitted_package_skill(
     description: str,
     source_root_order: int = 0,
 ) -> tuple[AdmittedPackageResource, bytes, VerifiedRevisionHandle]:
-    source = tmp_path / f"source-{plugin_id}"
-    skill = source / "skills" / public_name / "SKILL.md"
-    skill.parent.mkdir(parents=True)
     body = _skill_body(public_name, description, f"{description} body")
-    skill.write_bytes(body)
+    return _admitted_package_file(
+        tmp_path,
+        plugin_id=plugin_id,
+        contribution_id=f"{plugin_id}.skill",
+        resource_kind="skill",
+        locator=f"skills/{public_name}/SKILL.md",
+        body=body,
+        media_type="text/markdown",
+        schema_id="loushang.resource.skill",
+        source_root_order=source_root_order,
+    )
+
+
+def _admitted_package_file(
+    tmp_path: Path,
+    *,
+    plugin_id: str,
+    contribution_id: str,
+    resource_kind: str,
+    locator: str,
+    body: bytes,
+    media_type: str,
+    schema_id: str,
+    source_root_order: int = 0,
+) -> tuple[AdmittedPackageResource, bytes, VerifiedRevisionHandle]:
+    source = tmp_path / f"source-{plugin_id}"
+    item = source / locator
+    item.parent.mkdir(parents=True)
+    item.write_bytes(body)
     (source / "plugin.json").write_text(
         json.dumps({"name": plugin_id, "version": "1"}),
         encoding="utf-8",
@@ -84,17 +109,18 @@ def _admitted_package_skill(
         revision=1,
     )
     contribution = ResourceContributionSpec(
-        resource_kind="skill",
-        locator=f"skills/{public_name}/SKILL.md",
+        resource_kind=resource_kind,
+        locator=locator,
         locator_kind="file",
-        media_type="text/markdown",
-        schema_id="loushang.resource.skill",
+        media_type=media_type,
+        schema_id=schema_id,
         schema_version=1,
     )
+    owner_id = f"resources.{resource_kind}"
     candidate = OwnerContributionCandidateEnvelope(
-        owner_id="resources.skill",
+        owner_id=owner_id,
         plugin_id=plugin_id,
-        contribution_id=f"{plugin_id}.skill",
+        contribution_id=contribution_id,
         contribution=contribution,
         plugin_candidate_fingerprint="1" * 64,
         declaration_fingerprint="2" * 64,
@@ -112,13 +138,13 @@ def _admitted_package_skill(
     )
     admission = OwnerContributionAuthority(
         OwnerContributionPolicy(
-            owner_id="resources.skill",
+            owner_id=owner_id,
             contribution_kind="resource_item",
             product_id="coding",
-            policy_revision="resource-skill-owner-v1",
+            policy_revision=f"resource-{resource_kind}-owner-v1",
             revocation_epoch=0,
             allowed_source_trust_classes=("test_trusted",),
-            allowed_collection_ids=("loushang.resource.skill",),
+            allowed_collection_ids=(schema_id,),
             allowed_requirement_bindings=("direct",),
             consumer_scope="session",
             consumer_refresh_boundary="sealed",
@@ -156,7 +182,8 @@ async def _three_source_precedence_and_exact_unload(tmp_path: Path) -> None:
     embedded_files = {
         "skills/review/SKILL.md": _skill_body(
             "review", "Embedded review", "Embedded body"
-        )
+        ),
+        "themes/dark.json": b'{"background": "black"}\n',
     }
     embedded = mint_embedded_resource_collection_handle(
         collection_id="coding.builtin",
@@ -176,6 +203,7 @@ async def _three_source_precedence_and_exact_unload(tmp_path: Path) -> None:
         issued_at=10,
         expires_at=100,
         now=20,
+        projection_cwd=tmp_path,
     )
     assert {
         snapshot.source_generation_ref.source_id for snapshot in shadow.source_snapshots
@@ -210,6 +238,14 @@ async def _three_source_precedence_and_exact_unload(tmp_path: Path) -> None:
         EmbeddedOemOrigin,
     }
     assert (await shadow.load(shadow.load_handle(identity))).body == native_body
+    assert shadow.catalog_projection is not None
+    compatibility = shadow.catalog_projection.to_compatibility_bundle()
+    assert len(compatibility.skills) == 1
+    assert compatibility.skills[0].source_kind == "project_local"
+    assert compatibility.skills[0].content.endswith("Native body")
+    assert [theme.content for theme in compatibility.themes] == [
+        '{"background": "black"}\n'
+    ]
 
     assert await shadow.dispose() == ()
     assert package_resource.revision_handle.closed is True
@@ -324,6 +360,46 @@ async def _package_and_embedded_lazy_reads_pin_exact_sources(tmp_path: Path) -> 
 
 def test_package_and_embedded_lazy_reads_pin_exact_sources(tmp_path: Path) -> None:
     asyncio.run(_package_and_embedded_lazy_reads_pin_exact_sources(tmp_path))
+
+
+async def _package_theme_projects_from_verified_body(tmp_path: Path) -> None:
+    body = b'{"background": "blue"}\n'
+    resource, _, revision = _admitted_package_file(
+        tmp_path,
+        plugin_id="package-theme",
+        contribution_id="package-theme.dark",
+        resource_kind="theme",
+        locator="themes/dark.json",
+        body=body,
+        media_type="application/json",
+        schema_id="loushang.resource.theme",
+    )
+    shadow = await run_first_party_resource_catalog_shadow(
+        product_id="coding",
+        scope_id="workspace:test",
+        runtime_id="resource-shadow:rcp4-package-theme",
+        product_policy_revision="coding-resource-shadow-v1",
+        root_handles=(),
+        package_resources=(resource,),
+        issued_at=10,
+        expires_at=100,
+        now=20,
+        projection_cwd=tmp_path,
+    )
+
+    assert shadow.catalog_projection is not None
+    assert [theme.content for theme in shadow.catalog_projection.to_compatibility_bundle().themes] == [
+        body.decode("utf-8")
+    ]
+
+    assert await shadow.dispose() == ()
+    assert resource.revision_handle.closed is True
+    assert revision.closed is False
+    revision.close()
+
+
+def test_package_theme_projects_from_verified_body(tmp_path: Path) -> None:
+    asyncio.run(_package_theme_projects_from_verified_body(tmp_path))
 
 
 async def _package_budget_failure_releases_source_leases(tmp_path: Path) -> None:

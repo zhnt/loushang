@@ -9,6 +9,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
+from loushang.harness.resources._catalog_projection import (
+    ResourceProjectionDescriptor,
+    ResourceProjectionDescriptorBinding,
+    build_resource_projection_binding,
+)
 from loushang.harness.resources._catalog_records import (
     NO_BODY_MEDIA_TYPE,
     ResourceBodyRead,
@@ -28,7 +33,10 @@ from loushang.harness.resources._catalog_records import (
 from loushang.harness.resources._catalog_source_contracts import (
     ResourceDiscoveryRequest,
 )
-from loushang.harness.resources._resource_item_projection import project_catalog_item
+from loushang.harness.resources._resource_item_projection import (
+    CatalogItemProjection,
+    project_catalog_item,
+)
 from loushang.harness.resources.plugins.locators import (
     canonical_plugin_relative_path,
 )
@@ -36,6 +44,7 @@ from loushang.harness.resources.plugins.revisions import (
     PluginRevisionError,
     VerifiedRevisionHandle,
 )
+from loushang.harness.resources.types import ThemeDescriptor
 
 _RESOURCE_KINDS = frozenset({"asset", "method", "prompt", "skill", "source", "theme"})
 
@@ -323,6 +332,9 @@ class AdmittedPackageResourceSource:
         }
         self._snapshot: ResourceSourceSnapshot | None = None
         self._bodies: dict[str, _PackageBody] = {}
+        self._projection_bindings: tuple[
+            ResourceProjectionDescriptorBinding, ...
+        ] = ()
         self._disposed = False
 
     @property
@@ -332,6 +344,14 @@ class AdmittedPackageResourceSource:
     @property
     def is_disposed(self) -> bool:
         return self._disposed
+
+    @property
+    def projection_bindings(
+        self,
+    ) -> tuple[ResourceProjectionDescriptorBinding, ...]:
+        if self._disposed:
+            _raise_stale("source_disposed")
+        return self._projection_bindings
 
     def discover_initial(
         self,
@@ -364,16 +384,19 @@ class AdmittedPackageResourceSource:
         candidates: list[ResourceCandidateSummary] = []
         diagnostics: list[ResourceCatalogDiagnostic] = []
         bodies: dict[str, _PackageBody] = {}
+        projection_bindings: list[ResourceProjectionDescriptorBinding] = []
         for fingerprint in request.admission_fingerprints:
             control.consume_item()
             resource = self._resources[fingerprint]
             try:
                 resource.revision_handle.verify()
-                candidate, candidate_diagnostics, body = _discover_resource(
-                    resource,
-                    request=request,
-                    control=control,
-                    source_generation_ref=self._source_generation_ref,
+                candidate, candidate_diagnostics, body, projection_binding = (
+                    _discover_resource(
+                        resource,
+                        request=request,
+                        control=control,
+                        source_generation_ref=self._source_generation_ref,
+                    )
                 )
             except PluginRevisionError as exc:
                 raise PackageResourceSourceError(
@@ -384,6 +407,8 @@ class AdmittedPackageResourceSource:
             if candidate is None:
                 continue
             candidates.append(candidate)
+            if projection_binding is not None:
+                projection_bindings.append(projection_binding)
             if body is not None:
                 if candidate.opaque_locator in bodies:
                     raise PackageResourceSourceError(
@@ -405,6 +430,12 @@ class AdmittedPackageResourceSource:
             ) from exc
         self._snapshot = snapshot
         self._bodies = bodies
+        self._projection_bindings = tuple(
+            sorted(
+                projection_bindings,
+                key=lambda item: item.candidate_fingerprint,
+            )
+        )
         return snapshot
 
     def load(self, handle: ResourceLoadHandle) -> ResourceBodyRead:
@@ -463,6 +494,7 @@ class AdmittedPackageResourceSource:
             handle.close()
         self._resources.clear()
         self._bodies.clear()
+        self._projection_bindings = ()
         self._snapshot = None
 
 
@@ -539,6 +571,7 @@ def _discover_resource(
     ResourceCandidateSummary | None,
     tuple[ResourceCatalogDiagnostic, ...],
     _PackageBody | None,
+    ResourceProjectionDescriptorBinding | None,
 ]:
     locator = PurePosixPath(resource.locator)
     body_path: PurePosixPath | None = locator
@@ -549,7 +582,7 @@ def _discover_resource(
     parsed_body: bytes | None = None
     if body_path is not None:
         body_digest, body_length = resource.revision_handle.file_identity(body_path)
-        if resource.resource_kind in {"prompt", "skill"}:
+        if resource.resource_kind in {"prompt", "skill", "theme"}:
             control.reserve_metadata(body_length)
             with resource.revision_handle.open_file(body_path) as stream:
                 parsed_body = stream.read()
@@ -573,6 +606,7 @@ def _discover_resource(
                 source_generation_ref,
             ),
             None,
+            None,
         )
     if not projection.valid:
         return (
@@ -582,6 +616,7 @@ def _discover_resource(
                 projection.diagnostic_reasons,
                 source_generation_ref,
             ),
+            None,
             None,
         )
     candidate_diagnostics = _parser_diagnostics(
@@ -646,7 +681,54 @@ def _discover_resource(
         if body_path is not None and body_digest is not None and body_length is not None
         else None
     )
-    return candidate, (), body_ref
+    descriptor = _package_projection_descriptor(
+        resource=resource,
+        projection=projection,
+        logical_path=body_path or locator,
+        body=parsed_body,
+    )
+    projection_binding = (
+        build_resource_projection_binding(
+            candidate=candidate,
+            descriptor=descriptor,
+            body=parsed_body,
+        )
+        if descriptor is not None
+        else None
+    )
+    return candidate, (), body_ref, projection_binding
+
+
+def _package_projection_descriptor(
+    *,
+    resource: VerifiedPackageResourceInput,
+    projection: CatalogItemProjection,
+    logical_path: PurePosixPath,
+    body: bytes | None,
+) -> ResourceProjectionDescriptor | None:
+    if projection.descriptor is not None:
+        return projection.descriptor
+    if resource.resource_kind != "theme":
+        return None
+    try:
+        content = body.decode("utf-8") if body is not None else None
+    except UnicodeDecodeError as exc:
+        raise PackageResourceSourceError(
+            code="resource_source_snapshot_invalid",
+            reason="invalid_theme_encoding",
+        ) from exc
+    return ThemeDescriptor(
+        name=projection.canonical_name,
+        id=projection.public_id,
+        canonical_name=projection.canonical_name,
+        content=content,
+        source_path=resource.revision_handle.root / logical_path,
+        source="verified_package",
+        source_kind="external_package",
+        source_scope="package",
+        source_root=resource.revision_handle.root,
+        source_root_order=resource.source_root_order,
+    )
 
 
 def _parser_diagnostics(

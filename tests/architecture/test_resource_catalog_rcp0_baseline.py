@@ -540,6 +540,10 @@ def test_rcp0_legacy_authority_mount_and_extension_merge_inventory_is_exact() ->
 
     assert _call_sites(sources, "ResourceSnapshot") == {
         (
+            Path("src/loushang/harness/resources/_catalog_projection.py"),
+            "ResourceCatalogProjection.to_compatibility_bundle",
+        ),
+        (
             Path("src/loushang/harness/resources/_catalog_shadow.py"),
             "project_shadow_compatibility_bundle",
         ),
