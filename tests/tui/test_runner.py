@@ -416,3 +416,34 @@ def test_runner_exits_when_context_requests_stop_without_input() -> None:
         ).run(on_input=handle)
 
     assert asyncio.run(run()) == 5
+
+
+def test_runner_exits_when_background_task_requests_stop_while_input_waits() -> None:
+    tui = Tui()
+    tui.add_child(_MutableRenderable(("ready",)))
+
+    async def run() -> int:
+        async def wait_for_input(_stdin: object) -> str:
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+        async def start(context: Any) -> None:
+            async def stop_later() -> None:
+                await asyncio.sleep(0)
+                context.request_stop(6)
+
+            asyncio.create_task(stop_later())
+
+        return await asyncio.wait_for(
+            TuiRunner(
+                tui,
+                stdin=StringIO(""),
+                stdout=StringIO(),
+                terminal_session_factory=_recording_terminal_session_factory(),
+                terminal_size_provider=lambda: TerminalSize(columns=20, rows=5),
+                input_chunk_reader=wait_for_input,
+            ).run(on_start=start),
+            timeout=0.1,
+        )
+
+    assert asyncio.run(run()) == 6
