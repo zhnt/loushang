@@ -490,8 +490,9 @@ def test_rcp0_baseline_is_indexed_and_distinguishes_private_rcp3_implementation(
     assert "resource-catalog-rcp0-baseline.md" in plan
     assert readme.count("resource-catalog-rcp0-baseline.md") == 2
     assert "RCP1 through RCP3 remain private foundations" in baseline
-    assert "No Product constructs this adapter by default" in baseline
-    assert "default Resource authority" in baseline
+    assert "No Product invokes\n  them by default" in baseline
+    assert "v1 legacy loader remains the default Resource" in baseline
+    assert "authority and no cutover or refresh" in baseline
     assert "grants no new public API" in baseline
 
 

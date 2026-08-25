@@ -17,6 +17,7 @@ NATIVE_SOURCE_PATH = RESOURCE_ROOT / "_catalog_native_source.py"
 SHADOW_RUNNER_PATH = ORCHESTRATION_ROOT / "shadow.py"
 PREPARED_GENERATION_PATH = ORCHESTRATION_ROOT / "generation.py"
 JOINT_GENERATION_PATH = ORCHESTRATION_ROOT / "joint_generation.py"
+PRODUCT_INPUTS_PATH = ORCHESTRATION_ROOT / "product_inputs.py"
 SESSION_BOOTSTRAP_PATH = ORCHESTRATION_ROOT / "session_bootstrap.py"
 AGENT_PRODUCT_SESSION_PATH = Path("src/loushang/harness/session/agent_product.py")
 EXTENSION_RESOURCE_SOURCE_PATH = RESOURCE_ROOT / "_catalog_extension_source.py"
@@ -115,6 +116,7 @@ def test_rcp2_shadow_runner_is_private_and_has_no_production_importer() -> None:
         SHADOW_RUNNER_PATH,
         PREPARED_GENERATION_PATH,
         JOINT_GENERATION_PATH,
+        PRODUCT_INPUTS_PATH,
         SESSION_BOOTSTRAP_PATH,
         RESOURCE_ROOT / "_catalog_engine.py",
         RESOURCE_ROOT / "_catalog_records.py",
@@ -200,7 +202,10 @@ def test_rcp4_joint_generation_has_one_private_session_bootstrap_adapter() -> No
         if "loushang.harness.resource_catalog.session_bootstrap"
         in _imported_modules(path)
     }
-    assert session_bootstrap_importers == {AGENT_PRODUCT_SESSION_PATH}
+    assert session_bootstrap_importers == {
+        AGENT_PRODUCT_SESSION_PATH,
+        PRODUCT_INPUTS_PATH,
+    }
     imports = _imported_modules(JOINT_GENERATION_PATH)
     assert "loushang.harness.extensions.runner" not in imports
     assert not {
@@ -211,3 +216,32 @@ def test_rcp4_joint_generation_has_one_private_session_bootstrap_adapter() -> No
     source = JOINT_GENERATION_PATH.read_text(encoding="utf-8")
     assert "JointResourcePublication" in source
     assert "prepare_extension_resource_joint_generation" in source
+
+
+def test_rcp4_product_input_adapter_is_explicit_private_and_source_narrow() -> None:
+    private_paths = {
+        PRODUCT_INPUTS_PATH,
+        SESSION_BOOTSTRAP_PATH,
+    }
+    production_paths = set(Path("src/loushang").rglob("*.py")) - private_paths
+
+    assert PRODUCT_INPUTS_PATH.is_file()
+    assert not {
+        path
+        for path in production_paths
+        if "loushang.harness.resource_catalog.product_inputs"
+        in _imported_modules(path)
+    }
+    imports = _imported_modules(PRODUCT_INPUTS_PATH)
+    assert not imports & {
+        "loushang.coding",
+        "loushang.harness.resources.loader",
+        "loushang.harness.resources._loader_pipeline",
+        "loushang.harness.resources._catalog_package_source",
+        "loushang.harness.resource_catalog.inputs",
+    }
+    assert all("mcp" not in name.lower() for name in imports)
+    source = PRODUCT_INPUTS_PATH.read_text(encoding="utf-8")
+    assert "construct_session" in source
+    assert "close_unprepared" in source
+    assert "package_resources" not in source

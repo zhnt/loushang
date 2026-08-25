@@ -81,6 +81,12 @@ from loushang.harness.plugin_authoring.host import PluginDeclarationHost
 from loushang.harness.plugin_authoring.provider_admission import (
     prepare_capability_provider_candidate,
 )
+from loushang.harness.resource_catalog.product_inputs import (
+    InitialResourceCatalogProductAdapter,
+    InitialResourceCatalogProductSelection,
+    ProductEmbeddedResourceCollectionSpec,
+    ProductNativeResourceRootSpec,
+)
 from loushang.harness.resource_catalog.session_bootstrap import (
     InitialSessionResourceCatalogBootstrap,
     InitialSessionResourceCatalogInputs,
@@ -669,6 +675,84 @@ def test_initial_catalog_bootstrap_publishes_one_graph_owned_session_view(
 
         assert capability_runtime.ownership_state == "disposed"
         assert disposed_transcripts == [f"{product_id}-session"]
+
+    asyncio.run(scenario())
+
+
+def test_product_input_adapter_carries_native_and_embedded_skills_through_session(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        product_id = "catalog-product-inputs"
+        session_id = f"{product_id}-session"
+        workspace = tmp_path / product_id
+        skill_root = workspace / "skills" / "native"
+        skill_root.mkdir(parents=True)
+        (skill_root / "SKILL.md").write_text(
+            "---\nname: native\ndescription: Native skill\n---\nUse native.\n",
+            encoding="utf-8",
+        )
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        capability_runtime = _capability_runtime(product_id)
+        base_bundle = ResourceBundle(cwd=workspace)
+        extension_runner = ExtensionRunner([])
+        adapter = InitialResourceCatalogProductAdapter(
+            InitialResourceCatalogProductSelection(
+                product_policy_revision="resource-policy-v1",
+                native_roots=(
+                    ProductNativeResourceRootSpec(
+                        handle_id="project-resources",
+                        root=workspace,
+                        source_class="project_local",
+                        root_kind="standard",
+                    ),
+                ),
+                embedded_collections=(
+                    ProductEmbeddedResourceCollectionSpec(
+                        collection_id="coding-builtin-resources",
+                        embedded_revision="v1",
+                        files={
+                            "skills/embedded/SKILL.md": (
+                                b"---\nname: embedded\ndescription: Embedded skill\n"
+                                b"---\nUse embedded.\n"
+                            )
+                        },
+                    ),
+                ),
+            ),
+            clock=lambda: 10,
+        )
+
+        session = adapter.construct_session(
+            product_id=product_id,
+            session_id=session_id,
+            base_resource_bundle=base_bundle,
+            construct=lambda bootstrap: _ContractProductSession(
+                product_id=product_id,
+                transcript=transcript,
+                capability_runtime=capability_runtime,
+                reserve_tokens=1_111,
+                compact_percent=61.0,
+                resource_bundle=base_bundle,
+                extension_runner=extension_runner,
+                initial_resource_catalog_bootstrap=bootstrap,
+            ),
+        )
+
+        await session.prepare_model_call_runtime()
+
+        assert session.resource_bundle is not None
+        assert {skill.name for skill in session.resource_bundle.skills} == {
+            "embedded",
+            "native",
+        }
+        assert capability_runtime.ownership_state == "graph_owned"
+
+        await session.dispose()
+        assert capability_runtime.ownership_state == "disposed"
+        assert disposed_transcripts == [session_id]
 
     asyncio.run(scenario())
 

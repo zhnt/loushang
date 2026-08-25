@@ -7,7 +7,7 @@
   and Model Input boundaries. It does not amend those boundaries implicitly.
 - Design status: RCP0 contract frozen; final narrow freeze re-review passed.
 - Implementation status: RCP0 through RCP3 are complete on the Harness lane;
-  RCP4 has started with five unpublished foundation slices.
+  RCP4 has started with six unpublished foundation slices.
   RCP2's first unpublished foundation slice implements the generic
   `CapabilityComponentDefinition`, exact candidate/admission/selection/binding
   records, atomic owner generations, cancellation-safe reverse rollback,
@@ -26,8 +26,10 @@
   runner beside the current loader. Catalog records, sources, and orchestration
   remain private, and `harness.resources` does not export them. The RCP4
   preparation bridge is their sole path toward a Provider. One private optional
-  Agent Session bootstrap adapter now calls that bridge; no Product bootstrap
-  supplies it by default and no refresh route calls it.
+  Agent Session bootstrap adapter now calls that bridge. A private Product
+  preparation adapter can mint exact native/embedded inputs for it, but no
+  Product bootstrap invokes that adapter by default and no refresh route calls
+  it.
   RCP3 adds admitted-package and embedded/OEM source components beside the
   native source. Capability-aware orchestration converts exact Resource-owner
   admission into a capability-neutral verified input with an independently
@@ -68,8 +70,12 @@
   publishes Extension state, Catalog snapshot, projection, and a fresh Bundle.
   Graph failure, publication failure, cancellation, and unprepared shutdown all
   reverse exact custody; absence of the adapter leaves the v1 path unchanged.
-  Product input preparation, default live enablement, active refresh, typed
-  production Catalog/Skill consumers, and legacy-loader cutover remain pending.
+  The sixth slice adds the reusable Product input adapter: immutable selection
+  specs become fresh Host-minted native/embedded handles per Session, and a
+  synchronous custody callback closes partial minting or failed construction
+  before transferring ownership. A source-complete Coding adapter, default live
+  enablement, active refresh, typed production Catalog/Skill consumers, and
+  legacy-loader cutover remain pending.
   The current `ResourceLoader`, `ResourceSnapshot`, `ResourceBundle`, and
   `SkillLoader` paths remain the implemented runtime until a phase below passes
   its cutover gate.
@@ -1138,7 +1144,7 @@ effective Resource selection.
 
 ### RCP4: Mount Resource Catalog generation
 
-Status: five unpublished foundation slices complete. The v1 Provider path is
+Status: six unpublished foundation slices complete. The v1 Provider path is
 unchanged when no prepared generation exists. A candidate with one prepared
 generation selects only contract/provider v2, contributes the two Catalog/load
 facets, transfers parent and child through the same
@@ -1168,9 +1174,58 @@ owner, replaces the construction-time v1 Resources graph input with the exact
 v2 binding, binds and captures the Graph, then publishes Extension/Catalog/view
 state through the existing no-await joint commit. It also restores the prior
 Session view on failed commit and finishes root/Graph rollback under
-cancellation. No Product constructs the authoritative adapter inputs by
-default, so Coding and other existing Products still use v1; refresh,
-production typed consumers, and cutover remain pending.
+cancellation. No Product invokes the input adapter by default, so Coding and
+other existing Products still use v1; refresh, production typed consumers, and
+cutover remain pending.
+
+#### RCP4.6 implemented: Product initial-input adapter
+
+The sixth slice adds one private, reusable Product preparation primitive; it
+does not add a Coding setting or change any default construction path. A
+Product opts in only through the adapter's synchronous `construct_session`
+custody callback. The adapter creates one single-use bootstrap for that call and
+transfers it to `AgentProductSession` only when Session construction returns
+successfully. It accepts only exact pre-admission facts and performs no
+legacy-loader inspection:
+
+- native root specifications contain an opaque handle id, Product-approved
+  path, source class, root kind, and stable root order;
+- embedded collection specifications contain a Product-owned collection id,
+  immutable revision, and finite copied bytes; and
+- one non-empty Product policy revision binds the selection. The adapter mints
+  fresh native/embedded handles per Session, derives Session/Resource runtime
+  ids from the admitted Product and conversation ids, and uses a narrow
+  injected-clock admission window only during initial preparation.
+
+Raw paths and byte mappings stop at this preparation boundary. The Resource
+owner receives only the existing opaque handles. If minting or the custody
+callback fails, every already-minted closeable input is released in reverse
+order; after the callback succeeds, the existing Session bootstrap is their
+sole owner. The callback is synchronous and must return a Session rather than an
+awaitable. Adapter reuse creates independent per-Session handles and never
+shares a generation.
+
+The slice deliberately supports native and embedded sources only. It exposes no
+package field, does not infer package/native/context/temporary inputs from a
+`ResourceBundle`, and therefore is not a source-completeness claim for Coding.
+The current legacy Bundle remains only the defensive Extension hook input. A
+later Coding shadow adapter must prepare a source-complete receipt and reject
+unsupported package/temporary inputs before it may invoke this primitive.
+
+Acceptance is proven by one production-shaped sample that carries a native
+`SKILL.md` and an immutable embedded Resource through adapter construction,
+declaration, owner preparation, Graph adoption, publication, and disposal.
+Tests also prove duplicate selection rejection, partial-mint cleanup,
+independent adapter reuse, Session-construction failure cleanup, and unchanged
+v1 behavior when no adapter is supplied. No refresh, LSP, MCP, package
+admission, public SDK export, typed Skill cutover, or legacy deletion belongs
+to this slice.
+
+Freeze review rejects the slice if it creates a second discovery/selection
+authority, introspects private loader state, lets raw paths cross the Resource
+owner boundary, silently treats a partial source set as Coding-complete, shares
+handles between Sessions, weakens the existing joint rollback, or adds a default
+Product mount.
 
 - introduce the internal `harness.resources` v2 Catalog/load facets and exact
   Consumer requirements;

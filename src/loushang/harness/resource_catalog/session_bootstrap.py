@@ -289,6 +289,17 @@ class InitialSessionResourceCatalogBootstrap:
             await joint.rollback(dispose_graph=dispose_graph)
             self._state = "disposed"
             return
+        self.close_unprepared()
+
+    def close_unprepared(self) -> None:
+        """Synchronously release inputs before Session construction transfers them."""
+
+        if self._state == "disposed":
+            return
+        if self._state != "unprepared":
+            raise RuntimeError(
+                "initial Resource Catalog bootstrap is already prepared"
+            )
         self._close_source_inputs()
         self._state = "disposed"
 
