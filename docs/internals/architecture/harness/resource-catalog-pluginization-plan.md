@@ -1417,6 +1417,15 @@ CLI, and default v1 path remain unchanged. Default Product wiring, temporary
 source and resource-policy parity, refresh, typed production Consumers, cutover,
 LSP, and MCP behavior remain outside this slice.
 
+The later PLC5.0 foundation extends the same private Product-root module with
+the sibling Capability Provider assembly path: exact Capability-owner
+eligibility/admission, explicit Product selection through the existing
+resolver, and exact binding of externally issued activation-decision IDs into
+the existing Session composition inputs. It is not RCP4.11 and does not change
+Resource Catalog scope or behavior; it only lets the already compiled external
+Consumer requirements and the resolved Provider closure enter one Session
+Graph without another Product-specific assembly route.
+
 - introduce the internal `harness.resources` v2 Catalog/load facets and exact
   Consumer requirements;
 - stage the initial owner generation as the exclusive child of the existing

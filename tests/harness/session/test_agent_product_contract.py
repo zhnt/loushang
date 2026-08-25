@@ -35,10 +35,6 @@ from loushang.harness.capabilities import (
     standard_capability_composition_plan,
 )
 from loushang.harness.capabilities.component_host import CapabilityComponentHost
-from loushang.harness.capabilities.consumer_requirements import (
-    ProductCompositionAuthorityContext,
-    ProductCompositionCompiler,
-)
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionPolicy,
@@ -74,13 +70,7 @@ from loushang.harness.plugin_authoring.capability_provider import (
 from loushang.harness.plugin_authoring.consumer_pack import (
     ToolPackDeclarationPayload,
 )
-from loushang.harness.plugin_authoring.contribution_admission import (
-    prepare_owner_contribution_candidate,
-)
 from loushang.harness.plugin_authoring.host import PluginDeclarationHost
-from loushang.harness.plugin_authoring.provider_admission import (
-    prepare_capability_provider_candidate,
-)
 from loushang.harness.resource_catalog.product_inputs import (
     InitialResourceCatalogProductAdapter,
     InitialResourceCatalogProductSelection,
@@ -141,11 +131,18 @@ from loushang.harness.runtime.session_operations import (
 from loushang.harness.runtime.transition import SessionTransitionHost
 from loushang.harness.session import AgentProductSession
 from loushang.harness.session.capability_composition_inputs import (
-    SessionCapabilityComponentRequest,
     SessionCapabilityCompositionInputs,
     SessionCapabilityConsumerCapture,
     SessionCapabilityOwnerAuthorityGate,
     SessionCapabilityOwnerGenerationBinding,
+)
+from loushang.harness.session.product_composition_assembly import (
+    ProductCapabilityProviderOwnerBinding,
+    ProductCompositionAssemblyError,
+    ProductCompositionAssemblyRequest,
+    ProductContributionOwnerBinding,
+    ProductPluginCompositionAssemblyRequest,
+    assemble_product_plugin_composition,
 )
 from loushang.harness.transcript import (
     AgentTranscriptLifecycle,
@@ -201,8 +198,7 @@ class _ContractProductSession(AgentProductSession):
         reserve_tokens: int,
         compact_percent: float,
         workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
-        capability_composition_inputs: SessionCapabilityCompositionInputs
-        | None = None,
+        capability_composition_inputs: SessionCapabilityCompositionInputs | None = None,
         capability_component_host: CapabilityComponentHost | None = None,
         capability_owner_generation_bindings: tuple[
             SessionCapabilityOwnerGenerationBinding, ...
@@ -284,14 +280,10 @@ class _ContractProductSession(AgentProductSession):
             workspace_capability_binding=workspace_capability_binding,
             capability_composition_inputs=capability_composition_inputs,
             capability_component_host=capability_component_host,
-            capability_owner_generation_bindings=(
-                capability_owner_generation_bindings
-            ),
+            capability_owner_generation_bindings=(capability_owner_generation_bindings),
             resource_bundle=resource_bundle,
             extension_runner=extension_runner,
-            initial_resource_catalog_bootstrap=(
-                initial_resource_catalog_bootstrap
-            ),
+            initial_resource_catalog_bootstrap=(initial_resource_catalog_bootstrap),
         )
 
     async def _before_product_compaction(
@@ -1568,41 +1560,16 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 refresh_boundary="sealed",
                 phase="final",
             )
-            candidates = {
-                item.declaration.kind: item for item in selection.candidates
-            }
-            provider_candidate = prepare_capability_provider_candidate(
-                selection,
-                candidates["capability_provider"],
-                definition=definition,
-            )
             provider_authority = CapabilityProviderOwnerAuthority(
                 CapabilityProviderOwnerPolicy(
                     capability_id=definition.capability_id,
                     owner_id=definition.owner_id,
                     policy_revision="coding-foundation-owner-1",
                     revocation_epoch=3,
-                    allowed_provider_ids=(
-                        "org.loushang.coding.foundation/default",
-                    ),
+                    allowed_provider_ids=("org.loushang.coding.foundation/default",),
                     allowed_source_trust_classes=("host-equivalent-local",),
                     authority_ceiling=(),
                 )
-            )
-            eligibility = provider_authority.grant_eligibility(
-                provider_candidate,
-                issued_at=100,
-                expires_at=400,
-            )
-            provider_admission = provider_authority.admit(
-                provider_candidate,
-                eligibility=eligibility,
-                issued_at=120,
-                expires_at=350,
-            )
-            owner_candidate = prepare_owner_contribution_candidate(
-                selection,
-                candidates["tool_pack"],
             )
             owner_authority = OwnerContributionAuthority(
                 OwnerContributionPolicy(
@@ -1618,28 +1585,7 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                     consumer_refresh_boundary="sealed",
                 )
             )
-            owner_admission = owner_authority.admit(
-                owner_candidate,
-                issued_at=120,
-                expires_at=350,
-            )
             [trust_snapshot] = selection.plan.source_trust_snapshots
-            compilation = ProductCompositionCompiler().compile(
-                authority_context=ProductCompositionAuthorityContext(
-                    product_id="coding",
-                    scope_id="workspace:test",
-                    product_policy_revision="coding-plugin-policy-1",
-                    evaluated_at=150,
-                    owner_snapshots=(owner_authority.snapshot(),),
-                    trust_snapshots=(trust_snapshot,),
-                ),
-                mandatory_roots=(
-                    MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
-                ),
-                admissions=(owner_admission,),
-                definitions=(MODEL_INPUT_CAPABILITY_DEFINITION, definition),
-                optional_choices=(),
-            )
             workspace_binding = workspace_capability_provider_binding(
                 operations=LocalToolOperations(),
                 process_launcher=_UnusedWorkspaceLauncher(),
@@ -1649,28 +1595,105 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 ).hexdigest(),
                 source_id="foundation-contract-test",
             )
-            provider_plan = ProductCapabilityProviderSelectionPlanV1(
-                product_id="coding",
-                roots=(definition.capability_id,),
-                choices=(
-                    ProductCapabilityProviderChoice(
-                        capability_id=definition.capability_id,
-                        provider_id=provider_admission.provider.provider_id,
-                        candidate_fingerprint=(
-                            provider_admission.candidate_fingerprint
+            assembly_request = ProductPluginCompositionAssemblyRequest(
+                contribution_request=ProductCompositionAssemblyRequest(
+                    selection=selection,
+                    owner_bindings=(
+                        ProductContributionOwnerBinding(
+                            authority=owner_authority,
+                            admission_ttl_seconds=200,
                         ),
                     ),
+                    mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
+                    definitions=(
+                        MODEL_INPUT_CAPABILITY_DEFINITION,
+                        WORKSPACE_CAPABILITY_DEFINITION,
+                        definition,
+                    ),
                 ),
-                policy_revision="coding-plugin-policy-1",
-            )
-            provider_resolver = ProductCapabilityProviderResolver()
-            resolved = provider_resolver.resolve(
-                provider_plan,
-                definitions=(definition, WORKSPACE_CAPABILITY_DEFINITION),
-                admissions=(provider_admission,),
-                owner_snapshots=(provider_authority.snapshot(),),
-                evaluated_at=150,
+                provider_owner_bindings=(
+                    ProductCapabilityProviderOwnerBinding(
+                        authority=provider_authority,
+                        eligibility_ttl_seconds=250,
+                        admission_ttl_seconds=200,
+                    ),
+                ),
+                provider_roots=(definition.capability_id,),
+                select_capability_providers=lambda admissions: tuple(
+                    ProductCapabilityProviderChoice(
+                        capability_id=item.capability_id,
+                        provider_id=item.provider.provider_id,
+                        candidate_fingerprint=item.candidate_fingerprint,
+                    )
+                    for item in admissions
+                ),
                 prebound_providers=(workspace_binding.provider,),
+            )
+            with pytest.raises(ProductCompositionAssemblyError) as missing_definition:
+                assemble_product_plugin_composition(
+                    replace(
+                        assembly_request,
+                        contribution_request=replace(
+                            assembly_request.contribution_request,
+                            definitions=(
+                                MODEL_INPUT_CAPABILITY_DEFINITION,
+                                WORKSPACE_CAPABILITY_DEFINITION,
+                            ),
+                        ),
+                    ),
+                    evaluated_at=150,
+                )
+            assert (
+                missing_definition.value.code == "product_provider_definition_missing"
+            )
+            assert missing_definition.value.capability_ids == (
+                definition.capability_id,
+            )
+            with pytest.raises(ProductCompositionAssemblyError) as missing_owner:
+                assemble_product_plugin_composition(
+                    replace(assembly_request, provider_owner_bindings=()),
+                    evaluated_at=150,
+                )
+            assert missing_owner.value.code == "product_provider_owner_missing"
+            assert missing_owner.value.capability_ids == (definition.capability_id,)
+            unused_provider_authority = CapabilityProviderOwnerAuthority(
+                CapabilityProviderOwnerPolicy(
+                    capability_id="coding.unused",
+                    owner_id="coding",
+                    policy_revision="coding-unused-owner-1",
+                    revocation_epoch=0,
+                    allowed_provider_ids=("org.loushang.coding.unused/default",),
+                    allowed_source_trust_classes=("host-equivalent-local",),
+                    authority_ceiling=(),
+                )
+            )
+            with pytest.raises(ProductCompositionAssemblyError) as extra_owner:
+                assemble_product_plugin_composition(
+                    replace(
+                        assembly_request,
+                        provider_owner_bindings=(
+                            *assembly_request.provider_owner_bindings,
+                            ProductCapabilityProviderOwnerBinding(
+                                authority=unused_provider_authority,
+                            ),
+                        ),
+                    ),
+                    evaluated_at=150,
+                )
+            assert extra_owner.value.code == "product_provider_owner_extra"
+            assert extra_owner.value.capability_ids == ("coding.unused",)
+            assembly = assemble_product_plugin_composition(
+                assembly_request,
+                evaluated_at=150,
+            )
+            [owner_admission] = assembly.product_composition.catalog_admissions
+            [resolved_provider] = assembly.resolved_providers.entries
+            provider_admission = resolved_provider.admission
+            provider_plan = ProductCapabilityProviderSelectionPlanV1(
+                product_id="coding",
+                roots=assembly.resolved_providers.roots,
+                choices=(resolved_provider.choice,),
+                policy_revision="coding-plugin-policy-1",
             )
             identities = iter(("1" * 48, "2" * 48))
             activation_journal = PluginActivationDecisionJournal(
@@ -1696,11 +1719,11 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                     lambda _product_id, _scope_id: "coding-plugin-policy-1"
                 ),
             )
-            [resolved_provider] = resolved.entries
+            [component_candidate] = assembly.component_candidates
             subject = component_host.activation_subject(
                 resolved_provider,
-                owner_snapshot=provider_authority.snapshot(),
-                trust_snapshot=trust_snapshot,
+                owner_snapshot=component_candidate.owner_snapshot,
+                trust_snapshot=component_candidate.trust_snapshot,
             )
             decision = activation_journal.issue_activation_decision(
                 subject,
@@ -1713,19 +1736,29 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 expires_at_unix_ms=300,
                 expected_journal_revision=0,
             )
-            component_request = SessionCapabilityComponentRequest(
-                resolved=resolved_provider,
-                package=fixture.package,
-                owner_snapshot=provider_authority.snapshot(),
-                trust_snapshot=trust_snapshot,
-                activation_decision_id=decision.decision_id,
+            with pytest.raises(ProductCompositionAssemblyError) as missing_activation:
+                assembly.bind_session_inputs({})
+            assert (
+                missing_activation.value.code == "product_provider_activation_missing"
             )
-            composition_inputs = SessionCapabilityCompositionInputs(
-                product_composition=compilation,
-                resolved_providers=resolved,
-                component_requests=(component_request,),
+            assert missing_activation.value.capability_ids == (
+                definition.capability_id,
             )
-            reevaluated_providers = provider_resolver.resolve(
+            with pytest.raises(ProductCompositionAssemblyError) as extra_activation:
+                assembly.bind_session_inputs(
+                    {
+                        definition.capability_id: decision.decision_id,
+                        "coding.unused": "9" * 48,
+                    }
+                )
+            assert extra_activation.value.code == "product_provider_activation_extra"
+            assert extra_activation.value.capability_ids == ("coding.unused",)
+            composition_inputs = assembly.bind_session_inputs(
+                {definition.capability_id: decision.decision_id}
+            )
+            [component_request] = composition_inputs.component_requests
+            compilation = composition_inputs.product_composition
+            reevaluated_providers = ProductCapabilityProviderResolver().resolve(
                 provider_plan,
                 definitions=(definition, WORKSPACE_CAPABILITY_DEFINITION),
                 admissions=(provider_admission,),
@@ -1755,7 +1788,9 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 captures: tuple[SessionCapabilityConsumerCapture, ...],
             ) -> object:
                 [capture] = captures
-                assert capture.entry.admission_fingerprint == owner_admission.fingerprint
+                assert (
+                    capture.entry.admission_fingerprint == owner_admission.fingerprint
+                )
                 assert capture.facets.require("query") == {
                     "label": "foundation",
                     "runtime_id": "session:coding-session",
@@ -1779,9 +1814,7 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                     owner_snapshot_reader=(
                         lambda _owner, _kind, _product: owner_authority.snapshot()
                     ),
-                    trust_snapshot_reader=(
-                        lambda _plugin, _source: trust_snapshot
-                    ),
+                    trust_snapshot_reader=(lambda _plugin, _source: trust_snapshot),
                     product_policy_revision_reader=(
                         lambda _product, _scope: "coding-plugin-policy-1"
                     ),
@@ -1820,31 +1853,37 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 "provider-create",
                 "tool-stage",
             ]
-            assert session.evaluate_capability_composition_change(
-                replace(
-                    composition_inputs,
-                    component_requests=(
-                        replace(
-                            component_request,
-                            activation_decision_id="9" * 48,
-                        ),
-                    ),
-                )
-            ) == "no_change"
-            assert session.evaluate_capability_composition_change(
-                replace(
-                    composition_inputs,
-                    component_requests=(
-                        replace(
-                            component_request,
-                            trust_snapshot=replace(
-                                trust_snapshot,
-                                trusted=False,
+            assert (
+                session.evaluate_capability_composition_change(
+                    replace(
+                        composition_inputs,
+                        component_requests=(
+                            replace(
+                                component_request,
+                                activation_decision_id="9" * 48,
                             ),
                         ),
-                    ),
+                    )
                 )
-            ) == "restart_required"
+                == "no_change"
+            )
+            assert (
+                session.evaluate_capability_composition_change(
+                    replace(
+                        composition_inputs,
+                        component_requests=(
+                            replace(
+                                component_request,
+                                trust_snapshot=replace(
+                                    trust_snapshot,
+                                    trusted=False,
+                                ),
+                            ),
+                        ),
+                    )
+                )
+                == "restart_required"
+            )
             assert session.evaluate_capability_composition_change(None) == (
                 "restart_required"
             )
@@ -1950,9 +1989,7 @@ def _publish_foundation_plugin(
             kind=contribution.kind,
             owner=contribution.owner,
             reservation_fingerprint=contribution.fingerprint,
-            source_descriptor_fingerprint=(
-                contribution.source_descriptor_fingerprint
-            ),
+            source_descriptor_fingerprint=(contribution.source_descriptor_fingerprint),
             source_kind=contribution.declaration_source.kind,
             payload=payload,
         )
@@ -2055,7 +2092,7 @@ def _foundation_selection(fixture: _FoundationPluginFixture) -> PluginSelection:
 
 
 def _foundation_provider_source(events: Path) -> str:
-    return f'''\
+    return f"""\
 from pathlib import Path
 
 from loushang.harness.capabilities.provider_binding import (
@@ -2084,7 +2121,7 @@ def create_provider(context):
 def dispose_provider(_value):
     with EVENTS.open("a", encoding="utf-8") as stream:
         stream.write("provider-dispose\\n")
-'''
+"""
 
 
 def _append_event(path: Path, event: str) -> None:

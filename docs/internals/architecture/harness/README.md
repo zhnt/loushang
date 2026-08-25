@@ -104,7 +104,11 @@ planning, work event persistence, or AI provider behavior.
   `coding.base` shadow package; its
   [review](plugin-lifecycle-coding-pluginization-review.md) moves the minimum
   management control core before the Base cutover while preserving exact-owner
-  binding, LSP as the first Graph proof, and the later public SDK gate.
+  binding, LSP as the first production Graph proof, and the later public SDK
+  gate. The implemented private PLC5.0 foundation now composes finalized
+  Provider declarations through exact Capability owners and explicit Product
+  selection, then binds externally issued activation decisions into the
+  existing Session inputs without issuing Approval or starting code.
 - [Plugin Lifecycle PLC2 Contract](plugin-lifecycle-plc2-contract.md) splits the
   management critical path into an inert desired-state ledger, one typed
   command authority, staged update, and retirement/cleanup recovery; PLC2-1

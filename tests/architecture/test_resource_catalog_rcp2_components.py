@@ -269,7 +269,7 @@ def test_rcp4_product_input_adapter_is_explicit_private_and_source_narrow() -> N
     assert "initial_resource_catalog_package_admissions" not in bootstrap_source
 
 
-def test_rcp4_product_composition_assembly_is_one_private_product_root() -> None:
+def test_rcp4_plc5_product_composition_assembly_is_one_private_product_root() -> None:
     production_paths = set(Path("src/loushang").rglob("*.py")) - {
         PRODUCT_COMPOSITION_ASSEMBLY_PATH,
     }
@@ -292,13 +292,25 @@ def test_rcp4_product_composition_assembly_is_one_private_product_root() -> None
     assert imports & {
         "loushang.harness.capabilities.consumer_requirements",
         "loushang.harness.capabilities.contribution_admission",
+        "loushang.harness.capabilities.provider_admission",
+        "loushang.harness.capabilities.provider_selection",
         "loushang.harness.plugin_authoring.contribution_admission",
+        "loushang.harness.plugin_authoring.provider_admission",
         "loushang.harness.resources.plugins.selection",
+        "loushang.harness.session.capability_composition_inputs",
     } == {
         "loushang.harness.capabilities.consumer_requirements",
         "loushang.harness.capabilities.contribution_admission",
+        "loushang.harness.capabilities.provider_admission",
+        "loushang.harness.capabilities.provider_selection",
         "loushang.harness.plugin_authoring.contribution_admission",
+        "loushang.harness.plugin_authoring.provider_admission",
         "loushang.harness.resources.plugins.selection",
+        "loushang.harness.session.capability_composition_inputs",
+    }
+    assert not imports & {
+        "loushang.harness.approval.plugin_activation",
+        "loushang.harness.capabilities.component_host",
     }
     assert all("mcp" not in name.lower() for name in imports)
     source = PRODUCT_COMPOSITION_ASSEMBLY_PATH.read_text(encoding="utf-8")
@@ -307,6 +319,12 @@ def test_rcp4_product_composition_assembly_is_one_private_product_root() -> None
     assert "ProductCompositionCompiler" in source
     assert "product_contribution_owner_missing" in source
     assert "product_contribution_owner_extra" in source
+    assert "prepare_capability_provider_candidate" in source
+    assert "ProductCapabilityProviderResolver" in source
+    assert "product_provider_owner_missing" in source
+    assert "product_provider_owner_extra" in source
+    assert "product_provider_activation_missing" in source
+    assert "product_provider_activation_extra" in source
     assert "__all__: list[str] = []" in source
     session_init_source = Path("src/loushang/harness/session/__init__.py").read_text(
         encoding="utf-8"

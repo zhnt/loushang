@@ -16,8 +16,11 @@
   PLC1B-4 are implemented on the current delivery branch: source-union and
   Host composition, inert Resource/Tool/Command payloads, the compiler-owned
   semantic fingerprint, and the document-backed `coding.base` shadow are
-  complete. PLC2-1 through PLC2-4D are implemented; later slices remain
-  unimplemented.
+  complete. PLC2-1 through PLC2-4D, PLC3-1 through PLC3-3, the PLC4/PAP4
+  owner-admission and Provider-selection primitives, and PLC4.5 through
+  RCP4.10 are implemented. PLC5.0's private Product Provider assembly seam is
+  also implemented; the `coding.lsp.default` production package and cutover,
+  PLC6 through PLC9, and the public SDK remain unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
@@ -1023,6 +1026,27 @@ This is the first production owner-component aggregation proof. It does not
 replace PLC5 as the first production complete-Bundle Provider/Graph proof.
 
 ### PLC5: `coding.lsp.default` Production Provider
+
+Implementation status (2026-08-25): PLC5.0 implements the private,
+unpublished Product assembly seam needed before the LSP package cutover. Given
+one finalized `PluginSelection`, exact Capability-owner bindings, the shared
+Capability definitions, explicit Product Provider roots/choices, and any
+prebound host Providers, it projects Provider candidates through the existing
+authoring bridge, grants bounded owner eligibility/admission, and delegates the
+closure to the existing `ProductCapabilityProviderResolver`. The result retains
+the exact package, owner snapshot, and trust snapshot for every resolved
+Provider and accepts only an exact map of externally issued activation-decision
+IDs when forming the existing Session composition inputs.
+
+PLC5.0 deliberately does not issue Approval decisions, import or start Provider
+code, publish a registry or API, choose defaults, or alter LSP behavior. The
+complete lifecycle test now uses this seam from finalized Plugin selection
+through external Approval, the existing Component Host and single Session
+Graph, typed Tool Consumer capture, and reverse owner disposal. This removes
+the last test-only manual Provider admission/resolution assembly path before a
+real production adopter. The next slice is the checked-in
+`coding.lsp.default` declaration/package and private opt-in bootstrap wiring;
+default cutover and old deferred-route deletion remain later PLC5 gates.
 
 Scope and gates are PAP6, including packaging the complete Bundle, narrow
 workspace requirements, Tool/runtime Session co-visibility across their exact
