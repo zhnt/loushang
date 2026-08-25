@@ -7,7 +7,7 @@
   and Model Input boundaries. It does not amend those boundaries implicitly.
 - Design status: RCP0 contract frozen; final narrow freeze re-review passed.
 - Implementation status: RCP0 through RCP3 are complete on the Harness lane;
-  RCP4 has started with eight unpublished foundation slices.
+  RCP4 has started with nine unpublished foundation slices.
   RCP2's first unpublished foundation slice implements the generic
   `CapabilityComponentDefinition`, exact candidate/admission/selection/binding
   records, atomic owner generations, cancellation-safe reverse rollback,
@@ -27,7 +27,7 @@
   remain private, and `harness.resources` does not export them. The RCP4
   preparation bridge is their sole path toward a Provider. One private optional
   Agent Session bootstrap adapter now calls that bridge. A private Product
-  preparation adapter can mint exact native/embedded inputs for it, but no
+  preparation adapter can mint exact native/package/embedded inputs for it, but no
   Product bootstrap invokes that adapter by default and no refresh route calls
   it.
   RCP3 adds admitted-package and embedded/OEM source components beside the
@@ -86,6 +86,11 @@
   per Session, while Coding joins admissions one-to-one with package candidates
   observed by the same legacy discovery. Conventional directories, incomplete
   admission sets, package diagnostics/Extensions, and subroot mounts reject.
+  The ninth slice removes the parallel raw-admission ingress: package specs must
+  exact-match `ProductCompositionCompilation.resource_admissions`, share its
+  Product policy revision, and retain that exact compilation through Session
+  construction. Coding accepts only that existing compiler output. It does not
+  rerun Plugin selection, declaration parsing, trust, or owner admission.
   The current `ResourceLoader`, `ResourceSnapshot`, `ResourceBundle`, and
   `SkillLoader` paths remain the implemented runtime until a phase below passes
   its cutover gate.
@@ -1154,7 +1159,7 @@ effective Resource selection.
 
 ### RCP4: Mount Resource Catalog generation
 
-Status: eight unpublished foundation slices complete. The v1 Provider path is
+Status: nine unpublished foundation slices complete. The v1 Provider path is
 unchanged when no prepared generation exists. A candidate with one prepared
 generation selects only contract/provider v2, contributes the two Catalog/load
 facets, transfers parent and child through the same
@@ -1325,17 +1330,52 @@ not re-read filter configuration. Traditional path-backed package roots and
 verified Plugins that have not completed `resource_item` declaration and owner
 admission remain on v1 and fail closed in the opt-in shadow.
 
-The private Coding construction helper accepts pre-admitted package Resources
-solely as a migration/test seam. It does not run Plugin selection, grant trust,
-or manufacture owner admission. Wiring the production Plugin declaration and
-owner-admission result into Product composition is a later gate and must not be
-implemented by parsing `ResourceBundle` or loader internals. A real Coding
-Session test proves an admitted package Skill through v2 Catalog publication,
+At this slice, the private Coding construction helper accepts pre-admitted
+package Resources solely as a migration/test seam. It does not run Plugin
+selection, grant trust, or manufacture owner admission. Wiring the production
+Plugin declaration and owner-admission result into Product composition is a
+later gate and must not be implemented by parsing `ResourceBundle` or loader
+internals. A real Coding Session test proves an admitted package Skill through
+v2 Catalog publication,
 Graph ownership, exact disposal, and zero pending retirement.
 
 No temporary-source support, disabled-Skill policy projection, kind-switch
 parity, refresh route, public SDK/CLI setting, default cutover, LSP, or MCP work
 is added in this slice.
+
+#### RCP4.9 implemented: compiled Product-composition ingress
+
+The ninth slice closes that later gate at the Resource Catalog input boundary.
+`InitialResourceCatalogProductSelection` now retains the exact existing
+`ProductCompositionCompilation` that came after Plugin declaration, trust, exact
+owner admission, and Product compilation. Its package Resource specifications
+must be a fingerprint-exact set match for
+`ProductCompositionCompilation.resource_admissions`, and the Catalog selection
+must use the compilation's Product policy revision. A missing, extra, duplicate,
+foreign-Product, or policy-mismatched compilation fails before package lease
+acquisition.
+
+Coding's private migration constructor now accepts only that compiled Product
+composition. It derives Resource admissions from the compilation and joins them
+to the same-discovery package candidate facts introduced in RCP4.8. The former
+parallel raw `initial_resource_catalog_package_admissions` path is removed, so
+there is one declaration/admission/compilation chain and no Coding-owned Plugin
+selection or admission codec. The Product adapter rechecks Product identity,
+policy, Session-sealed admission semantics, and the half-open admission lifetime
+before it acquires any per-Session verified-revision lease.
+
+A production-chain test starts from the checked-in inert `coding.base` Plugin,
+runs the existing declaration host and owner-candidate bridge, admits its prompt
+and Skill through their exact owners, compiles the Product composition, and
+constructs independent Catalog revision leases. Closing those Session leases
+does not close the Plugin runtime's source handle.
+
+This is a production-compatible composition ingress, not default Product
+assembly. The public Coding SDK, CLI, and default v1 path still do not construct
+or enable Plugin composition. Wiring the existing production declaration host,
+owner authorities, and compiler into the Coding composition root remains a
+separate explicit cutover gate. No refresh, temporary-source parity, disabled
+Skill projection, kind-switch parity, LSP, or MCP behavior is added.
 
 - introduce the internal `harness.resources` v2 Catalog/load facets and exact
   Consumer requirements;

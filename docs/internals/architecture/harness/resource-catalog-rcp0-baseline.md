@@ -8,21 +8,22 @@
   contract and grants no new public API.
 - Frozen source baseline: `0de16c72`, tracked by issue `#495`.
 - Implementation status: the RCP0 legacy baseline remains authoritative, and
-  RCP1 through RCP3 remain private foundations. RCP4 now has eight unpublished
+  RCP1 through RCP3 remain private foundations. RCP4 now has nine unpublished
   slices: pure Catalog records/engine, owner-component lifecycle,
   native/package/embedded/Extension sources, the v2 Catalog/load Provider, and
   one private optional Agent Session bootstrap plus its reusable
   native/package/embedded Product input adapter, plus a private Coding initial
-  shadow over a same-discovery single-take input receipt. That Coding seam supports
-  project/context, user, built-in, and exact owner-admitted verified-package
-  inputs. It still rejects conventional or incompletely admitted packages,
-  package diagnostics/Extensions, temporary inputs, kind switches, and disabled
-  Skills. No Product invokes
-  them by default; the private Coding migration seam is explicit. Therefore the
-  v1 legacy loader remains the default Resource
-  authority and no cutover or refresh route exists yet. RCP3 also removed
-  Package Catalog's effective-discovery summary bridge in favor of a pure
-  inventory port.
+  shadow over a same-discovery single-take input receipt. That Coding seam
+  supports project/context, user, built-in, and exact owner-admitted
+  verified-package inputs. Package inputs must now exact-match the Resource
+  admissions in one existing compiled Product composition; no raw parallel
+  admission ingress remains. It still rejects conventional or incompletely
+  admitted packages, package diagnostics/Extensions, temporary inputs, kind
+  switches, and disabled Skills. No Product invokes them by default; the private
+  Coding migration seam is explicit. Therefore the v1 legacy loader remains the
+  default Resource authority and no cutover or refresh route exists yet. RCP3
+  also removed Package Catalog's effective-discovery summary bridge in favor of
+  a pure inventory port.
 - Review status: the first freeze re-review rejected commit `811f0fdb` with no
   P0 because its Skill oracle and executable inventories were incomplete.
   Corrections at `ed364062` and candidate-provenance closure at `b387d542`

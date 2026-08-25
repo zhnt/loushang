@@ -239,9 +239,11 @@ def test_rcp4_product_input_adapter_is_explicit_private_and_source_narrow() -> N
         "loushang.harness.resources._loader_pipeline",
     }
     assert imports & {
+        "loushang.harness.capabilities.consumer_requirements",
         "loushang.harness.resources._catalog_package_source",
         "loushang.harness.resource_catalog.inputs",
     } == {
+        "loushang.harness.capabilities.consumer_requirements",
         "loushang.harness.resources._catalog_package_source",
         "loushang.harness.resource_catalog.inputs",
     }
@@ -250,6 +252,8 @@ def test_rcp4_product_input_adapter_is_explicit_private_and_source_narrow() -> N
     assert "construct_session" in source
     assert "close_unprepared" in source
     assert "ProductAdmittedPackageResourceSpec" in source
+    assert "ProductCompositionCompilation" in source
+    assert "exact-match Product composition" in source
     assert "acquire_admitted_package_resource" in source
     assert "package_resources" in source
     coding_source = CODING_SHADOW_ADAPTER_PATH.read_text(encoding="utf-8")
@@ -258,3 +262,5 @@ def test_rcp4_product_input_adapter_is_explicit_private_and_source_narrow() -> N
         encoding="utf-8"
     )
     assert "enable_initial_resource_catalog_shadow: bool = False" in bootstrap_source
+    assert "initial_resource_catalog_product_composition" in bootstrap_source
+    assert "initial_resource_catalog_package_admissions" not in bootstrap_source

@@ -6,6 +6,11 @@ from pathlib import Path
 
 import pytest
 
+from loushang.harness.capabilities.consumer_requirements import (
+    ProductCompositionAuthorityContext,
+    ProductCompositionCompilation,
+    ProductCompositionCompiler,
+)
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAdmissionRecord,
     OwnerContributionAuthority,
@@ -13,6 +18,13 @@ from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionPolicy,
     ResourceContributionSpec,
 )
+from loushang.harness.capabilities.model_input_contracts import (
+    MODEL_INPUT_CAPABILITY_DEFINITION,
+)
+from loushang.harness.plugin_authoring.contribution_admission import (
+    prepare_owner_contribution_candidate,
+)
+from loushang.harness.plugin_authoring.host import PluginDeclarationHost
 from loushang.harness.resource_catalog import product_inputs as product_inputs_module
 from loushang.harness.resource_catalog.product_inputs import (
     InitialResourceCatalogProductAdapter,
@@ -21,13 +33,30 @@ from loushang.harness.resource_catalog.product_inputs import (
     ProductEmbeddedResourceCollectionSpec,
     ProductNativeResourceRootSpec,
 )
+from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.plugins.authority import PluginResolutionAuthority
 from loushang.harness.resources.plugins.manifest import PluginManifestParser
 from loushang.harness.resources.plugins.revisions import (
     PluginRevisionStore,
     VerifiedRevisionHandle,
 )
-from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
+from loushang.harness.resources.plugins.selection import (
+    PendingOnlyPluginExecutionDecisionLookup,
+    PluginContributionRef,
+    PluginEffectiveConfigurationEntry,
+    PluginEffectiveConfigurationSetV1,
+    PluginInstanceRevisionRef,
+    PluginPreflightContextV1,
+    PluginSelection,
+    PluginSelectionPlanV2,
+    PluginSourceTrustSnapshotV1,
+)
+from loushang.harness.resources.plugins.types import PluginSource
 from loushang.harness.resources.types import ResourceBundle
+
+_CODING_BASE_SHADOW_ROOT = (
+    Path(__file__).parent / "plugins" / "fixtures" / "coding_base_shadow"
+)
 
 
 def _package_skill_admission(
@@ -98,6 +127,50 @@ def _package_skill_admission(
     return admission, handle
 
 
+def _product_composition(
+    admission: OwnerContributionAdmissionRecord,
+) -> ProductCompositionCompilation:
+    candidate = admission.candidate
+    owner_snapshot = OwnerContributionAuthority(
+        OwnerContributionPolicy(
+            owner_id=admission.owner_id,
+            contribution_kind=admission.contribution_kind,
+            product_id=admission.product_id,
+            policy_revision=admission.owner_policy_revision,
+            revocation_epoch=admission.revocation_epoch,
+            allowed_source_trust_classes=(candidate.source_trust_class,),
+            allowed_collection_ids=(candidate.contribution.collection_id,),
+            allowed_requirement_bindings=("direct",),
+            consumer_scope=admission.consumer_scope,
+            consumer_refresh_boundary=admission.consumer_refresh_boundary,
+        )
+    ).snapshot()
+    return ProductCompositionCompiler().compile(
+        authority_context=ProductCompositionAuthorityContext(
+            product_id=admission.product_id,
+            scope_id=candidate.scope_id,
+            product_policy_revision=candidate.product_policy_revision,
+            evaluated_at=2,
+            owner_snapshots=(owner_snapshot,),
+            trust_snapshots=(
+                PluginSourceTrustSnapshotV1(
+                    plugin_id=admission.plugin_id,
+                    package_source_identity=candidate.package_source_identity,
+                    source_trust_class=candidate.source_trust_class,
+                    source_trust_policy_revision=(
+                        candidate.source_trust_policy_revision
+                    ),
+                    trusted=True,
+                ),
+            ),
+        ),
+        mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
+        admissions=(admission,),
+        definitions=(MODEL_INPUT_CAPABILITY_DEFINITION,),
+        optional_choices=(),
+    )
+
+
 def test_embedded_product_spec_defensively_copies_the_selected_bytes() -> None:
     files = {"skills/builtin/SKILL.md": b"original"}
 
@@ -149,13 +222,167 @@ def test_product_selection_rejects_duplicate_package_admissions(
         revision_handle=handle,
     )
     try:
+        with pytest.raises(ValueError, match="exact-match Product composition"):
+            InitialResourceCatalogProductSelection(
+                product_policy_revision="policy-v1",
+                package_resources=(package,),
+            )
+        with pytest.raises(ValueError, match="composition policy is stale"):
+            InitialResourceCatalogProductSelection(
+                product_policy_revision="policy-v2",
+                product_composition=_product_composition(admission),
+                package_resources=(package,),
+            )
         with pytest.raises(ValueError, match="admissions must not repeat"):
             InitialResourceCatalogProductSelection(
                 product_policy_revision="policy-v1",
+                product_composition=_product_composition(admission),
                 package_resources=(package, package),
             )
     finally:
         handle.close()
+
+
+def test_product_adapter_consumes_compiled_resource_admissions_from_plugin_selection(
+    tmp_path: Path,
+) -> None:
+    authority = PluginResolutionAuthority()
+    inspection = authority.inspect(PluginSource(path=_CODING_BASE_SHADOW_ROOT))
+    runtime = authority.publish_runtime(
+        (inspection,),
+        binding_store=PackageMaterializer(
+            install_root=tmp_path / "installed",
+            plugin_revision_root=tmp_path / "revisions",
+        ),
+    )
+    [package] = runtime.packages
+    [binding] = runtime.bindings
+    plugin_id = package.manifest.name
+    plan = PluginSelectionPlanV2(
+        context=PluginPreflightContextV1(
+            product_id="coding",
+            scope_id="workspace:test",
+            policy_revision="policy-1",
+            instance_revision_refs=(
+                PluginInstanceRevisionRef(
+                    instance_id="coding.base@product",
+                    plugin_id=plugin_id,
+                    revision=1,
+                ),
+            ),
+        ),
+        selected_plugin_ids=(plugin_id,),
+        selected_contributions=tuple(
+            PluginContributionRef(plugin_id, item.contribution_id)
+            for item in package.contribution_index.items
+        ),
+        source_trust_snapshots=(
+            PluginSourceTrustSnapshotV1(
+                plugin_id=plugin_id,
+                package_source_identity=binding.source_identity,
+                source_trust_class="host-equivalent-local",
+                source_trust_policy_revision="trust-1",
+                trusted=True,
+            ),
+        ),
+        effective_configuration_set=PluginEffectiveConfigurationSetV1(
+            entries=tuple(
+                PluginEffectiveConfigurationEntry(
+                    plugin_id=plugin_id,
+                    contribution_id=item.contribution_id,
+                    configuration={},
+                )
+                for item in package.contribution_index.items
+            )
+        ),
+        allowed_authority_ceiling=(),
+    )
+    try:
+        selection = PluginDeclarationHost().resolve(
+            (package,),
+            bindings=(binding,),
+            plan=plan,
+            decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+        )
+        assert isinstance(selection, PluginSelection)
+        resource_candidates = tuple(
+            item
+            for item in selection.candidates
+            if item.declaration.kind == "resource_item"
+        )
+        owner_authorities = []
+        admissions = []
+        for resource_candidate in resource_candidates:
+            candidate = prepare_owner_contribution_candidate(
+                selection,
+                resource_candidate,
+            )
+            assert isinstance(candidate.contribution, ResourceContributionSpec)
+            owner_authority = OwnerContributionAuthority(
+                OwnerContributionPolicy(
+                    owner_id=candidate.owner_id,
+                    contribution_kind="resource_item",
+                    product_id="coding",
+                    policy_revision=f"{candidate.owner_id}-v1",
+                    revocation_epoch=0,
+                    allowed_source_trust_classes=("host-equivalent-local",),
+                    allowed_collection_ids=(candidate.contribution.collection_id,),
+                    allowed_requirement_bindings=("direct",),
+                    consumer_scope="session",
+                    consumer_refresh_boundary="sealed",
+                )
+            )
+            owner_authorities.append(owner_authority)
+            admissions.append(
+                owner_authority.admit(candidate, issued_at=100, expires_at=200)
+            )
+        composition = ProductCompositionCompiler().compile(
+            authority_context=ProductCompositionAuthorityContext(
+                product_id="coding",
+                scope_id="workspace:test",
+                product_policy_revision="policy-1",
+                evaluated_at=150,
+                owner_snapshots=tuple(item.snapshot() for item in owner_authorities),
+                trust_snapshots=plan.source_trust_snapshots,
+            ),
+            mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
+            admissions=tuple(admissions),
+            definitions=(MODEL_INPUT_CAPABILITY_DEFINITION,),
+            optional_choices=(),
+        )
+        adapter = InitialResourceCatalogProductAdapter(
+            InitialResourceCatalogProductSelection(
+                product_policy_revision="policy-1",
+                product_composition=composition,
+                package_resources=tuple(
+                    ProductAdmittedPackageResourceSpec(
+                        admission=admission,
+                        revision_handle=package.revision_handle,
+                    )
+                    for admission in admissions
+                ),
+            ),
+            clock=lambda: 150,
+        )
+        bootstrap = adapter.construct_session(
+            product_id="coding",
+            session_id="compiled-plugin-selection",
+            base_resource_bundle=ResourceBundle(cwd=tmp_path),
+            construct=lambda value: value,
+        )
+        acquired = tuple(
+            item.revision_handle for item in bootstrap._inputs.package_resources
+        )
+        try:
+            assert adapter.selection.product_composition is composition
+            assert len(acquired) == 2
+            assert all(item is not package.revision_handle for item in acquired)
+        finally:
+            bootstrap.close_unprepared()
+        assert all(item.closed for item in acquired)
+        assert package.revision_handle.closed is False
+    finally:
+        runtime.close()
 
 
 def test_product_adapter_reuse_acquires_independent_package_revision_leases(
@@ -165,6 +392,7 @@ def test_product_adapter_reuse_acquires_independent_package_revision_leases(
     adapter = InitialResourceCatalogProductAdapter(
         InitialResourceCatalogProductSelection(
             product_policy_revision="policy-v1",
+            product_composition=_product_composition(admission),
             package_resources=(
                 ProductAdmittedPackageResourceSpec(
                     admission=admission,
@@ -209,6 +437,7 @@ def test_product_adapter_reuse_acquires_independent_package_revision_leases(
     (
         ("foreign", 100, "belongs elsewhere"),
         ("product", 5, "is not active"),
+        ("product", 10, "is not active"),
     ),
 )
 def test_product_adapter_rejects_foreign_or_expired_package_admission_before_acquire(
@@ -225,6 +454,7 @@ def test_product_adapter_rejects_foreign_or_expired_package_admission_before_acq
     adapter = InitialResourceCatalogProductAdapter(
         InitialResourceCatalogProductSelection(
             product_policy_revision="policy-v1",
+            product_composition=_product_composition(admission),
             package_resources=(
                 ProductAdmittedPackageResourceSpec(
                     admission=admission,

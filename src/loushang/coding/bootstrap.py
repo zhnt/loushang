@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
@@ -69,6 +69,9 @@ from loushang.harness.bootstrap import (
 from loushang.harness.capabilities import (
     StagedResourceCompositionCandidate,
     stage_resource_composition_candidate,
+)
+from loushang.harness.capabilities.consumer_requirements import (
+    ProductCompositionCompilation,
 )
 from loushang.harness.capabilities.workspace_provider import (
     workspace_capability_provider_binding,
@@ -279,14 +282,23 @@ def _create_agent_session(
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
     enable_initial_resource_catalog_shadow: bool = False,
-    initial_resource_catalog_package_admissions: Sequence[Any] = (),
+    initial_resource_catalog_product_composition: (
+        ProductCompositionCompilation | None
+    ) = None,
 ) -> AgentSession:
     if not isinstance(enable_initial_resource_catalog_shadow, bool):
         raise TypeError("initial Resource Catalog shadow flag must be a bool")
-    package_resource_admissions = tuple(initial_resource_catalog_package_admissions)
-    if package_resource_admissions and not enable_initial_resource_catalog_shadow:
+    if initial_resource_catalog_product_composition is not None and not isinstance(
+        initial_resource_catalog_product_composition,
+        ProductCompositionCompilation,
+    ):
+        raise TypeError("initial Resource Catalog Product composition is invalid")
+    if (
+        initial_resource_catalog_product_composition is not None
+        and not enable_initial_resource_catalog_shadow
+    ):
         raise ValueError(
-            "initial Resource Catalog package admissions require the shadow"
+            "initial Resource Catalog Product composition requires the shadow"
         )
     enable_multiagent_tools = (
         enable_multiagent
@@ -413,7 +425,7 @@ def _create_agent_session(
                     disabled_skills=(
                         services.settings_manager.get_settings().disabled_skills
                     ),
-                    package_resource_admissions=package_resource_admissions,
+                    product_composition=initial_resource_catalog_product_composition,
                 )
             )
         base_exec_service = services.exec_service or ExecService()

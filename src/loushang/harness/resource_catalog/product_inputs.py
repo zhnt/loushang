@@ -10,6 +10,9 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TypeVar
 
+from loushang.harness.capabilities.consumer_requirements import (
+    ProductCompositionCompilation,
+)
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAdmissionRecord,
     ResourceContributionSpec,
@@ -156,6 +159,10 @@ class InitialResourceCatalogProductSelection:
     """Exact native/package/embedded selection admitted by one Product."""
 
     product_policy_revision: str
+    product_composition: ProductCompositionCompilation | None = field(
+        default=None,
+        repr=False,
+    )
     native_roots: tuple[ProductNativeResourceRootSpec, ...] = ()
     package_resources: tuple[ProductAdmittedPackageResourceSpec, ...] = ()
     embedded_collections: tuple[ProductEmbeddedResourceCollectionSpec, ...] = ()
@@ -173,6 +180,12 @@ class InitialResourceCatalogProductSelection:
         native_roots = tuple(self.native_roots)
         package_resources = tuple(self.package_resources)
         embedded_collections = tuple(self.embedded_collections)
+        product_composition = self.product_composition
+        if product_composition is not None and not isinstance(
+            product_composition,
+            ProductCompositionCompilation,
+        ):
+            raise TypeError("Product Resource composition is invalid")
         if any(
             not isinstance(item, ProductNativeResourceRootSpec) for item in native_roots
         ):
@@ -195,6 +208,35 @@ class InitialResourceCatalogProductSelection:
             package_resources
         ):
             raise ValueError("Product package Resource admissions must not repeat")
+        composition_resources = (
+            tuple(product_composition.resource_admissions)
+            if product_composition is not None
+            else ()
+        )
+        if any(
+            not isinstance(item, OwnerContributionAdmissionRecord)
+            for item in composition_resources
+        ):
+            raise TypeError("Product composition Resource admissions are invalid")
+        if len({item.fingerprint for item in composition_resources}) != len(
+            composition_resources
+        ):
+            raise ValueError("Product composition Resource admissions must be unique")
+        package_admission_fingerprints = {
+            item.admission.fingerprint for item in package_resources
+        }
+        composition_admission_fingerprints = {
+            item.fingerprint for item in composition_resources
+        }
+        if package_admission_fingerprints != composition_admission_fingerprints:
+            raise ValueError(
+                "Product package Resources must exact-match Product composition"
+            )
+        if product_composition is not None and (
+            product_composition.authority_context.product_policy_revision
+            != self.product_policy_revision
+        ):
+            raise ValueError("Product Resource composition policy is stale")
         if len({item.collection_id for item in embedded_collections}) != len(
             embedded_collections
         ):
@@ -298,6 +340,12 @@ class InitialResourceCatalogProductAdapter:
             raise TypeError("initial Resource Catalog Product clock must return an int")
 
         selection = self.selection
+        product_composition = selection.product_composition
+        if (
+            product_composition is not None
+            and product_composition.authority_context.product_id != product_id
+        ):
+            raise ValueError("Product Resource composition belongs elsewhere")
         for spec in selection.package_resources:
             admission = spec.admission
             if admission.product_id != product_id:
@@ -314,7 +362,7 @@ class InitialResourceCatalogProductAdapter:
                 raise ValueError(
                     "Initial Product package Resource admission must be Session-sealed"
                 )
-            if not admission.issued_at <= now <= admission.expires_at:
+            if not admission.issued_at <= now < admission.expires_at:
                 raise ValueError("Product package Resource admission is not active")
         root_handles = tuple(
             mint_native_resource_root_handle(

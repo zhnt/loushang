@@ -8,6 +8,9 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Protocol
 
+from loushang.harness.capabilities.consumer_requirements import (
+    ProductCompositionCompilation,
+)
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAdmissionRecord,
     ResourceContributionSpec,
@@ -57,14 +60,14 @@ def prepare_coding_initial_resource_catalog_shadow_adapter(
     resource_loader: _ResourceCatalogReceiptSource,
     *,
     disabled_skills: Sequence[str] = (),
-    package_resource_admissions: Sequence[OwnerContributionAdmissionRecord] = (),
+    product_composition: ProductCompositionCompilation | None = None,
 ) -> InitialResourceCatalogProductAdapter:
     """Consume exactly one owner-issued receipt for a private shadow Session."""
 
     return build_coding_initial_resource_catalog_shadow_adapter(
         resource_loader._take_initial_resource_catalog_input_receipt(),
         disabled_skills=disabled_skills,
-        package_resource_admissions=package_resource_admissions,
+        product_composition=product_composition,
         package_admission_now=int(time.time()),
     )
 
@@ -73,24 +76,43 @@ def build_coding_initial_resource_catalog_shadow_adapter(
     receipt: ResourceCatalogInputReceipt,
     *,
     disabled_skills: Sequence[str] = (),
-    package_resource_admissions: Sequence[OwnerContributionAdmissionRecord] = (),
+    product_composition: ProductCompositionCompilation | None = None,
     package_admission_now: int | None = None,
 ) -> InitialResourceCatalogProductAdapter:
     """Map one exact loader receipt without reparsing its selected Bundle."""
 
     if not isinstance(receipt, ResourceCatalogInputReceipt):
         raise TypeError("Coding Resource Catalog shadow requires an input receipt")
-    admissions = tuple(package_resource_admissions)
+    if product_composition is not None and not isinstance(
+        product_composition,
+        ProductCompositionCompilation,
+    ):
+        raise TypeError("Coding Resource Catalog Product composition is invalid")
+    admissions = (
+        tuple(product_composition.resource_admissions)
+        if product_composition is not None
+        else ()
+    )
     if any(
         not isinstance(item, OwnerContributionAdmissionRecord) for item in admissions
     ):
-        raise TypeError("Coding package Resource admissions are invalid")
+        raise TypeError("Coding Product composition Resource admissions are invalid")
+    product_policy_revision = (
+        product_composition.authority_context.product_policy_revision
+        if product_composition is not None
+        else _CODING_SHADOW_POLICY_REVISION
+    )
     if admissions and (
         isinstance(package_admission_now, bool)
         or not isinstance(package_admission_now, int)
     ):
         raise TypeError("Coding package Resource admissions require an integer time")
     rejection_reasons: list[str] = []
+    if (
+        product_composition is not None
+        and product_composition.authority_context.product_id != "coding"
+    ):
+        rejection_reasons.append("foreign_product_composition")
     if receipt.has_temporary_inputs:
         rejection_reasons.append("temporary_sources")
     if receipt.has_resource_kind_switches:
@@ -100,6 +122,7 @@ def build_coding_initial_resource_catalog_shadow_adapter(
     package_resources = _prepare_package_resources(
         receipt,
         admissions=admissions,
+        product_policy_revision=product_policy_revision,
         admission_now=package_admission_now,
         rejection_reasons=rejection_reasons,
     )
@@ -159,7 +182,8 @@ def build_coding_initial_resource_catalog_shadow_adapter(
     )
     return InitialResourceCatalogProductAdapter(
         InitialResourceCatalogProductSelection(
-            product_policy_revision=_CODING_SHADOW_POLICY_REVISION,
+            product_policy_revision=product_policy_revision,
+            product_composition=product_composition,
             native_roots=tuple(native_roots),
             package_resources=package_resources,
             embedded_collections=embedded,
@@ -172,6 +196,7 @@ def _prepare_package_resources(
     receipt: ResourceCatalogInputReceipt,
     *,
     admissions: tuple[OwnerContributionAdmissionRecord, ...],
+    product_policy_revision: str,
     admission_now: int | None,
     rejection_reasons: list[str],
 ) -> tuple[ProductAdmittedPackageResourceSpec, ...]:
@@ -224,10 +249,7 @@ def _prepare_package_resources(
         if admission.product_id != "coding":
             rejection_reasons.append("foreign_package_admission")
             continue
-        if (
-            admission.candidate.product_policy_revision
-            != _CODING_SHADOW_POLICY_REVISION
-        ):
+        if admission.candidate.product_policy_revision != product_policy_revision:
             rejection_reasons.append("stale_package_admission_policy")
             continue
         if (
@@ -237,7 +259,7 @@ def _prepare_package_resources(
             rejection_reasons.append("unsealed_package_admission")
             continue
         assert admission_now is not None
-        if not admission.issued_at <= admission_now <= admission.expires_at:
+        if not admission.issued_at <= admission_now < admission.expires_at:
             rejection_reasons.append("inactive_package_admission")
             continue
         if admission.contribution_kind != "resource_item" or not isinstance(

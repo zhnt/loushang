@@ -16,12 +16,20 @@ from loushang.coding._resource_catalog_shadow import (
 from loushang.coding.bootstrap import _create_agent_session, create_services
 from loushang.coding.control import SettingsManager
 from loushang.coding.session_manager import SessionManager
+from loushang.harness.capabilities.consumer_requirements import (
+    ProductCompositionAuthorityContext,
+    ProductCompositionCompilation,
+    ProductCompositionCompiler,
+)
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAdmissionRecord,
     OwnerContributionAuthority,
     OwnerContributionCandidateEnvelope,
     OwnerContributionPolicy,
     ResourceContributionSpec,
+)
+from loushang.harness.capabilities.model_input_contracts import (
+    MODEL_INPUT_CAPABILITY_DEFINITION,
 )
 from loushang.harness.resources._catalog_input_receipt import (
     ResourceCatalogInputReceipt,
@@ -30,7 +38,10 @@ from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.mounts import PackageResourceMount
 from loushang.harness.resources.plugins.manifest import PluginManifestParser
 from loushang.harness.resources.plugins.revisions import PluginRevisionStore
-from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
+from loushang.harness.resources.plugins.selection import (
+    PluginInstanceRevisionRef,
+    PluginSourceTrustSnapshotV1,
+)
 
 
 def _model() -> Model:
@@ -133,6 +144,50 @@ def _coding_package_skill_admission(
     ).admit(candidate, issued_at=now - 60, expires_at=now + 3600)
     handle.close()
     return admission
+
+
+def _coding_product_composition(
+    admission: OwnerContributionAdmissionRecord,
+) -> ProductCompositionCompilation:
+    candidate = admission.candidate
+    owner_snapshot = OwnerContributionAuthority(
+        OwnerContributionPolicy(
+            owner_id=admission.owner_id,
+            contribution_kind=admission.contribution_kind,
+            product_id=admission.product_id,
+            policy_revision=admission.owner_policy_revision,
+            revocation_epoch=admission.revocation_epoch,
+            allowed_source_trust_classes=(candidate.source_trust_class,),
+            allowed_collection_ids=(candidate.contribution.collection_id,),
+            allowed_requirement_bindings=("direct",),
+            consumer_scope=admission.consumer_scope,
+            consumer_refresh_boundary=admission.consumer_refresh_boundary,
+        )
+    ).snapshot()
+    return ProductCompositionCompiler().compile(
+        authority_context=ProductCompositionAuthorityContext(
+            product_id="coding",
+            scope_id=candidate.scope_id,
+            product_policy_revision=candidate.product_policy_revision,
+            evaluated_at=int(time.time()),
+            owner_snapshots=(owner_snapshot,),
+            trust_snapshots=(
+                PluginSourceTrustSnapshotV1(
+                    plugin_id=admission.plugin_id,
+                    package_source_identity=candidate.package_source_identity,
+                    source_trust_class=candidate.source_trust_class,
+                    source_trust_policy_revision=(
+                        candidate.source_trust_policy_revision
+                    ),
+                    trusted=True,
+                ),
+            ),
+        ),
+        mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
+        admissions=(admission,),
+        definitions=(MODEL_INPUT_CAPABILITY_DEFINITION,),
+        optional_choices=(),
+    )
 
 
 def test_coding_shadow_maps_one_receipt_without_bundle_inference(
@@ -243,6 +298,7 @@ def test_coding_shadow_requires_exact_admission_for_verified_package_candidates(
         source,
         revision_root=tmp_path / "admission-revisions",
     )
+    product_composition = _coding_product_composition(admission)
     published = PluginRevisionStore(tmp_path / "receipt-revisions").publish(
         PluginManifestParser().parse(source)
     )
@@ -267,21 +323,39 @@ def test_coding_shadow_requires_exact_admission_for_verified_package_candidates(
 
         adapter = build_coding_initial_resource_catalog_shadow_adapter(
             receipt,
-            package_resource_admissions=(admission,),
+            product_composition=product_composition,
             package_admission_now=int(time.time()),
         )
+        assert adapter.selection.product_composition is product_composition
         assert len(adapter.selection.package_resources) == 1
         assert adapter.selection.package_resources[0].revision_handle is handle
+
+        with pytest.raises(CodingResourceCatalogShadowAdmissionError) as foreign:
+            build_coding_initial_resource_catalog_shadow_adapter(
+                receipt,
+                product_composition=replace(
+                    product_composition,
+                    authority_context=replace(
+                        product_composition.authority_context,
+                        product_id="foreign",
+                    ),
+                ),
+                package_admission_now=int(time.time()),
+            )
+        assert "foreign_product_composition" in foreign.value.reasons
 
         invalid_locator_admission = _coding_package_skill_admission(
             source,
             revision_root=tmp_path / "invalid-locator-revisions",
             locator="/skills/package-review/SKILL.md",
         )
+        invalid_locator_composition = _coding_product_composition(
+            invalid_locator_admission
+        )
         with pytest.raises(CodingResourceCatalogShadowAdmissionError) as invalid:
             build_coding_initial_resource_catalog_shadow_adapter(
                 receipt,
-                package_resource_admissions=(invalid_locator_admission,),
+                product_composition=invalid_locator_composition,
                 package_admission_now=int(time.time()),
             )
         assert "invalid_package_admission" in invalid.value.reasons
@@ -292,7 +366,7 @@ def test_coding_shadow_requires_exact_admission_for_verified_package_candidates(
                     receipt,
                     package_diagnostic_codes=("unsupported_skill_entry",),
                 ),
-                package_resource_admissions=(admission,),
+                product_composition=product_composition,
                 package_admission_now=int(time.time()),
             )
         assert "package_discovery_diagnostics" in diagnostic.value.reasons
@@ -381,6 +455,7 @@ def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(
             plugin_root,
             revision_root=tmp_path / "admission-revisions",
         )
+        product_composition = _coding_product_composition(admission)
         project_settings_path = tmp_path / "project-settings.json"
         project_settings_path.write_text(
             json.dumps({"plugin_sources": [str(plugin_root)]}),
@@ -403,7 +478,7 @@ def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(
             services=services,
             model=_model(),
             enable_initial_resource_catalog_shadow=True,
-            initial_resource_catalog_package_admissions=(admission,),
+            initial_resource_catalog_product_composition=product_composition,
         )
         resource_candidate = session._staged_resource_candidate
         assert resource_candidate is not None
