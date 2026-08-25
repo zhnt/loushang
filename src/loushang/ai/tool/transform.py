@@ -156,6 +156,22 @@ def transform_messages_result(
                     )
                 )
                 continue
+            if not any(
+                isinstance(block, ToolCall)
+                or (isinstance(block, TextPart) and bool(block.text.strip()))
+                for block in normalized_message.content
+            ):
+                diagnostics.append(
+                    NormalizationDiagnostic(
+                        code="non_visible_assistant_dropped",
+                        path=message_path,
+                        message=(
+                            "Dropped assistant message without visible text or "
+                            "tool calls during normalization."
+                        ),
+                    )
+                )
+                continue
 
             tool_call_id_resolutions = _resolve_tool_call_ids(
                 message,

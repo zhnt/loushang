@@ -9,6 +9,7 @@ NormalizationDiagnosticCode = Literal[
     "aborted_assistant_repaired",
     "empty_thinking_dropped",
     "error_assistant_dropped",
+    "non_visible_assistant_dropped",
     "duplicate_tool_result",
     "late_tool_result",
     "missing_tool_result",
