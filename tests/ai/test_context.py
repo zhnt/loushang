@@ -480,6 +480,40 @@ def test_normalize_context_result_keeps_original_paths_after_system_messages() -
     ]
 
 
+def test_normalize_context_result_drops_reasoning_only_assistant() -> None:
+    assistant = AssistantMessage(
+        role="assistant",
+        content=[ThinkingPart(type="thinking", thinking="unfinished reasoning")],
+        api="openai-completions",
+        provider="deepseek",
+        endpoint="openai-completions",
+        model="deepseek-v4-pro",
+        response_id=None,
+        usage=_usage(),
+        stop_reason="stop",
+        error_message=None,
+        timestamp=1.0,
+    )
+    follow_up = UserMessage(
+        role="user",
+        content=[TextPart(type="text", text="additional context")],
+        timestamp=2.0,
+    )
+
+    result = normalize_context_result({"messages": [assistant, follow_up]})
+
+    assert result.context.messages == (follow_up,)
+    assert _diagnostic_snapshot(result) == [
+        (
+            "non_visible_assistant_dropped",
+            "messages[0]",
+            "Dropped assistant message without visible text or tool calls during "
+            "normalization.",
+            "warning",
+        )
+    ]
+
+
 def test_normalize_context_result_skips_tool_diagnostics_for_dropped_error_assistant() -> (
     None
 ):
