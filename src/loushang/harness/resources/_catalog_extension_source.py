@@ -145,6 +145,8 @@ class ExtensionResourceSourceGeneration:
         self._source_snapshot = source_snapshot
         self._retained_bodies = dict(retained_bodies)
         self._descriptor_bindings = descriptor_bindings
+        self._borrow_count = 0
+        self._retiring = False
         self._disposed = False
 
     @property
@@ -167,9 +169,39 @@ class ExtensionResourceSourceGeneration:
     def is_disposed(self) -> bool:
         return self._disposed
 
+    @property
+    def is_retiring(self) -> bool:
+        return self._retiring and not self._disposed
+
+    def borrow(self) -> ExtensionResourceSourceLease:
+        """Mint one exact lease that can drain after owner retirement starts."""
+
+        if self._disposed:
+            self._raise_stale("source_disposed")
+        if self._retiring:
+            self._raise_stale("source_retiring")
+        self._borrow_count += 1
+        return ExtensionResourceSourceLease(self)
+
     def load(self, handle: ResourceLoadHandle) -> ResourceBodyRead:
         if self._disposed:
             self._raise_stale("source_disposed")
+        if self._retiring:
+            self._raise_stale("source_retiring")
+        return self._load_retained(handle)
+
+    def _load_borrowed(
+        self,
+        lease: ExtensionResourceSourceLease,
+        handle: ResourceLoadHandle,
+    ) -> ResourceBodyRead:
+        if lease._owner is not self or lease.is_released:
+            self._raise_stale("source_lease_released")
+        if self._disposed:
+            self._raise_stale("source_disposed")
+        return self._load_retained(handle)
+
+    def _load_retained(self, handle: ResourceLoadHandle) -> ResourceBodyRead:
         if not isinstance(handle, ResourceLoadHandle):
             raise TypeError("Extension Resource load requires a ResourceLoadHandle")
         if handle.source_generation_ref != self.source_generation_ref:
@@ -198,10 +230,25 @@ class ExtensionResourceSourceGeneration:
         )
 
     def dispose(self) -> None:
-        if self._disposed:
+        if self._disposed or self._retiring:
+            return
+        self._retiring = True
+        self._finalize_if_drained()
+
+    def _release_borrow(self, lease: ExtensionResourceSourceLease) -> None:
+        if lease._owner is not self:
+            raise ValueError("Extension Resource lease belongs to another generation")
+        if self._borrow_count < 1:
+            raise RuntimeError("Extension Resource borrow accounting is corrupt")
+        self._borrow_count -= 1
+        self._finalize_if_drained()
+
+    def _finalize_if_drained(self) -> None:
+        if not self._retiring or self._borrow_count:
             return
         self._retained_bodies.clear()
         self._descriptor_bindings = ()
+        self._retiring = False
         self._disposed = True
 
     @staticmethod
@@ -210,6 +257,62 @@ class ExtensionResourceSourceGeneration:
             code="resource_body_read_failed",
             reason=reason,
         )
+
+
+class ExtensionResourceSourceLease:
+    """One releasable Resource-owner borrow of an Extension source generation."""
+
+    def __init__(self, owner: ExtensionResourceSourceGeneration) -> None:
+        self._owner = owner
+        self._ownership = "offered"
+
+    @property
+    def source_generation_ref(self) -> ResourceSourceGenerationRef:
+        self._require_active()
+        return self._owner.source_generation_ref
+
+    @property
+    def source_snapshot(self) -> ResourceSourceSnapshot:
+        self._require_active()
+        return self._owner.source_snapshot
+
+    @property
+    def is_released(self) -> bool:
+        return self._ownership == "released"
+
+    @property
+    def ownership_state(self) -> str:
+        return self._ownership
+
+    def load(self, handle: ResourceLoadHandle) -> ResourceBodyRead:
+        self._require_active()
+        if self._ownership != "borrowed":
+            raise ExtensionResourceSourceError(
+                code="resource_body_read_failed",
+                reason="source_lease_not_claimed",
+            )
+        return self._owner._load_borrowed(self, handle)
+
+    def claim(self) -> None:
+        if self._ownership != "offered":
+            raise ExtensionResourceSourceError(
+                code="resource_body_read_failed",
+                reason="source_lease_not_offered",
+            )
+        self._ownership = "borrowed"
+
+    def release(self) -> None:
+        if self.is_released:
+            return
+        self._ownership = "released"
+        self._owner._release_borrow(self)
+
+    def _require_active(self) -> None:
+        if self.is_released:
+            raise ExtensionResourceSourceError(
+                code="resource_body_read_failed",
+                reason="source_lease_released",
+            )
 
 
 def freeze_extension_resource_source_generation(
@@ -753,5 +856,6 @@ __all__ = [
     "ExtensionResourceRouteContribution",
     "ExtensionResourceSourceError",
     "ExtensionResourceSourceGeneration",
+    "ExtensionResourceSourceLease",
     "freeze_extension_resource_source_generation",
 ]

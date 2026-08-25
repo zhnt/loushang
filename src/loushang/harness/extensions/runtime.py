@@ -23,6 +23,7 @@ from loushang.harness.extensions.registry import (
 from loushang.harness.extensions.resources import (
     ExtensionResourceCatalogDiscovery,
     ExtensionResourceRuntime,
+    PreparedExtensionResourceCatalog,
 )
 from loushang.harness.extensions.routing import (
     ExtensionRoutePlan,
@@ -379,6 +380,25 @@ class ExtensionRuntime:
         return self._resource_runtime().prepare_catalog_inputs(
             bundle,
             context=self._resource_context_factory(str(bundle.cwd)),
+        )
+
+    async def prepare_resource_catalog_generation_async(
+        self,
+        bundle: ResourceBundle,
+        *,
+        product_id: str,
+        runtime_id: str,
+        extension_generation: int,
+        extension_set_fingerprint: str,
+    ) -> PreparedExtensionResourceCatalog:
+        """Freeze one routed pass into an unpublished owner generation."""
+
+        discovery = await self.prepare_resource_catalog_inputs_async(bundle)
+        return discovery.freeze_generation(
+            product_id=product_id,
+            runtime_id=runtime_id,
+            extension_generation=extension_generation,
+            extension_set_fingerprint=extension_set_fingerprint,
         )
 
     def _apply_registry_snapshot(self) -> None:

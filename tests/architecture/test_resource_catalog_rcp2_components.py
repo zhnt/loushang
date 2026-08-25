@@ -16,6 +16,7 @@ COMPONENTS_PATH = ORCHESTRATION_ROOT / "components.py"
 NATIVE_SOURCE_PATH = RESOURCE_ROOT / "_catalog_native_source.py"
 SHADOW_RUNNER_PATH = ORCHESTRATION_ROOT / "shadow.py"
 PREPARED_GENERATION_PATH = ORCHESTRATION_ROOT / "generation.py"
+JOINT_GENERATION_PATH = ORCHESTRATION_ROOT / "joint_generation.py"
 EXTENSION_RESOURCE_SOURCE_PATH = RESOURCE_ROOT / "_catalog_extension_source.py"
 EXTENSION_RESOURCE_RUNTIME_PATH = Path("src/loushang/harness/extensions/resources.py")
 
@@ -164,3 +165,27 @@ def test_rcp4_extension_snapshot_has_one_non_publishing_runtime_bridge() -> None
     runtime_source = EXTENSION_RESOURCE_RUNTIME_PATH.read_text(encoding="utf-8")
     assert "prepare_catalog_inputs_async" in runtime_source
     assert "_defensive_bundle" in runtime_source
+
+
+def test_rcp4_joint_generation_stays_private_and_session_neutral() -> None:
+    production_paths = set(Path("src/loushang").rglob("*.py")) - {
+        JOINT_GENERATION_PATH,
+    }
+
+    assert JOINT_GENERATION_PATH.is_file()
+    assert not {
+        path
+        for path in production_paths
+        if "loushang.harness.resource_catalog.joint_generation"
+        in _imported_modules(path)
+    }
+    imports = _imported_modules(JOINT_GENERATION_PATH)
+    assert "loushang.harness.extensions.runner" not in imports
+    assert not {
+        name
+        for name in imports
+        if name.startswith("loushang.harness.session") or "mcp" in name.lower()
+    }
+    source = JOINT_GENERATION_PATH.read_text(encoding="utf-8")
+    assert "JointResourcePublication" in source
+    assert "prepare_extension_resource_joint_generation" in source

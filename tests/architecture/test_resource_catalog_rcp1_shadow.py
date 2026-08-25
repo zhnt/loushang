@@ -34,6 +34,7 @@ RCP3_MODULES = {
 RCP4_MODULES = {
     RESOURCE_ROOT / "_catalog_extension_source.py",
     ORCHESTRATION_ROOT / "generation.py",
+    ORCHESTRATION_ROOT / "joint_generation.py",
     CAPABILITY_ROOT / "resources_consumers.py",
     EXTENSION_ROOT / "resources.py",
 }

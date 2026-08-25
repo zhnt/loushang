@@ -267,7 +267,7 @@ async def _unpublished_catalog_composes_and_loads_borrowed_extension_generation(
         issued_at=1,
         expires_at=10,
         now=2,
-        extension_source_generation=generation,
+        extension_source_lease=generation.borrow(),
     )
     identity = ResourceIdentity(
         resource_kind="prompt",
@@ -325,7 +325,7 @@ async def _graph_owned_catalog_loads_extension_body(tmp_path: Path) -> None:
         issued_at=1,
         expires_at=10,
         now=2,
-        extension_source_generation=extension_generation,
+        extension_source_lease=extension_generation.borrow(),
     )
     binding = resources_capability_provider_binding(
         profile=profile,
@@ -369,6 +369,80 @@ async def _graph_owned_catalog_loads_extension_body(tmp_path: Path) -> None:
     candidate.dispose()
     assert extension_generation.is_disposed is False
     extension_generation.dispose()
+
+
+def test_extension_owner_retirement_drains_the_graph_borrow_before_body_release(
+    tmp_path: Path,
+) -> None:
+    asyncio.run(_extension_owner_retirement_drains_graph_borrow(tmp_path))
+
+
+async def _extension_owner_retirement_drains_graph_borrow(tmp_path: Path) -> None:
+    extension_generation = freeze_extension_resource_source_generation(
+        product_id="coding",
+        runtime_id="extension-runtime-drain",
+        extension_generation=1,
+        extension_set_fingerprint=_digest("extension-set-drain"),
+        route_contributions=(
+            _route(prompts=(_prompt(tmp_path / "review.md", text="drained body"),)),
+        ),
+    )
+    profile = _profile()
+    candidate = stage_resource_composition_candidate(profile)
+    lease = extension_generation.borrow()
+    await prepare_first_party_resource_owner_generation(
+        staged_candidate=candidate,
+        product_id="coding",
+        scope_id="session:test",
+        runtime_id="resource-owner:extension-drain",
+        product_policy_revision="resource-policy-v1",
+        root_handles=(),
+        issued_at=1,
+        expires_at=10,
+        now=2,
+        extension_source_lease=lease,
+    )
+    binding = resources_capability_provider_binding(
+        profile=profile,
+        scope_instance_id="session:test",
+        staged_candidate=candidate,
+    )
+    plan = RuntimeCapabilityGraphPlanner().plan(
+        CapabilityGraphPlanRequest(
+            product_id="coding",
+            roots=(RESOURCES_CAPABILITY_DEFINITION_V2.capability_id,),
+            definitions=(RESOURCES_CAPABILITY_DEFINITION_V2,),
+            providers=(binding.provider,),
+        )
+    )
+    runtime = RuntimeCapabilityGraphRuntime(
+        product_id="coding",
+        runtime_id="session:test",
+        profile_fingerprint=_digest("profile-drain"),
+    )
+    binder = RuntimeCapabilityGraphBinder()
+    await binder.bind(runtime, plan, (binding,))
+    consumer = ResourceCatalogCapabilityConsumer(
+        runtime.capture(RESOURCES_CATALOG_LOAD_REQUIREMENT)
+    )
+    identity = ResourceIdentity(
+        resource_kind="prompt",
+        schema_id="loushang.resource.prompt",
+        schema_version=1,
+        public_id="review",
+    )
+
+    extension_generation.dispose()
+    assert extension_generation.is_retiring is True
+    assert extension_generation.is_disposed is False
+    with pytest.raises(ExtensionResourceSourceError) as no_new_borrow:
+        extension_generation.borrow()
+    assert no_new_borrow.value.reason == "source_retiring"
+    assert (await consumer.load(consumer.load_handle(identity))).body == b"drained body"
+
+    assert await binder.dispose(runtime) == ()
+    assert lease.is_released is True
+    assert extension_generation.is_disposed is True
 
 
 def test_extension_runtime_prepares_defensive_exact_route_inputs(

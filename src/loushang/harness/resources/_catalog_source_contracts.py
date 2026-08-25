@@ -28,12 +28,12 @@ class ResourceDiscoveryRequest(Protocol):
 
 
 @runtime_checkable
-class BorrowedResourceSourceGeneration(Protocol):
-    """Owner-retained snapshot/body reader borrowed by the Resource generation.
+class BorrowedResourceSourceGenerationLease(Protocol):
+    """Owner-retained snapshot/body-reader lease held by a Resource generation.
 
     Extension hook output uses this seam because it is owned by the exact
     Extension generation rather than mounted as a Resource source component.
-    The borrower must never dispose it independently.
+    The borrower releases this lease but never disposes the owner generation.
     """
 
     @property
@@ -47,5 +47,15 @@ class BorrowedResourceSourceGeneration(Protocol):
         handle: ResourceLoadHandle,
     ) -> ResourceBodyRead | Awaitable[ResourceBodyRead]: ...
 
+    @property
+    def is_released(self) -> bool: ...
 
-__all__ = ["BorrowedResourceSourceGeneration", "ResourceDiscoveryRequest"]
+    @property
+    def ownership_state(self) -> str: ...
+
+    def claim(self) -> None: ...
+
+    def release(self) -> None: ...
+
+
+__all__ = ["BorrowedResourceSourceGenerationLease", "ResourceDiscoveryRequest"]

@@ -19,6 +19,8 @@ from loushang.harness.extensions.types import (
 )
 from loushang.harness.resources._catalog_extension_source import (
     ExtensionResourceRouteContribution,
+    ExtensionResourceSourceGeneration,
+    freeze_extension_resource_source_generation,
 )
 from loushang.harness.resources.diagnostics import resource_diagnostic
 from loushang.harness.resources.types import (
@@ -35,6 +37,35 @@ class ExtensionResourceCatalogDiscovery:
 
     projection: ResourceBundle
     route_contributions: tuple[ExtensionResourceRouteContribution, ...]
+
+    def freeze_generation(
+        self,
+        *,
+        product_id: str,
+        runtime_id: str,
+        extension_generation: int,
+        extension_set_fingerprint: str,
+    ) -> PreparedExtensionResourceCatalog:
+        """Transfer exact routed values into one Extension-owned source."""
+
+        return PreparedExtensionResourceCatalog(
+            projection=self.projection,
+            source_generation=freeze_extension_resource_source_generation(
+                product_id=product_id,
+                runtime_id=runtime_id,
+                extension_generation=extension_generation,
+                extension_set_fingerprint=extension_set_fingerprint,
+                route_contributions=self.route_contributions,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedExtensionResourceCatalog:
+    """Unpublished compatibility projection and its Extension-owned source."""
+
+    projection: ResourceBundle
+    source_generation: ExtensionResourceSourceGeneration
 
 
 class ExtensionResourceRuntime:
@@ -676,5 +707,6 @@ def _theme_descriptor_from_path(
 __all__ = [
     "ExtensionResourceCatalogDiscovery",
     "ExtensionResourceRuntime",
+    "PreparedExtensionResourceCatalog",
     "coerce_resource_contribution",
 ]

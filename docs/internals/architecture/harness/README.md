@@ -59,10 +59,12 @@ planning, work event persistence, or AI provider behavior.
   unpublished infrastructure, including verified-package and immutable embedded
   sources plus Package Catalog's pure inventory bridge. RCP4's unpublished
   foundations now prove candidate-owned generation transfer, the internal v2
-  Catalog/load Provider, and exact Extension-owner route snapshots with retained
-  body reads through an isolated real Graph. The Resource generation borrows
-  those reads and never disposes the Extension owner. Joint Session/Extension
-  publication, refresh, compatibility projection, and live cutover remain
+  Catalog/load Provider, exact Extension-owner route snapshots with retained
+  body reads, and a root-private joint Extension/Resource candidate through an
+  isolated real Graph. Exact borrow leases drain body reads independently from
+  Extension retirement; the joint candidate provides one synchronous visible
+  publication point plus cancellation-safe root/Graph rollback. Live Session
+  wiring, refresh, production compatibility projection, and cutover remain
   pending.
 - [Resource Catalog RCP0 Baseline](resource-catalog-rcp0-baseline.md) freezes
   the implemented discovery/sink inventory, precedence and Extension parity,

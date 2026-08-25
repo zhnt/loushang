@@ -35,7 +35,7 @@ from loushang.harness.resources._catalog_records import (
     fingerprint_catalog_value,
 )
 from loushang.harness.resources._catalog_source_contracts import (
-    BorrowedResourceSourceGeneration,
+    BorrowedResourceSourceGenerationLease,
 )
 from loushang.harness.resources._discovery_conventions import (
     DEFAULT_CONTEXT_FILE_NAMES,
@@ -127,6 +127,9 @@ class PreparedResourceOwnerGeneration:
         self._require_graph_owned()
         return await self._shadow.load(handle)
 
+    def _borrows_extension_source_lease(self, source: object) -> bool:
+        return self._shadow._borrows_extension_source_lease(source)
+
     def _begin_graph_construction(self) -> None:
         if self._ownership != "root_owned":
             raise RuntimeError("Resource owner generation is not available for claim")
@@ -194,7 +197,7 @@ async def prepare_first_party_resource_owner_generation(
     context_file_names: tuple[str, ...] = DEFAULT_CONTEXT_FILE_NAMES,
     merge_policy: ResourceMergePolicySnapshot | None = None,
     activation_policy: ResourceActivationPolicySnapshot | None = None,
-    extension_source_generation: BorrowedResourceSourceGeneration | None = None,
+    extension_source_lease: BorrowedResourceSourceGenerationLease | None = None,
 ) -> None:
     """Prepare and attach one first-party generation without publishing it."""
 
@@ -220,7 +223,7 @@ async def prepare_first_party_resource_owner_generation(
         context_file_names=context_file_names,
         merge_policy=merge_policy,
         activation_policy=activation_policy,
-        extension_source_generation=extension_source_generation,
+        extension_source_lease=extension_source_lease,
     )
     prepared = PreparedResourceOwnerGeneration._from_shadow(shadow)
     try:

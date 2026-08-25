@@ -141,7 +141,29 @@ EXPECTED_SKILLS_ATTRIBUTE_LOAD_SITES = {
         Path("src/loushang/harness/config/agent/_settings_codec.py"),
         "_serialize_package_source",
     ),
-    (Path("src/loushang/harness/extensions/resources.py"), "_merge_contribution"),
+    # RCP4 keeps these reads inside the private Extension hook-pass adapter.
+    # They normalize and bind source evidence; none is effective Catalog authority.
+    (
+        Path("src/loushang/harness/extensions/resources.py"),
+        "_bind_contribution_source_facts",
+    ),
+    (
+        Path("src/loushang/harness/extensions/resources.py"),
+        "_catalog_route_contribution",
+    ),
+    (Path("src/loushang/harness/extensions/resources.py"), "_defensive_bundle"),
+    (
+        Path("src/loushang/harness/extensions/resources.py"),
+        "_merge_normalized_contribution",
+    ),
+    (
+        Path("src/loushang/harness/resources/_catalog_extension_source.py"),
+        "ExtensionResourceRouteContribution.__post_init__",
+    ),
+    (
+        Path("src/loushang/harness/resources/_catalog_extension_source.py"),
+        "_descriptor_records",
+    ),
     (
         Path("src/loushang/harness/resources/_loader_discovery.py"),
         "_apply_resource_switches",
@@ -542,7 +564,7 @@ def test_rcp0_legacy_authority_mount_and_extension_merge_inventory_is_exact() ->
     }
     assert _call_sites({extension_path: sources[extension_path]}, "merge") == {
         (extension_path, "ExtensionResourceRuntime._finish"),
-        (extension_path, "_merge_contribution"),
+        (extension_path, "_merge_normalized_contribution"),
     }
     for module in LEGACY_LOADER_MODULES:
         assert (Path("src/loushang/harness/resources") / module).is_file()

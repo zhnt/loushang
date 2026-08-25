@@ -52,7 +52,7 @@ from loushang.harness.resources._catalog_records import (
     build_activation_policy_snapshot,
 )
 from loushang.harness.resources._catalog_source_contracts import (
-    BorrowedResourceSourceGeneration,
+    BorrowedResourceSourceGenerationLease,
     ResourceDiscoveryRequest,
 )
 from loushang.harness.resources._discovery_conventions import (
@@ -69,7 +69,7 @@ class UnpublishedResourceCatalogShadowGeneration:
     source_snapshots: tuple[ResourceSourceSnapshot, ...]
     _runtime: CapabilityOwnerComponentRuntime = field(repr=False)
     _binder: CapabilityOwnerComponentBinder = field(repr=False)
-    _extension_source_generation: BorrowedResourceSourceGeneration | None = field(
+    _extension_source_lease: BorrowedResourceSourceGenerationLease | None = field(
         default=None,
         repr=False,
     )
@@ -82,6 +82,9 @@ class UnpublishedResourceCatalogShadowGeneration:
     @property
     def is_disposed(self) -> bool:
         return self._disposed
+
+    def _borrows_extension_source_lease(self, source: object) -> bool:
+        return self._extension_source_lease is source
 
     def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle:
         """Mint a narrow load handle for one effective, body-bearing candidate."""
@@ -141,7 +144,7 @@ class UnpublishedResourceCatalogShadowGeneration:
                 "Resource load handle does not select an effective candidate"
             )
 
-        borrowed = self._extension_source_generation
+        borrowed = self._extension_source_lease
         if (
             borrowed is not None
             and borrowed.source_generation_ref != handle.source_generation_ref
@@ -189,7 +192,9 @@ class UnpublishedResourceCatalogShadowGeneration:
         codes = await self._binder.dispose(self._runtime)
         self._disposed = not self._runtime.has_pending_retirements
         if self._disposed:
-            self._extension_source_generation = None
+            if self._extension_source_lease is not None:
+                self._extension_source_lease.release()
+            self._extension_source_lease = None
         return codes
 
 
@@ -213,18 +218,18 @@ async def run_first_party_resource_catalog_shadow(
     context_file_names: tuple[str, ...] = DEFAULT_CONTEXT_FILE_NAMES,
     merge_policy: ResourceMergePolicySnapshot | None = None,
     activation_policy: ResourceActivationPolicySnapshot | None = None,
-    extension_source_generation: BorrowedResourceSourceGeneration | None = None,
+    extension_source_lease: BorrowedResourceSourceGenerationLease | None = None,
 ) -> UnpublishedResourceCatalogShadowGeneration:
     """Bind, discover, compose, validate, and retain one unpublished generation."""
 
-    if extension_source_generation is not None and not isinstance(
-        extension_source_generation,
-        BorrowedResourceSourceGeneration,
+    if extension_source_lease is not None and not isinstance(
+        extension_source_lease,
+        BorrowedResourceSourceGenerationLease,
     ):
-        raise TypeError("Extension Resource input must be a borrowed source generation")
+        raise TypeError("Extension Resource input must be a borrowed source lease")
     extension_snapshot = (
-        extension_source_generation.source_snapshot
-        if extension_source_generation is not None
+        extension_source_lease.source_snapshot
+        if extension_source_lease is not None
         else None
     )
     if extension_snapshot is not None and (
@@ -241,9 +246,9 @@ async def run_first_party_resource_catalog_shadow(
     if extension_snapshot is not None and not extension_snapshot.complete:
         raise ValueError("Extension-owner Resource snapshots must be complete")
     if (
-        extension_source_generation is not None
+        extension_source_lease is not None
         and extension_snapshot is not None
-        and extension_source_generation.source_generation_ref
+        and extension_source_lease.source_generation_ref
         != extension_snapshot.source_generation_ref
     ):
         raise ValueError("Borrowed Resource body reader must match its snapshot")
@@ -271,6 +276,8 @@ async def run_first_party_resource_catalog_shadow(
         runtime_id=runtime_id,
     )
     binder = CapabilityOwnerComponentBinder()
+    if extension_source_lease is not None:
+        extension_source_lease.claim()
     try:
         bind_result = await binder.bind(
             runtime,
@@ -278,13 +285,17 @@ async def run_first_party_resource_catalog_shadow(
             resolution.bindings,
         )
     except BaseException:
-        # Passing the prepared inputs into Binding transfers their narrow leases to
-        # this owner generation. A failure before publication must return custody
-        # even when no source component was constructed for a given input.
-        for resource in package_resources:
-            resource.close()
-        for collection in embedded_collections:
-            collection.close()
+        try:
+            # Passing prepared inputs into Binding transfers their narrow leases to
+            # this generation. Failure must release every input even when no source
+            # component was constructed for it.
+            for resource in package_resources:
+                resource.close()
+            for collection in embedded_collections:
+                collection.close()
+        finally:
+            if extension_source_lease is not None:
+                extension_source_lease.release()
         raise
     engine_lease = runtime.capture_one(RESOURCE_CATALOG_ENGINE_COMPONENT_KIND)
     source_leases = runtime.capture_all(RESOURCE_SOURCE_COMPONENT_KIND)
@@ -361,10 +372,14 @@ async def run_first_party_resource_catalog_shadow(
             activation_policy=effective_activation_policy,
         )
     except BaseException:
-        await engine_lease.aclose()
-        for lease in reversed(source_leases):
-            await lease.aclose()
-        await binder.dispose(runtime)
+        try:
+            await engine_lease.aclose()
+            for lease in reversed(source_leases):
+                await lease.aclose()
+            await binder.dispose(runtime)
+        finally:
+            if extension_source_lease is not None:
+                extension_source_lease.release()
         raise
     await engine_lease.aclose()
     for lease in reversed(source_leases):
@@ -375,7 +390,7 @@ async def run_first_party_resource_catalog_shadow(
         source_snapshots=tuple(source_snapshots),
         _runtime=runtime,
         _binder=binder,
-        _extension_source_generation=extension_source_generation,
+        _extension_source_lease=extension_source_lease,
     )
 
 

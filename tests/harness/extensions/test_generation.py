@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -199,6 +200,41 @@ def test_published_extension_generation_retires_old_registrations_exactly_once()
 
     assert committed == [ResourceBundle(cwd=Path("/tmp/project"))]
     assert disposal_counts == {"old": 1}
+
+
+def test_resource_only_generations_retire_exact_sources_out_of_order() -> None:
+    disposed: list[str] = []
+
+    class _Source:
+        def __init__(self, marker: str) -> None:
+            self.marker = marker
+
+        def dispose(self) -> None:
+            disposed.append(self.marker)
+
+    runtime = ExtensionRunner([])
+    bindings = _bindings(lambda *_args: pytest.fail("unexpected Tool bind"))
+
+    async def scenario() -> None:
+        await runtime.activate_runtime_generation(bindings)
+        retirements = []
+        for marker in ("a", "b", "c"):
+            candidate = runtime.prepare_generation([])
+            await candidate.activate(bindings)
+            candidate._resource_catalog = SimpleNamespace(  # type: ignore[assignment]
+                source_generation=_Source(marker)
+            )
+            retirements.append(candidate.publish(lambda: None))
+
+        await retirements[2].retire()
+        assert disposed == ["b"]
+        await retirements[1].retire()
+        assert disposed == ["b", "a"]
+
+        await runtime.dispose_runtime_generation()
+        assert disposed == ["b", "a", "c"]
+
+    asyncio.run(scenario())
 
 
 def test_cancelled_candidate_binding_keeps_old_generation_and_rolls_back() -> None:

@@ -86,6 +86,8 @@ class _PreparedResourceOwnerGeneration(Protocol):
 
     async def load(self, handle: Any) -> Any: ...
 
+    def _borrows_extension_source_lease(self, source: object) -> bool: ...
+
     def _begin_graph_construction(self) -> None: ...
 
     def _commit_graph_ownership(self) -> None: ...
@@ -310,6 +312,14 @@ class StagedResourceCompositionCandidate:
         if generation is None:
             raise RuntimeError("Resource candidate has no prepared owner generation")
         return generation
+
+    def _borrows_prepared_extension_source_lease(self, source: object) -> bool:
+        """Prove exact borrowed-lease identity to the joint construction root."""
+
+        if self.__candidate.ownership != "root_owned":
+            raise RuntimeError("Resource candidate is not root-owned")
+        generation = self._require_prepared_owner_generation()
+        return generation._borrows_extension_source_lease(source)
 
     @property
     def resource_catalog_snapshot(self) -> object:

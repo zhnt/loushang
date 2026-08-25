@@ -4,7 +4,7 @@ import asyncio
 import inspect
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
-from typing import TypeVar, cast
+from typing import Protocol, TypeVar, cast
 from uuid import uuid4
 
 from loushang.agent.types import (
@@ -43,6 +43,7 @@ from loushang.harness.extensions.loader import ExtensionLoader
 from loushang.harness.extensions.registry import (
     source_info_from_extension as _source_info_from_extension,
 )
+from loushang.harness.extensions.resources import PreparedExtensionResourceCatalog
 from loushang.harness.extensions.routing import ResolvedExtensionRoute
 from loushang.harness.extensions.runtime import ExtensionRuntime
 from loushang.harness.extensions.types import BeforeAgentStartResult, LoadedExtension
@@ -63,6 +64,10 @@ from loushang.harness.runtime.registration import (
 
 class _RunnerContext(UnboundExtensionContext):
     pass
+
+
+class _ExtensionResourceSourceGenerationPort(Protocol):
+    def dispose(self) -> None: ...
 
 
 class _BoundExtensionContext(BoundExtensionContext):
@@ -90,12 +95,19 @@ class ExtensionGenerationRetirement:
         self,
         runtime: ExtensionRunner,
         registrations: tuple[ExtensionGenerationRegistrations, ...],
+        resource_source_generation: (
+            _ExtensionResourceSourceGenerationPort | None
+        ) = None,
     ) -> None:
         self._runtime = runtime
         self._registrations = registrations
+        self._resource_source_generation = resource_source_generation
 
     async def retire(self) -> tuple[ExtensionGenerationDisposalResult, ...]:
-        return await self._runtime._retire_registrations(self._registrations)
+        return await self._runtime._retire_registrations(
+            self._registrations,
+            resource_source_generation=self._resource_source_generation,
+        )
 
 
 class PreparedExtensionGeneration:
@@ -107,13 +119,56 @@ class PreparedExtensionGeneration:
         self._capability_declarations = candidate.capability_declarations
         self._activated = False
         self._published = False
+        self._rolled_back = False
         self._owns_lifecycle = False
+        self._resource_catalog: PreparedExtensionResourceCatalog | None = None
 
     @property
     def capability_declarations(self) -> ExtensionCapabilityDeclarationSnapshot:
         """Return pure candidate facts before any live registration is staged."""
 
         return self._capability_declarations
+
+    @property
+    def lifecycle_state(self) -> str:
+        if self._published:
+            return "published"
+        if self._rolled_back:
+            return "rolled_back"
+        if self._activated:
+            return "activated"
+        return "prepared"
+
+    @property
+    def resource_catalog_preparation(
+        self,
+    ) -> PreparedExtensionResourceCatalog | None:
+        return self._resource_catalog
+
+    async def prepare_resource_catalog_generation(
+        self,
+        bundle,
+        *,
+        product_id: str,
+        extension_set_fingerprint: str,
+    ) -> PreparedExtensionResourceCatalog:
+        """Freeze one exact Resource pass while this candidate is unpublished."""
+
+        if self._activated or self._published or self._rolled_back:
+            raise RuntimeError(
+                "Extension Resource Catalog must be prepared before activation"
+            )
+        if self._resource_catalog is not None:
+            raise RuntimeError("Extension Resource Catalog is already prepared")
+        prepared = await self._candidate.prepare_resource_catalog_generation_async(
+            bundle,
+            product_id=product_id,
+            runtime_id=self._candidate.source_runtime_id,
+            extension_generation=self._candidate.generation,
+            extension_set_fingerprint=extension_set_fingerprint,
+        )
+        self._resource_catalog = prepared
+        return prepared
 
     async def discover_resources_async(
         self,
@@ -126,6 +181,8 @@ class PreparedExtensionGeneration:
     async def activate(self, bindings: ExtensionRuntimeBindings) -> None:
         if self._published:
             raise RuntimeError("Extension generation is already published")
+        if self._rolled_back:
+            raise RuntimeError("Extension generation is already rolled back")
         if self._activated:
             raise RuntimeError("Extension generation is already activated")
         await self._host._begin_generation_operation()
@@ -140,7 +197,10 @@ class PreparedExtensionGeneration:
             try:
                 await self._candidate._dispose_current_registrations()
             finally:
-                self._release_lifecycle()
+                try:
+                    self._dispose_resource_catalog()
+                finally:
+                    self._release_lifecycle()
             raise
         self._activated = True
 
@@ -154,9 +214,16 @@ class PreparedExtensionGeneration:
             raise RuntimeError("Extension generation must be activated before publish")
         if self._published:
             raise RuntimeError("Extension generation is already published")
+        if self._rolled_back:
+            raise RuntimeError("Extension generation is already rolled back")
         retirement = self._host._publish_generation(
             self._candidate,
             commit_resource=commit_resource,
+            resource_source_generation=(
+                None
+                if self._resource_catalog is None
+                else self._resource_catalog.source_generation
+            ),
         )
         # Reaching this line proves publication succeeded. Failures leave the
         # gate owned until rollback has disposed the staged registrations.
@@ -167,6 +234,10 @@ class PreparedExtensionGeneration:
     async def rollback(self) -> tuple[ExtensionGenerationDisposalResult, ...]:
         if self._published:
             raise RuntimeError("Published Extension generation cannot be rolled back")
+        if self._rolled_back:
+            return await self._host._retire_registrations(
+                self._candidate._generation_registrations
+            )
         try:
             return await self._candidate._dispose_current_registrations()
         finally:
@@ -176,7 +247,17 @@ class PreparedExtensionGeneration:
                         self._candidate._generation_registrations
                     )
             finally:
-                self._release_lifecycle()
+                try:
+                    self._dispose_resource_catalog()
+                    self._rolled_back = True
+                finally:
+                    self._release_lifecycle()
+
+    def _dispose_resource_catalog(self) -> None:
+        prepared = self._resource_catalog
+        if prepared is None:
+            return
+        prepared.source_generation.dispose()
 
     def _release_lifecycle(self) -> None:
         if not self._owns_lifecycle:
@@ -231,6 +312,15 @@ class ExtensionRunner(ExtensionRuntime):
         self._generation_lifecycle_lock = asyncio.Lock()
         self._retired_generation_registrations: list[
             tuple[ExtensionGenerationRegistrations, ...]
+        ] = []
+        self._resource_source_generation: (
+            _ExtensionResourceSourceGenerationPort | None
+        ) = None
+        self._retired_resource_source_generations: list[
+            tuple[
+                tuple[ExtensionGenerationRegistrations, ...],
+                _ExtensionResourceSourceGenerationPort,
+            ]
         ] = []
         loader = loader_factory()
         loaded_extensions: list[LoadedExtension] = []
@@ -442,10 +532,15 @@ class ExtensionRunner(ExtensionRuntime):
                 reports.extend(generation_reports)
                 if any(report.has_failures for report in generation_reports):
                     retained.append(generation)
+                else:
+                    self._dispose_retired_resource_source(generation)
+            self._dispose_registration_free_retired_resource_sources()
             current_reports = await dispose_extension_generation_registrations(
                 self._generation_registrations
             )
             reports.extend(current_reports)
+            if not any(report.has_failures for report in current_reports):
+                self._dispose_current_resource_source()
             self._retired_generation_registrations = retained
             return tuple(reports)
 
@@ -862,6 +957,9 @@ class ExtensionRunner(ExtensionRuntime):
         candidate: ExtensionRunner,
         *,
         commit_resource: Callable[[], object],
+        resource_source_generation: (
+            _ExtensionResourceSourceGenerationPort | None
+        ) = None,
     ) -> ExtensionGenerationRetirement:
         if candidate._runtime_id != self._runtime_id:
             raise ValueError("Extension candidate belongs to another runtime")
@@ -875,6 +973,7 @@ class ExtensionRunner(ExtensionRuntime):
         previous_runtime_state = self._runtime_state
         previous_registrations = self._generation_registrations
         previous_registrations_by_extension = self._registrations_by_extension
+        previous_resource_source_generation = self._resource_source_generation
         previous_generation = self._generation
         previous_activated = self._activated_generation
         try:
@@ -885,6 +984,7 @@ class ExtensionRunner(ExtensionRuntime):
             self._runtime_state = candidate._runtime_state
             self._generation_registrations = candidate._generation_registrations
             self._registrations_by_extension = candidate._registrations_by_extension
+            self._resource_source_generation = resource_source_generation
             self._generation = candidate._generation
             self._activated_generation = True
             self._bootstrap_generation = False
@@ -902,6 +1002,7 @@ class ExtensionRunner(ExtensionRuntime):
             self._runtime_state = previous_runtime_state
             self._generation_registrations = previous_registrations
             self._registrations_by_extension = previous_registrations_by_extension
+            self._resource_source_generation = previous_resource_source_generation
             self._generation = previous_generation
             self._activated_generation = previous_activated
             self._runtime_state.flag_values = self._flag_values
@@ -911,8 +1012,17 @@ class ExtensionRunner(ExtensionRuntime):
         previous_runtime_state.invalidate(
             "Extension context is stale after extension generation replacement."
         )
-        self._retired_generation_registrations.append(previous_registrations)
-        return ExtensionGenerationRetirement(self, previous_registrations)
+        if previous_registrations:
+            self._retired_generation_registrations.append(previous_registrations)
+        if previous_resource_source_generation is not None:
+            self._retired_resource_source_generations.append(
+                (previous_registrations, previous_resource_source_generation)
+            )
+        return ExtensionGenerationRetirement(
+            self,
+            previous_registrations,
+            previous_resource_source_generation,
+        )
 
     def _has_pending_registration_cleanup(self) -> bool:
         return any(
@@ -945,14 +1055,27 @@ class ExtensionRunner(ExtensionRuntime):
     async def _retire_registrations(
         self,
         registrations: tuple[ExtensionGenerationRegistrations, ...],
+        *,
+        resource_source_generation: (
+            _ExtensionResourceSourceGenerationPort | None
+        ) = None,
     ) -> tuple[ExtensionGenerationDisposalResult, ...]:
         return await _join_cancellation_atomic(
-            asyncio.create_task(self._retire_registrations_once(registrations))
+            asyncio.create_task(
+                self._retire_registrations_once(
+                    registrations,
+                    resource_source_generation=resource_source_generation,
+                )
+            )
         )
 
     async def _retire_registrations_once(
         self,
         registrations: tuple[ExtensionGenerationRegistrations, ...],
+        *,
+        resource_source_generation: (
+            _ExtensionResourceSourceGenerationPort | None
+        ),
     ) -> tuple[ExtensionGenerationDisposalResult, ...]:
         async with self._generation_lifecycle_lock:
             reports = await dispose_extension_generation_registrations(registrations)
@@ -962,7 +1085,53 @@ class ExtensionRunner(ExtensionRuntime):
                     for retained in self._retired_generation_registrations
                     if retained is not registrations
                 ]
+                self._dispose_retired_resource_source(
+                    registrations,
+                    resource_source_generation=resource_source_generation,
+                )
             return reports
+
+    def _dispose_retired_resource_source(
+        self,
+        registrations: tuple[ExtensionGenerationRegistrations, ...],
+        *,
+        resource_source_generation: (
+            _ExtensionResourceSourceGenerationPort | None
+        ) = None,
+    ) -> None:
+        match = next(
+            (
+                item
+                for item in self._retired_resource_source_generations
+                if item[0] is registrations
+                and (
+                    resource_source_generation is None
+                    or item[1] is resource_source_generation
+                )
+            ),
+            None,
+        )
+        if match is None:
+            return
+        self._retired_resource_source_generations.remove(match)
+        match[1].dispose()
+
+    def _dispose_registration_free_retired_resource_sources(self) -> None:
+        matches = [
+            item
+            for item in self._retired_resource_source_generations
+            if not item[0]
+        ]
+        for match in matches:
+            self._retired_resource_source_generations.remove(match)
+            match[1].dispose()
+
+    def _dispose_current_resource_source(self) -> None:
+        source = self._resource_source_generation
+        if source is None:
+            return
+        source.dispose()
+        self._resource_source_generation = None
 
     def _emit_runtime_error(
         self,
