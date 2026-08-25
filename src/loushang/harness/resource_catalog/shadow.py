@@ -39,6 +39,7 @@ from loushang.harness.resources._catalog_package_source import (
     build_package_resource_discovery_request,
 )
 from loushang.harness.resources._catalog_records import (
+    ExtensionOwnerProducer,
     LoadedResource,
     ResourceActivationPolicySnapshot,
     ResourceCatalogHandle,
@@ -51,6 +52,7 @@ from loushang.harness.resources._catalog_records import (
     build_activation_policy_snapshot,
 )
 from loushang.harness.resources._catalog_source_contracts import (
+    BorrowedResourceSourceGeneration,
     ResourceDiscoveryRequest,
 )
 from loushang.harness.resources._discovery_conventions import (
@@ -67,6 +69,10 @@ class UnpublishedResourceCatalogShadowGeneration:
     source_snapshots: tuple[ResourceSourceSnapshot, ...]
     _runtime: CapabilityOwnerComponentRuntime = field(repr=False)
     _binder: CapabilityOwnerComponentBinder = field(repr=False)
+    _extension_source_generation: BorrowedResourceSourceGeneration | None = field(
+        default=None,
+        repr=False,
+    )
     _disposed: bool = field(default=False, init=False, repr=False)
 
     @property
@@ -135,6 +141,22 @@ class UnpublishedResourceCatalogShadowGeneration:
                 "Resource load handle does not select an effective candidate"
             )
 
+        borrowed = self._extension_source_generation
+        if (
+            borrowed is not None
+            and borrowed.source_generation_ref != handle.source_generation_ref
+        ):
+            borrowed = None
+        if borrowed is not None:
+            body_read = borrowed.load(handle)
+            if inspect.isawaitable(body_read):
+                body_read = await body_read
+            receipt = ResourceLoadReceipt.from_validated_read(
+                load_handle=handle,
+                body_read=body_read,
+            )
+            return LoadedResource(receipt=receipt, body=body_read.body)
+
         leases = self._runtime.capture_all(RESOURCE_SOURCE_COMPONENT_KIND)
         try:
             source: ResourceSourceComponent | None = None
@@ -166,6 +188,8 @@ class UnpublishedResourceCatalogShadowGeneration:
             return ()
         codes = await self._binder.dispose(self._runtime)
         self._disposed = not self._runtime.has_pending_retirements
+        if self._disposed:
+            self._extension_source_generation = None
         return codes
 
 
@@ -189,8 +213,45 @@ async def run_first_party_resource_catalog_shadow(
     context_file_names: tuple[str, ...] = DEFAULT_CONTEXT_FILE_NAMES,
     merge_policy: ResourceMergePolicySnapshot | None = None,
     activation_policy: ResourceActivationPolicySnapshot | None = None,
+    extension_source_generation: BorrowedResourceSourceGeneration | None = None,
 ) -> UnpublishedResourceCatalogShadowGeneration:
     """Bind, discover, compose, validate, and retain one unpublished generation."""
+
+    if extension_source_generation is not None and not isinstance(
+        extension_source_generation,
+        BorrowedResourceSourceGeneration,
+    ):
+        raise TypeError("Extension Resource input must be a borrowed source generation")
+    extension_snapshot = (
+        extension_source_generation.source_snapshot
+        if extension_source_generation is not None
+        else None
+    )
+    if extension_snapshot is not None and (
+        extension_snapshot.source_generation_ref.source_id
+        != "harness.extensions.resources"
+        or not isinstance(
+            extension_snapshot.source_generation_ref.producer,
+            ExtensionOwnerProducer,
+        )
+    ):
+        raise ValueError(
+            "Only exact Extension-owner snapshots may bypass mounted source components"
+        )
+    if extension_snapshot is not None and not extension_snapshot.complete:
+        raise ValueError("Extension-owner Resource snapshots must be complete")
+    if (
+        extension_source_generation is not None
+        and extension_snapshot is not None
+        and extension_source_generation.source_generation_ref
+        != extension_snapshot.source_generation_ref
+    ):
+        raise ValueError("Borrowed Resource body reader must match its snapshot")
+    if (
+        extension_snapshot is not None
+        and extension_snapshot.source_generation_ref.product_id != product_id
+    ):
+        raise ValueError("Extension Resource source generation must match Product")
 
     resolution = resolve_first_party_resource_components(
         product_id=product_id,
@@ -272,6 +333,13 @@ async def run_first_party_resource_catalog_shadow(
             else:
                 raise TypeError("Unknown Resource source component")
             source_snapshots.append(source.discover_initial(request))
+        if extension_snapshot is not None:
+            source_snapshots.append(extension_snapshot)
+        source_refs = tuple(
+            snapshot.source_generation_ref for snapshot in source_snapshots
+        )
+        if len(set(source_refs)) != len(source_refs):
+            raise ValueError("Resource source generations must not repeat")
         effective_merge_policy = merge_policy or default_resource_merge_policy()
         effective_activation_policy = activation_policy or (
             build_activation_policy_snapshot(
@@ -307,6 +375,7 @@ async def run_first_party_resource_catalog_shadow(
         source_snapshots=tuple(source_snapshots),
         _runtime=runtime,
         _binder=binder,
+        _extension_source_generation=extension_source_generation,
     )
 
 

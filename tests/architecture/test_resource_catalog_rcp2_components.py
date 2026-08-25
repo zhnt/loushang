@@ -16,6 +16,8 @@ COMPONENTS_PATH = ORCHESTRATION_ROOT / "components.py"
 NATIVE_SOURCE_PATH = RESOURCE_ROOT / "_catalog_native_source.py"
 SHADOW_RUNNER_PATH = ORCHESTRATION_ROOT / "shadow.py"
 PREPARED_GENERATION_PATH = ORCHESTRATION_ROOT / "generation.py"
+EXTENSION_RESOURCE_SOURCE_PATH = RESOURCE_ROOT / "_catalog_extension_source.py"
+EXTENSION_RESOURCE_RUNTIME_PATH = Path("src/loushang/harness/extensions/resources.py")
 
 
 def _imported_modules(path: Path) -> set[str]:
@@ -138,3 +140,27 @@ def test_rcp4_prepared_generation_is_the_only_shadow_to_provider_bridge() -> Non
         for path in production_paths
         if "loushang.harness.resource_catalog.shadow" in _imported_modules(path)
     }
+
+
+def test_rcp4_extension_snapshot_has_one_non_publishing_runtime_bridge() -> None:
+    production_paths = set(Path("src/loushang").rglob("*.py")) - {
+        EXTENSION_RESOURCE_SOURCE_PATH,
+        EXTENSION_RESOURCE_RUNTIME_PATH,
+    }
+
+    assert EXTENSION_RESOURCE_SOURCE_PATH.is_file()
+    assert EXTENSION_RESOURCE_RUNTIME_PATH.is_file()
+    assert "loushang.harness.resources._catalog_extension_source" in _imported_modules(
+        EXTENSION_RESOURCE_RUNTIME_PATH
+    )
+    assert not {
+        path
+        for path in production_paths
+        if (
+            "loushang.harness.resources._catalog_extension_source"
+            in _imported_modules(path)
+        )
+    }
+    runtime_source = EXTENSION_RESOURCE_RUNTIME_PATH.read_text(encoding="utf-8")
+    assert "prepare_catalog_inputs_async" in runtime_source
+    assert "_defensive_bundle" in runtime_source

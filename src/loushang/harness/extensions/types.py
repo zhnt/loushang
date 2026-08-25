@@ -211,8 +211,15 @@ class LoadedExtension:
     runtime_capability_replacements: list[RegisteredRuntimeCapabilityReplacement] = (
         field(default_factory=list)
     )
+    source_root_order: int = 0
 
     def __post_init__(self) -> None:
+        if (
+            isinstance(self.source_root_order, bool)
+            or not isinstance(self.source_root_order, int)
+            or self.source_root_order < 0
+        ):
+            raise ValueError("Extension source root order must be non-negative")
         if self.handler_registrations and not self.hooks:
             projected: dict[str, list[ExtensionHandler]] = {}
             for registration in self.handler_registrations:

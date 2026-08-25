@@ -14,6 +14,7 @@ from loushang.harness.resources._catalog_records import (
 RESOURCE_ROOT = Path("src/loushang/harness/resources")
 ORCHESTRATION_ROOT = Path("src/loushang/harness/resource_catalog")
 CAPABILITY_ROOT = Path("src/loushang/harness/capabilities")
+EXTENSION_ROOT = Path("src/loushang/harness/extensions")
 RCP1_MODULES = {
     RESOURCE_ROOT / "_catalog_engine.py",
     RESOURCE_ROOT / "_catalog_records.py",
@@ -31,8 +32,10 @@ RCP3_MODULES = {
     ORCHESTRATION_ROOT / "inputs.py",
 }
 RCP4_MODULES = {
+    RESOURCE_ROOT / "_catalog_extension_source.py",
     ORCHESTRATION_ROOT / "generation.py",
     CAPABILITY_ROOT / "resources_consumers.py",
+    EXTENSION_ROOT / "resources.py",
 }
 PRIVATE_CATALOG_MODULES = RCP1_MODULES | RCP2_MODULES | RCP3_MODULES | RCP4_MODULES
 

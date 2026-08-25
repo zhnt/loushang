@@ -34,6 +34,9 @@ from loushang.harness.resources._catalog_records import (
     ResourceMergePolicySnapshot,
     fingerprint_catalog_value,
 )
+from loushang.harness.resources._catalog_source_contracts import (
+    BorrowedResourceSourceGeneration,
+)
 from loushang.harness.resources._discovery_conventions import (
     DEFAULT_CONTEXT_FILE_NAMES,
 )
@@ -191,6 +194,7 @@ async def prepare_first_party_resource_owner_generation(
     context_file_names: tuple[str, ...] = DEFAULT_CONTEXT_FILE_NAMES,
     merge_policy: ResourceMergePolicySnapshot | None = None,
     activation_policy: ResourceActivationPolicySnapshot | None = None,
+    extension_source_generation: BorrowedResourceSourceGeneration | None = None,
 ) -> None:
     """Prepare and attach one first-party generation without publishing it."""
 
@@ -216,6 +220,7 @@ async def prepare_first_party_resource_owner_generation(
         context_file_names=context_file_names,
         merge_policy=merge_policy,
         activation_policy=activation_policy,
+        extension_source_generation=extension_source_generation,
     )
     prepared = PreparedResourceOwnerGeneration._from_shadow(shadow)
     try:

@@ -480,12 +480,12 @@ class StagedResourceCompositionCandidate:
     def dispose(self) -> None:
         """Dispose only while the construction root still owns the candidate."""
 
+        if self.__candidate.ownership == "disposed":
+            return
         if self.__candidate.owner_generation is not None:
             raise RuntimeError(
                 "Prepared Resource owner generation requires dispose_root_owned()"
             )
-        if self.__candidate.ownership == "disposed":
-            return
         if self.__candidate.ownership == "graph_owned":
             return
         if self.__candidate.ownership == "graph_constructing":

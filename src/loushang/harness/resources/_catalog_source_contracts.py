@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable
 from typing import Protocol, runtime_checkable
 
 from loushang.harness.resources._catalog_records import (
+    ResourceBodyRead,
+    ResourceLoadHandle,
     ResourceSourceGenerationRef,
+    ResourceSourceSnapshot,
 )
 
 
@@ -23,4 +27,25 @@ class ResourceDiscoveryRequest(Protocol):
     def request_fingerprint(self) -> str: ...
 
 
-__all__ = ["ResourceDiscoveryRequest"]
+@runtime_checkable
+class BorrowedResourceSourceGeneration(Protocol):
+    """Owner-retained snapshot/body reader borrowed by the Resource generation.
+
+    Extension hook output uses this seam because it is owned by the exact
+    Extension generation rather than mounted as a Resource source component.
+    The borrower must never dispose it independently.
+    """
+
+    @property
+    def source_generation_ref(self) -> ResourceSourceGenerationRef: ...
+
+    @property
+    def source_snapshot(self) -> ResourceSourceSnapshot: ...
+
+    def load(
+        self,
+        handle: ResourceLoadHandle,
+    ) -> ResourceBodyRead | Awaitable[ResourceBodyRead]: ...
+
+
+__all__ = ["BorrowedResourceSourceGeneration", "ResourceDiscoveryRequest"]

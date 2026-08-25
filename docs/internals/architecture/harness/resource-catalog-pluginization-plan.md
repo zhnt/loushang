@@ -7,7 +7,7 @@
   and Model Input boundaries. It does not amend those boundaries implicitly.
 - Design status: RCP0 contract frozen; final narrow freeze re-review passed.
 - Implementation status: RCP0 through RCP3 are complete on the Harness lane;
-  RCP4 has started with its first unpublished Provider-mount foundation slice.
+  RCP4 has started with two unpublished foundation slices.
   RCP2's first unpublished foundation slice implements the generic
   `CapabilityComponentDefinition`, exact candidate/admission/selection/binding
   records, atomic owner generations, cancellation-safe reverse rollback,
@@ -42,9 +42,15 @@
   candidate, and lets the Resources Provider adopt that complete candidate once.
   Real isolated Graph tests prove root rollback, cancellation, successful load,
   Graph reuse rejection of a second content generation, retryable graph-owned
-  retirement, and exact disposal. The Session's joint Extension/Catalog
-  publication, active refresh, compatibility projection, and legacy-loader
-  cutover remain pending.
+  retirement, and exact disposal. The second slice adds the previously missing
+  Extension-owner snapshot input: an exact routed hook pass receives defensive
+  Bundle copies, preserves owner-supplied source class/scope/root order, freezes
+  candidate provenance and immutable body bytes, and exposes only a borrowed
+  generation-bound body reader to the Resource owner. The same unpublished
+  Catalog and real Graph load path now compose and load those candidates without
+  stealing Extension disposal authority. The joint Extension/Catalog commit
+  coordinator, live Session bootstrap, active refresh, compatibility projection,
+  and legacy-loader cutover remain pending.
   The current `ResourceLoader`, `ResourceSnapshot`, `ResourceBundle`, and
   `SkillLoader` paths remain the implemented runtime until a phase below passes
   its cutover gate.
@@ -1113,15 +1119,19 @@ effective Resource selection.
 
 ### RCP4: Mount Resource Catalog generation
 
-Status: first unpublished mount-foundation slice complete. The v1 Provider path
-is unchanged when no prepared generation exists. A candidate with one prepared
+Status: two unpublished foundation slices complete. The v1 Provider path is
+unchanged when no prepared generation exists. A candidate with one prepared
 generation selects only contract/provider v2, contributes the two Catalog/load
 facets, transfers parent and child through the same
 `root_owned -> graph_constructing -> graph_owned` boundary, and retires the
 child before its parent mechanisms. Provider construction fingerprints include
 the selected owner-component binding identity but exclude Catalog snapshot and
-body identity. This slice is exercised through a real isolated Capability Graph;
-it is not yet called by Session bootstrap and therefore is not the live cutover.
+body identity. The next slice freezes Extension route outputs through a
+defensive, non-publishing pass, binds exact Extension owner/generation/route
+provenance, retains immutable body bytes, and lets the unpublished Catalog
+borrow that body reader without gaining its disposal authority. Both slices are
+exercised through a real isolated Capability Graph; neither is called by
+Session bootstrap, so the joint publication and live cutover are still pending.
 
 - introduce the internal `harness.resources` v2 Catalog/load facets and exact
   Consumer requirements;
