@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,9 @@ from loushang.harness.capabilities.contribution_admission import (
 )
 from loushang.harness.capabilities.model_input_contracts import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
+)
+from loushang.harness.capabilities.workspace_contracts import (
+    WORKSPACE_CAPABILITY_DEFINITION,
 )
 from loushang.harness.plugin_authoring.contribution_admission import (
     prepare_owner_contribution_candidate,
@@ -53,6 +57,12 @@ from loushang.harness.resources.plugins.selection import (
 )
 from loushang.harness.resources.plugins.types import PluginSource
 from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.session.product_composition_assembly import (
+    ProductCompositionAssemblyError,
+    ProductCompositionAssemblyRequest,
+    ProductContributionOwnerBinding,
+    assemble_product_composition,
+)
 
 _CODING_BASE_SHADOW_ROOT = (
     Path(__file__).parent / "plugins" / "fixtures" / "coding_base_shadow"
@@ -305,23 +315,21 @@ def test_product_adapter_consumes_compiled_resource_admissions_from_plugin_selec
             decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
         )
         assert isinstance(selection, PluginSelection)
-        resource_candidates = tuple(
+        contribution_candidates = tuple(
             item
             for item in selection.candidates
-            if item.declaration.kind == "resource_item"
+            if item.declaration.kind in {"resource_item", "tool_pack", "command_pack"}
         )
-        owner_authorities = []
-        admissions = []
-        for resource_candidate in resource_candidates:
+        owner_bindings = []
+        for contribution_candidate in contribution_candidates:
             candidate = prepare_owner_contribution_candidate(
                 selection,
-                resource_candidate,
+                contribution_candidate,
             )
-            assert isinstance(candidate.contribution, ResourceContributionSpec)
             owner_authority = OwnerContributionAuthority(
                 OwnerContributionPolicy(
                     owner_id=candidate.owner_id,
-                    contribution_kind="resource_item",
+                    contribution_kind=candidate.contribution_kind,
                     product_id="coding",
                     policy_revision=f"{candidate.owner_id}-v1",
                     revocation_epoch=0,
@@ -332,23 +340,73 @@ def test_product_adapter_consumes_compiled_resource_admissions_from_plugin_selec
                     consumer_refresh_boundary="sealed",
                 )
             )
-            owner_authorities.append(owner_authority)
-            admissions.append(
-                owner_authority.admit(candidate, issued_at=100, expires_at=200)
+            owner_bindings.append(
+                ProductContributionOwnerBinding(
+                    authority=owner_authority,
+                    admission_ttl_seconds=100,
+                )
             )
-        composition = ProductCompositionCompiler().compile(
-            authority_context=ProductCompositionAuthorityContext(
-                product_id="coding",
-                scope_id="workspace:test",
-                product_policy_revision="policy-1",
-                evaluated_at=150,
-                owner_snapshots=tuple(item.snapshot() for item in owner_authorities),
-                trust_snapshots=plan.source_trust_snapshots,
-            ),
+        assembly_request = ProductCompositionAssemblyRequest(
+            selection=selection,
+            owner_bindings=tuple(owner_bindings),
             mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-            admissions=tuple(admissions),
-            definitions=(MODEL_INPUT_CAPABILITY_DEFINITION,),
-            optional_choices=(),
+            definitions=(
+                MODEL_INPUT_CAPABILITY_DEFINITION,
+                WORKSPACE_CAPABILITY_DEFINITION,
+            ),
+        )
+        with pytest.raises(ProductCompositionAssemblyError) as missing:
+            assemble_product_composition(
+                replace(
+                    assembly_request,
+                    owner_bindings=assembly_request.owner_bindings[:-1],
+                ),
+                evaluated_at=150,
+            )
+        assert missing.value.code == "product_contribution_owner_missing"
+        assert missing.value.owner_keys == (
+            assembly_request.owner_bindings[-1].owner_key,
+        )
+
+        extra_binding = ProductContributionOwnerBinding(
+            authority=OwnerContributionAuthority(
+                OwnerContributionPolicy(
+                    owner_id="resources.theme",
+                    contribution_kind="resource_item",
+                    product_id="coding",
+                    policy_revision="resources.theme-v1",
+                    revocation_epoch=0,
+                    allowed_source_trust_classes=("host-equivalent-local",),
+                    allowed_collection_ids=("loushang.resource.theme",),
+                    allowed_requirement_bindings=("direct",),
+                    consumer_scope="session",
+                    consumer_refresh_boundary="sealed",
+                )
+            )
+        )
+        with pytest.raises(ProductCompositionAssemblyError) as extra:
+            assemble_product_composition(
+                replace(
+                    assembly_request,
+                    owner_bindings=(*assembly_request.owner_bindings, extra_binding),
+                ),
+                evaluated_at=150,
+            )
+        assert extra.value.code == "product_contribution_owner_extra"
+        assert extra.value.owner_keys == (extra_binding.owner_key,)
+
+        composition = assemble_product_composition(
+            assembly_request,
+            evaluated_at=150,
+        )
+        assert len(composition.resource_admissions) == 2
+        assert len(composition.catalog_admissions) == 2
+        assert all(
+            item.issued_at == 150 and item.expires_at == 250
+            for item in (
+                *composition.resource_admissions,
+                *composition.catalog_admissions,
+            )
         )
         adapter = InitialResourceCatalogProductAdapter(
             InitialResourceCatalogProductSelection(
@@ -359,7 +417,7 @@ def test_product_adapter_consumes_compiled_resource_admissions_from_plugin_selec
                         admission=admission,
                         revision_handle=package.revision_handle,
                     )
-                    for admission in admissions
+                    for admission in composition.resource_admissions
                 ),
             ),
             clock=lambda: 150,

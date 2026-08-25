@@ -61,6 +61,7 @@ def prepare_coding_initial_resource_catalog_shadow_adapter(
     *,
     disabled_skills: Sequence[str] = (),
     product_composition: ProductCompositionCompilation | None = None,
+    admission_now: int | None = None,
 ) -> InitialResourceCatalogProductAdapter:
     """Consume exactly one owner-issued receipt for a private shadow Session."""
 
@@ -68,7 +69,9 @@ def prepare_coding_initial_resource_catalog_shadow_adapter(
         resource_loader._take_initial_resource_catalog_input_receipt(),
         disabled_skills=disabled_skills,
         product_composition=product_composition,
-        package_admission_now=int(time.time()),
+        package_admission_now=(
+            int(time.time()) if admission_now is None else admission_now
+        ),
     )
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -25,22 +26,53 @@ from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAdmissionRecord,
     OwnerContributionAuthority,
     OwnerContributionCandidateEnvelope,
+    OwnerContributionKind,
     OwnerContributionPolicy,
     ResourceContributionSpec,
 )
 from loushang.harness.capabilities.model_input_contracts import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
 )
+from loushang.harness.capabilities.workspace_contracts import (
+    WORKSPACE_CAPABILITY_DEFINITION,
+)
+from loushang.harness.plugin_authoring.host import PluginDeclarationHost
 from loushang.harness.resources._catalog_input_receipt import (
     ResourceCatalogInputReceipt,
 )
 from loushang.harness.resources.loader import ResourceLoader
+from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.packages.mounts import PackageResourceMount
+from loushang.harness.resources.plugins.authority import (
+    PluginResolutionAuthority,
+    PluginRuntimeResolution,
+)
 from loushang.harness.resources.plugins.manifest import PluginManifestParser
 from loushang.harness.resources.plugins.revisions import PluginRevisionStore
 from loushang.harness.resources.plugins.selection import (
+    PendingOnlyPluginExecutionDecisionLookup,
+    PluginContributionRef,
+    PluginEffectiveConfigurationEntry,
+    PluginEffectiveConfigurationSetV1,
     PluginInstanceRevisionRef,
+    PluginPreflightContextV1,
+    PluginSelection,
+    PluginSelectionPlanV2,
     PluginSourceTrustSnapshotV1,
+)
+from loushang.harness.resources.plugins.types import PluginSource
+from loushang.harness.session.product_composition_assembly import (
+    ProductCompositionAssemblyRequest,
+    ProductContributionOwnerBinding,
+)
+
+_CODING_BASE_SHADOW_ROOT = (
+    Path(__file__).parent.parent
+    / "harness"
+    / "resources"
+    / "plugins"
+    / "fixtures"
+    / "coding_base_shadow"
 )
 
 
@@ -187,6 +219,111 @@ def _coding_product_composition(
         admissions=(admission,),
         definitions=(MODEL_INPUT_CAPABILITY_DEFINITION,),
         optional_choices=(),
+    )
+
+
+def _coding_base_composition_assembly(
+    tmp_path: Path,
+    *,
+    source_root: Path = _CODING_BASE_SHADOW_ROOT,
+) -> tuple[ProductCompositionAssemblyRequest, PluginRuntimeResolution]:
+    authority = PluginResolutionAuthority()
+    inspection = authority.inspect(PluginSource(path=source_root))
+    runtime = authority.publish_runtime(
+        (inspection,),
+        binding_store=PackageMaterializer(
+            install_root=tmp_path / "composition-installed",
+            plugin_revision_root=tmp_path / "composition-revisions",
+        ),
+    )
+    [package] = runtime.packages
+    [binding] = runtime.bindings
+    plugin_id = package.manifest.name
+    plan = PluginSelectionPlanV2(
+        context=PluginPreflightContextV1(
+            product_id="coding",
+            scope_id="workspace:test",
+            policy_revision="coding-plugin-policy-1",
+            instance_revision_refs=(
+                PluginInstanceRevisionRef(
+                    instance_id="coding.base@workspace:test",
+                    plugin_id=plugin_id,
+                    revision=1,
+                ),
+            ),
+        ),
+        selected_plugin_ids=(plugin_id,),
+        selected_contributions=tuple(
+            PluginContributionRef(plugin_id, item.contribution_id)
+            for item in package.contribution_index.items
+        ),
+        source_trust_snapshots=(
+            PluginSourceTrustSnapshotV1(
+                plugin_id=plugin_id,
+                package_source_identity=binding.source_identity,
+                source_trust_class="host-equivalent-local",
+                source_trust_policy_revision="trust-1",
+                trusted=True,
+            ),
+        ),
+        effective_configuration_set=PluginEffectiveConfigurationSetV1(
+            entries=tuple(
+                PluginEffectiveConfigurationEntry(
+                    plugin_id=plugin_id,
+                    contribution_id=item.contribution_id,
+                    configuration={},
+                )
+                for item in package.contribution_index.items
+            )
+        ),
+        allowed_authority_ceiling=(),
+    )
+    selection = PluginDeclarationHost().resolve(
+        (package,),
+        bindings=(binding,),
+        plan=plan,
+        decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+    )
+    if not isinstance(selection, PluginSelection):
+        runtime.close()
+        raise AssertionError("coding.base data-only selection must finalize")
+    owner_specs: tuple[tuple[str, OwnerContributionKind, str], ...] = (
+        ("commands.session", "command_pack", "harness.session.standard"),
+        ("resources.prompt", "resource_item", "loushang.resource.prompt"),
+        ("resources.skill", "resource_item", "loushang.resource.skill"),
+        ("tools.workspace", "tool_pack", "harness.workspace.core"),
+    )
+    owner_bindings = tuple(
+        ProductContributionOwnerBinding(
+            authority=OwnerContributionAuthority(
+                OwnerContributionPolicy(
+                    owner_id=owner_id,
+                    contribution_kind=contribution_kind,
+                    product_id="coding",
+                    policy_revision=f"{owner_id}-v1",
+                    revocation_epoch=0,
+                    allowed_source_trust_classes=("host-equivalent-local",),
+                    allowed_collection_ids=(collection_id,),
+                    allowed_requirement_bindings=("direct",),
+                    consumer_scope="session",
+                    consumer_refresh_boundary="sealed",
+                )
+            ),
+            admission_ttl_seconds=3600,
+        )
+        for owner_id, contribution_kind, collection_id in owner_specs
+    )
+    return (
+        ProductCompositionAssemblyRequest(
+            selection=selection,
+            owner_bindings=owner_bindings,
+            mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
+            definitions=(
+                MODEL_INPUT_CAPABILITY_DEFINITION,
+                WORKSPACE_CAPABILITY_DEFINITION,
+            ),
+        ),
+        runtime,
     )
 
 
@@ -439,23 +576,18 @@ def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(
     async def scenario() -> None:
         project_root = tmp_path / "project"
         plugin_root = tmp_path / "plugin"
-        skill_root = plugin_root / "skills" / "package-review"
         project_root.mkdir()
-        skill_root.mkdir(parents=True)
-        (plugin_root / "plugin.json").write_text(
-            json.dumps({"name": "review-package", "version": "1"}),
+        shutil.copytree(_CODING_BASE_SHADOW_ROOT, plugin_root)
+        (plugin_root / "skills" / "standard" / "SKILL.md").write_text(
+            "---\nname: standard\n"
+            "description: Package Skill admitted by Product composition.\n---\n"
+            "Review from the compiled package.\n",
             encoding="utf-8",
         )
-        (skill_root / "SKILL.md").write_text(
-            "---\nname: package-review\n"
-            "description: Package review\n---\nReview from package.\n",
-            encoding="utf-8",
+        composition_assembly, plugin_runtime = _coding_base_composition_assembly(
+            tmp_path,
+            source_root=plugin_root,
         )
-        admission = _coding_package_skill_admission(
-            plugin_root,
-            revision_root=tmp_path / "admission-revisions",
-        )
-        product_composition = _coding_product_composition(admission)
         project_settings_path = tmp_path / "project-settings.json"
         project_settings_path.write_text(
             json.dumps({"plugin_sources": [str(plugin_root)]}),
@@ -478,7 +610,9 @@ def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(
             services=services,
             model=_model(),
             enable_initial_resource_catalog_shadow=True,
-            initial_resource_catalog_product_composition=product_composition,
+            initial_resource_catalog_product_composition_assembly=(
+                composition_assembly
+            ),
         )
         resource_candidate = session._staged_resource_candidate
         assert resource_candidate is not None
@@ -486,7 +620,7 @@ def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(
         legacy_package_skill = next(
             skill
             for skill in session.resource_bundle.skills
-            if skill.name == "package-review"
+            if skill.name == "standard"
         )
         try:
             await session.prepare_model_call_runtime()
@@ -495,7 +629,7 @@ def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(
             package_skill = next(
                 skill
                 for skill in session.resource_bundle.skills
-                if skill.name == "package-review"
+                if skill.name == "standard"
             )
             assert package_skill.source_kind == "external_package"
             assert (
@@ -519,6 +653,7 @@ def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(
         finally:
             await session.dispose()
             services.resource_loader.close()
+            plugin_runtime.close()
         assert resource_candidate.ownership_state == "disposed"
         assert session._capability_graph_runtime.has_pending_retirements is False
 

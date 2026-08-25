@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
 from functools import partial
@@ -70,9 +71,6 @@ from loushang.harness.capabilities import (
     StagedResourceCompositionCandidate,
     stage_resource_composition_candidate,
 )
-from loushang.harness.capabilities.consumer_requirements import (
-    ProductCompositionCompilation,
-)
 from loushang.harness.capabilities.workspace_provider import (
     workspace_capability_provider_binding,
 )
@@ -110,6 +108,10 @@ from loushang.harness.session import (
     prepare_agent_session_services as prepare_standard_agent_session_services,
 )
 from loushang.harness.session.legacy_side_question import LegacySideQuestionBinding
+from loushang.harness.session.product_composition_assembly import (
+    ProductCompositionAssemblyRequest,
+    assemble_product_composition,
+)
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.process_hosting import ProcessExecutionScope
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
@@ -282,23 +284,28 @@ def _create_agent_session(
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
     enable_initial_resource_catalog_shadow: bool = False,
-    initial_resource_catalog_product_composition: (
-        ProductCompositionCompilation | None
+    initial_resource_catalog_product_composition_assembly: (
+        ProductCompositionAssemblyRequest | None
     ) = None,
 ) -> AgentSession:
     if not isinstance(enable_initial_resource_catalog_shadow, bool):
         raise TypeError("initial Resource Catalog shadow flag must be a bool")
-    if initial_resource_catalog_product_composition is not None and not isinstance(
-        initial_resource_catalog_product_composition,
-        ProductCompositionCompilation,
-    ):
-        raise TypeError("initial Resource Catalog Product composition is invalid")
     if (
-        initial_resource_catalog_product_composition is not None
+        initial_resource_catalog_product_composition_assembly is not None
+        and not isinstance(
+            initial_resource_catalog_product_composition_assembly,
+            ProductCompositionAssemblyRequest,
+        )
+    ):
+        raise TypeError(
+            "initial Resource Catalog Product composition assembly is invalid"
+        )
+    if (
+        initial_resource_catalog_product_composition_assembly is not None
         and not enable_initial_resource_catalog_shadow
     ):
         raise ValueError(
-            "initial Resource Catalog Product composition requires the shadow"
+            "initial Resource Catalog Product composition assembly requires the shadow"
         )
     enable_multiagent_tools = (
         enable_multiagent
@@ -419,13 +426,23 @@ def _create_agent_session(
     ) -> AgentSession:
         resource_catalog_shadow_adapter = None
         if enable_initial_resource_catalog_shadow:
+            composition_evaluated_at = int(time.time())
+            product_composition = (
+                assemble_product_composition(
+                    initial_resource_catalog_product_composition_assembly,
+                    evaluated_at=composition_evaluated_at,
+                )
+                if initial_resource_catalog_product_composition_assembly is not None
+                else None
+            )
             resource_catalog_shadow_adapter = (
                 prepare_coding_initial_resource_catalog_shadow_adapter(
                     services.resource_loader,
                     disabled_skills=(
                         services.settings_manager.get_settings().disabled_skills
                     ),
-                    product_composition=initial_resource_catalog_product_composition,
+                    product_composition=product_composition,
+                    admission_now=composition_evaluated_at,
                 )
             )
         base_exec_service = services.exec_service or ExecService()

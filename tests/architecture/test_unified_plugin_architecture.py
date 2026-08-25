@@ -3385,7 +3385,9 @@ def test_pap5_session_root_is_the_only_graph_planning_site() -> None:
     ).read_text(encoding="utf-8")
 
     assert "RuntimeCapabilityGraphPlanner" not in model_call
-    assert agent_product.count("RuntimeCapabilityGraphPlanner().plan(") == 1
+    # Initial v1 planning and the opt-in pre-publication v2 Resource replan both
+    # remain inside the one Product Session composition root.
+    assert agent_product.count("RuntimeCapabilityGraphPlanner().plan(") == 2
 
 
 def test_pap55_resource_catalog_plan_preserves_one_owner_and_native_skills() -> None:

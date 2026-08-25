@@ -57,7 +57,7 @@ planning, work event persistence, or AI provider behavior.
   Skill projection, exact-generation lifecycle, and manifest-free native
   `SKILL.md` compatibility before LSP. RCP0-RCP3 are now implemented as private,
   unpublished infrastructure, including verified-package and immutable embedded
-  sources plus Package Catalog's pure inventory bridge. RCP4's nine unpublished
+  sources plus Package Catalog's pure inventory bridge. RCP4's ten unpublished
   foundations now prove candidate-owned generation transfer, the internal v2
   Catalog/load Provider, exact Extension-owner route snapshots with retained
   body reads, and a root-private joint Extension/Resource candidate through an
@@ -76,14 +76,18 @@ planning, work event persistence, or AI provider behavior.
   opaque handles under a synchronous construction-custody callback. Package
   specs must exact-match the Resource admissions in one existing compiled
   Product composition; the Coding seam no longer accepts a parallel
-  raw-admission list. A private Coding initial shadow consumes one
-  same-discovery, single-take source receipt and maps project/context, user,
-  captured built-in inputs, and clean verified package candidates with exact
-  owner admissions. Unverified, conventional, diagnostic-bearing, incomplete,
-  or Extension-bearing packages still reject, as do temporary, kind-switch, and
-  disabled-Skill inputs. The public Coding SDK and default path remain v1.
-  Production composition assembly/default wiring, refresh, broader policy
-  parity, typed production consumers, and cutover remain pending.
+  raw-admission list. One private Session/Product composition root now projects
+  a finalized Plugin selection through explicitly supplied exact Resource/Tool/
+  Command owners and the existing compiler. The private Coding initial shadow
+  accepts that assembly request and samples one evaluation time. It also
+  consumes one same-discovery, single-take source receipt and maps project/
+  context, user, captured built-in inputs, and clean verified package candidates
+  with exact owner admissions. Unverified, conventional, diagnostic-bearing,
+  incomplete, or Extension-bearing packages still reject, as do temporary,
+  kind-switch, and disabled-Skill inputs. The public Coding SDK and default path
+  remain v1.
+  Default Plugin selection/owner-binding wiring, refresh, broader policy parity,
+  typed production consumers, and cutover remain pending.
 - [Resource Catalog RCP0 Baseline](resource-catalog-rcp0-baseline.md) freezes
   the implemented discovery/sink inventory, precedence and Extension parity,
   Package-mount custody, and the exact RCP3/RCP4/RCP5 deletion ledger without

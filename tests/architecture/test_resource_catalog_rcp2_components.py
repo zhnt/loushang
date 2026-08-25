@@ -20,9 +20,13 @@ JOINT_GENERATION_PATH = ORCHESTRATION_ROOT / "joint_generation.py"
 PRODUCT_INPUTS_PATH = ORCHESTRATION_ROOT / "product_inputs.py"
 SESSION_BOOTSTRAP_PATH = ORCHESTRATION_ROOT / "session_bootstrap.py"
 AGENT_PRODUCT_SESSION_PATH = Path("src/loushang/harness/session/agent_product.py")
+PRODUCT_COMPOSITION_ASSEMBLY_PATH = Path(
+    "src/loushang/harness/session/product_composition_assembly.py"
+)
 EXTENSION_RESOURCE_SOURCE_PATH = RESOURCE_ROOT / "_catalog_extension_source.py"
 EXTENSION_RESOURCE_RUNTIME_PATH = Path("src/loushang/harness/extensions/resources.py")
 CODING_SHADOW_ADAPTER_PATH = Path("src/loushang/coding/_resource_catalog_shadow.py")
+CODING_BOOTSTRAP_PATH = Path("src/loushang/coding/bootstrap.py")
 
 
 def _imported_modules(path: Path) -> set[str]:
@@ -258,9 +262,53 @@ def test_rcp4_product_input_adapter_is_explicit_private_and_source_narrow() -> N
     assert "package_resources" in source
     coding_source = CODING_SHADOW_ADAPTER_PATH.read_text(encoding="utf-8")
     assert "prepare_coding_initial_resource_catalog_shadow_adapter" in coding_source
-    bootstrap_source = Path("src/loushang/coding/bootstrap.py").read_text(
+    bootstrap_source = CODING_BOOTSTRAP_PATH.read_text(encoding="utf-8")
+    assert "enable_initial_resource_catalog_shadow: bool = False" in bootstrap_source
+    assert "initial_resource_catalog_product_composition_assembly" in bootstrap_source
+    assert "initial_resource_catalog_product_composition:" not in bootstrap_source
+    assert "initial_resource_catalog_package_admissions" not in bootstrap_source
+
+
+def test_rcp4_product_composition_assembly_is_one_private_product_root() -> None:
+    production_paths = set(Path("src/loushang").rglob("*.py")) - {
+        PRODUCT_COMPOSITION_ASSEMBLY_PATH,
+    }
+
+    assert PRODUCT_COMPOSITION_ASSEMBLY_PATH.is_file()
+    assert {
+        path
+        for path in production_paths
+        if "loushang.harness.session.product_composition_assembly"
+        in _imported_modules(path)
+    } == {CODING_BOOTSTRAP_PATH}
+    imports = _imported_modules(PRODUCT_COMPOSITION_ASSEMBLY_PATH)
+    assert not imports & {
+        "time",
+        "loushang.coding",
+        "loushang.harness.resources.loader",
+        "loushang.harness.resources._loader_pipeline",
+        "loushang.harness.resource_catalog",
+    }
+    assert imports & {
+        "loushang.harness.capabilities.consumer_requirements",
+        "loushang.harness.capabilities.contribution_admission",
+        "loushang.harness.plugin_authoring.contribution_admission",
+        "loushang.harness.resources.plugins.selection",
+    } == {
+        "loushang.harness.capabilities.consumer_requirements",
+        "loushang.harness.capabilities.contribution_admission",
+        "loushang.harness.plugin_authoring.contribution_admission",
+        "loushang.harness.resources.plugins.selection",
+    }
+    assert all("mcp" not in name.lower() for name in imports)
+    source = PRODUCT_COMPOSITION_ASSEMBLY_PATH.read_text(encoding="utf-8")
+    assert "PluginSelection" in source
+    assert "prepare_owner_contribution_candidate" in source
+    assert "ProductCompositionCompiler" in source
+    assert "product_contribution_owner_missing" in source
+    assert "product_contribution_owner_extra" in source
+    assert "__all__: list[str] = []" in source
+    session_init_source = Path("src/loushang/harness/session/__init__.py").read_text(
         encoding="utf-8"
     )
-    assert "enable_initial_resource_catalog_shadow: bool = False" in bootstrap_source
-    assert "initial_resource_catalog_product_composition" in bootstrap_source
-    assert "initial_resource_catalog_package_admissions" not in bootstrap_source
+    assert "product_composition_assembly" not in session_init_source

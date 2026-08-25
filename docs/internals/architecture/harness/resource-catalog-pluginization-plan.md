@@ -7,7 +7,7 @@
   and Model Input boundaries. It does not amend those boundaries implicitly.
 - Design status: RCP0 contract frozen; final narrow freeze re-review passed.
 - Implementation status: RCP0 through RCP3 are complete on the Harness lane;
-  RCP4 has started with nine unpublished foundation slices.
+  RCP4 has started with ten unpublished foundation slices.
   RCP2's first unpublished foundation slice implements the generic
   `CapabilityComponentDefinition`, exact candidate/admission/selection/binding
   records, atomic owner generations, cancellation-safe reverse rollback,
@@ -27,9 +27,12 @@
   remain private, and `harness.resources` does not export them. The RCP4
   preparation bridge is their sole path toward a Provider. One private optional
   Agent Session bootstrap adapter now calls that bridge. A private Product
-  preparation adapter can mint exact native/package/embedded inputs for it, but no
-  Product bootstrap invokes that adapter by default and no refresh route calls
-  it.
+  preparation adapter can mint exact native/package/embedded inputs for it. One
+  private Session/Product composition root now turns a finalized Plugin
+  selection plus explicit exact owner bindings into the existing Product
+  compilation, and Coding's private initial shadow consumes that assembly
+  request. No Product bootstrap invokes the path by default and no refresh route
+  calls it.
   RCP3 adds admitted-package and embedded/OEM source components beside the
   native source. Capability-aware orchestration converts exact Resource-owner
   admission into a capability-neutral verified input with an independently
@@ -1159,7 +1162,7 @@ effective Resource selection.
 
 ### RCP4: Mount Resource Catalog generation
 
-Status: nine unpublished foundation slices complete. The v1 Provider path is
+Status: ten unpublished foundation slices complete. The v1 Provider path is
 unchanged when no prepared generation exists. A candidate with one prepared
 generation selects only contract/provider v2, contributes the two Catalog/load
 facets, transfers parent and child through the same
@@ -1330,14 +1333,13 @@ not re-read filter configuration. Traditional path-backed package roots and
 verified Plugins that have not completed `resource_item` declaration and owner
 admission remain on v1 and fail closed in the opt-in shadow.
 
-At this slice, the private Coding construction helper accepts pre-admitted
-package Resources solely as a migration/test seam. It does not run Plugin
-selection, grant trust, or manufacture owner admission. Wiring the production
-Plugin declaration and owner-admission result into Product composition is a
-later gate and must not be implemented by parsing `ResourceBundle` or loader
-internals. A real Coding Session test proves an admitted package Skill through
-v2 Catalog publication,
-Graph ownership, exact disposal, and zero pending retirement.
+At RCP4.8, the private Coding construction helper accepted pre-admitted package
+Resources solely as a migration/test seam. It did not run Plugin selection,
+grant trust, or manufacture owner admission. RCP4.9 removed that raw ingress,
+and RCP4.10 adds the private Product assembly primitive; neither change parses
+`ResourceBundle` or loader internals. A real Coding Session test proves an
+admitted package Skill through v2 Catalog publication, Graph ownership, exact
+disposal, and zero pending retirement.
 
 No temporary-source support, disabled-Skill policy projection, kind-switch
 parity, refresh route, public SDK/CLI setting, default cutover, LSP, or MCP work
@@ -1370,12 +1372,50 @@ and Skill through their exact owners, compiles the Product composition, and
 constructs independent Catalog revision leases. Closing those Session leases
 does not close the Plugin runtime's source handle.
 
-This is a production-compatible composition ingress, not default Product
-assembly. The public Coding SDK, CLI, and default v1 path still do not construct
-or enable Plugin composition. Wiring the existing production declaration host,
-owner authorities, and compiler into the Coding composition root remains a
-separate explicit cutover gate. No refresh, temporary-source parity, disabled
-Skill projection, kind-switch parity, LSP, or MCP behavior is added.
+At RCP4.9 this was a production-compatible composition ingress, not Product
+assembly. The public Coding SDK, CLI, and default v1 path still did not construct
+or enable Plugin composition. RCP4.10 closes the private assembly primitive but
+does not add default Plugin selection or Product owner-policy wiring. No refresh,
+temporary-source parity, disabled-Skill projection, kind-switch parity, LSP, or
+MCP behavior is added.
+
+#### RCP4.10 implemented: exact-owner Product composition assembly
+
+The tenth slice adds one private Product-root assembly primitive under
+`harness.session`. Its inert request contains an already finalized
+`PluginSelection`, explicit non-global owner bindings, mandatory Capability
+roots, Capability definitions, and a Product-owned optional-requirement
+selector. The primitive projects only selected `resource_item`, `tool_pack`, and
+`command_pack` declarations through the existing owner-candidate bridge.
+`capability_provider` remains on its separate Provider/Graph lifecycle and is
+not reclassified as an external owner contribution.
+
+The supplied owner keys must be an exact set match for the selected external
+contribution owner keys before any admission is minted. Missing and unused
+owners fail with stable finite codes. Each binding carries an existing
+`OwnerContributionAuthority` and a bounded admission lifetime; the Product root
+supplies one explicit evaluation time, which becomes both the compilation time
+and every admission's issue-time basis. The existing compiler performs optional
+requirement preview, accepts the Product's explicit choices, and compiles once.
+The assembler adds no manifest parser, declaration codec, trust grant, global
+owner registry, or second admission representation.
+
+Coding's private initial-shadow construction root now accepts the assembly
+request rather than a precompiled value. It samples wall time once, assembles
+once, and passes both the resulting compilation and that same evaluation time
+to Resource Catalog preparation. The lower Product adapter continues to accept
+only the compilation and exact-match its Resource admissions against the
+same-discovery package candidates. A production-shaped test starts with the
+checked-in inert `coding.base` package, finalizes its existing declaration path,
+binds all prompt, Skill, Tool, and Command owners, compiles them, and carries the
+package Skill through a real Coding Session and exact disposal. Focused tests
+also reject missing and extra owner bindings before Catalog lease acquisition.
+
+This remains unpublished opt-in infrastructure. The caller must still obtain
+the finalized selection and supply Product policy bindings; the public SDK,
+CLI, and default v1 path remain unchanged. Default Product wiring, temporary
+source and resource-policy parity, refresh, typed production Consumers, cutover,
+LSP, and MCP behavior remain outside this slice.
 
 - introduce the internal `harness.resources` v2 Catalog/load facets and exact
   Consumer requirements;
