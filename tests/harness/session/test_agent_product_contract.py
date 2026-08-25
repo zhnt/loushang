@@ -35,11 +35,15 @@ from loushang.harness.capabilities import (
     standard_capability_composition_plan,
 )
 from loushang.harness.capabilities.component_host import CapabilityComponentHost
+from loushang.harness.capabilities.consumer_requirements import (
+    ProductCompositionError,
+)
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionPolicy,
 )
 from loushang.harness.capabilities.provider_admission import (
+    CapabilityProviderAdmissionRecord,
     CapabilityProviderOwnerAuthority,
     CapabilityProviderOwnerPolicy,
 )
@@ -1560,31 +1564,11 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 refresh_boundary="sealed",
                 phase="final",
             )
-            provider_authority = CapabilityProviderOwnerAuthority(
-                CapabilityProviderOwnerPolicy(
-                    capability_id=definition.capability_id,
-                    owner_id=definition.owner_id,
-                    policy_revision="coding-foundation-owner-1",
-                    revocation_epoch=3,
-                    allowed_provider_ids=("org.loushang.coding.foundation/default",),
-                    allowed_source_trust_classes=("host-equivalent-local",),
-                    authority_ceiling=(),
-                )
+            provider_authority = _foundation_provider_authority(
+                definition,
+                "org.loushang.coding.foundation/default",
             )
-            owner_authority = OwnerContributionAuthority(
-                OwnerContributionPolicy(
-                    owner_id="coding.tools",
-                    contribution_kind="tool_pack",
-                    product_id="coding",
-                    policy_revision="coding-tools-owner-1",
-                    revocation_epoch=2,
-                    allowed_source_trust_classes=("host-equivalent-local",),
-                    allowed_collection_ids=("coding.tools",),
-                    allowed_requirement_bindings=("direct",),
-                    consumer_scope="session",
-                    consumer_refresh_boundary="sealed",
-                )
-            )
+            owner_authority = _foundation_tool_owner_authority()
             [trust_snapshot] = selection.plan.source_trust_snapshots
             workspace_binding = workspace_capability_provider_binding(
                 operations=LocalToolOperations(),
@@ -1595,40 +1579,23 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 ).hexdigest(),
                 source_id="foundation-contract-test",
             )
-            assembly_request = ProductPluginCompositionAssemblyRequest(
-                contribution_request=ProductCompositionAssemblyRequest(
-                    selection=selection,
-                    owner_bindings=(
-                        ProductContributionOwnerBinding(
-                            authority=owner_authority,
-                            admission_ttl_seconds=200,
+            assembly_request = _foundation_assembly_request(
+                selection=selection,
+                definition=definition,
+                provider_authority=provider_authority,
+                owner_authority=owner_authority,
+                workspace_binding=workspace_binding,
+            )
+            with pytest.raises(ValueError, match="roots do not match Consumer roots"):
+                assemble_product_plugin_composition(
+                    replace(
+                        assembly_request,
+                        host_capability_ids=(
+                            WORKSPACE_CAPABILITY_DEFINITION.capability_id,
                         ),
                     ),
-                    mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-                    definitions=(
-                        MODEL_INPUT_CAPABILITY_DEFINITION,
-                        WORKSPACE_CAPABILITY_DEFINITION,
-                        definition,
-                    ),
-                ),
-                provider_owner_bindings=(
-                    ProductCapabilityProviderOwnerBinding(
-                        authority=provider_authority,
-                        eligibility_ttl_seconds=250,
-                        admission_ttl_seconds=200,
-                    ),
-                ),
-                provider_roots=(definition.capability_id,),
-                select_capability_providers=lambda admissions: tuple(
-                    ProductCapabilityProviderChoice(
-                        capability_id=item.capability_id,
-                        provider_id=item.provider.provider_id,
-                        candidate_fingerprint=item.candidate_fingerprint,
-                    )
-                    for item in admissions
-                ),
-                prebound_providers=(workspace_binding.provider,),
-            )
+                    evaluated_at=150,
+                )
             with pytest.raises(ProductCompositionAssemblyError) as missing_definition:
                 assemble_product_plugin_composition(
                     replace(
@@ -1904,24 +1871,154 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
     asyncio.run(scenario())
 
 
+def test_product_plugin_assembly_rejects_consumer_provider_facet_mismatch(
+    tmp_path: Path,
+) -> None:
+    events = tmp_path / "mismatch-events.log"
+    fixture = _publish_foundation_plugin(
+        tmp_path,
+        events=events,
+        plugin_id="foundation-mismatch",
+        provider_id="org.loushang.coding.foundation/mismatch",
+        provider_facets=("runtime",),
+        consumer_facets=("query",),
+    )
+    try:
+        definition = CapabilityDefinition(
+            capability_id="coding.foundation",
+            owner_id="coding",
+            contract_version=1,
+            facets=("query", "runtime"),
+            scope="session",
+            refresh_boundary="sealed",
+            phase="final",
+        )
+        workspace_binding = workspace_capability_provider_binding(
+            operations=LocalToolOperations(),
+            process_launcher=_UnusedWorkspaceLauncher(),
+            scope_instance_id="workspace:test",
+            binding_input_fingerprint=hashlib.sha256(
+                b"foundation-mismatch-workspace"
+            ).hexdigest(),
+            source_id="foundation-mismatch-test",
+        )
+        request = _foundation_assembly_request(
+            selection=_foundation_selection(fixture),
+            definition=definition,
+            provider_authority=_foundation_provider_authority(
+                definition,
+                fixture.provider_id,
+            ),
+            owner_authority=_foundation_tool_owner_authority(),
+            workspace_binding=workspace_binding,
+        )
+
+        with pytest.raises(ProductCompositionError) as mismatch:
+            assemble_product_plugin_composition(request, evaluated_at=150)
+
+        assert mismatch.value.code == "consumer_selected_provider_facet_mismatch"
+        assert events.exists() is False
+    finally:
+        fixture.runtime.close()
+
+
+def test_product_plugin_assembly_retains_the_selected_alternative_provider_facts(
+    tmp_path: Path,
+) -> None:
+    primary_events = tmp_path / "primary-events.log"
+    alternative_events = tmp_path / "alternative-events.log"
+    primary = _publish_foundation_plugin(
+        tmp_path,
+        events=primary_events,
+        plugin_id="foundation-primary",
+        provider_id="org.loushang.coding.foundation/primary",
+        label="primary",
+    )
+    alternative = _publish_foundation_plugin(
+        tmp_path,
+        events=alternative_events,
+        plugin_id="foundation-alternative",
+        provider_id="org.loushang.coding.foundation/alternative",
+        include_tool_pack=False,
+        label="alternative",
+    )
+    try:
+        definition = CapabilityDefinition(
+            capability_id="coding.foundation",
+            owner_id="coding",
+            contract_version=1,
+            facets=("query",),
+            scope="session",
+            refresh_boundary="sealed",
+            phase="final",
+        )
+        workspace_binding = workspace_capability_provider_binding(
+            operations=LocalToolOperations(),
+            process_launcher=_UnusedWorkspaceLauncher(),
+            scope_instance_id="workspace:test",
+            binding_input_fingerprint=hashlib.sha256(
+                b"foundation-alternative-workspace"
+            ).hexdigest(),
+            source_id="foundation-alternative-test",
+        )
+        request = _foundation_assembly_request(
+            selection=_foundation_selection(primary, alternative),
+            definition=definition,
+            provider_authority=_foundation_provider_authority(
+                definition,
+                primary.provider_id,
+                alternative.provider_id,
+            ),
+            owner_authority=_foundation_tool_owner_authority(),
+            workspace_binding=workspace_binding,
+            selected_provider_id=alternative.provider_id,
+        )
+
+        assembly = assemble_product_plugin_composition(request, evaluated_at=150)
+
+        [resolved] = assembly.resolved_providers.entries
+        [component] = assembly.component_candidates
+        assert resolved.provider.provider_id == alternative.provider_id
+        assert component.resolved is resolved
+        assert component.package is alternative.package
+        assert (
+            component.owner_snapshot
+            == request.provider_owner_bindings[0].authority.snapshot()
+        )
+        assert component.trust_snapshot.plugin_id == alternative.package.manifest.name
+        assert primary_events.exists() is False
+        assert alternative_events.exists() is False
+    finally:
+        alternative.runtime.close()
+        primary.runtime.close()
+
+
 @dataclass(frozen=True, slots=True)
 class _FoundationPluginFixture:
     runtime: PluginRuntimeResolution
     package: PublishedPluginPackage
     binding: PluginSourceBinding
     contributions: tuple[PluginContributionReservation, ...]
+    label: str
+    provider_id: str
 
 
 def _publish_foundation_plugin(
     tmp_path: Path,
     *,
     events: Path,
+    plugin_id: str = "foundation-sample",
+    provider_id: str = "org.loushang.coding.foundation/default",
+    provider_facets: tuple[str, ...] = ("query",),
+    consumer_facets: tuple[str, ...] = ("query",),
+    include_tool_pack: bool = True,
+    label: str = "foundation",
 ) -> _FoundationPluginFixture:
-    source_root = tmp_path / "foundation-plugin"
+    source_root = tmp_path / plugin_id
     declarations_root = source_root / "declarations"
     declarations_root.mkdir(parents=True)
     source = PluginDeclarationSource.document("declarations/foundation.json")
-    contributions = (
+    contribution_values = [
         PluginContributionReservation(
             contribution_id="foundation-provider",
             kind="capability_provider",
@@ -1930,22 +2027,26 @@ def _publish_foundation_plugin(
             contribution_execution_model="in_process",
             requested_authorities=(),
         ),
-        PluginContributionReservation(
-            contribution_id="foundation-tools",
-            kind="tool_pack",
-            owner="coding.tools",
-            declaration_source=source,
-            contribution_execution_model="data_only",
-            requested_authorities=(),
-        ),
-    )
+    ]
+    if include_tool_pack:
+        contribution_values.append(
+            PluginContributionReservation(
+                contribution_id="foundation-tools",
+                kind="tool_pack",
+                owner="coding.tools",
+                declaration_source=source,
+                contribution_execution_model="data_only",
+                requested_authorities=(),
+            )
+        )
+    contributions = tuple(contribution_values)
     provider_payload = CapabilityProviderDeclarationPayload(
         provider=CapabilityBundleProvider(
             capability_id="coding.foundation",
-            provider_id="org.loushang.coding.foundation/default",
+            provider_id=provider_id,
             implementation_version=1,
             compatible_contract=CapabilityContractRange.exact(1),
-            facets=("query",),
+            facets=provider_facets,
             requirements=(
                 CapabilityRequirement(
                     capability="harness.workspace",
@@ -1953,7 +2054,7 @@ def _publish_foundation_plugin(
                     compatible_contract=CapabilityContractRange.exact(1),
                 ),
             ),
-            source_id="plugin:foundation-sample",
+            source_id=f"plugin:{plugin_id}",
             selection_rule=PLUGIN_PROVIDER_SELECTION_RULE,
         ),
         factory=PluginSymbolReference(
@@ -1966,7 +2067,7 @@ def _publish_foundation_plugin(
             symbol="dispose_provider",
             execution_model="in_process",
         ),
-        binding_inputs={"label": "foundation"},
+        binding_inputs={"label": label},
     )
     tool_payload = ToolPackDeclarationPayload(
         catalog_id="coding.tools",
@@ -1976,15 +2077,17 @@ def _publish_foundation_plugin(
         requirements=(
             CapabilityRequirement(
                 capability="coding.foundation",
-                facets=("query",),
+                facets=consumer_facets,
                 compatible_contract=CapabilityContractRange.exact(1),
             ),
         ),
     )
-    payloads = (provider_payload.to_dict(), tool_payload.to_dict())
+    payloads = [provider_payload.to_dict()]
+    if include_tool_pack:
+        payloads.append(tool_payload.to_dict())
     declarations = tuple(
         PluginDeclaration(
-            plugin_id="foundation-sample",
+            plugin_id=plugin_id,
             contribution_id=contribution.contribution_id,
             kind=contribution.kind,
             owner=contribution.owner,
@@ -2007,7 +2110,7 @@ def _publish_foundation_plugin(
     (source_root / "plugin.json").write_text(
         json.dumps(
             {
-                "name": "foundation-sample",
+                "name": plugin_id,
                 "version": "1",
                 "contributionIndex": {
                     "version": 2,
@@ -2033,62 +2136,166 @@ def _publish_foundation_plugin(
         package=package,
         binding=binding,
         contributions=package.contribution_index.items,
+        label=label,
+        provider_id=provider_id,
     )
 
 
-def _foundation_selection(fixture: _FoundationPluginFixture) -> PluginSelection:
-    plugin_id = fixture.package.manifest.name
+def _foundation_selection(
+    *fixtures: _FoundationPluginFixture,
+) -> PluginSelection:
+    ordered = tuple(sorted(fixtures, key=lambda item: item.package.manifest.name))
+    plugin_ids = tuple(item.package.manifest.name for item in ordered)
     plan = PluginSelectionPlanV2(
         context=PluginPreflightContextV1(
             product_id="coding",
             scope_id="workspace:test",
             policy_revision="coding-plugin-policy-1",
-            instance_revision_refs=(
+            instance_revision_refs=tuple(
                 PluginInstanceRevisionRef(
-                    instance_id="foundation-sample@workspace:test",
+                    instance_id=f"{plugin_id}@workspace:test",
                     plugin_id=plugin_id,
                     revision=1,
-                ),
+                )
+                for plugin_id in plugin_ids
             ),
         ),
-        selected_plugin_ids=(plugin_id,),
+        selected_plugin_ids=plugin_ids,
         selected_contributions=tuple(
-            PluginContributionRef(plugin_id, item.contribution_id)
-            for item in fixture.contributions
+            sorted(
+                PluginContributionRef(
+                    fixture.package.manifest.name,
+                    item.contribution_id,
+                )
+                for fixture in ordered
+                for item in fixture.contributions
+            )
         ),
-        source_trust_snapshots=(
+        source_trust_snapshots=tuple(
             PluginSourceTrustSnapshotV1(
-                plugin_id=plugin_id,
+                plugin_id=fixture.package.manifest.name,
                 package_source_identity=fixture.binding.source_identity,
                 source_trust_class="host-equivalent-local",
                 source_trust_policy_revision="trust-1",
                 trusted=True,
-            ),
+            )
+            for fixture in ordered
         ),
         effective_configuration_set=PluginEffectiveConfigurationSetV1(
             entries=tuple(
                 PluginEffectiveConfigurationEntry(
-                    plugin_id=plugin_id,
+                    plugin_id=fixture.package.manifest.name,
                     contribution_id=item.contribution_id,
                     configuration=(
-                        {"label": "foundation"}
+                        {"label": fixture.label}
                         if item.kind == "capability_provider"
                         else {}
                     ),
                 )
+                for fixture in ordered
                 for item in fixture.contributions
             )
         ),
         allowed_authority_ceiling=(),
     )
     result = PluginDeclarationHost().resolve(
-        (fixture.package,),
-        bindings=(fixture.binding,),
+        tuple(item.package for item in ordered),
+        bindings=tuple(item.binding for item in ordered),
         plan=plan,
         decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
     )
     assert isinstance(result, PluginSelection)
     return result
+
+
+def _foundation_assembly_request(
+    *,
+    selection: PluginSelection,
+    definition: CapabilityDefinition,
+    provider_authority: CapabilityProviderOwnerAuthority,
+    owner_authority: OwnerContributionAuthority,
+    workspace_binding: CapabilityBundleProviderBinding,
+    selected_provider_id: str | None = None,
+) -> ProductPluginCompositionAssemblyRequest:
+    def select(
+        admissions: tuple[CapabilityProviderAdmissionRecord, ...],
+    ) -> tuple[ProductCapabilityProviderChoice, ...]:
+        return tuple(
+            ProductCapabilityProviderChoice(
+                capability_id=item.capability_id,
+                provider_id=item.provider.provider_id,
+                candidate_fingerprint=item.candidate_fingerprint,
+            )
+            for item in admissions
+            if selected_provider_id is None
+            or item.provider.provider_id == selected_provider_id
+        )
+
+    return ProductPluginCompositionAssemblyRequest(
+        contribution_request=ProductCompositionAssemblyRequest(
+            selection=selection,
+            owner_bindings=(
+                ProductContributionOwnerBinding(
+                    authority=owner_authority,
+                    admission_ttl_seconds=200,
+                ),
+            ),
+            mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
+            definitions=(
+                MODEL_INPUT_CAPABILITY_DEFINITION,
+                WORKSPACE_CAPABILITY_DEFINITION,
+                definition,
+            ),
+        ),
+        provider_owner_bindings=(
+            ProductCapabilityProviderOwnerBinding(
+                authority=provider_authority,
+                eligibility_ttl_seconds=250,
+                admission_ttl_seconds=200,
+            ),
+        ),
+        provider_roots=(definition.capability_id,),
+        host_capability_ids=(
+            MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
+            WORKSPACE_CAPABILITY_DEFINITION.capability_id,
+        ),
+        select_capability_providers=select,
+        prebound_providers=(workspace_binding.provider,),
+    )
+
+
+def _foundation_provider_authority(
+    definition: CapabilityDefinition,
+    *provider_ids: str,
+) -> CapabilityProviderOwnerAuthority:
+    return CapabilityProviderOwnerAuthority(
+        CapabilityProviderOwnerPolicy(
+            capability_id=definition.capability_id,
+            owner_id=definition.owner_id,
+            policy_revision="coding-foundation-owner-1",
+            revocation_epoch=3,
+            allowed_provider_ids=tuple(sorted(provider_ids)),
+            allowed_source_trust_classes=("host-equivalent-local",),
+            authority_ceiling=(),
+        )
+    )
+
+
+def _foundation_tool_owner_authority() -> OwnerContributionAuthority:
+    return OwnerContributionAuthority(
+        OwnerContributionPolicy(
+            owner_id="coding.tools",
+            contribution_kind="tool_pack",
+            product_id="coding",
+            policy_revision="coding-tools-owner-1",
+            revocation_epoch=2,
+            allowed_source_trust_classes=("host-equivalent-local",),
+            allowed_collection_ids=("coding.tools",),
+            allowed_requirement_bindings=("direct",),
+            consumer_scope="session",
+            consumer_refresh_boundary="sealed",
+        )
+    )
 
 
 def _foundation_provider_source(events: Path) -> str:

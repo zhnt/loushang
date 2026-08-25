@@ -1038,6 +1038,19 @@ the exact package, owner snapshot, and trust snapshot for every resolved
 Provider and accepts only an exact map of externally issued activation-decision
 IDs when forming the existing Session composition inputs.
 
+The first narrow post-implementation review found that root partition and
+Consumer contract/facet compatibility were still rechecked only by
+`AgentProductSession`, after a caller could already request a durable activation
+decision. PLC5.0 now closes that ordering gap with one shared pure closure
+validator. The Product request explicitly identifies its host Capability IDs;
+before component candidates are returned, the validator exact-matches the
+remaining Consumer roots to the resolved external roots and validates satisfied
+Consumer entries against the supplied host plus resolved Provider metadata.
+`AgentProductSession` reuses the same validator with its actual built-in set as
+the final defense rather than maintaining a peer rule. Regression coverage also
+selects one of two admitted Provider alternatives and proves that its exact
+package, trust snapshot, owner snapshot, and resolution remain aligned.
+
 PLC5.0 deliberately does not issue Approval decisions, import or start Provider
 code, publish a registry or API, choose defaults, or alter LSP behavior. The
 complete lifecycle test now uses this seam from finalized Plugin selection

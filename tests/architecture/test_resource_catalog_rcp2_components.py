@@ -325,6 +325,11 @@ def test_rcp4_plc5_product_composition_assembly_is_one_private_product_root() ->
     assert "product_provider_owner_extra" in source
     assert "product_provider_activation_missing" in source
     assert "product_provider_activation_extra" in source
+    assert "host_capability_ids" in source
+    assert "validate_session_capability_composition_closure" in source
+    assert "validate_session_capability_composition_closure" in (
+        AGENT_PRODUCT_SESSION_PATH.read_text(encoding="utf-8")
+    )
     assert "__all__: list[str] = []" in source
     session_init_source = Path("src/loushang/harness/session/__init__.py").read_text(
         encoding="utf-8"

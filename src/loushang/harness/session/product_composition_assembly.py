@@ -46,6 +46,7 @@ from loushang.harness.resources.plugins.types import PublishedPluginPackage
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityComponentRequest,
     SessionCapabilityCompositionInputs,
+    validate_session_capability_composition_closure,
 )
 
 ProductOptionalRequirementSelector = Callable[
@@ -203,6 +204,7 @@ class ProductPluginCompositionAssemblyRequest:
     contribution_request: ProductCompositionAssemblyRequest
     provider_owner_bindings: tuple[ProductCapabilityProviderOwnerBinding, ...]
     provider_roots: tuple[str, ...]
+    host_capability_ids: tuple[str, ...]
     select_capability_providers: ProductCapabilityProviderSelector = field(
         repr=False,
         compare=False,
@@ -230,6 +232,14 @@ class ProductPluginCompositionAssemblyRequest:
             raise TypeError("Product Capability Provider roots are invalid")
         if not roots:
             raise ValueError("Product Capability Provider roots must not be empty")
+        host_ids = tuple(self.host_capability_ids)
+        if any(not isinstance(item, str) for item in host_ids):
+            raise TypeError("Product host Capability ids are invalid")
+        host_ids = tuple(sorted(item.strip() for item in host_ids))
+        if any(not item for item in host_ids):
+            raise ValueError("Product host Capability ids must not be empty")
+        if len(host_ids) != len(set(host_ids)):
+            raise ValueError("Product host Capability ids must be unique")
         prebound = tuple(self.prebound_providers)
         if any(not isinstance(item, CapabilityBundleProvider) for item in prebound):
             raise TypeError("Product prebound Capability Providers are invalid")
@@ -237,6 +247,7 @@ class ProductPluginCompositionAssemblyRequest:
             raise TypeError("Product Capability Provider selector must be callable")
         object.__setattr__(self, "provider_owner_bindings", bindings)
         object.__setattr__(self, "provider_roots", roots)
+        object.__setattr__(self, "host_capability_ids", host_ids)
         object.__setattr__(self, "prebound_providers", prebound)
 
 
@@ -509,6 +520,12 @@ def assemble_product_plugin_composition(
         ),
         evaluated_at=evaluated_at,
         prebound_providers=request.prebound_providers,
+    )
+    validate_session_capability_composition_closure(
+        product_composition,
+        resolved,
+        host_capability_ids=request.host_capability_ids,
+        host_providers=request.prebound_providers,
     )
     component_facts = {
         admission.candidate_fingerprint: (

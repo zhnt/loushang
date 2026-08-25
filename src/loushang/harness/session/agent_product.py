@@ -115,6 +115,7 @@ from loushang.harness.session.capability_composition_inputs import (
     StagedSessionCapabilityOwnerGeneration,
     dispose_session_capability_owner_generations,
     stage_session_capability_owner_generations,
+    validate_session_capability_composition_closure,
     validate_session_capability_owner_generation_bindings,
 )
 from loushang.harness.session.command_controller import (
@@ -498,15 +499,11 @@ class AgentProductSession(AgentSessionAdapterMixin):
             )
             if MODEL_INPUT_CAPABILITY_DEFINITION.capability_id not in requirements.roots:
                 raise ValueError("Session composition must retain model-input root")
-            external_root_ids = set(requirements.roots) - built_in_ids
-            if external_root_ids != set(
-                capability_composition_inputs.resolved_providers.roots
-            ):
-                raise ValueError(
-                    "Session external Provider roots do not match Consumer roots"
-                )
-            requirements.validate_provider_metadata(
-                (*built_in_providers, *external_providers)
+            validate_session_capability_composition_closure(
+                capability_composition_inputs.product_composition,
+                capability_composition_inputs.resolved_providers,
+                host_capability_ids=tuple(sorted(built_in_ids)),
+                host_providers=built_in_providers,
             )
             graph_roots = requirements.roots
         self._session_capability_plan = RuntimeCapabilityGraphPlanner().plan(
