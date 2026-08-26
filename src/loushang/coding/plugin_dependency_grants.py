@@ -8,9 +8,27 @@ from loushang.harness.resources.packages.materializer import plugin_source_ident
 from loushang.harness.resources.plugins.dependency_grants import (
     PluginDependencyGrantError,
 )
+from loushang.harness.resources.plugins.distribution_evidence import (
+    InstalledPythonDistributionEvidenceResolver,
+)
 
 _CODING_LSP_PLUGIN_ID = "coding.lsp.default"
 _LOUSHANG_DISTRIBUTION = "loushang"
+
+
+def coding_lsp_default_plugin_root() -> Path:
+    """Return the exact checked-in source granted the reserved Plugin id."""
+
+    return (
+        Path(__file__).resolve().parent / "_plugins" / "coding_lsp_default"
+    ).resolve(strict=True)
+
+
+def coding_plugin_distribution_evidence_resolver(
+) -> InstalledPythonDistributionEvidenceResolver:
+    """Create Coding's explicit evidence policy for its own editable checkout."""
+
+    return InstalledPythonDistributionEvidenceResolver(allow_editable=True)
 
 
 class CoDistributedPluginDependencyGrantResolver:
@@ -42,4 +60,8 @@ class CoDistributedPluginDependencyGrantResolver:
         return (_LOUSHANG_DISTRIBUTION,)
 
 
-__all__ = ["CoDistributedPluginDependencyGrantResolver"]
+__all__ = [
+    "CoDistributedPluginDependencyGrantResolver",
+    "coding_lsp_default_plugin_root",
+    "coding_plugin_distribution_evidence_resolver",
+]

@@ -30,6 +30,9 @@ from loushang.harness.capabilities.provider_binding import (
 from loushang.harness.capabilities.provider_selection import (
     ResolvedCapabilityProvider,
 )
+from loushang.harness.resources.plugins.distribution_evidence import (
+    InstalledPythonDistributionEvidenceResolver,
+)
 from loushang.harness.resources.plugins.import_realm import PluginImportRealm
 from loushang.harness.resources.plugins.python_symbols import (
     VerifiedPluginPythonModule,
@@ -67,6 +70,9 @@ class CapabilityComponentHost:
         owner_snapshot_reader: Callable[[str], CapabilityProviderOwnerSnapshot],
         trust_snapshot_reader: Callable[[str, str], PluginSourceTrustSnapshotV1],
         product_policy_revision_reader: Callable[[str, str], str],
+        distribution_evidence_resolver: (
+            InstalledPythonDistributionEvidenceResolver | None
+        ) = None,
     ) -> None:
         if not isinstance(decision_journal, PluginActivationDecisionJournal):
             raise TypeError("Component Host requires an activation decision journal")
@@ -89,6 +95,11 @@ class CapabilityComponentHost:
         self._owner_snapshot_reader = owner_snapshot_reader
         self._trust_snapshot_reader = trust_snapshot_reader
         self._product_policy_revision_reader = product_policy_revision_reader
+        self._distribution_evidence_resolver = (
+            distribution_evidence_resolver
+            if distribution_evidence_resolver is not None
+            else InstalledPythonDistributionEvidenceResolver()
+        )
         self._lifecycle = DurableActivationHostLifecycle(
             journal=decision_journal,
             host_boot_id=host_boot_id,
@@ -182,6 +193,9 @@ class CapabilityComponentHost:
             reservation=reservation,
             import_realm=self._import_realm,
             lifecycle=self._lifecycle,
+            distribution_evidence_resolver=(
+                self._distribution_evidence_resolver
+            ),
             validate_current_authorities=lambda: self._validate_current_authorities(
                 resolved,
                 owner_snapshot=owner_snapshot,
@@ -249,6 +263,7 @@ class CapabilityComponentHost:
                 "Current Product policy changed after resolution.",
             )
 
+
 @dataclass(slots=True)
 class _PreparedComponentAttempt:
     resolved: ResolvedCapabilityProvider
@@ -256,6 +271,7 @@ class _PreparedComponentAttempt:
     reservation: ActivationUseReservationV1
     import_realm: PluginImportRealm
     lifecycle: DurableActivationHostLifecycle
+    distribution_evidence_resolver: InstalledPythonDistributionEvidenceResolver
     validate_current_authorities: Callable[[], None] = field(repr=False)
     started: bool = False
     disposer: CapabilityProviderDisposer | None = None
@@ -416,6 +432,7 @@ class _PreparedComponentAttempt:
                 + f"_{suffix}"
             ),
             host_api_prefixes=_PROVIDER_HOST_API_PREFIXES,
+            distribution_evidence_resolver=self.distribution_evidence_resolver,
         )
 
     async def _dispose_value(

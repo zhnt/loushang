@@ -19,11 +19,12 @@
   complete. PLC2-1 through PLC2-4D, PLC3-1 through PLC3-3, the PLC4/PAP4
   owner-admission and Provider-selection primitives, and PLC4.5 through
   RCP4.10 are implemented. PLC5.0's private Product Provider assembly seam is
-  also implemented. PLC5.1a's installed-distribution evidence resolver and
-  verified-import consumer are implemented; its Product-owned co-distribution
-  grant and canonical lock-assembler integration remain pending. The
-  `coding.lsp.default` production package and cutover, PLC6 through PLC9, and
-  the public SDK remain unimplemented.
+  also implemented. PLC5.1a's installed-distribution evidence resolver,
+  Product-owned co-distribution grant, canonical lock integration, checked-in
+  `coding.lsp.default` package, inert declaration evaluation, and private
+  activation-symbol import proof are implemented. Private opt-in bootstrap,
+  production activation/cutover, PLC6 through PLC9, and the public SDK remain
+  unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
@@ -1060,9 +1061,11 @@ complete lifecycle test now uses this seam from finalized Plugin selection
 through external Approval, the existing Component Host and single Session
 Graph, typed Tool Consumer capture, and reverse owner disposal. This removes
 the last test-only manual Provider admission/resolution assembly path before a
-real production adopter. The next slice is the checked-in
-`coding.lsp.default` declaration/package and private opt-in bootstrap wiring;
-default cutover and old deferred-route deletion remain later PLC5 gates.
+real production adopter. The checked-in `coding.lsp.default`
+declaration/package now reaches finalized inert Provider IR and its activation
+symbols import through the unchanged Component Host boundary. The next slice is
+private opt-in bootstrap wiring; activation, default cutover and old
+deferred-route deletion remain later PLC5 gates.
 
 The adopter-specific design review freezes the following PLC5.1 boundaries
 before implementation:
@@ -1099,17 +1102,21 @@ runtime path is introduced.
 
 #### PLC5.1a: Co-Distributed Dependency Evidence
 
-Implementation status (2026-08-26): the Harness Host port and canonical lock
-assembly path are implemented. `PackageMaterializer` defaults to no grants,
+Implementation status (2026-08-26): the Harness Host port, canonical lock
+assembly path, and first checked-in consumer are implemented.
+`PackageMaterializer` defaults to no grants,
 accepts one injected Product resolver, proves every granted normalized
 distribution through `InstalledPythonDistributionEvidenceResolver`, and unions
 the resulting exact identities with the materialized-root scan before emitting
 the existing v1 lock. Publication and binding both recompute that same closure.
 Coding supplies a fixed resolver that grants only `loushang` to the exact
 registered source of the reserved `coding.lsp.default` ID and rejects that ID
-from any other source. The checked-in executable package, private-adapter import
-proof, and bootstrap opt-in wiring remain subsequent PLC5.1 work; this status
-does not claim a production mount.
+from any other source. Coding now ships that package as distribution data. Its
+approved Definition imports the exact-version private adapter and emits only
+reservation-bound Provider IR; the factory/disposer wrappers also resolve under
+the unchanged Component Host prefix tuple using the same evidence policy.
+Bootstrap opt-in wiring and activation remain subsequent PLC5.1 work; this
+status does not claim a production mount.
 
 The planned checked-in package exposed one narrower foundation gap. Before this
 foundation, the canonical dependency-lock assembler discovered Python

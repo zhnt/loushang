@@ -10,7 +10,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import Protocol, cast
+from typing import Never, Protocol, TypeGuard, cast
 
 from loushang.coding.capabilities import CODING_LSP_CAPABILITY
 from loushang.coding.lsp.definition_codec import (
@@ -45,6 +45,9 @@ from loushang.harness.capabilities.providers import CapabilityBundleProvider
 from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_PROCESS_LAUNCH_FACET,
     WORKSPACE_READ_FACET,
+)
+from loushang.harness.plugin_authoring.capability_provider import (
+    PLUGIN_PROVIDER_SELECTION_RULE,
 )
 from loushang.harness.workspace.operations import OperationResult, resolve_operation
 from loushang.harness.workspace.process import AuthorizedProcessLauncher
@@ -356,7 +359,7 @@ def coding_lsp_capability_provider() -> CapabilityBundleProvider:
         requirements=(CODING_LSP_WORKSPACE_REQUIREMENT,),
         required_authorities=frozenset({"filesystem", "process"}),
         source_id="plugin:coding.lsp.default",
-        selection_rule="Coding Product private opt-in selection",
+        selection_rule=PLUGIN_PROVIDER_SELECTION_RULE,
     )
 
 
@@ -462,7 +465,9 @@ def _string_mapping(value: object, *, name: str) -> dict[str, str]:
     return dict(cast(Mapping[str, str], value))
 
 
-def _is_sequence(value: object) -> bool:
+def _is_sequence(
+    value: object,
+) -> TypeGuard[list[object] | tuple[object, ...]]:
     return isinstance(value, list | tuple)
 
 
@@ -471,7 +476,7 @@ def _require_callable_member(value: object, member: str, *, name: str) -> None:
         raise TypeError(f"Coding LSP Provider {name} is invalid")
 
 
-def _reject(message: str) -> None:
+def _reject(message: str) -> Never:
     raise CodingLspPluginConfigError(message)
 
 

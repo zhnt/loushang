@@ -1,0 +1,26 @@
+{
+  "name": "coding.lsp.default",
+  "version": "1",
+  "contributionIndex": {
+    "version": 2,
+    "items": [
+      {
+        "id": "coding-lsp-default",
+        "kind": "capability_provider",
+        "owner": "coding.lsp",
+        "contributionExecutionModel": "in_process",
+        "declarationSource": {
+          "entrypoint": "definition.py:declare",
+          "kind": "in_process",
+          "sourceVersion": 1
+        },
+        "requestedAuthorities": [
+          "filesystem",
+          "process"
+        ],
+        "configuration": {},
+        "required": true
+      }
+    ]
+  }
+}

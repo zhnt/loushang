@@ -29,6 +29,9 @@ from loushang.harness.capabilities.provider_binding import (
     CapabilityProviderContext,
     CapabilityRegistrationCollector,
 )
+from loushang.harness.plugin_authoring.capability_provider import (
+    PLUGIN_PROVIDER_SELECTION_RULE,
+)
 from loushang.harness.runtime.bindings import RuntimeBindingState
 from loushang.harness.runtime.registration import (
     RegistrationOwner,
@@ -93,6 +96,7 @@ def test_private_provider_descriptor_matches_the_declared_capability() -> None:
     assert provider.requirements == (CODING_LSP_WORKSPACE_REQUIREMENT,)
     assert provider.required_authorities == frozenset({"filesystem", "process"})
     assert provider.source_id == "plugin:coding.lsp.default"
+    assert provider.selection_rule == PLUGIN_PROVIDER_SELECTION_RULE
 
 
 def test_tool_runtime_consumer_captures_only_its_declared_facet() -> None:
