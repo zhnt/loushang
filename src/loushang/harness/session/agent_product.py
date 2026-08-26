@@ -1017,7 +1017,6 @@ class AgentProductSession(AgentSessionAdapterMixin):
             self._model_call_consumer = None
             self._side_question_consumer = None
             self._transcript_consumer = None
-            self._resource_capability_ports.invalidate()
             self._workspace_capability_ports.invalidate()
             self._transcript_capability_ports.invalidate()
             staged_candidate = self._staged_resource_candidate
@@ -1048,6 +1047,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 else:
                     self._capability_owner_generations = ()
                     self._external_consumer_captures = ()
+            self._resource_capability_ports.invalidate()
             catalog_rollback_handled = False
             catalog_bootstrap = self._initial_resource_catalog_bootstrap
             if (
@@ -1233,32 +1233,6 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 )
                 for prepared in prepared_components:
                     prepared.commit_after_graph_publication()
-                external_captures: tuple[
-                    SessionCapabilityConsumerCapture, ...
-                ] = ()
-                if composition_inputs is not None:
-                    external_captures = tuple(
-                        SessionCapabilityConsumerCapture(
-                            entry=entry,
-                            facets=self._capability_graph_runtime.capture(
-                                entry.requirement
-                            ),
-                        )
-                        for entry in composition_inputs.product_composition.consumer_requirements.satisfied_entries
-                    )
-                    try:
-                        owner_generations = (
-                            await stage_session_capability_owner_generations(
-                                admissions=(
-                                    composition_inputs.product_composition.catalog_admissions
-                                ),
-                                bindings=self._capability_owner_generation_bindings,
-                                captures=external_captures,
-                            )
-                        )
-                    except SessionCapabilityOwnerGenerationStagingError as exc:
-                        owner_generations = exc.pending_generations
-                        raise
                 consumer = SessionModelCallCapabilityConsumer(
                     self._capability_graph_runtime.capture(
                         MODEL_INPUT_PREPARATION_REQUIREMENT
@@ -1289,11 +1263,33 @@ class AgentProductSession(AgentSessionAdapterMixin):
                         SESSION_WORKSPACE_PROCESS_REQUIREMENT
                     )
                 )
-                if catalog_bootstrap is not None:
-                    self._resource_capability_ports.install(
-                        consumer=resource_consumer,
+                self._resource_capability_ports.install(
+                    consumer=resource_consumer,
+                )
+                resource_consumer_installed = True
+                external_captures: tuple[SessionCapabilityConsumerCapture, ...] = ()
+                if composition_inputs is not None:
+                    external_captures = tuple(
+                        SessionCapabilityConsumerCapture(
+                            entry=entry,
+                            facets=self._capability_graph_runtime.capture(
+                                entry.requirement
+                            ),
+                        )
+                        for entry in composition_inputs.product_composition.consumer_requirements.satisfied_entries
                     )
-                    resource_consumer_installed = True
+                    try:
+                        owner_generations = await stage_session_capability_owner_generations(
+                            admissions=(
+                                composition_inputs.product_composition.catalog_admissions
+                            ),
+                            bindings=self._capability_owner_generation_bindings,
+                            captures=external_captures,
+                        )
+                    except SessionCapabilityOwnerGenerationStagingError as exc:
+                        owner_generations = exc.pending_generations
+                        raise
+                if catalog_bootstrap is not None:
                     retirement = catalog_bootstrap.publish(
                         InitialSessionResourcePublication(
                             capture=self._capture_initial_resource_publication,
@@ -1307,8 +1303,6 @@ class AgentProductSession(AgentSessionAdapterMixin):
                             "initial Extension generation retirement remains pending"
                         )
             except BaseException as error:
-                if resource_consumer_installed:
-                    self._resource_capability_ports.invalidate()
                 owner_cleanup_failed = False
                 if owner_generations:
                     try:
@@ -1322,6 +1316,8 @@ class AgentProductSession(AgentSessionAdapterMixin):
                             "Session owner generation rollback also failed: "
                             f"{cleanup_error!r}"
                         )
+                if resource_consumer_installed:
+                    self._resource_capability_ports.invalidate()
                 for prepared in reversed(prepared_components):
                     try:
                         await prepared.abort_uncommitted()
@@ -1438,10 +1434,6 @@ class AgentProductSession(AgentSessionAdapterMixin):
             if self._staged_transcript_candidate.ownership_state == "root_owned":
                 # Graph reuse rejected the freshly supplied transcript candidate.
                 await self._staged_transcript_candidate.dispose_root_owned()
-            if not resource_consumer_installed:
-                self._resource_capability_ports.install(
-                    consumer=resource_consumer,
-                )
             self._workspace_capability_ports.install(
                 tools=workspace_tools,
                 process=workspace_process,

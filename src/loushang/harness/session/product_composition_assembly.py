@@ -109,7 +109,7 @@ class ProductContributionOwnerBinding:
         return self.authority.admit(
             candidate,
             issued_at=evaluated_at,
-            expires_at=evaluated_at + self.admission_ttl_seconds,
+            expires_at=evaluated_at + self.admission_ttl_seconds * 1_000,
         )
 
 
@@ -187,13 +187,13 @@ class ProductCapabilityProviderOwnerBinding:
         eligibility = self.authority.grant_eligibility(
             candidate,
             issued_at=evaluated_at,
-            expires_at=evaluated_at + self.eligibility_ttl_seconds,
+            expires_at=evaluated_at + self.eligibility_ttl_seconds * 1_000,
         )
         return self.authority.admit(
             candidate,
             eligibility=eligibility,
             issued_at=evaluated_at,
-            expires_at=evaluated_at + self.admission_ttl_seconds,
+            expires_at=evaluated_at + self.admission_ttl_seconds * 1_000,
         )
 
 

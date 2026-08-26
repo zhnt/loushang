@@ -30,8 +30,11 @@
   Graph preparation. A bind-once `CodingLspToolOwner` now projects the exact
   admitted Tool pack only from its Graph Consumer capture, stages invisible
   runtime Tool leases, publishes the complete generation and retires it in
-  reverse order. Live Session binding, bootstrap/Graph transfer, production
-  cutover, PLC6 through PLC9, and the public SDK remain unimplemented.
+  reverse order. The private request is now wired through Coding bootstrap into
+  the live Session Graph: Provider ownership transfers once to the Binder,
+  Tools publish only after capture, and the Product retains only a non-owning
+  semantic view. Default cutover, old deferred-route deletion, PLC6 through
+  PLC9, and the public SDK remain unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
@@ -1086,9 +1089,14 @@ admitted pack and the captured `coding.lsp` Tool-runtime facet, constructs only
 those two admitted Tool definitions, stages them through a narrow live-Session
 port, commits after the complete generation is ready and disposes its
 registration scope in reverse order. `on_demand` publication does not
-accidentally activate the new Tools. The owner is not yet bound to a live
-Session; bootstrap/Graph transfer, default cutover and old deferred-route
-deletion remain later PLC5 gates.
+accidentally activate the new Tools. Coding bootstrap now selects this complete
+route only when the private request is present, binds the owner to the live
+Session Tool controller, and leaves a missing request on the legacy route. A
+failed opted-in Graph preparation rolls back Provider and Tool generations and
+never falls back. The Graph-backed semantic capture is non-owning; Session
+retirement disposes Tools before Provider retirement, while `AgentSession`
+never closes the Plugin runtime directly. Default cutover and old
+deferred-route deletion remain later PLC5 gates.
 
 The adopter-specific design review freezes the following PLC5.1 boundaries
 before implementation:

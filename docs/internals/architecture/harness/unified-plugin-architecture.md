@@ -1521,7 +1521,11 @@ composition, a boolean grant, or an Approval decision. The Product composer
 uses the existing selection, owner-admission, Provider-resolution and Approval-
 owner ports; only their exact result enters the Session. A missing request keeps
 the legacy route during migration, while an opted-in failure is fail-closed and
-never silently falls back.
+never silently falls back. This private route is now production-wired through
+Coding bootstrap: the Session consumes Activation exactly at Graph preparation,
+publishes the admitted Tool generation after its facet capture, and retires the
+generation before Binder-owned Provider disposal. The legacy route remains the
+default until a later cutover gate.
 
 The mounted LSP Bundle transfers to Graph ownership exactly once. Product code
 may retain a non-owning `CodingLspSessionAccess` for status and commands, but

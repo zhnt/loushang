@@ -12,6 +12,12 @@ from loushang.coding.compaction.adapter import (
 from loushang.coding.compaction.adapter import (
     execute_coding_compaction as _execute_coding_compaction,
 )
+from loushang.coding.lsp._plugin_opt_in import CodingLspPluginOptInAssembly
+from loushang.coding.lsp._plugin_tool_owner import CodingLspToolRegistrationSlot
+from loushang.coding.lsp._provider_api import (
+    CODING_LSP_SESSION_REQUIREMENT,
+    CodingLspSessionCapabilityConsumer,
+)
 from loushang.coding.lsp.commands import (
     LSP_SESSION_COMMAND_NAME,
     execute_lsp_session_command,
@@ -38,6 +44,7 @@ from loushang.harness.capabilities import (
     StagedResourceCompositionCandidate,
     stage_resource_composition_candidate,
 )
+from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
 from loushang.harness.commands import normalize_command_name
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.diagnostics.service import DiagnosticsService
@@ -50,6 +57,9 @@ from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.sandbox import SandboxExecutionRuntime, SandboxStatus
 from loushang.harness.session import AgentProductSession
+from loushang.harness.session.capability_composition_inputs import (
+    SessionCapabilityOwnerGenerationBinding,
+)
 from loushang.harness.session.changelog import read_changelog_for_cwd
 from loushang.harness.session.composition import sleep_for_retry
 from loushang.harness.session.cwd_audit import CwdBoundServicesAudit
@@ -59,6 +69,7 @@ from loushang.harness.session.legacy_side_question import (
     LegacySideQuestionBinding,
     bind_legacy_side_question,
 )
+from loushang.harness.session.model_call import SessionModelCallCapabilityConsumer
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import (
     BranchSummaryOutput,
@@ -150,15 +161,27 @@ class AgentSession(AgentProductSession):
         sandbox_runtime: SandboxExecutionRuntime | None = None,
         lsp_access: CodingLspSessionAccess | None = None,
         legacy_lsp_cleanup: Callable[[], Awaitable[None]] | None = None,
+        coding_lsp_plugin_assembly: CodingLspPluginOptInAssembly | None = None,
         delegated_execution_profile: DelegatedExecutionProfile | None = None,
         workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
         initial_resource_catalog_bootstrap: Any | None = None,
     ) -> None:
         if legacy_lsp_cleanup is not None and lsp_access is None:
             raise ValueError("Legacy LSP cleanup requires a matching access view")
+        if coding_lsp_plugin_assembly is not None and (
+            lsp_access is not None or legacy_lsp_cleanup is not None
+        ):
+            raise ValueError("Plugin LSP composition cannot retain legacy ownership")
+        if coding_lsp_plugin_assembly is not None and not isinstance(
+            coding_lsp_plugin_assembly,
+            CodingLspPluginOptInAssembly,
+        ):
+            raise TypeError("Coding LSP Plugin assembly is invalid")
         self._sandbox_runtime = sandbox_runtime
         self._lsp_access = lsp_access
         self._legacy_lsp_cleanup = legacy_lsp_cleanup
+        self._coding_lsp_plugin_assembly = coding_lsp_plugin_assembly
+        self._coding_lsp_plugin_capture: CapabilityFacetSet | None = None
         self.delegated_execution_profile = delegated_execution_profile
         self.cwd_bound_services_audit: CwdBoundServicesAudit | None = None
         resolved_capability_runtime = capability_runtime
@@ -166,6 +189,13 @@ class AgentSession(AgentProductSession):
             StagedResourceCompositionCandidate | None
         ) = None
         locally_created_side_question_binding: LegacySideQuestionBinding | None = None
+        lsp_tool_registration_slot: CodingLspToolRegistrationSlot | None = None
+        lsp_owner_bindings: tuple[SessionCapabilityOwnerGenerationBinding, ...] = ()
+        if coding_lsp_plugin_assembly is not None:
+            lsp_tool_registration_slot = CodingLspToolRegistrationSlot()
+            lsp_owner_bindings = (
+                coding_lsp_plugin_assembly.tool_owner.bind(lsp_tool_registration_slot),
+            )
         resolution = None
         if extension_runner is not None and (
             resolved_capability_runtime is None or side_question_binding is None
@@ -232,6 +262,17 @@ class AgentSession(AgentProductSession):
                 approval_resolver=approval_resolver,
                 tool_policy_evaluator=tool_policy_evaluator,
                 workspace_capability_binding=workspace_capability_binding,
+                capability_composition_inputs=(
+                    coding_lsp_plugin_assembly.session_inputs
+                    if coding_lsp_plugin_assembly is not None
+                    else None
+                ),
+                capability_component_host=(
+                    coding_lsp_plugin_assembly.component_host
+                    if coding_lsp_plugin_assembly is not None
+                    else None
+                ),
+                capability_owner_generation_bindings=lsp_owner_bindings,
                 initial_resource_catalog_bootstrap=(initial_resource_catalog_bootstrap),
                 extension_declaration_preflight=(
                     CodingExtensionDeclarationPreflight(
@@ -241,7 +282,11 @@ class AgentSession(AgentProductSession):
                     else None
                 ),
             )
+            if lsp_tool_registration_slot is not None:
+                lsp_tool_registration_slot.bind(self._composition.tool_controller)
         except BaseException as error:
+            if coding_lsp_plugin_assembly is not None:
+                coding_lsp_plugin_assembly.close()
             if locally_created_side_question_binding is not None:
                 try:
                     locally_created_side_question_binding.dispose()
@@ -259,6 +304,25 @@ class AgentSession(AgentProductSession):
                         f"{cleanup_error}"
                     )
             raise
+
+    async def _ensure_session_graph_prepared(
+        self,
+    ) -> SessionModelCallCapabilityConsumer:
+        assembly = self._coding_lsp_plugin_assembly
+        try:
+            consumer = await super()._ensure_session_graph_prepared()
+        except BaseException:
+            if assembly is not None:
+                assembly.close()
+            raise
+        if assembly is not None and self._coding_lsp_plugin_capture is None:
+            capture = self._capability_graph_runtime.capture(
+                CODING_LSP_SESSION_REQUIREMENT
+            )
+            self._lsp_access = CodingLspSessionCapabilityConsumer(capture).access
+            self._coding_lsp_plugin_capture = capture
+            assembly.close()
+        return consumer
 
     def get_sandbox_status(self) -> SandboxStatus:
         if self._sandbox_runtime is None:
@@ -315,6 +379,20 @@ class AgentSession(AgentProductSession):
             await super()._dispose_session_runtime_profile()
         except BaseException as exc:
             primary_error = exc
+        plugin_assembly = getattr(self, "_coding_lsp_plugin_assembly", None)
+        if plugin_assembly is not None:
+            try:
+                plugin_assembly.close()
+            except BaseException as cleanup_error:
+                if primary_error is None:
+                    primary_error = cleanup_error
+                else:
+                    primary_error.add_note(
+                        "Coding LSP Plugin evidence cleanup also failed: "
+                        f"{cleanup_error}"
+                    )
+            self._coding_lsp_plugin_capture = None
+            self._lsp_access = None
         legacy_lsp_cleanup = getattr(self, "_legacy_lsp_cleanup", None)
         if legacy_lsp_cleanup is not None:
             try:

@@ -53,6 +53,42 @@ class CodingLspToolRegistrationPort(Protocol):
     ) -> RegistrationLease: ...
 
 
+@dataclass(slots=True)
+class CodingLspToolRegistrationSlot:
+    """Bind one live Session Tool-registration port after construction."""
+
+    _port: CodingLspToolRegistrationPort | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
+
+    def bind(self, port: CodingLspToolRegistrationPort) -> None:
+        if self._port is not None:
+            raise RuntimeError("Coding LSP Tool registration is already bound")
+        if not callable(getattr(port, "stage_runtime_tool", None)):
+            raise TypeError("Coding LSP Tool registration port is invalid")
+        self._port = port
+
+    def stage_runtime_tool(
+        self,
+        tool: object,
+        *,
+        owner: RegistrationOwner,
+        enabled: bool = True,
+        source_info: object | None = None,
+    ) -> RegistrationLease:
+        port = self._port
+        if port is None:
+            raise RuntimeError("Coding LSP Tool registration is not yet bound")
+        return port.stage_runtime_tool(
+            tool,
+            owner=owner,
+            enabled=enabled,
+            source_info=source_info,
+        )
+
+
 class CodingLspToolOwnerError(RuntimeError):
     """Stable Product error for one exact LSP Tool owner generation."""
 
@@ -220,4 +256,5 @@ __all__ = [
     "CodingLspToolOwner",
     "CodingLspToolOwnerError",
     "CodingLspToolRegistrationPort",
+    "CodingLspToolRegistrationSlot",
 ]

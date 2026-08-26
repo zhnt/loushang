@@ -592,7 +592,7 @@ def test_generated_catalog_distinguishes_source_complete_from_mounted() -> None:
         )
     }
     assert statuses == {
-        ("coding.lsp", 1): "source-complete",
+        ("coding.lsp", 1): "production-mounted",
         ("harness.model_input", 1): "production-mounted",
         ("harness.resources", 1): "production-mounted",
         ("harness.resources", 2): "source-complete",
@@ -602,7 +602,7 @@ def test_generated_catalog_distinguishes_source_complete_from_mounted() -> None:
     coding_lsp_row = next(
         line for line in catalog.splitlines() if line.startswith("| `coding.lsp` |")
     )
-    assert "AgentProductSession" not in coding_lsp_row
+    assert "AgentSession" in coding_lsp_row
 
 
 def test_cla4_resources_provider_has_one_production_mount_owner() -> None:

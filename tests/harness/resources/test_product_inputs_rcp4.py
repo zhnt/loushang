@@ -402,7 +402,7 @@ def test_product_adapter_consumes_compiled_resource_admissions_from_plugin_selec
         assert len(composition.resource_admissions) == 2
         assert len(composition.catalog_admissions) == 2
         assert all(
-            item.issued_at == 150 and item.expires_at == 250
+            item.issued_at == 150 and item.expires_at == 100_150
             for item in (
                 *composition.resource_admissions,
                 *composition.catalog_admissions,

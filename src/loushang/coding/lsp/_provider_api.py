@@ -26,6 +26,7 @@ from loushang.coding.lsp.model import (
 )
 from loushang.coding.lsp.runtime import (
     CodingLspRuntime,
+    CodingLspSessionAccess,
     _bind_coding_lsp_runtime_from_launcher,
 )
 from loushang.coding.lsp.status import LspSessionStatus
@@ -88,6 +89,33 @@ CODING_LSP_TOOL_RUNTIME_REQUIREMENT = CapabilityRequirement(
         CODING_LSP_CAPABILITY_DEFINITION.contract_version
     ),
 )
+CODING_LSP_SESSION_REQUIREMENT = CapabilityRequirement(
+    capability=CODING_LSP_CAPABILITY_DEFINITION.capability_id,
+    facets=(CODING_LSP_SEMANTIC_FACET,),
+    compatible_contract=CapabilityContractRange.exact(
+        CODING_LSP_CAPABILITY_DEFINITION.contract_version
+    ),
+)
+
+
+@dataclass(frozen=True, slots=True)
+class CodingLspSessionCapabilityConsumer:
+    """Exact-generation non-owning Product view of the semantic facet."""
+
+    facets: CapabilityFacetSet
+
+    def __post_init__(self) -> None:
+        if self.facets.requirement != CODING_LSP_SESSION_REQUIREMENT:
+            raise ValueError(
+                "Coding LSP Session Consumer received the wrong facet view"
+            )
+
+    @property
+    def access(self) -> CodingLspSessionAccess:
+        value = self.facets.require(CODING_LSP_SEMANTIC_FACET)
+        _require_callable_member(value, "status", name="semantic facet")
+        _require_callable_member(value, "stop", name="semantic facet")
+        return cast(CodingLspSessionAccess, value)
 
 
 class CodingLspToolRuntimePort(Protocol):
@@ -485,11 +513,13 @@ __all__ = [
     "CODING_LSP_DIAGNOSTICS_FACET",
     "CODING_LSP_PLUGIN_CONFIG_VERSION",
     "CODING_LSP_SEMANTIC_FACET",
+    "CODING_LSP_SESSION_REQUIREMENT",
     "CODING_LSP_TOOL_RUNTIME_FACET",
     "CODING_LSP_TOOL_RUNTIME_REQUIREMENT",
     "CODING_LSP_WORKSPACE_REQUIREMENT",
     "CodingLspPluginConfigError",
     "CodingLspPluginConfigV1",
+    "CodingLspSessionCapabilityConsumer",
     "CodingLspToolRuntimeCapabilityConsumer",
     "CodingLspToolRuntimePort",
     "coding_lsp_capability_provider",

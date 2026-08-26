@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import secrets
 import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
@@ -23,6 +24,11 @@ from loushang.coding.control.settings_store import (
     default_project_settings_path,
 )
 from loushang.coding.diagnostics.profile import coding_runtime_identity
+from loushang.coding.lsp._plugin_opt_in import (
+    CodingLspPluginOptInRequest,
+    assemble_coding_lsp_plugin_opt_in,
+)
+from loushang.coding.lsp._provider_api import CodingLspPluginConfigV1
 from loushang.coding.lsp.discovery import (
     coding_lsp_config_paths,
     default_lsp_environment,
@@ -129,6 +135,7 @@ ServicesFactory = Callable[[str], "BootstrapServices"]
 NoToolsMode = Literal["all", "builtin"]
 ExtensionFlagValues = Mapping[str, bool | str]
 CwdBoundServicesAuditIssue = _CwdBoundServicesAuditIssue
+_CODING_PLUGIN_HOST_BOOT_ID = secrets.token_hex(16)
 
 
 class _DeferredWorkspaceProcessLauncher:
@@ -283,6 +290,7 @@ def _create_agent_session(
     lsp_definitions: Iterable[LspServerDefinition] = (),
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
+    coding_lsp_plugin_opt_in: CodingLspPluginOptInRequest | None = None,
     enable_initial_resource_catalog_shadow: bool = False,
     initial_resource_catalog_product_composition_assembly: (
         ProductCompositionAssemblyRequest | None
@@ -307,6 +315,11 @@ def _create_agent_session(
         raise ValueError(
             "initial Resource Catalog Product composition assembly requires the shadow"
         )
+    if coding_lsp_plugin_opt_in is not None and not isinstance(
+        coding_lsp_plugin_opt_in,
+        CodingLspPluginOptInRequest,
+    ):
+        raise TypeError("Coding LSP Plugin opt-in request is invalid")
     enable_multiagent_tools = (
         enable_multiagent
         and allowed_tool_names is None
@@ -337,6 +350,12 @@ def _create_agent_session(
     lsp_enabled_for_session = (
         lsp_mode != "disabled" and normalize_no_tools(no_tools) != "all"
     )
+    if coding_lsp_plugin_opt_in is not None and not lsp_enabled_for_session:
+        raise ValueError("Coding LSP Plugin opt-in requires an enabled LSP mode")
+    if coding_lsp_plugin_opt_in is not None and lsp_read_text is not None:
+        raise ValueError(
+            "Coding LSP Plugin opt-in reads only through harness.workspace"
+        )
     global_lsp_config, project_lsp_config = coding_lsp_config_paths(
         services.settings_manager,
         workspace_root=session_manager.get_cwd(),
@@ -352,7 +371,11 @@ def _create_agent_session(
         if lsp_enabled_for_session
         else ()
     )
-    lsp_slot = DeferredCodingLspRuntime() if lsp_enabled_for_session else None
+    lsp_slot = (
+        DeferredCodingLspRuntime()
+        if lsp_enabled_for_session and coding_lsp_plugin_opt_in is None
+        else None
+    )
     # Restored sessions carry historical transcript.  A previous run may have
     # been interrupted between a tool call and its result, leaving an unpaired
     # toolCall in the transcript.  Force repair pairing for such sessions so
@@ -391,18 +414,19 @@ def _create_agent_session(
             )
     session_tool_registry = (
         tool_registry.copy()
-        if (enable_multiagent_tools or lsp_slot is not None)
+        if (enable_multiagent_tools or lsp_enabled_for_session)
         and tool_registry is not None
         else tool_registry
     )
     construction_tools = tools
+    if lsp_enabled_for_session and session_tool_registry is None:
+        session_tool_registry = WorkspaceToolRegistry()
+        for definition in tools or ():
+            session_tool_registry.register_tool(definition)
+        if tools is not None:
+            construction_tools = None
     if lsp_slot is not None:
-        if session_tool_registry is None:
-            session_tool_registry = WorkspaceToolRegistry()
-            for definition in tools or ():
-                session_tool_registry.register_tool(definition)
-            if tools is not None:
-                construction_tools = None
+        assert session_tool_registry is not None
         register_coding_lsp_tools(
             session_tool_registry,
             runtime=lsp_slot,
@@ -531,6 +555,28 @@ def _create_agent_session(
             provider_id="coding.workspace.standard",
             source_id="coding",
         )
+        lsp_plugin_assembly = (
+            assemble_coding_lsp_plugin_opt_in(
+                coding_lsp_plugin_opt_in,
+                session_id=session_id,
+                config=CodingLspPluginConfigV1.from_runtime_inputs(
+                    workspace_root=session_manager.get_cwd(),
+                    definitions=resolved_lsp_definitions,
+                    baseline_environment=resolved_lsp_environment,
+                ),
+                package_materializer=resolved_package_materializer,
+                workspace_binding=workspace_binding,
+                state_root=_coding_lsp_plugin_state_root(
+                    session_manager,
+                    session_id=session_id,
+                ),
+                host_boot_id=_CODING_PLUGIN_HOST_BOOT_ID,
+                tool_mode=lsp_mode,
+                clock=lambda: time.time_ns() // 1_000_000,
+            )
+            if coding_lsp_plugin_opt_in is not None
+            else None
+        )
         lsp_runtime: CodingLspRuntime | None = None
         deferred_lsp_launcher: _DeferredWorkspaceProcessLauncher | None = None
         if lsp_slot is not None:
@@ -576,20 +622,26 @@ def _create_agent_session(
                 sandbox_runtime=sandbox_runtime,
                 lsp_access=lsp_runtime,
                 legacy_lsp_cleanup=(None if lsp_runtime is None else lsp_runtime.close),
+                coding_lsp_plugin_assembly=lsp_plugin_assembly,
                 delegated_execution_profile=delegated_execution_profile,
                 workspace_capability_binding=workspace_binding,
                 initial_resource_catalog_bootstrap=(initial_resource_catalog_bootstrap),
             )
 
-        if resource_catalog_shadow_adapter is not None:
-            child_session = resource_catalog_shadow_adapter.construct_session(
-                product_id=CODING_PRODUCT_ID,
-                session_id=session_id,
-                base_resource_bundle=bundle,
-                construct=construct_child_session,
-            )
-        else:
-            child_session = construct_child_session()
+        try:
+            if resource_catalog_shadow_adapter is not None:
+                child_session = resource_catalog_shadow_adapter.construct_session(
+                    product_id=CODING_PRODUCT_ID,
+                    session_id=session_id,
+                    base_resource_bundle=bundle,
+                    construct=construct_child_session,
+                )
+            else:
+                child_session = construct_child_session()
+        except BaseException:
+            if lsp_plugin_assembly is not None:
+                lsp_plugin_assembly.close()
+            raise
         process_session = child_session
         if deferred_lsp_launcher is not None:
             deferred_lsp_launcher.bind(child_session.get_workspace_process_launcher())
@@ -849,6 +901,22 @@ def _default_package_materializer(
     )
 
 
+def _coding_lsp_plugin_state_root(
+    session_manager: SessionManager,
+    *,
+    session_id: str,
+) -> Path:
+    state_id = hashlib.sha256(
+        b"loushang.coding-lsp-plugin-state/v1\0" + session_id.encode("utf-8")
+    ).hexdigest()
+    return (
+        session_manager.get_session_dir()
+        / "plugin-state"
+        / "coding-lsp-default"
+        / state_id
+    )
+
+
 def _read_lsp_workspace_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
@@ -912,6 +980,7 @@ def _create_agent_session_runtime(
     lsp_definitions: Iterable[LspServerDefinition] = (),
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
+    coding_lsp_plugin_opt_in: CodingLspPluginOptInRequest | None = None,
 ) -> AgentSessionRuntime:
     fixed_services = services if services is not None else create_services()
     fixed_lsp_definitions = tuple(lsp_definitions)
@@ -946,6 +1015,7 @@ def _create_agent_session_runtime(
                 lsp_definitions=fixed_lsp_definitions,
                 lsp_baseline_environment=fixed_lsp_environment,
                 lsp_read_text=lsp_read_text,
+                coding_lsp_plugin_opt_in=coding_lsp_plugin_opt_in,
             )
         ),
         session_cwd=lambda manager: cast(SessionManager, manager).get_cwd(),
