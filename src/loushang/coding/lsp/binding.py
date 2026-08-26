@@ -6,9 +6,10 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from loushang.coding.lsp.catalog import LspCatalog
-from loushang.coding.lsp.diagnostics import DiagnosticInbox
+from loushang.coding.lsp.diagnostics import DiagnosticInbox, DiagnosticInboxSnapshot
 from loushang.coding.lsp.documents import LspDocumentManager
 from loushang.coding.lsp.model import (
+    CodeDiagnostic,
     CodeQueryResult,
     DocumentOutlineResult,
     LspInvalidInputError,
@@ -114,6 +115,12 @@ class CodingLspBinding:
 
     def status(self) -> LspSessionStatus:
         return self._supervisor.status()
+
+    def current_diagnostics(self) -> tuple[CodeDiagnostic, ...]:
+        return self._diagnostics.current()
+
+    def diagnostics_snapshot(self) -> DiagnosticInboxSnapshot:
+        return self._diagnostics.snapshot()
 
     async def stop(
         self,

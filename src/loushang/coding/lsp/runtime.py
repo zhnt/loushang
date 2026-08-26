@@ -8,12 +8,14 @@ from pathlib import Path
 from typing import Protocol
 
 from loushang.coding.lsp.binding import CodingLspBinding
+from loushang.coding.lsp.diagnostics import DiagnosticInboxSnapshot
 from loushang.coding.lsp.model import (
+    CodeDiagnostic,
     CodeQueryResult,
     DocumentOutlineResult,
     LspServerDefinition,
 )
-from loushang.coding.lsp.ports import WorkspaceTextReader
+from loushang.coding.lsp.ports import PathExists, WorkspaceTextReader
 from loushang.coding.lsp.status import LspSessionStatus
 from loushang.harness.tools.process_hosting import ProcessExecutionScope
 from loushang.harness.workspace.process import AuthorizedProcessLauncher
@@ -89,6 +91,12 @@ class CodingLspRuntime:
 
     def status(self) -> LspSessionStatus:
         return self._binding.status()
+
+    def current_diagnostics(self) -> tuple[CodeDiagnostic, ...]:
+        return self._binding.current_diagnostics()
+
+    def diagnostics_snapshot(self) -> DiagnosticInboxSnapshot:
+        return self._binding.diagnostics_snapshot()
 
     async def stop(
         self,
@@ -191,6 +199,7 @@ def _bind_coding_lsp_runtime_from_launcher(
     process_launcher: AuthorizedProcessLauncher,
     read_text: WorkspaceTextReader,
     baseline_environment: Mapping[str, str],
+    path_exists: PathExists | None = None,
 ) -> CodingLspRuntime:
     """Bind LSP semantics to an already-authorized process launch facet."""
 
@@ -201,6 +210,7 @@ def _bind_coding_lsp_runtime_from_launcher(
             launcher=process_launcher,
             read_text=read_text,
             baseline_environment=baseline_environment,
+            path_exists=path_exists,
         )
     )
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Mapping
 from pathlib import Path
@@ -14,6 +15,39 @@ from loushang.coding.lsp import (
     discover_lsp_catalog,
     product_default_lsp_definitions,
 )
+
+
+def test_selector_resolves_root_markers_through_async_workspace_access(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    source = workspace / "pkg" / "main.py"
+    marker = workspace / "pkg" / "pyproject.toml"
+    checked: list[Path] = []
+
+    async def path_exists(path: Path) -> bool:
+        checked.append(path)
+        return path == marker
+
+    selector = LspSelector(
+        workspace_root=workspace,
+        catalog=LspCatalog(
+            (
+                LspServerDefinition(
+                    id="python-test",
+                    command=("python-language-server", "--stdio"),
+                    language_extensions={"python": (".py",)},
+                    root_markers=("pyproject.toml",),
+                ),
+            )
+        ),
+        path_exists=path_exists,
+    )
+
+    selection = asyncio.run(selector.select_async(source))
+
+    assert selection.workspace_root == workspace / "pkg"
+    assert checked == [marker]
 
 
 def _write_config(path: Path, servers: list[dict[str, object]]) -> None:

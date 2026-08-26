@@ -132,7 +132,7 @@ class CodingLspTools:
             include_declaration=include_declaration,
             limit=limit,
         )
-        selection = self.selector.select(path)
+        selection = await self.selector.select_async(path)
         runtime = await self.supervisor.ensure_runtime(
             selection,
             correlation_id=correlation_id,
@@ -205,7 +205,7 @@ class CodingLspTools:
         signal: object | None = None,
     ) -> DocumentOutlineResult:
         _validate_outline_input(depth=depth, limit=limit)
-        selection = self.selector.select(path)
+        selection = await self.selector.select_async(path)
         runtime = await self.supervisor.ensure_runtime(
             selection,
             correlation_id=correlation_id,
