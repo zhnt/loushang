@@ -268,6 +268,20 @@ class Agent:
         """Set the tools list."""
         self._state.set_tools(value)
 
+    def get_effective_call_options(self) -> CallOptions:
+        """Return the options that the next model call will actually receive."""
+
+        return replace(
+            self.call_options,
+            cache_key=self.call_options.cache_key or self.session_id,
+            reasoning=self.call_options.reasoning
+            or _reasoning_options(
+                self._state.thinking_level,
+                self.thinking_budgets,
+            ),
+            retry=self.call_options.retry or _retry_options(self.max_retry_delay_ms),
+        )
+
     @property
     def tool_execution(self) -> ToolExecutionMode:
         """Get the tool execution mode (sequential or parallel)."""
@@ -653,16 +667,7 @@ class Agent:
         async def get_follow_up_messages() -> list[AgentMessage]:
             return self.follow_up_queue.drain()
 
-        call_options = replace(
-            self.call_options,
-            cache_key=self.call_options.cache_key or self.session_id,
-            reasoning=self.call_options.reasoning
-            or _reasoning_options(
-                self._state.thinking_level,
-                self.thinking_budgets,
-            ),
-            retry=self.call_options.retry or _retry_options(self.max_retry_delay_ms),
-        )
+        call_options = self.get_effective_call_options()
         return AgentLoopConfig(
             model=self._state.model,
             call_options=call_options,

@@ -33,6 +33,8 @@ ContextUsageSource = Literal[
 ContextUsageAuthority = Literal["provider_usage", "local_estimator", "unknown"]
 ContextUsageAccuracy = Literal["projected", "estimated", "unknown"]
 CONTEXT_MESSAGE_ESTIMATOR_ID = "harness.message_chars.v1"
+STRUCTURAL_ENVELOPE_FINGERPRINT_ID = "harness.logical-envelope.v1"
+StructuralEnvelopeStatus = Literal["matched", "mismatched", "unavailable"]
 
 
 @dataclass(frozen=True)
@@ -61,6 +63,8 @@ class ContextUsageSnapshot:
     estimator_id: str | None = None
     surface_fingerprint: str | None = None
     provider_anchor: ProviderContextAnchor | None = None
+    structural_envelope_fingerprint: str | None = None
+    structural_envelope_status: StructuralEnvelopeStatus = "unavailable"
 
 
 @dataclass(frozen=True)
@@ -90,13 +94,47 @@ class ProviderContextAnchor:
     endpoint_id: str
     api_id: str
     model_id: str
+    sampled_structural_envelope_fingerprint: str | None = None
+    structural_envelope_fingerprint_id: str = STRUCTURAL_ENVELOPE_FINGERPRINT_ID
     estimator_id: str = CONTEXT_MESSAGE_ESTIMATOR_ID
+
+
+def measure_structural_envelope_fingerprint(
+    *,
+    system_prompt: object,
+    tools: object,
+    request_options: object,
+    provider_id: str,
+    endpoint_id: str,
+    api_id: str,
+    model_id: str,
+) -> str:
+    """Identify non-replay logical input that can alter prompt pressure."""
+
+    canonical = json.dumps(
+        {
+            "api_id": api_id,
+            "endpoint_id": endpoint_id,
+            "fingerprint_id": STRUCTURAL_ENVELOPE_FINGERPRINT_ID,
+            "model_id": model_id,
+            "provider_id": provider_id,
+            "request_options": request_options,
+            "system_prompt": system_prompt,
+            "tools": tools,
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def project_context_from_provider_anchor(
     snapshot: ContextUsageSnapshot,
     anchor: ProviderContextAnchor,
     current_surface: ReplayContextSurfaceMeasurement,
+    *,
+    structural_envelope_fingerprint: str | None,
 ) -> ContextUsageSnapshot:
     """Project current prompt pressure from a compatible provider observation.
 
@@ -105,8 +143,26 @@ def project_context_from_provider_anchor(
     authorize automatic compaction.
     """
 
-    if anchor.estimator_id != current_surface.estimator_id:
-        return replace(snapshot, provider_anchor=anchor)
+    envelope_status: StructuralEnvelopeStatus = "unavailable"
+    if structural_envelope_fingerprint is not None:
+        envelope_status = (
+            "matched"
+            if structural_envelope_fingerprint
+            == anchor.sampled_structural_envelope_fingerprint
+            else "mismatched"
+        )
+    if (
+        anchor.estimator_id != current_surface.estimator_id
+        or anchor.structural_envelope_fingerprint_id
+        != STRUCTURAL_ENVELOPE_FINGERPRINT_ID
+        or envelope_status != "matched"
+    ):
+        return replace(
+            snapshot,
+            provider_anchor=anchor,
+            structural_envelope_fingerprint=structural_envelope_fingerprint,
+            structural_envelope_status=envelope_status,
+        )
     tokens = max(
         0,
         anchor.provider_prompt_tokens
@@ -132,6 +188,8 @@ def project_context_from_provider_anchor(
         estimator_id=current_surface.estimator_id,
         surface_fingerprint=current_surface.surface_fingerprint,
         provider_anchor=anchor,
+        structural_envelope_fingerprint=structural_envelope_fingerprint,
+        structural_envelope_status="matched",
     )
 
 
@@ -525,8 +583,11 @@ __all__ = [
     "ContextUsageAuthority",
     "ContextUsageSource",
     "CONTEXT_MESSAGE_ESTIMATOR_ID",
+    "STRUCTURAL_ENVELOPE_FINGERPRINT_ID",
     "ReplayContextSurfaceMeasurement",
     "ProviderContextAnchor",
+    "StructuralEnvelopeStatus",
+    "measure_structural_envelope_fingerprint",
     "project_context_from_provider_anchor",
     "build_context_usage_snapshot",
     "calculate_context_tokens",

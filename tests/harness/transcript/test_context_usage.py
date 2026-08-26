@@ -15,6 +15,7 @@ from loushang.harness.transcript import (
     has_post_compaction_usage,
     latest_compaction_entry,
     measure_replay_context_surface,
+    measure_structural_envelope_fingerprint,
     model_context_window,
     project_context_from_provider_anchor,
 )
@@ -43,6 +44,32 @@ def test_context_usage_public_exports_keep_their_stable_package_surface() -> Non
         project_context_from_provider_anchor
         is context_usage.project_context_from_provider_anchor
     )
+    assert (
+        measure_structural_envelope_fingerprint
+        is context_usage.measure_structural_envelope_fingerprint
+    )
+
+
+def _envelope_fingerprint(*, system_prompt: str = "system") -> str:
+    return measure_structural_envelope_fingerprint(
+        system_prompt=system_prompt,
+        tools=[{"name": "read", "description": "Read", "parameters": {}}],
+        request_options={"temperature": 0},
+        provider_id="provider-1",
+        endpoint_id="endpoint-1",
+        api_id="api-1",
+        model_id="model-1",
+    )
+
+
+def test_structural_envelope_fingerprint_is_stable_and_excludes_replay() -> None:
+    first = _envelope_fingerprint()
+    same = _envelope_fingerprint()
+    changed = _envelope_fingerprint(system_prompt="changed system")
+
+    assert first == same
+    assert first.startswith("sha256:")
+    assert first != changed
 
 
 def test_provider_anchor_projects_current_surface_for_display_only() -> None:
@@ -71,10 +98,14 @@ def test_provider_anchor_projects_current_surface_for_display_only() -> None:
         endpoint_id="endpoint-1",
         api_id="api-1",
         model_id="model-1",
+        sampled_structural_envelope_fingerprint=_envelope_fingerprint(),
     )
 
     projected = project_context_from_provider_anchor(
-        snapshot, anchor, current_surface
+        snapshot,
+        anchor,
+        current_surface,
+        structural_envelope_fingerprint=_envelope_fingerprint(),
     )
 
     assert projected.tokens == 80 + current_surface.tokens - 5
@@ -86,6 +117,7 @@ def test_provider_anchor_projects_current_surface_for_display_only() -> None:
     assert projected.reason == "provider_anchor_display_only"
     assert projected.stale_after_compaction is True
     assert projected.provider_anchor == anchor
+    assert projected.structural_envelope_status == "matched"
 
 
 def test_provider_anchor_projection_clamps_negative_delta_at_zero() -> None:
@@ -104,12 +136,14 @@ def test_provider_anchor_projection_clamps_negative_delta_at_zero() -> None:
         endpoint_id="endpoint-1",
         api_id="api-1",
         model_id="model-1",
+        sampled_structural_envelope_fingerprint=_envelope_fingerprint(),
     )
 
     projected = project_context_from_provider_anchor(
         ContextUsageSnapshot(tokens=3, context_window=100, reserve_tokens=0),
         anchor,
         current_surface,
+        structural_envelope_fingerprint=_envelope_fingerprint(),
     )
 
     assert projected.tokens == 0
@@ -140,17 +174,62 @@ def test_provider_anchor_projection_rejects_a_different_estimator() -> None:
         endpoint_id="endpoint-1",
         api_id="api-1",
         model_id="model-1",
+        sampled_structural_envelope_fingerprint=_envelope_fingerprint(),
         estimator_id="different-estimator.v1",
     )
 
     projected = project_context_from_provider_anchor(
-        snapshot, anchor, current_surface
+        snapshot,
+        anchor,
+        current_surface,
+        structural_envelope_fingerprint=_envelope_fingerprint(),
     )
 
     assert projected.tokens == 7
     assert projected.source == "estimated"
     assert projected.compactable is True
     assert projected.provider_anchor == anchor
+
+
+def test_provider_anchor_projection_rejects_a_changed_structural_envelope() -> None:
+    current_surface = measure_replay_context_surface([])
+    snapshot = ContextUsageSnapshot(
+        tokens=7,
+        context_window=100,
+        reserve_tokens=0,
+        source="estimated",
+        compactable=True,
+    )
+    anchor = ProviderContextAnchor(
+        invocation_id="invocation-1",
+        attempt=1,
+        model_input_snapshot_id="snapshot-1",
+        provider_prompt_tokens=80,
+        sampled_prepared_payload_hash="sha256:" + "a" * 64,
+        sampled_surface_tokens=5,
+        sampled_surface_fingerprint="sha256:" + "b" * 64,
+        source_revision=1,
+        commit_revision=2,
+        provider_id="provider-1",
+        endpoint_id="endpoint-1",
+        api_id="api-1",
+        model_id="model-1",
+        sampled_structural_envelope_fingerprint=_envelope_fingerprint(),
+    )
+
+    projected = project_context_from_provider_anchor(
+        snapshot,
+        anchor,
+        current_surface,
+        structural_envelope_fingerprint=_envelope_fingerprint(
+            system_prompt="changed system"
+        ),
+    )
+
+    assert projected.tokens == 7
+    assert projected.source == "estimated"
+    assert projected.compactable is True
+    assert projected.structural_envelope_status == "mismatched"
 
 
 def test_context_usage_measurement_identity_serializes_compatibly() -> None:
@@ -180,6 +259,7 @@ def test_context_usage_measurement_identity_serializes_compatibly() -> None:
                 endpoint_id="endpoint-1",
                 api_id="api-1",
                 model_id="model-1",
+                sampled_structural_envelope_fingerprint=_envelope_fingerprint(),
             ),
         )
     )
@@ -193,6 +273,9 @@ def test_context_usage_measurement_identity_serializes_compatibly() -> None:
     assert payload["surfaceFingerprint"] == "sha256:" + "a" * 64
     assert payload["providerAnchor"]["providerPromptTokens"] == 40
     assert payload["providerAnchor"]["modelInputSnapshotId"] == "snapshot-1"
+    assert payload["providerAnchor"][
+        "sampledStructuralEnvelopeFingerprint"
+    ] == _envelope_fingerprint()
 
 
 def test_replay_surface_fingerprint_tracks_model_visible_content_only() -> None:

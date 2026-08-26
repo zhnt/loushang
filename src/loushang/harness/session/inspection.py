@@ -17,6 +17,10 @@ from loushang.ai.json_codec import deserialize_message
 from loushang.ai.model import ModelSelection
 from loushang.ai.types import AssistantMessage
 from loushang.harness.runtime.types import RunState
+from loushang.harness.session.model_call import (
+    project_model_request_options,
+    project_model_tools,
+)
 from loushang.harness.transcript import (
     AGENT_MESSAGE_KIND,
     MODEL_CALL_OUTCOME_KIND,
@@ -30,6 +34,7 @@ from loushang.harness.transcript import (
     calculate_context_tokens,
     estimate_context_tokens,
     measure_replay_context_surface,
+    measure_structural_envelope_fingerprint,
     project_context_from_provider_anchor,
     project_model_call_usage,
 )
@@ -124,6 +129,10 @@ class ContextUsage:
     estimator_id: str | None = None
     surface_fingerprint: str | None = None
     provider_anchor: ProviderContextAnchor | None = None
+    structural_envelope_fingerprint: str | None = None
+    structural_envelope_status: Literal[
+        "matched", "mismatched", "unavailable"
+    ] = "unavailable"
 
 
 @dataclass(frozen=True)
@@ -235,6 +244,9 @@ class AgentSessionInspector:
                 snapshot,
                 provider_anchor,
                 measure_replay_context_surface(messages),
+                structural_envelope_fingerprint=(
+                    self._current_structural_envelope_fingerprint()
+                ),
             )
         else:
             snapshot = replace(snapshot, provider_anchor=provider_anchor)
@@ -274,6 +286,10 @@ class AgentSessionInspector:
             estimator_id=snapshot.estimator_id,
             surface_fingerprint=snapshot.surface_fingerprint,
             provider_anchor=snapshot.provider_anchor,
+            structural_envelope_fingerprint=(
+                snapshot.structural_envelope_fingerprint
+            ),
+            structural_envelope_status=snapshot.structural_envelope_status,
         )
 
     def _get_provider_context_anchor(
@@ -298,6 +314,30 @@ class AgentSessionInspector:
             and anchor.endpoint_id == getattr(model, "endpoint_id", None)
             and anchor.api_id == getattr(model, "api", None)
             and anchor.model_id == getattr(model, "id", None)
+        )
+
+    def _current_structural_envelope_fingerprint(self) -> str | None:
+        system_prompt = getattr(self.agent, "system_prompt", None)
+        tools = getattr(self.agent, "tools", None)
+        get_effective_call_options = getattr(
+            self.agent, "get_effective_call_options", None
+        )
+        model = self.agent.model
+        if (
+            not isinstance(system_prompt, str)
+            or tools is None
+            or not callable(get_effective_call_options)
+        ):
+            return None
+        call_options = get_effective_call_options()
+        return measure_structural_envelope_fingerprint(
+            system_prompt=system_prompt,
+            tools=project_model_tools(tools),
+            request_options=project_model_request_options(call_options),
+            provider_id=str(getattr(model, "provider_id", "")),
+            endpoint_id=str(getattr(model, "endpoint_id", "")),
+            api_id=str(getattr(model, "api", "")),
+            model_id=str(getattr(model, "id", "")),
         )
 
     def _derive_provider_context_anchor(
@@ -332,6 +372,15 @@ class AgentSessionInspector:
             if len(messages) != len(raw_messages):
                 continue
             sampled_surface = measure_replay_context_surface(messages)
+            sampled_envelope = measure_structural_envelope_fingerprint(
+                system_prompt=rebuilt.logical_input["system_prompt"],
+                tools=rebuilt.logical_input["tools"],
+                request_options=rebuilt.logical_input["request_options"],
+                provider_id=snapshot.provider_id,
+                endpoint_id=snapshot.endpoint_id,
+                api_id=snapshot.api_id,
+                model_id=snapshot.model_id,
+            )
             return ProviderContextAnchor(
                 invocation_id=attempt.invocation_id,
                 attempt=attempt.attempt,
@@ -346,6 +395,7 @@ class AgentSessionInspector:
                 endpoint_id=snapshot.endpoint_id,
                 api_id=snapshot.api_id,
                 model_id=snapshot.model_id,
+                sampled_structural_envelope_fingerprint=sampled_envelope,
             )
         return None
 

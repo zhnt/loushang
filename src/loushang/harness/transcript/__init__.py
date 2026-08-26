@@ -43,6 +43,7 @@ if TYPE_CHECKING:
         has_post_compaction_usage,
         latest_compaction_entry,
         measure_replay_context_surface,
+        measure_structural_envelope_fingerprint,
         model_context_window,
         project_context_from_provider_anchor,
     )
@@ -502,6 +503,7 @@ _EXPORT_MODULES = {
     "model_selection_from_model": "loushang.harness.transcript.interaction",
     "model_context_window": "loushang.harness.transcript.context_usage",
     "measure_replay_context_surface": "loushang.harness.transcript.context_usage",
+    "measure_structural_envelope_fingerprint": "loushang.harness.transcript.context_usage",
     "project_context_from_provider_anchor": "loushang.harness.transcript.context_usage",
     "normalize_branch_summary_output": "loushang.harness.transcript.summarization",
     "plan_turn_aware_compaction": "loushang.harness.transcript.compaction",

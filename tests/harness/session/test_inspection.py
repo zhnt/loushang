@@ -373,13 +373,16 @@ def test_provider_context_anchor_skips_summary_and_caches_by_revision(
                 api_id="api-1",
                 model_id="model-1",
             ),
-            logical_input={
-                "messages": [
+                logical_input={
+                    "system_prompt": "system",
+                    "messages": [
                     serialize_message(
                         UserMessage(role="user", content="hello", timestamp=1.0)
                     )
-                ]
-            },
+                    ],
+                    "tools": [],
+                    "request_options": {},
+                },
             prepared_payload_hash="sha256:" + "a" * 64,
         )
 

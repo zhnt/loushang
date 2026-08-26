@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 
 from loushang.agent import ModelCallPreparation
 from loushang.ai.json_codec import serialize_message
@@ -593,22 +593,30 @@ def _logical_input(preparation: ModelCallPreparation) -> dict[str, object]:
     return {
         "system_prompt": context.system_prompt,
         "messages": [serialize_message(message) for message in context.messages],
-        "tools": [
-            {
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": require_json_mapping(
-                    tool.parameters,
-                    name=f"Model Input Tool schema {tool.name!r}",
-                ),
-            }
-            for tool in context.tools or ()
-        ],
-        "request_options": _request_options(preparation.options),
+        "tools": project_model_tools(context.tools or ()),
+        "request_options": project_model_request_options(preparation.options),
     }
 
 
-def _request_options(options: CallOptions) -> dict[str, JSONValue]:
+def project_model_tools(tools: Iterable[Any]) -> list[dict[str, JSONValue]]:
+    """Project Agent tools exactly as the durable logical Model Input does."""
+
+    return [
+        {
+            "name": str(tool.name),
+            "description": str(tool.description),
+            "parameters": require_json_mapping(
+                tool.parameters,
+                name=f"Model Input Tool schema {tool.name!r}",
+            ),
+        }
+        for tool in tools
+    ]
+
+
+def project_model_request_options(options: CallOptions) -> dict[str, JSONValue]:
+    """Project token-relevant request options into durable logical JSON."""
+
     projected: dict[str, JSONValue] = {}
     for name in (
         "cache_retention",
@@ -688,6 +696,8 @@ def _structured_output_schema(
 
 __all__ = [
     "CurrentSessionPredicate",
+    "project_model_request_options",
+    "project_model_tools",
     "SessionModelCallCapabilityConsumer",
     "SessionModelCallPreparer",
     "SessionModelCallRuntime",
