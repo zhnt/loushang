@@ -894,6 +894,8 @@ def test_attempt_usage_committer_is_atomic_idempotent_and_terminal() -> None:
             attempt=1,
             model_input_snapshot_id=snapshot_id,
             input=10,
+            cache_read=0,
+            cache_write=0,
         )
 
         assert await committer.record_model_call_attempt_usage(partial) is True
@@ -1921,6 +1923,9 @@ def test_fork_derivation_keeps_attempt_usage_for_referenced_snapshot() -> None:
             attempt=1,
             model_input_snapshot_id=snapshot_id,
             input=10,
+            output=0,
+            cache_read=0,
+            cache_write=0,
             terminal=True,
         )
         await committer.record_model_call_attempt_usage(fact)
