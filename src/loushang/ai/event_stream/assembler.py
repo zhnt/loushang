@@ -110,6 +110,7 @@ class RawAssembler:
             cost=None,
         )
         self._usage_cost_multiplier = 1.0
+        self._usage_observed = False
         self._final_message: AssistantMessage | None = None
         self._started = False
         self._text_started = False
@@ -309,6 +310,7 @@ class RawAssembler:
             return
 
         if part_type == "usage_delta":
+            self._usage_observed = True
             usage_part = cast(UsageDeltaPart, part)
             input_tokens = usage_part.get("input", self._usage.input)
             output_tokens = usage_part.get("output", self._usage.output)
@@ -506,6 +508,12 @@ class RawAssembler:
         if self._final_message is None:
             raise RuntimeError("Raw assembler has not produced a final message yet")
         return self._final_message
+
+    @property
+    def usage_observed(self) -> bool:
+        """Whether a normalized provider usage part reached this assembler."""
+
+        return self._usage_observed
 
     def _finalize_usage_cost(self) -> None:
         if self._pricing is None:

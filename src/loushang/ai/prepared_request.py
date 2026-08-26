@@ -184,6 +184,34 @@ class PreparedModelCallOutcome:
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedModelCallAttemptUsage:
+    """Content-free normalized usage observed for one prepared attempt."""
+
+    invocation_id: str
+    usage: Usage
+    terminal: bool = True
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.invocation_id, str) or not self.invocation_id:
+            raise ValueError(
+                "PreparedModelCallAttemptUsage.invocation_id must be non-empty"
+            )
+        if not isinstance(self.usage, Usage):
+            raise TypeError("PreparedModelCallAttemptUsage.usage must be Usage")
+        if not isinstance(self.terminal, bool):
+            raise TypeError("PreparedModelCallAttemptUsage.terminal must be boolean")
+        for name in ("input", "output", "cache_read", "cache_write", "total_tokens"):
+            _require_non_negative_int(getattr(self.usage, name), name=f"usage.{name}")
+        canonical_usage = deserialize_usage(serialize_usage(self.usage))
+        if canonical_usage != self.usage:
+            raise ValueError(
+                "PreparedModelCallAttemptUsage.usage cost must be finite and "
+                "non-negative"
+            )
+        object.__setattr__(self, "usage", canonical_usage)
+
+
+@dataclass(frozen=True, slots=True)
 class PreparedModelRequest:
     """Immutable, provider-facing model payload committed before transport."""
 
@@ -315,6 +343,14 @@ class PreparedModelCallOutcomeRecorder(Protocol):
         self,
         outcome: PreparedModelCallOutcome,
     ) -> None: ...
+
+
+@runtime_checkable
+class PreparedModelCallAttemptUsageRecorder(Protocol):
+    async def record_prepared_model_call_attempt_usage(
+        self,
+        usage: PreparedModelCallAttemptUsage,
+    ) -> bool: ...
 
 
 @runtime_checkable
@@ -578,6 +614,8 @@ __all__ = [
     "PREPARED_MODEL_REQUEST_SCHEMA_VERSION",
     "PREPARED_MODEL_CALL_OUTCOME_SCHEMA_VERSION",
     "PreparedModelCallDisposition",
+    "PreparedModelCallAttemptUsage",
+    "PreparedModelCallAttemptUsageRecorder",
     "PreparedModelCallOutcome",
     "PreparedModelCallOutcomeRecorder",
     "PreparedModelRequest",

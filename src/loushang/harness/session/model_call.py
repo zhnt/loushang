@@ -12,6 +12,8 @@ from loushang.agent import ModelCallPreparation
 from loushang.ai.json_codec import serialize_message
 from loushang.ai.options import CallOptions
 from loushang.ai.prepared_request import (
+    PreparedModelCallAttemptUsage,
+    PreparedModelCallAttemptUsageRecorder,
     PreparedModelCallOutcome,
     PreparedModelCallOutcomeRecorder,
     PreparedModelRequest,
@@ -55,6 +57,7 @@ from loushang.harness.capabilities.session_contracts import (
 from loushang.harness.runtime import RuntimeProfileSnapshot
 from loushang.harness.session.turn_performance import TurnStartPerformanceRuntime
 from loushang.harness.transcript import (
+    ModelCallAttemptUsage,
     ModelInputRuntimeReferences,
 )
 from loushang.harness.transcript.model_input import (
@@ -183,6 +186,7 @@ class SessionModelCallPreparer:
 
 class _CurrentSessionCommitter(
     PreparedRequestCommitter,
+    PreparedModelCallAttemptUsageRecorder,
     PreparedModelCallOutcomeRecorder,
 ):
     """Carry current-Session ownership through AI's final commit barrier."""
@@ -197,6 +201,7 @@ class _CurrentSessionCommitter(
         self._committer = committer
         self._is_current = is_current
         self._turn_performance = turn_performance
+        self._latest_attempt_by_invocation: dict[str, tuple[int, str]] = {}
 
     async def commit_prepared_request(self, request: PreparedModelRequest) -> None:
         self._require_current()
@@ -209,8 +214,52 @@ class _CurrentSessionCommitter(
                 self._turn_performance.model_input_commit_failed(request)
             raise
         self._require_current()
+        commits = getattr(self._committer, "commits", ())
+        if not commits:
+            raise RuntimeError("durable Model Input commit produced no snapshot")
+        snapshot_id = getattr(commits[-1], "snapshot_id", None)
+        if not isinstance(snapshot_id, str) or not snapshot_id:
+            raise RuntimeError("durable Model Input commit produced no snapshot id")
+        self._latest_attempt_by_invocation[request.invocation_id] = (
+            request.attempt,
+            snapshot_id,
+        )
         if self._turn_performance is not None:
             self._turn_performance.transport_ready(request)
+
+    async def record_prepared_model_call_attempt_usage(
+        self,
+        observation: PreparedModelCallAttemptUsage,
+    ) -> bool:
+        self._require_current()
+        if not isinstance(self._committer, ModelInputTranscriptCommitter):
+            raise TypeError(
+                "durable Session Model Input committer cannot record attempt usage"
+            )
+        attempt_identity = self._latest_attempt_by_invocation.get(
+            observation.invocation_id
+        )
+        if attempt_identity is None:
+            raise RuntimeError(
+                "attempt usage has no committed Model Input snapshot identity"
+            )
+        attempt, snapshot_id = attempt_identity
+        usage = observation.usage
+        recorded = await self._committer.record_model_call_attempt_usage(
+            ModelCallAttemptUsage(
+                invocation_id=observation.invocation_id,
+                attempt=attempt,
+                model_input_snapshot_id=snapshot_id,
+                input=usage.input,
+                output=usage.output,
+                cache_read=usage.cache_read,
+                cache_write=usage.cache_write,
+                total_tokens=usage.total_tokens,
+                terminal=observation.terminal,
+            )
+        )
+        self._require_current()
+        return recorded
 
     async def record_model_call_outcome(
         self,

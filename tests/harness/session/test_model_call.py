@@ -52,12 +52,14 @@ from loushang.harness.session.model_call import (
 from loushang.harness.session.turn_performance import TurnStartPerformanceRuntime
 from loushang.harness.transcript import (
     CONTEXT_BRANCH_SUMMARY_KIND,
+    MODEL_CALL_ATTEMPT_USAGE_KIND,
     MODEL_CALL_OUTCOME_KIND,
     AgentTranscriptRecordFactory,
     AgentTranscriptSession,
     AgentTranscriptUnitOfWork,
     BranchContextSummary,
     CompactionPreparation,
+    ModelCallAttemptUsage,
     ModelCallOutcome,
     ModelInputIntegrityError,
     execute_branch_summary,
@@ -243,10 +245,12 @@ class _PreparedAdapter:
         *,
         retry_first: bool = False,
         terminal_error: bool = False,
+        report_usage: bool = False,
     ) -> None:
         self.transport_calls = 0
         self.retry_first = retry_first
         self.terminal_error = terminal_error
+        self.report_usage = report_usage
 
     def prepare_request(self, request: ProviderRequest) -> PreparedModelRequest:
         return PreparedModelRequest.from_provider_request(
@@ -307,6 +311,14 @@ class _PreparedAdapter:
             return
         yield {"type": "response_start", "response_id": "response-1"}
         yield {"type": "text_delta", "text": "done"}
+        if self.report_usage:
+            yield {
+                "type": "usage_delta",
+                "input": 10,
+                "output": 2,
+                "cache_read": 3,
+                "total_tokens": 15,
+            }
         yield {"type": "stop_reason", "stop_reason": "stop"}
         yield {"type": "response_done"}
 
@@ -404,6 +416,56 @@ def test_current_session_prepares_and_rebuilds_main_model_call() -> None:
     asyncio.run(scenario())
 
 
+def test_current_session_persists_observed_attempt_usage_before_outcome() -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        runtime = _model_call_runtime(session, is_current=lambda: True)
+        adapter = _PreparedAdapter(report_usage=True)
+        registry = get_default_api_registry()
+        source_id = "session-model-call-attempt-usage-test"
+        registry.register_api_adapter(adapter, source_id=source_id)
+        agent = Agent(
+            initial_state={
+                "system_prompt": "durable system prompt",
+                "model": _model(api=adapter.api),
+                "thinking_level": "off",
+            },
+            prepare_model_call=runtime.prepare,
+        )
+        try:
+            await agent.prompt("hello")
+        finally:
+            registry.unregister_api_adapters(source_id)
+
+        entries = session.get_entries()
+        usage_entries = [
+            entry for entry in entries if entry.kind == MODEL_CALL_ATTEMPT_USAGE_KIND
+        ]
+        outcome_index = next(
+            index
+            for index, entry in enumerate(entries)
+            if entry.kind == MODEL_CALL_OUTCOME_KIND
+        )
+
+        assert len(usage_entries) == 1
+        usage = usage_entries[0].payload
+        assert isinstance(usage, ModelCallAttemptUsage)
+        assert usage.model_input_snapshot_id == next(
+            entry.payload.snapshot_id
+            for entry in entries
+            if entry.kind == "model.input.prepared"
+        )
+        assert usage.input == 10
+        assert usage.output == 2
+        assert usage.cache_read == 3
+        assert usage.total_tokens == 15
+        assert usage.terminal is True
+        assert entries.index(usage_entries[0]) < outcome_index
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
 def test_model_call_binding_reports_prepare_and_durable_transport_boundary() -> None:
     async def scenario() -> None:
         session = await _transcript_session()
@@ -465,7 +527,7 @@ def test_provider_retry_commits_each_attempt_with_one_invocation_identity() -> N
     async def scenario() -> None:
         session = await _transcript_session()
         runtime = _model_call_runtime(session, is_current=lambda: True)
-        adapter = _PreparedAdapter(retry_first=True)
+        adapter = _PreparedAdapter(retry_first=True, report_usage=True)
         registry = get_default_api_registry()
         source_id = "session-model-call-provider-retry-test"
         registry.register_api_adapter(adapter, source_id=source_id)
@@ -508,6 +570,15 @@ def test_provider_retry_commits_each_attempt_with_one_invocation_identity() -> N
         )
         assert outcome.disposition == "completed"
         assert outcome.stop_reason == "stop"
+        attempt_usage = [
+            entry.payload
+            for entry in session.get_entries()
+            if entry.kind == MODEL_CALL_ATTEMPT_USAGE_KIND
+        ]
+        assert len(attempt_usage) == 1
+        assert isinstance(attempt_usage[0], ModelCallAttemptUsage)
+        assert attempt_usage[0].attempt == 2
+        assert attempt_usage[0].model_input_snapshot_id == snapshots[1].snapshot_id
         projected = session.get_model_call_invocations()
         assert len(projected) == 1
         assert projected[0].state == "completed"

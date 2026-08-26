@@ -9,6 +9,7 @@ from loushang.ai.context import NormalizedContext
 from loushang.ai.errors import AIProviderProtocolError, AITimeoutError
 from loushang.ai.model import Auth, Model
 from loushang.ai.options import CallOptions, RetryOptions
+from loushang.ai.prepared_request import PreparedModelCallAttemptUsage
 from loushang.ai.protocols.anthropic_messages import AnthropicMessagesAdapter
 from loushang.ai.protocols.openai_chat_completions import OpenAIChatCompletionsAdapter
 from loushang.ai.protocols.openai_responses import OpenAIResponsesAdapter
@@ -49,6 +50,21 @@ class _BlockingRawSource:
         self.closed.set()
 
 
+class _AttemptUsageRecorder:
+    def __init__(self) -> None:
+        self.observations: list[PreparedModelCallAttemptUsage] = []
+
+    async def commit_prepared_request(self, request: object) -> None:
+        del request
+
+    async def record_prepared_model_call_attempt_usage(
+        self,
+        usage: PreparedModelCallAttemptUsage,
+    ) -> bool:
+        self.observations.append(usage)
+        return True
+
+
 @pytest.mark.parametrize(
     "provider_cls",
     (OpenAIChatCompletionsAdapter, OpenAIResponsesAdapter, AnthropicMessagesAdapter),
@@ -84,6 +100,41 @@ def test_provider_runtime_assembles_raw_parts() -> None:
         "done",
     ]
     assert events[-1]["message"].content[0].text == "hello"
+
+
+def test_provider_runtime_records_only_observed_terminal_attempt_usage() -> None:
+    async def _run(include_usage: bool):
+        recorder = _AttemptUsageRecorder()
+
+        async def _parts():
+            yield {"type": "response_start", "response_id": "resp_usage"}
+            if include_usage:
+                yield {
+                    "type": "usage_delta",
+                    "input": 10,
+                    "output": 2,
+                    "cache_read": 3,
+                    "total_tokens": 15,
+                }
+            yield {"type": "response_done"}
+
+        stream = start_provider_runtime(
+            _parts,
+            options=CallOptions(prepared_request_committer=recorder),
+            request=_request(),
+            invocation_id="invocation-usage",
+        )
+        await stream.result()
+        return recorder.observations
+
+    observed = asyncio.run(_run(True))
+    absent = asyncio.run(_run(False))
+
+    assert len(observed) == 1
+    assert observed[0].invocation_id == "invocation-usage"
+    assert observed[0].usage.total_tokens == 15
+    assert observed[0].terminal is True
+    assert absent == []
 
 
 def test_provider_runtime_rejects_source_without_terminal_part() -> None:

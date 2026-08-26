@@ -21,6 +21,8 @@ from loushang.ai.options import (
     get_timeout_seconds,
 )
 from loushang.ai.prepared_request import (
+    PreparedModelCallAttemptUsage,
+    PreparedModelCallAttemptUsageRecorder,
     PreparedModelCallOutcome,
     PreparedModelCallOutcomeRecorder,
 )
@@ -376,12 +378,39 @@ async def _emit_terminal_part_and_record_outcome(
 ) -> None:
     await assembler.emit(part)
     committer = getattr(options, "prepared_request_committer", None)
-    if not isinstance(committer, PreparedModelCallOutcomeRecorder):
-        return
     outcome = PreparedModelCallOutcome.from_assistant_message(
         call_id,
         assembler.result_nowait(),
     )
+    if assembler.usage_observed and isinstance(
+        committer,
+        PreparedModelCallAttemptUsageRecorder,
+    ):
+        try:
+            await committer.record_prepared_model_call_attempt_usage(
+                PreparedModelCallAttemptUsage(
+                    invocation_id=call_id,
+                    usage=outcome.usage,
+                )
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            emit_trace(
+                options,
+                {
+                    "type": "runtime:attempt_usage",
+                    **_runtime_trace_base(
+                        request=request,
+                        model=model,
+                        call_id=call_id,
+                    ),
+                    "reason": "record_failed",
+                    "exceptionType": error.__class__.__name__,
+                },
+            )
+    if not isinstance(committer, PreparedModelCallOutcomeRecorder):
+        return
     try:
         await committer.record_model_call_outcome(outcome)
     except asyncio.CancelledError:
