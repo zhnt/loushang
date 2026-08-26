@@ -6,7 +6,7 @@ import subprocess
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
-from time import time_ns
+from typing import Literal
 
 import pytest
 
@@ -176,45 +176,6 @@ def _runtime_footer(cwd: str) -> str:
     return f"Current date: {date.today().isoformat()}\nCurrent working directory: {cwd}"
 
 
-class _CodingLspPluginApprovalOwner:
-    def approve_definition(self, *, journal, subject):
-        from loushang.harness.approval.plugin_execution import (
-            PluginApprovalAuthorizationV1,
-        )
-
-        now = time_ns() // 1_000_000
-        return journal.issue_execution_decision(
-            subject,
-            disposition="approved",
-            authorization=PluginApprovalAuthorizationV1.direct(
-                actor_id="operator:bootstrap-test",
-                source="coding-lsp-bootstrap-test",
-            ),
-            revocation_epoch=0,
-            issued_at_unix_ms=now - 1_000,
-            expires_at_unix_ms=now + 60_000,
-            expected_journal_revision=journal.snapshot().journal_revision,
-        )
-
-    def approve_activation(self, *, journal, subject):
-        from loushang.harness.approval.plugin_execution import (
-            PluginApprovalAuthorizationV1,
-        )
-
-        now = time_ns() // 1_000_000
-        return journal.issue_activation_decision(
-            subject,
-            disposition="approved",
-            authorization=PluginApprovalAuthorizationV1.direct(
-                actor_id="operator:bootstrap-test",
-                source="coding-lsp-bootstrap-test",
-            ),
-            issued_at_unix_ms=now - 1_000,
-            expires_at_unix_ms=now + 60_000,
-            expected_journal_revision=journal.snapshot().journal_revision,
-        )
-
-
 def test_create_agent_session_uses_manager_header_as_agent_session_id(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session
     from loushang.coding.session_manager import SessionManager
@@ -321,89 +282,16 @@ def test_create_agent_session_binds_always_on_lsp_to_sandbox_scope(
         lsp_baseline_environment={"PATH": "/admitted/bin"},
     )
 
-    assert INSPECT_SYMBOL_TOOL_NAME in session.get_active_tool_names()
+    assert INSPECT_SYMBOL_TOOL_NAME not in session.get_active_tool_names()
     assert len(scopes) == 1
     assert scopes[0].audit_sink is not None
     assert scopes[0].execution_profile_ceiling is not None
     assert Path(project).resolve() in (
         scopes[0].execution_profile_ceiling.readable_roots
     )
+    asyncio.run(session.prepare_model_call_runtime())
+    assert INSPECT_SYMBOL_TOOL_NAME in session.get_active_tool_names()
     asyncio.run(session.dispose())
-
-
-def test_deferred_lsp_launcher_first_use_mounts_workspace_and_keeps_authority(
-    tmp_path,
-    monkeypatch,
-) -> None:
-    import loushang.coding.bootstrap as coding_bootstrap
-    from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.lsp import LspServerDefinition
-    from loushang.coding.session_manager import SessionManager
-    from loushang.harness.authorization import ExecutionAuthorizationError
-    from loushang.harness.sandbox import SandboxSettings
-    from loushang.harness.workspace.process import ProcessLaunchRequest
-
-    async def scenario() -> None:
-        workspace = tmp_path / "workspace"
-        outside = tmp_path / "outside"
-        workspace.mkdir()
-        outside.mkdir()
-        captured_launchers = []
-        bind_runtime = coding_bootstrap._bind_coding_lsp_runtime_from_launcher
-
-        def capture_launcher(**kwargs):
-            captured_launchers.append(kwargs["process_launcher"])
-            return bind_runtime(**kwargs)
-
-        monkeypatch.setattr(
-            coding_bootstrap,
-            "_bind_coding_lsp_runtime_from_launcher",
-            capture_launcher,
-        )
-        manager = await SessionManager.new(
-            session_dir=tmp_path / "sessions",
-            cwd=str(workspace),
-            persist=False,
-        )
-        session = create_agent_session(
-            session_manager=manager,
-            model=_model(),
-            services=create_services(
-                settings_manager=SettingsManager(
-                    ControlConfig(
-                        capabilities={"coding.lsp": "always"},
-                        sandbox=SandboxSettings(enabled=False),
-                    )
-                )
-            ),
-            lsp_definitions=(
-                LspServerDefinition(
-                    id="python-test",
-                    command=("python-language-server", "--stdio"),
-                    language_extensions={"python": (".py",)},
-                ),
-            ),
-        )
-        try:
-            assert len(captured_launchers) == 1
-            assert session._capability_graph_runtime.generation == 0
-            with pytest.raises(ExecutionAuthorizationError, match="outside"):
-                await captured_launchers[0].start(
-                    ProcessLaunchRequest(
-                        command=("never-start",),
-                        cwd=str(outside),
-                        effective_environment=(),
-                    ),
-                    correlation_id="deferred-lsp-outside-workspace",
-                )
-            assert session._capability_graph_runtime.generation == 1
-            await session.prepare_model_call_runtime()
-            assert session._capability_graph_runtime.generation == 1
-        finally:
-            await session.dispose()
-
-    asyncio.run(scenario())
 
 
 def test_coding_session_mounts_workspace_and_rejects_process_cwd_outside_root(
@@ -456,8 +344,12 @@ def test_coding_session_mounts_workspace_and_rejects_process_cwd_outside_root(
             assert session._capability_graph_runtime.generation == first_generation
             snapshot = session._capability_graph_runtime.snapshot
             assert snapshot is not None
-            assert snapshot.roots == ("harness.model_input",)
+            assert snapshot.roots == ("coding.lsp", "harness.model_input")
             nodes = {node.capability_id: node for node in snapshot.nodes}
+            assert tuple(
+                requirement.capability_id
+                for requirement in nodes["coding.lsp"].requirements
+            ) == ("harness.workspace",)
             assert tuple(
                 requirement.capability_id
                 for requirement in nodes["harness.model_input"].requirements
@@ -468,13 +360,17 @@ def test_coding_session_mounts_workspace_and_rejects_process_cwd_outside_root(
                 for requirement in nodes["harness.session"].requirements
             ) == ("harness.resources", "harness.workspace")
             assert nodes["harness.resources"].required_by == ("harness.session",)
-            assert nodes["harness.workspace"].required_by == ("harness.session",)
+            assert nodes["harness.workspace"].required_by == (
+                "coding.lsp",
+                "harness.session",
+            )
             assert nodes["harness.session"].required_by == ("harness.model_input",)
             assert nodes["harness.workspace"].requirements == ()
             view = session.get_effective_runtime_view()
             assert tuple(node.capability_id for node in view.capabilities) == (
-                "harness.resources",
                 "harness.workspace",
+                "coding.lsp",
+                "harness.resources",
                 "harness.session",
                 "harness.model_input",
             )
@@ -518,6 +414,7 @@ def test_create_agent_session_projects_default_lsp_environment(tmp_path) -> None
         ),
     )
 
+    asyncio.run(session.prepare_model_call_runtime())
     assert INSPECT_SYMBOL_TOOL_NAME in {
         definition.name for definition in session.get_all_tools()
     }
@@ -542,15 +439,15 @@ def test_on_demand_lsp_discovers_installed_product_defaults(
     project = tmp_path / "project"
     project.mkdir()
     captured_definitions: list[LspServerDefinition] = []
-    bind_runtime = coding_bootstrap._bind_coding_lsp_runtime_from_launcher
+    assemble = coding_bootstrap.assemble_coding_lsp_plugin_opt_in
 
-    def capture_definitions(**kwargs):
-        captured_definitions.extend(kwargs["definitions"])
-        return bind_runtime(**kwargs)
+    def capture_definitions(request, **kwargs):
+        captured_definitions.extend(kwargs["config"].definitions)
+        return assemble(request, **kwargs)
 
     monkeypatch.setattr(
         coding_bootstrap,
-        "_bind_coding_lsp_runtime_from_launcher",
+        "assemble_coding_lsp_plugin_opt_in",
         capture_definitions,
     )
     services = create_services(
@@ -580,37 +477,90 @@ def test_on_demand_lsp_discovers_installed_product_defaults(
     asyncio.run(session.dispose())
 
 
-def test_private_lsp_plugin_opt_in_mounts_through_session_graph_and_retires(
+@pytest.mark.parametrize(
+    ("capability_mode", "no_tools"),
+    [("disabled", None), ("always", "all")],
+)
+def test_disabled_lsp_session_does_not_resolve_the_default_plugin(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capability_mode: Literal["disabled", "always"],
+    no_tools: Literal["all"] | None,
 ) -> None:
     import loushang.coding.bootstrap as coding_bootstrap
-    from loushang.coding.bootstrap import (
-        _create_agent_session as create_agent_session,
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    def reject_plugin_resolution(**_kwargs):
+        raise AssertionError("disabled LSP must not resolve or import its Plugin")
+
+    monkeypatch.setattr(
+        coding_bootstrap,
+        "assemble_coding_lsp_plugin_opt_in",
+        reject_plugin_resolution,
     )
-    from loushang.coding.bootstrap import create_services
+    project = tmp_path / "project"
+    project.mkdir()
+    session = create_agent_session(
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path / "sessions",
+                cwd=str(project),
+                persist=False,
+            )
+        ),
+        model=_model(),
+        services=create_services(
+            settings_manager=SettingsManager(
+                ControlConfig(capabilities={"coding.lsp": capability_mode})
+            )
+        ),
+        no_tools=no_tools,
+    )
+
+    assert session.get_lsp_status().enabled is False
+    assert {"document_outline", "inspect_symbol"}.isdisjoint(
+        definition.name for definition in session.get_all_tools()
+    )
+    asyncio.run(session.dispose())
+
+
+def test_default_lsp_plugin_rejects_the_legacy_reader_side_door(
+    tmp_path: Path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session
+    from loushang.coding.session_manager import SessionManager
+
+    project = tmp_path / "project"
+    project.mkdir()
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project),
+            persist=False,
+        )
+    )
+
+    with pytest.raises(ValueError, match="only through harness.workspace"):
+        create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            lsp_read_text=lambda _path: "legacy side door",
+        )
+
+
+def test_default_lsp_plugin_mounts_through_session_graph_and_retires(
+    tmp_path: Path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.lsp import (
         DOCUMENT_OUTLINE_TOOL_NAME,
         INSPECT_SYMBOL_TOOL_NAME,
         LspServerDefinition,
     )
-    from loushang.coding.lsp._plugin_opt_in import CodingLspPluginOptInRequest
     from loushang.coding.session_manager import SessionManager
-
-    def reject_legacy_route(*_args, **_kwargs):
-        raise AssertionError("Plugin opt-in must not enter the legacy LSP route")
-
-    monkeypatch.setattr(
-        coding_bootstrap,
-        "register_coding_lsp_tools",
-        reject_legacy_route,
-    )
-    monkeypatch.setattr(
-        coding_bootstrap,
-        "_bind_coding_lsp_runtime_from_launcher",
-        reject_legacy_route,
-    )
 
     async def scenario() -> None:
         project = tmp_path / "project"
@@ -636,9 +586,6 @@ def test_private_lsp_plugin_opt_in_mounts_through_session_graph_and_retires(
                 ),
             ),
             lsp_baseline_environment={"PATH": "/admitted/bin"},
-            coding_lsp_plugin_opt_in=CodingLspPluginOptInRequest(
-                approval_owner=_CodingLspPluginApprovalOwner()
-            ),
         )
         tool_names = {DOCUMENT_OUTLINE_TOOL_NAME, INSPECT_SYMBOL_TOOL_NAME}
         registry = session._composition.tool_controller.tool_registry
@@ -647,6 +594,9 @@ def test_private_lsp_plugin_opt_in_mounts_through_session_graph_and_retires(
             definition.name for definition in registry.list_definitions()
         )
         assert session.get_lsp_status().enabled is False
+        assert session._coding_lsp_plugin_assembly is not None
+        plugin_state_root = session._coding_lsp_plugin_assembly.state_root
+        assert plugin_state_root.is_dir()
 
         await session.prepare_model_call_runtime()
 
@@ -657,10 +607,8 @@ def test_private_lsp_plugin_opt_in_mounts_through_session_graph_and_retires(
         assert session.get_lsp_status().enabled is True
         assert session._coding_lsp_plugin_assembly is not None
         assert session._coding_lsp_plugin_assembly._closed is True
-        assert session._coding_lsp_plugin_assembly.state_root.parent.name == (
-            "coding-lsp-default"
-        )
-        assert len(session._coding_lsp_plugin_assembly.state_root.name) == 64
+        assert not plugin_state_root.exists()
+        assert not (tmp_path / "sessions").exists()
 
         await session.dispose()
 
@@ -671,38 +619,19 @@ def test_private_lsp_plugin_opt_in_mounts_through_session_graph_and_retires(
     asyncio.run(scenario())
 
 
-def test_private_lsp_plugin_opt_in_rolls_back_graph_when_tool_staging_fails(
+def test_default_lsp_plugin_rolls_back_graph_when_tool_staging_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import loushang.coding.bootstrap as coding_bootstrap
-    from loushang.coding.bootstrap import (
-        _create_agent_session as create_agent_session,
-    )
-    from loushang.coding.bootstrap import create_services
+    from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
     from loushang.coding.lsp import (
         DOCUMENT_OUTLINE_TOOL_NAME,
         INSPECT_SYMBOL_TOOL_NAME,
         LspServerDefinition,
     )
-    from loushang.coding.lsp._plugin_opt_in import CodingLspPluginOptInRequest
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.session.tool_controller import SessionToolController
-
-    def reject_legacy_route(*_args, **_kwargs):
-        raise AssertionError("Plugin failure must not fall back to legacy LSP")
-
-    monkeypatch.setattr(
-        coding_bootstrap,
-        "register_coding_lsp_tools",
-        reject_legacy_route,
-    )
-    monkeypatch.setattr(
-        coding_bootstrap,
-        "_bind_coding_lsp_runtime_from_launcher",
-        reject_legacy_route,
-    )
     stage_runtime_tool = SessionToolController.stage_runtime_tool
 
     def fail_second_tool(self, tool, **kwargs):
@@ -738,9 +667,6 @@ def test_private_lsp_plugin_opt_in_rolls_back_graph_when_tool_staging_fails(
                     command=("python-language-server", "--stdio"),
                     language_extensions={"python": (".py",)},
                 ),
-            ),
-            coding_lsp_plugin_opt_in=CodingLspPluginOptInRequest(
-                approval_owner=_CodingLspPluginApprovalOwner()
             ),
         )
         registry = session._composition.tool_controller.tool_registry
@@ -1971,6 +1897,7 @@ def test_create_agent_session_synthesizes_definitions_from_legacy_tools(
         "edit",
         "write",
     ]
+    asyncio.run(session.prepare_model_call_runtime())
     assert [definition.name for definition in session.get_all_tools()] == [
         "bash",
         "read",
@@ -1979,8 +1906,8 @@ def test_create_agent_session_synthesizes_definitions_from_legacy_tools(
         "grep",
         "write",
         "edit",
-        "inspect_symbol",
         "document_outline",
+        "inspect_symbol",
     ]
     assert "Available tools:" in session.agent.system_prompt
 
@@ -2041,6 +1968,7 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
         "write",
         "custom_tool",
     ]
+    asyncio.run(session.prepare_model_call_runtime())
     assert [definition.name for definition in session.get_all_tools()] == [
         "bash",
         "read",
@@ -2050,8 +1978,8 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
         "write",
         "edit",
         "custom_tool",
-        "inspect_symbol",
         "document_outline",
+        "inspect_symbol",
     ]
     assert "- custom_tool:" not in session.agent.system_prompt
     assert "- grep:" in session.agent.system_prompt
@@ -2636,10 +2564,11 @@ def test_create_agent_session_merges_extension_resources_and_tools(tmp_path) -> 
         in session.agent.system_prompt
     )
     assert session.get_active_tool_names() == ["ext_tool"]
+    asyncio.run(session.prepare_model_call_runtime())
     assert [definition.name for definition in session.get_all_tools()] == [
-        "inspect_symbol",
-        "document_outline",
         "ext_tool",
+        "document_outline",
+        "inspect_symbol",
     ]
     extension_info = next(
         info for info in session.get_all_tool_infos() if info["name"] == "ext_tool"

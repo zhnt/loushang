@@ -7,6 +7,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Literal, cast
 
 from loushang.agent import Agent, StreamFn, ThinkingLevel
@@ -25,8 +26,8 @@ from loushang.coding.control.settings_store import (
 )
 from loushang.coding.diagnostics.profile import coding_runtime_identity
 from loushang.coding.lsp._plugin_opt_in import (
-    CodingLspPluginOptInRequest,
     assemble_coding_lsp_plugin_opt_in,
+    create_coding_lsp_default_plugin_opt_in_request,
 )
 from loushang.coding.lsp._provider_api import CodingLspPluginConfigV1
 from loushang.coding.lsp.discovery import (
@@ -36,12 +37,6 @@ from loushang.coding.lsp.discovery import (
 )
 from loushang.coding.lsp.model import LspServerDefinition
 from loushang.coding.lsp.ports import WorkspaceTextReader
-from loushang.coding.lsp.runtime import (
-    CodingLspRuntime,
-    DeferredCodingLspRuntime,
-    _bind_coding_lsp_runtime_from_launcher,
-)
-from loushang.coding.lsp.tool_pack import register_coding_lsp_tools
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE, CODING_PRODUCT_ID
 from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
 from loushang.coding.resource_runtime import (
@@ -124,11 +119,6 @@ from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import context_items_to_model_messages
 from loushang.harness.workspace.exec import ExecService
 from loushang.harness.workspace.operations import LOCAL_TOOL_OPERATIONS
-from loushang.harness.workspace.process import (
-    AuthorizedProcessLauncher,
-    ProcessHandle,
-    ProcessLaunchRequest,
-)
 
 AgentFactory = Callable[..., Agent]
 ServicesFactory = Callable[[str], "BootstrapServices"]
@@ -136,32 +126,6 @@ NoToolsMode = Literal["all", "builtin"]
 ExtensionFlagValues = Mapping[str, bool | str]
 CwdBoundServicesAuditIssue = _CwdBoundServicesAuditIssue
 _CODING_PLUGIN_HOST_BOOT_ID = secrets.token_hex(16)
-
-
-class _DeferredWorkspaceProcessLauncher:
-    def __init__(self) -> None:
-        self._launcher: AuthorizedProcessLauncher | None = None
-
-    def bind(self, launcher: AuthorizedProcessLauncher) -> None:
-        if self._launcher is not None:
-            raise RuntimeError("workspace process launcher is already bound")
-        self._launcher = launcher
-
-    async def start(
-        self,
-        request: ProcessLaunchRequest,
-        *,
-        correlation_id: str,
-        signal: object | None = None,
-    ) -> ProcessHandle:
-        launcher = self._launcher
-        if launcher is None:
-            raise RuntimeError("workspace process launcher is not yet bound")
-        return await launcher.start(
-            request,
-            correlation_id=correlation_id,
-            signal=signal,
-        )
 
 
 def create_services(
@@ -290,7 +254,6 @@ def _create_agent_session(
     lsp_definitions: Iterable[LspServerDefinition] = (),
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
-    coding_lsp_plugin_opt_in: CodingLspPluginOptInRequest | None = None,
     enable_initial_resource_catalog_shadow: bool = False,
     initial_resource_catalog_product_composition_assembly: (
         ProductCompositionAssemblyRequest | None
@@ -315,11 +278,6 @@ def _create_agent_session(
         raise ValueError(
             "initial Resource Catalog Product composition assembly requires the shadow"
         )
-    if coding_lsp_plugin_opt_in is not None and not isinstance(
-        coding_lsp_plugin_opt_in,
-        CodingLspPluginOptInRequest,
-    ):
-        raise TypeError("Coding LSP Plugin opt-in request is invalid")
     enable_multiagent_tools = (
         enable_multiagent
         and allowed_tool_names is None
@@ -350,12 +308,8 @@ def _create_agent_session(
     lsp_enabled_for_session = (
         lsp_mode != "disabled" and normalize_no_tools(no_tools) != "all"
     )
-    if coding_lsp_plugin_opt_in is not None and not lsp_enabled_for_session:
-        raise ValueError("Coding LSP Plugin opt-in requires an enabled LSP mode")
-    if coding_lsp_plugin_opt_in is not None and lsp_read_text is not None:
-        raise ValueError(
-            "Coding LSP Plugin opt-in reads only through harness.workspace"
-        )
+    if lsp_enabled_for_session and lsp_read_text is not None:
+        raise ValueError("Coding LSP reads only through harness.workspace")
     global_lsp_config, project_lsp_config = coding_lsp_config_paths(
         services.settings_manager,
         workspace_root=session_manager.get_cwd(),
@@ -370,11 +324,6 @@ def _create_agent_session(
         ).definitions
         if lsp_enabled_for_session
         else ()
-    )
-    lsp_slot = (
-        DeferredCodingLspRuntime()
-        if lsp_enabled_for_session and coding_lsp_plugin_opt_in is None
-        else None
     )
     # Restored sessions carry historical transcript.  A previous run may have
     # been interrupted between a tool call and its result, leaving an unpaired
@@ -425,13 +374,6 @@ def _create_agent_session(
             session_tool_registry.register_tool(definition)
         if tools is not None:
             construction_tools = None
-    if lsp_slot is not None:
-        assert session_tool_registry is not None
-        register_coding_lsp_tools(
-            session_tool_registry,
-            runtime=lsp_slot,
-            mode=lsp_mode,
-        )
     resolved_package_materializer = (
         package_materializer or _default_package_materializer(session_manager)
     )
@@ -555,9 +497,20 @@ def _create_agent_session(
             provider_id="coding.workspace.standard",
             source_id="coding",
         )
+
+        def lsp_plugin_clock() -> int:
+            return time.time_ns() // 1_000_000
+
+        lsp_ephemeral_state = (
+            TemporaryDirectory(prefix="loushang-coding-lsp-")
+            if lsp_enabled_for_session and not session_manager.persist
+            else None
+        )
         lsp_plugin_assembly = (
             assemble_coding_lsp_plugin_opt_in(
-                coding_lsp_plugin_opt_in,
+                create_coding_lsp_default_plugin_opt_in_request(
+                    clock=lsp_plugin_clock
+                ),
                 session_id=session_id,
                 config=CodingLspPluginConfigV1.from_runtime_inputs(
                     workspace_root=session_manager.get_cwd(),
@@ -566,29 +519,26 @@ def _create_agent_session(
                 ),
                 package_materializer=resolved_package_materializer,
                 workspace_binding=workspace_binding,
-                state_root=_coding_lsp_plugin_state_root(
-                    session_manager,
-                    session_id=session_id,
+                state_root=(
+                    Path(lsp_ephemeral_state.name)
+                    if lsp_ephemeral_state is not None
+                    else _coding_lsp_plugin_state_root(
+                        session_manager,
+                        session_id=session_id,
+                    )
                 ),
                 host_boot_id=_CODING_PLUGIN_HOST_BOOT_ID,
                 tool_mode=lsp_mode,
-                clock=lambda: time.time_ns() // 1_000_000,
+                clock=lsp_plugin_clock,
+                state_cleanup=(
+                    lsp_ephemeral_state.cleanup
+                    if lsp_ephemeral_state is not None
+                    else None
+                ),
             )
-            if coding_lsp_plugin_opt_in is not None
+            if lsp_enabled_for_session
             else None
         )
-        lsp_runtime: CodingLspRuntime | None = None
-        deferred_lsp_launcher: _DeferredWorkspaceProcessLauncher | None = None
-        if lsp_slot is not None:
-            deferred_lsp_launcher = _DeferredWorkspaceProcessLauncher()
-            lsp_runtime = _bind_coding_lsp_runtime_from_launcher(
-                workspace_root=session_manager.get_cwd(),
-                definitions=resolved_lsp_definitions,
-                process_launcher=deferred_lsp_launcher,
-                read_text=lsp_read_text or _read_lsp_workspace_text,
-                baseline_environment=resolved_lsp_environment,
-            )
-            lsp_slot.bind(lsp_runtime)
 
         def construct_child_session(
             initial_resource_catalog_bootstrap: Any | None = None,
@@ -620,8 +570,6 @@ def _create_agent_session(
                 capability_runtime=capability_runtime,
                 side_question_binding=side_question_binding,
                 sandbox_runtime=sandbox_runtime,
-                lsp_access=lsp_runtime,
-                legacy_lsp_cleanup=(None if lsp_runtime is None else lsp_runtime.close),
                 coding_lsp_plugin_assembly=lsp_plugin_assembly,
                 delegated_execution_profile=delegated_execution_profile,
                 workspace_capability_binding=workspace_binding,
@@ -643,8 +591,6 @@ def _create_agent_session(
                 lsp_plugin_assembly.close()
             raise
         process_session = child_session
-        if deferred_lsp_launcher is not None:
-            deferred_lsp_launcher.bind(child_session.get_workspace_process_launcher())
         return child_session
 
     result = _CODING_AGENT_PRODUCT_CONSTRUCTION.construct(
@@ -917,10 +863,6 @@ def _coding_lsp_plugin_state_root(
     )
 
 
-def _read_lsp_workspace_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
-
-
 def _source_identity_startup_check(cwd: str) -> StartupCheckResult:
     return StartupCheckResult(
         name="executable_source_identity",
@@ -980,7 +922,6 @@ def _create_agent_session_runtime(
     lsp_definitions: Iterable[LspServerDefinition] = (),
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
-    coding_lsp_plugin_opt_in: CodingLspPluginOptInRequest | None = None,
 ) -> AgentSessionRuntime:
     fixed_services = services if services is not None else create_services()
     fixed_lsp_definitions = tuple(lsp_definitions)
@@ -1015,7 +956,6 @@ def _create_agent_session_runtime(
                 lsp_definitions=fixed_lsp_definitions,
                 lsp_baseline_environment=fixed_lsp_environment,
                 lsp_read_text=lsp_read_text,
-                coding_lsp_plugin_opt_in=coding_lsp_plugin_opt_in,
             )
         ),
         session_cwd=lambda manager: cast(SessionManager, manager).get_cwd(),

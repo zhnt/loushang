@@ -50,8 +50,9 @@ Accepted target directions include explicit Product Capability composition,
 bounded `coding.lsp` and `coding.arch` scopes, Product-owned Method-to-Work
 preparation, and evidence-linked architecture/runtime diagnostics. Harness now
 owns the implemented Capability Planner/Binder/Runtime/Projector substrate;
-production mounting of `coding.lsp` and `coding.arch` through that graph remains
-a Product rollout target rather than a claimed Current path.
+`coding.lsp.default` is now the sole enabled production route through that
+graph, while production mounting of `coding.arch` remains a Product rollout
+target.
 
 ## Direct Architecture Children
 
@@ -136,8 +137,8 @@ They are not a second Current Coding topology.
 
 ## Current-To-Target Gaps
 
-- `coding.lsp` and `coding.arch` are not yet production nodes in the live Mount
-  graph even though the Harness graph substrate is implemented;
+- `coding.lsp` is a production-mounted live Graph node whenever enabled;
+  `coding.arch` is not yet a production node;
 - LSP has an initial evidence matrix, while external-mutation and broader
   passive-delivery behavior remain partial and its architecture remains proposed;
 - Coding Arch now has a proposed canonical nested-scope package; a second

@@ -233,11 +233,6 @@ EXPECTED_LIVE_BINDING_SINK_INVENTORY = {
         "register_tool",
     ),
     (
-        Path("src/loushang/coding/lsp/tool_pack.py"),
-        "register_coding_lsp_tools",
-        "register_tool",
-    ),
-    (
         Path("src/loushang/harness/bootstrap.py"),
         "register_extension_tools",
         "register_tool",
@@ -1592,31 +1587,34 @@ def test_plc1b_versioned_bytes_and_delivery_order_are_frozen() -> None:
     )
 
 
-def test_plc5_private_lsp_adopter_keeps_product_and_graph_ownership() -> None:
+def test_plc5_default_lsp_mount_keeps_product_and_graph_ownership() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
     lifecycle_plan = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
+    architecture_text = " ".join(architecture.split())
+    lifecycle_plan_text = " ".join(lifecycle_plan.split())
 
     for required in (
         "`CodingLspPluginOptInRequest | None`",
-        "not an already assembled Session\ncomposition",
-        "never silently falls back",
-        "`AgentSession` never closes a Graph-owned\nruntime",
+        "not an assembled Session composition",
+        "same bounded 300-second construction window",
+        "failure is fail-closed with no fallback",
+        "`AgentSession` never closes a Graph-owned runtime",
         "Binder rollback/retirement is the sole Provider disposer",
         "`CodingLspToolOwner` stages invisible registration",
-        "does not widen Component Host API\nprefixes",
+        "does not widen Component Host API prefixes",
     ):
-        assert required in architecture
+        assert required in architecture_text
 
     for required in (
         "not a boolean treated as authority",
-        "not a caller-assembled Session\n  composition",
-        "an opt-in request is neither a\n  declaration-execution decision",
-        "`AgentSession` must never call\n  `close()` on a Graph-owned LSP runtime",
+        "not a caller-assembled Session composition",
+        "an opt-in request is neither a declaration-execution decision",
+        "`AgentSession` never calls `close()` on a Graph-owned LSP runtime",
         "Bootstrap neither constructs LSP Tool definitions nor owns their leases",
         "`CodingLspPluginConfigV1`",
-        "No per-workspace\npackage generation",
+        "No per-workspace package generation",
     ):
-        assert required in lifecycle_plan
+        assert required in lifecycle_plan_text
 
 
 def test_plc5_co_distributed_dependency_evidence_keeps_one_lock_authority() -> None:

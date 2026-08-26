@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
+from typing import Literal
 
 import pytest
 
@@ -10,6 +11,7 @@ from loushang.coding.lsp._plugin_opt_in import (
     CodingLspPluginOptInError,
     CodingLspPluginOptInRequest,
     assemble_coding_lsp_plugin_opt_in,
+    create_coding_lsp_default_plugin_opt_in_request,
 )
 from loushang.coding.lsp._provider_api import (
     CODING_LSP_TOOL_RUNTIME_FACET,
@@ -27,6 +29,9 @@ from loushang.harness.approval.plugin_execution import (
     PluginExecutionDecisionJournal,
 )
 from loushang.harness.capabilities.component_host import CapabilityComponentHost
+from loushang.harness.capabilities.contribution_admission import (
+    CatalogConsumerContributionSpec,
+)
 from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleValue,
@@ -62,8 +67,8 @@ from loushang.harness.workspace.process import (
 @dataclass(slots=True)
 class _ApprovalOwner:
     now: int
-    definition_disposition: str = "approved"
-    activation_disposition: str = "approved"
+    definition_disposition: Literal["approved", "denied"] = "approved"
+    activation_disposition: Literal["approved", "denied"] = "approved"
     definition_calls: int = 0
     activation_calls: int = 0
     activation_decision: PluginActivationDecisionRecordV1 | None = None
@@ -189,13 +194,14 @@ def test_product_opt_in_request_rejects_an_object_without_approval_owner_ports()
         "approval_owner",
     )
     with pytest.raises(TypeError, match="Approval owner"):
-        CodingLspPluginOptInRequest(approval_owner=object())
+        CodingLspPluginOptInRequest(approval_owner=object())  # type: ignore[arg-type]
 
 
 def test_product_opt_in_composer_reaches_approved_session_inputs_without_start(
     tmp_path: Path,
 ) -> None:
     now = 2_500
+    cleanup_calls: list[str] = []
     approval_owner = _ApprovalOwner(now)
     materializer = CodingPackageMaterializer(
         install_root=tmp_path / "installed",
@@ -224,6 +230,7 @@ def test_product_opt_in_composer_reaches_approved_session_inputs_without_start(
         host_boot_id="3" * 32,
         tool_mode="on_demand",
         clock=lambda: now,
+        state_cleanup=lambda: cleanup_calls.append("cleanup"),
     )
     revision_handle = assembled.runtime.packages[0].revision_handle
     assert revision_handle.closed is False
@@ -238,7 +245,9 @@ def test_product_opt_in_composer_reaches_approved_session_inputs_without_start(
             assembled.plugin_assembly.product_composition.catalog_admissions
         )
         assert catalog_admission.owner_id == "coding.tools"
-        assert catalog_admission.candidate.contribution.item_ids == (
+        contribution = catalog_admission.candidate.contribution
+        assert isinstance(contribution, CatalogConsumerContributionSpec)
+        assert contribution.item_ids == (
             "document_outline",
             "inspect_symbol",
         )
@@ -265,6 +274,7 @@ def test_product_opt_in_composer_reaches_approved_session_inputs_without_start(
         assembled.close()
     assert revision_handle.closed is True
     assembled.close()
+    assert cleanup_calls == ["cleanup"]
 
 
 def test_product_opt_in_tool_owner_stages_complete_generation_and_retires_reverse(
@@ -498,3 +508,161 @@ def test_product_opt_in_activation_denial_is_fail_closed(
     assert captured.value.code == "coding_lsp_plugin_activation_denied"
     assert approval_owner.definition_calls == 1
     assert approval_owner.activation_calls == 1
+
+
+def test_product_opt_in_reconstructs_with_fresh_exact_activation_evidence(
+    tmp_path: Path,
+) -> None:
+    now = 2_500
+    materializer = CodingPackageMaterializer(
+        install_root=tmp_path / "installed",
+        plugin_revision_root=tmp_path / "revisions",
+    )
+    workspace_binding = workspace_capability_provider_binding(
+        operations=LocalToolOperations(),
+        process_launcher=_UnusedWorkspaceLauncher(),
+        scope_instance_id="workspace:test",
+        binding_input_fingerprint="6" * 64,
+        source_id="coding-lsp-opt-in-test",
+    )
+    config = CodingLspPluginConfigV1.from_runtime_inputs(
+        workspace_root=tmp_path,
+        definitions=(),
+        baseline_environment={"PATH": "/admitted/bin"},
+    )
+    first_owner = _ApprovalOwner(now)
+    first = assemble_coding_lsp_plugin_opt_in(
+        CodingLspPluginOptInRequest(approval_owner=first_owner),
+        session_id="session-test",
+        config=config,
+        package_materializer=materializer,
+        workspace_binding=workspace_binding,
+        state_root=tmp_path / "state",
+        host_boot_id="3" * 32,
+        tool_mode="on_demand",
+        clock=lambda: now,
+    )
+    [first_request] = first.session_inputs.component_requests
+    first.close()
+
+    second_owner = _ApprovalOwner(now)
+    second = assemble_coding_lsp_plugin_opt_in(
+        CodingLspPluginOptInRequest(approval_owner=second_owner),
+        session_id="session-test",
+        config=config,
+        package_materializer=materializer,
+        workspace_binding=workspace_binding,
+        state_root=tmp_path / "state",
+        host_boot_id="3" * 32,
+        tool_mode="on_demand",
+        clock=lambda: now,
+    )
+    try:
+        [second_request] = second.session_inputs.component_requests
+        assert second_request.activation_decision_id != (
+            first_request.activation_decision_id
+        )
+        assert second_owner.definition_calls == 1
+        assert second_owner.activation_calls == 1
+    finally:
+        second.close()
+
+
+def test_default_product_approval_owner_accepts_only_exact_lsp_closure(
+    tmp_path: Path,
+) -> None:
+    now = 2_500
+    request = create_coding_lsp_default_plugin_opt_in_request(clock=lambda: now)
+    assembled = assemble_coding_lsp_plugin_opt_in(
+        request,
+        session_id="session-test",
+        config=CodingLspPluginConfigV1.from_runtime_inputs(
+            workspace_root=tmp_path,
+            definitions=(),
+            baseline_environment={"PATH": "/admitted/bin"},
+        ),
+        package_materializer=CodingPackageMaterializer(
+            install_root=tmp_path / "installed",
+            plugin_revision_root=tmp_path / "revisions",
+        ),
+        workspace_binding=workspace_capability_provider_binding(
+            operations=LocalToolOperations(),
+            process_launcher=_UnusedWorkspaceLauncher(),
+            scope_instance_id="workspace:test",
+            binding_input_fingerprint="7" * 64,
+            source_id="coding-lsp-opt-in-test",
+        ),
+        state_root=tmp_path / "state",
+        host_boot_id="3" * 32,
+        tool_mode="on_demand",
+        clock=lambda: now,
+    )
+    try:
+        [component_request] = assembled.session_inputs.component_requests
+        journal = PluginActivationDecisionJournal(
+            tmp_path / "state" / "activation-decisions.jsonl",
+            scope_id="session:session-test",
+            clock=lambda: now,
+        )
+        [decision] = journal.snapshot().decisions
+        assert decision.decision_id == component_request.activation_decision_id
+        assert decision.authorization.actor_id == "product:coding"
+        assert decision.authorization.source == (
+            "coding-lsp-default-product-policy"
+        )
+        assert decision.subject.plugin_id == "coding.lsp.default"
+        assert decision.subject.capability_id == "coding.lsp"
+        assert isinstance(decision.subject, ContributionActivationApprovalSubject)
+        with pytest.raises(CodingLspPluginOptInError) as captured:
+            request.approval_owner.approve_activation(
+                journal=journal,
+                subject=replace(decision.subject, provider_id="foreign"),
+            )
+        assert captured.value.code == (
+            "coding_lsp_default_activation_subject_rejected"
+        )
+    finally:
+        assembled.close()
+
+
+def test_default_product_approval_spans_the_provider_admission_window(
+    tmp_path: Path,
+) -> None:
+    now = [2_500]
+    assembled = assemble_coding_lsp_plugin_opt_in(
+        create_coding_lsp_default_plugin_opt_in_request(clock=lambda: now[0]),
+        session_id="session-test",
+        config=CodingLspPluginConfigV1.from_runtime_inputs(
+            workspace_root=tmp_path,
+            definitions=(),
+            baseline_environment={"PATH": "/admitted/bin"},
+        ),
+        package_materializer=CodingPackageMaterializer(
+            install_root=tmp_path / "installed",
+            plugin_revision_root=tmp_path / "revisions",
+        ),
+        workspace_binding=workspace_capability_provider_binding(
+            operations=LocalToolOperations(),
+            process_launcher=_UnusedWorkspaceLauncher(),
+            scope_instance_id="workspace:test",
+            binding_input_fingerprint="8" * 64,
+            source_id="coding-lsp-opt-in-test",
+        ),
+        state_root=tmp_path / "state",
+        host_boot_id="3" * 32,
+        tool_mode="on_demand",
+        clock=lambda: now[0],
+    )
+    try:
+        now[0] += 61_000
+        [request] = assembled.session_inputs.component_requests
+        prepared = assembled.component_host.prepare_component(
+            request.resolved,
+            package=request.package,
+            owner_snapshot=request.owner_snapshot,
+            trust_snapshot=request.trust_snapshot,
+            decision_id=request.activation_decision_id,
+        )
+        assert prepared.cancel_before_start() is True
+    finally:
+        assembled.close()

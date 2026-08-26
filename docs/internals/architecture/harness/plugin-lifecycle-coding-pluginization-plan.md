@@ -22,21 +22,23 @@
   also implemented. PLC5.1a's installed-distribution evidence resolver,
   Product-owned co-distribution grant, canonical lock integration, checked-in
   `coding.lsp.default` package, inert declaration evaluation, and private
-  activation-symbol import proof are implemented. The private Product opt-in
-  request/composer now owns package publication, selection, Definition Approval
+  activation-symbol import proof are implemented. The Product composer now owns
+  package publication, selection, Definition Approval
   consumption, Tool-owner admission, Provider resolution, Activation Approval
   issuance/verification, Component Host construction and exact Session input
   binding. The one-shot activation decision remains unconsumed until Session
   Graph preparation. A bind-once `CodingLspToolOwner` now projects the exact
   admitted Tool pack only from its Graph Consumer capture, stages invisible
   runtime Tool leases, publishes the complete generation and retires it in
-  reverse order. The private request is now wired through Coding bootstrap into
-  the live Session Graph: Provider ownership transfers once to the Binder,
+  reverse order. Coding bootstrap now selects this Plugin route by default when
+  the capability is enabled: Provider ownership transfers once to the Binder,
   Tools publish only after capture, and the Product retains only a non-owning
   semantic view. Real-process vertical regressions now prove the Plugin path in
   both `always` and `on_demand` modes through Tool execution, status, explicit
-  stop and exact-generation retirement. Default cutover, old deferred-route
-  deletion, PLC6 through PLC9, and the public SDK remain unimplemented.
+  stop and exact-generation retirement. The Product-owned exact-policy Approval
+  owner, default cutover and deletion of the deferred runtime, early Tool
+  registrar and legacy cleanup input are implemented. PLC6 through PLC9 and the
+  public Plugin SDK remain unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
@@ -500,7 +502,7 @@ The initial caller inventory that each implementation slice must refine is:
 | `harness.resources` exposes Tool/Command pack facets consumed during Session composition | facets retain only immutable references to exact owner-admitted pack snapshots; Tool/Command owners stage definitions and registrations | no Resource-generation value can publish or retire a Tool/Command definition |
 | `coding.cli.build_builtin_tool_registry()` directly calls `register_coding_builtin_tools()` | admitted `coding.base` `tool_pack` owned and registered only by the Tool owner; Resource owner resolves referenced source items | standard-mode parity and no direct registrar callers |
 | CLI directly calls `register_coding_arch_tools()` | admitted sibling `tool_pack` consuming the mounted `coding.arch.default` runtime facet | Arch Graph/Tool migration and caller inventory green |
-| Coding bootstrap calls `register_coding_lsp_tools()` against a deferred runtime | admitted sibling `tool_pack` consuming the mounted `coding.lsp.default` runtime facet | LSP Graph/Tool migration, cancellation and leak tests green |
+| Retired: Coding bootstrap called `register_coding_lsp_tools()` against a deferred runtime | admitted sibling `tool_pack` consuming the mounted `coding.lsp.default` runtime facet | completed; the registrar, deferred runtime and bootstrap binder are deleted |
 | `_CODING_AGENT_PRODUCT_CONSTRUCTION` binds one monolithic default Coding prompt | Kernel prompt plus separately owner-admitted Resource prompt fragments and Tool usage sections combined by Product composition | minimal/standard prompt snapshots and Model Input provenance green |
 | Product plan and settings infer built-in capability mount modes | Composition Set and owner-admitted Provider selection | compatibility telemetry shows no independent selection caller |
 | Skill filesystem/package discovery has multiple source adapters | one Resource-owned provider-neutral Skill catalog | Skill convergence gates pass; individual Skills remain Resources |
@@ -1085,40 +1087,46 @@ the exact Provider Activation decision, verifies that the returned record is
 durably present under the same Subject, constructs the existing Component Host,
 and binds the exact Session composition inputs. The decision remains AVAILABLE:
 only Session Graph preparation may consume it through `prepare_component()`,
-import/start the Provider and transfer its value to the Binder. The opt-in
+import/start the Provider and transfer its value to the Binder. Product-issued
+Approval and Provider admission share the same bounded 300-second construction
+window; expiry requires a fresh composition. The opt-in
 assembly now also has a bind-once `CodingLspToolOwner`: it accepts only the exact
 admitted pack and the captured `coding.lsp` Tool-runtime facet, constructs only
 those two admitted Tool definitions, stages them through a narrow live-Session
 port, commits after the complete generation is ready and disposes its
 registration scope in reverse order. `on_demand` publication does not
 accidentally activate the new Tools. Coding bootstrap now selects this complete
-route only when the private request is present, binds the owner to the live
-Session Tool controller, and leaves a missing request on the legacy route. A
-failed opted-in Graph preparation rolls back Provider and Tool generations and
-never falls back. The Graph-backed semantic capture is non-owning; Session
+route whenever the Product mount is enabled and binds the owner to the live
+Session Tool controller. A failed Graph preparation rolls back Provider and
+Tool generations and never falls back. The Graph-backed semantic capture is non-owning; Session
 retirement disposes Tools before Provider retirement, while `AgentSession`
 never closes the Plugin runtime directly. A real fake-server vertical slice now
 executes both generated Tools through the live Session in `always` and
 `on_demand` modes, observes the mounted status view, explicitly stops the
 Server, and proves disposal removes the Tool generation without a second Server
-shutdown. Default cutover and old deferred-route deletion remain later PLC5
-gates.
+shutdown. The default cutover and old deferred-route deletion are complete.
+Non-persistent Sessions place Definition and Activation journals in
+assembly-owned temporary state, so CLI help discovery and other ephemeral
+construction do not materialize a persistent Session directory.
 
 The adopter-specific design review freezes the following PLC5.1 boundaries
 before implementation:
 
-- private rollout accepts one Product-owned `CodingLspPluginOptInRequest | None`,
+- the migration rollout accepted one Product-owned
+  `CodingLspPluginOptInRequest | None`,
   not a boolean treated as authority and not a caller-assembled Session
-  composition. `None` retains the legacy route. When present, the Coding
+  composition. During migration, `None` retained the legacy route. The default
+  cutover now constructs the request only inside Coding Product policy and has
+  no caller-controlled bootstrap input. The Coding
   Product composer alone expands the request into finalized Plugin selection,
   exact owner admission, Provider resolution and Session assembly. The Approval
   owner remains the sole decision issuer; an opt-in request is neither a
   declaration-execution decision nor a Provider-activation decision;
 - the mounted LSP Bundle value transfers to Graph ownership exactly once. A
   Graph-backed `CodingLspSessionAccess` is a non-owning query/control view;
-  legacy LSP cleanup is represented separately. `AgentSession` must never call
-  `close()` on a Graph-owned LSP runtime, and Binder rollback/retirement remains
-  its sole disposer;
+  the retired legacy LSP cleanup was represented separately during migration.
+  `AgentSession` never calls `close()` on a Graph-owned LSP runtime, and Binder
+  rollback/retirement remains its sole disposer;
 - a dedicated `CodingLspToolOwner` receives only the admitted `runtime` Consumer
   capture, stages invisible Tool registration leases, activates them only after
   the complete owner generation is ready, and retires them in reverse order.
@@ -1254,10 +1262,10 @@ Plugin. It does not add arbitrary host-package dependencies, a dependency
 installer, a second lock schema, public authoring API, MCP behavior, or a new
 Plugin category.
 
-#### PLC5.1b: Private Session Mount And Real-Process Parity
+#### PLC5.1b: Default Session Mount And Real-Process Parity
 
-Implementation status (2026-08-26): implemented behind the private Product
-opt-in. The checked-in package passes the complete publication, selection,
+Implementation status (2026-08-26): implemented and cut over as the sole
+enabled Product route. The checked-in package passes the complete publication, selection,
 Definition Approval, owner admission, Provider resolution, Activation Approval,
 Component Host and Session Graph path. Its sibling Tool owner publishes only
 after the exact runtime-facet capture. Focused real-process regressions prove
@@ -1265,22 +1273,20 @@ that both `always` and `on_demand` modes execute `inspect_symbol` and
 `document_outline` against the same fake LSP Server, expose status and stop
 through the non-owning semantic facet, then retire Tools before Graph-owned
 Provider cleanup. Unit regressions separately prove partial Tool publication
-rollback and that an opted-in failure never enters the legacy route.
+rollback. Product policy creates the private assembly request with an exact
+first-party Approval owner that rejects any different Plugin, Product, scope,
+entrypoint, Provider, owner, trust revision, facet or authority closure. The
+request is not a public SDK parameter and no boolean is treated as authority.
+Disabled mode and `no_tools=all` skip package resolution entirely. The legacy
+reader callback remains in the public signature for compatibility but a
+non-`None` value now fails closed: all LSP reads go through the admitted
+`harness.workspace` facet.
 
-This proof does not authorize an incremental default flip. The remaining PLC5
-cutover is one atomic Product change with these gates:
-
-- Product policy creates the private assembly request without exposing it as a
-  public SDK parameter or treating a boolean as Approval authority;
-- default discovery/configuration, disabled and `no_tools` behavior, sandbox and
-  Approval ceilings, status/command behavior, and failure diagnostics retain
-  parity through the Plugin route;
-- the legacy deferred runtime, early Tool registrar and bootstrap binder are
-  deleted in the same change, leaving no dual parser, binding or disposal path;
-  and
-- focused Coding LSP plus full Coding/Harness/architecture gates pass after the
-  deletion. A failed Plugin path remains fail-closed and cannot restore the old
-  route.
+The same atomic change deletes the deferred runtime, early Tool registrar,
+bootstrap process binder and separate legacy cleanup input. There is no fallback
+or second parser, binding or disposal path. Fresh reconstruction obtains fresh
+Definition and Activation evidence for the new exact execution Subject rather
+than replaying a stale decision.
 
 Scope and gates are PAP6, including packaging the complete Bundle, narrow
 workspace requirements, Tool/runtime Session co-visibility across their exact

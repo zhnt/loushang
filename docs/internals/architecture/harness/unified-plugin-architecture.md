@@ -1514,23 +1514,26 @@ coding.lsp.default declaration
   -> sibling tool_pack binds model-visible definitions against captured facets
 ```
 
-Private rollout starts from one Product-owned
-`CodingLspPluginOptInRequest | None`. It is a request for the Coding Product
-composer to perform selection and assembly, not an already assembled Session
-composition, a boolean grant, or an Approval decision. The Product composer
-uses the existing selection, owner-admission, Provider-resolution and Approval-
-owner ports; only their exact result enters the Session. A missing request keeps
-the legacy route during migration, while an opted-in failure is fail-closed and
-never silently falls back. This private route is now production-wired through
-Coding bootstrap: the Session consumes Activation exactly at Graph preparation,
-publishes the admitted Tool generation after its facet capture, and retires the
-generation before Binder-owned Provider disposal. The legacy route remains the
-default until a later cutover gate.
+The migration rollout started from one Product-owned
+`CodingLspPluginOptInRequest | None`; it was a request for the Coding Product
+composer to perform selection and assembly, not an assembled Session
+composition, boolean grant or Approval decision. The completed cutover now
+constructs that request only inside Product policy whenever the mount is
+enabled. Its exact-policy Approval owner rejects a different first-party
+closure. Product-issued Approval and Provider admission share the same bounded
+300-second construction window; the Session consumes Activation exactly at
+Graph preparation,
+publishes the admitted Tool generation after facet capture and retires the
+generation before Binder-owned Provider disposal. The deferred runtime, early
+Tool registrar, bootstrap process binder and legacy cleanup path are deleted;
+failure is fail-closed with no fallback. Non-persistent Sessions keep their
+decision journals in assembly-owned temporary state and remove it when the
+assembly releases its evidence; they do not materialize the Session store.
 
 The mounted LSP Bundle transfers to Graph ownership exactly once. Product code
-may retain a non-owning `CodingLspSessionAccess` for status and commands, but
-legacy cleanup is a separate input and `AgentSession` never closes a Graph-owned
-runtime. Binder rollback/retirement is the sole Provider disposer. The
+may retain a non-owning `CodingLspSessionAccess` for status and commands.
+`AgentSession` never closes a Graph-owned runtime; Binder rollback/retirement is
+the sole Provider disposer. The
 first-party Provider adapter may reuse a private, narrow LSP engine API through
 an exact Loushang dependency lock; this does not widen Component Host API
 prefixes or declare a public Provider SDK.
@@ -1767,9 +1770,9 @@ implementation.
 ### UPA4: LSP Vertical Slice
 
 - package the default LSP implementation as a first-party Plugin;
-- accept only a Product-owned private opt-in request during migration; Product
-  composition still owns selection/assembly and the Approval owner still owns
-  both executable-Definition and Provider-activation decisions;
+- create the private request only from Product policy after migration cutover;
+  Product composition owns selection/assembly and the exact-policy Approval
+  owner owns both executable-Definition and Provider-activation decisions;
 - grant eligibility/final admission through the `coding.lsp` Capability owner,
   select through `ProductCapabilityProviderResolver`, and mount through the
   Session Graph;

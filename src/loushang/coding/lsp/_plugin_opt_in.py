@@ -24,6 +24,7 @@ from loushang.harness.approval.plugin_activation import (
     PluginActivationDecisionRecordV1,
 )
 from loushang.harness.approval.plugin_execution import (
+    PluginApprovalAuthorizationV1,
     PluginApprovalDecisionRecordV1,
     PluginExecutionDecisionJournal,
 )
@@ -96,6 +97,14 @@ _SOURCE_TRUST_CLASS = "host-equivalent-local"
 _SOURCE_TRUST_POLICY_REVISION = "coding-lsp-source-trust-1"
 _PROVIDER_OWNER_POLICY_REVISION = "coding-lsp-owner-1"
 _TOOL_OWNER_POLICY_REVISION = "coding-lsp-tools-owner-1"
+_DEFAULT_APPROVAL_ACTOR_ID = "product:coding"
+_DEFAULT_APPROVAL_SOURCE = "coding-lsp-default-product-policy"
+# Keep Product-issued activation authority live for the full default Provider
+# admission window. Both remain bounded; the Session still has to recompose once
+# the 300-second admission expires.
+_DEFAULT_APPROVAL_TTL_MS = 300_000
+_DEFAULT_DEFINITION_ENTRYPOINT = "definition.py:declare"
+_DEFAULT_PROVIDER_CONTRIBUTION_ID = "coding-lsp-default"
 
 
 class CodingLspPluginApprovalOwner(Protocol):
@@ -141,6 +150,61 @@ class CodingLspPluginOptInRequest:
             raise TypeError("Coding LSP opt-in requires an Approval owner")
 
 
+@dataclass(frozen=True, slots=True)
+class _CodingLspDefaultPluginApprovalOwner:
+    """Approve only Coding's exact checked-in LSP package policy closure."""
+
+    clock: Callable[[], int] = field(repr=False, compare=False)
+
+    def approve_definition(
+        self,
+        *,
+        journal: PluginExecutionDecisionJournal,
+        subject: PluginExecutionApprovalSubject,
+    ) -> PluginApprovalDecisionRecordV1:
+        _validate_default_definition_subject(subject)
+        now = _read_clock(self.clock)
+        return journal.issue_execution_decision(
+            subject,
+            disposition="approved",
+            authorization=_default_approval_authorization(),
+            revocation_epoch=0,
+            issued_at_unix_ms=now,
+            expires_at_unix_ms=now + _DEFAULT_APPROVAL_TTL_MS,
+            expected_journal_revision=journal.snapshot().journal_revision,
+        )
+
+    def approve_activation(
+        self,
+        *,
+        journal: PluginActivationDecisionJournal,
+        subject: ContributionActivationApprovalSubject,
+    ) -> PluginActivationDecisionRecordV1:
+        _validate_default_activation_subject(subject)
+        now = _read_clock(self.clock)
+        return journal.issue_activation_decision(
+            subject,
+            disposition="approved",
+            authorization=_default_approval_authorization(),
+            issued_at_unix_ms=now,
+            expires_at_unix_ms=now + _DEFAULT_APPROVAL_TTL_MS,
+            expected_journal_revision=journal.snapshot().journal_revision,
+        )
+
+
+def create_coding_lsp_default_plugin_opt_in_request(
+    *,
+    clock: Callable[[], int],
+) -> CodingLspPluginOptInRequest:
+    """Create Coding's private exact-policy request for its checked-in Plugin."""
+
+    if not callable(clock):
+        raise TypeError("Coding LSP default Approval clock is invalid")
+    return CodingLspPluginOptInRequest(
+        approval_owner=_CodingLspDefaultPluginApprovalOwner(clock=clock)
+    )
+
+
 @dataclass(slots=True)
 class CodingLspPluginOptInAssembly:
     """Approved Product closure awaiting bootstrap and Graph ownership transfer."""
@@ -155,6 +219,11 @@ class CodingLspPluginOptInAssembly:
     tool_owner_authority: OwnerContributionAuthority = field(repr=False)
     scope_id: str
     state_root: Path
+    state_cleanup: Callable[[], None] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
     _closed: bool = field(default=False, init=False, repr=False)
 
     def close(self) -> None:
@@ -162,8 +231,25 @@ class CodingLspPluginOptInAssembly:
 
         if self._closed:
             return
-        self.runtime.close()
-        self._closed = True
+        primary_error: BaseException | None = None
+        try:
+            self.runtime.close()
+        except BaseException as exc:
+            primary_error = exc
+        try:
+            if self.state_cleanup is not None:
+                self.state_cleanup()
+        except BaseException as cleanup_error:
+            if primary_error is None:
+                primary_error = cleanup_error
+            else:
+                primary_error.add_note(
+                    f"Coding LSP state cleanup also failed: {cleanup_error}"
+                )
+        finally:
+            self._closed = True
+        if primary_error is not None:
+            raise primary_error
 
 
 def assemble_coding_lsp_plugin_opt_in(
@@ -177,6 +263,7 @@ def assemble_coding_lsp_plugin_opt_in(
     host_boot_id: str,
     tool_mode: CapabilityMountMode,
     clock: Callable[[], int],
+    state_cleanup: Callable[[], None] | None = None,
 ) -> CodingLspPluginOptInAssembly:
     """Resolve and approve the fixed package without importing or starting it."""
 
@@ -191,16 +278,30 @@ def assemble_coding_lsp_plugin_opt_in(
         clock=clock,
     )
     _read_clock(clock)
+    if state_cleanup is not None and not callable(state_cleanup):
+        raise TypeError("Coding LSP Plugin state cleanup is invalid")
     resolved_state_root = Path(state_root).expanduser().resolve()
-    resolved_state_root.mkdir(parents=True, exist_ok=True)
     scope_id = f"session:{session_id.strip()}"
 
-    authority = PluginResolutionAuthority()
-    inspection = authority.inspect(PluginSource(path=coding_lsp_default_plugin_root()))
-    runtime = authority.publish_runtime(
-        (inspection,),
-        binding_store=package_materializer,
-    )
+    try:
+        resolved_state_root.mkdir(parents=True, exist_ok=True)
+        authority = PluginResolutionAuthority()
+        inspection = authority.inspect(
+            PluginSource(path=coding_lsp_default_plugin_root())
+        )
+        runtime = authority.publish_runtime(
+            (inspection,),
+            binding_store=package_materializer,
+        )
+    except BaseException as error:
+        if state_cleanup is not None:
+            try:
+                state_cleanup()
+            except BaseException as cleanup_error:
+                error.add_note(
+                    f"Coding LSP state cleanup also failed: {cleanup_error}"
+                )
+        raise
     try:
         selection = _finalize_selection(
             runtime,
@@ -250,9 +351,22 @@ def assemble_coding_lsp_plugin_opt_in(
             tool_owner_authority=tool_authority,
             scope_id=scope_id,
             state_root=resolved_state_root,
+            state_cleanup=state_cleanup,
         )
-    except BaseException:
-        runtime.close()
+    except BaseException as error:
+        try:
+            runtime.close()
+        except BaseException as cleanup_error:
+            error.add_note(
+                f"Coding LSP revision cleanup also failed: {cleanup_error}"
+            )
+        if state_cleanup is not None:
+            try:
+                state_cleanup()
+            except BaseException as cleanup_error:
+                error.add_note(
+                    f"Coding LSP state cleanup also failed: {cleanup_error}"
+                )
         raise
 
 
@@ -615,6 +729,72 @@ def _tool_owner_authority() -> OwnerContributionAuthority:
     )
 
 
+def _validate_default_definition_subject(
+    subject: PluginExecutionApprovalSubject,
+) -> None:
+    if (
+        subject.plugin_id != _PLUGIN_ID
+        or subject.product_id != CODING_PRODUCT_ID
+        or not subject.scope_id.startswith("session:")
+        or subject.scope_id == "session:"
+        or subject.policy_revision != _PRODUCT_POLICY_REVISION
+        or subject.entrypoint != _DEFAULT_DEFINITION_ENTRYPOINT
+        or subject.source_trust_class != _SOURCE_TRUST_CLASS
+        or subject.source_trust_policy_revision
+        != _SOURCE_TRUST_POLICY_REVISION
+        or subject.requested_authorities != ("filesystem", "process")
+        or subject.allowed_authority_ceiling != ("filesystem", "process")
+        or subject.instance_revision_ref.instance_id
+        != f"{_PLUGIN_ID}@{subject.scope_id}"
+        or subject.instance_revision_ref.plugin_id != _PLUGIN_ID
+        or subject.instance_revision_ref.revision != 1
+    ):
+        raise CodingLspPluginOptInError(
+            "Coding LSP default Definition Subject is outside Product policy.",
+            code="coding_lsp_default_definition_subject_rejected",
+        )
+
+
+def _validate_default_activation_subject(
+    subject: ContributionActivationApprovalSubject,
+) -> None:
+    if (
+        subject.capability_id != CODING_LSP_CAPABILITY_DEFINITION.capability_id
+        or subject.owner_id != CODING_LSP_CAPABILITY_DEFINITION.owner_id
+        or subject.provider_id != _PROVIDER_ID
+        or subject.plugin_id != _PLUGIN_ID
+        or subject.contribution_id != _DEFAULT_PROVIDER_CONTRIBUTION_ID
+        or subject.product_id != CODING_PRODUCT_ID
+        or not subject.scope_id.startswith("session:")
+        or subject.scope_id == "session:"
+        or subject.source_trust_class != _SOURCE_TRUST_CLASS
+        or subject.source_trust_policy_revision
+        != _SOURCE_TRUST_POLICY_REVISION
+        or subject.product_policy_revision != _PRODUCT_POLICY_REVISION
+        or subject.owner_policy_revision != _PROVIDER_OWNER_POLICY_REVISION
+        or subject.revocation_epoch != 0
+        or subject.effective_facets
+        != tuple(sorted(CODING_LSP_CAPABILITY_DEFINITION.facets))
+        or subject.effective_authorities != ("filesystem", "process")
+        or subject.execution_model != "in_process"
+        or subject.instance_revision_ref.instance_id
+        != f"{_PLUGIN_ID}@{subject.scope_id}"
+        or subject.instance_revision_ref.plugin_id != _PLUGIN_ID
+        or subject.instance_revision_ref.revision != 1
+    ):
+        raise CodingLspPluginOptInError(
+            "Coding LSP default Activation Subject is outside Product policy.",
+            code="coding_lsp_default_activation_subject_rejected",
+        )
+
+
+def _default_approval_authorization() -> PluginApprovalAuthorizationV1:
+    return PluginApprovalAuthorizationV1.direct(
+        actor_id=_DEFAULT_APPROVAL_ACTOR_ID,
+        source=_DEFAULT_APPROVAL_SOURCE,
+    )
+
+
 def _validate_inputs(
     request: CodingLspPluginOptInRequest,
     *,
@@ -668,4 +848,5 @@ __all__ = [
     "CodingLspPluginOptInError",
     "CodingLspPluginOptInRequest",
     "assemble_coding_lsp_plugin_opt_in",
+    "create_coding_lsp_default_plugin_opt_in_request",
 ]

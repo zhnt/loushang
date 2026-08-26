@@ -113,64 +113,6 @@ class CodingLspRuntime:
         await self._binding.dispose()
 
 
-class DeferredCodingLspRuntime:
-    """Construction-time slot used before the session Sandbox is available."""
-
-    def __init__(self) -> None:
-        self._runtime: CodingLspRuntime | None = None
-
-    def bind(self, runtime: CodingLspRuntime) -> None:
-        if self._runtime is not None:
-            raise RuntimeError("Coding LSP runtime is already bound")
-        self._runtime = runtime
-
-    async def inspect_symbol(
-        self,
-        *,
-        path: str,
-        line: int,
-        character: int,
-        query: str = "definition",
-        include_declaration: bool = True,
-        limit: int = 50,
-        correlation_id: str,
-        signal: object | None = None,
-    ) -> CodeQueryResult:
-        runtime = self._runtime
-        if runtime is None:
-            raise RuntimeError("Coding LSP runtime is not bound")
-        return await runtime.inspect_symbol(
-            path=path,
-            line=line,
-            character=character,
-            query=query,
-            include_declaration=include_declaration,
-            limit=limit,
-            correlation_id=correlation_id,
-            signal=signal,
-        )
-
-    async def document_outline(
-        self,
-        *,
-        path: str,
-        depth: int = 4,
-        limit: int = 200,
-        correlation_id: str,
-        signal: object | None = None,
-    ) -> DocumentOutlineResult:
-        runtime = self._runtime
-        if runtime is None:
-            raise RuntimeError("Coding LSP runtime is not bound")
-        return await runtime.document_outline(
-            path=path,
-            depth=depth,
-            limit=limit,
-            correlation_id=correlation_id,
-            signal=signal,
-        )
-
-
 def bind_coding_lsp_runtime(
     *,
     workspace_root: str | Path,
@@ -218,7 +160,6 @@ def _bind_coding_lsp_runtime_from_launcher(
 __all__ = [
     "CodingLspRuntime",
     "CodingLspSessionAccess",
-    "DeferredCodingLspRuntime",
     "ProcessLauncherBinder",
     "bind_coding_lsp_runtime",
 ]

@@ -159,27 +159,18 @@ class AgentSession(AgentProductSession):
         capability_runtime: StagedResourceCompositionCandidate | None = None,
         side_question_binding: LegacySideQuestionBinding | None = None,
         sandbox_runtime: SandboxExecutionRuntime | None = None,
-        lsp_access: CodingLspSessionAccess | None = None,
-        legacy_lsp_cleanup: Callable[[], Awaitable[None]] | None = None,
         coding_lsp_plugin_assembly: CodingLspPluginOptInAssembly | None = None,
         delegated_execution_profile: DelegatedExecutionProfile | None = None,
         workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
         initial_resource_catalog_bootstrap: Any | None = None,
     ) -> None:
-        if legacy_lsp_cleanup is not None and lsp_access is None:
-            raise ValueError("Legacy LSP cleanup requires a matching access view")
-        if coding_lsp_plugin_assembly is not None and (
-            lsp_access is not None or legacy_lsp_cleanup is not None
-        ):
-            raise ValueError("Plugin LSP composition cannot retain legacy ownership")
         if coding_lsp_plugin_assembly is not None and not isinstance(
             coding_lsp_plugin_assembly,
             CodingLspPluginOptInAssembly,
         ):
             raise TypeError("Coding LSP Plugin assembly is invalid")
         self._sandbox_runtime = sandbox_runtime
-        self._lsp_access = lsp_access
-        self._legacy_lsp_cleanup = legacy_lsp_cleanup
+        self._lsp_access: CodingLspSessionAccess | None = None
         self._coding_lsp_plugin_assembly = coding_lsp_plugin_assembly
         self._coding_lsp_plugin_capture: CapabilityFacetSet | None = None
         self.delegated_execution_profile = delegated_execution_profile
@@ -393,17 +384,6 @@ class AgentSession(AgentProductSession):
                     )
             self._coding_lsp_plugin_capture = None
             self._lsp_access = None
-        legacy_lsp_cleanup = getattr(self, "_legacy_lsp_cleanup", None)
-        if legacy_lsp_cleanup is not None:
-            try:
-                await legacy_lsp_cleanup()
-            except BaseException as cleanup_error:
-                if primary_error is None:
-                    primary_error = cleanup_error
-                else:
-                    primary_error.add_note(
-                        f"legacy Coding LSP cleanup also failed: {cleanup_error}"
-                    )
         if self._sandbox_runtime is not None:
             try:
                 await self._sandbox_runtime.close()
