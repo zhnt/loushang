@@ -22,14 +22,15 @@ from loushang.harness.approval.plugin_execution import (
     PluginApprovalDecisionRecordV1,
     PluginExecutionDecisionJournal,
 )
+from loushang.harness.capabilities.component_host import CapabilityComponentHost
 from loushang.harness.capabilities.workspace_provider import (
     workspace_capability_provider_binding,
 )
 from loushang.harness.resources.plugins.selection import (
     PluginExecutionApprovalSubject,
 )
-from loushang.harness.session.product_composition_assembly import (
-    ProductCompositionAssemblyError,
+from loushang.harness.session.capability_composition_inputs import (
+    SessionCapabilityCompositionInputs,
 )
 from loushang.harness.workspace.operations import LocalToolOperations
 from loushang.harness.workspace.process import (
@@ -42,8 +43,10 @@ from loushang.harness.workspace.process import (
 class _ApprovalOwner:
     now: int
     definition_disposition: str = "approved"
+    activation_disposition: str = "approved"
     definition_calls: int = 0
     activation_calls: int = 0
+    activation_decision: PluginActivationDecisionRecordV1 | None = None
 
     def approve_definition(
         self,
@@ -71,9 +74,20 @@ class _ApprovalOwner:
         journal: PluginActivationDecisionJournal,
         subject: ContributionActivationApprovalSubject,
     ) -> PluginActivationDecisionRecordV1:
-        del journal, subject
         self.activation_calls += 1
-        raise AssertionError("assembly must not request activation")
+        decision = journal.issue_activation_decision(
+            subject,
+            disposition=self.activation_disposition,
+            authorization=PluginApprovalAuthorizationV1.direct(
+                actor_id="operator:test",
+                source="coding-lsp-opt-in-test",
+            ),
+            issued_at_unix_ms=self.now - 10,
+            expires_at_unix_ms=self.now + 1_000,
+            expected_journal_revision=journal.snapshot().journal_revision,
+        )
+        self.activation_decision = decision
+        return decision
 
 
 class _UnusedWorkspaceLauncher:
@@ -97,7 +111,7 @@ def test_product_opt_in_request_rejects_an_object_without_approval_owner_ports(
         CodingLspPluginOptInRequest(approval_owner=object())
 
 
-def test_product_opt_in_composer_owns_selection_admission_and_resolution(
+def test_product_opt_in_composer_reaches_approved_session_inputs_without_start(
     tmp_path: Path,
 ) -> None:
     now = 2_500
@@ -126,13 +140,14 @@ def test_product_opt_in_composer_owns_selection_admission_and_resolution(
         package_materializer=materializer,
         workspace_binding=workspace_binding,
         state_root=tmp_path / "state",
+        host_boot_id="3" * 32,
         clock=lambda: now,
     )
     revision_handle = assembled.runtime.packages[0].revision_handle
     assert revision_handle.closed is False
     try:
         assert approval_owner.definition_calls == 1
-        assert approval_owner.activation_calls == 0
+        assert approval_owner.activation_calls == 1
         assert {item.declaration.kind for item in assembled.selection.candidates} == {
             "capability_provider",
             "tool_pack",
@@ -149,9 +164,19 @@ def test_product_opt_in_composer_owns_selection_admission_and_resolution(
         assert resolved.provider.provider_id == "coding.lsp.default"
         assert component.resolved is resolved
         assert component.package is assembled.runtime.packages[0]
-        with pytest.raises(ProductCompositionAssemblyError) as activation:
-            assembled.plugin_assembly.bind_session_inputs({})
-        assert activation.value.code == "product_provider_activation_missing"
+        assert isinstance(assembled.component_host, CapabilityComponentHost)
+        assert isinstance(assembled.session_inputs, SessionCapabilityCompositionInputs)
+        assert (
+            assembled.session_inputs.product_composition
+            is assembled.plugin_assembly.product_composition
+        )
+        [component_request] = assembled.session_inputs.component_requests
+        assert component_request.resolved is resolved
+        assert approval_owner.activation_decision is not None
+        assert component_request.activation_decision_id == (
+            approval_owner.activation_decision.decision_id
+        )
+        assert approval_owner.activation_decision.consumption_state == "AVAILABLE"
     finally:
         assembled.close()
     assert revision_handle.closed is True
@@ -187,9 +212,48 @@ def test_product_opt_in_definition_denial_is_fail_closed(
             package_materializer=materializer,
             workspace_binding=workspace_binding,
             state_root=tmp_path / "state",
+            host_boot_id="3" * 32,
             clock=lambda: now,
         )
 
     assert captured.value.code == "coding_lsp_plugin_definition_denied"
     assert approval_owner.definition_calls == 1
     assert approval_owner.activation_calls == 0
+
+
+def test_product_opt_in_activation_denial_is_fail_closed(
+    tmp_path: Path,
+) -> None:
+    now = 2_500
+    approval_owner = _ApprovalOwner(now, activation_disposition="denied")
+    materializer = CodingPackageMaterializer(
+        install_root=tmp_path / "installed",
+        plugin_revision_root=tmp_path / "revisions",
+    )
+    workspace_binding = workspace_capability_provider_binding(
+        operations=LocalToolOperations(),
+        process_launcher=_UnusedWorkspaceLauncher(),
+        scope_instance_id="workspace:test",
+        binding_input_fingerprint="3" * 64,
+        source_id="coding-lsp-opt-in-test",
+    )
+
+    with pytest.raises(CodingLspPluginOptInError) as captured:
+        assemble_coding_lsp_plugin_opt_in(
+            CodingLspPluginOptInRequest(approval_owner=approval_owner),
+            session_id="session-test",
+            config=CodingLspPluginConfigV1.from_runtime_inputs(
+                workspace_root=tmp_path,
+                definitions=(),
+                baseline_environment={"PATH": "/admitted/bin"},
+            ),
+            package_materializer=materializer,
+            workspace_binding=workspace_binding,
+            state_root=tmp_path / "state",
+            host_boot_id="3" * 32,
+            clock=lambda: now,
+        )
+
+    assert captured.value.code == "coding_lsp_plugin_activation_denied"
+    assert approval_owner.definition_calls == 1
+    assert approval_owner.activation_calls == 1

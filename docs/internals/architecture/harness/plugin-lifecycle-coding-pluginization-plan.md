@@ -24,9 +24,12 @@
   `coding.lsp.default` package, inert declaration evaluation, and private
   activation-symbol import proof are implemented. The private Product opt-in
   request/composer now owns package publication, selection, Definition Approval
-  consumption, Tool-owner admission and Provider resolution. Activation-owner
-  consumption, bootstrap/Graph transfer, production cutover, PLC6 through PLC9,
-  and the public SDK remain unimplemented.
+  consumption, Tool-owner admission, Provider resolution, Activation Approval
+  issuance/verification, Component Host construction and exact Session input
+  binding. The one-shot activation decision remains unconsumed until Session
+  Graph preparation. Tool-owner generation, bootstrap/Graph transfer,
+  production cutover, PLC6 through PLC9, and the public SDK remain
+  unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
@@ -1070,11 +1073,15 @@ data-only Tool pack declares the typed `coding.lsp` runtime Consumer without
 registering Tools. A private `CodingLspPluginOptInRequest` carries only the
 Approval-owner port; the Product composer expands it through package
 publication, selection, executable-Definition Approval consumption, exact Tool
-owner admission and Provider resolution. The resulting inert assembly still
-requires an externally issued activation decision and cannot yet enter a
-Session. The next slice is activation-owner consumption and exact Session input
-binding; bootstrap/Graph transfer, default cutover and old deferred-route
-deletion remain later PLC5 gates.
+owner admission and Provider resolution. It then asks that same sole owner for
+the exact Provider Activation decision, verifies that the returned record is
+durably present under the same Subject, constructs the existing Component Host,
+and binds the exact Session composition inputs. The decision remains AVAILABLE:
+only Session Graph preparation may consume it through `prepare_component()`,
+import/start the Provider and transfer its value to the Binder. The next slice
+is the dedicated `CodingLspToolOwner` generation binding; bootstrap/Graph
+transfer, default cutover and old deferred-route deletion remain later PLC5
+gates.
 
 The adopter-specific design review freezes the following PLC5.1 boundaries
 before implementation:
