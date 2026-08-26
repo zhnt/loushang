@@ -35,6 +35,7 @@ from loushang.harness.transcript.kinds import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     CONVERSATION_METADATA_PATCH_KIND,
     EXTENSION_DATA_KIND,
+    MODEL_CALL_ATTEMPT_USAGE_KIND,
     MODEL_CALL_OUTCOME_KIND,
     MODEL_INPUT_COMPONENT_KIND,
     MODEL_INPUT_PREPARED_KIND,
@@ -55,6 +56,7 @@ from loushang.harness.transcript.model_input_v2_types import (
     ModelInputNodeBundle,
     ModelInputSnapshotV2,
 )
+from loushang.harness.transcript.model_usage_types import ModelCallAttemptUsage
 from loushang.harness.transcript.profile import AgentTranscriptProfile
 from loushang.harness.transcript.types import (
     AgentTranscriptContext,
@@ -431,6 +433,52 @@ class AgentTranscriptUnitOfWork:
             ModelCallOutcome,
         ):
             self._require_model_call_outcome(record.payload)
+        elif record.kind == MODEL_CALL_ATTEMPT_USAGE_KIND and isinstance(
+            record.payload,
+            ModelCallAttemptUsage,
+        ):
+            self._require_model_call_attempt_usage(record.payload)
+
+    def _require_model_call_attempt_usage(
+        self,
+        usage: ModelCallAttemptUsage,
+    ) -> None:
+        active_path = self.active_path()
+        matches = [
+            record.payload
+            for record in active_path
+            if isinstance(record.payload, ModelInputSnapshot | ModelInputSnapshotV2)
+            and record.payload.snapshot_id == usage.model_input_snapshot_id
+            and record.payload.invocation_id == usage.invocation_id
+            and record.payload.attempt == usage.attempt
+        ]
+        if len(matches) != 1:
+            raise ModelInputIntegrityError(
+                "model call attempt usage does not match one active Model Input snapshot"
+            )
+        if any(
+            isinstance(record.payload, ModelCallOutcome)
+            and record.payload.invocation_id == usage.invocation_id
+            for record in active_path
+        ):
+            raise ModelInputIntegrityError(
+                "model call attempt usage cannot follow its terminal outcome"
+            )
+        key = (usage.invocation_id, usage.attempt, usage.model_input_snapshot_id)
+        if any(
+            isinstance(record.payload, ModelCallAttemptUsage)
+            and (
+                record.payload.invocation_id,
+                record.payload.attempt,
+                record.payload.model_input_snapshot_id,
+            )
+            == key
+            and record.payload.terminal
+            for record in active_path
+        ):
+            raise ModelInputIntegrityError(
+                "model call attempt usage cannot follow its terminal observation"
+            )
 
     def _require_model_call_outcome(self, outcome: ModelCallOutcome) -> None:
         if any(
@@ -638,10 +686,31 @@ class AgentTranscriptUnitOfWork:
                 propagate_cancellation=True,
             )
 
+    async def append_model_call_attempt_usage(
+        self,
+        usage: ModelCallAttemptUsage,
+        *,
+        max_encoded_record_bytes: int,
+        expected_revision: int,
+        expected_leaf_id: str,
+    ) -> AgentTranscriptCommit:
+        return await self._append_model_input_fact(
+            MODEL_CALL_ATTEMPT_USAGE_KIND,
+            usage,
+            max_encoded_record_bytes=max_encoded_record_bytes,
+            expected_revision=expected_revision,
+            expected_leaf_id=expected_leaf_id,
+        )
+
     async def _append_model_input_fact(
         self,
         kind: str,
-        payload: ModelInputComponent | ModelInputSnapshot | ModelInputSnapshotV2,
+        payload: (
+            ModelInputComponent
+            | ModelInputSnapshot
+            | ModelInputSnapshotV2
+            | ModelCallAttemptUsage
+        ),
         *,
         payload_version: int = STANDARD_PAYLOAD_VERSION,
         max_encoded_record_bytes: int,
@@ -716,6 +785,20 @@ class AgentTranscriptUnitOfWork:
                 )
             dependency_path = self.records_to(matches[0].record_id)
             included_ids.update(record.record_id for record in dependency_path)
+            usage_matches = [
+                record
+                for record in self.records
+                if isinstance(record.payload, ModelCallAttemptUsage)
+                and record.payload.model_input_snapshot_id == snapshot_id
+            ]
+            for usage_match in usage_matches:
+                usage_path = self.records_to(usage_match.record_id)
+                included_ids.update(record.record_id for record in usage_path)
+                pending_snapshot_ids.extend(
+                    lineage_id
+                    for lineage_id in _summary_lineage_ids(usage_path)
+                    if lineage_id not in resolved_snapshot_ids
+                )
             outcome_matches = [
                 record
                 for record in self.records

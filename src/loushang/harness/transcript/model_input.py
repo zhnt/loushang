@@ -52,6 +52,7 @@ from loushang.harness.transcript.model_input_v2_types import (
     MODEL_INPUT_V2_PAYLOAD_VERSION,
     ModelInputSnapshotV2,
 )
+from loushang.harness.transcript.model_usage_types import ModelCallAttemptUsage
 from loushang.harness.transcript.unit_of_work import AgentTranscriptUnitOfWork
 
 ModelInputLogicalProjection = dict[str, object]
@@ -236,6 +237,8 @@ class ModelInputTranscriptCommitter(
         self._invocation_id: str | None = None
         self._latest_metrics: PreparedRequestMetrics | None = None
         self._outcome_recorded = False
+        self._attempt_usage_observations: set[ModelCallAttemptUsage] = set()
+        self._terminal_attempt_usage_keys: set[tuple[str, int, str]] = set()
         self._lock = asyncio.Lock()
 
     @property
@@ -422,6 +425,68 @@ class ModelInputTranscriptCommitter(
                 )
             self._advance(commit.record.record_id, receipt.revision)
             self._outcome_recorded = True
+
+    async def record_model_call_attempt_usage(
+        self,
+        usage: ModelCallAttemptUsage,
+    ) -> bool:
+        """Commit one normalized attempt snapshot; return false for a duplicate."""
+
+        if not isinstance(usage, ModelCallAttemptUsage):
+            raise TypeError("attempt usage must be ModelCallAttemptUsage")
+        async with self._lock:
+            if self._outcome_recorded:
+                raise ModelInputIntegrityError(
+                    "model call attempt usage cannot follow its terminal outcome"
+                )
+            self._require_current_transcript()
+            if self._invocation_id != usage.invocation_id:
+                raise ModelInputIntegrityError(
+                    "model call attempt usage changed logical invocation identity"
+                )
+            matching_snapshots = [
+                record.payload
+                for record in self._transcript.active_path()
+                if isinstance(record.payload, ModelInputSnapshot | ModelInputSnapshotV2)
+                and record.payload.snapshot_id == usage.model_input_snapshot_id
+                and record.payload.invocation_id == usage.invocation_id
+                and record.payload.attempt == usage.attempt
+            ]
+            committed_snapshot_ids = {commit.snapshot_id for commit in self._commits}
+            if (
+                len(matching_snapshots) != 1
+                or usage.model_input_snapshot_id not in committed_snapshot_ids
+            ):
+                raise ModelInputIntegrityError(
+                    "model call attempt usage does not match a committed attempt"
+                )
+            if usage in self._attempt_usage_observations:
+                return False
+            key = (
+                usage.invocation_id,
+                usage.attempt,
+                usage.model_input_snapshot_id,
+            )
+            if key in self._terminal_attempt_usage_keys:
+                raise ModelInputIntegrityError(
+                    "model call attempt usage cannot follow its terminal observation"
+                )
+            commit = await self._transcript.append_model_call_attempt_usage(
+                usage,
+                max_encoded_record_bytes=self._max_encoded_record_bytes,
+                expected_revision=self._expected_revision,
+                expected_leaf_id=self._expected_leaf_id,
+            )
+            receipt = commit.receipt
+            if receipt is None:
+                raise ModelInputIntegrityError(
+                    "model call attempt usage did not reach the authoritative Store"
+                )
+            self._advance(commit.record.record_id, receipt.revision)
+            self._attempt_usage_observations.add(usage)
+            if usage.terminal:
+                self._terminal_attempt_usage_keys.add(key)
+            return True
 
     def _require_current_transcript(self) -> None:
         if (

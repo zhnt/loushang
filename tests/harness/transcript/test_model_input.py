@@ -35,6 +35,7 @@ from loushang.harness.conversation import (
     MemoryConversationStore,
 )
 from loushang.harness.transcript import (
+    MODEL_CALL_ATTEMPT_USAGE_KIND,
     MODEL_CALL_OUTCOME_KIND,
     MODEL_INPUT_COMPONENT_KIND,
     MODEL_INPUT_MAX_ENCODED_RECORD_BYTES,
@@ -42,6 +43,8 @@ from loushang.harness.transcript import (
     AgentTranscriptFileLayout,
     AgentTranscriptRecordFactory,
     AgentTranscriptUnitOfWork,
+    BranchContextSummary,
+    ModelCallAttemptUsage,
     ModelCallOutcome,
     ModelInputCommitContext,
     ModelInputComponent,
@@ -53,6 +56,7 @@ from loushang.harness.transcript import (
     ModelInputTranscriptCommitter,
     create_agent_transcript_file_store,
     project_model_call_invocations,
+    project_model_call_usage,
     rebuild_model_input,
     verify_model_input,
 )
@@ -871,6 +875,98 @@ def test_model_call_outcome_closes_all_ordered_attempt_snapshots_once() -> None:
             )
         with pytest.raises(ModelInputIntegrityError, match="cannot follow"):
             await committer.commit_prepared_request(_prepared(attempt=3))
+
+    asyncio.run(scenario())
+
+
+def test_attempt_usage_committer_is_atomic_idempotent_and_terminal() -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await committer.commit_prepared_request(_prepared())
+        snapshot_id = committer.commits[0].snapshot_id
+        partial = ModelCallAttemptUsage(
+            invocation_id="invocation-1",
+            attempt=1,
+            model_input_snapshot_id=snapshot_id,
+            input=10,
+        )
+
+        assert await committer.record_model_call_attempt_usage(partial) is True
+        revision = transcript.revision
+        assert await committer.record_model_call_attempt_usage(partial) is False
+        assert transcript.revision == revision
+        terminal = ModelCallAttemptUsage(
+            invocation_id="invocation-1",
+            attempt=1,
+            model_input_snapshot_id=snapshot_id,
+            output=2,
+            terminal=True,
+        )
+        assert await committer.record_model_call_attempt_usage(terminal) is True
+        assert project_model_call_usage(transcript.active_path()).complete is True
+        assert project_model_call_usage(transcript.active_path()).usage.total_tokens == 12
+        assert [
+            record.payload
+            for record in transcript.records
+            if record.kind == MODEL_CALL_ATTEMPT_USAGE_KIND
+        ] == [partial, terminal]
+
+        with pytest.raises(ModelInputIntegrityError, match="terminal observation"):
+            await committer.record_model_call_attempt_usage(
+                replace(terminal, output=3, terminal=False)
+            )
+
+        await committer.record_model_call_outcome(
+            PreparedModelCallOutcome(
+                invocation_id="invocation-1",
+                disposition="completed",
+                stop_reason="stop",
+                usage=Usage(10, 2, 0, 0, 12, None),
+            )
+        )
+        with pytest.raises(ModelInputIntegrityError, match="terminal outcome"):
+            await committer.record_model_call_attempt_usage(partial)
+
+    asyncio.run(scenario())
+
+
+def test_attempt_usage_committer_rejects_identity_and_revision_drift() -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await committer.commit_prepared_request(_prepared())
+        fact = ModelCallAttemptUsage(
+            invocation_id="invocation-1",
+            attempt=1,
+            model_input_snapshot_id=committer.commits[0].snapshot_id,
+            input=1,
+        )
+
+        with pytest.raises(ModelInputIntegrityError, match="invocation identity"):
+            await committer.record_model_call_attempt_usage(
+                replace(fact, invocation_id="other-invocation")
+            )
+        with pytest.raises(ModelInputIntegrityError, match="committed attempt"):
+            await committer.record_model_call_attempt_usage(replace(fact, attempt=2))
+        with pytest.raises(ModelInputIntegrityError, match="committed attempt"):
+            await committer.record_model_call_attempt_usage(
+                replace(fact, model_input_snapshot_id="other-snapshot")
+            )
+
+        await transcript.append_agent_message(
+            UserMessage(role="user", content=[], timestamp=1.0)
+        )
+        with pytest.raises(ModelInputIntegrityError, match="changed outside"):
+            await committer.record_model_call_attempt_usage(fact)
 
     asyncio.run(scenario())
 
@@ -1808,6 +1904,48 @@ def test_model_input_components_remain_reachable_and_reusable_after_fork() -> No
     asyncio.run(scenario())
 
 
+def test_fork_derivation_keeps_attempt_usage_for_referenced_snapshot() -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        branch_root = transcript.leaf_id
+        assert branch_root is not None
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=replace(_context(transcript), purpose="branch_summary"),
+            runtime_references=_runtime_references(),
+        )
+        await committer.commit_prepared_request(_prepared())
+        snapshot_id = committer.commits[0].snapshot_id
+        fact = ModelCallAttemptUsage(
+            invocation_id="invocation-1",
+            attempt=1,
+            model_input_snapshot_id=snapshot_id,
+            input=10,
+            terminal=True,
+        )
+        await committer.record_model_call_attempt_usage(fact)
+
+        transcript.branch(branch_root)
+        await transcript.append_agent_message(
+            UserMessage(role="user", content="sibling", timestamp=2.0)
+        )
+        summary = await transcript.append_branch_summary(
+            BranchContextSummary(
+                from_record_id=branch_root,
+                summary="derived summary",
+                model_input_snapshot_ids=(snapshot_id,),
+            )
+        )
+
+        fork_records = transcript.records_for_fork(summary.record.record_id)
+
+        assert any(record.payload == fact for record in fork_records)
+        assert project_model_call_usage(fork_records).usage.total_tokens == 10
+        assert project_model_call_usage(fork_records).complete is True
+
+    asyncio.run(scenario())
+
+
 def test_reconstruction_rejects_component_outside_snapshot_ancestry() -> None:
     async def scenario() -> None:
         transcript = await _memory_transcript()
@@ -2253,6 +2391,43 @@ def test_model_input_commit_propagates_cancellation_after_safe_append() -> None:
             transcript,
             resumed.commits[-1].snapshot_id,
         ).logical_input["messages"] == [{"role": "user", "content": "hello"}]
+
+    asyncio.run(scenario())
+
+
+def test_attempt_usage_commit_propagates_cancellation_after_safe_append() -> None:
+    async def scenario() -> None:
+        backend = _BlockingModelInputStore()
+        transcript = await _memory_transcript(backend)
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript),
+            runtime_references=_runtime_references(),
+        )
+        await committer.commit_prepared_request(_prepared())
+        fact = ModelCallAttemptUsage(
+            invocation_id="invocation-1",
+            attempt=1,
+            model_input_snapshot_id=committer.commits[0].snapshot_id,
+            input=10,
+            terminal=True,
+        )
+        backend.block_appends = True
+
+        task = asyncio.create_task(committer.record_model_call_attempt_usage(fact))
+        await backend.committed.wait()
+        task.cancel()
+        await asyncio.sleep(0)
+
+        assert task.done() is False
+        backend.release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert [
+            record.payload
+            for record in transcript.records
+            if record.kind == MODEL_CALL_ATTEMPT_USAGE_KIND
+        ] == [fact]
 
     asyncio.run(scenario())
 
