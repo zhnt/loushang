@@ -6,7 +6,10 @@ from collections.abc import Mapping, Sequence
 from typing import Protocol, cast
 
 from loushang.harness.context import serialize_context_usage_payload
-from loushang.harness.session.inspection import AgentSessionInspector
+from loushang.harness.session.inspection import (
+    AgentSessionInspector,
+    _build_token_usage_totals,
+)
 from loushang.harness.transcript import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     AgentTranscriptRecord,
@@ -51,10 +54,6 @@ def project_session_stats(
     assistant_messages = 0
     tool_results = 0
     tool_calls = 0
-    total_input = 0
-    total_output = 0
-    total_cache_read = 0
-    total_cache_write = 0
     total_cost = 0.0
     messages = list(agent_port.state.messages)
     for message in messages:
@@ -70,10 +69,6 @@ def project_session_stats(
                 )
             usage = getattr(message, "usage", None)
             if usage is not None:
-                total_input += int(getattr(usage, "input", 0) or 0)
-                total_output += int(getattr(usage, "output", 0) or 0)
-                total_cache_read += int(getattr(usage, "cache_read", 0) or 0)
-                total_cache_write += int(getattr(usage, "cache_write", 0) or 0)
                 cost = getattr(usage, "cost", {})
                 if isinstance(cost, dict):
                     total_cost += float(
@@ -89,6 +84,7 @@ def project_session_stats(
         elif role == "toolResult":
             tool_results += 1
     session_file = session_port.get_session_file()
+    token_usage = _build_token_usage_totals(session_port.get_branch())
     return {
         "session_file": str(session_file) if session_file is not None else None,
         "session_id": session_port.get_session_record().session_id,
@@ -98,11 +94,13 @@ def project_session_stats(
         "tool_results": tool_results,
         "total_messages": len(messages),
         "tokens": {
-            "input": total_input,
-            "output": total_output,
-            "cache_read": total_cache_read,
-            "cache_write": total_cache_write,
-            "total": total_input + total_output + total_cache_read + total_cache_write,
+            "input": token_usage.input,
+            "output": token_usage.output,
+            "cache_read": token_usage.cache_read,
+            "cache_write": token_usage.cache_write,
+            "total": token_usage.total,
+            "source": token_usage.source,
+            "incomplete_attempts": token_usage.incomplete_attempts,
         },
         "cost": total_cost,
         "context_usage": serialize_context_usage_payload(context_usage),
