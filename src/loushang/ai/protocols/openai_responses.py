@@ -24,6 +24,7 @@ from loushang.ai.provider import PreparedModelRequest, ProviderRequest
 from loushang.ai.provider.errors import provider_error_part
 from loushang.ai.structured import openai_responses_text_format
 from loushang.ai.trace import emit_trace as _emit_trace
+from loushang.ai.utils.async_iter import close_async_source
 
 
 def _resolve_cache_retention(options: object | None) -> str | None:
@@ -97,8 +98,12 @@ class OpenAIResponsesAdapter:
         self._client = client
 
     async def invoke_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
-        async for part in invoke_prepared_request(self, request):
-            yield part
+        source = invoke_prepared_request(self, request)
+        try:
+            async for part in source:
+                yield part
+        finally:
+            await close_async_source(source)
 
     def prepare_request(self, request: ProviderRequest) -> PreparedModelRequest:
         model = request.model
@@ -219,56 +224,71 @@ class OpenAIResponsesAdapter:
             ) from e
 
         default_headers = canonicalize_sdk_headers(resolved.headers or {})
-        client = self._client or AsyncOpenAI(  # type: ignore[call-arg]
-            api_key=OPENAI_SDK_API_KEY_PLACEHOLDER,
-            base_url=resolved.base_url,
-        )
-        _debug(
-            "client",
-            {
-                "api": model.api,
-                "provider": model.provider_id,
-                "endpoint": model.endpoint_id,
-                "model": model.id,
-            },
-        )
-
-        params: dict[str, Any] = prepared.payload_for_transport()
-        params["extra_headers"] = {
-            "Authorization": Omit(),
-            "X-Api-Key": Omit(),
-            **default_headers,
-        }
-
-        # 发送请求
-        is_stream_request = getattr(resolved, "mode", "stream") == "stream"
+        client: Any
+        if self._client is None:
+            owns_client = True
+            client = AsyncOpenAI(  # type: ignore[call-arg]
+                api_key=OPENAI_SDK_API_KEY_PLACEHOLDER,
+                base_url=resolved.base_url,
+            )
+        else:
+            owns_client = False
+            client = self._client
         try:
-            response = await client.responses.create(**params)
-        except Exception as e:
-            _debug("stream_error", {"exceptionType": type(e).__name__})
-            yield provider_error_part(e, source=self.api)
-            return
-        if not is_stream_request:
-            for part in process_responses_response(
+            _debug(
+                "client",
+                {
+                    "api": model.api,
+                    "provider": model.provider_id,
+                    "endpoint": model.endpoint_id,
+                    "model": model.id,
+                },
+            )
+
+            params: dict[str, Any] = prepared.payload_for_transport()
+            params["extra_headers"] = {
+                "Authorization": Omit(),
+                "X-Api-Key": Omit(),
+                **default_headers,
+            }
+
+            # 发送请求
+            is_stream_request = getattr(resolved, "mode", "stream") == "stream"
+            try:
+                response = await client.responses.create(**params)
+            except Exception as e:
+                _debug("stream_error", {"exceptionType": type(e).__name__})
+                yield provider_error_part(e, source=self.api)
+                return
+            if not is_stream_request:
+                for part in process_responses_response(
+                    response,
+                    reasoning_enabled=resolved.reasoning_enabled is True,
+                    source=self.api,
+                ):
+                    yield part
+                return
+
+            parts = process_responses_stream(
                 response,
                 reasoning_enabled=resolved.reasoning_enabled is True,
                 source=self.api,
-            ):
-                yield part
-            return
-
-        try:
-            async for part in process_responses_stream(
-                response,
-                reasoning_enabled=resolved.reasoning_enabled is True,
-                source=self.api,
-            ):
-                yield part
-        except Exception as e:
-            _debug("stream_iter_error", {"exceptionType": type(e).__name__})
-            yield provider_error_part(e, source=self.api)
+            )
+            try:
+                try:
+                    async for part in parts:
+                        yield part
+                except Exception as e:
+                    _debug("stream_iter_error", {"exceptionType": type(e).__name__})
+                    yield provider_error_part(e, source=self.api)
+            finally:
+                try:
+                    await close_async_source(parts)
+                finally:
+                    await close_provider_stream(response)
         finally:
-            await close_provider_stream(response)
+            if owns_client:
+                await close_async_source(client)
 
 
 def _supports_reasoning(capabilities: object | None) -> bool:

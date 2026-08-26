@@ -20,6 +20,7 @@ from loushang.ai.tool.transform import (
 )
 from loushang.ai.types import AssistantMessage, TextPart, Tool, ToolResultMessage
 from loushang.ai.utils import sanitize_surrogates, short_hash
+from loushang.ai.utils.async_iter import close_async_source
 
 
 class _BufferedTextPart(TypedDict):
@@ -111,7 +112,52 @@ def convert_responses_tools(
     return to_openai_responses_tools(list(tools))
 
 
+class _DirectAsyncEventIterator:
+    """Delegate ``__anext__`` without creating an SDK ``__aiter__`` wrapper."""
+
+    def __init__(self, source: object) -> None:
+        direct_next = getattr(source, "__anext__", None)
+        if callable(direct_next):
+            self._iterator = source
+            self._owns_iterator = False
+        else:
+            self._iterator = source.__aiter__()  # type: ignore[attr-defined]
+            self._owns_iterator = self._iterator is not source
+
+    def __aiter__(self) -> _DirectAsyncEventIterator:
+        return self
+
+    async def __anext__(self) -> object:
+        return await self._iterator.__anext__()  # type: ignore[attr-defined,no-any-return]
+
+    async def aclose(self) -> None:
+        if self._owns_iterator:
+            await close_async_source(self._iterator)
+
+
 async def process_responses_stream(
+    openai_stream,
+    *,
+    reasoning_enabled: bool = False,
+    source: str = "openai-responses",
+) -> AsyncIterator[RawPart]:
+    events = _DirectAsyncEventIterator(openai_stream)
+    parts = _process_responses_events(
+        events,
+        reasoning_enabled=reasoning_enabled,
+        source=source,
+    )
+    try:
+        async for part in parts:
+            yield part
+    finally:
+        try:
+            await close_async_source(parts)
+        finally:
+            await events.aclose()
+
+
+async def _process_responses_events(
     openai_stream,
     *,
     reasoning_enabled: bool = False,
