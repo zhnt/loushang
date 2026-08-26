@@ -4,7 +4,9 @@ import asyncio
 from dataclasses import replace
 from types import SimpleNamespace
 
+import loushang.harness.session.inspection as inspection_module
 from loushang.agent import Agent
+from loushang.ai.json_codec import serialize_message
 from loushang.ai.model import Capabilities, Model, ModelSelection
 from loushang.ai.types import (
     AssistantMessage,
@@ -326,6 +328,86 @@ def test_token_totals_mark_fact_and_outcome_fallback_as_mixed() -> None:
     assert totals.total == 19
     assert totals.source == "mixed_derived"
     assert totals.incomplete_attempts is True
+
+
+def test_provider_context_anchor_skips_summary_and_caches_by_revision(
+    monkeypatch,
+) -> None:
+    attempts = (
+        SimpleNamespace(
+            invocation_id="main-invocation",
+            attempt=1,
+            model_input_snapshot_id="main-snapshot",
+            usage=Usage(10, 2, 3, 4, 19, None),
+            terminal=True,
+        ),
+        SimpleNamespace(
+            invocation_id="summary-invocation",
+            attempt=1,
+            model_input_snapshot_id="summary-snapshot",
+            usage=Usage(20, 1, 0, 0, 21, None),
+            terminal=True,
+        ),
+    )
+    projection_calls = 0
+
+    def project(records):
+        nonlocal projection_calls
+        del records
+        projection_calls += 1
+        return SimpleNamespace(attempts=attempts)
+
+    monkeypatch.setattr(inspection_module, "project_model_call_usage", project)
+    rebuild_calls: list[str] = []
+
+    def rebuild(snapshot_id: str):
+        rebuild_calls.append(snapshot_id)
+        purpose = "compaction_summary" if snapshot_id == "summary-snapshot" else "main"
+        return SimpleNamespace(
+            snapshot=SimpleNamespace(
+                purpose=purpose,
+                source_revision=1,
+                commit_revision=2,
+                provider_id="provider-1",
+                endpoint_id="endpoint-1",
+                api_id="api-1",
+                model_id="model-1",
+            ),
+            logical_input={
+                "messages": [
+                    serialize_message(
+                        UserMessage(role="user", content="hello", timestamp=1.0)
+                    )
+                ]
+            },
+            prepared_payload_hash="sha256:" + "a" * 64,
+        )
+
+    inspector = AgentSessionInspector(
+        agent=SimpleNamespace(),
+        session=SimpleNamespace(rebuild_model_input=rebuild),
+        get_session_id=lambda: "session-1",
+        get_session_name=lambda: None,
+        get_active_tool_names=lambda: [],
+        is_retrying=lambda: False,
+        is_compacting=lambda: False,
+        get_last_diagnostics=lambda limit: [],
+        get_model_selection=lambda: None,
+    )
+
+    first = inspector._get_provider_context_anchor(
+        (), transcript_revision=3, leaf_id="leaf-3"
+    )
+    second = inspector._get_provider_context_anchor(
+        (), transcript_revision=3, leaf_id="leaf-3"
+    )
+
+    assert first is second
+    assert first is not None
+    assert first.invocation_id == "main-invocation"
+    assert first.provider_prompt_tokens == 17
+    assert rebuild_calls == ["summary-snapshot", "main-snapshot"]
+    assert projection_calls == 1
 
 
 def _assistant_with_usage(usage: Usage) -> AssistantMessage:

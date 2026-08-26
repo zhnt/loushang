@@ -6,6 +6,7 @@ from loushang.ai.types import UserMessage
 from loushang.harness.context import serialize_context_usage_payload
 from loushang.harness.transcript import (
     ContextUsageSnapshot,
+    ProviderContextAnchor,
     build_context_usage_snapshot,
     calculate_context_tokens,
     current_context_usage,
@@ -52,6 +53,21 @@ def test_context_usage_measurement_identity_serializes_compatibly() -> None:
             leaf_id="leaf-7",
             estimator_id="harness.message_chars.v1",
             surface_fingerprint="sha256:" + "a" * 64,
+            provider_anchor=ProviderContextAnchor(
+                invocation_id="invocation-1",
+                attempt=1,
+                model_input_snapshot_id="snapshot-1",
+                provider_prompt_tokens=40,
+                sampled_prepared_payload_hash="sha256:" + "b" * 64,
+                sampled_surface_tokens=12,
+                sampled_surface_fingerprint="sha256:" + "c" * 64,
+                source_revision=5,
+                commit_revision=6,
+                provider_id="provider-1",
+                endpoint_id="endpoint-1",
+                api_id="api-1",
+                model_id="model-1",
+            ),
         )
     )
 
@@ -62,6 +78,8 @@ def test_context_usage_measurement_identity_serializes_compatibly() -> None:
     assert payload["leafId"] == "leaf-7"
     assert payload["estimatorId"] == "harness.message_chars.v1"
     assert payload["surfaceFingerprint"] == "sha256:" + "a" * 64
+    assert payload["providerAnchor"]["providerPromptTokens"] == 40
+    assert payload["providerAnchor"]["modelInputSnapshotId"] == "snapshot-1"
 
 
 def test_replay_surface_fingerprint_tracks_model_visible_content_only() -> None:

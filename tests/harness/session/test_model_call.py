@@ -43,6 +43,7 @@ from loushang.harness.conversation import (
     MemoryConversationStore,
 )
 from loushang.harness.runtime import RuntimeProfileResolver
+from loushang.harness.session import AgentSessionInspector
 from loushang.harness.session.model_call import (
     ModelInputTranscriptPort,
     SessionModelCallCapabilityConsumer,
@@ -461,6 +462,26 @@ def test_current_session_persists_observed_attempt_usage_before_outcome() -> Non
         assert usage.total_tokens == 15
         assert usage.terminal is True
         assert entries.index(usage_entries[0]) < outcome_index
+        inspector = AgentSessionInspector(
+            agent=agent,
+            session=session,
+            get_session_id=lambda: "session-model-call",
+            get_session_name=lambda: None,
+            get_active_tool_names=lambda: [],
+            is_retrying=lambda: False,
+            is_compacting=lambda: False,
+            get_last_diagnostics=lambda limit: [],
+            get_model_selection=lambda: None,
+        )
+        anchor = inspector.get_context_usage().provider_anchor
+        assert anchor is not None
+        assert anchor.model_input_snapshot_id == usage.model_input_snapshot_id
+        assert anchor.provider_prompt_tokens == 13
+        assert anchor.sampled_surface_tokens > 0
+        assert anchor.sampled_surface_fingerprint.startswith("sha256:")
+        assert anchor.sampled_prepared_payload_hash.startswith("sha256:")
+        assert anchor.provider_id == "test-provider"
+        assert anchor.api_id == adapter.api
         await runtime.dispose()
 
     asyncio.run(scenario())
@@ -579,6 +600,21 @@ def test_provider_retry_commits_each_attempt_with_one_invocation_identity() -> N
         assert isinstance(attempt_usage[0], ModelCallAttemptUsage)
         assert attempt_usage[0].attempt == 2
         assert attempt_usage[0].model_input_snapshot_id == snapshots[1].snapshot_id
+        inspector = AgentSessionInspector(
+            agent=agent,
+            session=session,
+            get_session_id=lambda: "session-model-call",
+            get_session_name=lambda: None,
+            get_active_tool_names=lambda: [],
+            is_retrying=lambda: False,
+            is_compacting=lambda: False,
+            get_last_diagnostics=lambda limit: [],
+            get_model_selection=lambda: None,
+        )
+        anchor = inspector.get_context_usage().provider_anchor
+        assert anchor is not None
+        assert anchor.attempt == 2
+        assert anchor.model_input_snapshot_id == snapshots[1].snapshot_id
         projected = session.get_model_call_invocations()
         assert len(projected) == 1
         assert projected[0].state == "completed"

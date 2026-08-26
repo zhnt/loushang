@@ -56,6 +56,7 @@ class ContextUsageSnapshot:
     leaf_id: str | None = None
     estimator_id: str | None = None
     surface_fingerprint: str | None = None
+    provider_anchor: ProviderContextAnchor | None = None
 
 
 @dataclass(frozen=True)
@@ -65,6 +66,26 @@ class ReplayContextSurfaceMeasurement:
     tokens: int
     message_count: int
     surface_fingerprint: str
+    estimator_id: str = CONTEXT_MESSAGE_ESTIMATOR_ID
+
+
+@dataclass(frozen=True)
+class ProviderContextAnchor:
+    """Provider prompt pressure bound to one reconstructed prepared input."""
+
+    invocation_id: str
+    attempt: int
+    model_input_snapshot_id: str
+    provider_prompt_tokens: int
+    sampled_prepared_payload_hash: str
+    sampled_surface_tokens: int
+    sampled_surface_fingerprint: str
+    source_revision: int
+    commit_revision: int
+    provider_id: str
+    endpoint_id: str
+    api_id: str
+    model_id: str
     estimator_id: str = CONTEXT_MESSAGE_ESTIMATOR_ID
 
 
@@ -459,6 +480,7 @@ __all__ = [
     "ContextUsageSource",
     "CONTEXT_MESSAGE_ESTIMATOR_ID",
     "ReplayContextSurfaceMeasurement",
+    "ProviderContextAnchor",
     "build_context_usage_snapshot",
     "calculate_context_tokens",
     "current_context_usage",

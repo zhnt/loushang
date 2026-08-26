@@ -8,11 +8,12 @@ Product wire formats and display projections remain outside Harness.
 from __future__ import annotations
 
 from bisect import bisect_left
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from typing import Literal, Protocol
 
 from loushang.agent.types import AgentMessage
+from loushang.ai.json_codec import deserialize_message
 from loushang.ai.model import ModelSelection
 from loushang.ai.types import AssistantMessage
 from loushang.harness.runtime.types import RunState
@@ -24,9 +25,11 @@ from loushang.harness.transcript import (
     AgentTranscriptRecord,
     AgentTranscriptSession,
     ModelCallOutcome,
+    ProviderContextAnchor,
     build_context_usage_snapshot,
     calculate_context_tokens,
     estimate_context_tokens,
+    measure_replay_context_surface,
     project_model_call_usage,
 )
 
@@ -36,6 +39,9 @@ TokenUsageTotalsSource = Literal[
     "legacy_derived",
     "mixed_derived",
 ]
+_PROVIDER_CONTEXT_ANCHOR_PURPOSES = frozenset(
+    {"main", "main_turn", "continuation", "retry"}
+)
 
 
 class AgentStateInspectionPort(Protocol):
@@ -112,6 +118,7 @@ class ContextUsage:
     leaf_id: str | None = None
     estimator_id: str | None = None
     surface_fingerprint: str | None = None
+    provider_anchor: ProviderContextAnchor | None = None
 
 
 @dataclass(frozen=True)
@@ -160,6 +167,16 @@ class AgentSessionInspector:
     get_compaction_compact_percent: Callable[[], float] = lambda: 100.0
     get_compaction_keep_recent_tokens: Callable[[], int | None] = lambda: None
     _transcript: AgentTranscriptInspector = field(init=False, repr=False)
+    _provider_anchor_cache_key: tuple[int, str | None] | None = field(
+        init=False,
+        default=None,
+        repr=False,
+    )
+    _provider_anchor_cache: ProviderContextAnchor | None = field(
+        init=False,
+        default=None,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         self._transcript = AgentTranscriptInspector(self.session)
@@ -186,7 +203,10 @@ class AgentSessionInspector:
     def get_context_usage(self) -> ContextUsage:
         context = self.session.build_context()
         messages = list(context.messages)
-        branch_entries: list[object] = list(self.session.get_branch())
+        branch_records = self.session.get_branch()
+        branch_entries: list[object] = list(branch_records)
+        transcript_revision = len(self.session.get_entries())
+        leaf_id = self.session.get_leaf_id()
         counts = self._transcript.message_counts()
         snapshot = build_context_usage_snapshot(
             messages,
@@ -195,8 +215,16 @@ class AgentSessionInspector:
             reserve_tokens=self.get_compaction_reserve_tokens(),
             compact_percent=self.get_compaction_compact_percent(),
             keep_recent_tokens=self.get_compaction_keep_recent_tokens(),
-            transcript_revision=len(self.session.get_entries()),
-            leaf_id=self.session.get_leaf_id(),
+            transcript_revision=transcript_revision,
+            leaf_id=leaf_id,
+        )
+        snapshot = replace(
+            snapshot,
+            provider_anchor=self._get_provider_context_anchor(
+                branch_records,
+                transcript_revision=transcript_revision,
+                leaf_id=leaf_id,
+            ),
         )
         estimated_context_tokens = (
             estimate_context_tokens(messages).tokens if messages else 0
@@ -233,7 +261,72 @@ class AgentSessionInspector:
             leaf_id=snapshot.leaf_id,
             estimator_id=snapshot.estimator_id,
             surface_fingerprint=snapshot.surface_fingerprint,
+            provider_anchor=snapshot.provider_anchor,
         )
+
+    def _get_provider_context_anchor(
+        self,
+        branch_entries: Sequence[AgentTranscriptRecord],
+        *,
+        transcript_revision: int,
+        leaf_id: str | None,
+    ) -> ProviderContextAnchor | None:
+        cache_key = (transcript_revision, leaf_id)
+        if self._provider_anchor_cache_key == cache_key:
+            return self._provider_anchor_cache
+        anchor = self._derive_provider_context_anchor(branch_entries)
+        self._provider_anchor_cache_key = cache_key
+        self._provider_anchor_cache = anchor
+        return anchor
+
+    def _derive_provider_context_anchor(
+        self,
+        branch_entries: Sequence[AgentTranscriptRecord],
+    ) -> ProviderContextAnchor | None:
+        ledger = project_model_call_usage(tuple(branch_entries))
+        for attempt in reversed(ledger.attempts):
+            if not attempt.terminal:
+                continue
+            provider_prompt_tokens = (
+                attempt.usage.input
+                + attempt.usage.cache_read
+                + attempt.usage.cache_write
+            )
+            if provider_prompt_tokens <= 0:
+                continue
+            rebuilt = self.session.rebuild_model_input(
+                attempt.model_input_snapshot_id
+            )
+            snapshot = rebuilt.snapshot
+            if snapshot.purpose not in _PROVIDER_CONTEXT_ANCHOR_PURPOSES:
+                continue
+            raw_messages = rebuilt.logical_input.get("messages")
+            if not isinstance(raw_messages, list):
+                continue
+            messages = [
+                deserialize_message(dict(message))
+                for message in raw_messages
+                if isinstance(message, Mapping)
+            ]
+            if len(messages) != len(raw_messages):
+                continue
+            sampled_surface = measure_replay_context_surface(messages)
+            return ProviderContextAnchor(
+                invocation_id=attempt.invocation_id,
+                attempt=attempt.attempt,
+                model_input_snapshot_id=attempt.model_input_snapshot_id,
+                provider_prompt_tokens=provider_prompt_tokens,
+                sampled_prepared_payload_hash=rebuilt.prepared_payload_hash,
+                sampled_surface_tokens=sampled_surface.tokens,
+                sampled_surface_fingerprint=sampled_surface.surface_fingerprint,
+                source_revision=snapshot.source_revision,
+                commit_revision=snapshot.commit_revision,
+                provider_id=snapshot.provider_id,
+                endpoint_id=snapshot.endpoint_id,
+                api_id=snapshot.api_id,
+                model_id=snapshot.model_id,
+            )
+        return None
 
     def build_session_stats(self) -> SessionStats:
         context_usage = self.get_context_usage()
