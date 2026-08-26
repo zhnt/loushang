@@ -17,7 +17,7 @@ from loushang.coding.lsp.commands import (
     execute_lsp_session_command,
     lsp_session_command_descriptor,
 )
-from loushang.coding.lsp.runtime import CodingLspRuntime
+from loushang.coding.lsp.runtime import CodingLspSessionAccess
 from loushang.coding.lsp.status import LspSessionStatus, disabled_lsp_session_status
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE
 from loushang.coding.resource_runtime import (
@@ -148,13 +148,17 @@ class AgentSession(AgentProductSession):
         capability_runtime: StagedResourceCompositionCandidate | None = None,
         side_question_binding: LegacySideQuestionBinding | None = None,
         sandbox_runtime: SandboxExecutionRuntime | None = None,
-        lsp_runtime: CodingLspRuntime | None = None,
+        lsp_access: CodingLspSessionAccess | None = None,
+        legacy_lsp_cleanup: Callable[[], Awaitable[None]] | None = None,
         delegated_execution_profile: DelegatedExecutionProfile | None = None,
         workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
         initial_resource_catalog_bootstrap: Any | None = None,
     ) -> None:
+        if legacy_lsp_cleanup is not None and lsp_access is None:
+            raise ValueError("Legacy LSP cleanup requires a matching access view")
         self._sandbox_runtime = sandbox_runtime
-        self._lsp_runtime = lsp_runtime
+        self._lsp_access = lsp_access
+        self._legacy_lsp_cleanup = legacy_lsp_cleanup
         self.delegated_execution_profile = delegated_execution_profile
         self.cwd_bound_services_audit: CwdBoundServicesAudit | None = None
         resolved_capability_runtime = capability_runtime
@@ -262,9 +266,9 @@ class AgentSession(AgentProductSession):
         return self._sandbox_runtime.status()
 
     def get_lsp_status(self) -> LspSessionStatus:
-        if self._lsp_runtime is None:
+        if self._lsp_access is None:
             return disabled_lsp_session_status()
-        return self._lsp_runtime.status()
+        return self._lsp_access.status()
 
     async def stop_lsp_server(
         self,
@@ -272,9 +276,9 @@ class AgentSession(AgentProductSession):
         definition_id: str,
         workspace_root: str,
     ) -> bool:
-        if self._lsp_runtime is None:
+        if self._lsp_access is None:
             return False
-        return await self._lsp_runtime.stop(
+        return await self._lsp_access.stop(
             definition_id=definition_id,
             workspace_root=workspace_root,
         )
@@ -294,7 +298,7 @@ class AgentSession(AgentProductSession):
         args: str,
     ) -> object | None:
         if normalize_command_name(invocation_name) == LSP_SESSION_COMMAND_NAME:
-            return await execute_lsp_session_command(self._lsp_runtime, args)
+            return await execute_lsp_session_command(self._lsp_access, args)
         return await super().execute_command_async(invocation_name, args)
 
     async def emit_product_tool_audit_event(
@@ -311,16 +315,16 @@ class AgentSession(AgentProductSession):
             await super()._dispose_session_runtime_profile()
         except BaseException as exc:
             primary_error = exc
-        lsp_runtime = getattr(self, "_lsp_runtime", None)
-        if lsp_runtime is not None:
+        legacy_lsp_cleanup = getattr(self, "_legacy_lsp_cleanup", None)
+        if legacy_lsp_cleanup is not None:
             try:
-                await lsp_runtime.close()
+                await legacy_lsp_cleanup()
             except BaseException as cleanup_error:
                 if primary_error is None:
                     primary_error = cleanup_error
                 else:
                     primary_error.add_note(
-                        f"Coding LSP cleanup also failed: {cleanup_error}"
+                        f"legacy Coding LSP cleanup also failed: {cleanup_error}"
                     )
         if self._sandbox_runtime is not None:
             try:

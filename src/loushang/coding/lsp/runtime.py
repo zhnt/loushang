@@ -28,6 +28,19 @@ class ProcessLauncherBinder(Protocol):
     ) -> AuthorizedProcessLauncher: ...
 
 
+class CodingLspSessionAccess(Protocol):
+    """Non-owning status and control view retained by a Product Session."""
+
+    def status(self) -> LspSessionStatus: ...
+
+    async def stop(
+        self,
+        *,
+        definition_id: str,
+        workspace_root: str | Path,
+    ) -> bool: ...
+
+
 @dataclass(slots=True)
 class CodingLspRuntime:
     """Own the Product binding while exposing only its semantic query surface."""
@@ -194,6 +207,7 @@ def _bind_coding_lsp_runtime_from_launcher(
 
 __all__ = [
     "CodingLspRuntime",
+    "CodingLspSessionAccess",
     "DeferredCodingLspRuntime",
     "ProcessLauncherBinder",
     "bind_coding_lsp_runtime",
