@@ -35,11 +35,13 @@ from loushang.harness.capabilities.contracts import (
     CapabilityDefinition,
     CapabilityRequirement,
 )
+from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleValue,
     CapabilityFacetBinding,
     CapabilityProviderContext,
 )
+from loushang.harness.capabilities.providers import CapabilityBundleProvider
 from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_PROCESS_LAUNCH_FACET,
     WORKSPACE_READ_FACET,
@@ -76,6 +78,58 @@ CODING_LSP_CAPABILITY_DEFINITION = CapabilityDefinition(
     phase="final",
     authority_ceiling=frozenset({"filesystem", "process"}),
 )
+CODING_LSP_TOOL_RUNTIME_REQUIREMENT = CapabilityRequirement(
+    capability=CODING_LSP_CAPABILITY_DEFINITION.capability_id,
+    facets=(CODING_LSP_TOOL_RUNTIME_FACET,),
+    compatible_contract=CapabilityContractRange.exact(
+        CODING_LSP_CAPABILITY_DEFINITION.contract_version
+    ),
+)
+
+
+class CodingLspToolRuntimePort(Protocol):
+    """Provider-neutral operations exposed to admitted LSP Tool consumers."""
+
+    async def inspect_symbol(
+        self,
+        *,
+        path: str,
+        line: int,
+        character: int,
+        query: str = "definition",
+        include_declaration: bool = True,
+        limit: int = 50,
+        correlation_id: str,
+        signal: object | None = None,
+    ) -> CodeQueryResult: ...
+
+    async def document_outline(
+        self,
+        *,
+        path: str,
+        depth: int = 4,
+        limit: int = 200,
+        correlation_id: str,
+        signal: object | None = None,
+    ) -> DocumentOutlineResult: ...
+
+
+@dataclass(frozen=True, slots=True)
+class CodingLspToolRuntimeCapabilityConsumer:
+    """Exact-generation view limited to the LSP Tool-runtime facet."""
+
+    facets: CapabilityFacetSet
+
+    def __post_init__(self) -> None:
+        if self.facets.requirement != CODING_LSP_TOOL_RUNTIME_REQUIREMENT:
+            raise ValueError("Coding LSP Consumer received the wrong facet view")
+
+    @property
+    def runtime(self) -> CodingLspToolRuntimePort:
+        return cast(
+            CodingLspToolRuntimePort,
+            self.facets.require(CODING_LSP_TOOL_RUNTIME_FACET),
+        )
 
 
 class CodingLspPluginConfigError(ValueError):
@@ -288,6 +342,24 @@ class _CodingLspDiagnosticsView:
         return self._owner.runtime.diagnostics_snapshot()
 
 
+def coding_lsp_capability_provider() -> CapabilityBundleProvider:
+    """Describe the fixed private Provider without constructing live state."""
+
+    return CapabilityBundleProvider(
+        capability_id=CODING_LSP_CAPABILITY_DEFINITION.capability_id,
+        provider_id="coding.lsp.default",
+        implementation_version=1,
+        compatible_contract=CapabilityContractRange.exact(
+            CODING_LSP_CAPABILITY_DEFINITION.contract_version
+        ),
+        facets=CODING_LSP_CAPABILITY_DEFINITION.facets,
+        requirements=(CODING_LSP_WORKSPACE_REQUIREMENT,),
+        required_authorities=frozenset({"filesystem", "process"}),
+        source_id="plugin:coding.lsp.default",
+        selection_rule="Coding Product private opt-in selection",
+    )
+
+
 def create_coding_lsp_provider(
     context: CapabilityProviderContext,
 ) -> CapabilityBundleValue:
@@ -409,9 +481,13 @@ __all__ = [
     "CODING_LSP_PLUGIN_CONFIG_VERSION",
     "CODING_LSP_SEMANTIC_FACET",
     "CODING_LSP_TOOL_RUNTIME_FACET",
+    "CODING_LSP_TOOL_RUNTIME_REQUIREMENT",
     "CODING_LSP_WORKSPACE_REQUIREMENT",
     "CodingLspPluginConfigError",
     "CodingLspPluginConfigV1",
+    "CodingLspToolRuntimeCapabilityConsumer",
+    "CodingLspToolRuntimePort",
+    "coding_lsp_capability_provider",
     "create_coding_lsp_provider",
     "dispose_coding_lsp_provider",
 ]

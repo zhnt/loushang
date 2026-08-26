@@ -41,6 +41,26 @@ class CapabilitySeam:
 SOURCE_BACKED_SEAMS = (
     CapabilitySeam(
         definition=(
+            "loushang.coding.lsp._provider_api:"
+            "CODING_LSP_CAPABILITY_DEFINITION"
+        ),
+        providers=(
+            "loushang.coding.lsp._provider_api:"
+            "coding_lsp_capability_provider",
+        ),
+        consumers=(
+            (
+                "loushang.coding.lsp._provider_api:"
+                "CodingLspToolRuntimeCapabilityConsumer",
+                (
+                    "loushang.coding.lsp._provider_api:"
+                    "CODING_LSP_TOOL_RUNTIME_REQUIREMENT",
+                ),
+            ),
+        ),
+    ),
+    CapabilitySeam(
+        definition=(
             "loushang.harness.capabilities.resources_contracts:"
             "RESOURCES_CAPABILITY_DEFINITION"
         ),
@@ -326,10 +346,10 @@ def render_catalog() -> str:
             "",
             "## Coverage Boundary",
             "",
-            "`coding.lsp` and `coding.arch` remain accepted rollout "
-            "targets, but they are deliberately absent from the "
-            "table until each has a complete source-backed Definition / Provider /",
-            "Consumer seam. Fine-grained Runtime Profile slots and individual Tools,",
+            "`coding.lsp` is source-complete but remains deliberately unmounted during "
+            "its private rollout. `coding.arch` remains an accepted rollout target and "
+            "is absent from the table until it has a complete source-backed Definition /",
+            "Provider / Consumer seam. Fine-grained Runtime Profile slots and individual Tools,",
             "hooks, resources, and Extension contributions do not become top-level",
             "Capability nodes.",
             "",

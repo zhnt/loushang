@@ -7,16 +7,21 @@ from pathlib import Path
 import pytest
 
 from loushang.coding.lsp._provider_api import (
+    CODING_LSP_CAPABILITY_DEFINITION,
     CODING_LSP_DIAGNOSTICS_FACET,
     CODING_LSP_SEMANTIC_FACET,
     CODING_LSP_TOOL_RUNTIME_FACET,
+    CODING_LSP_TOOL_RUNTIME_REQUIREMENT,
     CODING_LSP_WORKSPACE_REQUIREMENT,
     CodingLspPluginConfigError,
     CodingLspPluginConfigV1,
+    CodingLspToolRuntimeCapabilityConsumer,
+    coding_lsp_capability_provider,
     create_coding_lsp_provider,
     dispose_coding_lsp_provider,
 )
 from loushang.coding.lsp.model import LspServerDefinition
+from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleValue,
     CapabilityDependencyBinding,
@@ -24,6 +29,7 @@ from loushang.harness.capabilities.provider_binding import (
     CapabilityProviderContext,
     CapabilityRegistrationCollector,
 )
+from loushang.harness.runtime.bindings import RuntimeBindingState
 from loushang.harness.runtime.registration import (
     RegistrationOwner,
     RegistrationScope,
@@ -73,6 +79,53 @@ def _config(tmp_path: Path) -> CodingLspPluginConfigV1:
         definitions=(_definition(),),
         baseline_environment={"PATH": "/admitted/bin"},
     )
+
+
+def test_private_provider_descriptor_matches_the_declared_capability() -> None:
+    provider = coding_lsp_capability_provider()
+
+    assert provider.capability_id == CODING_LSP_CAPABILITY_DEFINITION.capability_id
+    assert provider.provider_id == "coding.lsp.default"
+    assert provider.compatible_contract.accepts(
+        CODING_LSP_CAPABILITY_DEFINITION.contract_version
+    )
+    assert provider.facets == CODING_LSP_CAPABILITY_DEFINITION.facets
+    assert provider.requirements == (CODING_LSP_WORKSPACE_REQUIREMENT,)
+    assert provider.required_authorities == frozenset({"filesystem", "process"})
+    assert provider.source_id == "plugin:coding.lsp.default"
+
+
+def test_tool_runtime_consumer_captures_only_its_declared_facet() -> None:
+    runtime = object()
+    bundle = CapabilityBundleValue(
+        (CapabilityFacetBinding(CODING_LSP_TOOL_RUNTIME_FACET, runtime),)
+    )
+    state = RuntimeBindingState(bundle)
+    consumer = CodingLspToolRuntimeCapabilityConsumer(
+        CapabilityFacetSet(
+            requirement=CODING_LSP_TOOL_RUNTIME_REQUIREMENT,
+            _lease=state.capture(),
+        )
+    )
+
+    assert consumer.runtime is runtime
+    assert consumer.facets.facet_ids == (CODING_LSP_TOOL_RUNTIME_FACET,)
+
+    state.invalidate()
+    with pytest.raises(RuntimeError, match="stale"):
+        _ = consumer.runtime
+
+
+def test_tool_runtime_consumer_rejects_a_foreign_requirement() -> None:
+    state = RuntimeBindingState(CapabilityBundleValue(()))
+
+    with pytest.raises(ValueError, match="wrong facet view"):
+        CodingLspToolRuntimeCapabilityConsumer(
+            CapabilityFacetSet(
+                requirement=CODING_LSP_WORKSPACE_REQUIREMENT,
+                _lease=state.capture(),
+            )
+        )
 
 
 def test_plugin_config_round_trips_canonical_runtime_inputs(tmp_path: Path) -> None:
