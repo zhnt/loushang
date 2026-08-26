@@ -275,6 +275,14 @@ class _PreparedAdapter:
         self.transport_calls += 1
         prepared.payload_for_transport()
         if self.retry_first and prepared.attempt == 1:
+            if self.report_usage:
+                yield {
+                    "type": "usage_delta",
+                    "input": 10,
+                    "output": 0,
+                    "cache_read": 3,
+                    "total_tokens": 13,
+                }
             yield {
                 "type": "response_error",
                 "message": "retry",
@@ -606,10 +614,12 @@ def test_provider_retry_commits_each_attempt_with_one_invocation_identity() -> N
             for entry in session.get_entries()
             if entry.kind == MODEL_CALL_ATTEMPT_USAGE_KIND
         ]
-        assert len(attempt_usage) == 1
-        assert isinstance(attempt_usage[0], ModelCallAttemptUsage)
-        assert attempt_usage[0].attempt == 2
-        assert attempt_usage[0].model_input_snapshot_id == snapshots[1].snapshot_id
+        assert len(attempt_usage) == 2
+        assert all(isinstance(item, ModelCallAttemptUsage) for item in attempt_usage)
+        assert [item.attempt for item in attempt_usage] == [1, 2]
+        assert [item.model_input_snapshot_id for item in attempt_usage] == [
+            snapshot.snapshot_id for snapshot in snapshots
+        ]
         inspector = AgentSessionInspector(
             agent=agent,
             session=session,

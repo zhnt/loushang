@@ -34,6 +34,7 @@ from loushang.ai.provider.errors import (
 )
 from loushang.ai.provider.protocol import ProviderRequest
 from loushang.ai.trace import emit_trace
+from loushang.ai.types import Usage
 
 RawPartSource = Callable[[], AsyncIterator[RawPart] | Any]
 Sleep = Callable[[float], Awaitable[object]]
@@ -173,6 +174,13 @@ def start_provider_runtime(
                             )
                         ):
                             deadline.cancel()
+                            await _record_pending_attempt_usage(
+                                pending,
+                                options=options,
+                                request=request,
+                                model=model,
+                                call_id=call_id,
+                            )
                             await _close_source(source)
                             source = None
                             await _sleep_before_retry(
@@ -316,6 +324,13 @@ def start_provider_runtime(
                         and _retryable_exception(error, source=model.api or "")
                     ):
                         deadline.cancel()
+                        await _record_pending_attempt_usage(
+                            pending,
+                            options=options,
+                            request=request,
+                            model=model,
+                            call_id=call_id,
+                        )
                         await _close_source(source)
                         source = None
                         await _sleep_before_retry(
@@ -383,32 +398,16 @@ async def _emit_terminal_part_and_record_outcome(
         assembler.result_nowait(),
     )
     if assembler.usage_observed and isinstance(
-        committer,
-        PreparedModelCallAttemptUsageRecorder,
+        committer, PreparedModelCallAttemptUsageRecorder
     ):
-        try:
-            await committer.record_prepared_model_call_attempt_usage(
-                PreparedModelCallAttemptUsage(
-                    invocation_id=call_id,
-                    usage=outcome.usage,
-                )
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception as error:
-            emit_trace(
-                options,
-                {
-                    "type": "runtime:attempt_usage",
-                    **_runtime_trace_base(
-                        request=request,
-                        model=model,
-                        call_id=call_id,
-                    ),
-                    "reason": "record_failed",
-                    "exceptionType": error.__class__.__name__,
-                },
-            )
+        await _record_attempt_usage(
+            outcome.usage,
+            committer=committer,
+            options=options,
+            request=request,
+            model=model,
+            call_id=call_id,
+        )
     if not isinstance(committer, PreparedModelCallOutcomeRecorder):
         return
     try:
@@ -428,7 +427,94 @@ async def _emit_terminal_part_and_record_outcome(
                 "reason": "record_failed",
                 "exceptionType": error.__class__.__name__,
             },
+            )
+
+
+async def _record_pending_attempt_usage(
+    pending: deque[RawPart],
+    *,
+    options: object | None,
+    request: ProviderRequest,
+    model: object,
+    call_id: str,
+) -> None:
+    usage = _usage_from_pending_parts(pending)
+    committer = getattr(options, "prepared_request_committer", None)
+    if usage is None or not isinstance(
+        committer, PreparedModelCallAttemptUsageRecorder
+    ):
+        return
+    await _record_attempt_usage(
+        usage,
+        committer=committer,
+        options=options,
+        request=request,
+        model=model,
+        call_id=call_id,
+    )
+
+
+async def _record_attempt_usage(
+    usage: Usage,
+    *,
+    committer: PreparedModelCallAttemptUsageRecorder,
+    options: object | None,
+    request: ProviderRequest,
+    model: object,
+    call_id: str,
+) -> None:
+    try:
+        await committer.record_prepared_model_call_attempt_usage(
+            PreparedModelCallAttemptUsage(
+                invocation_id=call_id,
+                usage=usage,
+            )
         )
+    except asyncio.CancelledError:
+        raise
+    except Exception as error:
+        emit_trace(
+            options,
+            {
+                "type": "runtime:attempt_usage",
+                **_runtime_trace_base(
+                    request=request,
+                    model=model,
+                    call_id=call_id,
+                ),
+                "reason": "record_failed",
+                "exceptionType": error.__class__.__name__,
+            },
+        )
+
+
+def _usage_from_pending_parts(parts: deque[RawPart]) -> Usage | None:
+    components = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
+    provider_total: int | None = None
+    observed = False
+    for part in parts:
+        if part["type"] != "usage_delta":
+            continue
+        observed = True
+        component_changed = False
+        for name in components:
+            value = part.get(name)
+            if isinstance(value, int) and not isinstance(value, bool):
+                components[name] = value
+                component_changed = True
+        total = part.get("total_tokens")
+        if isinstance(total, int) and not isinstance(total, bool) and total > 0:
+            provider_total = total
+        elif component_changed:
+            provider_total = None
+    if not observed:
+        return None
+    component_total = sum(components.values())
+    return Usage(
+        **components,
+        total_tokens=max(provider_total or 0, component_total),
+        cost=None,
+    )
 
 
 async def _flush_pending(assembler: RawAssembler, pending: deque[RawPart]) -> None:
