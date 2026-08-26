@@ -370,7 +370,7 @@ def test_screen_target_delegates_status_copy_and_compaction_recording() -> None:
                 "will_retry": False,
                 "stage": "committed",
             },
-            "context compacted · 424k -> 38k · 4m14s",
+            "context compacted · 424k -> ≈38k · 4m14s",
         ),
         (
             {

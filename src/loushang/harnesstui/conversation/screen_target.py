@@ -290,7 +290,7 @@ def format_compaction_finished_status(
     if tokens_before is not None and tokens_after is not None:
         result = (
             f"context compacted · {_format_tokens(tokens_before)} -> "
-            f"{_format_tokens(tokens_after)}"
+            f"≈{_format_tokens(tokens_after)}"
         )
     elif tokens_before is not None:
         result = (

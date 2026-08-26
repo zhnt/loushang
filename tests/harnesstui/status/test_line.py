@@ -167,6 +167,17 @@ def test_status_line_context_distinguishes_measurement_quality() -> None:
         ),
         StatusLineSettings(),
     )[-1]
+    changed = status_line_fields(
+        _snapshot(
+            context_usage={
+                "percent": 66.2,
+                "source": "assistant_usage",
+                "accuracy": "projected",
+                "structuralEnvelopeStatus": "logical_mismatch",
+            }
+        ),
+        StatusLineSettings(),
+    )[-1]
 
     assert (measured.text, measured.token) == ("ctx 34% left", "context.measured")
     assert (estimated.text, estimated.token) == (
@@ -176,6 +187,10 @@ def test_status_line_context_distinguishes_measurement_quality() -> None:
     assert (stale.text, stale.token) == (
         "ctx ≈34% left stale",
         "context.stale",
+    )
+    assert (changed.text, changed.token) == (
+        "ctx ≈34% left changed",
+        "context.estimated",
     )
     assert status_line_fields(
         _snapshot(context_usage=None), StatusLineSettings(context="true")

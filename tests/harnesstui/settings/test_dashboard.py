@@ -169,3 +169,23 @@ def test_dashboard_usage_view_explains_accuracy_without_hiding_source() -> None:
     assert "Usage accuracy    Partial estimate" in partial
     assert "Usage accuracy    Historical estimate" in historical
     assert "Usage accuracy    Unavailable" in unknown
+
+
+def test_dashboard_usage_view_exposes_context_projection_quality() -> None:
+    lines = usage_lines(
+        lambda: {
+            "context": {
+                "tokens": 84_000,
+                "contextWindow": 128_000,
+                "percent": 65.625,
+                "source": "assistant_usage",
+                "accuracy": "projected",
+                "structuralEnvelopeStatus": "logical_mismatch",
+            },
+            "tokens": None,
+        }
+    )
+
+    assert "Current context    ≈84,000" in lines
+    assert "Context accuracy   Projected" in lines
+    assert "Freshness          logical envelope changed" in lines

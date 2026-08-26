@@ -537,7 +537,7 @@ def test_screen_event_projector_preserves_coding_status_copy() -> None:
             "stage": "committed",
         }
     )
-    assert app.state.status_message == "context compacted · 424k -> 38k · 4m14s"
+    assert app.state.status_message == "context compacted · 424k -> ≈38k · 4m14s"
 
 
 def test_screen_event_projector_renders_queued_steer_into_transcript() -> None:

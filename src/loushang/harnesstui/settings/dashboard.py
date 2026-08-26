@@ -183,8 +183,11 @@ def usage_lines(provider: UsageProvider | None) -> tuple[str, ...]:
         f"Context window     {_token_value(_value(context, 'context_window', 'contextWindow'))}",
         f"Percent used       {_percent_value(_value(context, 'percent'))}",
         f"Context source     {_display_value(_value(context, 'source'))}",
-        f"Freshness          {_freshness(context)}",
     ]
+    context_accuracy = _context_accuracy(context)
+    if context_accuracy is not None:
+        lines.append(f"Context accuracy   {context_accuracy}")
+    lines.append(f"Freshness          {_freshness(context)}")
     if totals is not None:
         lines.extend(
             (
@@ -205,7 +208,15 @@ def _context_value(context: object) -> str:
     tokens = _value(context, "tokens")
     if tokens is None:
         return "Unavailable"
-    prefix = "≈" if _value(context, "source") != "assistant_usage" else ""
+    accuracy = _value(context, "accuracy")
+    approximate = isinstance(accuracy, str) and accuracy in {
+        "projected",
+        "estimated",
+        "unknown",
+    }
+    if accuracy is None:
+        approximate = _value(context, "source") != "assistant_usage"
+    prefix = "≈" if approximate else ""
     if _value(context, "stale_after_compaction", "staleAfterCompaction") is True:
         prefix = "≈"
     return f"{prefix}{_token_value(tokens)}"
@@ -226,7 +237,29 @@ def _percent_value(value: object) -> str:
 def _freshness(context: object) -> str:
     if _value(context, "stale_after_compaction", "staleAfterCompaction") is True:
         return "stale after compaction"
+    envelope_status = _value(
+        context, "structural_envelope_status", "structuralEnvelopeStatus"
+    )
+    if isinstance(envelope_status, str) and envelope_status in {
+        "mismatched",
+        "logical_mismatch",
+    }:
+        return "logical envelope changed"
+    provider_anchor = _value(context, "provider_anchor", "providerAnchor")
+    if envelope_status == "unavailable" and provider_anchor is not None:
+        return "anchor projection unavailable"
     return "current" if _value(context, "tokens") is not None else "unknown"
+
+
+def _context_accuracy(context: object) -> str | None:
+    accuracy = _value(context, "accuracy")
+    if not isinstance(accuracy, str) or not accuracy:
+        return None
+    return {
+        "projected": "Projected",
+        "estimated": "Estimated",
+        "unknown": "Unavailable",
+    }.get(accuracy, accuracy)
 
 
 def _usage_accuracy(totals: object) -> str:
