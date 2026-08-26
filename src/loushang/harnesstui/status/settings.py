@@ -114,6 +114,7 @@ def statusline_rows(settings: StatusLineSettings) -> tuple[ConfigRow, ...]:
         ConfigRow("statusline.field.runtime", "Runtime", bool_text(settings.runtime)),
         ConfigRow("statusline.field.queue", "Queue", settings.queue),
         ConfigRow("statusline.field.message", "Message", settings.message),
+        ConfigRow("statusline.field.context", "Context", settings.context),
         ConfigRow("statusline.separator", "Separator", settings.separator),
         ConfigRow("statusline.style", "Style", settings.style),
     )
@@ -130,7 +131,11 @@ def next_statusline_value(item_id: str, value: str) -> str:
         "statusline.field.runtime",
     }:
         return next_bool_value(value)
-    if item_id in {"statusline.field.queue", "statusline.field.message"}:
+    if item_id in {
+        "statusline.field.queue",
+        "statusline.field.message",
+        "statusline.field.context",
+    }:
         return {"auto": "true", "true": "false", "false": "auto"}.get(value, value)
     if item_id == "statusline.separator":
         return "dot" if value == "pipe" else "pipe"

@@ -125,6 +125,7 @@ class StatusLineControlSettings:
     runtime: bool = True
     queue: StatusLineAutoValue = "auto"
     message: StatusLineAutoValue = "auto"
+    context: StatusLineAutoValue = "auto"
     separator: StatusLineSeparator = "pipe"
     style: StatusLineStyle = "codex-like"
 

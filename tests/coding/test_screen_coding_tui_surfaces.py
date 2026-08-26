@@ -1600,6 +1600,50 @@ def _manager(
     )
 
 
+def test_screen_surface_manager_wires_live_context_and_usage_snapshots() -> None:
+    context = {
+        "tokens": 84_000,
+        "contextWindow": 128_000,
+        "percent": 65.625,
+        "source": "estimated_from_last_usage",
+    }
+    totals = SimpleNamespace(
+        input=100,
+        output=20,
+        cache_read=30,
+        cache_write=40,
+        total=190,
+        source="logical_outcome_derived",
+        incomplete_attempts=True,
+    )
+
+    class UsageSession(_Session):
+        def __init__(self) -> None:
+            super().__init__()
+            self.context_calls = 0
+            inspector = SimpleNamespace(
+                build_session_stats=lambda: SimpleNamespace(tokens=totals)
+            )
+            self._composition = SimpleNamespace(session_inspector=inspector)
+
+        def get_context_usage(self) -> object:
+            self.context_calls += 1
+            return context
+
+    app = _app()
+    session = UsageSession()
+    manager = _manager(app, session)
+
+    assert app.context_usage_provider is not None
+    assert app.statusline_preview_snapshot().context_usage == context
+    assert app.statusline_preview_snapshot().context_usage == context
+    assert session.context_calls == 1
+    app.state.mark_records_changed()
+    assert app.statusline_preview_snapshot().context_usage == context
+    assert session.context_calls == 2
+    assert manager._usage_snapshot() == {"context": context, "tokens": totals}
+
+
 def _surface_plain_lines(
     surface: ScreenSurfaceView, *, width: int = 100, height: int = 24
 ) -> tuple[str, ...]:

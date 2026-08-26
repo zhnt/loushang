@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import pytest
+
 from loushang.harnesstui.status.line import (
     StatusLinePreviewSnapshot,
     StatusLineSettings,
@@ -9,6 +11,7 @@ from loushang.harnesstui.status.line import (
     status_line_separator,
     status_line_style_mode,
 )
+from loushang.tui import RenderConstraints, StatusBar
 
 
 def _snapshot(**overrides: object) -> StatusLinePreviewSnapshot:
@@ -34,6 +37,7 @@ def test_status_line_settings_defaults_match_product_defaults() -> None:
     assert settings.runtime is True
     assert settings.queue == "auto"
     assert settings.message == "auto"
+    assert settings.context == "auto"
     assert settings.separator == "pipe"
     assert settings.style == "codex-like"
 
@@ -140,6 +144,66 @@ def test_status_line_message_auto_true_false_behavior() -> None:
         field.token != "message"
         for field in status_line_fields(snapshot, StatusLineSettings(message="false"))
     )
+
+
+def test_status_line_context_distinguishes_measurement_quality() -> None:
+    measured = status_line_fields(
+        _snapshot(context_usage={"percent": 66.2, "source": "assistant_usage"}),
+        StatusLineSettings(),
+    )[-1]
+    estimated = status_line_fields(
+        _snapshot(
+            context_usage={"percent": 66.2, "source": "estimated_from_last_usage"}
+        ),
+        StatusLineSettings(),
+    )[-1]
+    stale = status_line_fields(
+        _snapshot(
+            context_usage={
+                "percent": 66.2,
+                "source": "assistant_usage",
+                "staleAfterCompaction": True,
+            }
+        ),
+        StatusLineSettings(),
+    )[-1]
+
+    assert (measured.text, measured.token) == ("ctx 34% left", "context.measured")
+    assert (estimated.text, estimated.token) == (
+        "ctx ≈34% left",
+        "context.estimated",
+    )
+    assert (stale.text, stale.token) == (
+        "ctx ≈34% left stale",
+        "context.stale",
+    )
+    assert status_line_fields(
+        _snapshot(context_usage=None), StatusLineSettings(context="true")
+    )[-1].text == "ctx ?"
+
+
+@pytest.mark.parametrize("width", [120, 80, 50, 20])
+def test_status_line_context_never_displaces_higher_priority_fields(width: int) -> None:
+    settings = StatusLineSettings()
+    without_context = StatusBar(
+        status_line_fields(_snapshot(), settings)
+    ).render(RenderConstraints(width=width, max_height=1)).lines[0].text
+    with_context = StatusBar(
+        status_line_fields(
+            _snapshot(
+                context_usage={
+                    "percent": 65.625,
+                    "source": "estimated_from_last_usage",
+                }
+            ),
+            settings,
+        )
+    ).render(RenderConstraints(width=width, max_height=1)).lines[0].text
+
+    assert with_context in {
+        without_context,
+        f"{without_context} | ctx ≈34% left",
+    }
 
 
 def test_status_line_message_auto_shows_when_data_exists() -> None:

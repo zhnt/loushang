@@ -99,7 +99,11 @@ class StatusProvider:
                 replace(self._statusline_settings, **{bool_field: enabled})  # type: ignore[arg-type]
             )
             return f"Status line {bool_field.replace('_', ' ')}: {normalized}"
-        if item_id in {"statusline.field.queue", "statusline.field.message"}:
+        if item_id in {
+            "statusline.field.queue",
+            "statusline.field.message",
+            "statusline.field.context",
+        }:
             field_name = item_id.rsplit(".", 1)[-1]
             if normalized not in {"auto", "true", "false"}:
                 return f"Invalid status line {field_name} value."

@@ -23,6 +23,7 @@ def test_statusline_rows_are_product_neutral_view_data() -> None:
         ("statusline.field.runtime", "true"),
         ("statusline.field.queue", "true"),
         ("statusline.field.message", "auto"),
+        ("statusline.field.context", "auto"),
         ("statusline.separator", "dot"),
         ("statusline.style", "plain"),
     ]

@@ -391,7 +391,7 @@ def _serialize_statusline_settings(value: object) -> dict[str, Any]:
             "runtime",
         }:
             normalized[key] = _bool_value(item, field_name)
-        elif key in {"queue", "message"}:
+        elif key in {"queue", "message", "context"}:
             normalized[key] = _deserialize_statusline_auto_value(item, field_name)
         elif key == "separator":
             normalized[key] = _deserialize_statusline_separator(item, field_name)

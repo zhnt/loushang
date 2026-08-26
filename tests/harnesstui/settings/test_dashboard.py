@@ -101,3 +101,42 @@ def test_dashboard_usage_view_model_contains_provider_failures() -> None:
         raise RuntimeError("secret product failure")
 
     assert usage_lines(_failed_provider) == ("Usage", "", "Usage data unavailable")
+
+
+def test_dashboard_usage_view_formats_context_and_cumulative_coverage() -> None:
+    lines = usage_lines(
+        lambda: {
+            "context": {
+                "tokens": 84_000,
+                "contextWindow": 128_000,
+                "percent": 65.625,
+                "source": "estimated_from_last_usage",
+                "staleAfterCompaction": False,
+            },
+            "tokens": {
+                "input": 100,
+                "output": 20,
+                "cacheRead": 30,
+                "cacheWrite": 40,
+                "total": 190,
+                "source": "logical_outcome_derived",
+                "incompleteAttempts": True,
+            },
+        }
+    )
+
+    assert lines[2:] == (
+        "Current context    ≈84,000",
+        "Context window     128,000",
+        "Percent used       65.6%",
+        "Context source     estimated_from_last_usage",
+        "Freshness          current",
+        "",
+        "Cumulative input  100",
+        "Cumulative output 20",
+        "Cache read        30",
+        "Cache write       40",
+        "Cumulative total  190",
+        "Coverage source   logical_outcome_derived",
+        "Attempt coverage  incomplete",
+    )

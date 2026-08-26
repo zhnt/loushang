@@ -50,6 +50,7 @@ class ScreenConversationState:
     permission_profile: str | None = "standard"
     statusline_visible: bool = True
     statusline_settings: StatusLineSettings = field(default_factory=StatusLineSettings)
+    context_usage: object | None = None
     _assistant_draft_buffer: StreamingTextBuffer | None = field(
         default=None, init=False, repr=False
     )

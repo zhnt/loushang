@@ -53,6 +53,7 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         self.session = session
         self.runtime = runtime
         self.status_provider = status_provider
+        app.context_usage_provider = self._context_usage
         continuity = bind_coding_continuity(runtime) if runtime is not None else None
         ports = build_standard_agent_screen_surface_workflow_ports(
             session,
@@ -124,11 +125,27 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             capabilities=self.coding_app.state.input_capabilities,
         )
 
+    def _context_usage(self) -> object | None:
+        getter = getattr(self._current_session(), "get_context_usage", None)
+        return getter() if callable(getter) else None
+
+    def _usage_snapshot(self) -> dict[str, object | None]:
+        session = self._current_session()
+        composition = getattr(session, "_composition", None)
+        inspector = getattr(composition, "session_inspector", None)
+        build_stats = getattr(inspector, "build_session_stats", None)
+        stats = build_stats() if callable(build_stats) else None
+        return {
+            "context": self._context_usage(),
+            "tokens": getattr(stats, "tokens", None),
+        }
+
     async def _build_settings_content(self) -> object:
         session = self._current_session()
         return await build_coding_settings_page(
             session=session,
             status_provider=self.status_provider,
+            usage_provider=self._usage_snapshot,
             settings_manager=getattr(session, "settings_manager", None),
             statusline_preview=self.coding_app.statusline_preview_snapshot,
         )

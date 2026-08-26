@@ -53,6 +53,7 @@ class ScreenFramePresentation:
             pending_followups=len(state.pending_followups),
             pending_steers=len(state.pending_steers),
             status_message=state.status_message,
+            context_usage=state.context_usage,
         )
 
     def expanded_bottom_frame(

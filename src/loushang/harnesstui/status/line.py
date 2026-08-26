@@ -22,6 +22,7 @@ class StatusLineSettings:
     runtime: bool = True
     queue: StatusLineAutoValue = "auto"
     message: StatusLineAutoValue = "auto"
+    context: StatusLineAutoValue = "auto"
     separator: StatusLineSeparator = "pipe"
     style: StatusLineStyle = "codex-like"
 
@@ -37,6 +38,7 @@ class StatusLinePreviewSnapshot:
     pending_followups: int = 0
     pending_steers: int = 0
     status_message: str | None = None
+    context_usage: object | None = None
 
 
 def status_line_fields(
@@ -74,6 +76,9 @@ def status_line_fields(
         )
     if _show_auto_field(settings.message, bool(snapshot.status_message)):
         fields.append(StatusField(snapshot.status_message or "no status", priority=40, token="message"))
+    if _show_auto_field(settings.context, snapshot.context_usage is not None):
+        context_text, context_token = _context_status(snapshot.context_usage)
+        fields.append(StatusField(context_text, priority=30, token=context_token))
     return tuple(fields)
 
 
@@ -105,6 +110,7 @@ def status_line_settings_from_control(settings: object | None) -> StatusLineSett
         runtime=bool(_setting_value(settings, "runtime", defaults.runtime)),
         queue=cast(StatusLineAutoValue, _setting_value(settings, "queue", defaults.queue)),
         message=cast(StatusLineAutoValue, _setting_value(settings, "message", defaults.message)),
+        context=cast(StatusLineAutoValue, _setting_value(settings, "context", defaults.context)),
         separator=cast(StatusLineSeparator, _setting_value(settings, "separator", defaults.separator)),
         style=cast(StatusLineStyle, _setting_value(settings, "style", defaults.style)),
     )
@@ -121,6 +127,7 @@ def status_line_settings_to_patch(settings: StatusLineSettings) -> dict[str, obj
         "runtime": settings.runtime,
         "queue": settings.queue,
         "message": settings.message,
+        "context": settings.context,
         "separator": settings.separator,
         "style": settings.style,
     }
@@ -144,6 +151,33 @@ def _show_auto_field(value: StatusLineAutoValue, has_data: bool) -> bool:
     if value == "false":
         return False
     return has_data
+
+
+def _context_status(value: object | None) -> tuple[str, str]:
+    percent = _usage_value(value, "percent")
+    source = _usage_value(value, "source")
+    stale = _usage_value(value, "stale_after_compaction", "staleAfterCompaction") is True
+    if isinstance(percent, bool) or not isinstance(percent, int | float):
+        return "ctx ?", "context.unknown"
+    remaining = max(0, min(100, round(100 - float(percent))))
+    if stale:
+        return f"ctx ≈{remaining}% left stale", "context.stale"
+    if source == "assistant_usage":
+        return f"ctx {remaining}% left", "context.measured"
+    return f"ctx ≈{remaining}% left", "context.estimated"
+
+
+def _usage_value(value: object | None, *names: str) -> object:
+    if isinstance(value, Mapping):
+        for name in names:
+            if name in value:
+                return value[name]
+        return None
+    for name in names:
+        candidate = getattr(value, name, None)
+        if candidate is not None:
+            return candidate
+    return None
 
 
 __all__ = [

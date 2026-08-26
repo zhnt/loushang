@@ -341,6 +341,7 @@ def test_settings_manager_persists_statusline_settings_updates(tmp_path) -> None
             "runtime": True,
             "queue": "true",
             "message": "false",
+            "context": "auto",
             "separator": "dot",
             "style": "plain",
         }

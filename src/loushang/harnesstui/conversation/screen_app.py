@@ -85,6 +85,7 @@ class ScreenConversationApp:
     terminal_diagnostics_provider: Callable[[], str] | None = None
     terminal_capabilities: TerminalRuntimeCapabilities | None = None
     transcript_source_factory: Callable[[], TranscriptSource] | None = None
+    context_usage_provider: Callable[[], object | None] | None = None
     _transcript_presentation: TranscriptPresentation = field(
         init=False,
         repr=False,
@@ -93,6 +94,11 @@ class ScreenConversationApp:
     _bottom_frame_component: BottomFrame = field(init=False, repr=False)
     _frame_presentation: ScreenFramePresentation = field(init=False, repr=False)
     _render_baseline_reset_reason: str | RenderBaselineReset | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
+    _context_usage_refresh_key: tuple[int, int] | None = field(
         default=None,
         init=False,
         repr=False,
@@ -210,6 +216,7 @@ class ScreenConversationApp:
         self._request_render(kind)
 
     def statusline_preview_snapshot(self) -> StatusLinePreviewSnapshot:
+        self._refresh_context_usage()
         return self._frame_presentation.statusline_preview_snapshot(self.state)
 
     def open_transcript_reader(self) -> bool:
@@ -361,6 +368,7 @@ class ScreenConversationApp:
         return min(active_due_ms, completion_due_ms)
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
+        self._refresh_context_usage()
         visible_height = constraints.visible_height or constraints.max_height
         editor_height = self._bottom_frame_height(visible_height)
         self._transcript_region.records = self.state.records
@@ -389,6 +397,21 @@ class ScreenConversationApp:
             editor_min_height=editor_height,
         )
         return layout.render(constraints)
+
+    def _refresh_context_usage(self) -> None:
+        if self.context_usage_provider is None:
+            return
+        refresh_key = (
+            self.state.records_revision,
+            self.state.transcript_window_generation,
+        )
+        if refresh_key == self._context_usage_refresh_key:
+            return
+        try:
+            self.state.context_usage = self.context_usage_provider()
+        except Exception:
+            self.state.context_usage = None
+        self._context_usage_refresh_key = refresh_key
 
     def startup_welcome_panel(self) -> Any:
         raise NotImplementedError(

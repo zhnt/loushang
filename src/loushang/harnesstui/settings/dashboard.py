@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -174,14 +174,82 @@ def usage_lines(provider: UsageProvider | None) -> tuple[str, ...]:
         snapshot = None
     if snapshot is None:
         return ("Usage", "", "Usage data unavailable")
-    return (
+    context = _value(snapshot, "context") or snapshot
+    totals = _value(snapshot, "tokens")
+    lines = [
         "Usage",
         "",
-        f"Current context    {getattr(snapshot, 'tokens', 'Unavailable')}",
-        f"Context window     {getattr(snapshot, 'context_window', 'Unavailable')}",
-        f"Percent used       {getattr(snapshot, 'percent', 'Unavailable')}",
-        f"Source             {getattr(snapshot, 'source', 'Unavailable')}",
-    )
+        f"Current context    {_context_value(context)}",
+        f"Context window     {_token_value(_value(context, 'context_window', 'contextWindow'))}",
+        f"Percent used       {_percent_value(_value(context, 'percent'))}",
+        f"Context source     {_display_value(_value(context, 'source'))}",
+        f"Freshness          {_freshness(context)}",
+    ]
+    if totals is not None:
+        lines.extend(
+            (
+                "",
+                f"Cumulative input  {_token_value(_value(totals, 'input'))}",
+                f"Cumulative output {_token_value(_value(totals, 'output'))}",
+                f"Cache read        {_token_value(_value(totals, 'cache_read', 'cacheRead'))}",
+                f"Cache write       {_token_value(_value(totals, 'cache_write', 'cacheWrite'))}",
+                f"Cumulative total  {_token_value(_value(totals, 'total'))}",
+                f"Coverage source   {_display_value(_value(totals, 'source'))}",
+                f"Attempt coverage  {_attempt_coverage(totals)}",
+            )
+        )
+    return tuple(lines)
+
+
+def _context_value(context: object) -> str:
+    tokens = _value(context, "tokens")
+    if tokens is None:
+        return "Unavailable"
+    prefix = "≈" if _value(context, "source") != "assistant_usage" else ""
+    if _value(context, "stale_after_compaction", "staleAfterCompaction") is True:
+        prefix = "≈"
+    return f"{prefix}{_token_value(tokens)}"
+
+
+def _token_value(value: object) -> str:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return "Unavailable"
+    return f"{int(value):,}"
+
+
+def _percent_value(value: object) -> str:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return "Unavailable"
+    return f"{float(value):.1f}%"
+
+
+def _freshness(context: object) -> str:
+    if _value(context, "stale_after_compaction", "staleAfterCompaction") is True:
+        return "stale after compaction"
+    return "current" if _value(context, "tokens") is not None else "unknown"
+
+
+def _attempt_coverage(totals: object) -> str:
+    if _value(totals, "incomplete_attempts", "incompleteAttempts") is True:
+        return "incomplete"
+    return "complete"
+
+
+def _display_value(value: object) -> str:
+    return str(value) if value is not None and value != "" else "Unavailable"
+
+
+def _value(value: object, *names: str) -> object:
+    if isinstance(value, Mapping):
+        for name in names:
+            if name in value:
+                return value[name]
+        return None
+    for name in names:
+        candidate = getattr(value, name, None)
+        if candidate is not None:
+            return candidate
+    return None
 
 
 def stats_overview_lines(snapshot: StatusSnapshotView) -> tuple[str, ...]:
