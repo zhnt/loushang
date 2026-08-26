@@ -1099,9 +1099,22 @@ runtime path is introduced.
 
 #### PLC5.1a: Co-Distributed Dependency Evidence
 
-The checked-in package exposes one narrower foundation gap. The canonical
-dependency-lock assembler currently discovers Python distributions only below
-the materialized Plugin root, while `coding.lsp.default` and its private
+Implementation status (2026-08-26): the Harness Host port and canonical lock
+assembly path are implemented. `PackageMaterializer` defaults to no grants,
+accepts one injected Product resolver, proves every granted normalized
+distribution through `InstalledPythonDistributionEvidenceResolver`, and unions
+the resulting exact identities with the materialized-root scan before emitting
+the existing v1 lock. Publication and binding both recompute that same closure.
+Coding supplies a fixed resolver that grants only `loushang` to the exact
+registered source of the reserved `coding.lsp.default` ID and rejects that ID
+from any other source. The checked-in executable package, private-adapter import
+proof, and bootstrap opt-in wiring remain subsequent PLC5.1 work; this status
+does not claim a production mount.
+
+The planned checked-in package exposed one narrower foundation gap. Before this
+foundation, the canonical dependency-lock assembler discovered Python
+distributions only below the materialized Plugin root, while
+`coding.lsp.default` and its private
 Provider adapter are files in the same installed Loushang distribution. Copying
 distribution metadata into the Plugin directory, adding Loushang to the global
 Host API prefixes, or publishing through a Coding-only binding path would each
