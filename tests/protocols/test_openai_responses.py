@@ -59,17 +59,41 @@ def _normalized_context(model, context, options=None):
 class _AsyncEventStream:
     def __init__(self, events: list[SimpleNamespace]) -> None:
         self._events = events
+        self.closed = False
 
     def __aiter__(self):
         return self._iterate()
 
     async def _iterate(self):
-        for event in self._events:
-            yield event
+        try:
+            for event in self._events:
+                yield event
+        finally:
+            self.closed = True
 
 
 async def _collect_raw_parts(events: list[SimpleNamespace]) -> list[dict[str, object]]:
     return [part async for part in process_responses_stream(_AsyncEventStream(events))]
+
+
+def test_openai_responses_parser_closes_owned_event_iterator() -> None:
+    event_stream = _AsyncEventStream(
+        [
+            SimpleNamespace(
+                type="response.completed",
+                response=SimpleNamespace(status="completed", usage=None),
+            )
+        ]
+    )
+
+    async def _run() -> None:
+        source = process_responses_stream(event_stream)
+        while (await anext(source))["type"] != "response_done":
+            pass
+        await source.aclose()
+        assert event_stream.closed is True
+
+    asyncio.run(_run())
 
 
 def _invoke_raw_parts(
@@ -321,6 +345,124 @@ def test_openai_responses_payload_uses_resolved_capabilities_for_images(
             ],
         },
     ]
+
+
+def test_openai_responses_closes_nested_stream_and_owned_client_at_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(monkeypatch, base_url="https://api.openai.test/v1")
+
+    async def _run() -> None:
+        source = _invoke_raw_parts(
+            OpenAIResponsesAdapter(),
+            _Model(),
+            {
+                "messages": [
+                    UserMessage(role="user", content="hello", timestamp=0.0)
+                ]
+            },
+            CallOptions(auth=ApiKeyAuth("test-key")),
+        )
+        while (await anext(source))["type"] != "response_done":
+            pass
+        await source.aclose()
+        assert _FakeStream.last_instance is not None
+        assert _FakeStream.last_instance.close_calls == 1
+        assert _FakeStream.last_instance.iter_calls == 0
+        assert _FakeAsyncOpenAI.last_instance is not None
+        assert _FakeAsyncOpenAI.last_instance.close_calls == 1
+
+    asyncio.run(_run())
+
+
+def test_openai_responses_does_not_close_injected_client_at_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    _patch_resolved_request(monkeypatch, base_url="https://api.openai.test/v1")
+
+    class _FalsyFakeAsyncOpenAI(_FakeAsyncOpenAI):
+        def __bool__(self) -> bool:
+            return False
+
+    client = _FalsyFakeAsyncOpenAI()
+
+    async def _run() -> None:
+        source = _invoke_raw_parts(
+            OpenAIResponsesAdapter(client=client),
+            _Model(),
+            {
+                "messages": [
+                    UserMessage(role="user", content="hello", timestamp=0.0)
+                ]
+            },
+            CallOptions(auth=ApiKeyAuth("test-key")),
+        )
+        while (await anext(source))["type"] != "response_done":
+            pass
+        await source.aclose()
+        assert _FakeStream.last_instance is not None
+        assert _FakeStream.last_instance.close_calls == 1
+        assert client.responses.create_calls == 1
+        assert client.close_calls == 0
+
+    asyncio.run(_run())
+
+
+def test_openai_responses_closes_owned_client_after_create_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch, create_error=RuntimeError("create failed"))
+    _patch_resolved_request(monkeypatch, base_url="https://api.openai.test/v1")
+
+    async def _run() -> None:
+        source = _invoke_raw_parts(
+            OpenAIResponsesAdapter(),
+            _Model(),
+            {
+                "messages": [
+                    UserMessage(role="user", content="hello", timestamp=0.0)
+                ]
+            },
+            CallOptions(auth=ApiKeyAuth("test-key")),
+        )
+        while (await anext(source))["type"] != "response_error":
+            pass
+        await source.aclose()
+        assert _FakeAsyncOpenAI.last_instance is not None
+        assert _FakeAsyncOpenAI.last_instance.close_calls == 1
+
+    asyncio.run(_run())
+
+
+def test_openai_responses_closes_stream_and_client_after_iteration_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch, events=[RuntimeError("iteration failed")])
+    _patch_resolved_request(monkeypatch, base_url="https://api.openai.test/v1")
+
+    async def _run() -> None:
+        source = _invoke_raw_parts(
+            OpenAIResponsesAdapter(),
+            _Model(),
+            {
+                "messages": [
+                    UserMessage(role="user", content="hello", timestamp=0.0)
+                ]
+            },
+            CallOptions(auth=ApiKeyAuth("test-key")),
+        )
+        while (await anext(source))["type"] != "response_error":
+            pass
+        await source.aclose()
+        assert _FakeStream.last_instance is not None
+        assert _FakeStream.last_instance.close_calls == 1
+        assert _FakeStream.last_instance.iter_calls == 0
+        assert _FakeAsyncOpenAI.last_instance is not None
+        assert _FakeAsyncOpenAI.last_instance.close_calls == 1
+
+    asyncio.run(_run())
 
 
 def test_openai_responses_payload_maps_structured_output_text_format(
@@ -1762,10 +1904,14 @@ def _fake_openai_module(
     *,
     events: list[object] | None = None,
     response: object | None = None,
+    create_error: Exception | None = None,
 ) -> None:
     _FakeAsyncOpenAI.last_init_kwargs = {}
     _FakeAsyncOpenAI.last_create_kwargs = {}
+    _FakeAsyncOpenAI.last_instance = None
     _FakeAsyncOpenAI.response = response
+    _FakeAsyncOpenAI.create_error = create_error
+    _FakeStream.last_instance = None
     _FakeAsyncOpenAI.events = events or [
         SimpleNamespace(type="response.created", response=SimpleNamespace(id="resp_1")),
         SimpleNamespace(
@@ -1950,37 +2096,68 @@ def _responses_adapter_config_from_compat(
 class _FakeAsyncOpenAI:
     last_init_kwargs: dict[str, object] = {}
     last_create_kwargs: dict[str, object] = {}
+    last_instance: _FakeAsyncOpenAI | None = None
     events: list[object] = []
     response: object | None = None
+    create_error: Exception | None = None
 
     def __init__(self, **kwargs) -> None:
         type(self).last_init_kwargs = kwargs
+        type(self).last_instance = self
+        self.close_calls = 0
         self.responses = _FakeResponses(type(self))
+
+    async def close(self) -> None:
+        self.close_calls += 1
 
 
 class _FakeResponses:
     def __init__(self, owner: type[_FakeAsyncOpenAI]) -> None:
         self._owner = owner
+        self.create_calls = 0
 
     async def create(self, **kwargs):
+        self.create_calls += 1
         self._owner.last_create_kwargs = kwargs
+        if self._owner.create_error is not None:
+            raise self._owner.create_error
         if kwargs.get("stream") is not True:
             return self._owner.response
         return _FakeStream(self._owner.events)
 
 
 class _FakeStream:
+    last_instance: _FakeStream | None = None
+
     def __init__(self, events: list[object]) -> None:
+        type(self).last_instance = self
         self._iterator = iter(events)
+        self.close_calls = 0
+        self.iter_calls = 0
+        self.iter_close_calls = 0
 
     def __aiter__(self):
-        return self
+        return self._iterate()
+
+    async def _iterate(self):
+        self.iter_calls += 1
+        try:
+            while True:
+                yield await self.__anext__()
+        finally:
+            self.iter_close_calls += 1
 
     async def __anext__(self):
         try:
-            return next(self._iterator)
+            event = next(self._iterator)
         except StopIteration as exc:
             raise StopAsyncIteration from exc
+        if isinstance(event, BaseException):
+            raise event
+        return event
+
+    async def close(self) -> None:
+        self.close_calls += 1
 
 
 @dataclass(frozen=True)

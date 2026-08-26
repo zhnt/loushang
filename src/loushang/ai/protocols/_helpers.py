@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import inspect
 from collections.abc import Mapping, MutableMapping
+
+from loushang.ai.utils.async_iter import close_async_source
 
 _SDK_AUTH_HEADER_NAMES = {
     "authorization": "Authorization",
@@ -44,11 +45,4 @@ def set_header_case_insensitive(
 
 
 async def close_provider_stream(stream: object) -> None:
-    for name in ("aclose", "close"):
-        close = getattr(stream, name, None)
-        if not callable(close):
-            continue
-        result = close()
-        if inspect.isawaitable(result):
-            await result
-        return
+    await close_async_source(stream)
