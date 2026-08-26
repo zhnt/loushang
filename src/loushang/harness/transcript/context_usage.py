@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 from loushang.agent.types import AgentMessage
@@ -24,7 +24,11 @@ from loushang.harness.transcript.kinds import (
 )
 
 ContextUsageSource = Literal[
-    "assistant_usage", "estimated_from_last_usage", "estimated", "unknown"
+    "assistant_usage",
+    "provider_anchor",
+    "estimated_from_last_usage",
+    "estimated",
+    "unknown",
 ]
 ContextUsageAuthority = Literal["provider_usage", "local_estimator", "unknown"]
 ContextUsageAccuracy = Literal["projected", "estimated", "unknown"]
@@ -87,6 +91,48 @@ class ProviderContextAnchor:
     api_id: str
     model_id: str
     estimator_id: str = CONTEXT_MESSAGE_ESTIMATOR_ID
+
+
+def project_context_from_provider_anchor(
+    snapshot: ContextUsageSnapshot,
+    anchor: ProviderContextAnchor,
+    current_surface: ReplayContextSurfaceMeasurement,
+) -> ContextUsageSnapshot:
+    """Project current prompt pressure from a compatible provider observation.
+
+    This projection is intentionally display-only until the prepared request's
+    non-message envelope also has a stable identity.  It must therefore never
+    authorize automatic compaction.
+    """
+
+    if anchor.estimator_id != current_surface.estimator_id:
+        return replace(snapshot, provider_anchor=anchor)
+    tokens = max(
+        0,
+        anchor.provider_prompt_tokens
+        + current_surface.tokens
+        - anchor.sampled_surface_tokens,
+    )
+    percent = (
+        (tokens / snapshot.context_window) * 100
+        if snapshot.context_window is not None
+        else None
+    )
+    return replace(
+        snapshot,
+        tokens=tokens,
+        percent=percent,
+        source="provider_anchor",
+        last_usage_index=None,
+        stale_after_compaction=snapshot.stale_after_compaction,
+        compactable=False,
+        reason="provider_anchor_display_only",
+        authority="provider_usage",
+        accuracy="projected",
+        estimator_id=current_surface.estimator_id,
+        surface_fingerprint=current_surface.surface_fingerprint,
+        provider_anchor=anchor,
+    )
 
 
 def calculate_context_tokens(usage: object) -> int:
@@ -481,6 +527,7 @@ __all__ = [
     "CONTEXT_MESSAGE_ESTIMATOR_ID",
     "ReplayContextSurfaceMeasurement",
     "ProviderContextAnchor",
+    "project_context_from_provider_anchor",
     "build_context_usage_snapshot",
     "calculate_context_tokens",
     "current_context_usage",

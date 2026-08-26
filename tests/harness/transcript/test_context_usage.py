@@ -16,6 +16,7 @@ from loushang.harness.transcript import (
     latest_compaction_entry,
     measure_replay_context_surface,
     model_context_window,
+    project_context_from_provider_anchor,
 )
 
 
@@ -38,6 +39,118 @@ def test_context_usage_public_exports_keep_their_stable_package_surface() -> Non
         measure_replay_context_surface
         is context_usage.measure_replay_context_surface
     )
+    assert (
+        project_context_from_provider_anchor
+        is context_usage.project_context_from_provider_anchor
+    )
+
+
+def test_provider_anchor_projects_current_surface_for_display_only() -> None:
+    current_surface = measure_replay_context_surface(
+        [UserMessage(role="user", content="current surface is longer", timestamp=1.0)]
+    )
+    snapshot = ContextUsageSnapshot(
+        tokens=999,
+        context_window=100,
+        reserve_tokens=10,
+        compactable=True,
+        reason="threshold",
+        stale_after_compaction=True,
+    )
+    anchor = ProviderContextAnchor(
+        invocation_id="invocation-1",
+        attempt=1,
+        model_input_snapshot_id="snapshot-1",
+        provider_prompt_tokens=80,
+        sampled_prepared_payload_hash="sha256:" + "a" * 64,
+        sampled_surface_tokens=5,
+        sampled_surface_fingerprint="sha256:" + "b" * 64,
+        source_revision=1,
+        commit_revision=2,
+        provider_id="provider-1",
+        endpoint_id="endpoint-1",
+        api_id="api-1",
+        model_id="model-1",
+    )
+
+    projected = project_context_from_provider_anchor(
+        snapshot, anchor, current_surface
+    )
+
+    assert projected.tokens == 80 + current_surface.tokens - 5
+    assert projected.percent == projected.tokens
+    assert projected.source == "provider_anchor"
+    assert projected.authority == "provider_usage"
+    assert projected.accuracy == "projected"
+    assert projected.compactable is False
+    assert projected.reason == "provider_anchor_display_only"
+    assert projected.stale_after_compaction is True
+    assert projected.provider_anchor == anchor
+
+
+def test_provider_anchor_projection_clamps_negative_delta_at_zero() -> None:
+    current_surface = measure_replay_context_surface([])
+    anchor = ProviderContextAnchor(
+        invocation_id="invocation-1",
+        attempt=1,
+        model_input_snapshot_id="snapshot-1",
+        provider_prompt_tokens=3,
+        sampled_prepared_payload_hash="sha256:" + "a" * 64,
+        sampled_surface_tokens=10,
+        sampled_surface_fingerprint="sha256:" + "b" * 64,
+        source_revision=1,
+        commit_revision=2,
+        provider_id="provider-1",
+        endpoint_id="endpoint-1",
+        api_id="api-1",
+        model_id="model-1",
+    )
+
+    projected = project_context_from_provider_anchor(
+        ContextUsageSnapshot(tokens=3, context_window=100, reserve_tokens=0),
+        anchor,
+        current_surface,
+    )
+
+    assert projected.tokens == 0
+    assert projected.percent == 0
+    assert projected.compactable is False
+
+
+def test_provider_anchor_projection_rejects_a_different_estimator() -> None:
+    current_surface = measure_replay_context_surface([])
+    snapshot = ContextUsageSnapshot(
+        tokens=7,
+        context_window=100,
+        reserve_tokens=0,
+        source="estimated",
+        compactable=True,
+    )
+    anchor = ProviderContextAnchor(
+        invocation_id="invocation-1",
+        attempt=1,
+        model_input_snapshot_id="snapshot-1",
+        provider_prompt_tokens=80,
+        sampled_prepared_payload_hash="sha256:" + "a" * 64,
+        sampled_surface_tokens=5,
+        sampled_surface_fingerprint="sha256:" + "b" * 64,
+        source_revision=1,
+        commit_revision=2,
+        provider_id="provider-1",
+        endpoint_id="endpoint-1",
+        api_id="api-1",
+        model_id="model-1",
+        estimator_id="different-estimator.v1",
+    )
+
+    projected = project_context_from_provider_anchor(
+        snapshot, anchor, current_surface
+    )
+
+    assert projected.tokens == 7
+    assert projected.source == "estimated"
+    assert projected.compactable is True
+    assert projected.provider_anchor == anchor
 
 
 def test_context_usage_measurement_identity_serializes_compatibly() -> None:

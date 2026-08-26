@@ -30,6 +30,7 @@ from loushang.harness.transcript import (
     calculate_context_tokens,
     estimate_context_tokens,
     measure_replay_context_surface,
+    project_context_from_provider_anchor,
     project_model_call_usage,
 )
 
@@ -106,7 +107,11 @@ class ContextUsage:
     threshold_tokens: int | None = None
     threshold_reason: Literal["compact_percent", "reserve_tokens"] | None = None
     source: Literal[
-        "assistant_usage", "estimated_from_last_usage", "estimated", "unknown"
+        "assistant_usage",
+        "provider_anchor",
+        "estimated_from_last_usage",
+        "estimated",
+        "unknown",
     ] = "unknown"
     last_usage_index: int | None = None
     stale_after_compaction: bool = False
@@ -218,14 +223,21 @@ class AgentSessionInspector:
             transcript_revision=transcript_revision,
             leaf_id=leaf_id,
         )
-        snapshot = replace(
-            snapshot,
-            provider_anchor=self._get_provider_context_anchor(
-                branch_records,
-                transcript_revision=transcript_revision,
-                leaf_id=leaf_id,
-            ),
+        provider_anchor = self._get_provider_context_anchor(
+            branch_records,
+            transcript_revision=transcript_revision,
+            leaf_id=leaf_id,
         )
+        if provider_anchor is not None and self._anchor_matches_active_model(
+            provider_anchor
+        ):
+            snapshot = project_context_from_provider_anchor(
+                snapshot,
+                provider_anchor,
+                measure_replay_context_surface(messages),
+            )
+        else:
+            snapshot = replace(snapshot, provider_anchor=provider_anchor)
         estimated_context_tokens = (
             estimate_context_tokens(messages).tokens if messages else 0
         )
@@ -278,6 +290,15 @@ class AgentSessionInspector:
         self._provider_anchor_cache_key = cache_key
         self._provider_anchor_cache = anchor
         return anchor
+
+    def _anchor_matches_active_model(self, anchor: ProviderContextAnchor) -> bool:
+        model = self.agent.model
+        return (
+            anchor.provider_id == getattr(model, "provider_id", None)
+            and anchor.endpoint_id == getattr(model, "endpoint_id", None)
+            and anchor.api_id == getattr(model, "api", None)
+            and anchor.model_id == getattr(model, "id", None)
+        )
 
     def _derive_provider_context_anchor(
         self,
