@@ -27,6 +27,7 @@ _IGNORED_ROOT_ENTRIES = frozenset({".git"})
 _FROZEN_DIRECTORY_MODE = 0o500
 _FROZEN_FILE_MODE = 0o400
 _FROZEN_EXECUTABLE_MODE = 0o500
+_STAGING_DIRECTORY_MODE = 0o700
 _WINDOWS_REPARSE_POINT_ATTRIBUTE = 0x400
 
 
@@ -262,6 +263,8 @@ class PluginRevisionStore:
         quarantine = Path(
             tempfile.mkdtemp(prefix=".quarantine-", dir=self.revision_root)
         )
+        published_by_this_call = False
+        published_root: Path | None = None
         try:
             if _supports_descriptor_relative_revision_io():
                 source_fd = _open_directory(package.root)
@@ -277,13 +280,23 @@ class PluginRevisionStore:
             PluginManifestParser().revalidate(package)
             content_digest = _tree_digest(entries)
             published_root = self.revision_root / content_digest
-            _freeze_tree(quarantine)
+            # Darwin rejects renaming a directory after its owner-write bit has
+            # been removed. Freeze every child before publication, but retain a
+            # writable staging root until the atomic rename completes.
+            _freeze_tree(quarantine, root_mode=_STAGING_DIRECTORY_MODE)
             try:
                 quarantine.rename(published_root)
             except OSError as exc:
-                if exc.errno not in {errno.EEXIST, errno.ENOTEMPTY}:
+                collision = exc.errno in {errno.EEXIST, errno.ENOTEMPTY} or (
+                    exc.errno in {errno.EACCES, errno.EPERM}
+                    and published_root.exists()
+                )
+                if not collision:
                     raise
                 _remove_tree(quarantine)
+            else:
+                published_by_this_call = True
+                published_root.chmod(_FROZEN_DIRECTORY_MODE)
             handle = VerifiedRevisionHandle(
                 root=published_root,
                 content_digest=content_digest,
@@ -301,7 +314,10 @@ class PluginRevisionStore:
                 handle.close()
                 raise
         except PluginRevisionError as exc:
-            _remove_tree(quarantine)
+            if published_by_this_call and published_root is not None:
+                _remove_tree(published_root)
+            else:
+                _remove_tree(quarantine)
             if exc.path.is_absolute():
                 raise
             raise PluginRevisionError(
@@ -310,7 +326,10 @@ class PluginRevisionStore:
                 path=package.root / exc.path,
             ) from exc
         except Exception as exc:
-            _remove_tree(quarantine)
+            if published_by_this_call and published_root is not None:
+                _remove_tree(published_root)
+            else:
+                _remove_tree(quarantine)
             raise PluginRevisionError(
                 f"Plugin revision could not be published: {package.root}: {exc}",
                 code="plugin_revision_publish_failed",
@@ -922,7 +941,7 @@ def _path_identity(path: Path) -> tuple[int, int] | None:
     return metadata.st_dev, metadata.st_ino
 
 
-def _freeze_tree(root: Path) -> None:
+def _freeze_tree(root: Path, *, root_mode: int = _FROZEN_DIRECTORY_MODE) -> None:
     for current_root, directories, files in os.walk(root, topdown=False):
         current = Path(current_root)
         for filename in files:
@@ -931,7 +950,7 @@ def _freeze_tree(root: Path) -> None:
             path.chmod(_FROZEN_EXECUTABLE_MODE if executable else _FROZEN_FILE_MODE)
         for directory in directories:
             (current / directory).chmod(_FROZEN_DIRECTORY_MODE)
-    root.chmod(_FROZEN_DIRECTORY_MODE)
+    root.chmod(root_mode)
 
 
 def _remove_tree(root: Path) -> None:
