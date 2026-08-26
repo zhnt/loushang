@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dis
 from dataclasses import dataclass, field
+from typing import Any
 
 import pytest
 
@@ -10,6 +11,7 @@ from loushang.harnesstui.conversation.screen_state import ScreenConversationStat
 from loushang.harnesstui.conversation.screen_target import (
     ScreenConversationProjectionTarget,
     build_screen_conversation_projection,
+    format_compaction_finished_status,
 )
 from loushang.harnesstui.conversation.tool_transcript import (
     ToolCallSnapshot,
@@ -102,8 +104,25 @@ class _RecordingCopy:
         self,
         *,
         error_message: str | None,
+        tokens_before: int | None,
+        tokens_after: int | None,
+        duration_ms: int | float | None,
+        aborted: bool,
+        will_retry: bool,
+        stage: str | None,
     ) -> str:
-        self.events.append(("compaction_finished", error_message))
+        self.events.append(
+            (
+                "compaction_finished",
+                error_message,
+                tokens_before,
+                tokens_after,
+                duration_ms,
+                aborted,
+                will_retry,
+                stage,
+            )
+        )
         return "custom compaction error" if error_message else "custom compaction done"
 
 
@@ -319,9 +338,9 @@ def test_screen_target_delegates_status_copy_and_compaction_recording() -> None:
     assert copy.events == [
         ("retry", 2, 3, 1000, "rate limit"),
         ("compaction_started", "threshold"),
-        ("compaction_finished", "failed"),
-        ("compaction_finished", None),
-        ("compaction_finished", None),
+        ("compaction_finished", "failed", 10, None, None, False, False, None),
+        ("compaction_finished", None, 20, None, None, False, False, None),
+        ("compaction_finished", None, 30, None, None, False, False, None),
     ]
     assert [event for event in app.events if event[0] == "set_status"] == [
         ("set_status", "custom retry"),
@@ -336,6 +355,66 @@ def test_screen_target_delegates_status_copy_and_compaction_recording() -> None:
     assert app.state.records == [
         ContextCompactionRecord(summary="condensed", tokens_before=30)
     ]
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected"),
+    [
+        (
+            {
+                "error_message": None,
+                "tokens_before": 424_491,
+                "tokens_after": 38_207,
+                "duration_ms": 254_000,
+                "aborted": False,
+                "will_retry": False,
+                "stage": "committed",
+            },
+            "context compacted · 424k -> 38k · 4m14s",
+        ),
+        (
+            {
+                "error_message": None,
+                "tokens_before": 424_491,
+                "tokens_after": None,
+                "duration_ms": 254_000,
+                "aborted": False,
+                "will_retry": False,
+                "stage": "committed",
+            },
+            "context compacted · 424k before · new size pending · 4m14s",
+        ),
+        (
+            {
+                "error_message": None,
+                "tokens_before": None,
+                "tokens_after": None,
+                "duration_ms": 12_000,
+                "aborted": True,
+                "will_retry": False,
+                "stage": "aborted",
+            },
+            "compact cancelled · 12s",
+        ),
+        (
+            {
+                "error_message": "provider failed",
+                "tokens_before": None,
+                "tokens_after": None,
+                "duration_ms": 500,
+                "aborted": False,
+                "will_retry": True,
+                "stage": "failed",
+            },
+            "compact error: provider failed · retrying · 500ms",
+        ),
+    ],
+)
+def test_compaction_finished_status_formats_lifecycle_outcomes(
+    kwargs: dict[str, Any],
+    expected: str,
+) -> None:
+    assert format_compaction_finished_status(**kwargs) == expected
 
 
 def test_screen_projection_builder_owns_target_projector_and_event_binding() -> None:

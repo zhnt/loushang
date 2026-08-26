@@ -87,6 +87,12 @@ class ScreenProjectionStatusCopy(Protocol):
         self,
         *,
         error_message: str | None,
+        tokens_before: int | None,
+        tokens_after: int | None,
+        duration_ms: int | float | None,
+        aborted: bool,
+        will_retry: bool,
+        stage: str | None,
     ) -> str: ...
 
 
@@ -110,8 +116,22 @@ class StandardScreenProjectionStatusCopy:
         self,
         *,
         error_message: str | None,
+        tokens_before: int | None,
+        tokens_after: int | None,
+        duration_ms: int | float | None,
+        aborted: bool,
+        will_retry: bool,
+        stage: str | None,
     ) -> str:
-        return f"compact error: {error_message}" if error_message else "compact done"
+        return format_compaction_finished_status(
+            error_message=error_message,
+            tokens_before=tokens_before,
+            tokens_after=tokens_after,
+            duration_ms=duration_ms,
+            aborted=aborted,
+            will_retry=will_retry,
+            stage=stage,
+        )
 
 
 @dataclass(slots=True)
@@ -221,19 +241,88 @@ class ScreenConversationProjectionTarget:
         error_message: str | None,
         summary: str,
         tokens_before: int | None,
+        tokens_after: int | None = None,
+        duration_ms: int | float | None = None,
+        aborted: bool = False,
+        will_retry: bool = False,
+        stage: str | None = None,
     ) -> None:
         self.app.set_status(
             self.status_copy.compaction_finished_status(
                 error_message=error_message,
+                tokens_before=tokens_before,
+                tokens_after=tokens_after,
+                duration_ms=duration_ms,
+                aborted=aborted,
+                will_retry=will_retry,
+                stage=stage,
             )
         )
-        if error_message:
+        if error_message or aborted or stage in {"aborted", "failed"}:
             return
         if summary:
             self.app.append_context_compaction_record(
                 summary=summary,
                 tokens_before=tokens_before,
             )
+
+
+def format_compaction_finished_status(
+    *,
+    error_message: str | None,
+    tokens_before: int | None,
+    tokens_after: int | None,
+    duration_ms: int | float | None,
+    aborted: bool,
+    will_retry: bool,
+    stage: str | None,
+) -> str:
+    """Format one completed compaction lifecycle observation."""
+
+    duration = _format_duration(duration_ms)
+    if aborted or stage == "aborted":
+        return _join_status_parts("compact cancelled", duration)
+    if error_message or stage == "failed":
+        detail = f"compact error: {error_message}" if error_message else "compact failed"
+        retry = "retrying" if will_retry else None
+        return _join_status_parts(detail, retry, duration)
+
+    if tokens_before is not None and tokens_after is not None:
+        result = (
+            f"context compacted · {_format_tokens(tokens_before)} -> "
+            f"{_format_tokens(tokens_after)}"
+        )
+    elif tokens_before is not None:
+        result = (
+            f"context compacted · {_format_tokens(tokens_before)} before · "
+            "new size pending"
+        )
+    else:
+        result = "compact done"
+    retry = "retrying" if will_retry else None
+    return _join_status_parts(result, retry, duration)
+
+
+def _format_tokens(tokens: int) -> str:
+    if tokens < 1_000:
+        return str(tokens)
+    return f"{tokens / 1_000:.0f}k"
+
+
+def _format_duration(duration_ms: int | float | None) -> str | None:
+    if duration_ms is None:
+        return None
+    if duration_ms < 1_000:
+        return f"{max(0, round(duration_ms))}ms"
+    seconds = max(0, round(duration_ms / 1_000))
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, remaining_seconds = divmod(seconds, 60)
+    return f"{minutes}m{remaining_seconds:02d}s"
+
+
+def _join_status_parts(*parts: str | None) -> str:
+    return " · ".join(part for part in parts if part)
 
 
 def build_screen_conversation_projection(

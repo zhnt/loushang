@@ -259,6 +259,11 @@ def test_coding_event_adapter_extracts_retry_and_compaction_values() -> None:
         {
             "type": "compaction_end",
             "result": {"summary": "  condensed  ", "tokens_before": 500_000},
+            "tokens_after": 42_000,
+            "duration_ms": 254_000,
+            "aborted": False,
+            "will_retry": True,
+            "stage": "committed",
         }
     )
 
@@ -281,6 +286,11 @@ def test_coding_event_adapter_extracts_retry_and_compaction_values() -> None:
                 "error_message": None,
                 "summary": "condensed",
                 "tokens_before": 500_000,
+                "tokens_after": 42_000,
+                "duration_ms": 254_000,
+                "aborted": False,
+                "will_retry": True,
+                "stage": "committed",
             },
         ),
     ]
@@ -661,12 +671,30 @@ def test_compaction_interest_and_error_short_circuit_detail_reads() -> None:
         (
             "compaction_finished",
             (),
-            {"error_message": "503", "summary": "", "tokens_before": None},
+            {
+                "error_message": "503",
+                "summary": "",
+                "tokens_before": None,
+                "tokens_after": None,
+                "duration_ms": None,
+                "aborted": False,
+                "will_retry": False,
+                "stage": None,
+            },
         ),
         (
             "compaction_finished",
             (),
-            {"error_message": None, "summary": "", "tokens_before": None},
+            {
+                "error_message": None,
+                "summary": "",
+                "tokens_before": None,
+                "tokens_after": None,
+                "duration_ms": None,
+                "aborted": False,
+                "will_retry": False,
+                "stage": None,
+            },
         ),
     ]
 

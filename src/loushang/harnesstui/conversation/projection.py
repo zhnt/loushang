@@ -92,6 +92,11 @@ class ConversationProjectionTarget(Protocol):
         error_message: str | None,
         summary: str,
         tokens_before: int | None,
+        tokens_after: int | None = None,
+        duration_ms: int | float | None = None,
+        aborted: bool = False,
+        will_retry: bool = False,
+        stage: str | None = None,
     ) -> None: ...
 
 
@@ -273,11 +278,21 @@ class ConversationProjector:
         error_message: str | None,
         summary: str,
         tokens_before: int | None,
+        tokens_after: int | None = None,
+        duration_ms: int | float | None = None,
+        aborted: bool = False,
+        will_retry: bool = False,
+        stage: str | None = None,
     ) -> None:
         self.target.compaction_finished(
             error_message=error_message,
             summary=summary,
             tokens_before=tokens_before,
+            tokens_after=tokens_after,
+            duration_ms=duration_ms,
+            aborted=aborted,
+            will_retry=will_retry,
+            stage=stage,
         )
 
     def _remember_assistant_error(
@@ -495,26 +510,36 @@ class SessionConversationEventAdapter:
 
     def _handle_compaction_end(self, event: Mapping[str, Any]) -> None:
         raw_error = event.get("error_message")
-        if raw_error:
-            self.projector.compaction_finished(
-                error_message=(
-                    raw_error if isinstance(raw_error, str) else str(raw_error)
-                ),
-                summary="",
-                tokens_before=None,
-            )
-            return
+        error_message = (
+            raw_error if isinstance(raw_error, str) else str(raw_error)
+        ) if raw_error else None
+        tokens_after = _optional_non_negative_int(event.get("tokens_after"))
+        duration_ms = _optional_non_negative_number(event.get("duration_ms"))
+        aborted = event.get("aborted") is True
+        will_retry = event.get("will_retry") is True
+        raw_stage = event.get("stage")
+        stage = raw_stage if isinstance(raw_stage, str) else None
         if not self.project_compaction_details:
             self.projector.compaction_finished(
-                error_message=None,
+                error_message=error_message,
                 summary="",
                 tokens_before=None,
+                tokens_after=tokens_after,
+                duration_ms=duration_ms,
+                aborted=aborted,
+                will_retry=will_retry,
+                stage=stage,
             )
             return
         self.projector.compaction_finished(
-            error_message=None,
+            error_message=error_message,
             summary=_compaction_summary(event),
             tokens_before=_compaction_tokens_before(event),
+            tokens_after=tokens_after,
+            duration_ms=duration_ms,
+            aborted=aborted,
+            will_retry=will_retry,
+            stage=stage,
         )
 
     def _handle_agent_end(self, event: Mapping[str, Any]) -> None:
@@ -562,11 +587,25 @@ def _compaction_summary(event: Mapping[str, Any]) -> str:
 
 
 def _compaction_tokens_before(event: Mapping[str, Any]) -> int | None:
+    direct = _optional_non_negative_int(event.get("tokens_before"))
+    if direct is not None:
+        return direct
     result = event.get("result")
     if not isinstance(result, Mapping):
         return None
-    tokens_before = result.get("tokens_before")
-    return tokens_before if isinstance(tokens_before, int) else None
+    return _optional_non_negative_int(result.get("tokens_before"))
+
+
+def _optional_non_negative_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
+def _optional_non_negative_number(value: object) -> int | float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
+        return None
+    return value
 
 
 __all__ = [

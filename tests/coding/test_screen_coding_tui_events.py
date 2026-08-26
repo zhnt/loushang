@@ -518,6 +518,27 @@ def test_screen_event_projector_preserves_coding_status_copy() -> None:
     projector.handle({"type": "compaction_end"})
     assert app.state.status_message == "compact done"
 
+    projector.handle(
+        {
+            "type": "compaction_end",
+            "aborted": True,
+            "stage": "aborted",
+            "duration_ms": 12_000,
+        }
+    )
+    assert app.state.status_message == "compact cancelled · 12s"
+
+    projector.handle(
+        {
+            "type": "compaction_end",
+            "tokens_before": 424_491,
+            "tokens_after": 38_207,
+            "duration_ms": 254_000,
+            "stage": "committed",
+        }
+    )
+    assert app.state.status_message == "context compacted · 424k -> 38k · 4m14s"
+
 
 def test_screen_event_projector_renders_queued_steer_into_transcript() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp

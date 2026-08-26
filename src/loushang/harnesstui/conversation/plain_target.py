@@ -8,6 +8,9 @@ from loushang.harnesstui.conversation.projection import (
     ConversationProjectionBinding,
     ConversationProjector,
 )
+from loushang.harnesstui.conversation.screen_target import (
+    format_compaction_finished_status,
+)
 from loushang.harnesstui.conversation.tool_transcript import (
     ToolCallSnapshot,
     ToolTranscriptBlock,
@@ -119,12 +122,23 @@ class PlainConversationProjectionTarget:
         error_message: str | None,
         summary: str,
         tokens_before: int | None,
+        tokens_after: int | None = None,
+        duration_ms: int | float | None = None,
+        aborted: bool = False,
+        will_retry: bool = False,
+        stage: str | None = None,
     ) -> None:
-        del summary, tokens_before
-        if error_message:
-            self.renderer.render_status(f"[compact] error: {error_message}")
-        else:
-            self.renderer.render_status("[compact] done")
+        del summary
+        status = format_compaction_finished_status(
+            error_message=error_message,
+            tokens_before=tokens_before,
+            tokens_after=tokens_after,
+            duration_ms=duration_ms,
+            aborted=aborted,
+            will_retry=will_retry,
+            stage=stage,
+        )
+        self.renderer.render_status(f"[compact] {status.removeprefix('compact ')}")
 
 
 def build_plain_conversation_projection(
