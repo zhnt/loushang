@@ -318,6 +318,35 @@ def test_standard_session_command_projects_compaction_observability() -> None:
     )
 
 
+def test_standard_session_command_exposes_context_measurement_quality() -> None:
+    result = asyncio.run(
+        execute_standard_session_command_async(
+            "session",
+            "",
+            StandardSessionCommandPorts(
+                get_session_info=lambda: {
+                    "session_id": "session-1",
+                    "context": {
+                        "tokens": 12_000,
+                        "context_window": 131_072,
+                        "reserve_tokens": 8_192,
+                        "source": "estimated",
+                        "accuracy": "estimated",
+                        "structural_envelope_status": "logical_mismatch",
+                    },
+                },
+            ),
+        )
+    )
+
+    assert result is not None
+    projected = project_standard_session_command_result(result)
+    assert projected["message"] == (
+        "Session: session-1 | Context: ≈12000/131072 tokens, reserve 8192, "
+        "estimated, source estimated, logical envelope changed"
+    )
+
+
 def test_standard_session_command_pack_manages_tools_without_coding() -> None:
     active = ["read"]
     tools = [

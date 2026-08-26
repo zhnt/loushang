@@ -342,6 +342,10 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
                 "reserve_tokens": context.reserve_tokens,
                 "threshold_tokens": context.threshold_tokens,
                 "threshold_reason": context.threshold_reason,
+                "source": context.source,
+                "accuracy": context.accuracy,
+                "stale_after_compaction": context.stale_after_compaction,
+                "structural_envelope_status": context.structural_envelope_status,
             }
             if context is not None
             else None,

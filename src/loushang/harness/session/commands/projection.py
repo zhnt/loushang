@@ -263,16 +263,34 @@ def _context_status_message(value: object) -> str | None:
     tokens = value.get("tokens")
     window = value.get("context_window")
     reserve = value.get("reserve_tokens")
+    accuracy = value.get("accuracy")
+    source = value.get("source")
+    envelope_status = value.get("structural_envelope_status")
+    approximate = (
+        isinstance(accuracy, str) and accuracy in {"projected", "estimated"}
+    ) or (
+        isinstance(envelope_status, str)
+        and envelope_status in {"logical_mismatch", "unavailable"}
+    )
+    prefix = "≈" if approximate else ""
     parts: list[str] = []
     if isinstance(tokens, int) and not isinstance(tokens, bool):
         if isinstance(window, int) and not isinstance(window, bool):
-            parts.append(f"{tokens}/{window} tokens")
+            parts.append(f"{prefix}{tokens}/{window} tokens")
         else:
-            parts.append(f"{tokens} tokens")
+            parts.append(f"{prefix}{tokens} tokens")
     elif isinstance(window, int) and not isinstance(window, bool):
         parts.append(f"window {window}")
     if isinstance(reserve, int) and not isinstance(reserve, bool):
         parts.append(f"reserve {reserve}")
+    if isinstance(accuracy, str) and accuracy:
+        parts.append(accuracy)
+    if isinstance(source, str) and source:
+        parts.append(f"source {source}")
+    if envelope_status == "logical_mismatch":
+        parts.append("logical envelope changed")
+    elif envelope_status == "logical_match":
+        parts.append("logical envelope matched")
     return f"Context: {', '.join(parts)}" if parts else None
 
 
