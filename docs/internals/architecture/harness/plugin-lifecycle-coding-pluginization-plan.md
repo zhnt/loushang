@@ -1094,6 +1094,98 @@ activation still cross their distinct durable Approval gates. No per-workspace
 package generation, ambient service locator, hidden fallback, or second LSP
 runtime path is introduced.
 
+#### PLC5.1a: Co-Distributed Dependency Evidence
+
+The checked-in package exposes one narrower foundation gap. The canonical
+dependency-lock assembler currently discovers Python distributions only below
+the materialized Plugin root, while `coding.lsp.default` and its private
+Provider adapter are files in the same installed Loushang distribution. Copying
+distribution metadata into the Plugin directory, adding Loushang to the global
+Host API prefixes, or publishing through a Coding-only binding path would each
+create a second authority. PLC5.1a introduces none of those routes.
+
+The frozen design has two roles:
+
+- a Harness-owned `InstalledPythonDistributionEvidenceResolver` derives an
+  exact normalized distribution name/version and its verifiable import origins
+  from the running environment. It is used both while constructing a dependency
+  lock and while checking an import from that lock; and
+- a private Product-owned `CoDistributedPluginDependencyGrantResolver` maps an
+  exact `(pluginId, sourceIdentity)` to a small tuple of distribution names.
+  The initial Coding registry contains only the checked-in
+  `coding.lsp.default -> loushang` relationship. Neither a manifest,
+  declaration, user configuration nor Plugin code can add a grant.
+
+The grant resolver is injected into `PackageMaterializer` as a read-only Host
+port. Its default grants nothing, so existing local, Git and Python-package
+publication semantics remain unchanged. The canonical
+`PackageMaterializer._plugin_dependency_lock()` remains the only assembler: it
+unions distribution facts discovered below the immutable revision with exact
+identities proven for Product grants, canonicalizes once, rejects conflicting
+versions, and emits the existing
+`loushang.plugin-dependency-lock/v1` document.
+
+```text
+immutable verified revision distributions ----\
+                                                +-> one dependency-lock assembler
+Product-owned exact source grant -> installed --/          |
+                                   evidence                 v
+                                               existing lock digest / Approval
+
+existing lock -> the same installed-distribution evidence -> verified import
+```
+
+The grant is package evidence, not a Plugin type, Capability grant, execution
+decision, import result or lifecycle owner. It contains no caller-supplied
+version and does not survive as a second durable record. The derived exact
+distribution identity is already covered by the dependency-lock digest used by
+selection, declaration execution, admission and activation. Package content
+remains covered independently by the verified revision digest and source
+binding. Publication and binding/restart recompute the same closure; absence or
+change of the Product grant therefore produces the existing fail-closed lock
+mismatch rather than a fallback.
+
+Installed-distribution evidence has two accepted origin proofs:
+
+- a normal wheel/install proof requires matching installed metadata and RECORD
+  files that contain the checked-in Plugin source and any imported Loushang
+  module; and
+- a development-only editable proof requires PEP 610 `direct_url.json` with a
+  local `file:` URL and `dir_info.editable == true`, matching installed
+  name/version, an exact Product registry source, and both the Plugin source and
+  imported module origin contained by that project root. Editable acceptance is
+  a Product-owned development policy, never a Plugin setting. A plain source
+  tree without matching installed metadata is not evidence.
+
+The import checker uses exact recorded files for a normal install and proven
+top-level package roots for an editable install. It does not execute `.pth`
+files, follow a remote direct URL, accept name-only `sys.path` coincidence, or
+trust an already imported module without checking its origin. The first-party
+package may then import `loushang.coding.lsp._provider_api` because it is part of
+the exact locked Loushang distribution. This is a same-trust-domain private
+code boundary, not a public SDK or a claim that a distribution lock is a Python
+module sandbox; source identity, Product selection and both Approval gates
+remain the security authorities.
+
+The following cases fail before Definition evaluation or Provider activation:
+
+| Case | Required result |
+| --- | --- |
+| reserved `coding.lsp.default` ID from any other source identity | reject the Product grant; do not publish an executable candidate |
+| exact checked-in source outside the proven Loushang install/project root | reject co-distribution evidence |
+| missing distribution, version drift, malformed/non-local editable metadata, or unverifiable origin | reject dependency closure/import with a stable diagnostic |
+| published lock differs when binding or reconstructing after restart | reject as dependency-closure change; require republish/reselection |
+| opted-in LSP package cannot obtain its required grant | fail the opt-in Session; never use the legacy LSP route |
+| ordinary Plugin has no Product grant | use only its current materialized-root dependency closure |
+
+PLC5.1a is complete only when tests prove wheel and explicit editable evidence,
+copied-source/ID impersonation rejection, missing-grant and version/origin drift
+rejection, publication-to-bind recomputation, private adapter import under the
+unchanged Component Host prefix tuple, and unchanged behavior for an ordinary
+Plugin. It does not add arbitrary host-package dependencies, a dependency
+installer, a second lock schema, public authoring API, MCP behavior, or a new
+Plugin category.
+
 Scope and gates are PAP6, including packaging the complete Bundle, narrow
 workspace requirements, Tool/runtime Session co-visibility across their exact
 owners, alternate Provider selection, rollback, replay, restart reconstruction,

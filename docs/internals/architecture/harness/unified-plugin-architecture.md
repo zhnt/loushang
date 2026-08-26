@@ -1531,6 +1531,37 @@ first-party Provider adapter may reuse a private, narrow LSP engine API through
 an exact Loushang dependency lock; this does not widen Component Host API
 prefixes or declare a public Provider SDK.
 
+That exact lock enters through one co-distribution evidence seam, not a second
+publication path. A private Product-owned
+`CoDistributedPluginDependencyGrantResolver` recognizes only an exact
+`(pluginId, sourceIdentity)` registered by Coding and returns distribution names,
+never caller-supplied versions. The Harness-owned
+`InstalledPythonDistributionEvidenceResolver` proves the current exact
+name/version and import origins. `PackageMaterializer._plugin_dependency_lock()`
+unions that evidence with its existing materialized-root scan and remains the
+sole lock assembler for both publication and binding/restart revalidation. The
+lock stays `loushang.plugin-dependency-lock/v1`, so its existing digest continues
+to bind selection and both Approval gates.
+
+A normal install is proven by installed metadata plus RECORD membership. An
+explicit Product-owned development policy may instead accept a local PEP 610
+editable install only when `direct_url.json` says `editable`, the installed
+name/version matches, and both the registered Plugin source and imported module
+origin are inside the same project root. A plain source tree, remote direct URL,
+copied package, matching ID from another source, missing grant, origin drift or
+version drift fails closed. The verified importer consumes the same installed-
+distribution evidence; it does not execute `.pth` files or accept ambient
+`sys.path` coincidence.
+
+This seam is Host package evidence, not a Plugin type, manifest field,
+Capability grant or public authoring primitive. Ordinary Plugins receive no
+extra distribution and preserve the current path. The initial private registry
+contains only `coding.lsp.default -> loushang`; a Plugin cannot request or forge
+that relationship. Locking the same-trust-domain Loushang distribution permits
+the checked-in Provider to use `_provider_api`, but does not claim that a
+distribution lock is a Python module sandbox. Product source ownership and the
+existing execution/activation decisions remain authoritative.
+
 Owner-admitted Tool packs in the same selected Plugin/composition closure are
 staged by the Tool owner and become Session-visible only when the usable Product
 Session containing the mounted runtime is published. They remain sibling
@@ -1558,6 +1589,7 @@ registry or a second Graph bind.
 | --- | --- | --- |
 | `plugin.json` parsing | `PluginManifestParser` | Package catalog or Component Host reparsing |
 | Source bytes/path authority | immutable `ResolvedPluginPackage` locators | Raw mutable path joining in consumers |
+| Co-distributed dependency evidence | Product-owned exact source grant plus Harness installed-distribution evidence resolver feeding the canonical lock assembler | Manifest-requested Host dependency, copied metadata, or Product-specific publication/bind path |
 | Plugin executable preflight and candidate selection | Product Runtime Plan/OEM Profile plus two-phase `PluginSelectionResolver` | Import-before-preflight or self-enable in Plugin code |
 | Complete-Bundle Provider eligibility | Exact Capability owner grant | Product/OEM selecting an ungranted replacement |
 | Complete-Bundle Provider final admission | Exact Capability owner and `CapabilityProviderAdmissionRecord` | Product policy calculating effective grants |

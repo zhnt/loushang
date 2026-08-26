@@ -1613,6 +1613,33 @@ def test_plc5_private_lsp_adopter_keeps_product_and_graph_ownership() -> None:
         assert required in lifecycle_plan
 
 
+def test_plc5_co_distributed_dependency_evidence_keeps_one_lock_authority() -> None:
+    architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
+    lifecycle_plan = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
+
+    for required in (
+        "`CoDistributedPluginDependencyGrantResolver` recognizes only an exact",
+        "`InstalledPythonDistributionEvidenceResolver` proves the current exact",
+        "remains the\nsole lock assembler for both publication and binding/restart",
+        "lock stays `loushang.plugin-dependency-lock/v1`",
+        "does not execute `.pth` files or accept ambient\n`sys.path` coincidence",
+        "not a Plugin type, manifest field,\nCapability grant or public authoring primitive",
+        "initial private registry\ncontains only `coding.lsp.default -> loushang`",
+    ):
+        assert required in architecture
+
+    for required in (
+        "#### PLC5.1a: Co-Distributed Dependency Evidence",
+        "`PackageMaterializer._plugin_dependency_lock()` remains the only assembler",
+        "Neither a manifest,\n  declaration, user configuration nor Plugin code can add a grant",
+        "A plain source\n  tree without matching installed metadata is not evidence",
+        "This is a same-trust-domain private\ncode boundary, not a public SDK",
+        "never use the legacy LSP route",
+        "does not add arbitrary host-package dependencies",
+    ):
+        assert required in lifecycle_plan
+
+
 def test_plc1b_contract_freezes_no_self_reference_and_exact_v2_records() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
     contract = PLC1B_CONTRACT_PATH.read_text(encoding="utf-8")
