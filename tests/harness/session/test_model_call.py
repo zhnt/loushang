@@ -635,6 +635,13 @@ def test_provider_retry_commits_each_attempt_with_one_invocation_identity() -> N
         assert anchor is not None
         assert anchor.attempt == 2
         assert anchor.model_input_snapshot_id == snapshots[1].snapshot_id
+        totals = inspector.build_session_stats().tokens
+        assert totals.input == 20
+        assert totals.output == 2
+        assert totals.cache_read == 6
+        assert totals.total == 28
+        assert totals.source == "attempt_usage_facts"
+        assert totals.incomplete_attempts is False
         projected = session.get_model_call_invocations()
         assert len(projected) == 1
         assert projected[0].state == "completed"
