@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from types import SimpleNamespace
 
 from loushang.agent import Agent
@@ -23,11 +24,15 @@ from loushang.harness.session import AgentSessionInspector, AgentSessionState
 from loushang.harness.session.inspection import _build_token_usage_totals
 from loushang.harness.transcript import (
     AGENT_MESSAGE_KIND,
+    MODEL_CALL_ATTEMPT_USAGE_KIND,
     MODEL_CALL_OUTCOME_KIND,
     MODEL_INPUT_PREPARED_KIND,
     AgentTranscriptSession,
     AgentTranscriptUnitOfWork,
+    ModelCallAttemptUsage,
     ModelCallOutcome,
+    ModelInputComponentReference,
+    ModelInputSnapshot,
 )
 
 
@@ -224,6 +229,100 @@ def test_token_totals_prefer_outcomes_and_keep_uncovered_legacy_usage() -> None:
     assert totals.incomplete_attempts is True
 
 
+def test_token_totals_prefer_complete_attempt_facts_across_retries() -> None:
+    records = [
+        _record(
+            "snapshot-1", MODEL_INPUT_PREPARED_KIND, _snapshot("snapshot-1", 1)
+        ),
+        _record(
+            "usage-1",
+            MODEL_CALL_ATTEMPT_USAGE_KIND,
+            _attempt_usage("snapshot-1", 1, input=10, terminal=True),
+        ),
+        _record(
+            "snapshot-2", MODEL_INPUT_PREPARED_KIND, _snapshot("snapshot-2", 2)
+        ),
+        _record(
+            "usage-2",
+            MODEL_CALL_ATTEMPT_USAGE_KIND,
+            _attempt_usage(
+                "snapshot-2",
+                2,
+                input=20,
+                output=5,
+                terminal=True,
+            ),
+        ),
+        _record(
+            "outcome",
+            MODEL_CALL_OUTCOME_KIND,
+            ModelCallOutcome(
+                invocation_id="invocation-1",
+                model_input_snapshot_ids=("snapshot-1", "snapshot-2"),
+                disposition="completed",
+                stop_reason="stop",
+                usage=Usage(20, 5, 0, 0, 25, None),
+            ),
+        ),
+    ]
+
+    totals = _build_token_usage_totals(records)  # type: ignore[arg-type]
+
+    assert totals.input == 30
+    assert totals.output == 5
+    assert totals.total == 35
+    assert totals.source == "attempt_usage_facts"
+    assert totals.incomplete_attempts is False
+
+
+def test_token_totals_mark_fact_and_outcome_fallback_as_mixed() -> None:
+    records = [
+        _record(
+            "snapshot-1", MODEL_INPUT_PREPARED_KIND, _snapshot("snapshot-1", 1)
+        ),
+        _record(
+            "usage-1",
+            MODEL_CALL_ATTEMPT_USAGE_KIND,
+            _attempt_usage("snapshot-1", 1, input=10, terminal=True),
+        ),
+        _record(
+            "outcome-1",
+            MODEL_CALL_OUTCOME_KIND,
+            ModelCallOutcome(
+                invocation_id="invocation-1",
+                model_input_snapshot_ids=("snapshot-1",),
+                disposition="completed",
+                stop_reason="stop",
+                usage=Usage(10, 0, 0, 0, 10, None),
+            ),
+        ),
+        _record(
+            "legacy-snapshot",
+            MODEL_INPUT_PREPARED_KIND,
+            _snapshot("legacy-snapshot", 1, invocation_id="legacy-invocation"),
+        ),
+        _record(
+            "outcome-2",
+            MODEL_CALL_OUTCOME_KIND,
+            ModelCallOutcome(
+                invocation_id="legacy-invocation",
+                model_input_snapshot_ids=("legacy-snapshot",),
+                disposition="completed",
+                stop_reason="stop",
+                usage=Usage(7, 2, 0, 0, 9, None),
+            ),
+        ),
+    ]
+
+    totals = _build_token_usage_totals(records)  # type: ignore[arg-type]
+
+    assert totals.input == 17
+    assert totals.output == 2
+    assert totals.total == 19
+    assert totals.source == "mixed_derived"
+    assert totals.incomplete_attempts is True
+
+
 def _assistant_with_usage(usage: Usage) -> AssistantMessage:
     return AssistantMessage(
         endpoint="test-endpoint",
@@ -237,6 +336,66 @@ def _assistant_with_usage(usage: Usage) -> AssistantMessage:
         stop_reason="stop",
         error_message=None,
         timestamp=1.0,
+    )
+
+
+def _attempt_usage(
+    snapshot_id: str,
+    attempt: int,
+    *,
+    input: int,
+    output: int = 0,
+    terminal: bool,
+) -> ModelCallAttemptUsage:
+    return ModelCallAttemptUsage(
+        invocation_id="invocation-1",
+        attempt=attempt,
+        model_input_snapshot_id=snapshot_id,
+        input=input,
+        output=output,
+        terminal=terminal,
+    )
+
+
+def _snapshot(
+    snapshot_id: str,
+    attempt: int,
+    *,
+    invocation_id: str = "invocation-1",
+) -> ModelInputSnapshot:
+    reference = ModelInputComponentReference(
+        name="messages",
+        record_id="component-record",
+        content_hash="a" * 64,
+    )
+    return ModelInputSnapshot(
+        snapshot_id=snapshot_id,
+        invocation_id=invocation_id,
+        attempt=attempt,
+        purpose="main_turn",
+        product_id="coding",
+        runtime_id="runtime-1",
+        mount_generation=1,
+        profile_fingerprint="b" * 64,
+        registration_revision="c" * 64,
+        conversation_id="conversation-1",
+        source_leaf_id="source-record",
+        source_revision=1,
+        commit_revision=2,
+        provider_id="provider-1",
+        model_id="model-1",
+        api_id="api-1",
+        endpoint_id="endpoint-1",
+        logical_components=tuple(
+            replace(reference, name=name)
+            for name in ("system_prompt", "messages", "tools", "request_options")
+        ),
+        prepared_payload_components=(reference,),
+        model_visible_headers_component=replace(
+            reference, name="model_visible_headers"
+        ),
+        logical_input_hash="d" * 64,
+        prepared_payload_hash="e" * 64,
     )
 
 

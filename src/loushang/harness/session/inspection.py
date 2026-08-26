@@ -27,9 +27,11 @@ from loushang.harness.transcript import (
     build_context_usage_snapshot,
     calculate_context_tokens,
     estimate_context_tokens,
+    project_model_call_usage,
 )
 
 TokenUsageTotalsSource = Literal[
+    "attempt_usage_facts",
     "logical_outcome_derived",
     "legacy_derived",
     "mixed_derived",
@@ -264,7 +266,22 @@ def _build_token_usage_totals(
     cache_read_tokens = 0
     cache_write_tokens = 0
     total_tokens = 0
-    outcome_count = 0
+    ledger = project_model_call_usage(tuple(branch_entries))
+    fact_invocations = {attempt.invocation_id for attempt in ledger.attempts}
+    terminal_fact_snapshots: dict[str, set[str]] = {}
+    for attempt in ledger.attempts:
+        if attempt.terminal:
+            terminal_fact_snapshots.setdefault(attempt.invocation_id, set()).add(
+                attempt.model_input_snapshot_id
+            )
+    fact_usage = ledger.usage
+    input_tokens += fact_usage.input
+    output_tokens += fact_usage.output
+    cache_read_tokens += fact_usage.cache_read
+    cache_write_tokens += fact_usage.cache_write
+    total_tokens += calculate_context_tokens(fact_usage)
+    fact_outcome_invocations: set[str] = set()
+    fallback_outcome_count = 0
     covered_assistant_indexes = _outcome_covered_assistant_indexes(branch_entries)
     legacy_count = 0
 
@@ -274,7 +291,10 @@ def _build_token_usage_totals(
             getattr(entry, "kind", None) == MODEL_CALL_OUTCOME_KIND
             and isinstance(payload, ModelCallOutcome)
         ):
-            outcome_count += 1
+            if payload.invocation_id in fact_invocations:
+                fact_outcome_invocations.add(payload.invocation_id)
+                continue
+            fallback_outcome_count += 1
             usage = payload.usage
         elif (
             index not in covered_assistant_indexes
@@ -292,6 +312,18 @@ def _build_token_usage_totals(
         cache_write_tokens += int(getattr(usage, "cache_write", 0) or 0)
         total_tokens += calculate_context_tokens(usage)
 
+    facts_complete = ledger.complete
+    if facts_complete:
+        facts_complete = fact_invocations == fact_outcome_invocations and all(
+            set(outcome.model_input_snapshot_ids)
+            == terminal_fact_snapshots.get(outcome.invocation_id, set())
+            for entry in branch_entries
+            if getattr(entry, "kind", None) == MODEL_CALL_OUTCOME_KIND
+            and isinstance((outcome := getattr(entry, "payload", None)), ModelCallOutcome)
+            and outcome.invocation_id in fact_invocations
+        )
+    has_facts = bool(ledger.attempts)
+    has_fallback = bool(fallback_outcome_count or legacy_count)
     return TokenUsageTotals(
         input=input_tokens,
         output=output_tokens,
@@ -300,12 +332,16 @@ def _build_token_usage_totals(
         total=total_tokens,
         source=(
             "mixed_derived"
-            if outcome_count and legacy_count
+            if has_facts and has_fallback
+            else "attempt_usage_facts"
+            if has_facts
+            else "mixed_derived"
+            if fallback_outcome_count and legacy_count
             else "logical_outcome_derived"
-            if outcome_count
+            if fallback_outcome_count
             else "legacy_derived"
         ),
-        incomplete_attempts=True,
+        incomplete_attempts=(not facts_complete or has_fallback),
     )
 
 
