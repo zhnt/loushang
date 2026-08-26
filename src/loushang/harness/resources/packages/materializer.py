@@ -27,7 +27,17 @@ from loushang.harness.resources.packages.source import (
 )
 from loushang.harness.resources.plugins.dependencies import (
     PluginDependencyClosureLock,
+    canonical_python_distribution_name,
     lock_plugin_dependency_closure,
+)
+from loushang.harness.resources.plugins.dependency_grants import (
+    PluginDependencyGrantError,
+    PluginDependencyGrantResolver,
+)
+from loushang.harness.resources.plugins.distribution_evidence import (
+    InstalledPythonDistributionEvidence,
+    InstalledPythonDistributionEvidenceError,
+    InstalledPythonDistributionEvidenceResolver,
 )
 from loushang.harness.resources.plugins.manifest import PluginManifestError
 from loushang.harness.resources.plugins.revisions import PluginRevisionStore
@@ -380,6 +390,12 @@ class PackageMaterializer:
         update_check_timeout_seconds: float = 10.0,
         progress_callback: Callable[[PackageProgressEvent], None] | None = None,
         plugin_revision_root: str | Path | None = None,
+        co_distributed_dependency_grant_resolver: (
+            PluginDependencyGrantResolver | None
+        ) = None,
+        installed_distribution_evidence_resolver: (
+            InstalledPythonDistributionEvidenceResolver | None
+        ) = None,
     ) -> None:
         self.install_root = Path(install_root).expanduser().resolve()
         self.lockfile_path = (
@@ -393,6 +409,24 @@ class PackageMaterializer:
             security_policy or _DenyUnconfiguredPackageSourcePolicy()
         )
         self._progress_callback = progress_callback
+        if co_distributed_dependency_grant_resolver is not None and not callable(
+            getattr(co_distributed_dependency_grant_resolver, "resolve", None)
+        ):
+            raise TypeError("Plugin dependency grant resolver must be callable")
+        if installed_distribution_evidence_resolver is not None and not callable(
+            getattr(installed_distribution_evidence_resolver, "resolve", None)
+        ):
+            raise TypeError(
+                "Installed distribution evidence resolver must be callable"
+            )
+        self._co_distributed_dependency_grant_resolver = (
+            co_distributed_dependency_grant_resolver
+        )
+        self._installed_distribution_evidence_resolver = (
+            installed_distribution_evidence_resolver
+            if installed_distribution_evidence_resolver is not None
+            else InstalledPythonDistributionEvidenceResolver()
+        )
         self._plugin_revision_store = PluginRevisionStore(
             plugin_revision_root
             if plugin_revision_root is not None
@@ -454,7 +488,7 @@ class PackageMaterializer:
         self._assert_plugin_binding_lock_valid()
         candidate = PluginSourceBinding(
             source=_plugin_source_value(package.source),
-            source_identity=_plugin_source_identity(package.source),
+            source_identity=plugin_source_identity(package.source),
             source_kind=package.source.kind,
             plugin_id=package.manifest.name,
             manifest_digest=package.manifest_digest,
@@ -465,10 +499,10 @@ class PackageMaterializer:
         self,
         source: str | Path | PluginSource,
     ) -> PluginSourceBinding | None:
-        return self._plugin_bindings.get(_plugin_source_identity(source))
+        return self._plugin_bindings.get(plugin_source_identity(source))
 
     def forget_plugin_binding(self, source: str | Path | PluginSource) -> None:
-        key = _plugin_source_identity(source)
+        key = plugin_source_identity(source)
         if key not in self._plugin_bindings:
             return
         previous = self._plugin_bindings
@@ -605,7 +639,7 @@ class PackageMaterializer:
             revision_kind = "content_sha256"
         return PluginSourceBinding(
             source=source_value,
-            source_identity=_plugin_source_identity(source),
+            source_identity=plugin_source_identity(source),
             source_kind=source.kind,
             plugin_id=package.manifest.name,
             manifest_digest=package.manifest_digest,
@@ -675,10 +709,13 @@ class PackageMaterializer:
                     code="plugin_dependency_closure_changed",
                     path=package.root,
                 )
+        granted_distributions = self._co_distributed_plugin_distributions(package)
         try:
             return lock_plugin_dependency_closure(
                 package_content_digest=content_digest,
-                installed_distributions=actual_distributions,
+                installed_distributions=tuple(
+                    sorted({*actual_distributions, *granted_distributions})
+                ),
             )
         except (TypeError, ValueError) as exc:
             raise PluginManifestError(
@@ -686,6 +723,101 @@ class PackageMaterializer:
                 code="invalid_plugin_dependency_closure",
                 path=package.root,
             ) from exc
+
+    def _co_distributed_plugin_distributions(
+        self,
+        package: VerifiedPluginRevision,
+    ) -> tuple[str, ...]:
+        resolver = self._co_distributed_dependency_grant_resolver
+        if resolver is None:
+            return ()
+        source_identity = plugin_source_identity(package.source)
+        try:
+            granted = resolver.resolve(
+                plugin_id=package.manifest.name,
+                source_identity=source_identity,
+            )
+        except PluginDependencyGrantError as exc:
+            raise PluginManifestError(
+                str(exc),
+                code=exc.code,
+                path=package.root,
+            ) from exc
+        except Exception as exc:
+            raise PluginManifestError(
+                "Product Plugin dependency grant resolution failed",
+                code="invalid_plugin_dependency_grant",
+                path=package.root,
+            ) from exc
+        if not isinstance(granted, tuple) or any(
+            not isinstance(item, str) for item in granted
+        ):
+            raise PluginManifestError(
+                "Product Plugin dependency grant is invalid",
+                code="invalid_plugin_dependency_grant",
+                path=package.root,
+            )
+        try:
+            normalized = tuple(
+                canonical_python_distribution_name(item) for item in granted
+            )
+        except (TypeError, ValueError) as exc:
+            raise PluginManifestError(
+                "Product Plugin dependency grant is invalid",
+                code="invalid_plugin_dependency_grant",
+                path=package.root,
+            ) from exc
+        if normalized != granted or len(set(normalized)) != len(normalized):
+            raise PluginManifestError(
+                "Product Plugin dependency grant is not canonical",
+                code="invalid_plugin_dependency_grant",
+                path=package.root,
+            )
+        if not normalized:
+            return ()
+        source_root = package.source.path
+        manifest_path = package.manifest_path
+        if source_root is None or manifest_path is None:
+            raise PluginManifestError(
+                "Product Plugin dependency grant has no source evidence",
+                code="plugin_dependency_distribution_source_mismatch",
+                path=package.root,
+            )
+        try:
+            relative_manifest = manifest_path.relative_to(package.root)
+        except ValueError as exc:
+            raise PluginManifestError(
+                "Product Plugin dependency grant has invalid source evidence",
+                code="plugin_dependency_distribution_source_mismatch",
+                path=package.root,
+            ) from exc
+        source_manifest = (source_root.resolve() / relative_manifest).resolve()
+        evidence: list[InstalledPythonDistributionEvidence] = []
+        try:
+            for name in normalized:
+                item = self._installed_distribution_evidence_resolver.resolve(
+                    name,
+                    required_paths=(source_manifest,),
+                )
+                if not isinstance(item, InstalledPythonDistributionEvidence):
+                    raise TypeError("Installed distribution evidence is invalid")
+                evidence.append(item)
+        except InstalledPythonDistributionEvidenceError as exc:
+            raise PluginManifestError(
+                str(exc),
+                code=exc.code,
+                path=source_manifest,
+            ) from exc
+        except Exception as exc:
+            raise PluginManifestError(
+                "Product Plugin dependency evidence resolution failed",
+                code="invalid_plugin_dependency_grant",
+                path=source_manifest,
+            ) from exc
+        return tuple(
+            f"{item.distribution.name}=={item.distribution.version}"
+            for item in evidence
+        )
 
     def prepare_remote_source(self, source: str) -> PackageMaterializationRecord:
         if not is_remote_package_source(source):
@@ -787,7 +919,7 @@ class PackageMaterializer:
 
     def forget_remote_source(self, source: str) -> None:
         record_key = _record_key(source)
-        binding_key = _plugin_source_identity(source)
+        binding_key = plugin_source_identity(source)
         if record_key not in self._records and binding_key not in self._plugin_bindings:
             return
         previous_records = self._records
@@ -1389,7 +1521,9 @@ def _plugin_source_value(source: PluginSource) -> str:
     return str(source.path.expanduser().resolve())
 
 
-def _plugin_source_identity(source: str | Path | PluginSource) -> str:
+def plugin_source_identity(source: str | Path | PluginSource) -> str:
+    """Return the canonical local/remote identity shared by locks and grants."""
+
     if isinstance(source, PluginSource):
         if source.kind == "remote":
             if source.url is None:
@@ -1438,7 +1572,7 @@ def _plugin_binding_from_json(
         else PluginSource(path=Path(source))
     )
     try:
-        canonical_source_identity = _plugin_source_identity(source_descriptor)
+        canonical_source_identity = plugin_source_identity(source_descriptor)
     except (TypeError, ValueError):
         return None
     if canonical_source_identity != source_identity:

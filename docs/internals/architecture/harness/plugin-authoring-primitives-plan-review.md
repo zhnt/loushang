@@ -49,6 +49,18 @@ declaration decoder.
 No unresolved finding requires a second Graph, Profile resolver, Registration
 owner, effective projector, Plugin context, or Skill-specific Plugin runtime.
 
+## PAP5.5 Sequencing Addendum
+
+The 2026-08-24
+[Resource Catalog And Source Pluginization Plan](resource-catalog-pluginization-plan.md)
+proposes a narrower sequencing revision after this review: implement only the
+internal `harness.resources` owner-component schemas, single Catalog, source
+adapters, and typed Skill projection before LSP. The original deferral of a
+generic public `capability_component` authoring surface remains in force, as do
+the complete-Bundle LSP proof and stable SDK gates. This addendum does not turn
+the historical review into an independent approval of PAP5.5; PAP5.5 requires
+its own source-backed review before implementation.
+
 ## Review Scope And Evidence
 
 The review compared the plan with:
@@ -329,7 +341,9 @@ adding implicit discovery or authority.
 ### Defer
 
 - stable public SDK until UPA5/UPA6 evidence;
-- generic `capability_component` authoring until complete-Bundle LSP is stable;
+- generic public `capability_component` authoring until complete-Bundle LSP is
+  stable; the proposed PAP5.5 exception is limited to internal Resource-owner
+  schemas and requires a separate review;
 - generic event/hook and Agent Definition SDKs;
 - private Plugin data generations;
 - dynamic MCP surfaces;
@@ -360,10 +374,12 @@ approved only if it remains inert and satisfies all of the following:
 
 ## Review Conclusion
 
-The priority decision is sound after revision: build the common owner-preserving
+The priority decision reviewed here was sound: build the common owner-preserving
 authoring path first, prove it with a real executable Capability, and converge
-Skill afterward as a lightweight Resource-provider user. The plan preserves the
-stronger Loushang properties that a universal Plugin context would erase:
+Skill afterward as a lightweight Resource-provider user. The PAP5.5 addendum
+proposes moving only that internal Resource convergence before LSP without
+changing the original complete-Bundle or public SDK evidence gates. Both shapes
+preserve the stronger Loushang properties that a universal Plugin context would erase:
 owner admission, pure Product selection, one Graph publisher, exact reversible
 registration ownership, and complete Model Input reconstruction.
 

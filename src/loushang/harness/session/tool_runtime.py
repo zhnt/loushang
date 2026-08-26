@@ -246,6 +246,7 @@ class SessionToolRuntime:
         tool: object,
         *,
         owner: RegistrationOwner,
+        enabled: bool = True,
         source_info: object | None = None,
     ) -> RegistrationLease:
         registration = self._resolve_runtime_tool_registration(
@@ -255,9 +256,14 @@ class SessionToolRuntime:
         registry_lease = self.tool_registry.stage_tool(
             registration.definition,
             owner=owner,
+            enabled=enabled,
             source_info=registration.source_info,
         )
-        return self._runtime_view_lease(registry_lease, staged=True)
+        return self._runtime_view_lease(
+            registry_lease,
+            staged=True,
+            activate_new_on_publish=enabled,
+        )
 
     def adopt_runtime_tool(
         self,
@@ -289,6 +295,7 @@ class SessionToolRuntime:
         registry_lease: RegistrationLease,
         *,
         staged: bool = False,
+        activate_new_on_publish: bool = True,
     ) -> RegistrationLease:
         async def dispose_runtime_binding() -> RegistrationDisposalResult:
             result = await registry_lease.dispose()
@@ -298,7 +305,10 @@ class SessionToolRuntime:
 
         def activate_runtime_binding() -> None:
             registry_lease.activate()
-            self._sync_available(activate_new=True, rebind=True)
+            self._sync_available(
+                activate_new=activate_new_on_publish,
+                rebind=True,
+            )
 
         def deactivate_runtime_binding() -> None:
             registry_lease.deactivate()

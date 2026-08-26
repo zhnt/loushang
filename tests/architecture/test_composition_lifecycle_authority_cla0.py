@@ -583,19 +583,26 @@ def test_generated_catalog_distinguishes_source_complete_from_mounted() -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
     catalog = CATALOG_PATH.read_text(encoding="utf-8")
-    statuses = dict(
-        re.findall(
-            r"^\| `([\w.]+)` \| `([\w-]+)`(?:<br>[^|]+)? \|",
+    statuses = {
+        (capability_id, int(contract_version)): status
+        for capability_id, status, contract_version in re.findall(
+            r"^\| `([\w.]+)` \| `([\w-]+)`(?:<br>[^|]+)? \| v(\d+) /",
             catalog,
             re.MULTILINE,
         )
-    )
-    assert statuses == {
-        "harness.model_input": "production-mounted",
-        "harness.resources": "production-mounted",
-        "harness.session": "production-mounted",
-        "harness.workspace": "production-mounted",
     }
+    assert statuses == {
+        ("coding.lsp", 1): "production-mounted",
+        ("harness.model_input", 1): "production-mounted",
+        ("harness.resources", 1): "production-mounted",
+        ("harness.resources", 2): "source-complete",
+        ("harness.session", 4): "production-mounted",
+        ("harness.workspace", 1): "production-mounted",
+    }
+    coding_lsp_row = next(
+        line for line in catalog.splitlines() if line.startswith("| `coding.lsp` |")
+    )
+    assert "AgentSession" in coding_lsp_row
 
 
 def test_cla4_resources_provider_has_one_production_mount_owner() -> None:
@@ -603,7 +610,7 @@ def test_cla4_resources_provider_has_one_production_mount_owner() -> None:
         {
             (
                 Path("src/loushang/harness/session/agent_product.py"),
-                "AgentProductSession.__init__",
+                "AgentProductSession._build_resource_capability_provider_binding",
             ): 1
         }
     )

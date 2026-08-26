@@ -41,6 +41,37 @@ class CapabilitySeam:
 SOURCE_BACKED_SEAMS = (
     CapabilitySeam(
         definition=(
+            "loushang.coding.lsp._provider_api:"
+            "CODING_LSP_CAPABILITY_DEFINITION"
+        ),
+        providers=(
+            "loushang.coding.lsp._provider_api:"
+            "coding_lsp_capability_provider",
+        ),
+        consumers=(
+            (
+                "loushang.coding.lsp._provider_api:"
+                "CodingLspSessionCapabilityConsumer",
+                (
+                    "loushang.coding.lsp._provider_api:"
+                    "CODING_LSP_SESSION_REQUIREMENT",
+                ),
+            ),
+            (
+                "loushang.coding.lsp._provider_api:"
+                "CodingLspToolRuntimeCapabilityConsumer",
+                (
+                    "loushang.coding.lsp._provider_api:"
+                    "CODING_LSP_TOOL_RUNTIME_REQUIREMENT",
+                ),
+            ),
+        ),
+        production_mounts=(
+            "loushang.coding.session.agent_session:AgentSession",
+        ),
+    ),
+    CapabilitySeam(
+        definition=(
             "loushang.harness.capabilities.resources_contracts:"
             "RESOURCES_CAPABILITY_DEFINITION"
         ),
@@ -92,6 +123,26 @@ SOURCE_BACKED_SEAMS = (
         ),
         production_mounts=(
             "loushang.harness.session.agent_product:AgentProductSession",
+        ),
+    ),
+    CapabilitySeam(
+        definition=(
+            "loushang.harness.capabilities.resources_contracts:"
+            "RESOURCES_CAPABILITY_DEFINITION_V2"
+        ),
+        providers=(
+            "loushang.harness.capabilities.resources_provider:"
+            "resources_capability_provider_binding",
+        ),
+        consumers=(
+            (
+                "loushang.harness.capabilities.resources_consumers:"
+                "ResourceCatalogCapabilityConsumer",
+                (
+                    "loushang.harness.capabilities.resources_contracts:"
+                    "RESOURCES_CATALOG_LOAD_REQUIREMENT",
+                ),
+            ),
         ),
     ),
     CapabilitySeam(
@@ -233,23 +284,33 @@ def load_catalog_entries() -> tuple[tuple[CapabilitySeam, CapabilityDefinition],
         )
 
     loaded: list[tuple[CapabilitySeam, CapabilityDefinition]] = []
-    capability_ids: set[str] = set()
+    capability_versions: set[tuple[str, int]] = set()
     for seam in SOURCE_BACKED_SEAMS:
         definition = _resolve(seam.definition)
         if not isinstance(definition, CapabilityDefinition):
             raise TypeError(
                 f"catalog Definition has wrong type: {_label(seam.definition)}"
             )
-        if definition.capability_id in capability_ids:
+        identity = (definition.capability_id, definition.contract_version)
+        if identity in capability_versions:
             raise RuntimeError(
-                f"duplicate catalog Capability id: {definition.capability_id}"
+                "duplicate catalog Capability contract: "
+                f"{definition.capability_id}@{definition.contract_version}"
             )
-        capability_ids.add(definition.capability_id)
+        capability_versions.add(identity)
         _validate_providers(seam)
         _validate_consumers(seam, definition)
         _validate_production_mounts(seam)
         loaded.append((seam, definition))
-    return tuple(sorted(loaded, key=lambda item: item[1].capability_id))
+    return tuple(
+        sorted(
+            loaded,
+            key=lambda item: (
+                item[1].capability_id,
+                item[1].contract_version,
+            ),
+        )
+    )
 
 
 def render_catalog() -> str:
@@ -296,10 +357,11 @@ def render_catalog() -> str:
             "",
             "## Coverage Boundary",
             "",
-            "`coding.lsp` and `coding.arch` remain accepted rollout "
-            "targets, but they are deliberately absent from the "
-            "table until each has a complete source-backed Definition / Provider /",
-            "Consumer seam. Fine-grained Runtime Profile slots and individual Tools,",
+            "`coding.lsp` is production-mounted by default whenever its Product mount "
+            "mode is enabled; `disabled` and `no_tools=all` skip Plugin resolution. "
+            "`coding.arch` remains an accepted rollout target and "
+            "is absent from the table until it has a complete source-backed Definition /",
+            "Provider / Consumer seam. Fine-grained Runtime Profile slots and individual Tools,",
             "hooks, resources, and Extension contributions do not become top-level",
             "Capability nodes.",
             "",

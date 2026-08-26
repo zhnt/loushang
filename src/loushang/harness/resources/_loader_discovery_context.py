@@ -18,6 +18,7 @@ def _discover_context_descriptors(
     *,
     user_resource_roots: tuple[Path, ...],
     context_file_names: tuple[str, ...],
+    project_context_roots: tuple[Path, ...] | None = None,
 ) -> tuple[
     list[PromptFragmentDescriptor],
     PromptFragmentDescriptor | None,
@@ -40,7 +41,12 @@ def _discover_context_descriptors(
             descriptors.append(descriptor)
 
     project_descriptors: list[PromptFragmentDescriptor] = []
-    for index, current in enumerate(reversed(_ancestor_dirs(start))):
+    roots = (
+        _project_context_roots(start)
+        if project_context_roots is None
+        else project_context_roots
+    )
+    for index, current in enumerate(roots):
         descriptor, read_diagnostics = _discover_context_descriptor_from_dir(
             current,
             source_kind="project_local",
@@ -52,6 +58,12 @@ def _discover_context_descriptors(
             project_descriptors.append(descriptor)
     descriptors.extend(project_descriptors)
     return descriptors, _nearest_context_descriptor(descriptors), diagnostics
+
+
+def _project_context_roots(start: Path) -> tuple[Path, ...]:
+    """Return the one outer-to-inner context search order used by discovery."""
+
+    return tuple(reversed(_ancestor_dirs(start)))
 
 
 def _ancestor_dirs(start: Path) -> list[Path]:

@@ -16,11 +16,33 @@
   PLC1B-4 are implemented on the current delivery branch: source-union and
   Host composition, inert Resource/Tool/Command payloads, the compiler-owned
   semantic fingerprint, and the document-backed `coding.base` shadow are
-  complete. PLC2-1 through PLC2-4D are implemented; later slices remain
-  unimplemented.
+  complete. PLC2-1 through PLC2-4D, PLC3-1 through PLC3-3, the PLC4/PAP4
+  owner-admission and Provider-selection primitives, and PLC4.5 through
+  RCP4.10 are implemented. PLC5.0's private Product Provider assembly seam is
+  also implemented. PLC5.1a's installed-distribution evidence resolver,
+  Product-owned co-distribution grant, canonical lock integration, checked-in
+  `coding.lsp.default` package, inert declaration evaluation, and private
+  activation-symbol import proof are implemented. The Product composer now owns
+  package publication, selection, Definition Approval
+  consumption, Tool-owner admission, Provider resolution, Activation Approval
+  issuance/verification, Component Host construction and exact Session input
+  binding. The one-shot activation decision remains unconsumed until Session
+  Graph preparation. A bind-once `CodingLspToolOwner` now projects the exact
+  admitted Tool pack only from its Graph Consumer capture, stages invisible
+  runtime Tool leases, publishes the complete generation and retires it in
+  reverse order. Coding bootstrap now selects this Plugin route by default when
+  the capability is enabled: Provider ownership transfers once to the Binder,
+  Tools publish only after capture, and the Product retains only a non-owning
+  semantic view. Real-process vertical regressions now prove the Plugin path in
+  both `always` and `on_demand` modes through Tool execution, status, explicit
+  stop and exact-generation retirement. The Product-owned exact-policy Approval
+  owner, default cutover and deletion of the deferred runtime, early Tool
+  registrar and legacy cleanup input are implemented. PLC6 through PLC9 and the
+  public Plugin SDK remain unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
-  `coding.base`, `coding.arch`, management control, and later Skill adoption.
+  `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
+  Skill catalog convergence, and later public SDK stabilization.
 - Authority: the accepted
   [Unified Plugin Architecture](unified-plugin-architecture.md),
   [Capability Composition Lifecycle Authority Plan](composition-lifecycle-authority-plan.md),
@@ -59,12 +81,14 @@ restore and freeze the source-backed architecture baseline
   -> close executable approval and verified Definition evaluation
   -> add exact-owner admission for Resource and Capability contributions
   -> bind through existing Resource generations and the existing Session Graph
+  -> implement Resource-owner components, one Catalog, and typed lazy Resource
+     loading while retaining manifest-free native Skills
   -> prove both no-code Resource and executable Capability fixtures
   -> migrate coding.lsp and delete its peer runtime path
   -> migrate coding.base and delete CLI/bootstrap peer registrations
   -> migrate coding.arch and prove a second Capability/optional dependency
   -> stabilize the public author SDK
-  -> converge Skill sources on the Resource path
+  -> stabilize the Resource/Skill author SDK over the converged path
   -> finish management projections, isolation, retained-version GC and UX
 ```
 
@@ -93,6 +117,8 @@ Two controlled overlaps are allowed:
    packaged and selected as Plugins.
 7. Preserve exact owner publication, disposal, Model Input reconstruction, and
    Product-neutral Harness boundaries.
+8. Make one Resource Catalog authoritative before LSP/Base/Arch migrations so
+   later Product Plugins do not bind to legacy Loader or Skill fallback paths.
 
 ## Non-Goals
 
@@ -246,7 +272,10 @@ model. The target tagged union is:
 
 Only the initial production set is in the first implementation scope:
 `capability_provider`, `resource_item`, `tool_pack`, and `command_pack`.
-`capability_component` follows after the complete-Bundle LSP path is stable.
+PLC4.5 adds only the two internal Resource-owner `capability_component` schemas
+`resource.catalog_engine` and `resource.source` before LSP. Generic, public, or
+cross-owner component authoring follows after the complete-Bundle LSP path is
+stable.
 
 These tags classify contributions, not packages. A canonical Plugin package
 does not declare one `pluginType`, numeric hierarchy, or capability bitmap.
@@ -473,7 +502,7 @@ The initial caller inventory that each implementation slice must refine is:
 | `harness.resources` exposes Tool/Command pack facets consumed during Session composition | facets retain only immutable references to exact owner-admitted pack snapshots; Tool/Command owners stage definitions and registrations | no Resource-generation value can publish or retire a Tool/Command definition |
 | `coding.cli.build_builtin_tool_registry()` directly calls `register_coding_builtin_tools()` | admitted `coding.base` `tool_pack` owned and registered only by the Tool owner; Resource owner resolves referenced source items | standard-mode parity and no direct registrar callers |
 | CLI directly calls `register_coding_arch_tools()` | admitted sibling `tool_pack` consuming the mounted `coding.arch.default` runtime facet | Arch Graph/Tool migration and caller inventory green |
-| Coding bootstrap calls `register_coding_lsp_tools()` against a deferred runtime | admitted sibling `tool_pack` consuming the mounted `coding.lsp.default` runtime facet | LSP Graph/Tool migration, cancellation and leak tests green |
+| Retired: Coding bootstrap called `register_coding_lsp_tools()` against a deferred runtime | admitted sibling `tool_pack` consuming the mounted `coding.lsp.default` runtime facet | completed; the registrar, deferred runtime and bootstrap binder are deleted |
 | `_CODING_AGENT_PRODUCT_CONSTRUCTION` binds one monolithic default Coding prompt | Kernel prompt plus separately owner-admitted Resource prompt fragments and Tool usage sections combined by Product composition | minimal/standard prompt snapshots and Model Input provenance green |
 | Product plan and settings infer built-in capability mount modes | Composition Set and owner-admitted Provider selection | compatibility telemetry shows no independent selection caller |
 | Skill filesystem/package discovery has multiple source adapters | one Resource-owned provider-neutral Skill catalog | Skill convergence gates pass; individual Skills remain Resources |
@@ -979,7 +1008,285 @@ Exit gate:
   Product runtime Consumer path and never look up a Provider directly; and
 - no second Graph, Resource candidate, registry bag, or effective clock exists.
 
+### PLC4.5: Resource Catalog And Source Component Foundation
+
+The normative plan is
+[Resource Catalog And Source Pluginization Plan](resource-catalog-pluginization-plan.md).
+
+Scope:
+
+- implement the minimum exact-owner `capability_component` lifecycle for the
+  two Resource schemas `resource.catalog_engine` and `resource.source`;
+- select one Catalog engine, aggregate filesystem/admitted-package/embedded
+  source generations, and publish one immutable Catalog generation;
+- normalize admitted items and Extension-generation hook output through one
+  exact-generation source-snapshot ingress;
+- retain native `SKILL.md` loading without Plugin packaging;
+- adopt one prepared Resource owner generation through the existing
+  `harness.resources` Provider and the single Session Graph;
+- bind exact lazy body loads to source generation and content digest;
+- bind native body identity during discovery, classify refresh before mutating
+  mounts/handles, and preserve old generation handles to drain; and
+- cut CLI, activation, prompt, command, refresh, and Model Input Skill callers
+  to one focused Resource Consumer before deleting peer Loader paths.
+
+Exit gate:
+
+- one Catalog and one Resource-owner merge policy choose every effective Skill;
+- Package Catalog remains non-effective installation inventory;
+- Resource component changes require a new Session, while accepted content-only
+  refresh publishes only at the next Resource/Model Input boundary;
+- exact old generations drain and disposers cannot remove sibling sources; and
+- no public universal component SDK, `harness.skills`, per-Skill Plugin, or MCP
+  expansion is introduced.
+
+This is the first production owner-component aggregation proof. It does not
+replace PLC5 as the first production complete-Bundle Provider/Graph proof.
+
 ### PLC5: `coding.lsp.default` Production Provider
+
+Implementation status (2026-08-26): PLC5.0 implements the private,
+unpublished Product assembly seam needed before the LSP package cutover. Given
+one finalized `PluginSelection`, exact Capability-owner bindings, the shared
+Capability definitions, explicit Product Provider roots/choices, and any
+prebound host Providers, it projects Provider candidates through the existing
+authoring bridge, grants bounded owner eligibility/admission, and delegates the
+closure to the existing `ProductCapabilityProviderResolver`. The result retains
+the exact package, owner snapshot, and trust snapshot for every resolved
+Provider and accepts only an exact map of externally issued activation-decision
+IDs when forming the existing Session composition inputs.
+
+The first narrow post-implementation review found that root partition and
+Consumer contract/facet compatibility were still rechecked only by
+`AgentProductSession`, after a caller could already request a durable activation
+decision. PLC5.0 now closes that ordering gap with one shared pure closure
+validator. The Product request explicitly identifies its host Capability IDs;
+before component candidates are returned, the validator exact-matches the
+remaining Consumer roots to the resolved external roots and validates satisfied
+Consumer entries against the supplied host plus resolved Provider metadata.
+`AgentProductSession` reuses the same validator with its actual built-in set as
+the final defense rather than maintaining a peer rule. Regression coverage also
+selects one of two admitted Provider alternatives and proves that its exact
+package, trust snapshot, owner snapshot, and resolution remain aligned.
+
+PLC5.0 deliberately does not issue Approval decisions, import or start Provider
+code, publish a registry or API, choose defaults, or alter LSP behavior. The
+complete lifecycle test now uses this seam from finalized Plugin selection
+through external Approval, the existing Component Host and single Session
+Graph, typed Tool Consumer capture, and reverse owner disposal. This removes
+the last test-only manual Provider admission/resolution assembly path before a
+real production adopter. The checked-in `coding.lsp.default`
+declaration/package now reaches finalized inert Provider IR and its activation
+symbols import through the unchanged Component Host boundary. Its sibling
+data-only Tool pack declares the typed `coding.lsp` runtime Consumer without
+registering Tools. A private `CodingLspPluginOptInRequest` carries only the
+Approval-owner port; the Product composer expands it through package
+publication, selection, executable-Definition Approval consumption, exact Tool
+owner admission and Provider resolution. It then asks that same sole owner for
+the exact Provider Activation decision, verifies that the returned record is
+durably present under the same Subject, constructs the existing Component Host,
+and binds the exact Session composition inputs. The decision remains AVAILABLE:
+only Session Graph preparation may consume it through `prepare_component()`,
+import/start the Provider and transfer its value to the Binder. Product-issued
+Approval and Provider admission share the same bounded 300-second construction
+window; expiry requires a fresh composition. The opt-in
+assembly now also has a bind-once `CodingLspToolOwner`: it accepts only the exact
+admitted pack and the captured `coding.lsp` Tool-runtime facet, constructs only
+those two admitted Tool definitions, stages them through a narrow live-Session
+port, commits after the complete generation is ready and disposes its
+registration scope in reverse order. `on_demand` publication does not
+accidentally activate the new Tools. Coding bootstrap now selects this complete
+route whenever the Product mount is enabled and binds the owner to the live
+Session Tool controller. A failed Graph preparation rolls back Provider and
+Tool generations and never falls back. The Graph-backed semantic capture is non-owning; Session
+retirement disposes Tools before Provider retirement, while `AgentSession`
+never closes the Plugin runtime directly. A real fake-server vertical slice now
+executes both generated Tools through the live Session in `always` and
+`on_demand` modes, observes the mounted status view, explicitly stops the
+Server, and proves disposal removes the Tool generation without a second Server
+shutdown. The default cutover and old deferred-route deletion are complete.
+Non-persistent Sessions place Definition and Activation journals in
+assembly-owned temporary state, so CLI help discovery and other ephemeral
+construction do not materialize a persistent Session directory.
+
+The adopter-specific design review freezes the following PLC5.1 boundaries
+before implementation:
+
+- the migration rollout accepted one Product-owned
+  `CodingLspPluginOptInRequest | None`,
+  not a boolean treated as authority and not a caller-assembled Session
+  composition. During migration, `None` retained the legacy route. The default
+  cutover now constructs the request only inside Coding Product policy and has
+  no caller-controlled bootstrap input. The Coding
+  Product composer alone expands the request into finalized Plugin selection,
+  exact owner admission, Provider resolution and Session assembly. The Approval
+  owner remains the sole decision issuer; an opt-in request is neither a
+  declaration-execution decision nor a Provider-activation decision;
+- the mounted LSP Bundle value transfers to Graph ownership exactly once. A
+  Graph-backed `CodingLspSessionAccess` is a non-owning query/control view;
+  the retired legacy LSP cleanup was represented separately during migration.
+  `AgentSession` never calls `close()` on a Graph-owned LSP runtime, and Binder
+  rollback/retirement remains its sole disposer;
+- a dedicated `CodingLspToolOwner` receives only the admitted `runtime` Consumer
+  capture, stages invisible Tool registration leases, activates them only after
+  the complete owner generation is ready, and retires them in reverse order.
+  Bootstrap neither constructs LSP Tool definitions nor owns their leases; and
+- the executable Definition reads only its own frozen effective configuration
+  through a reservation-scoped, read-only Builder accessor. A strict
+  `CodingLspPluginConfigV1` codec validates that JSON input before the Provider
+  uses it. The first-party package may exact-lock the matching Loushang
+  distribution and import a private narrow `loushang.coding.lsp._provider_api`;
+  this neither widens the Component Host API prefixes nor publishes a stable
+  third-party SDK.
+
+The checked-in package may therefore reuse the current LSP engine while the
+Plugin remains the selected lifecycle owner. Definition evaluation and Provider
+activation still cross their distinct durable Approval gates. No per-workspace
+package generation, ambient service locator, hidden fallback, or second LSP
+runtime path is introduced.
+
+#### PLC5.1a: Co-Distributed Dependency Evidence
+
+Implementation status (2026-08-26): the Harness Host port, canonical lock
+assembly path, and first checked-in consumer are implemented.
+`PackageMaterializer` defaults to no grants,
+accepts one injected Product resolver, proves every granted normalized
+distribution through `InstalledPythonDistributionEvidenceResolver`, and unions
+the resulting exact identities with the materialized-root scan before emitting
+the existing v1 lock. Publication and binding both recompute that same closure.
+Coding supplies a fixed resolver that grants only `loushang` to the exact
+registered source of the reserved `coding.lsp.default` ID and rejects that ID
+from any other source. Coding now ships that package as distribution data. Its
+approved Definition imports the exact-version private adapter and emits only
+reservation-bound Provider IR; the factory/disposer wrappers also resolve under
+the unchanged Component Host prefix tuple using the same evidence policy. The
+later PLC5.1b slice now supplies the private bootstrap mount; this subsection's
+claim remains limited to co-distribution evidence and lock/import integrity.
+
+The planned checked-in package exposed one narrower foundation gap. Before this
+foundation, the canonical dependency-lock assembler discovered Python
+distributions only below the materialized Plugin root, while
+`coding.lsp.default` and its private
+Provider adapter are files in the same installed Loushang distribution. Copying
+distribution metadata into the Plugin directory, adding Loushang to the global
+Host API prefixes, or publishing through a Coding-only binding path would each
+create a second authority. PLC5.1a introduces none of those routes.
+
+The frozen design has two roles:
+
+- a Harness-owned `InstalledPythonDistributionEvidenceResolver` derives an
+  exact normalized distribution name/version and its verifiable import origins
+  from the running environment. It is used both while constructing a dependency
+  lock and while checking an import from that lock; and
+- a private Product-owned `CoDistributedPluginDependencyGrantResolver` maps an
+  exact `(pluginId, sourceIdentity)` to a small tuple of distribution names.
+  The initial Coding registry contains only the checked-in
+  `coding.lsp.default -> loushang` relationship. Neither a manifest,
+  declaration, user configuration nor Plugin code can add a grant.
+
+The grant resolver is injected into `PackageMaterializer` as a read-only Host
+port. Its default grants nothing, so existing local, Git and Python-package
+publication semantics remain unchanged. The canonical
+`PackageMaterializer._plugin_dependency_lock()` remains the only assembler: it
+unions distribution facts discovered below the immutable revision with exact
+identities proven for Product grants, canonicalizes once, rejects conflicting
+versions, and emits the existing
+`loushang.plugin-dependency-lock/v1` document.
+
+```text
+immutable verified revision distributions ----\
+                                                +-> one dependency-lock assembler
+Product-owned exact source grant -> installed --/          |
+                                   evidence                 v
+                                               existing lock digest / Approval
+
+existing lock -> the same installed-distribution evidence -> verified import
+```
+
+The grant is package evidence, not a Plugin type, Capability grant, execution
+decision, import result or lifecycle owner. It contains no caller-supplied
+version and does not survive as a second durable record. The derived exact
+distribution identity is already covered by the dependency-lock digest used by
+selection, declaration execution, admission and activation. Package content
+remains covered independently by the verified revision digest and source
+binding. Publication and binding/restart recompute the same closure; absence or
+change of the Product grant therefore produces the existing fail-closed lock
+mismatch rather than a fallback.
+
+Installed-distribution evidence has two accepted origin proofs:
+
+- a normal wheel/install proof requires matching installed metadata and RECORD
+  files that contain the checked-in Plugin source and any imported Loushang
+  module; and
+- a development-only editable proof requires PEP 610 `direct_url.json` with a
+  local `file:` URL and `dir_info.editable == true`, matching installed
+  name/version, an exact Product registry source, and both the Plugin source and
+  imported module origin contained by that project root. Editable acceptance is
+  a Product-owned development policy, never a Plugin setting. A plain source
+  tree without matching installed metadata is not evidence.
+
+The import checker uses exact recorded files for a normal install and proven
+top-level package roots for an editable install. It does not execute `.pth`
+files, follow a remote direct URL, accept name-only `sys.path` coincidence, or
+trust an already imported module without checking its origin. The first-party
+package may then import `loushang.coding.lsp._provider_api` because it is part of
+the exact locked Loushang distribution. This is a same-trust-domain private
+code boundary, not a public SDK or a claim that a distribution lock is a Python
+module sandbox; source identity, Product selection and both Approval gates
+remain the security authorities.
+
+The resolver enumerates every installed candidate with the normalized name; it
+never accepts whichever candidate a name-only metadata lookup happens to
+return. Publication must select one candidate with the exact checked-in source
+files and rejects a missing or ambiguous match. Import preflight may retain
+multiple candidates only when they share the locked version, then admits the
+single candidate whose RECORD/editable boundary contains the actual module
+origin. Candidate paths are never unioned into one wider installation.
+
+The following cases fail before Definition evaluation or Provider activation:
+
+| Case | Required result |
+| --- | --- |
+| reserved `coding.lsp.default` ID from any other source identity | reject the Product grant; do not publish an executable candidate |
+| exact checked-in source outside the proven Loushang install/project root | reject co-distribution evidence |
+| missing distribution, version drift, malformed/non-local editable metadata, or unverifiable origin | reject dependency closure/import with a stable diagnostic |
+| published lock differs when binding or reconstructing after restart | reject as dependency-closure change; require republish/reselection |
+| opted-in LSP package cannot obtain its required grant | fail the opt-in Session; never use the legacy LSP route |
+| ordinary Plugin has no Product grant | use only its current materialized-root dependency closure |
+
+PLC5.1a is complete only when tests prove wheel and explicit editable evidence,
+copied-source/ID impersonation rejection, missing-grant and version/origin drift
+rejection, publication-to-bind recomputation, private adapter import under the
+unchanged Component Host prefix tuple, and unchanged behavior for an ordinary
+Plugin. It does not add arbitrary host-package dependencies, a dependency
+installer, a second lock schema, public authoring API, MCP behavior, or a new
+Plugin category.
+
+#### PLC5.1b: Default Session Mount And Real-Process Parity
+
+Implementation status (2026-08-26): implemented and cut over as the sole
+enabled Product route. The checked-in package passes the complete publication, selection,
+Definition Approval, owner admission, Provider resolution, Activation Approval,
+Component Host and Session Graph path. Its sibling Tool owner publishes only
+after the exact runtime-facet capture. Focused real-process regressions prove
+that both `always` and `on_demand` modes execute `inspect_symbol` and
+`document_outline` against the same fake LSP Server, expose status and stop
+through the non-owning semantic facet, then retire Tools before Graph-owned
+Provider cleanup. Unit regressions separately prove partial Tool publication
+rollback. Product policy creates the private assembly request with an exact
+first-party Approval owner that rejects any different Plugin, Product, scope,
+entrypoint, Provider, owner, trust revision, facet or authority closure. The
+request is not a public SDK parameter and no boolean is treated as authority.
+Disabled mode and `no_tools=all` skip package resolution entirely. The legacy
+reader callback remains in the public signature for compatibility but a
+non-`None` value now fails closed: all LSP reads go through the admitted
+`harness.workspace` facet.
+
+The same atomic change deletes the deferred runtime, early Tool registrar,
+bootstrap process binder and separate legacy cleanup input. There is no fallback
+or second parser, binding or disposal path. Fresh reconstruction obtains fresh
+Definition and Activation evidence for the new exact execution Subject rather
+than replaying a stale decision.
 
 Scope and gates are PAP6, including packaging the complete Bundle, narrow
 workspace requirements, Tool/runtime Session co-visibility across their exact
@@ -1042,8 +1349,8 @@ Scope:
 - provide validation without import and a separate approved execution
   conformance command;
 - keep each `SKILL.md` a `resource_item`;
-- converge filesystem, embedded and admitted-package Skill sources on one
-  Resource-owned catalog snapshot and lazy body loader; and
+- stabilize the PLC4.5 filesystem, embedded and admitted-package Skill path and
+  expose only the proven data-only helpers and advanced component surface; and
 - route Skill scripts through existing Tool/Policy/Approval/Sandbox execution.
 
 Exit gate:
@@ -1074,7 +1381,7 @@ Exit gate:
 
 ## Proposed Sequencing Revisions
 
-This coordinating plan proposes two explicit revisions to the accepted UPA
+This coordinating plan proposes three explicit revisions to the accepted UPA
 delivery order. They require architecture approval before implementation
 claims the revised milestone names:
 
@@ -1083,12 +1390,15 @@ claims the revised milestone names:
    GC and destructive cleanup in the final closure; and
 2. deliver production `coding.base` after `coding.lsp` but before
    `coding.arch`. The Base shadow package may start earlier, while the public
-   SDK remains gated on all three production samples.
+   SDK remains gated on all three production samples; and
+3. insert PLC4.5 before `coding.lsp` to implement the internal Resource Catalog
+   and source-component foundation, while leaving universal public component
+   authoring and SDK stabilization in PLC8.
 
-This ordering proves one executable Capability first, then closes the default
-Product composition and removal of duplicate base paths, then proves a second
-Capability and optional dependency. It does not weaken the existing stable-SDK
-gate.
+This ordering first closes the shared Resource aggregation substrate, then
+proves one executable complete-Bundle Capability, closes the default Product
+composition and duplicate base paths, and finally proves a second Capability
+and optional dependency. It does not weaken the existing stable-SDK gate.
 
 ## Verification Matrix
 
@@ -1200,8 +1510,8 @@ The combined milestone is complete only when:
    executable code crosses a durable approval/import gate;
 3. the exact owner remains the only publisher and disposer for every live
    object;
-4. `coding.lsp.default` mounts through the existing Graph and its deferred and
-   early Tool paths are deleted;
+4. `coding.lsp.default` mounts through the existing Graph, the Graph remains its
+   sole runtime disposer, and its deferred and early Tool paths are deleted;
 5. `coding.base` is selected through Composition Sets, can be disabled or
    updated through Plugin management, and has no direct CLI/bootstrap peer
    registrations;

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from loushang.harness.plugin_authoring.capability_provider import (
     CapabilityProviderDeclarationPayload,
     _validate_capability_provider_reservation,
@@ -54,9 +56,7 @@ class PluginDeclarationBuilder:
             raise ValueError(
                 "Plugin declaration reservations must share one package revision"
             )
-        preflight_contexts = {
-            item.preflight_context for item in reservation_views
-        }
+        preflight_contexts = {item.preflight_context for item in reservation_views}
         if len(preflight_contexts) != 1:
             raise ValueError(
                 "Plugin declaration reservations must share one preflight context"
@@ -65,7 +65,9 @@ class PluginDeclarationBuilder:
             item.contribution.contribution_id for item in reservation_views
         )
         if len(reservation_ids) != len(set(reservation_ids)):
-            raise ValueError("Plugin declaration reservations contain a duplicate identity")
+            raise ValueError(
+                "Plugin declaration reservations contain a duplicate identity"
+            )
         self._plugin_id = reservation_views[0].plugin_id
         self._reservations: dict[str, _PluginAuthoringReservationView] = {
             item.contribution.contribution_id: item
@@ -77,6 +79,22 @@ class PluginDeclarationBuilder:
         self._declarations: dict[str, PluginDeclaration] = {}
         self._frozen = False
         self._built_declarations: tuple[PluginDeclaration, ...] | None = None
+
+    def effective_configuration(
+        self,
+        *,
+        contribution_id: str,
+    ) -> Mapping[str, object]:
+        """Return one reservation's frozen Product effective configuration."""
+
+        self._require_open()
+        reservation_view = self._reservations.get(contribution_id)
+        if reservation_view is None:
+            raise ValueError(
+                "Plugin configuration references an unknown reservation: "
+                f"{contribution_id}"
+            )
+        return reservation_view.effective_configuration
 
     def add_capability_provider(
         self,

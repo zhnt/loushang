@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from fnmatch import fnmatch
 from pathlib import Path
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
@@ -13,6 +12,10 @@ from loushang.harness.resources._loader_descriptor_parsing import (
     _skill_descriptor_from_text,
 )
 from loushang.harness.resources._loader_types import _IGNORE_FILE_NAMES
+from loushang.harness.resources._skill_ignore import (
+    is_skill_path_ignored,
+    normalize_skill_ignore_pattern,
+)
 from loushang.harness.resources.diagnostics import resource_diagnostic
 from loushang.harness.resources.types import (
     ExtensionDescriptor,
@@ -155,7 +158,7 @@ def _discover_skills_recursive(
             continue
         if not entry.is_dir() or _skip_skill_directory(entry):
             continue
-        if _is_skill_path_ignored(
+        if is_skill_path_ignored(
             entry, root_dir=root_dir, patterns=active_ignore_patterns
         ):
             continue
@@ -235,43 +238,10 @@ def _read_skill_ignore_patterns(
         except OSError:
             continue
         for raw_line in lines:
-            pattern = _normalize_skill_ignore_pattern(raw_line, prefix=prefix)
+            pattern = normalize_skill_ignore_pattern(raw_line, prefix=prefix)
             if pattern is not None:
                 patterns.append(pattern)
     return tuple(patterns)
-
-
-def _normalize_skill_ignore_pattern(raw_line: str, *, prefix: str) -> str | None:
-    line = raw_line.strip()
-    if not line or line.startswith("#") or line.startswith("!"):
-        return None
-    if line.startswith("\\#") or line.startswith("\\!"):
-        line = line[1:]
-    if line.startswith("/"):
-        line = line[1:]
-    if prefix:
-        line = f"{prefix}/{line}"
-    return line
-
-
-def _is_skill_path_ignored(
-    path: Path, *, root_dir: Path, patterns: tuple[str, ...]
-) -> bool:
-    if not patterns:
-        return False
-    relative_path = path.relative_to(root_dir).as_posix()
-    directory_path = f"{relative_path}/"
-    for pattern in patterns:
-        normalized = pattern.rstrip("/")
-        if pattern.endswith("/") and (
-            relative_path == normalized or directory_path.startswith(pattern)
-        ):
-            return True
-        if relative_path == normalized or relative_path.startswith(f"{normalized}/"):
-            return True
-        if fnmatch(relative_path, normalized) or fnmatch(directory_path, pattern):
-            return True
-    return False
 
 
 def _discover_extensions_from_dir(

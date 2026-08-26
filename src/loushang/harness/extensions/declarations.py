@@ -161,9 +161,67 @@ def extension_declaration_id(extension: LoadedExtension) -> str:
     return manifest.id if isinstance(manifest, ExtensionManifest) else extension.name
 
 
+def extension_set_fingerprint(extensions: Iterable[LoadedExtension]) -> str:
+    """Fingerprint the exact ordered active Extension owner set.
+
+    This is generation provenance, not a package-content attestation.  Resource
+    source snapshots bind it together with their runtime and generation ids.
+    """
+
+    active_extensions = tuple(
+        extension for extension in extensions if extension_is_active(extension)
+    )
+    entries: list[dict[str, object]] = []
+    for ordinal, extension in enumerate(active_extensions):
+        manifest = extension.manifest
+        manifest = manifest if isinstance(manifest, ExtensionManifest) else None
+        policy = extension.policy
+        entries.append(
+            {
+                "ordinal": ordinal,
+                "extensionId": extension_declaration_id(extension),
+                "runtimeName": extension.name,
+                "manifestVersion": manifest.version if manifest is not None else None,
+                "source": extension.source,
+                "sourceKind": extension.source_kind,
+                "sourceScope": extension.source_scope,
+                "sourceRootOrder": extension.source_root_order,
+                "sourcePath": extension.source_path.as_posix(),
+                "entryPath": (
+                    extension.entry_path.as_posix()
+                    if extension.entry_path is not None
+                    else None
+                ),
+                "enabled": policy.enabled if policy is not None else True,
+                "permissionLevel": (
+                    policy.permission_level
+                    if policy is not None
+                    else manifest.permissions.level
+                    if manifest is not None
+                    else "safe"
+                ),
+                "capabilities": sorted(
+                    policy.capabilities
+                    if policy is not None
+                    else manifest.permissions.capabilities
+                    if manifest is not None
+                    else ()
+                ),
+            }
+        )
+    payload = json.dumps(
+        {"schemaVersion": 1, "extensions": entries},
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 __all__ = [
     "ExtensionCapabilityDeclarationSnapshot",
     "ExtensionGraphProviderRestartRequiredError",
     "ExtensionRuntimeCapabilityDeclaration",
     "extension_declaration_id",
+    "extension_set_fingerprint",
 ]

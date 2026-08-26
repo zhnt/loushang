@@ -23,6 +23,12 @@ from loushang.harness.resources.packages.source import PackageSourceConfig
 from loushang.harness.resources.skills import SkillLoader
 from loushang.harness.resources.types import PackageResourceSummary, ResourceBundle
 
+from .plugin_dependency_grants import (
+    CoDistributedPluginDependencyGrantResolver,
+    coding_lsp_default_plugin_root,
+    coding_plugin_distribution_evidence_resolver,
+)
+
 BUILT_IN_RESOURCE_PACKAGE = "loushang.coding.resources"
 CODING_CONTEXT_FILE_NAMES = (*DEFAULT_CONTEXT_FILE_NAMES, "CLAUDE.md", "CLAUDE.MD")
 
@@ -71,6 +77,16 @@ class CodingPackageMaterializer(PackageMaterializer):
             )
 
             security_policy = PackageSecurityPolicy()
+        kwargs.setdefault(
+            "co_distributed_dependency_grant_resolver",
+            CoDistributedPluginDependencyGrantResolver(
+                coding_lsp_source=coding_lsp_default_plugin_root()
+            ),
+        )
+        kwargs.setdefault(
+            "installed_distribution_evidence_resolver",
+            coding_plugin_distribution_evidence_resolver(),
+        )
         super().__init__(
             security_policy=security_policy,
             **kwargs,

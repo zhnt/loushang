@@ -218,7 +218,8 @@ Current:
 - installed CLI/TUI entrypoints compose Coding;
 - shared mode/Host mechanisms have moved to Harness/HarnessTUI;
 - Harness provides the live Capability graph Planner, Binder, Runtime and
-  Projector, while Coding LSP and Arch are not yet production-mounted graph nodes;
+  Projector; Coding LSP is production-mounted, while Arch is not yet a live
+  graph node;
 - LSP and Arch have concrete implementation slices;
 - Method, HarnessWork and Channel integrations are optional;
 - Coding remains the only installed Product.

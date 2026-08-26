@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import Protocol
@@ -147,19 +148,44 @@ def test_builder_uses_product_effective_configuration_from_source_group(
 ) -> None:
     source_group = _preflight_source_group(
         published_synthetic_plugin,
-        effective_configuration={"mode": "product"},
+        effective_configuration={
+            "mode": "product",
+            "options": {"trace": True},
+        },
     )
     reservation = source_group.reservations[0]
     builder = PluginDeclarationBuilder(source_group=source_group)
+    configuration = builder.effective_configuration(
+        contribution_id=reservation.contribution.contribution_id
+    )
+
+    assert configuration == {
+        "mode": "product",
+        "options": {"trace": True},
+    }
+    with pytest.raises(TypeError):
+        configuration["mode"] = "plugin"  # type: ignore[index]
+    options = configuration["options"]
+    assert isinstance(options, Mapping)
+    with pytest.raises(TypeError):
+        options["trace"] = False  # type: ignore[index]
+    with pytest.raises(ValueError, match="unknown reservation"):
+        builder.effective_configuration(contribution_id="missing")
 
     declaration = builder.add_capability_provider(
         contribution_id=reservation.contribution.contribution_id,
-        payload=_payload(reservation, binding_inputs={"mode": "product"}),
+        payload=_payload(reservation, binding_inputs=configuration),
     )
 
     assert declaration.to_dict()["payload"]["bindingInputs"] == {
-        "mode": "product"
+        "mode": "product",
+        "options": {"trace": True},
     }
+    builder.build()
+    with pytest.raises(RuntimeError, match="frozen"):
+        builder.effective_configuration(
+            contribution_id=reservation.contribution.contribution_id
+        )
     with pytest.raises(ValueError, match="binding inputs"):
         PluginDeclarationBuilder(source_group=source_group).add_capability_provider(
             contribution_id=reservation.contribution.contribution_id,
