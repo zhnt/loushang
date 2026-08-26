@@ -7,6 +7,7 @@ Product wire formats and display projections remain outside Harness.
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
@@ -17,15 +18,22 @@ from loushang.ai.types import AssistantMessage
 from loushang.harness.runtime.types import RunState
 from loushang.harness.transcript import (
     AGENT_MESSAGE_KIND,
-    CONTEXT_COMPACTION_CHECKPOINT_KIND,
+    MODEL_CALL_OUTCOME_KIND,
+    MODEL_INPUT_PREPARED_KIND,
     AgentTranscriptInspector,
     AgentTranscriptRecord,
     AgentTranscriptSession,
-    ContextCompactionCheckpoint,
+    ModelCallOutcome,
     build_context_usage_snapshot,
     calculate_context_tokens,
     estimate_context_tokens,
 )
+
+TokenUsageTotalsSource = Literal[
+    "logical_outcome_derived",
+    "legacy_derived",
+    "mixed_derived",
+]
 
 
 class AgentStateInspectionPort(Protocol):
@@ -105,6 +113,8 @@ class TokenUsageTotals:
     cache_read: int = 0
     cache_write: int = 0
     total: int = 0
+    source: TokenUsageTotalsSource = "legacy_derived"
+    incomplete_attempts: bool = True
 
 
 @dataclass(frozen=True)
@@ -249,29 +259,33 @@ class AgentSessionInspector:
 def _build_token_usage_totals(
     branch_entries: Sequence[AgentTranscriptRecord],
 ) -> TokenUsageTotals:
-    latest_compaction = _latest_compaction_with_index(branch_entries)
     input_tokens = 0
     output_tokens = 0
     cache_read_tokens = 0
     cache_write_tokens = 0
     total_tokens = 0
-    start_index = 0
+    outcome_count = 0
+    covered_assistant_indexes = _outcome_covered_assistant_indexes(branch_entries)
+    legacy_count = 0
 
-    if latest_compaction is not None:
-        compaction, index = latest_compaction
-        input_tokens += compaction.tokens_before
-        total_tokens += compaction.tokens_before
-        start_index = index + 1
-
-    for entry in branch_entries[start_index:]:
-        if getattr(entry, "kind", None) != AGENT_MESSAGE_KIND:
+    for index, entry in enumerate(branch_entries):
+        payload = getattr(entry, "payload", None)
+        if (
+            getattr(entry, "kind", None) == MODEL_CALL_OUTCOME_KIND
+            and isinstance(payload, ModelCallOutcome)
+        ):
+            outcome_count += 1
+            usage = payload.usage
+        elif (
+            index not in covered_assistant_indexes
+            and getattr(entry, "kind", None) == AGENT_MESSAGE_KIND
+            and isinstance(payload, AssistantMessage)
+            and payload.stop_reason not in {"aborted", "error"}
+        ):
+            legacy_count += 1
+            usage = payload.usage
+        else:
             continue
-        message = getattr(entry, "payload", None)
-        if not isinstance(message, AssistantMessage):
-            continue
-        if message.stop_reason in {"aborted", "error"}:
-            continue
-        usage = message.usage
         input_tokens += int(getattr(usage, "input", 0) or 0)
         output_tokens += int(getattr(usage, "output", 0) or 0)
         cache_read_tokens += int(getattr(usage, "cache_read", 0) or 0)
@@ -284,20 +298,55 @@ def _build_token_usage_totals(
         cache_read=cache_read_tokens,
         cache_write=cache_write_tokens,
         total=total_tokens,
+        source=(
+            "mixed_derived"
+            if outcome_count and legacy_count
+            else "logical_outcome_derived"
+            if outcome_count
+            else "legacy_derived"
+        ),
+        incomplete_attempts=True,
     )
 
 
-def _latest_compaction_with_index(
+def _outcome_covered_assistant_indexes(
     entries: Sequence[AgentTranscriptRecord],
-) -> tuple[ContextCompactionCheckpoint, int] | None:
-    for index in range(len(entries) - 1, -1, -1):
-        entry = entries[index]
-        if getattr(entry, "kind", None) != CONTEXT_COMPACTION_CHECKPOINT_KIND:
+) -> set[int]:
+    """Find legacy assistant projections already represented by durable outcomes."""
+
+    snapshot_indexes = {
+        snapshot_id: index
+        for index, entry in enumerate(entries)
+        if getattr(entry, "kind", None) == MODEL_INPUT_PREPARED_KIND
+        and isinstance((snapshot_id := getattr(entry.payload, "snapshot_id", None)), str)
+    }
+    assistant_indexes = [
+        index
+        for index, entry in enumerate(entries)
+        if getattr(entry, "kind", None) == AGENT_MESSAGE_KIND
+        and isinstance(getattr(entry, "payload", None), AssistantMessage)
+    ]
+    covered: set[int] = set()
+    for outcome_index, entry in enumerate(entries):
+        outcome = getattr(entry, "payload", None)
+        if (
+            getattr(entry, "kind", None) != MODEL_CALL_OUTCOME_KIND
+            or not isinstance(outcome, ModelCallOutcome)
+            or outcome.disposition != "completed"
+        ):
             continue
-        payload = entry.payload
-        if isinstance(payload, ContextCompactionCheckpoint):
-            return payload, index
-    return None
+        attempt_indexes = [
+            snapshot_indexes[snapshot_id]
+            for snapshot_id in outcome.model_input_snapshot_ids
+            if snapshot_id in snapshot_indexes
+        ]
+        if not attempt_indexes:
+            continue
+        first_attempt_index = min(attempt_indexes)
+        position = bisect_left(assistant_indexes, outcome_index)
+        if position and assistant_indexes[position - 1] > first_attempt_index:
+            covered.add(assistant_indexes[position - 1])
+    return covered
 
 
 __all__ = [

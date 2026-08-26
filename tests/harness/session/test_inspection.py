@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 from loushang.agent import Agent
 from loushang.ai.model import Capabilities, Model, ModelSelection
@@ -15,12 +16,18 @@ from loushang.ai.types import (
 from loushang.harness.conversation import (
     ConversationHeader,
     ConversationKey,
+    ConversationRecord,
     MemoryConversationStore,
 )
 from loushang.harness.session import AgentSessionInspector, AgentSessionState
+from loushang.harness.session.inspection import _build_token_usage_totals
 from loushang.harness.transcript import (
+    AGENT_MESSAGE_KIND,
+    MODEL_CALL_OUTCOME_KIND,
+    MODEL_INPUT_PREPARED_KIND,
     AgentTranscriptSession,
     AgentTranscriptUnitOfWork,
+    ModelCallOutcome,
 )
 
 
@@ -163,3 +170,82 @@ def test_agent_session_inspector_reads_fork_candidates_and_assistant_text() -> N
     assert inspector.get_entry_text("user-1") == "hello"
     assert inspector.get_recent_assistant_texts() == ("answer",)
     assert inspector.get_last_assistant_text() == "answer"
+
+
+def test_token_totals_prefer_outcomes_and_keep_uncovered_legacy_usage() -> None:
+    legacy_usage = Usage(1, 2, 3, 4, 10, None)
+    outcome_usage = Usage(10, 5, 2, 1, 18, None)
+    cancelled_usage = Usage(7, 0, 0, 0, 7, None)
+    records = [
+        _record("legacy", AGENT_MESSAGE_KIND, _assistant_with_usage(legacy_usage)),
+        _record(
+            "snapshot",
+            MODEL_INPUT_PREPARED_KIND,
+            SimpleNamespace(snapshot_id="snapshot-1"),
+        ),
+        _record("projected", AGENT_MESSAGE_KIND, _assistant_with_usage(outcome_usage)),
+        _record(
+            "outcome",
+            MODEL_CALL_OUTCOME_KIND,
+            ModelCallOutcome(
+                invocation_id="invocation-1",
+                model_input_snapshot_ids=("snapshot-1",),
+                disposition="completed",
+                stop_reason="stop",
+                usage=outcome_usage,
+            ),
+        ),
+        _record(
+            "cancelled",
+            MODEL_CALL_OUTCOME_KIND,
+            ModelCallOutcome(
+                invocation_id="invocation-2",
+                model_input_snapshot_ids=(),
+                disposition="cancelled",
+                stop_reason="aborted",
+                usage=cancelled_usage,
+            ),
+        ),
+        _record(
+            "compaction",
+            "context.compaction.checkpoint",
+            SimpleNamespace(tokens_before=999_999),
+        ),
+    ]
+
+    totals = _build_token_usage_totals(records)  # type: ignore[arg-type]
+
+    assert totals.input == 18
+    assert totals.output == 7
+    assert totals.cache_read == 5
+    assert totals.cache_write == 5
+    assert totals.total == 35
+    assert totals.source == "mixed_derived"
+    assert totals.incomplete_attempts is True
+
+
+def _assistant_with_usage(usage: Usage) -> AssistantMessage:
+    return AssistantMessage(
+        endpoint="test-endpoint",
+        role="assistant",
+        content=[TextPart(type="text", text="answer")],
+        api="responses",
+        provider="test",
+        model="test-model",
+        response_id=None,
+        usage=usage,
+        stop_reason="stop",
+        error_message=None,
+        timestamp=1.0,
+    )
+
+
+def _record(record_id: str, kind: str, payload: object) -> ConversationRecord[object]:
+    return ConversationRecord(
+        record_id=record_id,
+        parent_id=None,
+        kind=kind,
+        payload_version=1,
+        created_at="2026-08-26T00:00:00Z",
+        payload=payload,
+    )

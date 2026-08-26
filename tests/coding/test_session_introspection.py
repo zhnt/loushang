@@ -294,7 +294,7 @@ def test_build_session_stats_reports_token_totals_after_compaction(tmp_path) -> 
             )
         )
     )
-    asyncio.run(manager.append_compaction("summary", kept_id, 195_000))
+    asyncio.run(manager.append_compaction("summary", kept_id, 999_999))
     asyncio.run(
         manager.append_message(
             UserMessage(
@@ -341,8 +341,10 @@ def test_build_session_stats_reports_token_totals_after_compaction(tmp_path) -> 
 
     stats = session._composition.session_inspector.build_session_stats()
 
-    assert stats.tokens.total == 220_000
-    assert stats.tokens.input == 220_000
+    assert stats.tokens.total == 400_000
+    assert stats.tokens.input == 400_000
+    assert stats.tokens.source == "legacy_derived"
+    assert stats.tokens.incomplete_attempts is True
     assert stats.context_usage is not None
     assert stats.context_usage.tokens == 25_000
 
