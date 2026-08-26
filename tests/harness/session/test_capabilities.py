@@ -15,6 +15,7 @@ from loushang.harness.commands import (
     CommandDispatchOutcome,
 )
 from loushang.harness.conversation import CommandExecutionRecord
+from loushang.harness.runtime.registration import RegistrationOwner
 from loushang.harness.session.bash import (
     SessionCommandExecutionRuntime,
 )
@@ -22,6 +23,7 @@ from loushang.harness.session.tool_runtime import SessionToolRuntime
 from loushang.harness.tools.contribution import ToolContribution
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.execution import direct_execution
+from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.workspace.exec import ExecOutputChunk
 
 
@@ -122,6 +124,37 @@ def test_session_tool_runtime_rebinds_only_product_selected_tools() -> None:
     assert runtime.get_active_tool_names() == ["bash"]
     assert registry.materialized == [["bash"]]
     assert prompt_rebuilds == [["bash"]]
+
+
+def test_staged_disabled_runtime_tool_remains_on_demand_after_publication() -> None:
+    registry = WorkspaceToolRegistry()
+    runtime = SessionToolRuntime(
+        agent=_Agent(),
+        tool_registry=registry,
+        allowed_tool_names=None,
+        initial_active_tool_names=(),
+        default_active_tool_names=lambda: (),
+        should_activate_new_tool=lambda _name, _definition: True,
+        build_tool_context=lambda *, tool_call_id: {"call_id": tool_call_id},
+        rebuild_prompt=lambda _definitions: None,
+    )
+    lease = runtime.stage_runtime_tool(
+        _tool_definition("semantic"),
+        owner=RegistrationOwner(
+            owner_kind="product",
+            owner_id="coding.tools",
+            runtime_id="session:test",
+            generation=1,
+        ),
+        enabled=False,
+    )
+
+    lease.activate()
+
+    assert runtime.get_active_tool_names() == []
+    assert [item.name for item in runtime.get_all_tools()] == ["semantic"]
+    runtime.apply_active_tools(["semantic"])
+    assert runtime.get_active_tool_names() == ["semantic"]
 
 
 def test_session_command_runtime_keeps_catalog_and_dispatch_precedence_separate() -> (

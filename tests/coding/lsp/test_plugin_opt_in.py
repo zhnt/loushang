@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+import asyncio
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 import pytest
@@ -10,7 +11,10 @@ from loushang.coding.lsp._plugin_opt_in import (
     CodingLspPluginOptInRequest,
     assemble_coding_lsp_plugin_opt_in,
 )
-from loushang.coding.lsp._provider_api import CodingLspPluginConfigV1
+from loushang.coding.lsp._provider_api import (
+    CODING_LSP_TOOL_RUNTIME_FACET,
+    CodingLspPluginConfigV1,
+)
 from loushang.coding.resource_runtime import CodingPackageMaterializer
 from loushang.harness.approval.plugin_activation import (
     ContributionActivationApprovalSubject,
@@ -23,15 +27,31 @@ from loushang.harness.approval.plugin_execution import (
     PluginExecutionDecisionJournal,
 )
 from loushang.harness.capabilities.component_host import CapabilityComponentHost
+from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
+from loushang.harness.capabilities.provider_binding import (
+    CapabilityBundleValue,
+    CapabilityFacetBinding,
+)
 from loushang.harness.capabilities.workspace_provider import (
     workspace_capability_provider_binding,
 )
 from loushang.harness.resources.plugins.selection import (
     PluginExecutionApprovalSubject,
 )
+from loushang.harness.runtime.bindings import RuntimeBindingState
+from loushang.harness.runtime.registration import (
+    RegistrationDisposalResult,
+    RegistrationIdentity,
+    RegistrationLease,
+    RegistrationOwner,
+)
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
+    SessionCapabilityConsumerCapture,
+    dispose_session_capability_owner_generations,
+    stage_session_capability_owner_generations,
 )
+from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.operations import LocalToolOperations
 from loushang.harness.workspace.process import (
     ProcessHandle,
@@ -102,8 +122,69 @@ class _UnusedWorkspaceLauncher:
         raise AssertionError("inert opt-in assembly must not launch a process")
 
 
-def test_product_opt_in_request_rejects_an_object_without_approval_owner_ports(
-) -> None:
+@dataclass(slots=True)
+class _ToolRegistrationPort:
+    fail_on: str | None = None
+    staged: list[str] = field(default_factory=list)
+    visible: list[str] = field(default_factory=list)
+    enabled: list[tuple[str, bool]] = field(default_factory=list)
+    events: list[str] = field(default_factory=list)
+    activation_snapshots: list[tuple[str, ...]] = field(default_factory=list)
+
+    def stage_runtime_tool(
+        self,
+        tool: object,
+        *,
+        owner: RegistrationOwner,
+        enabled: bool = True,
+        source_info: object | None = None,
+    ) -> RegistrationLease:
+        del source_info
+        assert isinstance(tool, ToolDefinition)
+        name = tool.name
+        if name == self.fail_on:
+            self.events.append(f"fail:{name}")
+            raise RuntimeError("injected Tool staging failure")
+        self.staged.append(name)
+        self.enabled.append((name, enabled))
+        self.events.append(f"stage:{name}")
+        identity = RegistrationIdentity.create(surface="tool", public_key=name)
+
+        def activate() -> None:
+            self.activation_snapshots.append(tuple(self.staged))
+            self.visible.append(name)
+            self.events.append(f"activate:{name}")
+
+        def deactivate() -> None:
+            self.visible.remove(name)
+            self.events.append(f"deactivate:{name}")
+
+        def rollback() -> RegistrationDisposalResult:
+            self.staged.remove(name)
+            self.events.append(f"rollback:{name}")
+            return RegistrationDisposalResult(state="removed")
+
+        def dispose() -> RegistrationDisposalResult:
+            if name in self.visible:
+                self.visible.remove(name)
+            if name in self.staged:
+                self.staged.remove(name)
+            self.events.append(f"dispose:{name}")
+            return RegistrationDisposalResult(state="removed")
+
+        return RegistrationLease(
+            owner=owner,
+            identity=identity,
+            dispose=dispose,
+            activate=activate,
+            deactivate=deactivate,
+            rollback=rollback,
+        )
+
+
+def test_product_opt_in_request_rejects_an_object_without_approval_owner_ports() -> (
+    None
+):
     assert tuple(item.name for item in fields(CodingLspPluginOptInRequest)) == (
         "approval_owner",
     )
@@ -141,6 +222,7 @@ def test_product_opt_in_composer_reaches_approved_session_inputs_without_start(
         workspace_binding=workspace_binding,
         state_root=tmp_path / "state",
         host_boot_id="3" * 32,
+        tool_mode="on_demand",
         clock=lambda: now,
     )
     revision_handle = assembled.runtime.packages[0].revision_handle
@@ -152,7 +234,9 @@ def test_product_opt_in_composer_reaches_approved_session_inputs_without_start(
             "capability_provider",
             "tool_pack",
         }
-        [catalog_admission] = assembled.plugin_assembly.product_composition.catalog_admissions
+        [catalog_admission] = (
+            assembled.plugin_assembly.product_composition.catalog_admissions
+        )
         assert catalog_admission.owner_id == "coding.tools"
         assert catalog_admission.candidate.contribution.item_ids == (
             "document_outline",
@@ -181,6 +265,161 @@ def test_product_opt_in_composer_reaches_approved_session_inputs_without_start(
         assembled.close()
     assert revision_handle.closed is True
     assembled.close()
+
+
+def test_product_opt_in_tool_owner_stages_complete_generation_and_retires_reverse(
+    tmp_path: Path,
+) -> None:
+    now = 2_500
+    materializer = CodingPackageMaterializer(
+        install_root=tmp_path / "installed",
+        plugin_revision_root=tmp_path / "revisions",
+    )
+    workspace_binding = workspace_capability_provider_binding(
+        operations=LocalToolOperations(),
+        process_launcher=_UnusedWorkspaceLauncher(),
+        scope_instance_id="workspace:test",
+        binding_input_fingerprint="4" * 64,
+        source_id="coding-lsp-opt-in-test",
+    )
+    assembled = assemble_coding_lsp_plugin_opt_in(
+        CodingLspPluginOptInRequest(approval_owner=_ApprovalOwner(now)),
+        session_id="session-test",
+        config=CodingLspPluginConfigV1.from_runtime_inputs(
+            workspace_root=tmp_path,
+            definitions=(),
+            baseline_environment={"PATH": "/admitted/bin"},
+        ),
+        package_materializer=materializer,
+        workspace_binding=workspace_binding,
+        state_root=tmp_path / "state",
+        host_boot_id="3" * 32,
+        tool_mode="on_demand",
+        clock=lambda: now,
+    )
+    registration = _ToolRegistrationPort()
+    runtime_state = RuntimeBindingState(
+        CapabilityBundleValue(
+            (CapabilityFacetBinding(CODING_LSP_TOOL_RUNTIME_FACET, object()),)
+        )
+    )
+    [entry] = (
+        assembled.session_inputs.product_composition.consumer_requirements.satisfied_entries
+    )
+    capture = SessionCapabilityConsumerCapture(
+        entry=entry,
+        facets=CapabilityFacetSet(
+            requirement=entry.requirement,
+            _lease=runtime_state.capture(),
+        ),
+    )
+    binding = assembled.tool_owner.bind(registration)
+    with pytest.raises(RuntimeError, match="already bound"):
+        assembled.tool_owner.bind(registration)
+
+    async def scenario() -> None:
+        generations = await stage_session_capability_owner_generations(
+            admissions=(
+                assembled.plugin_assembly.product_composition.catalog_admissions
+            ),
+            bindings=(binding,),
+            captures=(capture,),
+        )
+        assert registration.visible == ["document_outline", "inspect_symbol"]
+        assert registration.enabled == [
+            ("document_outline", False),
+            ("inspect_symbol", False),
+        ]
+        assert registration.activation_snapshots == [
+            ("document_outline", "inspect_symbol"),
+            ("document_outline", "inspect_symbol"),
+        ]
+        await dispose_session_capability_owner_generations(generations)
+
+    try:
+        asyncio.run(scenario())
+        assert registration.visible == []
+        assert registration.staged == []
+        assert registration.events == [
+            "stage:document_outline",
+            "stage:inspect_symbol",
+            "activate:document_outline",
+            "activate:inspect_symbol",
+            "dispose:inspect_symbol",
+            "dispose:document_outline",
+        ]
+    finally:
+        assembled.close()
+
+
+def test_product_opt_in_tool_owner_rolls_back_partial_staging(
+    tmp_path: Path,
+) -> None:
+    now = 2_500
+    assembled = assemble_coding_lsp_plugin_opt_in(
+        CodingLspPluginOptInRequest(approval_owner=_ApprovalOwner(now)),
+        session_id="session-test",
+        config=CodingLspPluginConfigV1.from_runtime_inputs(
+            workspace_root=tmp_path,
+            definitions=(),
+            baseline_environment={"PATH": "/admitted/bin"},
+        ),
+        package_materializer=CodingPackageMaterializer(
+            install_root=tmp_path / "installed",
+            plugin_revision_root=tmp_path / "revisions",
+        ),
+        workspace_binding=workspace_capability_provider_binding(
+            operations=LocalToolOperations(),
+            process_launcher=_UnusedWorkspaceLauncher(),
+            scope_instance_id="workspace:test",
+            binding_input_fingerprint="5" * 64,
+            source_id="coding-lsp-opt-in-test",
+        ),
+        state_root=tmp_path / "state",
+        host_boot_id="3" * 32,
+        tool_mode="always",
+        clock=lambda: now,
+    )
+    registration = _ToolRegistrationPort(fail_on="inspect_symbol")
+    runtime_state = RuntimeBindingState(
+        CapabilityBundleValue(
+            (CapabilityFacetBinding(CODING_LSP_TOOL_RUNTIME_FACET, object()),)
+        )
+    )
+    [entry] = (
+        assembled.session_inputs.product_composition.consumer_requirements.satisfied_entries
+    )
+    capture = SessionCapabilityConsumerCapture(
+        entry=entry,
+        facets=CapabilityFacetSet(
+            requirement=entry.requirement,
+            _lease=runtime_state.capture(),
+        ),
+    )
+    binding = assembled.tool_owner.bind(registration)
+
+    async def scenario() -> None:
+        with pytest.raises(RuntimeError, match="injected Tool staging failure"):
+            await stage_session_capability_owner_generations(
+                admissions=(
+                    assembled.plugin_assembly.product_composition.catalog_admissions
+                ),
+                bindings=(binding,),
+                captures=(capture,),
+            )
+
+    try:
+        asyncio.run(scenario())
+        assert registration.visible == []
+        assert registration.staged == []
+        assert registration.enabled == [("document_outline", True)]
+        assert registration.events == [
+            "stage:document_outline",
+            "fail:inspect_symbol",
+            "rollback:document_outline",
+        ]
+    finally:
+        assembled.close()
 
 
 def test_product_opt_in_definition_denial_is_fail_closed(
@@ -213,6 +452,7 @@ def test_product_opt_in_definition_denial_is_fail_closed(
             workspace_binding=workspace_binding,
             state_root=tmp_path / "state",
             host_boot_id="3" * 32,
+            tool_mode="on_demand",
             clock=lambda: now,
         )
 
@@ -251,6 +491,7 @@ def test_product_opt_in_activation_denial_is_fail_closed(
             workspace_binding=workspace_binding,
             state_root=tmp_path / "state",
             host_boot_id="3" * 32,
+            tool_mode="on_demand",
             clock=lambda: now,
         )
 

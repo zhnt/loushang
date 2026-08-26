@@ -27,9 +27,11 @@
   consumption, Tool-owner admission, Provider resolution, Activation Approval
   issuance/verification, Component Host construction and exact Session input
   binding. The one-shot activation decision remains unconsumed until Session
-  Graph preparation. Tool-owner generation, bootstrap/Graph transfer,
-  production cutover, PLC6 through PLC9, and the public SDK remain
-  unimplemented.
+  Graph preparation. A bind-once `CodingLspToolOwner` now projects the exact
+  admitted Tool pack only from its Graph Consumer capture, stages invisible
+  runtime Tool leases, publishes the complete generation and retires it in
+  reverse order. Live Session binding, bootstrap/Graph transfer, production
+  cutover, PLC6 through PLC9, and the public SDK remain unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
@@ -1078,10 +1080,15 @@ the exact Provider Activation decision, verifies that the returned record is
 durably present under the same Subject, constructs the existing Component Host,
 and binds the exact Session composition inputs. The decision remains AVAILABLE:
 only Session Graph preparation may consume it through `prepare_component()`,
-import/start the Provider and transfer its value to the Binder. The next slice
-is the dedicated `CodingLspToolOwner` generation binding; bootstrap/Graph
-transfer, default cutover and old deferred-route deletion remain later PLC5
-gates.
+import/start the Provider and transfer its value to the Binder. The opt-in
+assembly now also has a bind-once `CodingLspToolOwner`: it accepts only the exact
+admitted pack and the captured `coding.lsp` Tool-runtime facet, constructs only
+those two admitted Tool definitions, stages them through a narrow live-Session
+port, commits after the complete generation is ready and disposes its
+registration scope in reverse order. `on_demand` publication does not
+accidentally activate the new Tools. The owner is not yet bound to a live
+Session; bootstrap/Graph transfer, default cutover and old deferred-route
+deletion remain later PLC5 gates.
 
 The adopter-specific design review freezes the following PLC5.1 boundaries
 before implementation:

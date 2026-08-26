@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
+from loushang.coding.lsp._plugin_tool_owner import CodingLspToolOwner
 from loushang.coding.lsp._provider_api import (
     CODING_LSP_CAPABILITY_DEFINITION,
     CodingLspPluginConfigV1,
@@ -34,6 +35,7 @@ from loushang.harness.capabilities.component_host import CapabilityComponentHost
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionPolicy,
+    OwnerContributionSnapshot,
 )
 from loushang.harness.capabilities.provider_admission import (
     CapabilityProviderAdmissionRecord,
@@ -47,6 +49,7 @@ from loushang.harness.capabilities.provider_binding import (
 from loushang.harness.capabilities.provider_selection import (
     ProductCapabilityProviderChoice,
 )
+from loushang.harness.config.agent import CapabilityMountMode
 from loushang.harness.plugin_authoring.evaluator import PluginDefinitionEvaluator
 from loushang.harness.plugin_authoring.host import PluginDeclarationHost
 from loushang.harness.resources.plugins.authority import (
@@ -73,6 +76,7 @@ from loushang.harness.resources.plugins.types import (
 )
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
+    SessionCapabilityOwnerAuthorityGate,
 )
 from loushang.harness.session.product_composition_assembly import (
     ProductCapabilityProviderOwnerBinding,
@@ -146,6 +150,7 @@ class CodingLspPluginOptInAssembly:
     plugin_assembly: ProductPluginCompositionAssembly
     component_host: CapabilityComponentHost = field(repr=False)
     session_inputs: SessionCapabilityCompositionInputs
+    tool_owner: CodingLspToolOwner = field(repr=False)
     provider_owner_authority: CapabilityProviderOwnerAuthority = field(repr=False)
     tool_owner_authority: OwnerContributionAuthority = field(repr=False)
     scope_id: str
@@ -170,6 +175,7 @@ def assemble_coding_lsp_plugin_opt_in(
     workspace_binding: CapabilityBundleProviderBinding,
     state_root: str | Path,
     host_boot_id: str,
+    tool_mode: CapabilityMountMode,
     clock: Callable[[], int],
 ) -> CodingLspPluginOptInAssembly:
     """Resolve and approve the fixed package without importing or starting it."""
@@ -181,6 +187,7 @@ def assemble_coding_lsp_plugin_opt_in(
         package_materializer=package_materializer,
         workspace_binding=workspace_binding,
         host_boot_id=host_boot_id,
+        tool_mode=tool_mode,
         clock=clock,
     )
     _read_clock(clock)
@@ -224,12 +231,21 @@ def assemble_coding_lsp_plugin_opt_in(
             host_boot_id=host_boot_id,
             clock=clock,
         )
+        tool_owner = _build_tool_owner(
+            selection,
+            plugin_assembly,
+            authority=tool_authority,
+            scope_id=scope_id,
+            mode=tool_mode,
+            clock=clock,
+        )
         return CodingLspPluginOptInAssembly(
             runtime=runtime,
             selection=selection,
             plugin_assembly=plugin_assembly,
             component_host=component_host,
             session_inputs=session_inputs,
+            tool_owner=tool_owner,
             provider_owner_authority=provider_authority,
             tool_owner_authority=tool_authority,
             scope_id=scope_id,
@@ -238,6 +254,65 @@ def assemble_coding_lsp_plugin_opt_in(
     except BaseException:
         runtime.close()
         raise
+
+
+def _build_tool_owner(
+    selection: PluginSelection,
+    plugin_assembly: ProductPluginCompositionAssembly,
+    *,
+    authority: OwnerContributionAuthority,
+    scope_id: str,
+    mode: CapabilityMountMode,
+    clock: Callable[[], int],
+) -> CodingLspToolOwner:
+    [admission] = plugin_assembly.product_composition.catalog_admissions
+    trust_snapshots = selection.plan.source_trust_snapshots
+
+    def read_owner(
+        owner_id: str,
+        contribution_kind: str,
+        product_id: str,
+    ) -> OwnerContributionSnapshot:
+        policy = authority.policy
+        if (
+            owner_id != policy.owner_id
+            or contribution_kind != policy.contribution_kind
+            or product_id != policy.product_id
+        ):
+            raise ValueError("Coding LSP Tool owner reader received another owner")
+        return authority.snapshot()
+
+    def read_trust(
+        plugin_id: str,
+        source_identity: str,
+    ) -> PluginSourceTrustSnapshotV1:
+        matches = tuple(
+            item
+            for item in trust_snapshots
+            if item.plugin_id == plugin_id
+            and item.package_source_identity == source_identity
+        )
+        if len(matches) != 1:
+            raise ValueError("Coding LSP Tool owner requires one trust snapshot")
+        return matches[0]
+
+    def read_product_policy(product_id: str, requested_scope_id: str) -> str:
+        if product_id != CODING_PRODUCT_ID or requested_scope_id != scope_id:
+            raise ValueError("Coding LSP Tool owner received another Product scope")
+        return _PRODUCT_POLICY_REVISION
+
+    return CodingLspToolOwner(
+        admission=admission,
+        authority_gate=SessionCapabilityOwnerAuthorityGate(
+            authority_context=(plugin_assembly.product_composition.authority_context),
+            owner_snapshot_reader=read_owner,
+            trust_snapshot_reader=read_trust,
+            product_policy_revision_reader=read_product_policy,
+            clock=clock,
+        ),
+        mode=mode,
+        scope_id=scope_id,
+    )
 
 
 def _approve_activation_and_bind_inputs(
@@ -290,9 +365,7 @@ def _approve_activation_and_bind_inputs(
         owner_snapshot_reader=read_owner,
         trust_snapshot_reader=read_trust,
         product_policy_revision_reader=read_product_policy,
-        distribution_evidence_resolver=(
-            coding_plugin_distribution_evidence_resolver()
-        ),
+        distribution_evidence_resolver=(coding_plugin_distribution_evidence_resolver()),
     )
     decision_ids: dict[str, str] = {}
     for candidate in plugin_assembly.component_candidates:
@@ -306,7 +379,9 @@ def _approve_activation_and_bind_inputs(
             subject=subject,
         )
         if not isinstance(decision, PluginActivationDecisionRecordV1):
-            raise TypeError("Coding LSP Activation Approval owner returned invalid evidence")
+            raise TypeError(
+                "Coding LSP Activation Approval owner returned invalid evidence"
+            )
         recorded = next(
             (
                 item
@@ -383,7 +458,9 @@ def _finalize_selection(
                 subject=subject,
             )
             if not isinstance(decision, PluginApprovalDecisionRecordV1):
-                raise TypeError("Coding LSP Definition Approval owner returned invalid evidence")
+                raise TypeError(
+                    "Coding LSP Definition Approval owner returned invalid evidence"
+                )
             if decision.subject_digest != subject.digest:
                 raise CodingLspPluginOptInError(
                     "Coding LSP Definition approval does not match its Subject.",
@@ -449,9 +526,7 @@ def _selection_plan(
                     plugin_id=_PLUGIN_ID,
                     contribution_id=item.contribution_id,
                     configuration=(
-                        config.to_dict()
-                        if item.kind == "capability_provider"
-                        else {}
+                        config.to_dict() if item.kind == "capability_provider" else {}
                     ),
                 )
                 for item in contributions
@@ -485,9 +560,7 @@ def _assembly_request(
     return ProductPluginCompositionAssemblyRequest(
         contribution_request=ProductCompositionAssemblyRequest(
             selection=selection,
-            owner_bindings=(
-                ProductContributionOwnerBinding(authority=tool_authority),
-            ),
+            owner_bindings=(ProductContributionOwnerBinding(authority=tool_authority),),
             mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
             definitions=(
                 MODEL_INPUT_CAPABILITY_DEFINITION,
@@ -550,6 +623,7 @@ def _validate_inputs(
     package_materializer: CodingPackageMaterializer,
     workspace_binding: CapabilityBundleProviderBinding,
     host_boot_id: str,
+    tool_mode: CapabilityMountMode,
     clock: Callable[[], int],
 ) -> None:
     if not isinstance(request, CodingLspPluginOptInRequest):
@@ -573,6 +647,8 @@ def _validate_inputs(
         item not in "0123456789abcdefABCDEF" for item in host_boot_id
     ):
         raise ValueError("Coding LSP Plugin opt-in Host boot id must be 32 hex digits")
+    if tool_mode not in {"on_demand", "always"}:
+        raise ValueError("Coding LSP Plugin opt-in requires an enabled Tool mode")
     if not callable(clock):
         raise TypeError("Coding LSP Plugin opt-in clock is invalid")
 
