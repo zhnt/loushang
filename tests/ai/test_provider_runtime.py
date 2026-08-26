@@ -367,6 +367,62 @@ def test_provider_runtime_retries_response_error_before_visible_output() -> None
     }
 
 
+def test_provider_runtime_records_usage_observed_before_retry() -> None:
+    attempts = 0
+
+    async def _run():
+        nonlocal attempts
+        recorder = _AttemptUsageRecorder()
+
+        async def _parts():
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                yield {
+                    "type": "usage_delta",
+                    "input": 10,
+                    "cache_read": 2,
+                    "total_tokens": 12,
+                }
+                yield provider_error_part(
+                    _HTTPError("rate limited", 429),
+                    source="openai",
+                )
+                return
+            yield {
+                "type": "usage_delta",
+                "input": 20,
+                "output": 5,
+                "total_tokens": 25,
+            }
+            yield {"type": "response_done"}
+
+        stream = start_provider_runtime(
+            _parts,
+            options=CallOptions(
+                retry=RetryOptions(max_attempts=2, max_delay_seconds=0),
+                prepared_request_committer=recorder,
+            ),
+            request=_request(),
+            invocation_id="invocation-retry-usage",
+        )
+        await stream.result()
+        return recorder.observations
+
+    observations = asyncio.run(_run())
+
+    assert attempts == 2
+    assert len(observations) == 2
+    assert [item.invocation_id for item in observations] == [
+        "invocation-retry-usage",
+        "invocation-retry-usage",
+    ]
+    assert observations[0].usage.total_input_tokens == 12
+    assert observations[0].usage.total_tokens == 12
+    assert observations[1].usage.total_input_tokens == 20
+    assert observations[1].usage.output == 5
+
+
 def test_provider_runtime_never_retries_raw_authentication_errors() -> None:
     attempts = 0
 
