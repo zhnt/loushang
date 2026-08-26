@@ -7,7 +7,6 @@ Product wire formats and display projections remain outside Harness.
 
 from __future__ import annotations
 
-from bisect import bisect_left
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Literal, Protocol
@@ -557,9 +556,29 @@ def _outcome_covered_assistant_indexes(
         if not attempt_indexes:
             continue
         first_attempt_index = min(attempt_indexes)
-        position = bisect_left(assistant_indexes, outcome_index)
-        if position and assistant_indexes[position - 1] > first_attempt_index:
-            covered.add(assistant_indexes[position - 1])
+        following = next(
+            (
+                assistant_index
+                for assistant_index in assistant_indexes
+                if assistant_index > outcome_index
+                and not any(
+                    getattr(candidate, "kind", None)
+                    in {MODEL_INPUT_PREPARED_KIND, MODEL_CALL_OUTCOME_KIND}
+                    for candidate in entries[outcome_index + 1 : assistant_index]
+                )
+            ),
+            None,
+        )
+        if following is not None:
+            covered.add(following)
+            continue
+        preceding = [
+            assistant_index
+            for assistant_index in assistant_indexes
+            if first_attempt_index < assistant_index < outcome_index
+        ]
+        if preceding:
+            covered.add(preceding[-1])
     return covered
 
 

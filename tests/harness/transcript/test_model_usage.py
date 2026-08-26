@@ -24,7 +24,13 @@ def test_attempt_usage_replay_replaces_partial_components_and_sums_attempts() ->
         _record(
             "usage-1",
             MODEL_CALL_ATTEMPT_USAGE_KIND,
-            _usage(attempt=1, input=10, cache_read=2, total_tokens=12),
+            _usage(
+                attempt=1,
+                input=10,
+                cache_read=2,
+                cache_write=0,
+                total_tokens=12,
+            ),
         ),
         _record(
             "usage-2",
@@ -49,6 +55,9 @@ def test_attempt_usage_replay_replaces_partial_components_and_sums_attempts() ->
                 attempt=2,
                 snapshot_id="snapshot-2",
                 input=7,
+                output=0,
+                cache_read=0,
+                cache_write=0,
                 terminal=True,
             ),
         ),
@@ -106,6 +115,25 @@ def test_attempt_usage_replay_marks_empty_and_nonterminal_coverage_incomplete() 
     assert mixed.complete is False
 
 
+def test_terminal_total_only_observation_is_not_complete_component_coverage() -> None:
+    ledger = project_model_call_usage(
+        (
+            _record(
+                "snapshot-1", MODEL_INPUT_PREPARED_KIND, _snapshot("snapshot-1", 1)
+            ),
+            _record(
+                "usage-1",
+                MODEL_CALL_ATTEMPT_USAGE_KIND,
+                _usage(attempt=1, total_tokens=100, terminal=True),
+            ),
+        )
+    )
+
+    assert ledger.attempts[0].terminal is True
+    assert ledger.attempts[0].components_complete is False
+    assert ledger.complete is False
+
+
 def test_attempt_usage_replay_rejects_missing_lineage_and_post_terminal_change() -> None:
     with pytest.raises(ModelInputIntegrityError, match="matching prior Model Input"):
         project_model_call_usage(
@@ -154,6 +182,7 @@ def _usage(
     input: int | None = None,
     output: int | None = None,
     cache_read: int | None = None,
+    cache_write: int | None = None,
     total_tokens: int | None = None,
     terminal: bool = False,
 ) -> ModelCallAttemptUsage:
@@ -164,6 +193,7 @@ def _usage(
         input=input,
         output=output,
         cache_read=cache_read,
+        cache_write=cache_write,
         total_tokens=total_tokens,
         terminal=terminal,
     )

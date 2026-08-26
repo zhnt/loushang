@@ -282,6 +282,52 @@ def test_token_totals_prefer_complete_attempt_facts_across_retries() -> None:
     assert totals.incomplete_attempts is False
 
 
+def test_token_totals_do_not_count_post_outcome_assistant_twice() -> None:
+    usage = Usage(10, 5, 2, 1, 18, None)
+    records = [
+        _record(
+            "snapshot-1", MODEL_INPUT_PREPARED_KIND, _snapshot("snapshot-1", 1)
+        ),
+        _record(
+            "usage-1",
+            MODEL_CALL_ATTEMPT_USAGE_KIND,
+            ModelCallAttemptUsage(
+                invocation_id="invocation-1",
+                attempt=1,
+                model_input_snapshot_id="snapshot-1",
+                input=10,
+                output=5,
+                cache_read=2,
+                cache_write=1,
+                total_tokens=18,
+                terminal=True,
+            ),
+        ),
+        _record(
+            "outcome",
+            MODEL_CALL_OUTCOME_KIND,
+            ModelCallOutcome(
+                invocation_id="invocation-1",
+                model_input_snapshot_ids=("snapshot-1",),
+                disposition="completed",
+                stop_reason="stop",
+                usage=usage,
+            ),
+        ),
+        _record("assistant", AGENT_MESSAGE_KIND, _assistant_with_usage(usage)),
+    ]
+
+    totals = _build_token_usage_totals(records)  # type: ignore[arg-type]
+
+    assert totals.input == 10
+    assert totals.output == 5
+    assert totals.cache_read == 2
+    assert totals.cache_write == 1
+    assert totals.total == 18
+    assert totals.source == "attempt_usage_facts"
+    assert totals.incomplete_attempts is False
+
+
 def test_token_totals_mark_fact_and_outcome_fallback_as_mixed() -> None:
     records = [
         _record(
@@ -443,6 +489,8 @@ def _attempt_usage(
         model_input_snapshot_id=snapshot_id,
         input=input,
         output=output,
+        cache_read=0,
+        cache_write=0,
         terminal=terminal,
     )
 

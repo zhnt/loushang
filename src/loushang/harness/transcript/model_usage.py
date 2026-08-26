@@ -22,6 +22,7 @@ class ModelCallAttemptUsageProjection:
     model_input_snapshot_id: str
     usage: Usage
     terminal: bool
+    components_complete: bool
 
 
 @dataclass(frozen=True)
@@ -78,7 +79,7 @@ def project_model_call_usage(
         complete=(
             bool(prepared)
             and set(observations) == set(prepared)
-            and all(item.terminal for item in attempts)
+            and all(item.terminal and item.components_complete for item in attempts)
         ),
     )
 
@@ -90,6 +91,7 @@ def _project_attempt(
     components = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
     provider_total: int | None = None
     terminal = False
+    observed_components: set[str] = set()
     for observation in observations:
         if terminal:
             raise ModelInputIntegrityError(
@@ -100,6 +102,7 @@ def _project_attempt(
             value = getattr(observation, name)
             if value is not None:
                 components[name] = value
+                observed_components.add(name)
                 component_changed = True
         if observation.total_tokens is not None:
             provider_total = observation.total_tokens
@@ -118,6 +121,7 @@ def _project_attempt(
         model_input_snapshot_id=key[2],
         usage=usage,
         terminal=terminal,
+        components_complete=observed_components == set(components),
     )
 
 
