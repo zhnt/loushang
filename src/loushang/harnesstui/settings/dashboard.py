@@ -195,7 +195,7 @@ def usage_lines(provider: UsageProvider | None) -> tuple[str, ...]:
                 f"Cache write       {_token_value(_value(totals, 'cache_write', 'cacheWrite'))}",
                 f"Cumulative total  {_token_value(_value(totals, 'total'))}",
                 f"Coverage source   {_display_value(_value(totals, 'source'))}",
-                f"Attempt coverage  {_attempt_coverage(totals)}",
+                f"Usage accuracy    {_usage_accuracy(totals)}",
             )
         )
     return tuple(lines)
@@ -229,10 +229,16 @@ def _freshness(context: object) -> str:
     return "current" if _value(context, "tokens") is not None else "unknown"
 
 
-def _attempt_coverage(totals: object) -> str:
-    if _value(totals, "incomplete_attempts", "incompleteAttempts") is True:
-        return "incomplete"
-    return "complete"
+def _usage_accuracy(totals: object) -> str:
+    source = _value(totals, "source")
+    incomplete = _value(totals, "incomplete_attempts", "incompleteAttempts")
+    if source == "attempt_usage_facts" and incomplete is False:
+        return "Exact"
+    if source in {"legacy_derived", "logical_outcome_derived"}:
+        return "Historical estimate"
+    if source == "mixed_derived" or incomplete is True:
+        return "Partial estimate"
+    return "Unavailable"
 
 
 def _display_value(value: object) -> str:

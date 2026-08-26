@@ -138,5 +138,34 @@ def test_dashboard_usage_view_formats_context_and_cumulative_coverage() -> None:
         "Cache write       40",
         "Cumulative total  190",
         "Coverage source   logical_outcome_derived",
-        "Attempt coverage  incomplete",
+        "Usage accuracy    Historical estimate",
     )
+
+
+def test_dashboard_usage_view_explains_accuracy_without_hiding_source() -> None:
+    def _lines(source: str, incomplete: bool) -> tuple[str, ...]:
+        return usage_lines(
+            lambda: {
+                "context": None,
+                "tokens": {
+                    "input": 1,
+                    "output": 2,
+                    "cacheRead": 3,
+                    "cacheWrite": 4,
+                    "total": 10,
+                    "source": source,
+                    "incompleteAttempts": incomplete,
+                },
+            }
+        )
+
+    exact = _lines("attempt_usage_facts", False)
+    partial = _lines("mixed_derived", True)
+    historical = _lines("legacy_derived", True)
+    unknown = _lines("unexpected", False)
+
+    assert "Coverage source   attempt_usage_facts" in exact
+    assert "Usage accuracy    Exact" in exact
+    assert "Usage accuracy    Partial estimate" in partial
+    assert "Usage accuracy    Historical estimate" in historical
+    assert "Usage accuracy    Unavailable" in unknown
