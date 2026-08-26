@@ -1419,6 +1419,14 @@ snapshot, verify identity/digest after open, and keep the handle leased through
 use. A platform that cannot prove this rejects executable Plugins rather than
 claiming path containment is sufficient.
 
+The POSIX adapter uses directory-fd-relative `O_NOFOLLOW` traversal. On Windows,
+where Python exposes neither `O_DIRECTORY` nor complete directory-fd traversal,
+the portable adapter rejects symbolic links and every reparse-point entry,
+retains root/file identities, rechecks the complete directory chain, and
+verifies each opened file plus the full tree against the frozen content digest.
+An opened byte sequence therefore cannot enter Definition or Component Host
+execution unless it is identical to the approved content-addressed revision.
+
 Security contracts include:
 
 - immutable/content-addressed executable revisions and bind-time digest checks;

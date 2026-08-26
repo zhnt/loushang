@@ -99,11 +99,19 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
     ): "verified-revision-publisher",
     (
         Path("src/loushang/harness/resources/plugins/revisions.py"),
+        "_digest_file_portable",
+    ): "verified-revision-publisher",
+    (
+        Path("src/loushang/harness/resources/plugins/revisions.py"),
         "_open_directory",
     ): "verified-revision-boundary",
     (
         Path("src/loushang/harness/resources/plugins/revisions.py"),
         "_open_regular_file",
+    ): "verified-revision-boundary",
+    (
+        Path("src/loushang/harness/resources/plugins/revisions.py"),
+        "_open_regular_file_portable",
     ): "verified-revision-boundary",
     (
         Path("src/loushang/harness/resources/packages/manifest.py"),
@@ -171,8 +179,10 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS = {
     (Path("src/loushang/harness/resources/plugins/distribution_evidence.py"), "_editable_project_root", "json_decode"): 1,
     (Path("src/loushang/harness/resources/plugins/distribution_evidence.py"), "_editable_project_root", "path_read"): 1,
     (Path("src/loushang/harness/resources/plugins/revisions.py"), "_digest_file", "path_read"): 1,
+    (Path("src/loushang/harness/resources/plugins/revisions.py"), "_digest_file_portable", "path_read"): 1,
     (Path("src/loushang/harness/resources/plugins/revisions.py"), "_open_directory", "path_read"): 1,
     (Path("src/loushang/harness/resources/plugins/revisions.py"), "_open_regular_file", "path_read"): 1,
+    (Path("src/loushang/harness/resources/plugins/revisions.py"), "_open_regular_file_portable", "path_read"): 1,
 }
 
 

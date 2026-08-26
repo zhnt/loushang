@@ -550,8 +550,15 @@ def test_default_lsp_plugin_rejects_the_legacy_reader_side_door(
         )
 
 
+@pytest.mark.parametrize(
+    "force_portable_revision_io",
+    (False, True),
+    ids=("descriptor", "portable"),
+)
 def test_default_lsp_plugin_mounts_through_session_graph_and_retires(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    force_portable_revision_io: bool,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
@@ -561,6 +568,15 @@ def test_default_lsp_plugin_mounts_through_session_graph_and_retires(
         LspServerDefinition,
     )
     from loushang.coding.session_manager import SessionManager
+
+    if force_portable_revision_io:
+        import loushang.harness.resources.plugins.revisions as revisions_module
+
+        monkeypatch.setattr(
+            revisions_module,
+            "_supports_descriptor_relative_revision_io",
+            lambda: False,
+        )
 
     async def scenario() -> None:
         project = tmp_path / "project"
