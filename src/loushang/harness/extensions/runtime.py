@@ -20,7 +20,11 @@ from loushang.harness.extensions.registry import (
     resolve_extension_registry,
     source_info_from_extension,
 )
-from loushang.harness.extensions.resources import ExtensionResourceRuntime
+from loushang.harness.extensions.resources import (
+    ExtensionResourceCatalogDiscovery,
+    ExtensionResourceRuntime,
+    PreparedExtensionResourceCatalog,
+)
 from loushang.harness.extensions.routing import (
     ExtensionRoutePlan,
     ExtensionRouter,
@@ -354,6 +358,47 @@ class ExtensionRuntime:
         return await self._resource_runtime().discover_async(
             bundle,
             context=self._resource_context_factory(str(bundle.cwd)),
+        )
+
+    async def prepare_resource_catalog_inputs_async(
+        self,
+        bundle: ResourceBundle,
+    ) -> ExtensionResourceCatalogDiscovery:
+        """Prepare exact routed inputs without publishing a ResourceBundle."""
+
+        return await self._resource_runtime().prepare_catalog_inputs_async(
+            bundle,
+            context=self._resource_context_factory(str(bundle.cwd)),
+        )
+
+    def prepare_resource_catalog_inputs(
+        self,
+        bundle: ResourceBundle,
+    ) -> ExtensionResourceCatalogDiscovery:
+        """Prepare synchronous initial-bootstrap inputs without publication."""
+
+        return self._resource_runtime().prepare_catalog_inputs(
+            bundle,
+            context=self._resource_context_factory(str(bundle.cwd)),
+        )
+
+    async def prepare_resource_catalog_generation_async(
+        self,
+        bundle: ResourceBundle,
+        *,
+        product_id: str,
+        runtime_id: str,
+        extension_generation: int,
+        extension_set_fingerprint: str,
+    ) -> PreparedExtensionResourceCatalog:
+        """Freeze one routed pass into an unpublished owner generation."""
+
+        discovery = await self.prepare_resource_catalog_inputs_async(bundle)
+        return discovery.freeze_generation(
+            product_id=product_id,
+            runtime_id=runtime_id,
+            extension_generation=extension_generation,
+            extension_set_fingerprint=extension_set_fingerprint,
         )
 
     def _apply_registry_snapshot(self) -> None:

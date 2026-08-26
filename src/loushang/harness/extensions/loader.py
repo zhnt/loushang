@@ -254,6 +254,7 @@ def _with_descriptor_source_info(
         source_kind=descriptor.source_kind,
         source_scope=descriptor.source_scope,
         source_root=descriptor.source_root,
+        source_root_order=descriptor.source_root_order,
     )
 
 

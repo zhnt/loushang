@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
+from loushang.harness.resources._catalog_input_receipt import (
+    ResourceCatalogInputReceipt,
+)
 from loushang.harness.resources._loader_package_policy import (
     _count_package_descriptors,
     _count_package_diagnostics,
@@ -146,6 +149,9 @@ class ResourceLoader:
         project_resource_mode: Literal["standard", "legacy"] = "standard",
     ) -> None:
         self._snapshot: ResourceSnapshot | None = None
+        self._initial_resource_catalog_input_receipt: (
+            ResourceCatalogInputReceipt | None
+        ) = None
         self._package_mounts = _package_mounts_from_legacy_roots(
             package_roots,
             package_source_filters,
@@ -211,6 +217,7 @@ class ResourceLoader:
         self,
         mounts: Sequence[PackageResourceMount],
     ) -> None:
+        self._initial_resource_catalog_input_receipt = None
         next_mounts = tuple(mounts)
         _verify_package_mounts(next_mounts)
         previous_mounts = self._package_mounts
@@ -231,6 +238,7 @@ class ResourceLoader:
         *,
         explicit_roots: Collection[str | Path] | None = None,
     ) -> None:
+        self._initial_resource_catalog_input_receipt = None
         self._user_resource_roots = _normalize_user_resource_roots(user_resource_roots)
         self._explicit_user_resource_roots = set(
             _normalize_user_resource_roots(
@@ -239,6 +247,7 @@ class ResourceLoader:
         )
 
     def set_workspace_root(self, workspace_root: str | Path | None) -> None:
+        self._initial_resource_catalog_input_receipt = None
         self._workspace_root = (
             Path(workspace_root).expanduser().resolve(strict=False)
             if workspace_root is not None
@@ -264,6 +273,7 @@ class ResourceLoader:
         system_prompt: str | None = None,
         append_system_prompt: list[str] | tuple[str, ...] | None = None,
     ) -> None:
+        self._initial_resource_catalog_input_receipt = None
         if additional_extension_paths is not None:
             self._additional_extension_paths = _normalize_runtime_paths(
                 additional_extension_paths
@@ -294,6 +304,7 @@ class ResourceLoader:
         self._append_system_prompt_sources = tuple(append_system_prompt or ())
 
     def discover_resources(self, cwd: str | Path) -> ResourceBundle:
+        self._initial_resource_catalog_input_receipt = None
         _verify_package_mounts(self._package_mounts)
         target = Path(cwd)
         workspace_root = self._workspace_root or target
@@ -320,9 +331,11 @@ class ResourceLoader:
             context_file_names=self._context_file_names,
             project_resource_root=project_resource_root,
         )
-        snapshot = _discover_snapshot(request)
+        discovery = _discover_snapshot(request)
         _verify_package_mounts(self._package_mounts)
+        snapshot = discovery.snapshot
         self._snapshot = snapshot
+        self._initial_resource_catalog_input_receipt = discovery.catalog_input_receipt
         self._resolved_system_prompt = _resolve_prompt_input(
             self._system_prompt_source, cwd=Path(cwd)
         )
@@ -334,6 +347,7 @@ class ResourceLoader:
         return snapshot.to_bundle()
 
     def close(self) -> None:
+        self._initial_resource_catalog_input_receipt = None
         closed: set[int] = set()
         for mount in self._package_mounts:
             handle = mount.revision_handle
@@ -374,6 +388,19 @@ class ResourceLoader:
                 ),
             )
         return self._snapshot
+
+    def _take_initial_resource_catalog_input_receipt(
+        self,
+    ) -> ResourceCatalogInputReceipt:
+        """Transfer the latest exact discovery inputs to one Product adapter."""
+
+        receipt = self._initial_resource_catalog_input_receipt
+        if receipt is None:
+            raise RuntimeError(
+                "No unclaimed initial Resource Catalog input receipt is available"
+            )
+        self._initial_resource_catalog_input_receipt = None
+        return receipt
 
     @property
     def _package_roots(self) -> tuple[Path, ...]:

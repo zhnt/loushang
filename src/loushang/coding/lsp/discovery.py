@@ -11,6 +11,11 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
+from loushang.coding.lsp.definition_codec import (
+    LSP_SERVER_DEFINITION_FIELDS,
+    decode_lsp_server_definition,
+    encode_lsp_server_definition,
+)
 from loushang.coding.lsp.model import LspServerDefinition
 
 LspAdmissionState = Literal["admitted", "disabled", "rejected", "unavailable"]
@@ -19,22 +24,7 @@ ConfigPath = str | Path | Literal[False] | None
 
 _MAX_CONFIG_BYTES = 256 * 1024
 _MAX_SERVER_DECLARATIONS = 64
-_ALLOWED_SERVER_FIELDS = frozenset(
-    {
-        "id",
-        "enabled",
-        "command",
-        "language_extensions",
-        "root_markers",
-        "priority",
-        "environment",
-        "initialization_options",
-        "settings",
-        "startup_timeout_seconds",
-        "request_timeout_seconds",
-        "shutdown_timeout_seconds",
-    }
-)
+_ALLOWED_SERVER_FIELDS = (LSP_SERVER_DEFINITION_FIELDS - {"source"}) | {"enabled"}
 _BASELINE_ENVIRONMENT_NAMES = frozenset(
     {
         "CONDA_PREFIX",
@@ -309,7 +299,7 @@ def discover_lsp_catalog(
     generation_input = json.dumps(
         {
             "definitions": [
-                _definition_generation_value(definition) for definition in definitions
+                encode_lsp_server_definition(definition) for definition in definitions
             ],
             "records": [
                 {
@@ -469,75 +459,11 @@ def _parse_declaration(value: object, *, source: str) -> _Declaration:
     if not enabled:
         return _Declaration(definition_id, source, None, enabled=False)
 
-    command = value.get("command")
-    if not isinstance(command, list) or not all(
-        isinstance(item, str) for item in command
-    ):
-        raise TypeError("server command must be a string array")
-    language_extensions = value.get("language_extensions")
-    if not isinstance(language_extensions, Mapping):
-        raise TypeError("server language_extensions must be an object")
-    normalized_languages: dict[str, tuple[str, ...]] = {}
-    for language, extensions in language_extensions.items():
-        if not isinstance(language, str) or not isinstance(extensions, list):
-            raise TypeError("language_extensions must map strings to string arrays")
-        if not all(isinstance(extension, str) for extension in extensions):
-            raise TypeError("language_extensions must map strings to string arrays")
-        normalized_languages[language] = tuple(extensions)
-
-    root_markers = value.get("root_markers", [])
-    if not isinstance(root_markers, list) or not all(
-        isinstance(marker, str) for marker in root_markers
-    ):
-        raise TypeError("server root_markers must be a string array")
-    environment = value.get("environment", {})
-    initialization_options = value.get("initialization_options", {})
-    settings = value.get("settings", {})
-    definition = LspServerDefinition(
-        id=definition_id,
-        command=tuple(command),
-        language_extensions=normalized_languages,
-        root_markers=tuple(root_markers),
-        priority=_integer_field(value, "priority", 0),
-        environment=_string_mapping(environment, "environment"),
-        initialization_options=_object_mapping(
-            initialization_options, "initialization_options"
-        ),
-        settings=_object_mapping(settings, "settings"),
-        startup_timeout_seconds=_number_field(value, "startup_timeout_seconds", 20.0),
-        request_timeout_seconds=_number_field(value, "request_timeout_seconds", 15.0),
-        shutdown_timeout_seconds=_number_field(value, "shutdown_timeout_seconds", 3.0),
+    definition = decode_lsp_server_definition(
+        {key: item for key, item in value.items() if key != "enabled"},
         source=source,
     )
     return _Declaration(definition_id, source, definition)
-
-
-def _integer_field(value: Mapping[object, object], name: str, default: int) -> int:
-    item = value.get(name, default)
-    if not isinstance(item, int) or isinstance(item, bool):
-        raise TypeError(f"server {name} must be an integer")
-    return item
-
-
-def _number_field(value: Mapping[object, object], name: str, default: float) -> float:
-    item = value.get(name, default)
-    if not isinstance(item, int | float) or isinstance(item, bool):
-        raise TypeError(f"server {name} must be a number")
-    return float(item)
-
-
-def _string_mapping(value: object, name: str) -> dict[str, str]:
-    if not isinstance(value, Mapping) or not all(
-        isinstance(key, str) and isinstance(item, str) for key, item in value.items()
-    ):
-        raise TypeError(f"server {name} must map strings to strings")
-    return dict(value)
-
-
-def _object_mapping(value: object, name: str) -> dict[str, object]:
-    if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
-        raise TypeError(f"server {name} must be an object")
-    return dict(value)
 
 
 def _resolve_executable(command: str, environment: Mapping[str, str]) -> str | None:
@@ -549,35 +475,6 @@ def _resolve_executable(command: str, environment: Mapping[str, str]) -> str | N
     if len(path.parts) != 1:
         return None
     return shutil.which(command, path=environment.get("PATH"))
-
-
-def _definition_generation_value(
-    definition: LspServerDefinition,
-) -> dict[str, object]:
-    return {
-        "id": definition.id,
-        "command": definition.command,
-        "language_extensions": _json_generation_value(definition.language_extensions),
-        "root_markers": definition.root_markers,
-        "priority": definition.priority,
-        "environment": _json_generation_value(definition.environment),
-        "initialization_options": _json_generation_value(
-            definition.initialization_options
-        ),
-        "settings": _json_generation_value(definition.settings),
-        "startup_timeout_seconds": definition.startup_timeout_seconds,
-        "request_timeout_seconds": definition.request_timeout_seconds,
-        "shutdown_timeout_seconds": definition.shutdown_timeout_seconds,
-        "source": definition.source,
-    }
-
-
-def _json_generation_value(value: object) -> object:
-    if isinstance(value, Mapping):
-        return {str(name): _json_generation_value(item) for name, item in value.items()}
-    if isinstance(value, tuple):
-        return [_json_generation_value(item) for item in value]
-    return value
 
 
 __all__ = [

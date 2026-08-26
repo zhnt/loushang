@@ -15,12 +15,14 @@ from loushang.harness.workspace.process import (
 
 TextReadResult = str | Awaitable[str]
 WorkspaceTextReader = Callable[[Path], TextReadResult]
-PathExists = Callable[[Path], bool]
+PathExistsResult = bool | Awaitable[bool]
+PathExists = Callable[[Path], PathExistsResult]
 
 
 __all__ = [
     "AuthorizedProcessLauncher",
     "PathExists",
+    "PathExistsResult",
     "ProcessExit",
     "ProcessHandle",
     "ProcessLaunchRequest",

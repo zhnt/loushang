@@ -27,6 +27,11 @@ if TYPE_CHECKING:
         record_package_lockfile_diagnostics,
         record_package_source_policy_denial,
     )
+    from loushang.harness.resources.packages.inventory import (
+        FilesystemPackageResourceInventory,
+        PackageResourceInventoryPort,
+        summarize_package_inventory,
+    )
     from loushang.harness.resources.packages.manifest import (
         PackageManifestInfo,
         resolve_package_manifest,
@@ -89,6 +94,7 @@ if TYPE_CHECKING:
     )
 
 _EXPORT_MODULES = {
+    "FilesystemPackageResourceInventory": "loushang.harness.resources.packages.inventory",
     "GitPackageMaterializerBackend": "loushang.harness.resources.packages.materializer",
     "MissingSourceAction": "loushang.harness.resources.packages.source_resolver",
     "MissingSourceResolver": "loushang.harness.resources.packages.source_resolver",
@@ -105,6 +111,7 @@ _EXPORT_MODULES = {
     "PackageMaterializerBackend": "loushang.harness.resources.packages.materializer",
     "PackageMaterializerPort": "loushang.harness.resources.packages.operations",
     "PackageResourceMount": "loushang.harness.resources.packages.mounts",
+    "PackageResourceInventoryPort": "loushang.harness.resources.packages.inventory",
     "PackageMaterializerProvider": "loushang.harness.resources.packages.operations",
     "PackageOperationsRuntime": "loushang.harness.resources.packages.operations",
     "PackageProgressEvent": "loushang.harness.resources.packages.materializer",
@@ -148,6 +155,7 @@ _EXPORT_MODULES = {
     "serialize_package_materialization_record": "loushang.harness.resources.packages.projection",
     "summarize_profiled_package_resources": "loushang.harness.resources.packages.catalog",
     "summarize_package_resources": "loushang.harness.resources.packages.catalog",
+    "summarize_package_inventory": "loushang.harness.resources.packages.inventory",
 }
 
 

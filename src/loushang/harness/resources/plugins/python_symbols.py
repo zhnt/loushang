@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import builtins
-import importlib.metadata
 import importlib.util
-import re
 import sys
 import sysconfig
 from collections.abc import Mapping
@@ -15,6 +13,10 @@ from types import ModuleType
 
 from loushang.harness.resources.plugins.dependencies import (
     PluginDependencyClosureLock,
+)
+from loushang.harness.resources.plugins.distribution_evidence import (
+    InstalledPythonDistributionEvidence,
+    InstalledPythonDistributionEvidenceResolver,
 )
 from loushang.harness.resources.plugins.locators import (
     canonical_plugin_python_path,
@@ -44,6 +46,8 @@ def load_verified_plugin_python_module(
     relative_path: str,
     module_name: str,
     host_api_prefixes: tuple[str, ...],
+    distribution_evidence_resolver: InstalledPythonDistributionEvidenceResolver
+    | None = None,
 ) -> VerifiedPluginPythonModule:
     """Compile one verified source file with non-sandbox direct-import checks."""
 
@@ -55,8 +59,7 @@ def load_verified_plugin_python_module(
         raise ValueError("Plugin Python loader package and dependency lock differ")
     normalized_module_name = _require_nonempty(module_name, name="module name")
     prefixes = tuple(
-        _require_nonempty(item, name="Host API prefix")
-        for item in host_api_prefixes
+        _require_nonempty(item, name="Host API prefix") for item in host_api_prefixes
     )
     if len(prefixes) != len(set(prefixes)):
         raise ValueError("Host API prefixes must be unique")
@@ -68,6 +71,10 @@ def load_verified_plugin_python_module(
     import_policy = _DirectImportPolicy(
         dependency_lock,
         host_api_prefixes=prefixes,
+        distribution_evidence_resolver=(
+            distribution_evidence_resolver
+            or InstalledPythonDistributionEvidenceResolver()
+        ),
     )
     module = ModuleType(normalized_module_name)
     virtual_filename = f"<plugin:{normalized_module_name}>"
@@ -92,40 +99,18 @@ class _DirectImportPolicy:
         dependency_lock: PluginDependencyClosureLock,
         *,
         host_api_prefixes: tuple[str, ...],
+        distribution_evidence_resolver: InstalledPythonDistributionEvidenceResolver,
     ) -> None:
-        locked_names: dict[str, str] = {}
-        distribution_paths: dict[str, tuple[Path, ...]] = {}
+        evidence_by_package: dict[
+            str,
+            list[InstalledPythonDistributionEvidence],
+        ] = {}
         for distribution in dependency_lock.python_distributions:
-            normalized_name = _normalize_distribution_name(distribution.name)
-            try:
-                installed = importlib.metadata.distribution(distribution.name)
-            except importlib.metadata.PackageNotFoundError as exc:
-                raise ImportError("A locked Plugin dependency is unavailable") from exc
-            installed_version = installed.version
-            if installed_version != distribution.version:
-                raise ImportError("A locked Plugin dependency version drifted")
-            files = installed.files
-            if files is None:
-                raise ImportError("A locked Plugin dependency origin is unverifiable")
-            locked_names[normalized_name] = distribution.version
-            distribution_paths[normalized_name] = tuple(
-                Path(str(installed.locate_file(item))).resolve()
-                for item in files
-            )
-        package_distributions = importlib.metadata.packages_distributions()
-        self._allowed_distribution_paths = {
-            package: tuple(
-                path
-                for item in distributions
-                if (normalized := _normalize_distribution_name(item))
-                in locked_names
-                for path in distribution_paths[normalized]
-            )
-            for package, distributions in package_distributions.items()
-            if any(
-                _normalize_distribution_name(item) in locked_names
-                for item in distributions
-            )
+            for evidence in distribution_evidence_resolver.resolve_all(distribution):
+                for package in evidence.top_level_packages:
+                    evidence_by_package.setdefault(package, []).append(evidence)
+        self._distribution_evidence = {
+            package: tuple(items) for package, items in evidence_by_package.items()
         }
         self._host_api_prefixes = host_api_prefixes
         self._stdlib_roots = tuple(
@@ -158,14 +143,16 @@ class _DirectImportPolicy:
             raise ImportError("Relative imports are not available to Plugin modules")
         root = name.partition(".")[0]
         if root in {"builtins", "importlib", "pkgutil", "runpy", "sys", "zipimport"}:
-            raise ImportError("Dynamic import facilities are unavailable to Plugin modules")
+            raise ImportError(
+                "Dynamic import facilities are unavailable to Plugin modules"
+            )
         is_host_api = any(
             name == prefix or name.startswith(prefix + ".")
             for prefix in self._host_api_prefixes
         )
         if root in sys.stdlib_module_names:
             self._require_stdlib_origin(name)
-        elif root in self._allowed_distribution_paths:
+        elif root in self._distribution_evidence:
             self._require_distribution_origin(name, root=root)
         elif not is_host_api:
             raise ImportError(
@@ -191,19 +178,10 @@ class _DirectImportPolicy:
         spec = importlib.util.find_spec(name)
         if spec is None:
             raise ImportError("Plugin dependency import cannot be resolved")
-        allowed = self._allowed_distribution_paths[root]
-        origin = getattr(spec, "origin", None)
-        if isinstance(origin, str) and origin not in {"built-in", "frozen"}:
-            if Path(origin).resolve() not in allowed:
-                raise ImportError("Plugin dependency import origin is outside its lock")
-            return
-        locations = getattr(spec, "submodule_search_locations", None)
-        if locations is None:
-            raise ImportError("Plugin dependency import origin is outside its lock")
-        location_paths = tuple(Path(item).resolve() for item in locations)
-        if not location_paths or any(
-            not any(path == location or path.is_relative_to(location) for path in allowed)
-            for location in location_paths
+        paths = _spec_paths(spec)
+        if not any(
+            evidence.allows_import_origin(name, paths)
+            for evidence in self._distribution_evidence[root]
         ):
             raise ImportError("Plugin dependency import origin is outside its lock")
 
@@ -220,10 +198,6 @@ def _spec_paths(spec: object) -> tuple[Path, ...]:
 
 def _is_within(path: Path, roots: tuple[Path, ...]) -> bool:
     return any(path == root or path.is_relative_to(root) for root in roots)
-
-
-def _normalize_distribution_name(value: str) -> str:
-    return re.sub(r"[-_.]+", "-", value).lower()
 
 
 def _require_nonempty(value: object, *, name: str) -> str:

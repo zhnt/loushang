@@ -16,7 +16,7 @@ class PluginPythonDistributionLock:
     version: str
 
     def __post_init__(self) -> None:
-        if self.name != _normalize_distribution_name(self.name):
+        if self.name != canonical_python_distribution_name(self.name):
             raise ValueError("Python distribution lock name must be canonical")
         if not self.version or self.version != self.version.strip():
             raise ValueError("Python distribution lock version must be non-empty")
@@ -141,12 +141,16 @@ def _parse_installed_distribution(value: str) -> PluginPythonDistributionLock:
             "Installed Python distribution identity must contain one exact version"
         )
     return PluginPythonDistributionLock(
-        name=_normalize_distribution_name(name),
+        name=canonical_python_distribution_name(name),
         version=version.strip(),
     )
 
 
-def _normalize_distribution_name(value: str) -> str:
+def canonical_python_distribution_name(value: str) -> str:
+    """Return the canonical name used by exact Plugin distribution locks."""
+
+    if not isinstance(value, str):
+        raise TypeError("Python distribution name must be a string")
     normalized = re.sub(r"[-_.]+", "-", value.strip()).lower()
     if not normalized or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", normalized):
         raise ValueError("Invalid Python distribution name in dependency lock")
@@ -177,5 +181,6 @@ __all__ = [
     "PLUGIN_DEPENDENCY_LOCK_FORMAT",
     "PluginDependencyClosureLock",
     "PluginPythonDistributionLock",
+    "canonical_python_distribution_name",
     "lock_plugin_dependency_closure",
 ]

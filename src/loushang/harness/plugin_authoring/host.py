@@ -5,6 +5,7 @@ from __future__ import annotations
 from loushang.harness.plugin_authoring.coordinator import (
     PluginDeclarationCoordinator,
 )
+from loushang.harness.plugin_authoring.evaluator import PluginDefinitionEvaluator
 from loushang.harness.resources.plugins.selection import (
     PluginExecutionDecisionLookupPort,
     PluginPreflightAcceptedOutcome,
@@ -38,9 +39,16 @@ class PluginDeclarationHost:
 
     __slots__ = ("_coordinator", "_resolver")
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        execution_evaluator: PluginDefinitionEvaluator | None = None,
+    ) -> None:
         self._resolver = PluginSelectionResolver()
-        self._coordinator = PluginDeclarationCoordinator(self._resolver)
+        self._coordinator = PluginDeclarationCoordinator(
+            self._resolver,
+            execution_evaluator=execution_evaluator,
+        )
 
     def resolve(
         self,

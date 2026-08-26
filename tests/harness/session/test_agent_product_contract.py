@@ -36,14 +36,14 @@ from loushang.harness.capabilities import (
 )
 from loushang.harness.capabilities.component_host import CapabilityComponentHost
 from loushang.harness.capabilities.consumer_requirements import (
-    ProductCompositionAuthorityContext,
-    ProductCompositionCompiler,
+    ProductCompositionError,
 )
 from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionPolicy,
 )
 from loushang.harness.capabilities.provider_admission import (
+    CapabilityProviderAdmissionRecord,
     CapabilityProviderOwnerAuthority,
     CapabilityProviderOwnerPolicy,
 )
@@ -65,6 +65,7 @@ from loushang.harness.config.agent import (
     SettingsManager,
 )
 from loushang.harness.conversation import ConversationKey, MemoryConversationStore
+from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.plugin_authoring.capability_provider import (
     PLUGIN_PROVIDER_SELECTION_RULE,
     CapabilityProviderDeclarationPayload,
@@ -73,12 +74,23 @@ from loushang.harness.plugin_authoring.capability_provider import (
 from loushang.harness.plugin_authoring.consumer_pack import (
     ToolPackDeclarationPayload,
 )
-from loushang.harness.plugin_authoring.contribution_admission import (
-    prepare_owner_contribution_candidate,
-)
 from loushang.harness.plugin_authoring.host import PluginDeclarationHost
-from loushang.harness.plugin_authoring.provider_admission import (
-    prepare_capability_provider_candidate,
+from loushang.harness.resource_catalog.product_inputs import (
+    InitialResourceCatalogProductAdapter,
+    InitialResourceCatalogProductSelection,
+    ProductEmbeddedResourceCollectionSpec,
+    ProductNativeResourceRootSpec,
+)
+from loushang.harness.resource_catalog.session_bootstrap import (
+    InitialSessionResourceCatalogBootstrap,
+    InitialSessionResourceCatalogInputs,
+)
+from loushang.harness.resources._catalog_embedded_source import (
+    EmbeddedResourceCollectionHandle,
+    mint_embedded_resource_collection_handle,
+)
+from loushang.harness.resources._catalog_native_source import (
+    mint_native_resource_root_handle,
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.plugins.authority import (
@@ -123,11 +135,18 @@ from loushang.harness.runtime.session_operations import (
 from loushang.harness.runtime.transition import SessionTransitionHost
 from loushang.harness.session import AgentProductSession
 from loushang.harness.session.capability_composition_inputs import (
-    SessionCapabilityComponentRequest,
     SessionCapabilityCompositionInputs,
     SessionCapabilityConsumerCapture,
     SessionCapabilityOwnerAuthorityGate,
     SessionCapabilityOwnerGenerationBinding,
+)
+from loushang.harness.session.product_composition_assembly import (
+    ProductCapabilityProviderOwnerBinding,
+    ProductCompositionAssemblyError,
+    ProductCompositionAssemblyRequest,
+    ProductContributionOwnerBinding,
+    ProductPluginCompositionAssemblyRequest,
+    assemble_product_plugin_composition,
 )
 from loushang.harness.transcript import (
     AgentTranscriptLifecycle,
@@ -183,12 +202,16 @@ class _ContractProductSession(AgentProductSession):
         reserve_tokens: int,
         compact_percent: float,
         workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
-        capability_composition_inputs: SessionCapabilityCompositionInputs
-        | None = None,
+        capability_composition_inputs: SessionCapabilityCompositionInputs | None = None,
         capability_component_host: CapabilityComponentHost | None = None,
         capability_owner_generation_bindings: tuple[
             SessionCapabilityOwnerGenerationBinding, ...
         ] = (),
+        resource_bundle: ResourceBundle | None = None,
+        extension_runner: ExtensionRunner | None = None,
+        initial_resource_catalog_bootstrap: (
+            InitialSessionResourceCatalogBootstrap | None
+        ) = None,
     ) -> None:
         self.product_id = product_id
         self.executor_calls: list[tuple[str, str | None]] = []
@@ -261,9 +284,10 @@ class _ContractProductSession(AgentProductSession):
             workspace_capability_binding=workspace_capability_binding,
             capability_composition_inputs=capability_composition_inputs,
             capability_component_host=capability_component_host,
-            capability_owner_generation_bindings=(
-                capability_owner_generation_bindings
-            ),
+            capability_owner_generation_bindings=(capability_owner_generation_bindings),
+            resource_bundle=resource_bundle,
+            extension_runner=extension_runner,
+            initial_resource_catalog_bootstrap=(initial_resource_catalog_bootstrap),
         )
 
     async def _before_product_compaction(
@@ -595,6 +619,324 @@ def test_graph_owned_compaction_views_follow_the_current_profile_selection(
 
         await session.dispose()
         assert disposed_transcripts == ["turn-profile-session"]
+
+    asyncio.run(scenario())
+
+
+def test_initial_catalog_bootstrap_publishes_one_graph_owned_session_view(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        product_id = "catalog-bootstrap"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        capability_runtime = _capability_runtime(product_id)
+        bootstrap, base_bundle = _initial_catalog_bootstrap(
+            tmp_path,
+            product_id=product_id,
+        )
+        extension_runner = ExtensionRunner([])
+        session = _ContractProductSession(
+            product_id=product_id,
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+            resource_bundle=base_bundle,
+            extension_runner=extension_runner,
+            initial_resource_catalog_bootstrap=bootstrap,
+        )
+
+        await session.prepare_model_call_runtime()
+        await session.prepare_model_call_runtime()
+
+        assert bootstrap.state == "published"
+        assert extension_runner.generation == 2
+        assert capability_runtime.ownership_state == "graph_owned"
+        assert session._staged_resource_candidate is None
+        assert session._resource_catalog_snapshot is not None
+        assert session._resource_catalog_projection is not None
+        assert session.resource_bundle is not base_bundle
+        assert session.resource_bundle is not None
+        assert [skill.name for skill in session.resource_bundle.skills] == ["review"]
+        source_reference = session._source_publication_reference()
+        assert source_reference.extension_generation == 2
+        assert source_reference.resource_revision == getattr(
+            session._resource_catalog_snapshot,
+            "catalog_generation",
+        )
+
+        await session.dispose()
+
+        assert capability_runtime.ownership_state == "disposed"
+        assert disposed_transcripts == [f"{product_id}-session"]
+
+    asyncio.run(scenario())
+
+
+def test_product_input_adapter_carries_native_and_embedded_skills_through_session(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        product_id = "catalog-product-inputs"
+        session_id = f"{product_id}-session"
+        workspace = tmp_path / product_id
+        skill_root = workspace / "skills" / "native"
+        skill_root.mkdir(parents=True)
+        (skill_root / "SKILL.md").write_text(
+            "---\nname: native\ndescription: Native skill\n---\nUse native.\n",
+            encoding="utf-8",
+        )
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        capability_runtime = _capability_runtime(product_id)
+        base_bundle = ResourceBundle(cwd=workspace)
+        extension_runner = ExtensionRunner([])
+        adapter = InitialResourceCatalogProductAdapter(
+            InitialResourceCatalogProductSelection(
+                product_policy_revision="resource-policy-v1",
+                native_roots=(
+                    ProductNativeResourceRootSpec(
+                        handle_id="project-resources",
+                        root=workspace,
+                        source_class="project_local",
+                        root_kind="standard",
+                    ),
+                ),
+                embedded_collections=(
+                    ProductEmbeddedResourceCollectionSpec(
+                        collection_id="coding-builtin-resources",
+                        embedded_revision="v1",
+                        files={
+                            "skills/embedded/SKILL.md": (
+                                b"---\nname: embedded\ndescription: Embedded skill\n"
+                                b"---\nUse embedded.\n"
+                            )
+                        },
+                    ),
+                ),
+            ),
+            clock=lambda: 10,
+        )
+
+        session = adapter.construct_session(
+            product_id=product_id,
+            session_id=session_id,
+            base_resource_bundle=base_bundle,
+            construct=lambda bootstrap: _ContractProductSession(
+                product_id=product_id,
+                transcript=transcript,
+                capability_runtime=capability_runtime,
+                reserve_tokens=1_111,
+                compact_percent=61.0,
+                resource_bundle=base_bundle,
+                extension_runner=extension_runner,
+                initial_resource_catalog_bootstrap=bootstrap,
+            ),
+        )
+
+        await session.prepare_model_call_runtime()
+
+        assert session.resource_bundle is not None
+        assert {skill.name for skill in session.resource_bundle.skills} == {
+            "embedded",
+            "native",
+        }
+        assert capability_runtime.ownership_state == "graph_owned"
+
+        await session.dispose()
+        assert capability_runtime.ownership_state == "disposed"
+        assert disposed_transcripts == [session_id]
+
+    asyncio.run(scenario())
+
+
+def test_failed_graph_bind_rolls_back_initial_catalog_and_extension_candidates(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        product_id = "catalog-bind-failure"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        capability_runtime = _capability_runtime(product_id)
+        bootstrap, base_bundle = _initial_catalog_bootstrap(
+            tmp_path,
+            product_id=product_id,
+        )
+        extension_runner = ExtensionRunner([])
+        session = _ContractProductSession(
+            product_id=product_id,
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+            resource_bundle=base_bundle,
+            extension_runner=extension_runner,
+            initial_resource_catalog_bootstrap=bootstrap,
+        )
+
+        async def fail_bind(*_args: object) -> None:
+            raise RuntimeError("catalog graph preparation failed")
+
+        session._capability_graph_binder.bind = fail_bind  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="catalog graph preparation failed"):
+            await session.prepare_model_call_runtime()
+
+        assert bootstrap.state == "disposed"
+        assert extension_runner.generation == 1
+        assert capability_runtime.ownership_state == "disposed"
+        assert session._capability_graph_runtime.snapshot is None
+        assert session.resource_bundle is base_bundle
+
+        await session.dispose()
+        assert disposed_transcripts == [f"{product_id}-session"]
+
+    asyncio.run(scenario())
+
+
+def test_failed_initial_catalog_publication_restores_session_view_and_rolls_back(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        product_id = "catalog-publish-failure"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        capability_runtime = _capability_runtime(product_id)
+        bootstrap, base_bundle = _initial_catalog_bootstrap(
+            tmp_path,
+            product_id=product_id,
+        )
+        extension_runner = ExtensionRunner([])
+        session = _ContractProductSession(
+            product_id=product_id,
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+            resource_bundle=base_bundle,
+            extension_runner=extension_runner,
+            initial_resource_catalog_bootstrap=bootstrap,
+        )
+        original_commit = session._commit_initial_resource_publication
+
+        def fail_after_commit(
+            catalog: object,
+            projection: object,
+            bundle: ResourceBundle,
+        ) -> None:
+            original_commit(catalog, projection, bundle)
+            raise RuntimeError("catalog publication failed")
+
+        session._commit_initial_resource_publication = fail_after_commit  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="catalog publication failed"):
+            await session.prepare_model_call_runtime()
+
+        assert bootstrap.state == "disposed"
+        assert extension_runner.generation == 1
+        assert capability_runtime.ownership_state == "disposed"
+        assert session.resource_bundle is base_bundle
+        assert session._resource_catalog_snapshot is None
+        assert session._resource_catalog_projection is None
+
+        await session.dispose()
+        assert disposed_transcripts == [f"{product_id}-session"]
+
+    asyncio.run(scenario())
+
+
+def test_cancelled_initial_catalog_bootstrap_finishes_graph_and_joint_rollback(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        product_id = "catalog-cancelled"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        capability_runtime = _capability_runtime(product_id)
+        bootstrap, base_bundle = _initial_catalog_bootstrap(
+            tmp_path,
+            product_id=product_id,
+        )
+        extension_runner = ExtensionRunner([])
+        session = _ContractProductSession(
+            product_id=product_id,
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+            resource_bundle=base_bundle,
+            extension_runner=extension_runner,
+            initial_resource_catalog_bootstrap=bootstrap,
+        )
+        graph_bound = asyncio.Event()
+        never_release = asyncio.Event()
+        original_bind = session._capability_graph_binder.bind
+
+        async def pause_after_bind(runtime, plan, bindings):  # type: ignore[no-untyped-def]
+            result = await original_bind(runtime, plan, bindings)
+            graph_bound.set()
+            await never_release.wait()
+            return result
+
+        session._capability_graph_binder.bind = pause_after_bind  # type: ignore[method-assign]
+        preparation = asyncio.create_task(session.prepare_model_call_runtime())
+        await asyncio.wait_for(graph_bound.wait(), timeout=1)
+        preparation.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await preparation
+
+        assert bootstrap.state == "disposed"
+        assert extension_runner.generation == 1
+        assert capability_runtime.ownership_state == "disposed"
+        assert session._capability_graph_runtime.is_closed is True
+
+        await session.dispose()
+        assert disposed_transcripts == [f"{product_id}-session"]
+
+    asyncio.run(scenario())
+
+
+def test_unprepared_catalog_bootstrap_releases_owned_source_inputs_on_shutdown(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        product_id = "catalog-unprepared"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        embedded = mint_embedded_resource_collection_handle(
+            collection_id="catalog-unprepared-oem",
+            embedded_revision="v1",
+            files={},
+        )
+        bootstrap, base_bundle = _initial_catalog_bootstrap(
+            tmp_path,
+            product_id=product_id,
+            embedded_collections=(embedded,),
+        )
+        session = _ContractProductSession(
+            product_id=product_id,
+            transcript=transcript,
+            capability_runtime=_capability_runtime(product_id),
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+            resource_bundle=base_bundle,
+            extension_runner=ExtensionRunner([]),
+            initial_resource_catalog_bootstrap=bootstrap,
+        )
+
+        await session.dispose()
+
+        assert bootstrap.state == "disposed"
+        assert embedded.closed is True
+        assert disposed_transcripts == [f"{product_id}-session"]
 
     asyncio.run(scenario())
 
@@ -1222,78 +1564,12 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 refresh_boundary="sealed",
                 phase="final",
             )
-            candidates = {
-                item.declaration.kind: item for item in selection.candidates
-            }
-            provider_candidate = prepare_capability_provider_candidate(
-                selection,
-                candidates["capability_provider"],
-                definition=definition,
+            provider_authority = _foundation_provider_authority(
+                definition,
+                "org.loushang.coding.foundation/default",
             )
-            provider_authority = CapabilityProviderOwnerAuthority(
-                CapabilityProviderOwnerPolicy(
-                    capability_id=definition.capability_id,
-                    owner_id=definition.owner_id,
-                    policy_revision="coding-foundation-owner-1",
-                    revocation_epoch=3,
-                    allowed_provider_ids=(
-                        "org.loushang.coding.foundation/default",
-                    ),
-                    allowed_source_trust_classes=("host-equivalent-local",),
-                    authority_ceiling=(),
-                )
-            )
-            eligibility = provider_authority.grant_eligibility(
-                provider_candidate,
-                issued_at=100,
-                expires_at=400,
-            )
-            provider_admission = provider_authority.admit(
-                provider_candidate,
-                eligibility=eligibility,
-                issued_at=120,
-                expires_at=350,
-            )
-            owner_candidate = prepare_owner_contribution_candidate(
-                selection,
-                candidates["tool_pack"],
-            )
-            owner_authority = OwnerContributionAuthority(
-                OwnerContributionPolicy(
-                    owner_id="coding.tools",
-                    contribution_kind="tool_pack",
-                    product_id="coding",
-                    policy_revision="coding-tools-owner-1",
-                    revocation_epoch=2,
-                    allowed_source_trust_classes=("host-equivalent-local",),
-                    allowed_collection_ids=("coding.tools",),
-                    allowed_requirement_bindings=("direct",),
-                    consumer_scope="session",
-                    consumer_refresh_boundary="sealed",
-                )
-            )
-            owner_admission = owner_authority.admit(
-                owner_candidate,
-                issued_at=120,
-                expires_at=350,
-            )
+            owner_authority = _foundation_tool_owner_authority()
             [trust_snapshot] = selection.plan.source_trust_snapshots
-            compilation = ProductCompositionCompiler().compile(
-                authority_context=ProductCompositionAuthorityContext(
-                    product_id="coding",
-                    scope_id="workspace:test",
-                    product_policy_revision="coding-plugin-policy-1",
-                    evaluated_at=150,
-                    owner_snapshots=(owner_authority.snapshot(),),
-                    trust_snapshots=(trust_snapshot,),
-                ),
-                mandatory_roots=(
-                    MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
-                ),
-                admissions=(owner_admission,),
-                definitions=(MODEL_INPUT_CAPABILITY_DEFINITION, definition),
-                optional_choices=(),
-            )
             workspace_binding = workspace_capability_provider_binding(
                 operations=LocalToolOperations(),
                 process_launcher=_UnusedWorkspaceLauncher(),
@@ -1303,28 +1579,88 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 ).hexdigest(),
                 source_id="foundation-contract-test",
             )
-            provider_plan = ProductCapabilityProviderSelectionPlanV1(
-                product_id="coding",
-                roots=(definition.capability_id,),
-                choices=(
-                    ProductCapabilityProviderChoice(
-                        capability_id=definition.capability_id,
-                        provider_id=provider_admission.provider.provider_id,
-                        candidate_fingerprint=(
-                            provider_admission.candidate_fingerprint
+            assembly_request = _foundation_assembly_request(
+                selection=selection,
+                definition=definition,
+                provider_authority=provider_authority,
+                owner_authority=owner_authority,
+                workspace_binding=workspace_binding,
+            )
+            with pytest.raises(ValueError, match="roots do not match Consumer roots"):
+                assemble_product_plugin_composition(
+                    replace(
+                        assembly_request,
+                        host_capability_ids=(
+                            WORKSPACE_CAPABILITY_DEFINITION.capability_id,
                         ),
                     ),
-                ),
-                policy_revision="coding-plugin-policy-1",
+                    evaluated_at=150,
+                )
+            with pytest.raises(ProductCompositionAssemblyError) as missing_definition:
+                assemble_product_plugin_composition(
+                    replace(
+                        assembly_request,
+                        contribution_request=replace(
+                            assembly_request.contribution_request,
+                            definitions=(
+                                MODEL_INPUT_CAPABILITY_DEFINITION,
+                                WORKSPACE_CAPABILITY_DEFINITION,
+                            ),
+                        ),
+                    ),
+                    evaluated_at=150,
+                )
+            assert (
+                missing_definition.value.code == "product_provider_definition_missing"
             )
-            provider_resolver = ProductCapabilityProviderResolver()
-            resolved = provider_resolver.resolve(
-                provider_plan,
-                definitions=(definition, WORKSPACE_CAPABILITY_DEFINITION),
-                admissions=(provider_admission,),
-                owner_snapshots=(provider_authority.snapshot(),),
+            assert missing_definition.value.capability_ids == (
+                definition.capability_id,
+            )
+            with pytest.raises(ProductCompositionAssemblyError) as missing_owner:
+                assemble_product_plugin_composition(
+                    replace(assembly_request, provider_owner_bindings=()),
+                    evaluated_at=150,
+                )
+            assert missing_owner.value.code == "product_provider_owner_missing"
+            assert missing_owner.value.capability_ids == (definition.capability_id,)
+            unused_provider_authority = CapabilityProviderOwnerAuthority(
+                CapabilityProviderOwnerPolicy(
+                    capability_id="coding.unused",
+                    owner_id="coding",
+                    policy_revision="coding-unused-owner-1",
+                    revocation_epoch=0,
+                    allowed_provider_ids=("org.loushang.coding.unused/default",),
+                    allowed_source_trust_classes=("host-equivalent-local",),
+                    authority_ceiling=(),
+                )
+            )
+            with pytest.raises(ProductCompositionAssemblyError) as extra_owner:
+                assemble_product_plugin_composition(
+                    replace(
+                        assembly_request,
+                        provider_owner_bindings=(
+                            *assembly_request.provider_owner_bindings,
+                            ProductCapabilityProviderOwnerBinding(
+                                authority=unused_provider_authority,
+                            ),
+                        ),
+                    ),
+                    evaluated_at=150,
+                )
+            assert extra_owner.value.code == "product_provider_owner_extra"
+            assert extra_owner.value.capability_ids == ("coding.unused",)
+            assembly = assemble_product_plugin_composition(
+                assembly_request,
                 evaluated_at=150,
-                prebound_providers=(workspace_binding.provider,),
+            )
+            [owner_admission] = assembly.product_composition.catalog_admissions
+            [resolved_provider] = assembly.resolved_providers.entries
+            provider_admission = resolved_provider.admission
+            provider_plan = ProductCapabilityProviderSelectionPlanV1(
+                product_id="coding",
+                roots=assembly.resolved_providers.roots,
+                choices=(resolved_provider.choice,),
+                policy_revision="coding-plugin-policy-1",
             )
             identities = iter(("1" * 48, "2" * 48))
             activation_journal = PluginActivationDecisionJournal(
@@ -1350,11 +1686,11 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                     lambda _product_id, _scope_id: "coding-plugin-policy-1"
                 ),
             )
-            [resolved_provider] = resolved.entries
+            [component_candidate] = assembly.component_candidates
             subject = component_host.activation_subject(
                 resolved_provider,
-                owner_snapshot=provider_authority.snapshot(),
-                trust_snapshot=trust_snapshot,
+                owner_snapshot=component_candidate.owner_snapshot,
+                trust_snapshot=component_candidate.trust_snapshot,
             )
             decision = activation_journal.issue_activation_decision(
                 subject,
@@ -1367,19 +1703,29 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 expires_at_unix_ms=300,
                 expected_journal_revision=0,
             )
-            component_request = SessionCapabilityComponentRequest(
-                resolved=resolved_provider,
-                package=fixture.package,
-                owner_snapshot=provider_authority.snapshot(),
-                trust_snapshot=trust_snapshot,
-                activation_decision_id=decision.decision_id,
+            with pytest.raises(ProductCompositionAssemblyError) as missing_activation:
+                assembly.bind_session_inputs({})
+            assert (
+                missing_activation.value.code == "product_provider_activation_missing"
             )
-            composition_inputs = SessionCapabilityCompositionInputs(
-                product_composition=compilation,
-                resolved_providers=resolved,
-                component_requests=(component_request,),
+            assert missing_activation.value.capability_ids == (
+                definition.capability_id,
             )
-            reevaluated_providers = provider_resolver.resolve(
+            with pytest.raises(ProductCompositionAssemblyError) as extra_activation:
+                assembly.bind_session_inputs(
+                    {
+                        definition.capability_id: decision.decision_id,
+                        "coding.unused": "9" * 48,
+                    }
+                )
+            assert extra_activation.value.code == "product_provider_activation_extra"
+            assert extra_activation.value.capability_ids == ("coding.unused",)
+            composition_inputs = assembly.bind_session_inputs(
+                {definition.capability_id: decision.decision_id}
+            )
+            [component_request] = composition_inputs.component_requests
+            compilation = composition_inputs.product_composition
+            reevaluated_providers = ProductCapabilityProviderResolver().resolve(
                 provider_plan,
                 definitions=(definition, WORKSPACE_CAPABILITY_DEFINITION),
                 admissions=(provider_admission,),
@@ -1409,7 +1755,9 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 captures: tuple[SessionCapabilityConsumerCapture, ...],
             ) -> object:
                 [capture] = captures
-                assert capture.entry.admission_fingerprint == owner_admission.fingerprint
+                assert (
+                    capture.entry.admission_fingerprint == owner_admission.fingerprint
+                )
                 assert capture.facets.require("query") == {
                     "label": "foundation",
                     "runtime_id": "session:coding-session",
@@ -1433,9 +1781,7 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                     owner_snapshot_reader=(
                         lambda _owner, _kind, _product: owner_authority.snapshot()
                     ),
-                    trust_snapshot_reader=(
-                        lambda _plugin, _source: trust_snapshot
-                    ),
+                    trust_snapshot_reader=(lambda _plugin, _source: trust_snapshot),
                     product_policy_revision_reader=(
                         lambda _product, _scope: "coding-plugin-policy-1"
                     ),
@@ -1474,31 +1820,37 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 "provider-create",
                 "tool-stage",
             ]
-            assert session.evaluate_capability_composition_change(
-                replace(
-                    composition_inputs,
-                    component_requests=(
-                        replace(
-                            component_request,
-                            activation_decision_id="9" * 48,
-                        ),
-                    ),
-                )
-            ) == "no_change"
-            assert session.evaluate_capability_composition_change(
-                replace(
-                    composition_inputs,
-                    component_requests=(
-                        replace(
-                            component_request,
-                            trust_snapshot=replace(
-                                trust_snapshot,
-                                trusted=False,
+            assert (
+                session.evaluate_capability_composition_change(
+                    replace(
+                        composition_inputs,
+                        component_requests=(
+                            replace(
+                                component_request,
+                                activation_decision_id="9" * 48,
                             ),
                         ),
-                    ),
+                    )
                 )
-            ) == "restart_required"
+                == "no_change"
+            )
+            assert (
+                session.evaluate_capability_composition_change(
+                    replace(
+                        composition_inputs,
+                        component_requests=(
+                            replace(
+                                component_request,
+                                trust_snapshot=replace(
+                                    trust_snapshot,
+                                    trusted=False,
+                                ),
+                            ),
+                        ),
+                    )
+                )
+                == "restart_required"
+            )
             assert session.evaluate_capability_composition_change(None) == (
                 "restart_required"
             )
@@ -1519,24 +1871,154 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
     asyncio.run(scenario())
 
 
+def test_product_plugin_assembly_rejects_consumer_provider_facet_mismatch(
+    tmp_path: Path,
+) -> None:
+    events = tmp_path / "mismatch-events.log"
+    fixture = _publish_foundation_plugin(
+        tmp_path,
+        events=events,
+        plugin_id="foundation-mismatch",
+        provider_id="org.loushang.coding.foundation/mismatch",
+        provider_facets=("runtime",),
+        consumer_facets=("query",),
+    )
+    try:
+        definition = CapabilityDefinition(
+            capability_id="coding.foundation",
+            owner_id="coding",
+            contract_version=1,
+            facets=("query", "runtime"),
+            scope="session",
+            refresh_boundary="sealed",
+            phase="final",
+        )
+        workspace_binding = workspace_capability_provider_binding(
+            operations=LocalToolOperations(),
+            process_launcher=_UnusedWorkspaceLauncher(),
+            scope_instance_id="workspace:test",
+            binding_input_fingerprint=hashlib.sha256(
+                b"foundation-mismatch-workspace"
+            ).hexdigest(),
+            source_id="foundation-mismatch-test",
+        )
+        request = _foundation_assembly_request(
+            selection=_foundation_selection(fixture),
+            definition=definition,
+            provider_authority=_foundation_provider_authority(
+                definition,
+                fixture.provider_id,
+            ),
+            owner_authority=_foundation_tool_owner_authority(),
+            workspace_binding=workspace_binding,
+        )
+
+        with pytest.raises(ProductCompositionError) as mismatch:
+            assemble_product_plugin_composition(request, evaluated_at=150)
+
+        assert mismatch.value.code == "consumer_selected_provider_facet_mismatch"
+        assert events.exists() is False
+    finally:
+        fixture.runtime.close()
+
+
+def test_product_plugin_assembly_retains_the_selected_alternative_provider_facts(
+    tmp_path: Path,
+) -> None:
+    primary_events = tmp_path / "primary-events.log"
+    alternative_events = tmp_path / "alternative-events.log"
+    primary = _publish_foundation_plugin(
+        tmp_path,
+        events=primary_events,
+        plugin_id="foundation-primary",
+        provider_id="org.loushang.coding.foundation/primary",
+        label="primary",
+    )
+    alternative = _publish_foundation_plugin(
+        tmp_path,
+        events=alternative_events,
+        plugin_id="foundation-alternative",
+        provider_id="org.loushang.coding.foundation/alternative",
+        include_tool_pack=False,
+        label="alternative",
+    )
+    try:
+        definition = CapabilityDefinition(
+            capability_id="coding.foundation",
+            owner_id="coding",
+            contract_version=1,
+            facets=("query",),
+            scope="session",
+            refresh_boundary="sealed",
+            phase="final",
+        )
+        workspace_binding = workspace_capability_provider_binding(
+            operations=LocalToolOperations(),
+            process_launcher=_UnusedWorkspaceLauncher(),
+            scope_instance_id="workspace:test",
+            binding_input_fingerprint=hashlib.sha256(
+                b"foundation-alternative-workspace"
+            ).hexdigest(),
+            source_id="foundation-alternative-test",
+        )
+        request = _foundation_assembly_request(
+            selection=_foundation_selection(primary, alternative),
+            definition=definition,
+            provider_authority=_foundation_provider_authority(
+                definition,
+                primary.provider_id,
+                alternative.provider_id,
+            ),
+            owner_authority=_foundation_tool_owner_authority(),
+            workspace_binding=workspace_binding,
+            selected_provider_id=alternative.provider_id,
+        )
+
+        assembly = assemble_product_plugin_composition(request, evaluated_at=150)
+
+        [resolved] = assembly.resolved_providers.entries
+        [component] = assembly.component_candidates
+        assert resolved.provider.provider_id == alternative.provider_id
+        assert component.resolved is resolved
+        assert component.package is alternative.package
+        assert (
+            component.owner_snapshot
+            == request.provider_owner_bindings[0].authority.snapshot()
+        )
+        assert component.trust_snapshot.plugin_id == alternative.package.manifest.name
+        assert primary_events.exists() is False
+        assert alternative_events.exists() is False
+    finally:
+        alternative.runtime.close()
+        primary.runtime.close()
+
+
 @dataclass(frozen=True, slots=True)
 class _FoundationPluginFixture:
     runtime: PluginRuntimeResolution
     package: PublishedPluginPackage
     binding: PluginSourceBinding
     contributions: tuple[PluginContributionReservation, ...]
+    label: str
+    provider_id: str
 
 
 def _publish_foundation_plugin(
     tmp_path: Path,
     *,
     events: Path,
+    plugin_id: str = "foundation-sample",
+    provider_id: str = "org.loushang.coding.foundation/default",
+    provider_facets: tuple[str, ...] = ("query",),
+    consumer_facets: tuple[str, ...] = ("query",),
+    include_tool_pack: bool = True,
+    label: str = "foundation",
 ) -> _FoundationPluginFixture:
-    source_root = tmp_path / "foundation-plugin"
+    source_root = tmp_path / plugin_id
     declarations_root = source_root / "declarations"
     declarations_root.mkdir(parents=True)
     source = PluginDeclarationSource.document("declarations/foundation.json")
-    contributions = (
+    contribution_values = [
         PluginContributionReservation(
             contribution_id="foundation-provider",
             kind="capability_provider",
@@ -1545,22 +2027,26 @@ def _publish_foundation_plugin(
             contribution_execution_model="in_process",
             requested_authorities=(),
         ),
-        PluginContributionReservation(
-            contribution_id="foundation-tools",
-            kind="tool_pack",
-            owner="coding.tools",
-            declaration_source=source,
-            contribution_execution_model="data_only",
-            requested_authorities=(),
-        ),
-    )
+    ]
+    if include_tool_pack:
+        contribution_values.append(
+            PluginContributionReservation(
+                contribution_id="foundation-tools",
+                kind="tool_pack",
+                owner="coding.tools",
+                declaration_source=source,
+                contribution_execution_model="data_only",
+                requested_authorities=(),
+            )
+        )
+    contributions = tuple(contribution_values)
     provider_payload = CapabilityProviderDeclarationPayload(
         provider=CapabilityBundleProvider(
             capability_id="coding.foundation",
-            provider_id="org.loushang.coding.foundation/default",
+            provider_id=provider_id,
             implementation_version=1,
             compatible_contract=CapabilityContractRange.exact(1),
-            facets=("query",),
+            facets=provider_facets,
             requirements=(
                 CapabilityRequirement(
                     capability="harness.workspace",
@@ -1568,7 +2054,7 @@ def _publish_foundation_plugin(
                     compatible_contract=CapabilityContractRange.exact(1),
                 ),
             ),
-            source_id="plugin:foundation-sample",
+            source_id=f"plugin:{plugin_id}",
             selection_rule=PLUGIN_PROVIDER_SELECTION_RULE,
         ),
         factory=PluginSymbolReference(
@@ -1581,7 +2067,7 @@ def _publish_foundation_plugin(
             symbol="dispose_provider",
             execution_model="in_process",
         ),
-        binding_inputs={"label": "foundation"},
+        binding_inputs={"label": label},
     )
     tool_payload = ToolPackDeclarationPayload(
         catalog_id="coding.tools",
@@ -1591,22 +2077,22 @@ def _publish_foundation_plugin(
         requirements=(
             CapabilityRequirement(
                 capability="coding.foundation",
-                facets=("query",),
+                facets=consumer_facets,
                 compatible_contract=CapabilityContractRange.exact(1),
             ),
         ),
     )
-    payloads = (provider_payload.to_dict(), tool_payload.to_dict())
+    payloads = [provider_payload.to_dict()]
+    if include_tool_pack:
+        payloads.append(tool_payload.to_dict())
     declarations = tuple(
         PluginDeclaration(
-            plugin_id="foundation-sample",
+            plugin_id=plugin_id,
             contribution_id=contribution.contribution_id,
             kind=contribution.kind,
             owner=contribution.owner,
             reservation_fingerprint=contribution.fingerprint,
-            source_descriptor_fingerprint=(
-                contribution.source_descriptor_fingerprint
-            ),
+            source_descriptor_fingerprint=(contribution.source_descriptor_fingerprint),
             source_kind=contribution.declaration_source.kind,
             payload=payload,
         )
@@ -1624,7 +2110,7 @@ def _publish_foundation_plugin(
     (source_root / "plugin.json").write_text(
         json.dumps(
             {
-                "name": "foundation-sample",
+                "name": plugin_id,
                 "version": "1",
                 "contributionIndex": {
                     "version": 2,
@@ -1650,57 +2136,71 @@ def _publish_foundation_plugin(
         package=package,
         binding=binding,
         contributions=package.contribution_index.items,
+        label=label,
+        provider_id=provider_id,
     )
 
 
-def _foundation_selection(fixture: _FoundationPluginFixture) -> PluginSelection:
-    plugin_id = fixture.package.manifest.name
+def _foundation_selection(
+    *fixtures: _FoundationPluginFixture,
+) -> PluginSelection:
+    ordered = tuple(sorted(fixtures, key=lambda item: item.package.manifest.name))
+    plugin_ids = tuple(item.package.manifest.name for item in ordered)
     plan = PluginSelectionPlanV2(
         context=PluginPreflightContextV1(
             product_id="coding",
             scope_id="workspace:test",
             policy_revision="coding-plugin-policy-1",
-            instance_revision_refs=(
+            instance_revision_refs=tuple(
                 PluginInstanceRevisionRef(
-                    instance_id="foundation-sample@workspace:test",
+                    instance_id=f"{plugin_id}@workspace:test",
                     plugin_id=plugin_id,
                     revision=1,
-                ),
+                )
+                for plugin_id in plugin_ids
             ),
         ),
-        selected_plugin_ids=(plugin_id,),
+        selected_plugin_ids=plugin_ids,
         selected_contributions=tuple(
-            PluginContributionRef(plugin_id, item.contribution_id)
-            for item in fixture.contributions
+            sorted(
+                PluginContributionRef(
+                    fixture.package.manifest.name,
+                    item.contribution_id,
+                )
+                for fixture in ordered
+                for item in fixture.contributions
+            )
         ),
-        source_trust_snapshots=(
+        source_trust_snapshots=tuple(
             PluginSourceTrustSnapshotV1(
-                plugin_id=plugin_id,
+                plugin_id=fixture.package.manifest.name,
                 package_source_identity=fixture.binding.source_identity,
                 source_trust_class="host-equivalent-local",
                 source_trust_policy_revision="trust-1",
                 trusted=True,
-            ),
+            )
+            for fixture in ordered
         ),
         effective_configuration_set=PluginEffectiveConfigurationSetV1(
             entries=tuple(
                 PluginEffectiveConfigurationEntry(
-                    plugin_id=plugin_id,
+                    plugin_id=fixture.package.manifest.name,
                     contribution_id=item.contribution_id,
                     configuration=(
-                        {"label": "foundation"}
+                        {"label": fixture.label}
                         if item.kind == "capability_provider"
                         else {}
                     ),
                 )
+                for fixture in ordered
                 for item in fixture.contributions
             )
         ),
         allowed_authority_ceiling=(),
     )
     result = PluginDeclarationHost().resolve(
-        (fixture.package,),
-        bindings=(fixture.binding,),
+        tuple(item.package for item in ordered),
+        bindings=tuple(item.binding for item in ordered),
         plan=plan,
         decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
     )
@@ -1708,8 +2208,98 @@ def _foundation_selection(fixture: _FoundationPluginFixture) -> PluginSelection:
     return result
 
 
+def _foundation_assembly_request(
+    *,
+    selection: PluginSelection,
+    definition: CapabilityDefinition,
+    provider_authority: CapabilityProviderOwnerAuthority,
+    owner_authority: OwnerContributionAuthority,
+    workspace_binding: CapabilityBundleProviderBinding,
+    selected_provider_id: str | None = None,
+) -> ProductPluginCompositionAssemblyRequest:
+    def select(
+        admissions: tuple[CapabilityProviderAdmissionRecord, ...],
+    ) -> tuple[ProductCapabilityProviderChoice, ...]:
+        return tuple(
+            ProductCapabilityProviderChoice(
+                capability_id=item.capability_id,
+                provider_id=item.provider.provider_id,
+                candidate_fingerprint=item.candidate_fingerprint,
+            )
+            for item in admissions
+            if selected_provider_id is None
+            or item.provider.provider_id == selected_provider_id
+        )
+
+    return ProductPluginCompositionAssemblyRequest(
+        contribution_request=ProductCompositionAssemblyRequest(
+            selection=selection,
+            owner_bindings=(
+                ProductContributionOwnerBinding(
+                    authority=owner_authority,
+                    admission_ttl_seconds=200,
+                ),
+            ),
+            mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
+            definitions=(
+                MODEL_INPUT_CAPABILITY_DEFINITION,
+                WORKSPACE_CAPABILITY_DEFINITION,
+                definition,
+            ),
+        ),
+        provider_owner_bindings=(
+            ProductCapabilityProviderOwnerBinding(
+                authority=provider_authority,
+                eligibility_ttl_seconds=250,
+                admission_ttl_seconds=200,
+            ),
+        ),
+        provider_roots=(definition.capability_id,),
+        host_capability_ids=(
+            MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
+            WORKSPACE_CAPABILITY_DEFINITION.capability_id,
+        ),
+        select_capability_providers=select,
+        prebound_providers=(workspace_binding.provider,),
+    )
+
+
+def _foundation_provider_authority(
+    definition: CapabilityDefinition,
+    *provider_ids: str,
+) -> CapabilityProviderOwnerAuthority:
+    return CapabilityProviderOwnerAuthority(
+        CapabilityProviderOwnerPolicy(
+            capability_id=definition.capability_id,
+            owner_id=definition.owner_id,
+            policy_revision="coding-foundation-owner-1",
+            revocation_epoch=3,
+            allowed_provider_ids=tuple(sorted(provider_ids)),
+            allowed_source_trust_classes=("host-equivalent-local",),
+            authority_ceiling=(),
+        )
+    )
+
+
+def _foundation_tool_owner_authority() -> OwnerContributionAuthority:
+    return OwnerContributionAuthority(
+        OwnerContributionPolicy(
+            owner_id="coding.tools",
+            contribution_kind="tool_pack",
+            product_id="coding",
+            policy_revision="coding-tools-owner-1",
+            revocation_epoch=2,
+            allowed_source_trust_classes=("host-equivalent-local",),
+            allowed_collection_ids=("coding.tools",),
+            allowed_requirement_bindings=("direct",),
+            consumer_scope="session",
+            consumer_refresh_boundary="sealed",
+        )
+    )
+
+
 def _foundation_provider_source(events: Path) -> str:
-    return f'''\
+    return f"""\
 from pathlib import Path
 
 from loushang.harness.capabilities.provider_binding import (
@@ -1738,7 +2328,7 @@ def create_provider(context):
 def dispose_provider(_value):
     with EVENTS.open("a", encoding="utf-8") as stream:
         stream.write("provider-dispose\\n")
-'''
+"""
 
 
 def _append_event(path: Path, event: str) -> None:
@@ -1830,6 +2420,45 @@ def _capability_runtime(product_id: str) -> StagedResourceCompositionCandidate:
         standard_capability_composition_plan(product_id=product_id)
     )
     return stage_resource_composition_candidate(profile)
+
+
+def _initial_catalog_bootstrap(
+    tmp_path: Path,
+    *,
+    product_id: str,
+    embedded_collections: tuple[EmbeddedResourceCollectionHandle, ...] = (),
+) -> tuple[InitialSessionResourceCatalogBootstrap, ResourceBundle]:
+    workspace = tmp_path / product_id
+    resource_root = workspace / ".loushang"
+    skill_root = resource_root / "skills" / "review"
+    skill_root.mkdir(parents=True)
+    (skill_root / "SKILL.md").write_text(
+        "---\nname: review\ndescription: Review changes\n---\nReview carefully.\n",
+        encoding="utf-8",
+    )
+    bundle = ResourceBundle(cwd=workspace)
+    bootstrap = InitialSessionResourceCatalogBootstrap(
+        InitialSessionResourceCatalogInputs(
+            product_id=product_id,
+            scope_id=f"session:{product_id}-session",
+            resource_runtime_id=f"resource-owner:{product_id}-session",
+            product_policy_revision="resource-policy-v1",
+            root_handles=(
+                mint_native_resource_root_handle(
+                    handle_id=f"{product_id}-resources",
+                    root=resource_root,
+                    source_class="project_local",
+                    root_kind="standard",
+                ),
+            ),
+            embedded_collections=embedded_collections,
+            issued_at=1,
+            expires_at=10,
+            now=2,
+            base_resource_bundle=bundle,
+        )
+    )
+    return bootstrap, bundle
 
 
 class _UnusedWorkspaceLauncher:

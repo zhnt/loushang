@@ -41,6 +41,9 @@ from loushang.harness.capabilities.component_host import (
 from loushang.harness.capabilities.effective_runtime import (
     runtime_profile_fingerprint,
 )
+from loushang.harness.capabilities.resources_contracts import (
+    RESOURCES_CAPABILITY_DEFINITION_V2,
+)
 from loushang.harness.capabilities.resources_provider import (
     resources_capability_provider_binding,
 )
@@ -70,6 +73,11 @@ from loushang.harness.extensions.context import (
 from loushang.harness.extensions.provider_config import provider_from_extension_config
 from loushang.harness.extensions.runtime_bindings import ExtensionRuntimeBindingFactory
 from loushang.harness.policy import PolicyEvaluator
+from loushang.harness.resource_catalog.session_bootstrap import (
+    InitialExtensionGenerationHost,
+    InitialSessionResourceCatalogBootstrap,
+    InitialSessionResourcePublication,
+)
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.catalog import PackageSummaryProvider
 from loushang.harness.resources.packages.materializer import PackageMaterializer
@@ -107,6 +115,7 @@ from loushang.harness.session.capability_composition_inputs import (
     StagedSessionCapabilityOwnerGeneration,
     dispose_session_capability_owner_generations,
     stage_session_capability_owner_generations,
+    validate_session_capability_composition_closure,
     validate_session_capability_owner_generation_bindings,
 )
 from loushang.harness.session.command_controller import (
@@ -244,6 +253,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
         capability_owner_generation_bindings: tuple[
             SessionCapabilityOwnerGenerationBinding, ...
         ] = (),
+        initial_resource_catalog_bootstrap: (
+            InitialSessionResourceCatalogBootstrap | None
+        ) = None,
     ) -> None:
         self.agent = agent
         self._session_default_model = agent.model
@@ -263,6 +275,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self._resource_loader = resource_loader
         self.resource_bundle = resource_bundle
         self._extension_runner = extension_runner
+        self._initial_resource_catalog_bootstrap = initial_resource_catalog_bootstrap
+        self._resource_catalog_snapshot: object | None = None
+        self._resource_catalog_projection: object | None = None
         self._extension_declaration_preflight = extension_declaration_preflight
         self._extension_bridge = AgentSessionExtensionBridge()
         if (
@@ -299,10 +314,31 @@ class AgentProductSession(AgentSessionAdapterMixin):
         runtime_id = "session:" + str(
             self.session_manager.get_session_record().session_id
         )
+        initial_profile = capability_runtime.profile.snapshot()
+        if initial_resource_catalog_bootstrap is not None:
+            if not isinstance(
+                initial_resource_catalog_bootstrap,
+                InitialSessionResourceCatalogBootstrap,
+            ):
+                raise TypeError("initial Resource Catalog bootstrap is invalid")
+            if extension_runner is None:
+                raise ValueError(
+                    "initial Resource Catalog bootstrap requires an Extension runtime"
+                )
+            if (
+                initial_resource_catalog_bootstrap.product_id
+                != initial_profile.product_id
+            ):
+                raise ValueError(
+                    "initial Resource Catalog bootstrap belongs to another Product"
+                )
+            if initial_resource_catalog_bootstrap.scope_id != runtime_id:
+                raise ValueError(
+                    "initial Resource Catalog bootstrap belongs to another Session"
+                )
         self._turn_start_performance = TurnStartPerformanceRuntime(
             session_id=str(self.session_manager.get_session_record().session_id)
         )
-        initial_profile = capability_runtime.profile.snapshot()
         if (
             capability_composition_inputs is not None
             and capability_composition_inputs.product_id != initial_profile.product_id
@@ -368,10 +404,8 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self._transcript_capability_ports = SessionTranscriptCapabilityPorts(
             self._staged_transcript_candidate
         )
-        self._resource_capability_binding = resources_capability_provider_binding(
-            profile=capability_runtime.profile,
-            scope_instance_id=runtime_id,
-            staged_candidate=capability_runtime,
+        self._resource_capability_binding = (
+            self._build_resource_capability_provider_binding()
         )
         self._workspace_capability_binding = workspace_capability_binding
         self._staged_side_question_candidate: LegacySideQuestionBinding | None = (
@@ -465,15 +499,11 @@ class AgentProductSession(AgentSessionAdapterMixin):
             )
             if MODEL_INPUT_CAPABILITY_DEFINITION.capability_id not in requirements.roots:
                 raise ValueError("Session composition must retain model-input root")
-            external_root_ids = set(requirements.roots) - built_in_ids
-            if external_root_ids != set(
-                capability_composition_inputs.resolved_providers.roots
-            ):
-                raise ValueError(
-                    "Session external Provider roots do not match Consumer roots"
-                )
-            requirements.validate_provider_metadata(
-                (*built_in_providers, *external_providers)
+            validate_session_capability_composition_closure(
+                capability_composition_inputs.product_composition,
+                capability_composition_inputs.resolved_providers,
+                host_capability_ids=tuple(sorted(built_in_ids)),
+                host_providers=built_in_providers,
             )
             graph_roots = requirements.roots
         self._session_capability_plan = RuntimeCapabilityGraphPlanner().plan(
@@ -987,7 +1017,6 @@ class AgentProductSession(AgentSessionAdapterMixin):
             self._model_call_consumer = None
             self._side_question_consumer = None
             self._transcript_consumer = None
-            self._resource_capability_ports.invalidate()
             self._workspace_capability_ports.invalidate()
             self._transcript_capability_ports.invalidate()
             staged_candidate = self._staged_resource_candidate
@@ -1018,23 +1047,45 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 else:
                     self._capability_owner_generations = ()
                     self._external_consumer_captures = ()
-            if not owner_cleanup_failed:
-                try:
-                    cleanup_codes = await self._capability_graph_binder.dispose(
-                        self._capability_graph_runtime
-                    )
-                    if (
-                        cleanup_codes
-                        and self._capability_graph_runtime.has_pending_retirements
-                    ):
-                        errors.append(
-                            RuntimeError(
-                                "Session Capability graph cleanup remains pending: "
-                                + ", ".join(cleanup_codes)
-                            )
+            self._resource_capability_ports.invalidate()
+            catalog_rollback_handled = False
+            catalog_bootstrap = self._initial_resource_catalog_bootstrap
+            if (
+                not owner_cleanup_failed
+                and catalog_bootstrap is not None
+                and catalog_bootstrap.state in {"unprepared", "prepared"}
+            ):
+                catalog_rollback_handled = True
+                rollback_task = asyncio.create_task(
+                    catalog_bootstrap.abort(
+                        dispose_graph=lambda: self._capability_graph_binder.dispose(
+                            self._capability_graph_runtime
                         )
+                    )
+                )
+                try:
+                    await _await_cancellation_atomic(rollback_task)
                 except BaseException as exc:
+                    owner_cleanup_failed = True
                     errors.append(exc)
+            if not owner_cleanup_failed:
+                if not catalog_rollback_handled:
+                    try:
+                        cleanup_codes = await self._capability_graph_binder.dispose(
+                            self._capability_graph_runtime
+                        )
+                        if (
+                            cleanup_codes
+                            and self._capability_graph_runtime.has_pending_retirements
+                        ):
+                            errors.append(
+                                RuntimeError(
+                                    "Session Capability graph cleanup remains pending: "
+                                    + ", ".join(cleanup_codes)
+                                )
+                            )
+                    except BaseException as exc:
+                        errors.append(exc)
                 if staged_candidate is not None:
                     try:
                         staged_candidate.dispose()
@@ -1134,6 +1185,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             owner_generations: tuple[
                 StagedSessionCapabilityOwnerGeneration, ...
             ] = ()
+            resource_consumer_installed = False
             try:
                 composition_inputs = self._capability_composition_inputs
                 component_host = self._capability_component_host
@@ -1149,6 +1201,21 @@ class AgentProductSession(AgentSessionAdapterMixin):
                                 decision_id=request.activation_decision_id,
                             )
                         )
+                catalog_bootstrap = self._initial_resource_catalog_bootstrap
+                if catalog_bootstrap is not None:
+                    extension_host = self._extension_runner
+                    assert extension_host is not None
+                    await catalog_bootstrap.prepare(
+                        extension_host=cast(
+                            InitialExtensionGenerationHost,
+                            extension_host,
+                        ),
+                        staged_resource_candidate=(
+                            self._require_staged_resource_candidate()
+                        ),
+                        bindings=self._extension_runtime_binding_factory.build(),
+                    )
+                    self._replace_initial_resource_catalog_graph_inputs()
                 await self._capability_graph_binder.bind(
                     self._capability_graph_runtime,
                     self._session_capability_plan,
@@ -1166,32 +1233,6 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 )
                 for prepared in prepared_components:
                     prepared.commit_after_graph_publication()
-                external_captures: tuple[
-                    SessionCapabilityConsumerCapture, ...
-                ] = ()
-                if composition_inputs is not None:
-                    external_captures = tuple(
-                        SessionCapabilityConsumerCapture(
-                            entry=entry,
-                            facets=self._capability_graph_runtime.capture(
-                                entry.requirement
-                            ),
-                        )
-                        for entry in composition_inputs.product_composition.consumer_requirements.satisfied_entries
-                    )
-                    try:
-                        owner_generations = (
-                            await stage_session_capability_owner_generations(
-                                admissions=(
-                                    composition_inputs.product_composition.catalog_admissions
-                                ),
-                                bindings=self._capability_owner_generation_bindings,
-                                captures=external_captures,
-                            )
-                        )
-                    except SessionCapabilityOwnerGenerationStagingError as exc:
-                        owner_generations = exc.pending_generations
-                        raise
                 consumer = SessionModelCallCapabilityConsumer(
                     self._capability_graph_runtime.capture(
                         MODEL_INPUT_PREPARATION_REQUIREMENT
@@ -1222,6 +1263,45 @@ class AgentProductSession(AgentSessionAdapterMixin):
                         SESSION_WORKSPACE_PROCESS_REQUIREMENT
                     )
                 )
+                self._resource_capability_ports.install(
+                    consumer=resource_consumer,
+                )
+                resource_consumer_installed = True
+                external_captures: tuple[SessionCapabilityConsumerCapture, ...] = ()
+                if composition_inputs is not None:
+                    external_captures = tuple(
+                        SessionCapabilityConsumerCapture(
+                            entry=entry,
+                            facets=self._capability_graph_runtime.capture(
+                                entry.requirement
+                            ),
+                        )
+                        for entry in composition_inputs.product_composition.consumer_requirements.satisfied_entries
+                    )
+                    try:
+                        owner_generations = await stage_session_capability_owner_generations(
+                            admissions=(
+                                composition_inputs.product_composition.catalog_admissions
+                            ),
+                            bindings=self._capability_owner_generation_bindings,
+                            captures=external_captures,
+                        )
+                    except SessionCapabilityOwnerGenerationStagingError as exc:
+                        owner_generations = exc.pending_generations
+                        raise
+                if catalog_bootstrap is not None:
+                    retirement = catalog_bootstrap.publish(
+                        InitialSessionResourcePublication(
+                            capture=self._capture_initial_resource_publication,
+                            commit=self._commit_initial_resource_publication,
+                            restore=self._restore_initial_resource_publication,
+                        )
+                    )
+                    retirement_reports = await retirement.retire()
+                    if any(report.has_failures for report in retirement_reports):
+                        raise RuntimeError(
+                            "initial Extension generation retirement remains pending"
+                        )
             except BaseException as error:
                 owner_cleanup_failed = False
                 if owner_generations:
@@ -1236,6 +1316,8 @@ class AgentProductSession(AgentSessionAdapterMixin):
                             "Session owner generation rollback also failed: "
                             f"{cleanup_error!r}"
                         )
+                if resource_consumer_installed:
+                    self._resource_capability_ports.invalidate()
                 for prepared in reversed(prepared_components):
                     try:
                         await prepared.abort_uncommitted()
@@ -1248,10 +1330,31 @@ class AgentProductSession(AgentSessionAdapterMixin):
                             "Prepared component cancellation also failed: "
                             f"{cleanup_error!r}"
                         )
+                catalog_rollback_attempted = False
+                catalog_bootstrap = self._initial_resource_catalog_bootstrap
+                if (
+                    catalog_bootstrap is not None
+                    and catalog_bootstrap.state != "published"
+                ):
+                    catalog_rollback_attempted = True
+                    rollback_task = asyncio.create_task(
+                        catalog_bootstrap.abort(
+                            dispose_graph=lambda: self._capability_graph_binder.dispose(
+                                self._capability_graph_runtime
+                            )
+                        )
+                    )
+                    try:
+                        await _await_cancellation_atomic(rollback_task)
+                    except BaseException as cleanup_error:
+                        error.add_note(
+                            "Initial Resource Catalog rollback also failed: "
+                            f"{cleanup_error!r}"
+                        )
                 if (
                     not owner_cleanup_failed
-                    and
-                    self._capability_graph_runtime.snapshot is not None
+                    and not catalog_rollback_attempted
+                    and self._capability_graph_runtime.snapshot is not None
                     and not self._capability_graph_runtime.is_closed
                 ):
                     cleanup_task = asyncio.create_task(
@@ -1331,9 +1434,6 @@ class AgentProductSession(AgentSessionAdapterMixin):
             if self._staged_transcript_candidate.ownership_state == "root_owned":
                 # Graph reuse rejected the freshly supplied transcript candidate.
                 await self._staged_transcript_candidate.dispose_root_owned()
-            self._resource_capability_ports.install(
-                consumer=resource_consumer,
-            )
             self._workspace_capability_ports.install(
                 tools=workspace_tools,
                 process=workspace_process,
@@ -1345,6 +1445,104 @@ class AgentProductSession(AgentSessionAdapterMixin):
             self._side_question_consumer = side_question
             self._model_call_consumer = consumer
             return consumer
+
+    def _require_staged_resource_candidate(
+        self,
+    ) -> StagedResourceCompositionCandidate:
+        candidate = self._staged_resource_candidate
+        if candidate is None:
+            raise RuntimeError("Session Resource candidate is not available")
+        return candidate
+
+    def _build_resource_capability_provider_binding(
+        self,
+    ) -> CapabilityBundleProviderBinding:
+        """Freeze the current Resource candidate through one mount-owner seam."""
+
+        candidate = self._require_staged_resource_candidate()
+        return resources_capability_provider_binding(
+            profile=candidate.profile,
+            scope_instance_id=self._capability_graph_runtime.runtime_id,
+            staged_candidate=candidate,
+        )
+
+    def _replace_initial_resource_catalog_graph_inputs(self) -> None:
+        resource_binding = self._build_resource_capability_provider_binding()
+        if resource_binding.provider.implementation_version != 2:
+            raise RuntimeError(
+                "initial Resource Catalog did not select the v2 Resources Provider"
+            )
+        composition_inputs = self._capability_composition_inputs
+        external_definitions = (
+            tuple(
+                item.definition
+                for item in composition_inputs.resolved_providers.entries
+            )
+            if composition_inputs is not None
+            else ()
+        )
+        external_providers = (
+            composition_inputs.resolved_providers.providers
+            if composition_inputs is not None
+            else ()
+        )
+        workspace_binding = self._workspace_capability_binding
+        definitions = (
+            MODEL_INPUT_CAPABILITY_DEFINITION,
+            RESOURCES_CAPABILITY_DEFINITION_V2,
+            SESSION_CAPABILITY_DEFINITION,
+            *((WORKSPACE_CAPABILITY_DEFINITION,) if workspace_binding else ()),
+            *external_definitions,
+        )
+        providers = (
+            self._model_call_capability_binding.provider_binding.provider,
+            resource_binding.provider,
+            self._session_capability_binding.provider,
+            *((workspace_binding.provider,) if workspace_binding else ()),
+            *external_providers,
+        )
+        if composition_inputs is not None:
+            composition_inputs.product_composition.consumer_requirements.validate_provider_metadata(
+                providers
+            )
+        self._resource_capability_binding = resource_binding
+        self._session_capability_plan = RuntimeCapabilityGraphPlanner().plan(
+            CapabilityGraphPlanRequest(
+                product_id=self._capability_graph_runtime.product_id,
+                roots=self._session_capability_plan.roots,
+                definitions=definitions,
+                providers=providers,
+            )
+        )
+
+    def _capture_initial_resource_publication(self) -> object:
+        return (
+            self._resource_catalog_snapshot,
+            self._resource_catalog_projection,
+            self.resource_bundle,
+        )
+
+    def _commit_initial_resource_publication(
+        self,
+        catalog: object,
+        projection: object,
+        bundle: ResourceBundle,
+    ) -> None:
+        self._resource_catalog_snapshot = catalog
+        self._resource_catalog_projection = projection
+        self._set_resource_bundle(bundle)
+        self._rebuild_prompt_and_tools_view()
+
+    def _restore_initial_resource_publication(self, previous: object) -> None:
+        if not isinstance(previous, tuple) or len(previous) != 3:
+            raise TypeError("initial Resource publication snapshot is invalid")
+        catalog, projection, bundle = previous
+        if bundle is not None and not isinstance(bundle, ResourceBundle):
+            raise TypeError("initial Resource publication Bundle is invalid")
+        self._resource_catalog_snapshot = catalog
+        self._resource_catalog_projection = projection
+        self._set_resource_bundle(bundle)
+        self._rebuild_prompt_and_tools_view()
 
     def evaluate_capability_composition_change(
         self,
@@ -1381,6 +1579,17 @@ class AgentProductSession(AgentSessionAdapterMixin):
             "resource_revision",
             1 if self.resource_bundle is not None else 0,
         )
+        catalog_generation = getattr(
+            self._resource_catalog_snapshot,
+            "catalog_generation",
+            None,
+        )
+        if (
+            isinstance(catalog_generation, int)
+            and not isinstance(catalog_generation, bool)
+            and catalog_generation >= 1
+        ):
+            resource_revision = catalog_generation
         return ScopedSourcePublicationReference(
             schema_version=1,
             owner_capability_id=RESOURCES_CAPABILITY_DEFINITION.capability_id,

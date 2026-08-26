@@ -8,12 +8,14 @@ from pathlib import Path
 from typing import Protocol
 
 from loushang.coding.lsp.binding import CodingLspBinding
+from loushang.coding.lsp.diagnostics import DiagnosticInboxSnapshot
 from loushang.coding.lsp.model import (
+    CodeDiagnostic,
     CodeQueryResult,
     DocumentOutlineResult,
     LspServerDefinition,
 )
-from loushang.coding.lsp.ports import WorkspaceTextReader
+from loushang.coding.lsp.ports import PathExists, WorkspaceTextReader
 from loushang.coding.lsp.status import LspSessionStatus
 from loushang.harness.tools.process_hosting import ProcessExecutionScope
 from loushang.harness.workspace.process import AuthorizedProcessLauncher
@@ -26,6 +28,19 @@ class ProcessLauncherBinder(Protocol):
         self,
         scope: ProcessExecutionScope,
     ) -> AuthorizedProcessLauncher: ...
+
+
+class CodingLspSessionAccess(Protocol):
+    """Non-owning status and control view retained by a Product Session."""
+
+    def status(self) -> LspSessionStatus: ...
+
+    async def stop(
+        self,
+        *,
+        definition_id: str,
+        workspace_root: str | Path,
+    ) -> bool: ...
 
 
 @dataclass(slots=True)
@@ -77,6 +92,12 @@ class CodingLspRuntime:
     def status(self) -> LspSessionStatus:
         return self._binding.status()
 
+    def current_diagnostics(self) -> tuple[CodeDiagnostic, ...]:
+        return self._binding.current_diagnostics()
+
+    def diagnostics_snapshot(self) -> DiagnosticInboxSnapshot:
+        return self._binding.diagnostics_snapshot()
+
     async def stop(
         self,
         *,
@@ -90,64 +111,6 @@ class CodingLspRuntime:
 
     async def close(self) -> None:
         await self._binding.dispose()
-
-
-class DeferredCodingLspRuntime:
-    """Construction-time slot used before the session Sandbox is available."""
-
-    def __init__(self) -> None:
-        self._runtime: CodingLspRuntime | None = None
-
-    def bind(self, runtime: CodingLspRuntime) -> None:
-        if self._runtime is not None:
-            raise RuntimeError("Coding LSP runtime is already bound")
-        self._runtime = runtime
-
-    async def inspect_symbol(
-        self,
-        *,
-        path: str,
-        line: int,
-        character: int,
-        query: str = "definition",
-        include_declaration: bool = True,
-        limit: int = 50,
-        correlation_id: str,
-        signal: object | None = None,
-    ) -> CodeQueryResult:
-        runtime = self._runtime
-        if runtime is None:
-            raise RuntimeError("Coding LSP runtime is not bound")
-        return await runtime.inspect_symbol(
-            path=path,
-            line=line,
-            character=character,
-            query=query,
-            include_declaration=include_declaration,
-            limit=limit,
-            correlation_id=correlation_id,
-            signal=signal,
-        )
-
-    async def document_outline(
-        self,
-        *,
-        path: str,
-        depth: int = 4,
-        limit: int = 200,
-        correlation_id: str,
-        signal: object | None = None,
-    ) -> DocumentOutlineResult:
-        runtime = self._runtime
-        if runtime is None:
-            raise RuntimeError("Coding LSP runtime is not bound")
-        return await runtime.document_outline(
-            path=path,
-            depth=depth,
-            limit=limit,
-            correlation_id=correlation_id,
-            signal=signal,
-        )
 
 
 def bind_coding_lsp_runtime(
@@ -178,6 +141,7 @@ def _bind_coding_lsp_runtime_from_launcher(
     process_launcher: AuthorizedProcessLauncher,
     read_text: WorkspaceTextReader,
     baseline_environment: Mapping[str, str],
+    path_exists: PathExists | None = None,
 ) -> CodingLspRuntime:
     """Bind LSP semantics to an already-authorized process launch facet."""
 
@@ -188,13 +152,14 @@ def _bind_coding_lsp_runtime_from_launcher(
             launcher=process_launcher,
             read_text=read_text,
             baseline_environment=baseline_environment,
+            path_exists=path_exists,
         )
     )
 
 
 __all__ = [
     "CodingLspRuntime",
-    "DeferredCodingLspRuntime",
+    "CodingLspSessionAccess",
     "ProcessLauncherBinder",
     "bind_coding_lsp_runtime",
 ]

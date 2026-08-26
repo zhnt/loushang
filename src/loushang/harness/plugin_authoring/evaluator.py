@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib.metadata
 from collections.abc import Callable
 from contextlib import suppress
 from typing import Protocol, cast
@@ -18,6 +17,10 @@ from loushang.harness.plugin_authoring.builder import PluginDeclarationBuilder
 from loushang.harness.resources.plugins.declarations import PluginDeclaration
 from loushang.harness.resources.plugins.dependencies import (
     PluginDependencyClosureLock,
+)
+from loushang.harness.resources.plugins.distribution_evidence import (
+    InstalledPythonDistributionEvidenceError,
+    InstalledPythonDistributionEvidenceResolver,
 )
 from loushang.harness.resources.plugins.import_realm import (
     PluginImportRealm,
@@ -62,6 +65,9 @@ class PluginDefinitionEvaluator:
         decision_journal: PluginExecutionDecisionJournal,
         import_realm: PluginImportRealm,
         clock: Callable[[], int],
+        distribution_evidence_resolver: (
+            InstalledPythonDistributionEvidenceResolver | None
+        ) = None,
     ) -> None:
         if not isinstance(decision_journal, PluginExecutionDecisionJournal):
             raise TypeError("Plugin Definition evaluator requires a decision journal")
@@ -72,6 +78,11 @@ class PluginDefinitionEvaluator:
         self._decision_journal = decision_journal
         self._import_realm = import_realm
         self._clock = clock
+        self._distribution_evidence_resolver = (
+            distribution_evidence_resolver
+            if distribution_evidence_resolver is not None
+            else InstalledPythonDistributionEvidenceResolver()
+        )
 
     def evaluate(
         self,
@@ -185,8 +196,8 @@ class PluginDefinitionEvaluator:
             )
         return group.gate
 
-    @staticmethod
     def _validate_dependency_lock(
+        self,
         group: PluginDeclarationSourceGroup,
         dependency_lock: PluginDependencyClosureLock,
     ) -> None:
@@ -199,19 +210,14 @@ class PluginDefinitionEvaluator:
                 "Plugin dependency closure does not match the approved revision.",
                 code="plugin_import_dependency_lock_mismatch",
             )
-        for distribution in dependency_lock.python_distributions:
-            try:
-                installed = importlib.metadata.version(distribution.name)
-            except importlib.metadata.PackageNotFoundError as exc:
-                raise PluginDefinitionEvaluationError(
-                    "A locked Plugin dependency is unavailable.",
-                    code="plugin_import_dependency_unavailable",
-                ) from exc
-            if installed != distribution.version:
-                raise PluginDefinitionEvaluationError(
-                    "A locked Plugin dependency version is unavailable.",
-                    code="plugin_import_dependency_unavailable",
-                )
+        try:
+            for distribution in dependency_lock.python_distributions:
+                self._distribution_evidence_resolver.resolve_all(distribution)
+        except InstalledPythonDistributionEvidenceError as exc:
+            raise PluginDefinitionEvaluationError(
+                "A locked Plugin dependency is unavailable.",
+                code="plugin_import_dependency_unavailable",
+            ) from exc
 
     def _consume_decision(
         self,
@@ -316,8 +322,8 @@ class PluginDefinitionEvaluator:
                 permit=permit,
             )
 
-    @staticmethod
     def _evaluate_verified_definition(
+        self,
         group: PluginDeclarationSourceGroup,
         *,
         dependency_lock: PluginDependencyClosureLock,
@@ -335,6 +341,9 @@ class PluginDefinitionEvaluator:
                 + group.source_group_fingerprint[:16]
             ),
             host_api_prefixes=_HOST_API_PREFIXES,
+            distribution_evidence_resolver=(
+                self._distribution_evidence_resolver
+            ),
         )
         definition = module.resolve(symbol)
         if not callable(definition):

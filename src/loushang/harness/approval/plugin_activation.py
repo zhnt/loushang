@@ -29,6 +29,7 @@ from loushang.harness.journal import (
 from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
 
 CONTRIBUTION_ACTIVATION_APPROVAL_SUBJECT_VERSION = 1
+OWNER_COMPONENT_ACTIVATION_APPROVAL_SUBJECT_VERSION = 1
 PLUGIN_ACTIVATION_DECISION_VERSION = 1
 PLUGIN_ACTIVATION_JOURNAL_EVENT_VERSION = 1
 PLUGIN_ACTIVATION_USE_VERSION = 1
@@ -305,9 +306,280 @@ class ContributionActivationApprovalSubject:
 
 
 @dataclass(frozen=True, slots=True)
+class OwnerComponentActivationApprovalSubject:
+    """Approval identity for one selected component inside a Capability owner."""
+
+    candidate_fingerprint: str
+    admission_fingerprint: str
+    resolved_component_fingerprint: str
+    binding_spec_fingerprint: str
+    definition_fingerprint: str
+    owner_snapshot_fingerprint: str
+    selection_plan_fingerprint: str
+    capability_id: str
+    owner_id: str
+    component_kind: str
+    component_id: str
+    plugin_id: str
+    contribution_id: str
+    package_content_digest: str
+    dependency_lock_digest: str
+    product_id: str
+    scope_id: str
+    instance_revision_ref: PluginInstanceRevisionRef
+    package_source_identity: str
+    source_trust_class: str
+    source_trust_policy_revision: str
+    product_policy_revision: str
+    owner_policy_revision: str
+    revocation_epoch: int
+    effective_authorities: tuple[str, ...]
+    execution_model: Literal["in_process"]
+    subject_kind: Literal["capability_owner_component"] = (
+        "capability_owner_component"
+    )
+    subject_version: int = OWNER_COMPONENT_ACTIVATION_APPROVAL_SUBJECT_VERSION
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("component candidate fingerprint", self.candidate_fingerprint),
+            ("component admission fingerprint", self.admission_fingerprint),
+            ("resolved component fingerprint", self.resolved_component_fingerprint),
+            ("component binding spec fingerprint", self.binding_spec_fingerprint),
+            ("component Definition fingerprint", self.definition_fingerprint),
+            ("component owner snapshot fingerprint", self.owner_snapshot_fingerprint),
+            ("component selection plan fingerprint", self.selection_plan_fingerprint),
+            ("component package content digest", self.package_content_digest),
+            ("component dependency lock digest", self.dependency_lock_digest),
+        ):
+            _require_sha256(value, name=name)
+        for name, value in (
+            ("Capability id", self.capability_id),
+            ("Capability owner id", self.owner_id),
+            ("component kind", self.component_kind),
+            ("component id", self.component_id),
+            ("Plugin id", self.plugin_id),
+            ("contribution id", self.contribution_id),
+            ("Product id", self.product_id),
+            ("scope id", self.scope_id),
+            ("package source identity", self.package_source_identity),
+            ("source trust class", self.source_trust_class),
+            ("source trust policy revision", self.source_trust_policy_revision),
+            ("Product policy revision", self.product_policy_revision),
+            ("owner policy revision", self.owner_policy_revision),
+        ):
+            _require_nonempty(value, name=name)
+        if not isinstance(self.instance_revision_ref, PluginInstanceRevisionRef):
+            raise TypeError("Owner-component Subject requires a Plugin instance ref")
+        if self.instance_revision_ref.plugin_id != self.plugin_id:
+            raise ValueError("Owner-component Subject instance must match its Plugin")
+        _require_nonnegative_integer(
+            self.revocation_epoch,
+            name="owner-component revocation epoch",
+        )
+        authorities = _sorted_unique_names(
+            self.effective_authorities,
+            name="owner-component effective authority",
+        )
+        if self.execution_model != "in_process":
+            raise ValueError("Unsupported owner-component execution model")
+        if self.subject_kind != "capability_owner_component":
+            raise ValueError("Unsupported owner-component Subject kind")
+        _require_version(
+            self.subject_version,
+            expected=OWNER_COMPONENT_ACTIVATION_APPROVAL_SUBJECT_VERSION,
+        )
+        object.__setattr__(self, "effective_authorities", authorities)
+
+    @property
+    def digest(self) -> str:
+        payload = json.dumps(
+            self.to_dict(),
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        return sha256(
+            b"loushang.owner-component-activation-subject/v1\0" + payload
+        ).hexdigest()
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "admissionFingerprint": self.admission_fingerprint,
+            "bindingSpecFingerprint": self.binding_spec_fingerprint,
+            "candidateFingerprint": self.candidate_fingerprint,
+            "capabilityId": self.capability_id,
+            "componentId": self.component_id,
+            "componentKind": self.component_kind,
+            "contributionId": self.contribution_id,
+            "definitionFingerprint": self.definition_fingerprint,
+            "dependencyLockDigest": self.dependency_lock_digest,
+            "effectiveAuthorities": list(self.effective_authorities),
+            "executionModel": self.execution_model,
+            "instanceRevisionRef": self.instance_revision_ref.to_dict(),
+            "ownerId": self.owner_id,
+            "ownerPolicyRevision": self.owner_policy_revision,
+            "ownerSnapshotFingerprint": self.owner_snapshot_fingerprint,
+            "packageContentDigest": self.package_content_digest,
+            "packageSourceIdentity": self.package_source_identity,
+            "pluginId": self.plugin_id,
+            "productId": self.product_id,
+            "productPolicyRevision": self.product_policy_revision,
+            "resolvedComponentFingerprint": self.resolved_component_fingerprint,
+            "revocationEpoch": self.revocation_epoch,
+            "scopeId": self.scope_id,
+            "selectionPlanFingerprint": self.selection_plan_fingerprint,
+            "sourceTrustClass": self.source_trust_class,
+            "sourceTrustPolicyRevision": self.source_trust_policy_revision,
+            "subjectKind": self.subject_kind,
+            "subjectVersion": self.subject_version,
+        }
+
+    @classmethod
+    def from_dict(cls, value: object) -> OwnerComponentActivationApprovalSubject:
+        document = _wire_object(value, name="Owner-component activation Subject")
+        _wire_exact_fields(
+            document,
+            keys={
+                "admissionFingerprint",
+                "bindingSpecFingerprint",
+                "candidateFingerprint",
+                "capabilityId",
+                "componentId",
+                "componentKind",
+                "contributionId",
+                "definitionFingerprint",
+                "dependencyLockDigest",
+                "effectiveAuthorities",
+                "executionModel",
+                "instanceRevisionRef",
+                "ownerId",
+                "ownerPolicyRevision",
+                "ownerSnapshotFingerprint",
+                "packageContentDigest",
+                "packageSourceIdentity",
+                "pluginId",
+                "productId",
+                "productPolicyRevision",
+                "resolvedComponentFingerprint",
+                "revocationEpoch",
+                "scopeId",
+                "selectionPlanFingerprint",
+                "sourceTrustClass",
+                "sourceTrustPolicyRevision",
+                "subjectKind",
+                "subjectVersion",
+            },
+            name="Owner-component activation Subject",
+        )
+        _wire_version(
+            document["subjectVersion"],
+            expected=OWNER_COMPONENT_ACTIVATION_APPROVAL_SUBJECT_VERSION,
+        )
+        try:
+            return cls(
+                candidate_fingerprint=_wire_string(
+                    document["candidateFingerprint"], name="candidate fingerprint"
+                ),
+                admission_fingerprint=_wire_string(
+                    document["admissionFingerprint"], name="admission fingerprint"
+                ),
+                resolved_component_fingerprint=_wire_string(
+                    document["resolvedComponentFingerprint"],
+                    name="resolved component fingerprint",
+                ),
+                binding_spec_fingerprint=_wire_string(
+                    document["bindingSpecFingerprint"],
+                    name="binding spec fingerprint",
+                ),
+                definition_fingerprint=_wire_string(
+                    document["definitionFingerprint"],
+                    name="Definition fingerprint",
+                ),
+                owner_snapshot_fingerprint=_wire_string(
+                    document["ownerSnapshotFingerprint"],
+                    name="owner snapshot fingerprint",
+                ),
+                selection_plan_fingerprint=_wire_string(
+                    document["selectionPlanFingerprint"],
+                    name="selection plan fingerprint",
+                ),
+                capability_id=_wire_string(
+                    document["capabilityId"], name="Capability id"
+                ),
+                owner_id=_wire_string(document["ownerId"], name="owner id"),
+                component_kind=_wire_string(
+                    document["componentKind"], name="component kind"
+                ),
+                component_id=_wire_string(
+                    document["componentId"], name="component id"
+                ),
+                plugin_id=_wire_string(document["pluginId"], name="Plugin id"),
+                contribution_id=_wire_string(
+                    document["contributionId"], name="contribution id"
+                ),
+                package_content_digest=_wire_string(
+                    document["packageContentDigest"],
+                    name="package content digest",
+                ),
+                dependency_lock_digest=_wire_string(
+                    document["dependencyLockDigest"],
+                    name="dependency lock digest",
+                ),
+                product_id=_wire_string(document["productId"], name="Product id"),
+                scope_id=_wire_string(document["scopeId"], name="scope id"),
+                instance_revision_ref=PluginInstanceRevisionRef.from_dict(
+                    document["instanceRevisionRef"]
+                ),
+                package_source_identity=_wire_string(
+                    document["packageSourceIdentity"],
+                    name="package source identity",
+                ),
+                source_trust_class=_wire_string(
+                    document["sourceTrustClass"], name="source trust class"
+                ),
+                source_trust_policy_revision=_wire_string(
+                    document["sourceTrustPolicyRevision"],
+                    name="source trust policy revision",
+                ),
+                product_policy_revision=_wire_string(
+                    document["productPolicyRevision"],
+                    name="Product policy revision",
+                ),
+                owner_policy_revision=_wire_string(
+                    document["ownerPolicyRevision"], name="owner policy revision"
+                ),
+                revocation_epoch=_wire_integer(
+                    document["revocationEpoch"], name="revocation epoch"
+                ),
+                effective_authorities=_wire_string_list(
+                    document["effectiveAuthorities"],
+                    name="effective authorities",
+                ),
+                execution_model=cast(
+                    Literal["in_process"],
+                    _wire_string(document["executionModel"], name="execution model"),
+                ),
+                subject_kind=cast(
+                    Literal["capability_owner_component"],
+                    _wire_string(document["subjectKind"], name="Subject kind"),
+                ),
+            )
+        except PluginActivationJournalRecordCodecError:
+            raise
+        except (TypeError, ValueError) as exc:
+            raise _invalid_record(str(exc)) from exc
+
+
+PluginActivationApprovalSubject = (
+    ContributionActivationApprovalSubject | OwnerComponentActivationApprovalSubject
+)
+
+
+@dataclass(frozen=True, slots=True)
 class PluginActivationDecisionRecordV1:
     decision_id: str
-    subject: ContributionActivationApprovalSubject
+    subject: PluginActivationApprovalSubject
     scope_id: str
     disposition: PluginActivationDisposition
     authorization: PluginApprovalAuthorizationV1
@@ -320,7 +592,11 @@ class PluginActivationDecisionRecordV1:
 
     def __post_init__(self) -> None:
         _require_hex(self.decision_id, length=48, name="activation decision id")
-        if not isinstance(self.subject, ContributionActivationApprovalSubject):
+        if not isinstance(
+            self.subject,
+            ContributionActivationApprovalSubject
+            | OwnerComponentActivationApprovalSubject,
+        ):
             raise TypeError("Activation decision requires a Subject")
         _require_nonempty(self.scope_id, name="activation decision scope id")
         if self.scope_id != self.subject.scope_id:
@@ -404,8 +680,17 @@ class PluginActivationDecisionRecordV1:
             expected=PLUGIN_ACTIVATION_DECISION_VERSION,
         )
         try:
-            subject = ContributionActivationApprovalSubject.from_dict(
-                document["subject"]
+            subject_document = _wire_object(
+                document["subject"],
+                name="Plugin activation decision Subject",
+            )
+            subject = (
+                OwnerComponentActivationApprovalSubject.from_dict(subject_document)
+                if subject_document.get("subjectKind")
+                == "capability_owner_component"
+                else ContributionActivationApprovalSubject.from_dict(
+                    subject_document
+                )
             )
             if _wire_string(
                 document["subjectDigest"], name="subject digest"
@@ -854,7 +1139,7 @@ class PluginActivationDecisionJournal:
 
     def issue_activation_decision(
         self,
-        subject: ContributionActivationApprovalSubject,
+        subject: PluginActivationApprovalSubject,
         *,
         disposition: PluginActivationDisposition,
         authorization: PluginApprovalAuthorizationV1,
@@ -916,7 +1201,7 @@ class PluginActivationDecisionJournal:
 
     def consume_activation_decision(
         self,
-        subject: ContributionActivationApprovalSubject,
+        subject: PluginActivationApprovalSubject,
         *,
         decision_id: str,
         host_boot_id: str,
@@ -1217,9 +1502,13 @@ class PluginActivationDecisionJournal:
 
     def _require_subject_scope(
         self,
-        subject: ContributionActivationApprovalSubject,
+        subject: PluginActivationApprovalSubject,
     ) -> None:
-        if not isinstance(subject, ContributionActivationApprovalSubject):
+        if not isinstance(
+            subject,
+            ContributionActivationApprovalSubject
+            | OwnerComponentActivationApprovalSubject,
+        ):
             raise TypeError("Plugin activation journal requires an exact Subject")
         if subject.scope_id != self._scope_id:
             raise self._error(
@@ -1592,6 +1881,8 @@ def _sorted_unique_names(values: tuple[str, ...], *, name: str) -> tuple[str, ..
 __all__ = [
     "ActivationUseReservationV1",
     "ContributionActivationApprovalSubject",
+    "OwnerComponentActivationApprovalSubject",
+    "PluginActivationApprovalSubject",
     "PluginActivationDecisionJournal",
     "PluginActivationDecisionRecordV1",
     "PluginActivationDecisionSnapshotV1",

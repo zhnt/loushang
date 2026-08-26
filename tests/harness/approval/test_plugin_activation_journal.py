@@ -8,6 +8,7 @@ import pytest
 from loushang.harness.approval.plugin_activation import (
     ContributionActivationApprovalSubject,
     PluginActivationDecisionJournal,
+    PluginActivationDecisionRecordV1,
     PluginActivationJournalError,
 )
 from loushang.harness.approval.plugin_execution import (
@@ -56,6 +57,16 @@ def test_activation_decision_and_attempt_are_durable_one_shot_authority(
             expected_journal_revision=2,
         )
     assert consumed.value.code == "plugin_activation_decision_consumed"
+
+
+def test_legacy_complete_bundle_subject_wire_remains_untagged_and_round_trips(
+    tmp_path: Path,
+) -> None:
+    decision = _issue(_journal(tmp_path))
+    document = decision.to_dict()
+
+    assert "subjectKind" not in document["subject"]  # type: ignore[operator]
+    assert PluginActivationDecisionRecordV1.from_dict(document) == decision
 
 
 def test_activation_attempt_enforces_exact_owner_transitions_and_fencing(
