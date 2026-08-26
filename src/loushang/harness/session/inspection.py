@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Literal, Protocol
+from inspect import isawaitable
+from typing import Literal, Protocol, cast
 
 from loushang.agent.types import AgentMessage
 from loushang.ai.json_codec import deserialize_message
@@ -29,6 +30,7 @@ from loushang.harness.transcript import (
     AgentTranscriptSession,
     ModelCallOutcome,
     ProviderContextAnchor,
+    ReplayContextSurfaceMeasurement,
     build_context_usage_snapshot,
     calculate_context_tokens,
     estimate_context_tokens,
@@ -130,7 +132,7 @@ class ContextUsage:
     provider_anchor: ProviderContextAnchor | None = None
     structural_envelope_fingerprint: str | None = None
     structural_envelope_status: Literal[
-        "matched", "mismatched", "unavailable"
+        "logical_match", "logical_mismatch", "unavailable"
     ] = "unavailable"
 
 
@@ -242,7 +244,7 @@ class AgentSessionInspector:
             snapshot = project_context_from_provider_anchor(
                 snapshot,
                 provider_anchor,
-                measure_replay_context_surface(messages),
+                self._measure_current_model_surface(messages),
                 structural_envelope_fingerprint=(
                     self._current_structural_envelope_fingerprint()
                 ),
@@ -337,6 +339,32 @@ class AgentSessionInspector:
             endpoint_id=str(getattr(model, "endpoint_id", "")),
             api_id=str(getattr(model, "api", "")),
             model_id=str(getattr(model, "id", "")),
+        )
+
+    def _measure_current_model_surface(
+        self,
+        messages: Sequence[AgentMessage],
+    ) -> ReplayContextSurfaceMeasurement | None:
+        if getattr(self.agent, "transform_context", None) is not None:
+            return None
+        convert_to_llm = getattr(self.agent, "convert_to_llm", None)
+        if not callable(convert_to_llm):
+            return None
+        try:
+            projected = convert_to_llm(list(messages))
+        except Exception:
+            return None
+        if isawaitable(projected):
+            close = getattr(projected, "close", None)
+            if callable(close):
+                close()
+            return None
+        if not isinstance(projected, Sequence) or isinstance(
+            projected, str | bytes | bytearray
+        ):
+            return None
+        return measure_replay_context_surface(
+            cast(Sequence[AgentMessage], projected)
         )
 
     def _derive_provider_context_anchor(

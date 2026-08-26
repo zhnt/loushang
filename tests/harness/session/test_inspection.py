@@ -184,6 +184,22 @@ def test_agent_session_inspector_reads_fork_candidates_and_assistant_text() -> N
     assert inspector.get_last_assistant_text() == "answer"
 
 
+def test_provider_anchor_surface_requires_the_current_model_projection() -> None:
+    inspector = asyncio.run(_inspector())
+    messages = [UserMessage(role="user", content="raw", timestamp=1.0)]
+    inspector.agent.convert_to_llm = lambda values: [
+        UserMessage(role="user", content="x" * 40, timestamp=1.0)
+    ]
+
+    projected = inspector._measure_current_model_surface(messages)
+
+    assert projected is not None
+    assert projected.tokens == 10
+
+    inspector.agent.transform_context = lambda values, signal: values
+    assert inspector._measure_current_model_surface(messages) is None
+
+
 def test_token_totals_prefer_outcomes_and_keep_uncovered_legacy_usage() -> None:
     legacy_usage = Usage(1, 2, 3, 4, 10, None)
     outcome_usage = Usage(10, 5, 2, 1, 18, None)

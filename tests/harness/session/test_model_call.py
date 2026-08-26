@@ -486,12 +486,12 @@ def test_current_session_persists_observed_attempt_usage_before_outcome() -> Non
         assert anchor.provider_id == "test-provider"
         assert anchor.api_id == adapter.api
         assert context_usage.source == "provider_anchor"
-        assert context_usage.structural_envelope_status == "matched"
+        assert context_usage.structural_envelope_status == "logical_match"
         assert context_usage.compactable is False
         agent.system_prompt = "changed system prompt"
         changed_usage = inspector.get_context_usage()
         assert changed_usage.source != "provider_anchor"
-        assert changed_usage.structural_envelope_status == "mismatched"
+        assert changed_usage.structural_envelope_status == "logical_mismatch"
         await runtime.dispose()
 
     asyncio.run(scenario())

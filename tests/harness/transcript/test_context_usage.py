@@ -117,7 +117,7 @@ def test_provider_anchor_projects_current_surface_for_display_only() -> None:
     assert projected.reason == "provider_anchor_display_only"
     assert projected.stale_after_compaction is True
     assert projected.provider_anchor == anchor
-    assert projected.structural_envelope_status == "matched"
+    assert projected.structural_envelope_status == "logical_match"
 
 
 def test_provider_anchor_projection_clamps_negative_delta_at_zero() -> None:
@@ -229,7 +229,43 @@ def test_provider_anchor_projection_rejects_a_changed_structural_envelope() -> N
     assert projected.tokens == 7
     assert projected.source == "estimated"
     assert projected.compactable is True
-    assert projected.structural_envelope_status == "mismatched"
+    assert projected.structural_envelope_status == "logical_mismatch"
+
+
+def test_provider_anchor_projection_rejects_an_unavailable_current_surface() -> None:
+    snapshot = ContextUsageSnapshot(
+        tokens=7,
+        context_window=100,
+        reserve_tokens=0,
+        source="estimated",
+    )
+    anchor = ProviderContextAnchor(
+        invocation_id="invocation-1",
+        attempt=1,
+        model_input_snapshot_id="snapshot-1",
+        provider_prompt_tokens=80,
+        sampled_prepared_payload_hash="sha256:" + "a" * 64,
+        sampled_surface_tokens=5,
+        sampled_surface_fingerprint="sha256:" + "b" * 64,
+        source_revision=1,
+        commit_revision=2,
+        provider_id="provider-1",
+        endpoint_id="endpoint-1",
+        api_id="api-1",
+        model_id="model-1",
+        sampled_structural_envelope_fingerprint=_envelope_fingerprint(),
+    )
+
+    projected = project_context_from_provider_anchor(
+        snapshot,
+        anchor,
+        None,
+        structural_envelope_fingerprint=_envelope_fingerprint(),
+    )
+
+    assert projected.tokens == 7
+    assert projected.source == "estimated"
+    assert projected.structural_envelope_status == "logical_match"
 
 
 def test_context_usage_measurement_identity_serializes_compatibly() -> None:

@@ -34,7 +34,9 @@ ContextUsageAuthority = Literal["provider_usage", "local_estimator", "unknown"]
 ContextUsageAccuracy = Literal["projected", "estimated", "unknown"]
 CONTEXT_MESSAGE_ESTIMATOR_ID = "harness.message_chars.v1"
 STRUCTURAL_ENVELOPE_FINGERPRINT_ID = "harness.logical-envelope.v1"
-StructuralEnvelopeStatus = Literal["matched", "mismatched", "unavailable"]
+StructuralEnvelopeStatus = Literal[
+    "logical_match", "logical_mismatch", "unavailable"
+]
 
 
 @dataclass(frozen=True)
@@ -132,7 +134,7 @@ def measure_structural_envelope_fingerprint(
 def project_context_from_provider_anchor(
     snapshot: ContextUsageSnapshot,
     anchor: ProviderContextAnchor,
-    current_surface: ReplayContextSurfaceMeasurement,
+    current_surface: ReplayContextSurfaceMeasurement | None,
     *,
     structural_envelope_fingerprint: str | None,
 ) -> ContextUsageSnapshot:
@@ -146,16 +148,17 @@ def project_context_from_provider_anchor(
     envelope_status: StructuralEnvelopeStatus = "unavailable"
     if structural_envelope_fingerprint is not None:
         envelope_status = (
-            "matched"
+            "logical_match"
             if structural_envelope_fingerprint
             == anchor.sampled_structural_envelope_fingerprint
-            else "mismatched"
+            else "logical_mismatch"
         )
     if (
-        anchor.estimator_id != current_surface.estimator_id
+        current_surface is None
+        or anchor.estimator_id != current_surface.estimator_id
         or anchor.structural_envelope_fingerprint_id
         != STRUCTURAL_ENVELOPE_FINGERPRINT_ID
-        or envelope_status != "matched"
+        or envelope_status != "logical_match"
     ):
         return replace(
             snapshot,
@@ -189,7 +192,7 @@ def project_context_from_provider_anchor(
         surface_fingerprint=current_surface.surface_fingerprint,
         provider_anchor=anchor,
         structural_envelope_fingerprint=structural_envelope_fingerprint,
-        structural_envelope_status="matched",
+        structural_envelope_status="logical_match",
     )
 
 
