@@ -1553,6 +1553,12 @@ version drift fails closed. The verified importer consumes the same installed-
 distribution evidence; it does not execute `.pth` files or accept ambient
 `sys.path` coincidence.
 
+Same-name installations are enumerated rather than resolved by arbitrary
+metadata search order. Publication uses exact source files to select one
+candidate and rejects ambiguity; import preflight can retain exact-version
+candidates only until the actual module origin selects one. Their paths are
+never unioned into a broader evidence boundary.
+
 This seam is Host package evidence, not a Plugin type, manifest field,
 Capability grant or public authoring primitive. Ordinary Plugins receive no
 extra distribution and preserve the current path. The initial private registry

@@ -19,8 +19,11 @@
   complete. PLC2-1 through PLC2-4D, PLC3-1 through PLC3-3, the PLC4/PAP4
   owner-admission and Provider-selection primitives, and PLC4.5 through
   RCP4.10 are implemented. PLC5.0's private Product Provider assembly seam is
-  also implemented; the `coding.lsp.default` production package and cutover,
-  PLC6 through PLC9, and the public SDK remain unimplemented.
+  also implemented. PLC5.1a's installed-distribution evidence resolver and
+  verified-import consumer are implemented; its Product-owned co-distribution
+  grant and canonical lock-assembler integration remain pending. The
+  `coding.lsp.default` production package and cutover, PLC6 through PLC9, and
+  the public SDK remain unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
@@ -1166,6 +1169,14 @@ the exact locked Loushang distribution. This is a same-trust-domain private
 code boundary, not a public SDK or a claim that a distribution lock is a Python
 module sandbox; source identity, Product selection and both Approval gates
 remain the security authorities.
+
+The resolver enumerates every installed candidate with the normalized name; it
+never accepts whichever candidate a name-only metadata lookup happens to
+return. Publication must select one candidate with the exact checked-in source
+files and rejects a missing or ambiguous match. Import preflight may retain
+multiple candidates only when they share the locked version, then admits the
+single candidate whose RECORD/editable boundary contains the actual module
+origin. Candidate paths are never unioned into one wider installation.
 
 The following cases fail before Definition evaluation or Provider activation:
 

@@ -82,6 +82,10 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
         "StrictPluginJsonCodec.decode_bytes",
     ): "plugin-strict-json-codec",
     (
+        Path("src/loushang/harness/resources/plugins/distribution_evidence.py"),
+        "_editable_project_root",
+    ): "installed-python-distribution-evidence-resolver",
+    (
         Path("src/loushang/harness/resources/plugins/manifest.py"),
         "PluginManifestParser.parse",
     ): "plugin-manifest-parser",
@@ -164,6 +168,8 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS = {
     (Path("src/loushang/harness/resources/plugins/manifest.py"), "PluginManifestParser.parse", "path_read"): 1,
     (Path("src/loushang/harness/resources/plugins/manifest.py"), "PluginManifestParser.revalidate", "path_read"): 1,
     (Path("src/loushang/harness/resources/plugins/_strict_json.py"), "StrictPluginJsonCodec.decode_bytes", "json_decode"): 1,
+    (Path("src/loushang/harness/resources/plugins/distribution_evidence.py"), "_editable_project_root", "json_decode"): 1,
+    (Path("src/loushang/harness/resources/plugins/distribution_evidence.py"), "_editable_project_root", "path_read"): 1,
     (Path("src/loushang/harness/resources/plugins/revisions.py"), "_digest_file", "path_read"): 1,
     (Path("src/loushang/harness/resources/plugins/revisions.py"), "_open_directory", "path_read"): 1,
     (Path("src/loushang/harness/resources/plugins/revisions.py"), "_open_regular_file", "path_read"): 1,
@@ -1625,6 +1631,8 @@ def test_plc5_co_distributed_dependency_evidence_keeps_one_lock_authority() -> N
         "does not execute `.pth` files or accept ambient\n`sys.path` coincidence",
         "not a Plugin type, manifest field,\nCapability grant or public authoring primitive",
         "initial private registry\ncontains only `coding.lsp.default -> loushang`",
+        "Same-name installations are enumerated rather than resolved by arbitrary",
+        "Their paths are\nnever unioned into a broader evidence boundary",
     ):
         assert required in architecture
 
@@ -1634,6 +1642,8 @@ def test_plc5_co_distributed_dependency_evidence_keeps_one_lock_authority() -> N
         "Neither a manifest,\n  declaration, user configuration nor Plugin code can add a grant",
         "A plain source\n  tree without matching installed metadata is not evidence",
         "This is a same-trust-domain private\ncode boundary, not a public SDK",
+        "The resolver enumerates every installed candidate with the normalized name",
+        "Candidate paths are never unioned into one wider installation",
         "never use the legacy LSP route",
         "does not add arbitrary host-package dependencies",
     ):
@@ -2615,6 +2625,7 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
         "package-materializer",
         "package-resource-inventory",
         "package-resource-mount",
+        "installed-python-distribution-evidence-resolver",
         "plugin-declaration-coordinator",
         "plugin-manifest-parser",
         "plugin-strict-json-codec",
