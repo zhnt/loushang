@@ -33,8 +33,10 @@
   reverse order. The private request is now wired through Coding bootstrap into
   the live Session Graph: Provider ownership transfers once to the Binder,
   Tools publish only after capture, and the Product retains only a non-owning
-  semantic view. Default cutover, old deferred-route deletion, PLC6 through
-  PLC9, and the public SDK remain unimplemented.
+  semantic view. Real-process vertical regressions now prove the Plugin path in
+  both `always` and `on_demand` modes through Tool execution, status, explicit
+  stop and exact-generation retirement. Default cutover, old deferred-route
+  deletion, PLC6 through PLC9, and the public SDK remain unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
@@ -1095,8 +1097,12 @@ Session Tool controller, and leaves a missing request on the legacy route. A
 failed opted-in Graph preparation rolls back Provider and Tool generations and
 never falls back. The Graph-backed semantic capture is non-owning; Session
 retirement disposes Tools before Provider retirement, while `AgentSession`
-never closes the Plugin runtime directly. Default cutover and old
-deferred-route deletion remain later PLC5 gates.
+never closes the Plugin runtime directly. A real fake-server vertical slice now
+executes both generated Tools through the live Session in `always` and
+`on_demand` modes, observes the mounted status view, explicitly stops the
+Server, and proves disposal removes the Tool generation without a second Server
+shutdown. Default cutover and old deferred-route deletion remain later PLC5
+gates.
 
 The adopter-specific design review freezes the following PLC5.1 boundaries
 before implementation:
@@ -1145,9 +1151,9 @@ registered source of the reserved `coding.lsp.default` ID and rejects that ID
 from any other source. Coding now ships that package as distribution data. Its
 approved Definition imports the exact-version private adapter and emits only
 reservation-bound Provider IR; the factory/disposer wrappers also resolve under
-the unchanged Component Host prefix tuple using the same evidence policy.
-Bootstrap opt-in wiring and activation remain subsequent PLC5.1 work; this
-status does not claim a production mount.
+the unchanged Component Host prefix tuple using the same evidence policy. The
+later PLC5.1b slice now supplies the private bootstrap mount; this subsection's
+claim remains limited to co-distribution evidence and lock/import integrity.
 
 The planned checked-in package exposed one narrower foundation gap. Before this
 foundation, the canonical dependency-lock assembler discovered Python
@@ -1247,6 +1253,34 @@ unchanged Component Host prefix tuple, and unchanged behavior for an ordinary
 Plugin. It does not add arbitrary host-package dependencies, a dependency
 installer, a second lock schema, public authoring API, MCP behavior, or a new
 Plugin category.
+
+#### PLC5.1b: Private Session Mount And Real-Process Parity
+
+Implementation status (2026-08-26): implemented behind the private Product
+opt-in. The checked-in package passes the complete publication, selection,
+Definition Approval, owner admission, Provider resolution, Activation Approval,
+Component Host and Session Graph path. Its sibling Tool owner publishes only
+after the exact runtime-facet capture. Focused real-process regressions prove
+that both `always` and `on_demand` modes execute `inspect_symbol` and
+`document_outline` against the same fake LSP Server, expose status and stop
+through the non-owning semantic facet, then retire Tools before Graph-owned
+Provider cleanup. Unit regressions separately prove partial Tool publication
+rollback and that an opted-in failure never enters the legacy route.
+
+This proof does not authorize an incremental default flip. The remaining PLC5
+cutover is one atomic Product change with these gates:
+
+- Product policy creates the private assembly request without exposing it as a
+  public SDK parameter or treating a boolean as Approval authority;
+- default discovery/configuration, disabled and `no_tools` behavior, sandbox and
+  Approval ceilings, status/command behavior, and failure diagnostics retain
+  parity through the Plugin route;
+- the legacy deferred runtime, early Tool registrar and bootstrap binder are
+  deleted in the same change, leaving no dual parser, binding or disposal path;
+  and
+- focused Coding LSP plus full Coding/Harness/architecture gates pass after the
+  deletion. A failed Plugin path remains fail-closed and cannot restore the old
+  route.
 
 Scope and gates are PAP6, including packaging the complete Bundle, narrow
 workspace requirements, Tool/runtime Session co-visibility across their exact
