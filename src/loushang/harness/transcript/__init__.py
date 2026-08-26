@@ -95,6 +95,7 @@ if TYPE_CHECKING:
         CONTEXT_COMPACTION_CHECKPOINT_KIND,
         CONVERSATION_METADATA_PATCH_KIND,
         EXTENSION_DATA_KIND,
+        MODEL_CALL_ATTEMPT_USAGE_KIND,
         MODEL_CALL_OUTCOME_KIND,
         MODEL_INPUT_COMPONENT_KIND,
         MODEL_INPUT_PREPARED_KIND,
@@ -172,6 +173,15 @@ if TYPE_CHECKING:
         MODEL_INPUT_V2_PAYLOAD_VERSION,
         ModelInputNodeBundle,
         ModelInputSnapshotV2,
+    )
+    from loushang.harness.transcript.model_usage import (
+        ModelCallAttemptUsageProjection,
+        ModelCallUsageLedger,
+        project_model_call_usage,
+    )
+    from loushang.harness.transcript.model_usage_types import (
+        MODEL_CALL_ATTEMPT_USAGE_SCHEMA_VERSION,
+        ModelCallAttemptUsage,
     )
     from loushang.harness.transcript.product_session import (
         ProductTranscriptSession,
@@ -297,6 +307,8 @@ _EXPORT_MODULES = {
     "MODEL_INPUT_COMPONENT_KIND": "loushang.harness.transcript.kinds",
     "MODEL_INPUT_PREPARED_KIND": "loushang.harness.transcript.kinds",
     "MODEL_CALL_OUTCOME_KIND": "loushang.harness.transcript.kinds",
+    "MODEL_CALL_ATTEMPT_USAGE_KIND": "loushang.harness.transcript.kinds",
+    "MODEL_CALL_ATTEMPT_USAGE_SCHEMA_VERSION": "loushang.harness.transcript.model_usage_types",
     "MODEL_CALL_OUTCOME_SCHEMA_VERSION": "loushang.harness.transcript.model_call_types",
     "MODEL_INPUT_MAX_ENCODED_RECORD_BYTES": "loushang.harness.transcript.model_input_types",
     "MODEL_INPUT_PROJECTION_VERSION": "loushang.harness.transcript.model_input_types",
@@ -393,6 +405,9 @@ _EXPORT_MODULES = {
     "ModelCallDisposition": "loushang.harness.transcript.model_call_types",
     "ModelCallFailureInfo": "loushang.harness.transcript.model_call_types",
     "ModelCallOutcome": "loushang.harness.transcript.model_call_types",
+    "ModelCallAttemptUsage": "loushang.harness.transcript.model_usage_types",
+    "ModelCallAttemptUsageProjection": "loushang.harness.transcript.model_usage",
+    "ModelCallUsageLedger": "loushang.harness.transcript.model_usage",
     "ModelSelectionCatalog": "loushang.harness.transcript.interaction",
     "MigrationDisposition": "loushang.harness.transcript.migration",
     "ProductTranscriptSession": "loushang.harness.transcript.product_session",
@@ -467,6 +482,7 @@ _EXPORT_MODULES = {
     "is_conversation_jsonl_file": "loushang.harness.transcript.migration",
     "is_compaction_aborted": "loushang.harness.transcript.maintenance",
     "is_retryable_assistant_error": "loushang.harness.transcript.retry_runtime",
+    "project_model_call_usage": "loushang.harness.transcript.model_usage",
     "list_all_agent_transcript_session_summaries": "loushang.harness.transcript.session_catalog",
     "list_all_indexed_agent_transcript_session_summaries": "loushang.harness.transcript.session_catalog",
     "load_agent_transcript_session_metadata": "loushang.harness.transcript.session_catalog",

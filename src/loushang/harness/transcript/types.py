@@ -23,6 +23,7 @@ from loushang.harness.transcript.model_input_v2_types import (
     ModelInputNodeBundle,
     ModelInputSnapshotV2,
 )
+from loushang.harness.transcript.model_usage_types import ModelCallAttemptUsage
 
 ContentBlock: TypeAlias = TextPart | ImagePart
 ApplicationDeliveryMode: TypeAlias = Literal[
@@ -297,6 +298,7 @@ AgentTranscriptPayload: TypeAlias = (
     | ModelInputNodeBundle
     | ModelInputSnapshotV2
     | ModelCallOutcome
+    | ModelCallAttemptUsage
 )
 DecodedAgentTranscriptPayload: TypeAlias = AgentTranscriptPayload | OpaquePayload
 AgentTranscriptRecord: TypeAlias = ConversationRecord[DecodedAgentTranscriptPayload]

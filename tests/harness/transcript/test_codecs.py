@@ -15,6 +15,7 @@ from loushang.harness.transcript import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     CONVERSATION_METADATA_PATCH_KIND,
     EXTENSION_DATA_KIND,
+    MODEL_CALL_ATTEMPT_USAGE_KIND,
     MODEL_CALL_OUTCOME_KIND,
     MODEL_INPUT_COMPONENT_KIND,
     MODEL_INPUT_PREPARED_KIND,
@@ -28,6 +29,7 @@ from loushang.harness.transcript import (
     ContextCompactionCheckpoint,
     ConversationMetadataPatch,
     ExtensionData,
+    ModelCallAttemptUsage,
     ModelCallFailureInfo,
     ModelCallOutcome,
     ModelInputComponent,
@@ -130,6 +132,14 @@ def _payloads():
                 cost=None,
             ),
         ),
+        MODEL_CALL_ATTEMPT_USAGE_KIND: ModelCallAttemptUsage(
+            invocation_id="invocation-1",
+            attempt=1,
+            model_input_snapshot_id="snapshot-1",
+            input=12,
+            cache_read=2,
+            terminal=False,
+        ),
         MODEL_INPUT_COMPONENT_KIND: component,
         MODEL_INPUT_PREPARED_KIND: ModelInputSnapshot(
             snapshot_id="snapshot-1",
@@ -173,6 +183,7 @@ def test_all_standard_payloads_round_trip_through_versioned_registry() -> None:
     registry = create_agent_transcript_payload_registry()
 
     assert registry.required_kinds == (
+        MODEL_CALL_ATTEMPT_USAGE_KIND,
         MODEL_INPUT_COMPONENT_KIND,
         MODEL_INPUT_PREPARED_KIND,
     )

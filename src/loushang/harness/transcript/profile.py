@@ -45,6 +45,7 @@ from loushang.harness.transcript.kinds import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     CONVERSATION_METADATA_PATCH_KIND,
     EXTENSION_DATA_KIND,
+    MODEL_CALL_ATTEMPT_USAGE_KIND,
     MODEL_CALL_OUTCOME_KIND,
     MODEL_INPUT_COMPONENT_KIND,
     MODEL_INPUT_PREPARED_KIND,
@@ -65,6 +66,7 @@ from loushang.harness.transcript.types import (
     ContextCompactionCheckpoint,
     ConversationMetadataPatch,
     ExtensionData,
+    ModelCallAttemptUsage,
     ModelCallOutcome,
     ModelInputComponent,
     ModelInputNodeBundle,
@@ -406,6 +408,10 @@ class AgentTranscriptProfile:
             MODEL_CALL_OUTCOME_KIND,
             RecordSemantics(payload_types=(ModelCallOutcome,)),
         )
+        self.register_record_profile(
+            MODEL_CALL_ATTEMPT_USAGE_KIND,
+            RecordSemantics(payload_types=(ModelCallAttemptUsage,)),
+        )
 
 
 def record_to_context_item(
@@ -728,8 +734,9 @@ def _require_standard_payload_codecs(
             "Agent transcript profile is missing Model Input v2 payload codecs: "
             + ", ".join(missing_v2)
         )
+    required_kinds = (*model_input_kinds, MODEL_CALL_ATTEMPT_USAGE_KIND)
     required = set(registry.required_kinds)
-    missing_required = [kind for kind in model_input_kinds if kind not in required]
+    missing_required = [kind for kind in required_kinds if kind not in required]
     if missing_required:
         raise ValueError(
             "Agent transcript profile is missing required payload kinds: "

@@ -33,6 +33,7 @@ from loushang.harness.transcript.kinds import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     CONVERSATION_METADATA_PATCH_KIND,
     EXTENSION_DATA_KIND,
+    MODEL_CALL_ATTEMPT_USAGE_KIND,
     MODEL_CALL_OUTCOME_KIND,
     MODEL_INPUT_COMPONENT_KIND,
     MODEL_INPUT_PREPARED_KIND,
@@ -59,6 +60,10 @@ from loushang.harness.transcript.model_input_v2_codec import (
 )
 from loushang.harness.transcript.model_input_v2_types import (
     MODEL_INPUT_V2_PAYLOAD_VERSION,
+)
+from loushang.harness.transcript.model_usage_codec import (
+    decode_model_call_attempt_usage,
+    encode_model_call_attempt_usage,
 )
 from loushang.harness.transcript.types import (
     AnnotationOperation,
@@ -193,6 +198,12 @@ def register_standard_payload_codecs(
         encode_model_call_outcome,
         decode_model_call_outcome,
     )
+    _register(
+        registry,
+        MODEL_CALL_ATTEMPT_USAGE_KIND,
+        encode_model_call_attempt_usage,
+        decode_model_call_attempt_usage,
+    )
     registry.register(
         MODEL_INPUT_COMPONENT_KIND,
         MODEL_INPUT_V2_PAYLOAD_VERSION,
@@ -212,6 +223,7 @@ def register_standard_payload_codecs(
     registry.require_known_payload_versions(
         MODEL_INPUT_COMPONENT_KIND,
         MODEL_INPUT_PREPARED_KIND,
+        MODEL_CALL_ATTEMPT_USAGE_KIND,
     )
 
 
