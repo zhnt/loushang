@@ -159,6 +159,11 @@ def test_agent_session_inspector_builds_product_neutral_state_and_usage() -> Non
     assert usage.tool_result_count == 1
     assert usage.tokens == 7
     assert usage.context_window == 128_000
+    assert usage.authority == "provider_usage"
+    assert usage.accuracy == "projected"
+    assert usage.transcript_revision == 3
+    assert usage.leaf_id == "tool-1"
+    assert usage.estimator_id == "harness.message_chars.v1"
     assert stats.session_id == "inspection-1"
     assert stats.session_name == "Inspection"
     assert stats.entry_count == 3

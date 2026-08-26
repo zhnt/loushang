@@ -111,9 +111,16 @@ def test_context_usage_is_profile_owned_and_stales_at_checkpoint() -> None:
             session.get_branch(),
             _model(),
             reserve_tokens=10,
+            transcript_revision=len(session.get_entries()),
+            leaf_id=session.get_leaf_id(),
         )
         assert snapshot.compactable is True
         assert snapshot.threshold_tokens == 90
+        assert snapshot.authority == "provider_usage"
+        assert snapshot.accuracy == "projected"
+        assert snapshot.transcript_revision == 2
+        assert snapshot.leaf_id == "assistant-1"
+        assert snapshot.estimator_id is None
 
         await session.append_compaction("summary", user_id, 95)
         stale = build_context_usage_snapshot(
@@ -121,9 +128,37 @@ def test_context_usage_is_profile_owned_and_stales_at_checkpoint() -> None:
             session.get_branch(),
             _model(),
             reserve_tokens=10,
+            transcript_revision=len(session.get_entries()),
+            leaf_id=session.get_leaf_id(),
         )
         assert stale.stale_after_compaction is True
         assert stale.tokens is None
+        assert stale.authority == "unknown"
+        assert stale.accuracy == "unknown"
+        assert stale.transcript_revision == 3
+        assert stale.leaf_id == "checkpoint-1"
+
+    asyncio.run(scenario())
+
+
+def test_zero_assistant_usage_does_not_claim_provider_authority() -> None:
+    async def scenario() -> None:
+        session = await _session()
+        await session.append_message(
+            UserMessage(role="user", content="prompt", timestamp=0.0)
+        )
+        await session.append_message(_assistant(total_tokens=0))
+
+        snapshot = build_context_usage_snapshot(
+            session.build_context().messages,
+            session.get_branch(),
+            _model(),
+            reserve_tokens=10,
+        )
+
+        assert snapshot.source == "assistant_usage"
+        assert snapshot.authority == "unknown"
+        assert snapshot.accuracy == "unknown"
 
     asyncio.run(scenario())
 

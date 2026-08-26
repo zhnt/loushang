@@ -30,6 +30,8 @@ if TYPE_CHECKING:
         prepare_turn_aware_compaction,
     )
     from loushang.harness.transcript.context_usage import (
+        ContextUsageAccuracy,
+        ContextUsageAuthority,
         ContextUsageSnapshot,
         build_context_usage_snapshot,
         calculate_context_tokens,
@@ -379,6 +381,8 @@ _EXPORT_MODULES = {
     "ContentBlock": "loushang.harness.transcript.types",
     "ContextCompactionCheckpoint": "loushang.harness.transcript.types",
     "ContextUsageSnapshot": "loushang.harness.transcript.context_usage",
+    "ContextUsageAccuracy": "loushang.harness.transcript.context_usage",
+    "ContextUsageAuthority": "loushang.harness.transcript.context_usage",
     "DEFAULT_BRANCH_SUMMARY_PREAMBLE": "loushang.harness.transcript.summarization",
     "ConversationMetadataPatch": "loushang.harness.transcript.types",
     "DecodedAgentTranscriptPayload": "loushang.harness.transcript.types",

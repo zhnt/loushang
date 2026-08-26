@@ -106,6 +106,11 @@ class ContextUsage:
     stale_after_compaction: bool = False
     compactable: bool = False
     reason: str | None = None
+    authority: Literal["provider_usage", "local_estimator", "unknown"] = "unknown"
+    accuracy: Literal["projected", "estimated", "unknown"] = "unknown"
+    transcript_revision: int | None = None
+    leaf_id: str | None = None
+    estimator_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -189,6 +194,8 @@ class AgentSessionInspector:
             reserve_tokens=self.get_compaction_reserve_tokens(),
             compact_percent=self.get_compaction_compact_percent(),
             keep_recent_tokens=self.get_compaction_keep_recent_tokens(),
+            transcript_revision=len(self.session.get_entries()),
+            leaf_id=self.session.get_leaf_id(),
         )
         estimated_context_tokens = (
             estimate_context_tokens(messages).tokens if messages else 0
@@ -219,6 +226,11 @@ class AgentSessionInspector:
             stale_after_compaction=snapshot.stale_after_compaction,
             compactable=snapshot.compactable,
             reason=snapshot.reason,
+            authority=snapshot.authority,
+            accuracy=snapshot.accuracy,
+            transcript_revision=snapshot.transcript_revision,
+            leaf_id=snapshot.leaf_id,
+            estimator_id=snapshot.estimator_id,
         )
 
     def build_session_stats(self) -> SessionStats:

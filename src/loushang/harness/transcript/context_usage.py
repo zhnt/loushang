@@ -24,6 +24,9 @@ from loushang.harness.transcript.kinds import (
 ContextUsageSource = Literal[
     "assistant_usage", "estimated_from_last_usage", "estimated", "unknown"
 ]
+ContextUsageAuthority = Literal["provider_usage", "local_estimator", "unknown"]
+ContextUsageAccuracy = Literal["projected", "estimated", "unknown"]
+CONTEXT_MESSAGE_ESTIMATOR_ID = "harness.message_chars.v1"
 
 
 @dataclass(frozen=True)
@@ -45,6 +48,11 @@ class ContextUsageSnapshot:
     stale_after_compaction: bool = False
     compactable: bool = False
     reason: str | None = None
+    authority: ContextUsageAuthority = "unknown"
+    accuracy: ContextUsageAccuracy = "unknown"
+    transcript_revision: int | None = None
+    leaf_id: str | None = None
+    estimator_id: str | None = None
 
 
 def calculate_context_tokens(usage: object) -> int:
@@ -110,6 +118,8 @@ def build_context_usage_snapshot(
     reserve_tokens: int,
     compact_percent: float = 100.0,
     keep_recent_tokens: int | None = None,
+    transcript_revision: int | None = None,
+    leaf_id: str | None = None,
 ) -> ContextUsageSnapshot:
     context_window = model_context_window(model)
     if context_window is None:
@@ -127,6 +137,8 @@ def build_context_usage_snapshot(
             stale_after_compaction=False,
             compactable=False,
             reason="unknown_context_window",
+            transcript_revision=transcript_revision,
+            leaf_id=leaf_id,
         )
 
     budget = calculate_compaction_budget(
@@ -154,6 +166,8 @@ def build_context_usage_snapshot(
             stale_after_compaction=True,
             compactable=False,
             reason="stale_usage_after_compaction",
+            transcript_revision=transcript_revision,
+            leaf_id=leaf_id,
         )
 
     estimate = estimate_context_tokens(messages) if messages else None
@@ -165,6 +179,29 @@ def build_context_usage_snapshot(
         source = "estimated_from_last_usage"
     else:
         source = "assistant_usage"
+    authority: ContextUsageAuthority
+    accuracy: ContextUsageAccuracy
+    estimator_id: str | None
+    if source == "assistant_usage" and estimate is not None and estimate.usage_tokens > 0:
+        authority = "provider_usage"
+        accuracy = "projected"
+        estimator_id = None
+    elif (
+        source == "estimated_from_last_usage"
+        and estimate is not None
+        and estimate.usage_tokens > 0
+    ):
+        authority = "provider_usage"
+        accuracy = "projected"
+        estimator_id = CONTEXT_MESSAGE_ESTIMATOR_ID
+    elif source == "estimated":
+        authority = "local_estimator"
+        accuracy = "estimated"
+        estimator_id = CONTEXT_MESSAGE_ESTIMATOR_ID
+    else:
+        authority = "unknown"
+        accuracy = "unknown"
+        estimator_id = None
     compactable = tokens > budget.threshold_tokens
     return ContextUsageSnapshot(
         tokens=tokens,
@@ -182,6 +219,11 @@ def build_context_usage_snapshot(
         stale_after_compaction=False,
         compactable=compactable,
         reason="threshold" if compactable else None,
+        authority=authority,
+        accuracy=accuracy,
+        transcript_revision=transcript_revision,
+        leaf_id=leaf_id,
+        estimator_id=estimator_id,
     )
 
 
@@ -320,7 +362,10 @@ def _last_assistant_usage_info(
 
 __all__ = [
     "ContextUsageSnapshot",
+    "ContextUsageAccuracy",
+    "ContextUsageAuthority",
     "ContextUsageSource",
+    "CONTEXT_MESSAGE_ESTIMATOR_ID",
     "build_context_usage_snapshot",
     "calculate_context_tokens",
     "current_context_usage",
