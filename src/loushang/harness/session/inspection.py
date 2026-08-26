@@ -111,6 +111,7 @@ class ContextUsage:
     transcript_revision: int | None = None
     leaf_id: str | None = None
     estimator_id: str | None = None
+    surface_fingerprint: str | None = None
 
 
 @dataclass(frozen=True)
@@ -231,6 +232,7 @@ class AgentSessionInspector:
             transcript_revision=snapshot.transcript_revision,
             leaf_id=snapshot.leaf_id,
             estimator_id=snapshot.estimator_id,
+            surface_fingerprint=snapshot.surface_fingerprint,
         )
 
     def build_session_stats(self) -> SessionStats:

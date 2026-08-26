@@ -33,6 +33,7 @@ if TYPE_CHECKING:
         ContextUsageAccuracy,
         ContextUsageAuthority,
         ContextUsageSnapshot,
+        ReplayContextSurfaceMeasurement,
         build_context_usage_snapshot,
         calculate_context_tokens,
         current_context_usage,
@@ -40,6 +41,7 @@ if TYPE_CHECKING:
         estimate_message_tokens,
         has_post_compaction_usage,
         latest_compaction_entry,
+        measure_replay_context_surface,
         model_context_window,
     )
     from loushang.harness.transcript.directory import (
@@ -383,6 +385,7 @@ _EXPORT_MODULES = {
     "ContextUsageSnapshot": "loushang.harness.transcript.context_usage",
     "ContextUsageAccuracy": "loushang.harness.transcript.context_usage",
     "ContextUsageAuthority": "loushang.harness.transcript.context_usage",
+    "ReplayContextSurfaceMeasurement": "loushang.harness.transcript.context_usage",
     "DEFAULT_BRANCH_SUMMARY_PREAMBLE": "loushang.harness.transcript.summarization",
     "ConversationMetadataPatch": "loushang.harness.transcript.types",
     "DecodedAgentTranscriptPayload": "loushang.harness.transcript.types",
@@ -495,6 +498,7 @@ _EXPORT_MODULES = {
     "load_agent_transcript_header": "loushang.harness.transcript.jsonl_file",
     "model_selection_from_model": "loushang.harness.transcript.interaction",
     "model_context_window": "loushang.harness.transcript.context_usage",
+    "measure_replay_context_surface": "loushang.harness.transcript.context_usage",
     "normalize_branch_summary_output": "loushang.harness.transcript.summarization",
     "plan_turn_aware_compaction": "loushang.harness.transcript.compaction",
     "prepare_turn_aware_compaction": "loushang.harness.transcript.compaction",

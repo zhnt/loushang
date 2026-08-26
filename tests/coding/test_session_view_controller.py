@@ -307,9 +307,12 @@ def test_session_view_controller_reports_unknown_current_context_after_compactio
 
     assert usage is not None
     assert usage.has_compaction is True
-    assert usage.tokens is None
+    assert usage.tokens is not None
     assert usage.context_window == 128000
-    assert usage.percent is None
+    assert usage.percent is not None
+    assert usage.authority == "local_estimator"
+    assert usage.accuracy == "estimated"
+    assert usage.surface_fingerprint is not None
 
     pi_stats = project_session_stats(
         agent=agent,

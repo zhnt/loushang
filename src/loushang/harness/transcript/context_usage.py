@@ -7,6 +7,8 @@ remain in :mod:`loushang.harness.context`.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
@@ -53,6 +55,17 @@ class ContextUsageSnapshot:
     transcript_revision: int | None = None
     leaf_id: str | None = None
     estimator_id: str | None = None
+    surface_fingerprint: str | None = None
+
+
+@dataclass(frozen=True)
+class ReplayContextSurfaceMeasurement:
+    """Deterministic local price of an already-resolved replay surface."""
+
+    tokens: int
+    message_count: int
+    surface_fingerprint: str
+    estimator_id: str = CONTEXT_MESSAGE_ESTIMATOR_ID
 
 
 def calculate_context_tokens(usage: object) -> int:
@@ -99,6 +112,28 @@ def estimate_context_tokens(messages: Sequence[AgentMessage]) -> ContextUsageEst
     )
 
 
+def measure_replay_context_surface(
+    messages: Sequence[AgentMessage],
+) -> ReplayContextSurfaceMeasurement:
+    """Price the authoritative replay result without choosing its membership."""
+
+    sequence = list(messages)
+    projection = [_replay_message_projection(message) for message in sequence]
+    canonical = json.dumps(
+        projection,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return ReplayContextSurfaceMeasurement(
+        tokens=sum(estimate_message_tokens(message) for message in sequence),
+        message_count=len(sequence),
+        surface_fingerprint=(
+            "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        ),
+    )
+
+
 def current_context_usage(
     messages: Sequence[AgentMessage],
     branch_entries: Sequence[object],
@@ -121,6 +156,7 @@ def build_context_usage_snapshot(
     transcript_revision: int | None = None,
     leaf_id: str | None = None,
 ) -> ContextUsageSnapshot:
+    replay_surface = measure_replay_context_surface(messages)
     context_window = model_context_window(model)
     if context_window is None:
         return ContextUsageSnapshot(
@@ -139,6 +175,7 @@ def build_context_usage_snapshot(
             reason="unknown_context_window",
             transcript_revision=transcript_revision,
             leaf_id=leaf_id,
+            surface_fingerprint=replay_surface.surface_fingerprint,
         )
 
     budget = calculate_compaction_budget(
@@ -150,8 +187,9 @@ def build_context_usage_snapshot(
     if latest_compaction is not None and not has_post_compaction_usage(
         branch_entries, latest_compaction
     ):
+        tokens = replay_surface.tokens
         return ContextUsageSnapshot(
-            tokens=None,
+            tokens=tokens,
             context_window=context_window,
             reserve_tokens=reserve_tokens,
             compact_percent=budget.compact_percent,
@@ -160,14 +198,18 @@ def build_context_usage_snapshot(
             reserve_threshold_tokens=budget.reserve_threshold_tokens,
             threshold_tokens=budget.threshold_tokens,
             threshold_reason=budget.threshold_reason,
-            percent=None,
-            source="unknown",
+            percent=(tokens / context_window) * 100,
+            source="estimated",
             last_usage_index=None,
             stale_after_compaction=True,
             compactable=False,
             reason="stale_usage_after_compaction",
+            authority="local_estimator",
+            accuracy="estimated",
             transcript_revision=transcript_revision,
             leaf_id=leaf_id,
+            estimator_id=replay_surface.estimator_id,
+            surface_fingerprint=replay_surface.surface_fingerprint,
         )
 
     estimate = estimate_context_tokens(messages) if messages else None
@@ -224,6 +266,7 @@ def build_context_usage_snapshot(
         transcript_revision=transcript_revision,
         leaf_id=leaf_id,
         estimator_id=estimator_id,
+        surface_fingerprint=replay_surface.surface_fingerprint,
     )
 
 
@@ -305,6 +348,55 @@ def estimate_message_tokens(message: AgentMessage) -> int:
     return 0
 
 
+def _replay_message_projection(message: AgentMessage) -> object:
+    if isinstance(message, UserMessage):
+        content = message.content
+        projected_content: object
+        if isinstance(content, str):
+            projected_content = content
+        else:
+            projected_content = [_replay_block_projection(block) for block in content]
+        return {"role": "user", "content": projected_content}
+    if isinstance(message, AssistantMessage):
+        return {
+            "role": "assistant",
+            "content": [
+                _replay_block_projection(block) for block in message.content
+            ],
+        }
+    if isinstance(message, ToolResultMessage):
+        return {
+            "role": "toolResult",
+            "toolCallId": message.tool_call_id,
+            "toolName": message.tool_name,
+            "content": [
+                _replay_block_projection(block) for block in message.content
+            ],
+            "isError": message.is_error,
+        }
+    return {"role": getattr(message, "role", "unknown")}
+
+
+def _replay_block_projection(block: object) -> object:
+    block_type = getattr(block, "type", None)
+    if block_type == "text":
+        return {"type": "text", "text": str(getattr(block, "text", ""))}
+    if block_type == "thinking":
+        return {
+            "type": "thinking",
+            "thinking": str(getattr(block, "thinking", "")),
+        }
+    if block_type == "toolCall":
+        return {
+            "type": "toolCall",
+            "name": str(getattr(block, "name", "")),
+            "arguments": getattr(block, "arguments", None),
+        }
+    if block_type == "image":
+        return {"type": "image"}
+    return {"type": str(block_type)}
+
+
 def _usage_value(usage: object, *keys: str) -> object | None:
     if isinstance(usage, Mapping):
         for key in keys:
@@ -366,6 +458,7 @@ __all__ = [
     "ContextUsageAuthority",
     "ContextUsageSource",
     "CONTEXT_MESSAGE_ESTIMATOR_ID",
+    "ReplayContextSurfaceMeasurement",
     "build_context_usage_snapshot",
     "calculate_context_tokens",
     "current_context_usage",
@@ -374,4 +467,5 @@ __all__ = [
     "has_post_compaction_usage",
     "latest_compaction_entry",
     "model_context_window",
+    "measure_replay_context_surface",
 ]

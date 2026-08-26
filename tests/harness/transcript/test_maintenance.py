@@ -27,6 +27,7 @@ from loushang.harness.transcript import (
     TranscriptCompactionPolicy,
     build_context_usage_snapshot,
     is_compaction_aborted,
+    measure_replay_context_surface,
 )
 
 
@@ -132,11 +133,16 @@ def test_context_usage_is_profile_owned_and_stales_at_checkpoint() -> None:
             leaf_id=session.get_leaf_id(),
         )
         assert stale.stale_after_compaction is True
-        assert stale.tokens is None
-        assert stale.authority == "unknown"
-        assert stale.accuracy == "unknown"
+        expected = measure_replay_context_surface(session.build_context().messages)
+        assert stale.tokens == expected.tokens
+        assert stale.percent == (expected.tokens / 100) * 100
+        assert stale.authority == "local_estimator"
+        assert stale.accuracy == "estimated"
+        assert stale.compactable is False
+        assert stale.reason == "stale_usage_after_compaction"
         assert stale.transcript_revision == 3
         assert stale.leaf_id == "checkpoint-1"
+        assert stale.surface_fingerprint == expected.surface_fingerprint
 
     asyncio.run(scenario())
 
@@ -237,7 +243,7 @@ def test_compaction_runtime_commits_checkpoint_and_publishes_common_events() -> 
         assert status.last_started_at is not None
         assert status.last_completed_at is not None
         assert status.last_tokens_before == 20
-        assert status.last_tokens_after is None
+        assert status.last_tokens_after is not None
         assert status.last_summary_mode == "complete"
         assert status.last_succeeded is True
         assert status.context_window == 100
@@ -579,7 +585,7 @@ def test_post_commit_failure_keeps_success_and_refreshed_context() -> None:
         assert completed.duration_ms is not None
         assert completed.duration_ms >= 0
         assert completed.tokens_before is not None
-        assert completed.tokens_after is None
+        assert completed.tokens_after is not None
         assert completed.checkpoint_record_id == session.get_entries()[-1].record_id
 
     asyncio.run(scenario())

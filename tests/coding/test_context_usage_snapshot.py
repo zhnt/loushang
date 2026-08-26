@@ -160,8 +160,12 @@ def test_context_usage_snapshot_marks_pre_compaction_usage_stale(tmp_path) -> No
         reserve_tokens=10,
     )
 
-    assert snapshot.tokens is None
+    assert snapshot.tokens is not None
+    assert snapshot.tokens > 0
     assert snapshot.context_window == 100
-    assert snapshot.source == "unknown"
+    assert snapshot.source == "estimated"
+    assert snapshot.authority == "local_estimator"
+    assert snapshot.accuracy == "estimated"
+    assert snapshot.surface_fingerprint is not None
     assert snapshot.stale_after_compaction is True
     assert snapshot.compactable is False

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import loushang.harness.transcript.context_usage as context_usage
 import loushang.harness.transcript.maintenance as maintenance
+from loushang.ai.types import UserMessage
 from loushang.harness.context import serialize_context_usage_payload
 from loushang.harness.transcript import (
     ContextUsageSnapshot,
@@ -12,6 +13,7 @@ from loushang.harness.transcript import (
     estimate_message_tokens,
     has_post_compaction_usage,
     latest_compaction_entry,
+    measure_replay_context_surface,
     model_context_window,
 )
 
@@ -31,6 +33,10 @@ def test_context_usage_public_exports_keep_their_stable_package_surface() -> Non
     assert has_post_compaction_usage is context_usage.has_post_compaction_usage
     assert latest_compaction_entry is context_usage.latest_compaction_entry
     assert model_context_window is context_usage.model_context_window
+    assert (
+        measure_replay_context_surface
+        is context_usage.measure_replay_context_surface
+    )
 
 
 def test_context_usage_measurement_identity_serializes_compatibly() -> None:
@@ -45,6 +51,7 @@ def test_context_usage_measurement_identity_serializes_compatibly() -> None:
             transcript_revision=7,
             leaf_id="leaf-7",
             estimator_id="harness.message_chars.v1",
+            surface_fingerprint="sha256:" + "a" * 64,
         )
     )
 
@@ -54,3 +61,21 @@ def test_context_usage_measurement_identity_serializes_compatibly() -> None:
     assert payload["transcriptRevision"] == 7
     assert payload["leafId"] == "leaf-7"
     assert payload["estimatorId"] == "harness.message_chars.v1"
+    assert payload["surfaceFingerprint"] == "sha256:" + "a" * 64
+
+
+def test_replay_surface_fingerprint_tracks_model_visible_content_only() -> None:
+    first = measure_replay_context_surface(
+        [UserMessage(role="user", content="hello", timestamp=1.0)]
+    )
+    timestamp_only = measure_replay_context_surface(
+        [UserMessage(role="user", content="hello", timestamp=2.0)]
+    )
+    changed = measure_replay_context_surface(
+        [UserMessage(role="user", content="hello!", timestamp=1.0)]
+    )
+
+    assert first.tokens == 2
+    assert first.message_count == 1
+    assert first.surface_fingerprint == timestamp_only.surface_fingerprint
+    assert first.surface_fingerprint != changed.surface_fingerprint
