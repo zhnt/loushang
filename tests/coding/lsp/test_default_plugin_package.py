@@ -22,6 +22,9 @@ from loushang.harness.plugin_authoring.capability_provider import (
     PLUGIN_PROVIDER_SELECTION_RULE,
     CapabilityProviderDeclarationPayload,
 )
+from loushang.harness.plugin_authoring.consumer_pack import (
+    ToolPackDeclarationPayload,
+)
 from loushang.harness.plugin_authoring.coordinator import (
     PluginDeclarationCoordinator,
 )
@@ -73,7 +76,7 @@ def test_checked_in_lsp_plugin_is_published_with_exact_loushang_evidence(
     [binding] = materializer.bind_plugin_packages((published,))
 
     assert package.manifest.name == "coding.lsp.default"
-    assert len(package.contribution_index.items) == 1
+    assert len(package.contribution_index.items) == 2
     [distribution] = published.dependency_lock.python_distributions
     assert distribution.name == "loushang"
     assert distribution.version == importlib.metadata.version("loushang")
@@ -126,7 +129,11 @@ def test_checked_in_lsp_definition_emits_only_reserved_provider_ir(
         distribution_evidence_resolver=evidence_resolver,
     )
 
-    [candidate] = selection.candidates
+    candidate = next(
+        item
+        for item in selection.candidates
+        if item.declaration.kind == "capability_provider"
+    )
     payload = CapabilityProviderDeclarationPayload.from_reserved_declaration(
         candidate.declaration,
         source_group=source_group,
@@ -135,7 +142,11 @@ def test_checked_in_lsp_definition_emits_only_reserved_provider_ir(
     assert payload.provider.capability_id == "coding.lsp"
     assert payload.provider.provider_id == "coding.lsp.default"
     assert payload.provider.selection_rule == PLUGIN_PROVIDER_SELECTION_RULE
-    [configuration_entry] = source_group.effective_configuration_entries
+    configuration_entry = next(
+        item
+        for item in source_group.effective_configuration_entries
+        if item.contribution_id == "coding-lsp-default"
+    )
     assert payload.binding_inputs == configuration_entry.configuration
     assert configuration_entry.to_dict()["configuration"] == config.to_dict()
     assert payload.factory.path == "definition.py"
@@ -143,6 +154,20 @@ def test_checked_in_lsp_definition_emits_only_reserved_provider_ir(
     assert payload.disposer is not None
     assert payload.disposer.path == "definition.py"
     assert payload.disposer.symbol == "dispose_provider"
+
+    tool_candidate = next(
+        item
+        for item in selection.candidates
+        if item.declaration.kind == "tool_pack"
+    )
+    tool_payload = ToolPackDeclarationPayload.from_candidate(tool_candidate)
+    assert tool_candidate.declaration.contribution_id == "coding-lsp-tools"
+    assert tool_payload.catalog_id == "coding.lsp.tools"
+    assert tool_payload.item_ids == ("document_outline", "inspect_symbol")
+    assert tool_payload.owner_namespace == "coding.tools"
+    assert [requirement.capability for requirement in tool_payload.requirements] == [
+        "coding.lsp"
+    ]
 
 
 def test_checked_in_lsp_activation_symbols_import_through_component_host_boundary(
@@ -187,7 +212,7 @@ def _evaluate_definition(
         definitions=(),
         baseline_environment={"PATH": "/admitted/bin"},
     )
-    contribution = published.contribution_index.items[0]
+    contributions = published.contribution_index.items
     plan = PluginSelectionPlanV2(
         context=PluginPreflightContextV1(
             product_id="coding",
@@ -202,8 +227,12 @@ def _evaluate_definition(
             ),
         ),
         selected_plugin_ids=("coding.lsp.default",),
-        selected_contributions=(
-            PluginContributionRef("coding.lsp.default", contribution.contribution_id),
+        selected_contributions=tuple(
+            PluginContributionRef(
+                "coding.lsp.default",
+                contribution.contribution_id,
+            )
+            for contribution in contributions
         ),
         source_trust_snapshots=(
             PluginSourceTrustSnapshotV1(
@@ -215,12 +244,17 @@ def _evaluate_definition(
             ),
         ),
         effective_configuration_set=PluginEffectiveConfigurationSetV1(
-            entries=(
+            entries=tuple(
                 PluginEffectiveConfigurationEntry(
                     plugin_id="coding.lsp.default",
                     contribution_id=contribution.contribution_id,
-                    configuration=config.to_dict(),
-                ),
+                    configuration=(
+                        config.to_dict()
+                        if contribution.kind == "capability_provider"
+                        else {}
+                    ),
+                )
+                for contribution in contributions
             )
         ),
         allowed_authority_ceiling=("filesystem", "process"),
@@ -261,7 +295,11 @@ def _evaluate_definition(
         decision_lookup=journal,
     )
     assert isinstance(outcome, PluginPreflightAcceptedOutcome)
-    [source_group] = outcome.accepted.source_groups
+    source_group = next(
+        item
+        for item in outcome.accepted.source_groups
+        if item.declaration_source.kind == "in_process"
+    )
     selection = PluginDeclarationCoordinator(
         resolver,
         execution_evaluator=PluginDefinitionEvaluator(

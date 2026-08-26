@@ -22,9 +22,11 @@
   also implemented. PLC5.1a's installed-distribution evidence resolver,
   Product-owned co-distribution grant, canonical lock integration, checked-in
   `coding.lsp.default` package, inert declaration evaluation, and private
-  activation-symbol import proof are implemented. Private opt-in bootstrap,
-  production activation/cutover, PLC6 through PLC9, and the public SDK remain
-  unimplemented.
+  activation-symbol import proof are implemented. The private Product opt-in
+  request/composer now owns package publication, selection, Definition Approval
+  consumption, Tool-owner admission and Provider resolution. Activation-owner
+  consumption, bootstrap/Graph transfer, production cutover, PLC6 through PLC9,
+  and the public SDK remain unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
@@ -1031,7 +1033,7 @@ replace PLC5 as the first production complete-Bundle Provider/Graph proof.
 
 ### PLC5: `coding.lsp.default` Production Provider
 
-Implementation status (2026-08-25): PLC5.0 implements the private,
+Implementation status (2026-08-26): PLC5.0 implements the private,
 unpublished Product assembly seam needed before the LSP package cutover. Given
 one finalized `PluginSelection`, exact Capability-owner bindings, the shared
 Capability definitions, explicit Product Provider roots/choices, and any
@@ -1063,9 +1065,16 @@ Graph, typed Tool Consumer capture, and reverse owner disposal. This removes
 the last test-only manual Provider admission/resolution assembly path before a
 real production adopter. The checked-in `coding.lsp.default`
 declaration/package now reaches finalized inert Provider IR and its activation
-symbols import through the unchanged Component Host boundary. The next slice is
-private opt-in bootstrap wiring; activation, default cutover and old
-deferred-route deletion remain later PLC5 gates.
+symbols import through the unchanged Component Host boundary. Its sibling
+data-only Tool pack declares the typed `coding.lsp` runtime Consumer without
+registering Tools. A private `CodingLspPluginOptInRequest` carries only the
+Approval-owner port; the Product composer expands it through package
+publication, selection, executable-Definition Approval consumption, exact Tool
+owner admission and Provider resolution. The resulting inert assembly still
+requires an externally issued activation decision and cannot yet enter a
+Session. The next slice is activation-owner consumption and exact Session input
+binding; bootstrap/Graph transfer, default cutover and old deferred-route
+deletion remain later PLC5 gates.
 
 The adopter-specific design review freezes the following PLC5.1 boundaries
 before implementation:
