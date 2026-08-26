@@ -156,13 +156,27 @@ def _show_auto_field(value: StatusLineAutoValue, has_data: bool) -> bool:
 def _context_status(value: object | None) -> tuple[str, str]:
     percent = _usage_value(value, "percent")
     source = _usage_value(value, "source")
+    accuracy = _usage_value(value, "accuracy")
+    envelope_status = _usage_value(
+        value, "structural_envelope_status", "structuralEnvelopeStatus"
+    )
     stale = _usage_value(value, "stale_after_compaction", "staleAfterCompaction") is True
     if isinstance(percent, bool) or not isinstance(percent, int | float):
         return "ctx ?", "context.unknown"
     remaining = max(0, min(100, round(100 - float(percent))))
     if stale:
         return f"ctx ≈{remaining}% left stale", "context.stale"
-    if source == "assistant_usage":
+    if isinstance(envelope_status, str) and envelope_status in {
+        "mismatched",
+        "logical_mismatch",
+    }:
+        return f"ctx ≈{remaining}% left changed", "context.estimated"
+    if accuracy is None and source == "assistant_usage":
+        return f"ctx {remaining}% left", "context.measured"
+    if (
+        (not isinstance(accuracy, str) or accuracy not in {"projected", "estimated", "unknown"})
+        and source == "assistant_usage"
+    ):
         return f"ctx {remaining}% left", "context.measured"
     return f"ctx ≈{remaining}% left", "context.estimated"
 
