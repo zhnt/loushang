@@ -25,6 +25,16 @@ order:
 2. move production `coding.base` after `coding.lsp` and before `coding.arch`,
    while keeping the stable SDK gated on LSP, Base and Arch evidence.
 
+The 2026-08-24
+[Resource Catalog And Source Pluginization Plan](resource-catalog-pluginization-plan.md)
+subsequently proposes a third revision: PLC4.5 would implement the internal
+Resource-owner component/Catalog/source foundation and converge Skill Consumers
+before LSP. That proposal preserves `coding.lsp` as the first complete-Bundle
+Provider/Graph proof and leaves generic public component authoring in PLC8. It
+was not part of this independent review and requires a fresh source-backed
+review before implementation; the two decisions above remain the accepted
+findings of this record.
+
 The initial review found nine high-priority risks; six later PLC1B review
 rounds found additional declaration, evidence and lifecycle freeze gaps. The
 plan and normative PLC1B Contract include their required corrections. None

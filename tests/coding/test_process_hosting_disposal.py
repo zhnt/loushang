@@ -66,7 +66,7 @@ def test_coding_disposal_propagates_cleanup_failure_without_product_failure(
     assert events == ["product", "host-sandbox"]
 
 
-def test_coding_disposes_lsp_before_process_host_and_sandbox(
+def test_coding_never_closes_graph_owned_lsp_access(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     events: list[str] = []
@@ -74,9 +74,9 @@ def test_coding_disposes_lsp_before_process_host_and_sandbox(
     async def dispose_product(_self: object) -> None:
         events.append("product")
 
-    class _LspRuntime:
+    class _GraphOwnedLspAccess:
         async def close(self) -> None:
-            events.append("lsp")
+            events.append("incorrect-lsp-close")
 
     class _SandboxRuntime:
         async def close(self) -> None:
@@ -88,9 +88,9 @@ def test_coding_disposes_lsp_before_process_host_and_sandbox(
         dispose_product,
     )
     session = object.__new__(AgentSession)
-    session._lsp_runtime = _LspRuntime()  # type: ignore[assignment]
+    session._lsp_access = _GraphOwnedLspAccess()  # type: ignore[attr-defined]
     session._sandbox_runtime = _SandboxRuntime()  # type: ignore[assignment]
 
     asyncio.run(session._dispose_session_runtime_profile())
 
-    assert events == ["product", "lsp", "host-sandbox"]
+    assert events == ["product", "host-sandbox"]

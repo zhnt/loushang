@@ -34,10 +34,12 @@ remain authoritative wherever this plan is silent or ambiguous.
 
 ## Decision
 
-The next development priority is a small, owner-preserving Definition / Provider
-/ Consumer authoring path, followed by one executable production Capability
-slice. Consolidating Skill loading is a subsequent adopter of the same provider
-and resource principles; it must not define a Skill-only Plugin runtime first.
+The owner-preserving Definition / Provider / Consumer foundation is complete
+through PAP5. Before the first executable production Capability slice, PAP5.5
+now closes the Resource-owner component and Catalog foundation specified by
+[Resource Catalog And Source Pluginization Plan](resource-catalog-pluginization-plan.md).
+This is mechanism pluginization, not a Skill-only Plugin runtime: individual
+Skills remain Resources and the stable advanced component SDK stays gated.
 
 The delivery order is:
 
@@ -53,9 +55,11 @@ freeze existing semantic types and authority sinks
   -> add Capability-owner eligibility/final admission and Product selection
   -> resolve one approved binding spec through a narrow Component Host
   -> bind through the existing Session Graph Binder
+  -> add exact Resource-owner components, one Catalog, and typed lazy Resource
+     loading while retaining manifest-free native Skills
   -> prove the path with a conformance fixture and coding.lsp production slice
   -> stabilize and publish the author SDK
-  -> converge Skill discovery/loading on a provider-neutral catalog
+  -> stabilize the already-converged Skill projection and author helpers
 ```
 
 `coding.base` is not the first executable Capability proof. It contributes
@@ -448,9 +452,10 @@ to permit different implementation timing.
 | No original PAP slice | PLC2 | Minimum lifecycle and management control is an integrated prerequisite before executable declaration work lands. |
 | PAP2 + PAP3 | PLC3 | Approval-owner consumption followed by verified Definition evaluation. |
 | PAP4 + PAP4R + PAP5 | PLC4 | Capability and Resource/Tool/Command exact-owner admission, external-Consumer root compilation, Product selection, Component Host, and existing owner publication. |
+| PAP5.5 | PLC4.5 | Resource-owner component generation, one Resource Catalog, native/package/embedded sources, typed lazy load, and Skill Consumer convergence before LSP. |
 | PAP6 | PLC5 | First production Graph proof through `coding.lsp.default`. |
 | No original PAP slice | PLC6 + PLC7 | Production `coding.base` Resource cutover, then `coding.arch.default` as the second Provider proof. |
-| PAP7 + PAP8 | PLC8 | Public SDK stabilization and single provider-neutral Skill Resource path after production evidence. |
+| PAP7 + PAP8 | PLC8 | Public SDK and advanced source-component authoring stabilization after production evidence; Skill runtime already uses the PAP5.5 Resource path. |
 | No original PAP slice | PLC9 | Management surfaces, isolation, GC, and cleanup closure. |
 
 PAP2/PAP3 design and adversarial review may proceed while PLC1B and PLC2 are
@@ -991,6 +996,51 @@ Exit gate:
 Rollback: switch the Session input adapter back to built-in bindings; the new
 records remain inert and safe to retain.
 
+### PAP5.5: Resource Catalog And Source Component Foundation
+
+Normative delivery details, records, lifecycle, migration phases, and
+adversarial gates are specified by
+[Resource Catalog And Source Pluginization Plan](resource-catalog-pluginization-plan.md).
+
+Scope:
+
+- implement the minimum owner-defined `capability_component` foundation needed
+  by `harness.resources`, without publishing a universal public component SDK;
+- select exactly one `resource.catalog_engine` component and aggregate exact
+  `resource.source` component generations under the Resource owner;
+- preserve native filesystem Skills with no Plugin manifest while adapting
+  admitted package and embedded/OEM Resources to the same candidate schema;
+- normalize every admitted item and Extension `resources_discover` contribution
+  through one exact-generation source snapshot before the only final merge;
+- make one Catalog snapshot and exact lazy-body receipt authoritative, with
+  `ResourceBundle` retained only as a compatibility projection;
+- stage one transferable Resource owner generation before Session publication,
+  then adopt it through the existing `harness.resources` Provider and one
+  Session Graph; and
+- converge CLI, activation, prompt summary, explicit load, commands, refresh,
+  and Model Input evidence on one typed Skill Consumer before deleting peer
+  Loader paths.
+
+Exit gate:
+
+- no `harness.skills` Capability, second Catalog, second Resource candidate,
+  ambient registry, or per-Skill Plugin identity exists;
+- the current source precedence and kind-specific merge behavior have explicit
+  parity fixtures, and every conflict is source-explainable;
+- source/engine component activation, publication, refresh pinning, reverse
+  disposal, and exact unload pass failure-injection tests;
+- initial discovery is synchronous/budgeted, native body identity is bound at
+  discovery, refresh classification precedes mount/handle mutation, and
+  Extension/Catalog/projection publication is one transaction;
+- native/package/embedded sources use one Catalog path and exact source
+  generation handles; and
+- a committed model request retains exact Skill content and digest across file
+  change, refresh, uninstall, and cold replay.
+
+Rollback: retain the shadow Catalog records and component declarations, keep
+the current Resource Loader as the sole live authority, and publish no owner
+generation. Do not run two effective catalogs.
+
 ### PAP6: `coding.lsp` Production Vertical Slice
 
 Scope:
@@ -1007,8 +1057,9 @@ Scope:
   registration only after Provider and sibling Tool-pack compatibility tests
   pass;
 - keep individual language-server routes as owner-internal data for this first
-  slice; generic `capability_component` authoring follows only after the
-  complete-Bundle path is stable.
+  slice; PAP5.5's Resource-specific component runtime does not publish generic
+  LSP component authoring, which follows only after the complete-Bundle path is
+  stable.
 
 Primary migration surfaces include:
 
@@ -1078,12 +1129,13 @@ semantics do not change.
 Scope:
 
 - keep each `SKILL.md` as a `resource_item`, not a Plugin instance or Graph node;
-- define a provider-neutral Skill catalog snapshot and lazy body loader;
-- adapt filesystem, admitted package, and embedded Skill sources to that one
-  catalog path;
-- use owner-specific Resource registration/refresh and deterministic precedence;
-- bind every loaded model-visible Skill to source revision/content digest and
-  commit the actual content through Model Input;
+- stabilize the PAP5.5 provider-neutral Skill projection and lazy body loader
+  after LSP/Base/Arch compatibility evidence;
+- publish the minimum data-only Resource helpers and, only with sufficient
+  evidence, the advanced source-component authoring surface;
+- retain owner-specific Resource registration/refresh, deterministic
+  precedence, exact source revision/content digest, and committed Model Input
+  content proved by PAP5.5; and
 - route Skill-referenced scripts through existing Tool/Policy/Approval/Sandbox
   execution rather than importing them as Plugin code.
 
@@ -1096,10 +1148,9 @@ Exit gate:
 - a Provider disposer cannot remove another Provider's Skills;
 - no per-Skill Plugin activation identity is created.
 
-PAP8 schema design and review may begin after PAP5 if it uses only internal
-stable records. Source implementation and merge remain PLC8 work and may not
-begin before the LSP, Base, and Arch production gates; early design must not
-delay PAP6 or publish a public SDK ahead of PAP7.
+PAP5.5 owns the internal Catalog/source implementation and Skill caller cutover
+before LSP. PAP8 owns later public stabilization and must not reopen a second
+Skill path or publish the advanced component SDK ahead of PAP7's evidence gate.
 
 ## Commit And Review Shape
 
@@ -1218,8 +1269,9 @@ Completion means:
    deleted; and
 10. the public SDK exposes no broader authority than the internal SPI proved.
 
-PAP8 Skill convergence is the first lightweight Resource-provider adoption,
-not part of the executable Capability authoring completion gate.
+PAP5.5 Resource Catalog convergence is the first owner-component aggregation
+adoption. It is a prerequisite for PAP6, but it does not replace PAP6's
+complete-Bundle Provider/Graph proof or PAP7's public SDK gate.
 
 ## Estimate And Parallelism
 
@@ -1235,6 +1287,7 @@ Indicative focused effort, excluding unrelated failures:
 | PAP4 | 3–5 days | owner admission and pure Product resolver can split |
 | PAP4R | 4–6 days | exact owner codecs and pure Consumer-root compilation can split before owner staging |
 | PAP5 | 4–6 days | Component Host and Session integration split after interfaces freeze |
+| PAP5.5 | 8–14 days | inert Catalog core, owner-component lifecycle, source adapters, Session adoption, and peer-route deletion split only at owner-preserving gates |
 | PAP6 | 6–10 days | LSP Provider migration, Session adoption, and peer-route deletion split by commit |
 | PAP7 | 2–4 days | guide/fixtures after runtime contracts freeze |
 | PAP8 | 3–5 days | filesystem/package adapters can split after catalog contract freezes |
@@ -1252,8 +1305,8 @@ The authoring milestone does not add:
 
 - generic typed events, durable subscription outboxes, Agent Definitions, or
   private Plugin data migration;
-- a universal `capability_component` SDK before the complete-Bundle LSP path is
-  proven;
+- a universal public `capability_component` SDK before the complete-Bundle LSP
+  path is proven; PAP5.5 implements only the internal Resource-owner schemas;
 - per-Agent service recomposition;
 - cross-owner live hot replacement;
 - dynamic MCP Tool discovery or `tools/list_changed` publication;

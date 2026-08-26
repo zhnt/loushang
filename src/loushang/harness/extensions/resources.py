@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
+from loushang.harness.extensions.declarations import extension_declaration_id
 from loushang.harness.extensions.routing import (
     ExtensionRouteError,
     ExtensionRoutePlan,
@@ -15,6 +17,11 @@ from loushang.harness.extensions.types import (
     ExtensionResourceContribution,
     LoadedExtension,
 )
+from loushang.harness.resources._catalog_extension_source import (
+    ExtensionResourceRouteContribution,
+    ExtensionResourceSourceGeneration,
+    freeze_extension_resource_source_generation,
+)
 from loushang.harness.resources.diagnostics import resource_diagnostic
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
@@ -22,6 +29,43 @@ from loushang.harness.resources.types import (
     SkillDescriptor,
     ThemeDescriptor,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class ExtensionResourceCatalogDiscovery:
+    """Unpublished projection and exact routed inputs for one Catalog pass."""
+
+    projection: ResourceBundle
+    route_contributions: tuple[ExtensionResourceRouteContribution, ...]
+
+    def freeze_generation(
+        self,
+        *,
+        product_id: str,
+        runtime_id: str,
+        extension_generation: int,
+        extension_set_fingerprint: str,
+    ) -> PreparedExtensionResourceCatalog:
+        """Transfer exact routed values into one Extension-owned source."""
+
+        return PreparedExtensionResourceCatalog(
+            projection=self.projection,
+            source_generation=freeze_extension_resource_source_generation(
+                product_id=product_id,
+                runtime_id=runtime_id,
+                extension_generation=extension_generation,
+                extension_set_fingerprint=extension_set_fingerprint,
+                route_contributions=self.route_contributions,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedExtensionResourceCatalog:
+    """Unpublished compatibility projection and its Extension-owned source."""
+
+    projection: ResourceBundle
+    source_generation: ExtensionResourceSourceGeneration
 
 
 class ExtensionResourceRuntime:
@@ -68,6 +112,136 @@ class ExtensionResourceRuntime:
                 diagnostics=diagnostics,
             )
         return self._finish(merged, diagnostics)
+
+    async def prepare_catalog_inputs_async(
+        self,
+        bundle: ResourceBundle,
+        *,
+        context: object,
+    ) -> ExtensionResourceCatalogDiscovery:
+        """Run one defensive, non-publishing pass for the Resource Catalog owner."""
+
+        merged = _defensive_bundle(bundle)
+        diagnostics: list[DiagnosticDraft] = []
+        routed: list[ExtensionResourceRouteContribution] = []
+        for route_order, route in enumerate(
+            self._route_plan.routes_for("resources_discover")
+        ):
+            route_diagnostics: list[DiagnosticDraft] = []
+            try:
+                contribution = _invoke_resource_handler(
+                    route.registration.handler,
+                    bundle=_defensive_bundle(merged),
+                    context=context,
+                )
+                if inspect.isawaitable(contribution):
+                    contribution = await contribution
+            except Exception as exc:
+                _record_resource_error(route, exc, diagnostics=route_diagnostics)
+                diagnostics.extend(route_diagnostics)
+                if route.registration.on_error == "fail_chain":
+                    self._diagnostics.extend(diagnostics)
+                    raise ExtensionRouteError(route, exc) from exc
+                routed.append(
+                    _catalog_route_contribution(
+                        route,
+                        route_order=route_order,
+                        contribution=None,
+                        diagnostics=route_diagnostics,
+                    )
+                )
+                continue
+
+            merged, routed_contribution = _apply_catalog_route_output(
+                route=route,
+                route_order=route_order,
+                bundle=merged,
+                contribution=contribution,
+                diagnostics=route_diagnostics,
+            )
+            diagnostics.extend(route_diagnostics)
+            routed.append(routed_contribution)
+        return ExtensionResourceCatalogDiscovery(
+            projection=self._finish(merged, diagnostics),
+            route_contributions=tuple(routed),
+        )
+
+    def prepare_catalog_inputs(
+        self,
+        bundle: ResourceBundle,
+        *,
+        context: object,
+    ) -> ExtensionResourceCatalogDiscovery:
+        """Synchronous initial-bootstrap form of the defensive Catalog pass."""
+
+        merged = _defensive_bundle(bundle)
+        diagnostics: list[DiagnosticDraft] = []
+        routed: list[ExtensionResourceRouteContribution] = []
+        for route_order, route in enumerate(
+            self._route_plan.routes_for("resources_discover")
+        ):
+            route_diagnostics: list[DiagnosticDraft] = []
+            try:
+                contribution = _invoke_resource_handler(
+                    route.registration.handler,
+                    bundle=_defensive_bundle(merged),
+                    context=context,
+                )
+            except Exception as exc:
+                _record_resource_error(route, exc, diagnostics=route_diagnostics)
+                diagnostics.extend(route_diagnostics)
+                if route.registration.on_error == "fail_chain":
+                    self._diagnostics.extend(diagnostics)
+                    raise ExtensionRouteError(route, exc) from exc
+                routed.append(
+                    _catalog_route_contribution(
+                        route,
+                        route_order=route_order,
+                        contribution=None,
+                        diagnostics=route_diagnostics,
+                    )
+                )
+                continue
+            if inspect.isawaitable(contribution):
+                if inspect.iscoroutine(contribution):
+                    contribution.close()
+                error = RuntimeError(
+                    "Async extension hooks are not supported in synchronous discovery."
+                )
+                route_diagnostics.append(
+                    resource_diagnostic(
+                        code="unsupported_async_extension_hook",
+                        message="Async extension hooks require async Catalog preparation.",
+                        source_path=route.extension.source_path,
+                    )
+                )
+                diagnostics.extend(route_diagnostics)
+                if route.registration.on_error == "fail_chain":
+                    self._diagnostics.extend(diagnostics)
+                    raise ExtensionRouteError(route, error) from error
+                routed.append(
+                    _catalog_route_contribution(
+                        route,
+                        route_order=route_order,
+                        contribution=None,
+                        diagnostics=route_diagnostics,
+                    )
+                )
+                continue
+
+            merged, routed_contribution = _apply_catalog_route_output(
+                route=route,
+                route_order=route_order,
+                bundle=merged,
+                contribution=contribution,
+                diagnostics=route_diagnostics,
+            )
+            diagnostics.extend(route_diagnostics)
+            routed.append(routed_contribution)
+        return ExtensionResourceCatalogDiscovery(
+            projection=self._finish(merged, diagnostics),
+            route_contributions=tuple(routed),
+        )
 
     def _apply_route(
         self,
@@ -190,8 +364,51 @@ def _merge_contribution(
     extension: LoadedExtension,
     diagnostics: list[DiagnosticDraft],
 ) -> ResourceBundle:
-    if contribution is None:
+    normalized = _normalize_contribution(
+        contribution,
+        extension=extension,
+        diagnostics=diagnostics,
+    )
+    if normalized is None:
         return bundle
+    return _merge_normalized_contribution(bundle, normalized)
+
+
+def _apply_catalog_route_output(
+    contribution: object,
+    *,
+    route: ResolvedExtensionRoute,
+    route_order: int,
+    bundle: ResourceBundle,
+    diagnostics: list[DiagnosticDraft],
+) -> tuple[ResourceBundle, ExtensionResourceRouteContribution]:
+    normalized = _normalize_contribution(
+        contribution,
+        extension=route.extension,
+        diagnostics=diagnostics,
+    )
+    if normalized is not None:
+        normalized = _bind_contribution_source_facts(
+            normalized,
+            extension=route.extension,
+        )
+        bundle = _merge_normalized_contribution(bundle, normalized)
+    return bundle, _catalog_route_contribution(
+        route,
+        route_order=route_order,
+        contribution=normalized,
+        diagnostics=diagnostics,
+    )
+
+
+def _normalize_contribution(
+    contribution: object,
+    *,
+    extension: LoadedExtension,
+    diagnostics: list[DiagnosticDraft],
+) -> ExtensionResourceContribution | None:
+    if contribution is None:
+        return None
     normalized = coerce_resource_contribution(contribution, extension=extension)
     if not isinstance(normalized, ExtensionResourceContribution):
         diagnostics.append(
@@ -204,14 +421,84 @@ def _merge_contribution(
                 source_path=extension.source_path,
             )
         )
-        return bundle
+        return None
     diagnostics.extend(normalized.diagnostics)
+    return normalized
+
+
+def _merge_normalized_contribution(
+    bundle: ResourceBundle,
+    contribution: ExtensionResourceContribution,
+) -> ResourceBundle:
     return bundle.merge(
-        prompt_descriptors=list(normalized.prompt_descriptors),
-        skills=list(normalized.skills),
-        extensions=list(normalized.extensions),
-        prompts=list(normalized.prompts),
-        themes=list(normalized.themes),
+        prompt_descriptors=list(contribution.prompt_descriptors),
+        skills=list(contribution.skills),
+        extensions=list(contribution.extensions),
+        prompts=list(contribution.prompts),
+        themes=list(contribution.themes),
+    )
+
+
+def _bind_contribution_source_facts(
+    contribution: ExtensionResourceContribution,
+    *,
+    extension: LoadedExtension,
+) -> ExtensionResourceContribution:
+    def bind(descriptor):  # type: ignore[no-untyped-def]
+        return replace(
+            descriptor,
+            source=extension.source,
+            source_kind=extension.source_kind,
+            source_scope=extension.source_scope,
+            source_root_order=extension.source_root_order,
+        )
+
+    return ExtensionResourceContribution(
+        prompt_descriptors=[bind(item) for item in contribution.prompt_descriptors],
+        skills=[bind(item) for item in contribution.skills],
+        extensions=[bind(item) for item in contribution.extensions],
+        prompts=[bind(item) for item in contribution.prompts],
+        themes=[bind(item) for item in contribution.themes],
+        diagnostics=list(contribution.diagnostics),
+    )
+
+
+def _catalog_route_contribution(
+    route: ResolvedExtensionRoute,
+    *,
+    route_order: int,
+    contribution: ExtensionResourceContribution | None,
+    diagnostics: list[DiagnosticDraft],
+) -> ExtensionResourceRouteContribution:
+    normalized = contribution or ExtensionResourceContribution()
+    return ExtensionResourceRouteContribution(
+        extension_id=extension_declaration_id(route.extension),
+        route_id=route.route_id,
+        source_class=route.extension.source_kind,
+        scope_id=route.extension.source_scope,
+        source_root_order=route.extension.source_root_order,
+        route_order=route_order,
+        prompt_descriptors=tuple(normalized.prompt_descriptors),
+        skills=tuple(normalized.skills),
+        extensions=tuple(normalized.extensions),
+        prompts=tuple(normalized.prompts),
+        themes=tuple(normalized.themes),
+        diagnostics=tuple(diagnostics),
+    )
+
+
+def _defensive_bundle(bundle: ResourceBundle) -> ResourceBundle:
+    return ResourceBundle(
+        cwd=bundle.cwd,
+        agents_path=bundle.agents_path,
+        agents_md=bundle.agents_md,
+        prompt_fragments=list(bundle.prompt_fragments),
+        prompt_descriptors=list(bundle.prompt_descriptors),
+        skills=list(bundle.skills),
+        extensions=list(bundle.extensions),
+        prompts=list(bundle.prompts),
+        themes=list(bundle.themes),
+        diagnostics=list(bundle.diagnostics),
     )
 
 
@@ -297,6 +584,7 @@ def _prompt_descriptor_from_path(
             source_kind=extension.source_kind,
             source_scope=extension.source_scope,
             source_root=path.parent,
+            source_root_order=extension.source_root_order,
         ),
         None,
     )
@@ -365,6 +653,7 @@ def _skill_descriptor_from_path(
                 if skill_file.name == "SKILL.md"
                 else skill_file.parent
             ),
+            source_root_order=extension.source_root_order,
         ),
         None,
     )
@@ -409,12 +698,15 @@ def _theme_descriptor_from_path(
             source_kind=extension.source_kind,
             source_scope=extension.source_scope,
             source_root=path.parent,
+            source_root_order=extension.source_root_order,
         ),
         None,
     )
 
 
 __all__ = [
+    "ExtensionResourceCatalogDiscovery",
     "ExtensionResourceRuntime",
+    "PreparedExtensionResourceCatalog",
     "coerce_resource_contribution",
 ]

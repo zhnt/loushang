@@ -27,6 +27,7 @@ _IGNORED_ROOT_ENTRIES = frozenset({".git"})
 _FROZEN_DIRECTORY_MODE = 0o500
 _FROZEN_FILE_MODE = 0o400
 _FROZEN_EXECUTABLE_MODE = 0o500
+_WINDOWS_REPARSE_POINT_ATTRIBUTE = 0x400
 
 
 class PluginRevisionError(RuntimeError):
@@ -42,6 +43,7 @@ class PluginRevisionError(RuntimeError):
 class _RevisionEntry:
     kind: str
     digest: str | None = None
+    size: int | None = None
     executable: bool = False
 
 
@@ -58,28 +60,43 @@ class VerifiedRevisionHandle:
         self.root = root.resolve()
         self.content_digest = content_digest
         self._entries = MappingProxyType(dict(entries))
-        self._root_fd: int | None = _open_directory(self.root)
-        self._root_identity = _stat_identity(os.fstat(self._root_fd))
+        self._descriptor_backed = _supports_descriptor_relative_revision_io()
+        self._closed = False
+        if self._descriptor_backed:
+            self._root_fd: int | None = _open_directory(self.root)
+            self._root_identity = _stat_identity(os.fstat(self._root_fd))
+        else:
+            self._root_fd = None
+            self._root_identity = _stat_identity(
+                _portable_directory_metadata(self.root)
+            )
 
     @property
     def closed(self) -> bool:
-        return self._root_fd is None
+        return self._closed
 
     def verify(self) -> None:
-        root_fd = self._require_root_fd()
+        self._require_open()
         try:
-            current_fd = _open_directory(self.root)
-            try:
-                current_identity = _stat_identity(os.fstat(current_fd))
-            finally:
-                os.close(current_fd)
+            if self._descriptor_backed:
+                root_fd = self._require_root_fd()
+                current_fd = _open_directory(self.root)
+                try:
+                    current_identity = _stat_identity(os.fstat(current_fd))
+                finally:
+                    os.close(current_fd)
+                entries = _capture_tree(root_fd)
+            else:
+                current_identity = _stat_identity(
+                    _portable_directory_metadata(self.root)
+                )
+                entries = _capture_tree_portable(self.root)
             if current_identity != self._root_identity:
                 raise OSError(
                     errno.ESTALE,
                     "Plugin revision publication path identity changed",
                     self.root,
                 )
-            entries = _capture_tree(root_fd)
         except Exception as exc:
             raise PluginRevisionError(
                 f"Plugin revision could not be verified: {self.root}: {exc}",
@@ -104,16 +121,29 @@ class VerifiedRevisionHandle:
                 code="invalid_plugin_revision_path",
                 path=self.root / logical_path,
             )
-        root_fd = self._require_root_fd()
         try:
-            data, executable = _read_relative_file(root_fd, logical_path)
+            if self._descriptor_backed:
+                data, executable = _read_relative_file(
+                    self._require_root_fd(),
+                    logical_path,
+                )
+            else:
+                self._require_open()
+                data, executable = _read_relative_file_portable(
+                    self.root,
+                    logical_path,
+                    expected_root_identity=self._root_identity,
+                )
         except (OSError, PluginRevisionError) as exc:
             raise PluginRevisionError(
                 f"Plugin revision file changed after publication: {key}",
                 code="plugin_revision_changed",
                 path=self.root / logical_path,
             ) from exc
-        if sha256(data).hexdigest() != expected.digest or executable != expected.executable:
+        if (
+            sha256(data).hexdigest() != expected.digest
+            or executable != expected.executable
+        ):
             raise PluginRevisionError(
                 f"Plugin revision file changed after publication: {key}",
                 code="plugin_revision_changed",
@@ -125,7 +155,7 @@ class VerifiedRevisionHandle:
         self,
         relative_path: str | PurePosixPath,
     ) -> Literal["file", "directory"]:
-        self._require_root_fd()
+        self._require_open()
         logical_path = _logical_relative_path(relative_path, root=self.root)
         expected = self._entries.get(logical_path.as_posix())
         if expected is None or expected.kind not in {"file", "directory"}:
@@ -137,7 +167,57 @@ class VerifiedRevisionHandle:
             )
         return cast(Literal["file", "directory"], expected.kind)
 
+    def file_identity(
+        self,
+        relative_path: str | PurePosixPath,
+    ) -> tuple[str, int]:
+        """Return immutable body identity without reopening package bytes."""
+
+        self._require_open()
+        logical_path = _logical_relative_path(relative_path, root=self.root)
+        expected = self._entries.get(logical_path.as_posix())
+        if (
+            expected is None
+            or expected.kind != "file"
+            or expected.digest is None
+            or expected.size is None
+        ):
+            raise PluginRevisionError(
+                "Plugin revision file is not declared by the verified tree: "
+                f"{logical_path}",
+                code="invalid_plugin_revision_path",
+                path=self.root / logical_path,
+            )
+        return expected.digest, expected.size
+
+    def acquire(self) -> VerifiedRevisionHandle:
+        """Acquire an independently disposable lease over the same revision."""
+
+        self.verify()
+        root_fd: int | None = None
+        if self._descriptor_backed:
+            try:
+                root_fd = os.dup(self._require_root_fd())
+            except OSError as exc:
+                raise PluginRevisionError(
+                    f"Plugin revision lease could not be acquired: {self.root}: {exc}",
+                    code="plugin_revision_changed",
+                    path=self.root,
+                ) from exc
+        handle = object.__new__(VerifiedRevisionHandle)
+        handle.root = self.root
+        handle.content_digest = self.content_digest
+        handle._entries = MappingProxyType(dict(self._entries))
+        handle._root_fd = root_fd
+        handle._root_identity = self._root_identity
+        handle._descriptor_backed = self._descriptor_backed
+        handle._closed = False
+        return handle
+
     def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
         root_fd = self._root_fd
         self._root_fd = None
         if root_fd is not None:
@@ -155,13 +235,18 @@ class VerifiedRevisionHandle:
             self.close()
 
     def _require_root_fd(self) -> int:
-        if self._root_fd is None:
+        self._require_open()
+        if not self._descriptor_backed or self._root_fd is None:
+            raise RuntimeError("Portable Plugin revision has no directory fd")
+        return self._root_fd
+
+    def _require_open(self) -> None:
+        if self._closed:
             raise PluginRevisionError(
                 f"Plugin revision handle is closed: {self.root}",
                 code="plugin_revision_handle_closed",
                 path=self.root,
             )
-        return self._root_fd
 
 
 class PluginRevisionStore:
@@ -178,11 +263,17 @@ class PluginRevisionStore:
             tempfile.mkdtemp(prefix=".quarantine-", dir=self.revision_root)
         )
         try:
-            source_fd = _open_directory(package.root)
-            try:
-                entries = _capture_tree(source_fd, destination=quarantine)
-            finally:
-                os.close(source_fd)
+            if _supports_descriptor_relative_revision_io():
+                source_fd = _open_directory(package.root)
+                try:
+                    entries = _capture_tree(source_fd, destination=quarantine)
+                finally:
+                    os.close(source_fd)
+            else:
+                entries = _capture_tree_portable(
+                    package.root,
+                    destination=quarantine,
+                )
             PluginManifestParser().revalidate(package)
             content_digest = _tree_digest(entries)
             published_root = self.revision_root / content_digest
@@ -241,6 +332,263 @@ class PluginRevisionStore:
         return tuple(published)
 
 
+def _supports_descriptor_relative_revision_io() -> bool:
+    """Return whether the host exposes the complete POSIX-style safe-open set."""
+
+    supports_dir_fd = getattr(os, "supports_dir_fd", ())
+    supports_follow_symlinks = getattr(os, "supports_follow_symlinks", ())
+    supports_fd = getattr(os, "supports_fd", ())
+    return (
+        isinstance(getattr(os, "O_DIRECTORY", None), int)
+        and isinstance(getattr(os, "O_NOFOLLOW", None), int)
+        and os.open in supports_dir_fd
+        and os.stat in supports_dir_fd
+        and os.stat in supports_follow_symlinks
+        and os.listdir in supports_fd
+    )
+
+
+def _capture_tree_portable(
+    root: Path,
+    *,
+    destination: Path | None = None,
+) -> dict[str, _RevisionEntry]:
+    """Capture on hosts without directory-fd traversal, rejecting reparse points."""
+
+    entries: dict[str, _RevisionEntry] = {}
+    _capture_directory_portable(
+        root,
+        relative=PurePosixPath(),
+        destination=destination,
+        entries=entries,
+    )
+    return entries
+
+
+def _capture_directory_portable(
+    directory: Path,
+    *,
+    relative: PurePosixPath,
+    destination: Path | None,
+    entries: dict[str, _RevisionEntry],
+) -> None:
+    directory_before = _portable_directory_metadata(directory)
+    try:
+        names = sorted(os.listdir(directory), key=os.fsencode)
+    except OSError as exc:
+        raise PluginRevisionError(
+            f"Plugin revision directory could not be listed: {relative}: {exc}",
+            code="plugin_revision_changed",
+            path=Path(relative.as_posix()),
+        ) from exc
+    for name in names:
+        if not relative.parts and name in _IGNORED_ROOT_ENTRIES:
+            continue
+        logical_path = relative / name
+        key = logical_path.as_posix()
+        source_path = directory / name
+        metadata = _portable_entry_metadata(source_path, logical_path=logical_path)
+        destination_path = (
+            destination / Path(*logical_path.parts) if destination else None
+        )
+        if stat.S_ISDIR(metadata.st_mode):
+            entries[key] = _RevisionEntry(kind="directory")
+            if destination_path is not None:
+                destination_path.mkdir()
+            _capture_directory_portable(
+                source_path,
+                relative=logical_path,
+                destination=destination,
+                entries=entries,
+            )
+            continue
+        file_digest, executable = _digest_file_portable(
+            source_path,
+            expected=metadata,
+            destination=destination_path,
+        )
+        entries[key] = _RevisionEntry(
+            kind="file",
+            digest=file_digest,
+            size=metadata.st_size,
+            executable=executable,
+        )
+        if destination_path is not None:
+            destination_path.chmod(
+                _FROZEN_EXECUTABLE_MODE if executable else _FROZEN_FILE_MODE
+            )
+    directory_after = _portable_directory_metadata(directory)
+    if _stable_directory_identity(directory_before) != _stable_directory_identity(
+        directory_after
+    ):
+        raise PluginRevisionError(
+            f"Plugin revision directory changed while scanned: {relative}",
+            code="plugin_revision_changed",
+            path=Path(relative.as_posix()),
+        )
+
+
+def _read_relative_file_portable(
+    root: Path,
+    relative_path: PurePosixPath,
+    *,
+    expected_root_identity: tuple[int, int],
+) -> tuple[bytes, bool]:
+    root_metadata = _portable_directory_metadata(root)
+    if _stat_identity(root_metadata) != expected_root_identity:
+        raise OSError(
+            errno.ESTALE,
+            "Plugin revision publication path identity changed",
+            root,
+        )
+    directory_chain: list[tuple[Path, os.stat_result]] = [(root, root_metadata)]
+    current = root
+    for part in relative_path.parts[:-1]:
+        current /= part
+        directory_chain.append((current, _portable_directory_metadata(current)))
+    file_path = current / relative_path.parts[-1]
+    metadata = _portable_entry_metadata(file_path, logical_path=relative_path)
+    if not stat.S_ISREG(metadata.st_mode):
+        raise PluginRevisionError(
+            f"Plugin revision path is not a regular file: {relative_path}",
+            code="plugin_revision_changed",
+            path=Path(relative_path.as_posix()),
+        )
+    result = _read_file_portable(file_path, expected=metadata)
+    for path, before in reversed(directory_chain):
+        after = _portable_directory_metadata(path)
+        if _stable_directory_identity(before) != _stable_directory_identity(after):
+            raise OSError(
+                errno.ESTALE,
+                "Plugin revision directory changed while file was read",
+                path,
+            )
+    return result
+
+
+def _read_file_portable(
+    path: Path,
+    *,
+    expected: os.stat_result,
+) -> tuple[bytes, bool]:
+    file_fd, before = _open_regular_file_portable(path, expected=expected)
+    try:
+        chunks: list[bytes] = []
+        while chunk := os.read(file_fd, 1024 * 1024):
+            chunks.append(chunk)
+        _assert_file_stable(file_fd, before, name=str(path))
+        _assert_portable_path_stable(path, expected=expected)
+        return b"".join(chunks), bool(before.st_mode & 0o111)
+    finally:
+        os.close(file_fd)
+
+
+def _digest_file_portable(
+    path: Path,
+    *,
+    expected: os.stat_result,
+    destination: Path | None,
+) -> tuple[str, bool]:
+    file_fd, before = _open_regular_file_portable(path, expected=expected)
+    destination_fd: int | None = None
+    try:
+        if destination is not None:
+            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            flags |= getattr(os, "O_BINARY", 0) | getattr(os, "O_CLOEXEC", 0)
+            destination_fd = os.open(destination, flags, 0o600)
+        digest = sha256()
+        while chunk := os.read(file_fd, 1024 * 1024):
+            digest.update(chunk)
+            if destination_fd is not None:
+                _write_all(destination_fd, chunk)
+        _assert_file_stable(file_fd, before, name=str(path))
+        _assert_portable_path_stable(path, expected=expected)
+        return digest.hexdigest(), bool(before.st_mode & 0o111)
+    finally:
+        os.close(file_fd)
+        if destination_fd is not None:
+            os.close(destination_fd)
+
+
+def _open_regular_file_portable(
+    path: Path,
+    *,
+    expected: os.stat_result,
+) -> tuple[int, os.stat_result]:
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOINHERIT", 0)
+    file_fd = os.open(path, flags)
+    try:
+        before = os.fstat(file_fd)
+        if not stat.S_ISREG(before.st_mode) or _stat_identity(before) != _stat_identity(
+            expected
+        ):
+            raise OSError(
+                errno.ESTALE,
+                "Plugin revision file identity changed",
+                path,
+            )
+        return file_fd, before
+    except Exception:
+        os.close(file_fd)
+        raise
+
+
+def _assert_portable_path_stable(path: Path, *, expected: os.stat_result) -> None:
+    after = _portable_entry_metadata(path, logical_path=PurePosixPath(path.name))
+    if _stable_file_identity(expected) != _stable_file_identity(after):
+        raise OSError(errno.ESTALE, "Plugin revision file path changed", path)
+
+
+def _portable_directory_metadata(path: Path) -> os.stat_result:
+    try:
+        metadata = os.lstat(path)
+    except OSError as exc:
+        raise PluginRevisionError(
+            f"Plugin revision directory could not be inspected: {path}: {exc}",
+            code="plugin_revision_changed",
+            path=path,
+        ) from exc
+    if _is_reparse_point(metadata) or not stat.S_ISDIR(metadata.st_mode):
+        raise PluginRevisionError(
+            f"Plugin revision contains an unsafe directory: {path}",
+            code="unsafe_plugin_revision_entry",
+            path=path,
+        )
+    return metadata
+
+
+def _portable_entry_metadata(
+    path: Path,
+    *,
+    logical_path: PurePosixPath,
+) -> os.stat_result:
+    try:
+        metadata = os.lstat(path)
+    except OSError as exc:
+        raise PluginRevisionError(
+            f"Plugin revision entry could not be inspected: {logical_path}: {exc}",
+            code="plugin_revision_changed",
+            path=Path(logical_path.as_posix()),
+        ) from exc
+    if _is_reparse_point(metadata) or not (
+        stat.S_ISDIR(metadata.st_mode) or stat.S_ISREG(metadata.st_mode)
+    ):
+        raise PluginRevisionError(
+            f"Plugin revision contains an unsafe entry: {logical_path}",
+            code="unsafe_plugin_revision_entry",
+            path=Path(logical_path.as_posix()),
+        )
+    return metadata
+
+
+def _is_reparse_point(metadata: os.stat_result) -> bool:
+    return stat.S_ISLNK(metadata.st_mode) or bool(
+        getattr(metadata, "st_file_attributes", 0)
+        & _WINDOWS_REPARSE_POINT_ATTRIBUTE
+    )
+
+
 def _capture_tree(
     root_fd: int,
     *,
@@ -293,7 +641,9 @@ def _capture_directory(
                 code="unsafe_plugin_revision_entry",
                 path=Path(key),
             )
-        destination_path = destination / Path(*logical_path.parts) if destination else None
+        destination_path = (
+            destination / Path(*logical_path.parts) if destination else None
+        )
         if stat.S_ISDIR(metadata.st_mode):
             entries[key] = _RevisionEntry(kind="directory")
             if destination_path is not None:
@@ -318,6 +668,7 @@ def _capture_directory(
         entries[key] = _RevisionEntry(
             kind="file",
             digest=file_digest,
+            size=metadata.st_size,
             executable=executable,
         )
         if destination_path is not None:
@@ -577,9 +928,7 @@ def _freeze_tree(root: Path) -> None:
         for filename in files:
             path = current / filename
             executable = bool(path.stat().st_mode & 0o111)
-            path.chmod(
-                _FROZEN_EXECUTABLE_MODE if executable else _FROZEN_FILE_MODE
-            )
+            path.chmod(_FROZEN_EXECUTABLE_MODE if executable else _FROZEN_FILE_MODE)
         for directory in directories:
             (current / directory).chmod(_FROZEN_DIRECTORY_MODE)
     root.chmod(_FROZEN_DIRECTORY_MODE)

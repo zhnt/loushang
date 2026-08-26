@@ -4,13 +4,9 @@ import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from loushang.harness.resources.loader import (
-    ProfiledResourceLoader,
-    ResourceLoader,
-    ResourceLoaderProfile,
-)
+from loushang.harness.resources.packages.inventory import summarize_package_inventory
 from loushang.harness.resources.packages.manifest import (
     project_plugin_diagnostics,
     resolve_package_manifest,
@@ -30,6 +26,9 @@ from loushang.harness.resources.plugins.authority import (
 )
 from loushang.harness.resources.plugins.types import PluginSource
 from loushang.harness.resources.types import PackageResourceSummary
+
+if TYPE_CHECKING:
+    from loushang.harness.resources.loader import ResourceLoaderProfile
 
 PackageCatalogKind = Literal["package_root", "plugin", "remote_package", "catalog"]
 PackageCatalogScope = Literal["user", "project", "session", "merged", "catalog"]
@@ -441,12 +440,8 @@ def summarize_package_resources(
     cwd: Path,
     package_source: PackageSourceConfig | None = None,
 ) -> PackageResourceSummary:
-    return _summarize_package_resources(
-        ResourceLoader,
-        package_root,
-        cwd,
-        package_source,
-    )
+    del cwd
+    return summarize_package_inventory(package_root, package_source)
 
 
 def summarize_profiled_package_resources(
@@ -456,31 +451,10 @@ def summarize_profiled_package_resources(
     *,
     profile: ResourceLoaderProfile,
 ) -> PackageResourceSummary:
-    """Summarize one package root through an existing resource-loader profile."""
+    """Compatibility signature over the Product-neutral inventory port."""
 
-    return _summarize_package_resources(
-        lambda **kwargs: ProfiledResourceLoader(profile=profile, **kwargs),
-        package_root,
-        cwd,
-        package_source,
-    )
-
-
-def _summarize_package_resources(
-    loader_factory: Callable[..., ResourceLoader],
-    package_root: Path,
-    cwd: Path,
-    package_source: PackageSourceConfig | None,
-) -> PackageResourceSummary:
-    filters: dict[str | Path, PackageSourceConfig] | None = (
-        {package_root: package_source} if package_source is not None else None
-    )
-    loader = loader_factory(
-        package_roots=(package_root,), package_source_filters=filters
-    )
-    loader.discover_resources(cwd)
-    summaries = loader.get_package_resource_summaries()
-    return summaries[0] if summaries else empty_package_summary(package_root)
+    del cwd, profile
+    return summarize_package_inventory(package_root, package_source)
 
 
 def empty_package_summary(package_root: Path) -> PackageResourceSummary:

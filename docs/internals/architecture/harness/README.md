@@ -48,8 +48,50 @@ planning, work event persistence, or AI provider behavior.
   the Coordinator one finalize/abort/expire transition, keeps Resource/Tool/
   Command contributions orthogonal to Capability Providers, and then proceeds
   through durable execution approval, owner admission, and LSP production proof.
-  Skill-provider convergence remains subordinate and the stable public SDK
-  stays gated by the broader production combination evidence.
+  PAP5.5 now moves internal Resource Catalog/Skill-path convergence before LSP,
+  while the stable public SDK stays gated by broader production evidence.
+- [Resource Catalog And Source Pluginization Plan](resource-catalog-pluginization-plan.md)
+  defines PAP5.5/PLC4.5: one Resource-owner Catalog authority, an exclusive
+  Catalog-engine component, aggregate filesystem/package/embedded source
+  components, Extension-generation snapshot normalization, typed lazy loads and
+  Skill projection, exact-generation lifecycle, and manifest-free native
+  `SKILL.md` compatibility before LSP. RCP0-RCP3 are now implemented as private,
+  unpublished infrastructure, including verified-package and immutable embedded
+  sources plus Package Catalog's pure inventory bridge. RCP4's ten unpublished
+  foundations now prove candidate-owned generation transfer, the internal v2
+  Catalog/load Provider, exact Extension-owner route snapshots with retained
+  body reads, and a root-private joint Extension/Resource candidate through an
+  isolated real Graph. Exact borrow leases drain body reads independently from
+  Extension retirement; the joint candidate provides one synchronous visible
+  publication point plus cancellation-safe root/Graph rollback. Source-owned
+  descriptor sidecars now carry no winner authority: the Resource owner derives
+  an immutable final projection only from exact Catalog effective entries,
+  binds it to the Catalog snapshot, and exposes `ResourceBundle` only as a fresh
+  mutable compatibility copy. The joint commit carries that final projection.
+  A private optional Agent Session bootstrap adapter now prepares the exact v2
+  Resources graph input after owner-generation freeze and publishes the
+  Extension/Catalog/view tuple only after Graph capture; v1 remains unchanged
+  when the adapter is absent. A private reusable Product preparation adapter now
+  turns exact native/package/embedded selection specs into fresh per-Session
+  opaque handles under a synchronous construction-custody callback. Package
+  specs must exact-match the Resource admissions in one existing compiled
+  Product composition; the Coding seam no longer accepts a parallel
+  raw-admission list. One private Session/Product composition root now projects
+  a finalized Plugin selection through explicitly supplied exact Resource/Tool/
+  Command owners and the existing compiler. The private Coding initial shadow
+  accepts that assembly request and samples one evaluation time. It also
+  consumes one same-discovery, single-take source receipt and maps project/
+  context, user, captured built-in inputs, and clean verified package candidates
+  with exact owner admissions. Unverified, conventional, diagnostic-bearing,
+  incomplete, or Extension-bearing packages still reject, as do temporary,
+  kind-switch, and disabled-Skill inputs. The public Coding SDK and default path
+  remain v1.
+  Default Plugin selection/owner-binding wiring, refresh, broader policy parity,
+  typed production consumers, and cutover remain pending.
+- [Resource Catalog RCP0 Baseline](resource-catalog-rcp0-baseline.md) freezes
+  the implemented discovery/sink inventory, precedence and Extension parity,
+  Package-mount custody, and the exact RCP3/RCP4/RCP5 deletion ledger without
+  claiming that the target Catalog runtime exists.
 - [Plugin Declaration Foundation PLC1B Contract](plugin-declaration-foundation-plc1b-contract.md)
   freezes the no-self-reference source/group identity layers, exact v2 wire and
   hash records, canonical document bytes, accepted-attempt evidence, group-
@@ -62,7 +104,11 @@ planning, work event persistence, or AI provider behavior.
   `coding.base` shadow package; its
   [review](plugin-lifecycle-coding-pluginization-review.md) moves the minimum
   management control core before the Base cutover while preserving exact-owner
-  binding, LSP as the first Graph proof, and the later public SDK gate.
+  binding, LSP as the first production Graph proof, and the later public SDK
+  gate. The implemented private PLC5.0 foundation now composes finalized
+  Provider declarations through exact Capability owners and explicit Product
+  selection, then binds externally issued activation decisions into the
+  existing Session inputs without issuing Approval or starting code.
 - [Plugin Lifecycle PLC2 Contract](plugin-lifecycle-plc2-contract.md) splits the
   management critical path into an inert desired-state ledger, one typed
   command authority, staged update, and retirement/cleanup recovery; PLC2-1
@@ -167,6 +213,16 @@ description.
   [self-review](plugin-authoring-primitives-plan-review.md) records the required
   approval, production-sample, SDK-publication, Skill, and peer-route deletion
   gates before implementation.
+- [Resource Catalog And Source Pluginization Plan](resource-catalog-pluginization-plan.md)
+  is the frozen PAP5.5/PLC4.5 contract and migration sequence for making the
+  Catalog engine and source/loading mechanisms owner-defined Plugin components
+  while keeping Resource items, native Skills, the Package Catalog, and the
+  single Session Graph in their existing authorities. RCP0-RCP2 are complete;
+  the first-party engine/native source now run only in an unpublished shadow
+  owner generation, with no production Resource cutover yet.
+- [Resource Catalog RCP0 Baseline](resource-catalog-rcp0-baseline.md) is the
+  source-backed legacy-authority and parity companion used to prevent a second
+  discovery, merge, Skill fallback, or Package-summary path during migration.
 - [Plugin Declaration Foundation PLC1B Contract](plugin-declaration-foundation-plc1b-contract.md)
   is the normative PLC1B-1 schema/state companion to UPA and both delivery
   plans; its final narrow freeze review passed at `3f53a5af` with zero P0/P1.

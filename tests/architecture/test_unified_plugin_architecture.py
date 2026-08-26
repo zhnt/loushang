@@ -36,6 +36,9 @@ PLC3_CONTRACT_PATH = Path(
 PAP4_CONTRACT_PATH = Path(
     "docs/internals/architecture/harness/plugin-capability-admission-pap4-contract.md"
 )
+RESOURCE_CATALOG_PLAN_PATH = Path(
+    "docs/internals/architecture/harness/resource-catalog-pluginization-plan.md"
+)
 CAPABILITY_LIFECYCLE_PATH = Path(
     "docs/internals/architecture/harness/capability-dependency-and-mount-lifecycle.md"
 )
@@ -79,6 +82,10 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
         "StrictPluginJsonCodec.decode_bytes",
     ): "plugin-strict-json-codec",
     (
+        Path("src/loushang/harness/resources/plugins/distribution_evidence.py"),
+        "_editable_project_root",
+    ): "installed-python-distribution-evidence-resolver",
+    (
         Path("src/loushang/harness/resources/plugins/manifest.py"),
         "PluginManifestParser.parse",
     ): "plugin-manifest-parser",
@@ -92,11 +99,19 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
     ): "verified-revision-publisher",
     (
         Path("src/loushang/harness/resources/plugins/revisions.py"),
+        "_digest_file_portable",
+    ): "verified-revision-publisher",
+    (
+        Path("src/loushang/harness/resources/plugins/revisions.py"),
         "_open_directory",
     ): "verified-revision-boundary",
     (
         Path("src/loushang/harness/resources/plugins/revisions.py"),
         "_open_regular_file",
+    ): "verified-revision-boundary",
+    (
+        Path("src/loushang/harness/resources/plugins/revisions.py"),
+        "_open_regular_file_portable",
     ): "verified-revision-boundary",
     (
         Path("src/loushang/harness/resources/packages/manifest.py"),
@@ -115,6 +130,22 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
         "load_package_catalog",
     ): "package-catalog",
     (
+        Path("src/loushang/harness/resources/packages/inventory.py"),
+        "_prompt_inventory",
+    ): "package-resource-inventory",
+    (
+        Path("src/loushang/harness/resources/packages/inventory.py"),
+        "_read_skill_ignore_patterns",
+    ): "package-resource-inventory",
+    (
+        Path("src/loushang/harness/resources/packages/inventory.py"),
+        "_skill_directory_inventory",
+    ): "package-resource-inventory",
+    (
+        Path("src/loushang/harness/resources/packages/inventory.py"),
+        "_theme_inventory",
+    ): "package-resource-inventory",
+    (
         Path("src/loushang/harness/resources/packages/materializer.py"),
         "_pypi_latest_version_result",
     ): "package-materializer",
@@ -128,6 +159,11 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS = {
     (Path("src/loushang/harness/plugin_authoring/coordinator.py"), "PluginDeclarationCoordinator._read_and_decode_document", "verified_open_file:handle"): 1,
     (Path("src/loushang/harness/resources/packages/catalog.py"), "load_package_catalog", "json_decode"): 1,
     (Path("src/loushang/harness/resources/packages/catalog.py"), "load_package_catalog", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/inventory.py"), "_prompt_inventory", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/inventory.py"), "_read_skill_ignore_patterns", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/inventory.py"), "_skill_directory_inventory", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/inventory.py"), "_theme_inventory", "json_decode"): 1,
+    (Path("src/loushang/harness/resources/packages/inventory.py"), "_theme_inventory", "path_read"): 1,
     (Path("src/loushang/harness/resources/packages/manifest.py"), "resolve_package_manifest", "json_decode"): 1,
     (Path("src/loushang/harness/resources/packages/manifest.py"), "resolve_package_manifest", "path_read"): 1,
     (Path("src/loushang/harness/resources/packages/materializer.py"), "PackageMaterializer._load_lockfile", "json_decode"): 1,
@@ -140,9 +176,13 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS = {
     (Path("src/loushang/harness/resources/plugins/manifest.py"), "PluginManifestParser.parse", "path_read"): 1,
     (Path("src/loushang/harness/resources/plugins/manifest.py"), "PluginManifestParser.revalidate", "path_read"): 1,
     (Path("src/loushang/harness/resources/plugins/_strict_json.py"), "StrictPluginJsonCodec.decode_bytes", "json_decode"): 1,
+    (Path("src/loushang/harness/resources/plugins/distribution_evidence.py"), "_editable_project_root", "json_decode"): 1,
+    (Path("src/loushang/harness/resources/plugins/distribution_evidence.py"), "_editable_project_root", "path_read"): 1,
     (Path("src/loushang/harness/resources/plugins/revisions.py"), "_digest_file", "path_read"): 1,
+    (Path("src/loushang/harness/resources/plugins/revisions.py"), "_digest_file_portable", "path_read"): 1,
     (Path("src/loushang/harness/resources/plugins/revisions.py"), "_open_directory", "path_read"): 1,
     (Path("src/loushang/harness/resources/plugins/revisions.py"), "_open_regular_file", "path_read"): 1,
+    (Path("src/loushang/harness/resources/plugins/revisions.py"), "_open_regular_file_portable", "path_read"): 1,
 }
 
 
@@ -200,11 +240,6 @@ EXPECTED_LIVE_BINDING_SINK_INVENTORY = {
     (
         Path("src/loushang/coding/bootstrap.py"),
         "_create_agent_session",
-        "register_tool",
-    ),
-    (
-        Path("src/loushang/coding/lsp/tool_pack.py"),
-        "register_coding_lsp_tools",
         "register_tool",
     ),
     (
@@ -1562,6 +1597,67 @@ def test_plc1b_versioned_bytes_and_delivery_order_are_frozen() -> None:
     )
 
 
+def test_plc5_default_lsp_mount_keeps_product_and_graph_ownership() -> None:
+    architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
+    lifecycle_plan = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
+    architecture_text = " ".join(architecture.split())
+    lifecycle_plan_text = " ".join(lifecycle_plan.split())
+
+    for required in (
+        "`CodingLspPluginOptInRequest | None`",
+        "not an assembled Session composition",
+        "same bounded 300-second construction window",
+        "failure is fail-closed with no fallback",
+        "`AgentSession` never closes a Graph-owned runtime",
+        "Binder rollback/retirement is the sole Provider disposer",
+        "`CodingLspToolOwner` stages invisible registration",
+        "does not widen Component Host API prefixes",
+    ):
+        assert required in architecture_text
+
+    for required in (
+        "not a boolean treated as authority",
+        "not a caller-assembled Session composition",
+        "an opt-in request is neither a declaration-execution decision",
+        "`AgentSession` never calls `close()` on a Graph-owned LSP runtime",
+        "Bootstrap neither constructs LSP Tool definitions nor owns their leases",
+        "`CodingLspPluginConfigV1`",
+        "No per-workspace package generation",
+    ):
+        assert required in lifecycle_plan_text
+
+
+def test_plc5_co_distributed_dependency_evidence_keeps_one_lock_authority() -> None:
+    architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
+    lifecycle_plan = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
+
+    for required in (
+        "`CoDistributedPluginDependencyGrantResolver` recognizes only an exact",
+        "`InstalledPythonDistributionEvidenceResolver` proves the current exact",
+        "remains the\nsole lock assembler for both publication and binding/restart",
+        "lock stays `loushang.plugin-dependency-lock/v1`",
+        "does not execute `.pth` files or accept ambient\n`sys.path` coincidence",
+        "not a Plugin type, manifest field,\nCapability grant or public authoring primitive",
+        "initial private registry\ncontains only `coding.lsp.default -> loushang`",
+        "Same-name installations are enumerated rather than resolved by arbitrary",
+        "Their paths are\nnever unioned into a broader evidence boundary",
+    ):
+        assert required in architecture
+
+    for required in (
+        "#### PLC5.1a: Co-Distributed Dependency Evidence",
+        "`PackageMaterializer._plugin_dependency_lock()` remains the only assembler",
+        "Neither a manifest,\n  declaration, user configuration nor Plugin code can add a grant",
+        "A plain source\n  tree without matching installed metadata is not evidence",
+        "This is a same-trust-domain private\ncode boundary, not a public SDK",
+        "The resolver enumerates every installed candidate with the normalized name",
+        "Candidate paths are never unioned into one wider installation",
+        "never use the legacy LSP route",
+        "does not add arbitrary host-package dependencies",
+    ):
+        assert required in lifecycle_plan
+
+
 def test_plc1b_contract_freezes_no_self_reference_and_exact_v2_records() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
     contract = PLC1B_CONTRACT_PATH.read_text(encoding="utf-8")
@@ -2535,7 +2631,9 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
         "package-catalog",
         "package-manifest-parser",
         "package-materializer",
+        "package-resource-inventory",
         "package-resource-mount",
+        "installed-python-distribution-evidence-resolver",
         "plugin-declaration-coordinator",
         "plugin-manifest-parser",
         "plugin-strict-json-codec",
@@ -3360,4 +3458,77 @@ def test_pap5_session_root_is_the_only_graph_planning_site() -> None:
     ).read_text(encoding="utf-8")
 
     assert "RuntimeCapabilityGraphPlanner" not in model_call
-    assert agent_product.count("RuntimeCapabilityGraphPlanner().plan(") == 1
+    # Initial v1 planning and the opt-in pre-publication v2 Resource replan both
+    # remain inside the one Product Session composition root.
+    assert agent_product.count("RuntimeCapabilityGraphPlanner().plan(") == 2
+
+
+def test_pap55_resource_catalog_plan_preserves_one_owner_and_native_skills() -> None:
+    plan = RESOURCE_CATALOG_PLAN_PATH.read_text(encoding="utf-8")
+    authoring = AUTHORING_PLAN_PATH.read_text(encoding="utf-8")
+    lifecycle = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
+    readme = README_PATH.read_text(encoding="utf-8")
+
+    for required in (
+        "Pluginize mechanisms, not every piece of content.",
+        "`resource.catalog_engine`",
+        "`resource.source`",
+        "Both are `capability_component` contributions",
+        "`harness.resources` Capability Provider remains the only top-level",
+        "A native filesystem Skill remains loadable",
+        "without a Plugin manifest",
+        "The engine also does not own precedence",
+        "an owner validator canonicalizes",
+        "Package Catalog; never choose effective Resources",
+        "focused `resource.catalog`\nand `resource.load` facets",
+        "there is no `skill.catalog` facet",
+        "`ResourceBundle` as a compatibility projection",
+        "the Catalog never imports or starts it",
+        "`PreparedResourceOwnerGeneration`",
+        "`StagedResourceCompositionCandidate` remains the sole\nResource Profile",
+        "RCP0 through RCP5 precede the `coding.lsp` production migration",
+        "new MCP functionality",
+    ):
+        assert required in plan
+
+    assert "### PAP5.5: Resource Catalog And Source Component Foundation" in authoring
+    assert "### PLC4.5: Resource Catalog And Source Component Foundation" in lifecycle
+    assert "resource-catalog-pluginization-plan.md" in authoring
+    assert "resource-catalog-pluginization-plan.md" in lifecycle
+    assert "resource-catalog-pluginization-plan.md" in readme
+    assert "Source implementation and merge remain PLC8 work" not in authoring
+
+
+def test_pap55_review_corrections_freeze_single_catalog_ingress_and_custody() -> None:
+    plan = RESOURCE_CATALOG_PLAN_PATH.read_text(encoding="utf-8")
+    lifecycle = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
+    extension_resources = Path(
+        "src/loushang/harness/extensions/resources.py"
+    ).read_text(encoding="utf-8")
+
+    for required in (
+        "There is no direct candidate ingress beside `ResourceSourceSnapshot`.",
+        "one `extension_generation` source snapshot",
+        "generation-scoped body-read adapter",
+        "one synchronous, no-await commit publishes Extension state, Catalog",
+        "`discover_initial` to be synchronous, non-awaiting",
+        "lazy loading delays only body injection, never body identity",
+        "may narrow a handle's relative subtree or filters, but may not name",
+        "The producer union has no ambiguous nullable peers",
+        "The independent content-origin union is",
+        "is exclusively held as a child of the existing\n"
+        "`StagedResourceCompositionCandidate`",
+        "ResourceRefreshClassification",
+        "`restart_required` returns without mutating the active Session",
+        "replace Package Catalog's effective `ResourceLoader.discover_resources()`",
+        "delete production effective-selection imports of `ResourceSnapshot`",
+    ):
+        assert required in plan
+
+    assert "admitted data-only Resource candidates;" not in plan
+    assert "declared_content_digest (optional)" not in plan
+    assert "Catalog\nengine alone chooses effective entries" not in plan
+    assert "`capability_component` follows after the complete-Bundle" not in lifecycle
+    assert "PLC4.5 adds only the two internal Resource-owner" in lifecycle
+    assert "return bundle.merge(" in extension_resources
+    assert "delete direct post-Catalog bundle merge authority" in plan

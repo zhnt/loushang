@@ -135,6 +135,7 @@ BROAD_PARAMETER_NAMES = frozenset(
 
 EXPECTED_SOURCE_BACKED_CAPABILITY_IDS = frozenset(
     {
+        "coding.lsp",
         "harness.model_input",
         "harness.resources",
         "harness.session",

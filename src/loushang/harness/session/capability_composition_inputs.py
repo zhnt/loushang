@@ -27,6 +27,7 @@ from loushang.harness.capabilities.provider_selection import (
     ResolvedCapabilityProvider,
     ResolvedCapabilityProviderSet,
 )
+from loushang.harness.capabilities.providers import CapabilityBundleProvider
 from loushang.harness.resources.plugins.selection import (
     PluginSourceTrustSnapshotV1,
 )
@@ -192,6 +193,43 @@ class SessionCapabilityCompositionInputs:
             if self.composition_fingerprint == other.composition_fingerprint
             else "restart_required"
         )
+
+
+def validate_session_capability_composition_closure(
+    product_composition: ProductCompositionCompilation,
+    resolved_providers: ResolvedCapabilityProviderSet,
+    *,
+    host_capability_ids: tuple[str, ...],
+    host_providers: tuple[CapabilityBundleProvider, ...],
+) -> None:
+    """Validate the exact host/external root split and Consumer metadata."""
+
+    if not isinstance(product_composition, ProductCompositionCompilation):
+        raise TypeError("Session closure validation requires Product compilation")
+    if not isinstance(resolved_providers, ResolvedCapabilityProviderSet):
+        raise TypeError("Session closure validation requires resolved Providers")
+    host_ids = tuple(
+        sorted(
+            _require_nonempty(item, name="host Capability id")
+            for item in host_capability_ids
+        )
+    )
+    if len(host_ids) != len(set(host_ids)):
+        raise ValueError("Session host Capability ids must be unique")
+    providers = tuple(host_providers)
+    if any(not isinstance(item, CapabilityBundleProvider) for item in providers):
+        raise TypeError("Session host Providers have invalid type")
+    host_id_set = set(host_ids)
+    if {item.capability_id for item in providers} - host_id_set:
+        raise ValueError("Session host Provider is outside the host Capability set")
+    external_ids = {item.capability_id for item in resolved_providers.entries}
+    if external_ids & host_id_set:
+        raise ValueError("Session external Providers overlap host Capabilities")
+    requirements = product_composition.consumer_requirements
+    external_roots = set(requirements.roots) - host_id_set
+    if external_roots != set(resolved_providers.roots):
+        raise ValueError("Session external Provider roots do not match Consumer roots")
+    requirements.validate_provider_metadata((*providers, *resolved_providers.providers))
 
 
 @dataclass(frozen=True, slots=True)

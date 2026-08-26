@@ -2066,9 +2066,9 @@ def test_conversation_input_policy_owns_actions_without_raw_router_keys() -> Non
     policy_source = Path(
         "src/loushang/harnesstui/conversation/input_policy.py"
     ).read_text(encoding="utf-8")
-    router_source = Path(
-        "src/loushang/harnesstui/conversation/input.py"
-    ).read_text(encoding="utf-8")
+    router_source = Path("src/loushang/harnesstui/conversation/input.py").read_text(
+        encoding="utf-8"
+    )
     tui_keybindings = Path("src/loushang/tui/keybindings.py").read_text(
         encoding="utf-8"
     )
@@ -2089,9 +2089,7 @@ def test_conversation_input_policy_owns_actions_without_raw_router_keys() -> Non
 
 
 def test_coding_screen_input_does_not_own_clipboard_image_policy() -> None:
-    source = Path("src/loushang/coding/ui/screen_input.py").read_text(
-        encoding="utf-8"
-    )
+    source = Path("src/loushang/coding/ui/screen_input.py").read_text(encoding="utf-8")
 
     assert "ClipboardImageInputProfile" not in source
     assert "ClipboardImageStatusCopy" not in source
@@ -3309,6 +3307,7 @@ def test_harness_split_internal_owners_have_one_way_dependencies() -> None:
         runtime_root / "_profile_binding.py",
         runtime_root / "_profile_resolution.py",
         runtime_root / "_profile_types.py",
+        resource_root / "_descriptor_parsing.py",
         resource_root / "_loader_descriptor_parsing.py",
         resource_root / "_loader_discovery.py",
         resource_root / "_loader_discovery_builtin.py",
@@ -3363,6 +3362,19 @@ def test_harness_split_internal_owners_have_one_way_dependencies() -> None:
             "loushang.harness.resources.loader",
         ),
         resource_root / "_loader_descriptor_parsing.py": (
+            "loushang.harness.resources._loader_discovery",
+            "loushang.harness.resources._loader_discovery_builtin",
+            "loushang.harness.resources._loader_discovery_context",
+            "loushang.harness.resources._loader_discovery_filesystem",
+            "loushang.harness.resources._loader_discovery_temporary",
+            "loushang.harness.resources._loader_package_policy",
+            "loushang.harness.resources._loader_pipeline",
+            "loushang.harness.resources._loader_precedence",
+            "loushang.harness.resources._loader_resolution",
+            "loushang.harness.resources.loader",
+        ),
+        resource_root / "_descriptor_parsing.py": (
+            "loushang.harness.resources._loader_descriptor_parsing",
             "loushang.harness.resources._loader_discovery",
             "loushang.harness.resources._loader_discovery_builtin",
             "loushang.harness.resources._loader_discovery_context",
@@ -3543,7 +3555,8 @@ def test_harness_split_internal_owners_have_one_way_dependencies() -> None:
     assert "class _ResourceDiscoveries:" in pipeline_text
     assert "def _discover_snapshot(request: _ResourceDiscoveryRequest)" in pipeline_text
     assert "class _ResourceDiscoveryRequest:" not in loader_text
-    assert "snapshot = _discover_snapshot(request)" in loader_text
+    assert "discovery = _discover_snapshot(request)" in loader_text
+    assert "snapshot = discovery.snapshot" in loader_text
     assert "def _discover_context_descriptors" not in (
         resource_root / "_loader_discovery.py"
     ).read_text(encoding="utf-8")
@@ -3565,8 +3578,14 @@ def test_harness_split_internal_owners_have_one_way_dependencies() -> None:
     assert "def _prompt_descriptor_from_text" not in (
         resource_root / "_loader_discovery.py"
     ).read_text(encoding="utf-8")
-    assert "def _skill_descriptor_from_text" in (
+    assert "def _skill_descriptor_from_text" not in (
         resource_root / "_loader_descriptor_parsing.py"
+    ).read_text(encoding="utf-8")
+    assert "loushang.harness.resources._descriptor_parsing" in _absolute_imports(
+        resource_root / "_loader_descriptor_parsing.py"
+    )
+    assert "def _skill_descriptor_from_text" in (
+        resource_root / "_descriptor_parsing.py"
     ).read_text(encoding="utf-8")
     assert "def _discover_skills_from_dir" not in (
         resource_root / "_loader_discovery.py"

@@ -335,12 +335,14 @@ class SessionToolController:
         tool: object,
         *,
         owner: RegistrationOwner,
+        enabled: bool = True,
         source_info: object | None = None,
     ) -> RegistrationLease:
         self.ensure_tool_registry()
         return self._runtime.stage_runtime_tool(
             tool,
             owner=owner,
+            enabled=enabled,
             source_info=source_info,
         )
 

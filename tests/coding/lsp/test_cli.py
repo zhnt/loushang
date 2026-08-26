@@ -254,6 +254,7 @@ def test_configured_lsp_is_available_to_ordinary_session_and_remains_lazy(
         model=_model(),
     )
 
+    asyncio.run(session.prepare_model_call_runtime())
     assert {INSPECT_SYMBOL_TOOL_NAME, DOCUMENT_OUTLINE_TOOL_NAME}.issubset(
         session.get_active_tool_names()
     )

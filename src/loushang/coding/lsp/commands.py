@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import shlex
 from dataclasses import asdict
-from pathlib import Path
-from typing import Protocol
 
+from loushang.coding.lsp.runtime import CodingLspSessionAccess
 from loushang.coding.lsp.status import (
     LspSessionStatus,
     disabled_lsp_session_status,
@@ -18,15 +17,7 @@ from loushang.harness.session import CommandExecutionResult
 LSP_SESSION_COMMAND_NAME = "lsp"
 
 
-class LspSessionRuntime(Protocol):
-    def status(self) -> LspSessionStatus: ...
-
-    async def stop(
-        self,
-        *,
-        definition_id: str,
-        workspace_root: str | Path,
-    ) -> bool: ...
+LspSessionRuntime = CodingLspSessionAccess
 
 
 def lsp_session_command_descriptor() -> SessionCommandDescriptor:
