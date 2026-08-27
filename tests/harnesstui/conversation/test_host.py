@@ -554,8 +554,13 @@ def test_action_host_screen_run_owns_one_shared_runtime_scope(
             return None
 
     def bind_scope(bound_scope):
+        assert context_events == [("enter", scope)]
         bound_scopes.append(bound_scope)
         return sentinel_factory
+
+    def observe_sweep(report):
+        assert context_events == [("enter", scope)]
+        reports.append(report)
 
     @contextmanager
     def bind_context(bound_scope):
@@ -563,6 +568,7 @@ def test_action_host_screen_run_owns_one_shared_runtime_scope(
         try:
             yield
         finally:
+            assert not scope.run_dir.exists()
             context_events.append(("exit", bound_scope))
 
     async def fake_runner(**kwargs) -> int:
@@ -583,7 +589,7 @@ def test_action_host_screen_run_owns_one_shared_runtime_scope(
         runtime=host_module.ConversationScreenRuntimeProfile(
             input_router_factory=bind_scope,
             scope_factory=lambda: scope,
-            observe_sweep=reports.append,
+            observe_sweep=observe_sweep,
             context_factory=bind_context,
         ),
     )

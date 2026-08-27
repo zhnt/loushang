@@ -58,6 +58,7 @@ jobs:
           uv run pytest
           tests/foundation/test_runtime_scope.py
           tests/foundation/test_artifact_store.py
+          tests/harness/diagnostics/test_export.py
           -q
 
       - name: Reject empty or failing runtime lifecycle report

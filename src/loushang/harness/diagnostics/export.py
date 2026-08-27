@@ -10,6 +10,7 @@ import json
 import os
 import platform
 import re
+import stat
 import sys
 import zipfile
 from collections.abc import Callable, Iterable, Mapping
@@ -18,7 +19,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Literal, cast
 from uuid import uuid4
 
@@ -32,7 +33,7 @@ from loushang.foundation.artifact_store import (
     sweep_managed_artifacts,
 )
 from loushang.harness.diagnostics.types import DiagnosticRecord
-from loushang.harness.environment import resolve_platform_paths
+from loushang.harness.environment import PlatformPaths, resolve_platform_paths
 
 
 def _safe_relative_directory(value: str) -> bool:
@@ -42,6 +43,7 @@ def _safe_relative_directory(value: str) -> bool:
         and "\\" not in value
         and not any(ord(character) < 32 for character in value)
         and not path.is_absolute()
+        and not PureWindowsPath(value).drive
         and ".." not in path.parts
         and path.as_posix() == value
         and str(path) not in {"", "."}
@@ -56,6 +58,8 @@ def _safe_filename_fragment(value: str) -> bool:
         and "\\" not in value
         and value not in {".", ".."}
         and not any(ord(character) < 32 for character in value)
+        and not any(character in '<>:"|?*' for character in value)
+        and value[-1] not in {".", " "}
     )
 
 
@@ -64,7 +68,14 @@ class DiagnosticExportArtifact:
     """A text artifact to include under a safe relative archive name."""
 
     archive_name: str
-    source_path: Path
+    source_path: Path | None = None
+    content: bytes | None = None
+
+    def __post_init__(self) -> None:
+        if (self.source_path is None) == (self.content is None):
+            raise ValueError(
+                "diagnostics artifact requires exactly one source_path or content"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,6 +130,7 @@ def export_diagnostics_bundle(
     debug_latest_path: str | Path | None = None,
     trace_latest_path: str | Path | None = None,
     artifact_store: ArtifactStore | None = None,
+    platform_paths: PlatformPaths | None = None,
     now: Callable[[], datetime] | None = None,
     profile: DiagnosticBundleProfile = DEFAULT_DIAGNOSTIC_BUNDLE_PROFILE,
 ) -> Path:
@@ -129,7 +141,7 @@ def export_diagnostics_bundle(
     root = Path(project_root).expanduser().resolve()
     sessions = Path(session_dir).expanduser().resolve()
     generated_at = (now or utc_now)()
-    platform_home = resolve_platform_paths().home
+    platform_home = (platform_paths or resolve_platform_paths()).home
     bundle_path = resolve_export_output_path(
         platform_home if profile.archive_root == "platform" else root,
         output,
@@ -191,35 +203,12 @@ def export_diagnostics_bundle(
             artifacts=snapshots,
         ),
         diagnostics=diagnostics,
-        artifacts=(
-            *(
-                (
-                    DiagnosticExportArtifact(
-                        "debug/latest.log",
-                        (
-                            debug_snapshot.path
-                            if debug_snapshot is not None
-                            else debug_latest
-                        ),
-                    ),
-                )
-                if artifact_store is None or debug_snapshot is not None
-                else ()
-            ),
-            *(
-                (
-                    DiagnosticExportArtifact(
-                        "traces/latest.jsonl",
-                        (
-                            trace_snapshot.path
-                            if trace_snapshot is not None
-                            else trace_latest
-                        ),
-                    ),
-                )
-                if artifact_store is None or trace_snapshot is not None
-                else ()
-            ),
+        artifacts=_bundle_export_artifacts(
+            artifact_store,
+            debug_latest=debug_latest,
+            trace_latest=trace_latest,
+            debug_snapshot=debug_snapshot,
+            trace_snapshot=trace_snapshot,
         ),
     )
     if output is None:
@@ -258,6 +247,8 @@ def export_diagnostics_archive(
         f".{resolved_output.name}.{uuid4().hex}.tmp"
     )
     descriptor = _open_new_private_file(temporary)
+    metadata = os.fstat(descriptor)
+    temporary_identity = (metadata.st_dev, metadata.st_ino)
     try:
         with os.fdopen(descriptor, "w+b") as handle:
             descriptor = -1
@@ -273,13 +264,17 @@ def export_diagnostics_archive(
                     _write_text_artifact(archive, artifact)
             handle.flush()
             os.fsync(handle.fileno())
-        _publish_file_exclusive(temporary, resolved_output)
+        _publish_file_exclusive(
+            temporary,
+            resolved_output,
+            identity=temporary_identity,
+        )
         _sync_directory(resolved_output.parent)
     finally:
         if descriptor >= 0:
             os.close(descriptor)
-        with suppress(FileNotFoundError):
-            temporary.unlink()
+        with suppress(OSError):
+            _unlink_owned_file(temporary, temporary_identity)
     return resolved_output
 
 
@@ -326,6 +321,10 @@ def resolve_export_output_path(
 ) -> Path:
     """Resolve an explicit or timestamped archive path without Product IO."""
 
+    if not _safe_relative_directory(directory):
+        raise ValueError("diagnostics directory must be a safe relative path")
+    if not _safe_filename_fragment(prefix):
+        raise ValueError("diagnostics prefix must be a portable name")
     if output is not None:
         return Path(output).expanduser().absolute()
     timestamp = generated_at.strftime("%Y%m%dT%H%M%SZ")
@@ -418,6 +417,37 @@ def _snapshot_observability_artifacts(
         if snapshot is not None:
             snapshots.append(snapshot)
     return tuple(snapshots)
+
+
+def _bundle_export_artifacts(
+    store: ArtifactStore | None,
+    *,
+    debug_latest: Path,
+    trace_latest: Path,
+    debug_snapshot: StoredArtifact | None,
+    trace_snapshot: StoredArtifact | None,
+) -> tuple[DiagnosticExportArtifact, ...]:
+    artifacts: list[DiagnosticExportArtifact] = []
+    for archive_name, latest, snapshot in (
+        ("debug/latest.log", debug_latest, debug_snapshot),
+        ("traces/latest.jsonl", trace_latest, trace_snapshot),
+    ):
+        if store is None:
+            if path_exists(latest):
+                artifacts.append(
+                    DiagnosticExportArtifact(
+                        archive_name=archive_name,
+                        source_path=latest,
+                    )
+                )
+        elif snapshot is not None:
+            artifacts.append(
+                DiagnosticExportArtifact(
+                    archive_name=archive_name,
+                    content=store.read_bytes(snapshot),
+                )
+            )
+    return tuple(artifacts)
 
 
 def _snapshot_latest(
@@ -520,16 +550,32 @@ def _write_text_artifact(
     artifact: DiagnosticExportArtifact,
 ) -> None:
     archive_name = _safe_archive_name(artifact.archive_name)
-    try:
-        content = artifact.source_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return
+    if artifact.content is not None:
+        content = artifact.content.decode("utf-8", errors="replace")
+    else:
+        assert artifact.source_path is not None
+        try:
+            content = artifact.source_path.read_text(
+                encoding="utf-8",
+                errors="replace",
+            )
+        except OSError:
+            return
     archive.writestr(archive_name, redact_text(content))
 
 
 def _safe_archive_name(value: str) -> str:
     path = PurePosixPath(value)
-    if not value or path.is_absolute() or ".." in path.parts or str(path) in {"", "."}:
+    if (
+        not value
+        or "\\" in value
+        or any(ord(character) < 32 for character in value)
+        or path.is_absolute()
+        or PureWindowsPath(value).drive
+        or ".." in path.parts
+        or path.as_posix() != value
+        or str(path) in {"", "."}
+    ):
         raise ValueError(
             f"diagnostics archive member must be a safe relative path: {value!r}"
         )
@@ -551,11 +597,41 @@ def _open_new_private_file(path: Path) -> int:
     return os.open(path, flags, 0o600)
 
 
-def _publish_file_exclusive(temporary: Path, destination: Path) -> None:
+def _publish_file_exclusive(
+    temporary: Path,
+    destination: Path,
+    *,
+    identity: tuple[int, int],
+) -> None:
+    _validate_owned_file(temporary, identity)
     if os.name == "nt":
         temporary.rename(destination)
-        return
-    os.link(temporary, destination)
+    else:
+        os.link(temporary, destination, follow_symlinks=False)
+    try:
+        _validate_owned_file(destination, identity)
+    except OSError:
+        with suppress(OSError):
+            published = destination.lstat()
+            _unlink_owned_file(
+                destination,
+                (published.st_dev, published.st_ino),
+            )
+        raise
+
+
+def _validate_owned_file(path: Path, identity: tuple[int, int]) -> None:
+    metadata = path.lstat()
+    if not stat.S_ISREG(metadata.st_mode) or (
+        metadata.st_dev,
+        metadata.st_ino,
+    ) != identity:
+        raise PermissionError(f"diagnostics artifact identity changed: {path}")
+
+
+def _unlink_owned_file(path: Path, identity: tuple[int, int]) -> None:
+    _validate_owned_file(path, identity)
+    path.unlink()
 
 
 def _sync_directory(directory: Path) -> None:

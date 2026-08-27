@@ -97,7 +97,9 @@ creates, closes, or recursively removes a shared `RunLease` tree.
 Snapshot sources require explicit allowed roots. The reader resolves the
 source, rejects non-regular or non-owned files and reparse points, uses
 no-follow opens where available, verifies path/file identity, bounds reads, and
-rejects a file that changes during capture. Every artifact declares one of
+rejects a file that changes during capture. The allowed source roots are a
+required capability supplied by the caller; the store never infers authority
+from the source path. Every artifact declares one of
 three disclosure levels:
 
 - `private`: never implicitly share;
@@ -107,7 +109,9 @@ three disclosure levels:
 The first production consumer is diagnostics export. The CLI composition root
 creates a short-lived `RuntimeScope`, `RunLease`, and `ArtifactStore`; debug and
 trace `latest` inputs are copied into `redact` snapshots, and only those stable
-snapshots enter the ZIP. The ZIP is fsynced and atomically published without
+snapshots enter the ZIP. Export reads those objects back through the store's
+identity and digest check rather than reopening their physical paths. The ZIP
+is fsynced and atomically published without
 replacing an existing file. Default machine-managed archives remain under
 `$LOUSHANG_HOME/state/diagnostics` and are bounded by age, count, and total
 bytes. Explicit user output paths are not garbage-collected.

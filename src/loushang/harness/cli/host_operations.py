@@ -192,6 +192,7 @@ def run_diagnostics_export_operation(
                 debug_latest_path=debug_latest_path,
                 trace_latest_path=trace_latest_path,
                 artifact_store=artifact_store_factory(scope),
+                platform_paths=scope.paths,
             )
     except Exception as error:
         stderr.write(f"Error: {format_error(error)}\n")

@@ -149,7 +149,15 @@ def test_artifact_store_enforces_per_artifact_and_total_byte_limits(
 
 @pytest.mark.parametrize(
     "logical_name",
-    ("", "/absolute", "../escape", "a/../escape", "a\\windows", "a//b"),
+    (
+        "",
+        "/absolute",
+        "C:/windows-absolute",
+        "../escape",
+        "a/../escape",
+        "a\\windows",
+        "a//b",
+    ),
 )
 def test_artifact_store_rejects_unsafe_logical_names(
     tmp_path: Path,
@@ -298,6 +306,26 @@ def test_artifact_store_snapshots_only_regular_files_inside_allowed_roots(
             media_type="text/plain",
             allowed_roots=(allowed,),
         )
+    lease.close()
+
+
+def test_artifact_store_requires_explicit_snapshot_roots(tmp_path: Path) -> None:
+    scope = _scope(tmp_path)
+    lease = RunLease.acquire(scope)
+    store = ArtifactStore(scope)
+    source = tmp_path / "debug.log"
+    source.write_bytes(b"debug")
+
+    with pytest.raises(ArtifactSourceRejected, match="explicit allowed root"):
+        store.snapshot_file(
+            source,
+            logical_name="debug/latest.log",
+            kind="debug-log",
+            media_type="text/plain",
+            allowed_roots=(),
+        )
+
+    assert not store.root.exists()
     lease.close()
 
 

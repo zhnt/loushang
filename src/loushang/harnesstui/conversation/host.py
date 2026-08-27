@@ -399,19 +399,22 @@ async def run_action_host_conversation_screen(
 
     callbacks = bind_action_host_to_screen_runner(action_host)
     lease: RunLease | None = None
+    scope: RuntimeScope | None = None
     input_router_factory = profile.input_router_factory
     runtime_context: AbstractContextManager[object] = nullcontext()
-    try:
-        if profile.runtime is not None:
-            scope = profile.runtime.scope_factory()
-            lease = RunLease.acquire(
-                scope,
-                sweep_policy=profile.runtime.sweep_policy,
-            )
-            profile.runtime.observe_sweep(lease.sweep_report)
-            input_router_factory = profile.runtime.input_router_factory(scope)
-            runtime_context = profile.runtime.context_factory(scope)
-        with runtime_context:
+    if profile.runtime is not None:
+        scope = profile.runtime.scope_factory()
+        runtime_context = profile.runtime.context_factory(scope)
+    with runtime_context:
+        try:
+            if profile.runtime is not None:
+                assert scope is not None
+                lease = RunLease.acquire(
+                    scope,
+                    sweep_policy=profile.runtime.sweep_policy,
+                )
+                profile.runtime.observe_sweep(lease.sweep_report)
+                input_router_factory = profile.runtime.input_router_factory(scope)
             return await run_conversation_screen(
                 app=app,
                 stdin=stdin,
@@ -432,9 +435,9 @@ async def run_action_host_conversation_screen(
                 interruption_message=profile.interruption_message,
                 cancellation_message=profile.cancellation_message,
             )
-    finally:
-        if lease is not None:
-            lease.close()
+        finally:
+            if lease is not None:
+                lease.close()
 
 
 TextActionHandler = Callable[

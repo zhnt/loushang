@@ -5,7 +5,10 @@ mechanism. It writes a deterministic set of archive members, protects archive
 member names, and redacts both text artifacts and JSON values before writing.
 Archive publication uses a private same-directory temporary file, fsync, and
 atomic no-replace publication, so a failed or colliding export cannot expose a
-partial ZIP or overwrite an existing artifact.
+partial ZIP or overwrite an existing artifact. Publication verifies the
+temporary object's file identity before and after the no-replace operation;
+archive member names are portable relative paths under both POSIX and Windows
+semantics.
 
 The low-level archive writer does not decide a product's storage root, file
 name, package identity, README wording, JSON field convention, or artifacts.
@@ -39,7 +42,10 @@ serialization. Conversation transcripts and prompt drafts are excluded.
 
 The standard CLI operation creates a short-lived run lease and ArtifactStore.
 Observability inputs must first become bounded `redact` artifacts with portable
-provenance; the archive never races a live sink directly. The default managed
+provenance; the archive reads them through ArtifactStore integrity checks and
+never races a live sink directly. The operation passes the same resolved
+`PlatformPaths` owned by its `RuntimeScope`, so no leaf exporter reinterprets
+environment variables mid-operation. The default managed
 archive family applies age, count, and total-byte retention after successful
 publication while preserving the new output. An explicit output path is caller
 owned and is never included in automatic retention.

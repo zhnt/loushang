@@ -12,7 +12,7 @@ import time
 from collections.abc import Callable, Iterable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, field
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from threading import RLock
 from typing import Literal, TypeAlias
 from uuid import uuid4
@@ -188,12 +188,16 @@ class ArtifactStore:
         media_type: str,
         disclosure: ArtifactDisclosure = "private",
         source: str | None = None,
-        allowed_roots: Sequence[str | Path] | None = None,
+        allowed_roots: Sequence[str | Path],
     ) -> StoredArtifact:
         """Capture one stable regular file after explicit root authorization."""
 
         source_file = Path(source_path).expanduser()
-        roots = tuple(allowed_roots or (source_file.parent,))
+        roots = tuple(allowed_roots)
+        if not roots:
+            raise ArtifactSourceRejected(
+                "artifact snapshot requires at least one explicit allowed root"
+            )
         with self._lock:
             if len(self._records) >= self.policy.max_artifacts:
                 raise ArtifactStoreQuotaExceeded(
@@ -470,6 +474,7 @@ def _read_stable_source(
             (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino)
             or before.st_size != after.st_size
             or before.st_mtime_ns != after.st_mtime_ns
+            or before.st_ctime_ns != after.st_ctime_ns
         ):
             raise ArtifactSourceRejected("artifact source changed during snapshot")
         return b"".join(chunks)
@@ -586,6 +591,7 @@ def _safe_logical_name(value: str) -> str:
         or "\\" in value
         or any(ord(character) < 32 for character in value)
         or path.is_absolute()
+        or PureWindowsPath(value).drive
         or ".." in path.parts
         or path.as_posix() != value
         or str(path) in {"", "."}

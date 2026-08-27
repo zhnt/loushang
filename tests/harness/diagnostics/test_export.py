@@ -4,11 +4,14 @@ import json
 import os
 import zipfile
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
+import loushang.harness.diagnostics.export as export_module
 from loushang.foundation.artifact_store import (
     ArtifactRetentionPolicy,
+    ArtifactSourceRejected,
     ArtifactStore,
 )
 from loushang.foundation.platform_paths import resolve_platform_paths
@@ -44,9 +47,11 @@ def test_standard_bundle_accepts_product_archive_profile(tmp_path) -> None:
     "kwargs",
     (
         {"archive_directory": "../outside"},
+        {"archive_directory": "C:/outside"},
         {"debug_directory": "/absolute"},
         {"trace_directory": "state\\traces"},
         {"archive_prefix": "nested/name"},
+        {"archive_prefix": "windows:stream"},
         {"archive_root": "unknown"},
     ),
 )
@@ -82,7 +87,20 @@ def test_export_diagnostics_archive_redacts_text_and_structured_values(
     assert "private-token" not in text
 
 
-def test_export_diagnostics_archive_rejects_unsafe_member_name(tmp_path) -> None:
+@pytest.mark.parametrize(
+    "archive_name",
+    (
+        "../escape.log",
+        "..\\escape.log",
+        "C:/escape.log",
+        "logs//debug.log",
+        "logs/debug\n.log",
+    ),
+)
+def test_export_diagnostics_archive_rejects_unsafe_member_name(
+    tmp_path,
+    archive_name: str,
+) -> None:
     source = tmp_path / "source.log"
     source.write_text("content", encoding="utf-8")
 
@@ -92,11 +110,33 @@ def test_export_diagnostics_archive_rejects_unsafe_member_name(tmp_path) -> None
             readme="diagnostics",
             manifest={},
             diagnostics=(),
-            artifacts=(DiagnosticExportArtifact("../escape.log", source),),
+            artifacts=(DiagnosticExportArtifact(archive_name, source),),
         )
 
     assert not (tmp_path / "diagnostics.zip").exists()
     assert tuple(tmp_path.glob(".*.tmp")) == ()
+
+
+@pytest.mark.parametrize(
+    "artifact",
+    (
+        DiagnosticExportArtifact("logs/debug.log", content=b"debug"),
+        DiagnosticExportArtifact("logs/debug.log", source_path=Path("debug.log")),
+    ),
+)
+def test_diagnostics_artifact_accepts_exactly_one_content_authority(artifact) -> None:
+    assert artifact.archive_name == "logs/debug.log"
+
+
+def test_diagnostics_artifact_rejects_ambiguous_content_authority() -> None:
+    with pytest.raises(ValueError, match="exactly one"):
+        DiagnosticExportArtifact("logs/debug.log")
+    with pytest.raises(ValueError, match="exactly one"):
+        DiagnosticExportArtifact(
+            "logs/debug.log",
+            source_path=Path("debug.log"),
+            content=b"debug",
+        )
 
 
 def test_standard_bundle_snapshots_observability_through_artifact_store(
@@ -142,6 +182,48 @@ def test_standard_bundle_snapshots_observability_through_artifact_store(
     lease.close()
     assert not scope.run_dir.exists()
     assert bundle.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="symlink semantics are POSIX-specific")
+def test_standard_bundle_verifies_snapshot_identity_before_archive_read(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    paths = resolve_platform_paths(
+        environ={"LOUSHANG_RUNTIME_DIR": str(tmp_path / "runtime")},
+        home=tmp_path / "home",
+    )
+    scope = resolve_runtime_scope(paths=paths, run_id="e" * 32)
+    lease = RunLease.acquire(scope)
+    store = ArtifactStore(scope)
+    debug = tmp_path / "debug" / "latest"
+    debug.parent.mkdir()
+    debug.write_text("safe", encoding="utf-8")
+    outside = tmp_path / "outside.log"
+    outside.write_text("must not export", encoding="utf-8")
+    snapshot_file = store.snapshot_file
+
+    def replace_snapshot(*args, **kwargs):
+        artifact = snapshot_file(*args, **kwargs)
+        artifact.path.unlink()
+        artifact.path.symlink_to(outside)
+        return artifact
+
+    monkeypatch.setattr(store, "snapshot_file", replace_snapshot)
+
+    with pytest.raises(ArtifactSourceRejected, match="identity changed"):
+        export_diagnostics_bundle(
+            project_root=tmp_path,
+            session_dir=tmp_path / "sessions",
+            output=tmp_path / "bundle.zip",
+            debug_latest_path=debug,
+            trace_latest_path=tmp_path / "missing-trace",
+            artifact_store=store,
+            platform_paths=paths,
+        )
+
+    assert not (tmp_path / "bundle.zip").exists()
+    lease.close()
 
 
 def test_standard_bundle_resolves_windows_style_latest_pointer_through_store(
@@ -262,6 +344,37 @@ def test_diagnostics_archive_publication_never_replaces_existing_output(
     assert tuple(tmp_path.glob(".*.tmp")) == ()
 
 
+def test_diagnostics_archive_rejects_replaced_publication_temporary(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    publish = export_module._publish_file_exclusive
+
+    def replace_before_publish(temporary, destination, *, identity):
+        temporary.unlink()
+        temporary.write_bytes(b"untrusted replacement")
+        publish(temporary, destination, identity=identity)
+
+    monkeypatch.setattr(
+        export_module,
+        "_publish_file_exclusive",
+        replace_before_publish,
+    )
+
+    with pytest.raises(PermissionError, match="identity changed"):
+        export_diagnostics_archive(
+            output_path=tmp_path / "diagnostics.zip",
+            readme="diagnostics",
+            manifest={},
+            diagnostics=(),
+        )
+
+    assert not (tmp_path / "diagnostics.zip").exists()
+    assert [path.read_bytes() for path in tmp_path.glob(".*.tmp")] == [
+        b"untrusted replacement"
+    ]
+
+
 @pytest.mark.skipif(os.name != "posix", reason="symlink semantics are POSIX-specific")
 def test_diagnostics_archive_publication_does_not_follow_output_symlink(
     tmp_path,
@@ -312,3 +425,23 @@ def test_default_diagnostics_exports_apply_managed_retention(
     )
 
     assert tuple(directory.glob("diag-*.zip")) == (exported,)
+
+
+def test_standard_bundle_uses_injected_platform_paths(tmp_path, monkeypatch) -> None:
+    ambient_home = tmp_path / "ambient-home"
+    injected_home = tmp_path / "injected-home"
+    monkeypatch.setenv("LOUSHANG_HOME", str(ambient_home))
+    paths = resolve_platform_paths(
+        environ={"LOUSHANG_HOME": str(injected_home)},
+        home=tmp_path / "ignored-user-home",
+    )
+
+    exported = export_diagnostics_bundle(
+        project_root=tmp_path,
+        session_dir=tmp_path / "sessions",
+        platform_paths=paths,
+        now=lambda: datetime(2026, 8, 27, tzinfo=UTC),
+    )
+
+    assert exported.parent == injected_home / "state" / "diagnostics"
+    assert not ambient_home.exists()
