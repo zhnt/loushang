@@ -2,8 +2,12 @@
 
 ## Status
 
-- Authority: proposed — non-normative cross-scope delivery plan
-- Design status: proposed, revised after three independent reviews
+- Authority: retired design history — superseded by the
+  [Harness Plugin Architecture V2](../../harness/plugin/architecture.md) and
+  [current lifecycle plan](../../harness/plugin/plugin-lifecycle-coding-pluginization-plan.md)
+- Design status: superseded; retained for rationale and rejected alternatives,
+  not as a second isolated-execution or PLC8/PLC9 plan
+- Prior design status: proposed, revised after three independent reviews
 - Implementation status: partial foundations exist; proposed PLC8/PLC9 slices
   and executable SDK contracts are not implemented
 - Owner: Loushang architecture; affected owners include Harness, Product,
@@ -114,9 +118,9 @@ universal `PluginContext`.
 
 Current authority baseline:
 
-- [Unified Plugin Architecture](../../harness/unified-plugin-architecture.md)
-- [Plugin Lifecycle And Coding Pluginization Delivery Plan](../../harness/plugin-lifecycle-coding-pluginization-plan.md)
-- [Resource Catalog Pluginization Plan](../../harness/resource-catalog-pluginization-plan.md)
+- [Unified Plugin Architecture](../../harness/plugin/architecture.md)
+- [Plugin Lifecycle And Coding Pluginization Delivery Plan](../../harness/plugin/plugin-lifecycle-coding-pluginization-plan.md)
+- [Resource Catalog Pluginization Plan](../../harness/plugin/resource-catalog-pluginization-plan.md)
 - [Harness Process Hosting Boundary](../../harness/process-hosting-boundary.md)
 - [Harness Workspace Execution Boundary](../../harness/workspace-execution-boundary.md)
 

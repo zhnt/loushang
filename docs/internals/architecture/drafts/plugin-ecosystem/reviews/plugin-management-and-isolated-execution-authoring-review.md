@@ -74,7 +74,7 @@ author-facing target:
 - The Plugin authoring package explicitly exports no public SDK
   (`src/loushang/harness/plugin_authoring/__init__.py:1`). The lifecycle plan
   likewise records PLC6 through PLC9 and the public SDK as unimplemented
-  (`docs/internals/architecture/harness/plugin-lifecycle-coding-pluginization-plan.md:40`).
+  (`docs/internals/architecture/harness/plugin/plugin-lifecycle-coding-pluginization-plan.md:40`).
 - The existing dependency lock records installed Python distribution names and
   versions. It does not identify or build an isolated interpreter/environment,
   model Node dependencies, or describe platform artifacts

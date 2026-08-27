@@ -2,14 +2,20 @@
 
 ## Status
 
-- Authority: descriptive — independent validation evidence catalog
+- Authority: retired descriptive validation evidence catalog
 - Design status: not-applicable
 - Implementation status: not-applicable
 - Owner: Loushang architecture review
 
-These reviews test proposed documents against accepted ownership, current
-source, security boundaries, and author experience. They do not accept the
-proposal and do not become a second source of runtime requirements.
+These reviews tested proposal-era documents against the source and boundaries
+available at the reviewed revisions. The proposals are now superseded by the
+[Harness Plugin Architecture V2](../../../harness/plugin/architecture.md).
+These reviews do not become a second source of runtime requirements.
+
+Line-relative citations to the former Harness Unified Plugin Architecture refer
+to its historical reviewed revision, not to current V2 line numbers. Use Git
+history to reconstruct those citations. They intentionally remain plain
+historical references rather than misleading links into current V2.
 
 ## Plugin Management And Isolated Execution
 

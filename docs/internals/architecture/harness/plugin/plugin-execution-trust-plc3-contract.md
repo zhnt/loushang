@@ -1,11 +1,13 @@
 # Plugin Execution Trust PLC3 Contract
 
-Status: PLC3-3 verified Definition evaluation and mixed-source join implemented;
-production Host ingress, live owner binding, public SDK and MCP expansion remain
-closed.
+Status: PLC3-3 verified Definition evaluation and mixed-source join implemented.
+Subsequent PLC5.1 work uses this trust path for the production `coding.lsp`
+Plugin route; public SDK, isolated Worker, and MCP expansion remain closed. This
+contract still owns only the execution-decision/evaluation slice, not Product
+ingress or live owner binding.
 
 This document is the normative incremental companion to
-[Unified Plugin Architecture](unified-plugin-architecture.md),
+[Unified Plugin Architecture](architecture.md),
 [Unified Plugin Authoring Primitives Delivery Plan](plugin-authoring-primitives-delivery-plan.md),
 and
 [Unified Plugin Lifecycle And Coding Pluginization Delivery Plan](plugin-lifecycle-coding-pluginization-plan.md).

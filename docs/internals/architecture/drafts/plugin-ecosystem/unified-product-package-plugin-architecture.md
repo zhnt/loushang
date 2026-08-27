@@ -2,8 +2,13 @@
 
 ## Status
 
-- Authority: proposed — non-normative cross-system architecture draft
-- Design status: proposed, revised after three independent architecture reviews
+- Authority: retired design history — superseded by the
+  [Harness Plugin Architecture V2](../../harness/plugin/architecture.md)
+- Design status: superseded; retained for rationale and rejected alternatives,
+  not for implementation or acceptance
+- Historical review scope: the remaining status and line references describe
+  the proposal revision reviewed at the time and are non-normative
+- Prior design status: proposed, revised after three independent architecture reviews
   and rebased onto an explicit post-CLA8 planning assumption
 - Later refinement: source authority, installation scope, release provenance,
   execution shape, contribution selection, and mutable component data were

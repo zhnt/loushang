@@ -2,8 +2,8 @@
 
 ## Status And Authority
 
-- Status: proposed coordinating delivery plan and accepted-boundary revision
-  candidate.
+- Status: active coordinating delivery plan under Plugin Architecture V2. It is
+  not a second architecture authority.
 - Baseline: `harness/plugin-authoring-primitives-plan` at `2e6f481d`, based on
   the implemented resolve-once package path and inert
   `capability_provider` preflight/finalize slice.
@@ -43,12 +43,12 @@
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
   Skill catalog convergence, and later public SDK stabilization.
-- Authority: the accepted
-  [Unified Plugin Architecture](unified-plugin-architecture.md),
-  [Capability Composition Lifecycle Authority Plan](composition-lifecycle-authority-plan.md),
-  [Capability Dependency And Mount Lifecycle](capability-dependency-and-mount-lifecycle.md),
+- Authority: the canonical target
+  [Plugin Architecture V2](architecture.md),
+  [Capability Composition Lifecycle Authority Plan](../composition-lifecycle-authority-plan.md),
+  [Capability Dependency And Mount Lifecycle](../capability-dependency-and-mount-lifecycle.md),
   and
-  [Extension And Resource Generation Lifecycle](extension-generation-lifecycle-boundary.md)
+  [Extension And Resource Generation Lifecycle](../extension-generation-lifecycle-boundary.md)
   remain authoritative unless this plan explicitly identifies a proposed
   sequencing revision.
 - Detailed Provider-authoring work remains specified by the
@@ -1351,21 +1351,51 @@ Scope:
 - keep each `SKILL.md` a `resource_item`;
 - stabilize the PLC4.5 filesystem, embedded and admitted-package Skill path and
   expose only the proven data-only helpers and advanced component surface; and
-- route Skill scripts through existing Tool/Policy/Approval/Sandbox execution.
+- add a strict native/package managed Skill-action declaration bound to exact
+  script digest, runtime, argv/cwd/environment policy, effects, and containment,
+  while retaining the existing authorized generic Tool path during migration;
+- compile public builders to the same canonical manifest and declaration IR;
+  validation/inspection remain inert and execution conformance is explicit;
+  and
+- expose a small Product build facade that distinguishes embedded contributions
+  without Plugin identity from independently selectable built-in Plugins.
 
 Exit gate:
 
 - ordinary authors never receive owner authority objects;
 - two IR/engine versions have explicit compatibility fixtures;
 - all Skill list/enable/load/refresh callers use one catalog path; and
-- model-visible Skill content is committed with source revision and digest.
+- model-visible Skill content is committed with source revision and digest;
+- authoring has no ambient `PluginContext` or generic registry escape hatch;
+  and
+- both native and packaged Skill actions prove no execution during validation,
+  exact Approval use, required-containment failure, and revision pinning.
 
 ### PLC9: Management, Isolation And Cleanup Closure
 
 Scope:
 
 - add CLI/RPC/UI/SDK projections over the already durable management core;
-- complete isolated-worker evaluation before untrusted executable admission;
+- add a versioned `local_worker` declaration arm and supervised Worker envelope
+  over the authorized Process Host, while keeping semantic IPC protocols and
+  publication with exact domain Component Hosts;
+- evaluate `remote_service` only as a separate topology with explicit identity,
+  authentication, egress, tenant, revocation, and data-residency contracts;
+- complete required-containment Worker evaluation before untrusted executable
+  admission; a same-user child process never counts as a Sandbox;
+- make Package lifecycle the sole safe-materialization owner: bounded
+  quarantine extraction, regular-file/directory-only trees, no path/link escape,
+  digest-pinned dependency closure, no runtime source build or install hook, and
+  atomic immutable publication. Python artifacts are verified wheel-only unless
+  a separately contained build service is accepted and returns a verified
+  artifact. Source adapters authenticate/fetch and deliver provenance plus
+  bytes only through the Package lifecycle owner's bounded sink; they cannot
+  choose quarantine paths, publish revisions, bind runtimes, or bypass final
+  verification;
+- migrate `manifest.enabled` once into an install-time default, treat
+  `source.enabled` only as Source Authority availability, and remove their peer
+  runtime-selection veto after `PluginManagementService` desired state is the
+  sole selection writer;
 - implement retained-version and orphaned-generation GC;
 - add separately confirmed private-data deletion and backup retention;
 - remove superseded Package/Plugin/Extension compatibility adapters; and
@@ -1374,16 +1404,20 @@ Scope:
 Exit gate:
 
 - every supported management surface calls one service;
+- execution topology, trust, authority, lifetime, and placement remain
+  independently diagnosable;
+- malicious archives and source distributions cannot write outside quarantine
+  or execute during install, inspect, validation, or activation;
 - remove, retirement, GC and data deletion are visibly distinct operations;
 - incomplete termination cannot be reported as disabled or removed; and
 - no compatibility path independently mutates package, selection, owner, or
   effective state.
 
-## Proposed Sequencing Revisions
+## Sequencing Decisions
 
-This coordinating plan proposes three explicit revisions to the accepted UPA
-delivery order. They require architecture approval before implementation
-claims the revised milestone names:
+The former UPA0-UPA8 sequence has been retired from the architecture master
+document. This coordinating plan retains the three sequencing decisions already
+reflected by the implemented PLC work:
 
 1. split the UPA8 management work, moving the minimum durable management
    control core before the `coding.base` cutover while retaining UI, isolation,

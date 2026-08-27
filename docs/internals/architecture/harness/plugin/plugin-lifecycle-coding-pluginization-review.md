@@ -269,7 +269,7 @@ No further broad documentation review is required before source work.
 
 The review compared the plan against:
 
-- [Unified Plugin Architecture](unified-plugin-architecture.md), including its
+- [Unified Plugin Architecture](architecture.md), including its
   parse/declare/select/bind-once invariants, Coding decomposition, lifecycle,
   security-revoke, management, and UPA0-UPA8 sequence;
 - [Unified Plugin Authoring Primitives Delivery Plan](plugin-authoring-primitives-delivery-plan.md)

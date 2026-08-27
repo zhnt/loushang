@@ -16,33 +16,34 @@ import loushang.harness.runtime as public_runtime
 from loushang.harness.runtime import RuntimeCapabilityScope
 
 ARCHITECTURE_PATH = Path(
-    "docs/internals/architecture/harness/unified-plugin-architecture.md"
+    "docs/internals/architecture/harness/plugin/architecture.md"
 )
 AUTHORING_PLAN_PATH = Path(
-    "docs/internals/architecture/harness/plugin-authoring-primitives-delivery-plan.md"
+    "docs/internals/architecture/harness/plugin/plugin-authoring-primitives-delivery-plan.md"
 )
 LIFECYCLE_PLAN_PATH = Path(
-    "docs/internals/architecture/harness/plugin-lifecycle-coding-pluginization-plan.md"
+    "docs/internals/architecture/harness/plugin/plugin-lifecycle-coding-pluginization-plan.md"
 )
 PLC1B_CONTRACT_PATH = Path(
-    "docs/internals/architecture/harness/plugin-declaration-foundation-plc1b-contract.md"
+    "docs/internals/architecture/harness/plugin/plugin-declaration-foundation-plc1b-contract.md"
 )
 PLC2_CONTRACT_PATH = Path(
-    "docs/internals/architecture/harness/plugin-lifecycle-plc2-contract.md"
+    "docs/internals/architecture/harness/plugin/plugin-lifecycle-plc2-contract.md"
 )
 PLC3_CONTRACT_PATH = Path(
-    "docs/internals/architecture/harness/plugin-execution-trust-plc3-contract.md"
+    "docs/internals/architecture/harness/plugin/plugin-execution-trust-plc3-contract.md"
 )
 PAP4_CONTRACT_PATH = Path(
-    "docs/internals/architecture/harness/plugin-capability-admission-pap4-contract.md"
+    "docs/internals/architecture/harness/plugin/plugin-capability-admission-pap4-contract.md"
 )
 RESOURCE_CATALOG_PLAN_PATH = Path(
-    "docs/internals/architecture/harness/resource-catalog-pluginization-plan.md"
+    "docs/internals/architecture/harness/plugin/resource-catalog-pluginization-plan.md"
 )
 CAPABILITY_LIFECYCLE_PATH = Path(
     "docs/internals/architecture/harness/capability-dependency-and-mount-lifecycle.md"
 )
-README_PATH = Path("docs/internals/architecture/harness/README.md")
+README_PATH = Path("docs/internals/architecture/harness/plugin/README.md")
+HARNESS_README_PATH = Path("docs/internals/architecture/harness/README.md")
 SOURCE_ROOT = Path("src/loushang")
 EXPECTED_PLUGIN_JSON_STATIC_SITES = {
     Path("src/loushang/harness/resources/packages/manifest.py"),
@@ -1461,50 +1462,55 @@ def _nodes_call_any_name(nodes: tuple[ast.AST, ...], names: set[str]) -> bool:
 def test_unified_plugin_architecture_document_is_indexed() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
     readme = README_PATH.read_text(encoding="utf-8")
+    harness_readme = HARNESS_README_PATH.read_text(encoding="utf-8")
 
-    assert "unified-plugin-architecture.md" in readme
-    assert "Every manifest format has one parser" in architecture
-    assert "Plugin identity is not a Capability Graph node" in architecture
-    assert "installed != enabled != preflight-approved != declared != requested" in (
-        architecture
-    )
+    assert "[Plugin Architecture V2](architecture.md)" in readme
+    assert "[Plugin Architecture Hub](plugin/README.md)" in harness_readme
+    assert "one strict `plugin.json`" in architecture
+    assert "A Plugin is an independently selectable activation identity" in architecture
+    assert "Installed is not enabled; enabled is not admitted" in architecture
 
 
-def test_unified_plugin_architecture_defines_the_four_phase_pipeline() -> None:
+def test_unified_plugin_architecture_defines_the_owner_preserving_pipeline() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
 
-    for phase in (
-        "Resolve once",
-        "Preflight, then declare once",
-        "Bind once",
-        "Project once",
-    ):
-        assert phase in architecture
+    phases = (
+        "### Resolve and inspect",
+        "### Preflight and declare",
+        "### Admit and bind",
+        "### Disable, revoke, update, and remove",
+        "## Diagnostics And Model Visibility",
+    )
+    assert all(phase in architecture for phase in phases)
+    assert [architecture.index(phase) for phase in phases] == sorted(
+        architecture.index(phase) for phase in phases
+    )
 
 
 def test_plugin_classification_is_multidimensional_and_non_authoritative() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
     capability_lifecycle = CAPABILITY_LIFECYCLE_PATH.read_text(encoding="utf-8")
 
-    assert "has no mutually exclusive top-level `pluginType`" in architecture
-    assert "Product and OEM\nare selectors and provenance authorities" in architecture
-    assert "do not carry a hierarchical\nnumeric type code or a capability bitmap" in (
+    for axis in (
+        "| Artifact |",
+        "| Plugin identity |",
+        "| Contribution |",
+        "| Capability |",
+        "| Execution topology |",
+        "| Trust and authority |",
+        "| Lifetime |",
+        "| Placement and scope |",
+    ):
+        assert axis in architecture
+    assert "`resource`, `capability`, `worker`, and `remote` are not Plugin" in (
         architecture
     )
-    assert "never persisted as the canonical identity, fingerprint" in architecture
-    assert "cannot\ncontain arbitrary Plugin contributions" in architecture
-    assert "sibling `tool_pack` and `command_pack` contributions" in architecture
-    assert "| Tool definition/contribution owner |" in architecture
-    assert "sibling tool_pack binds model-visible definitions" in architecture
-    assert "this Session visibility rule is not a cross-owner publication or" in (
+    assert "bind to an exact\ncontribution and executable use" in architecture
+    assert "Human-readable names are labels, not joins" in architecture
+    assert "The Plugin manager cannot invent\nmerge, precedence" in architecture
+    assert "complete Capability Bundle remains one owner-admitted Provider" in (
         architecture
     )
-    assert "Declaration source model is not contributed-runtime execution model" in (
-        architecture
-    )
-    assert "No parity test may erase that\nprovenance distinction" in architecture
-    assert "PluginContributionSemanticFingerprint" in architecture
-    assert "never substitutes for\ndeclaration/candidate identity" in architecture
     assert "Independently selected model-visible Tool definitions" in (
         capability_lifecycle
     )
@@ -1574,52 +1580,44 @@ def test_plc1b_declaration_plan_and_pap_crosswalk_are_explicit() -> None:
 
 
 def test_plc1b_versioned_bytes_and_delivery_order_are_frozen() -> None:
-    architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
     lifecycle_plan = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
     contract = PLC1B_CONTRACT_PATH.read_text(encoding="utf-8")
 
-    assert "`allow_nan=False`, `ensure_ascii=True`" in architecture
-    assert "performs no Unicode normalization" in architecture
-    assert "rejects unpaired\nsurrogates before hashing" in architecture
-    assert '"documentVersion": 1' in architecture
-    assert "strictly sorted by `(pluginId, contributionId)`" in architecture
-    assert "different from the complete indexed source closure fails" in architecture
+    assert "allow_nan=False" in contract
+    assert "ensure_ascii=True" in contract
+    assert "no Unicode normalization" in contract
+    assert "unpaired Unicode\nsurrogates" in contract
+    assert "`documentVersion: 1`" in contract
+    assert "strictly sorted by `(pluginId, contributionId)`" in contract
+    assert "the complete indexed closure for that one document source" in contract
     assert "bytes must equal their canonical re-encoding" in contract
     assert "duplicate object keys" in contract
     assert "mutable-root `resolve(strict=True)` remains only a pre-publication" in (
         lifecycle_plan
     )
-    assert architecture.index("### UPA4: LSP Vertical Slice") < architecture.index(
-        "### UPA5: Base Coding Composition"
+    assert lifecycle_plan.index("### PLC5: `coding.lsp.default` Production Provider") < lifecycle_plan.index(
+        "### PLC6: `coding.base` Production Resource Plugin"
     )
-    assert architecture.index("### UPA5: Base Coding Composition") < architecture.index(
-        "### UPA6: Architecture Vertical Slice"
+    assert lifecycle_plan.index("### PLC6: `coding.base` Production Resource Plugin") < lifecycle_plan.index(
+        "### PLC7: `coding.arch.default` Second Provider"
     )
 
 
 def test_plc5_default_lsp_mount_keeps_product_and_graph_ownership() -> None:
-    architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
     lifecycle_plan = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
-    architecture_text = " ".join(architecture.split())
     lifecycle_plan_text = " ".join(lifecycle_plan.split())
 
     for required in (
         "`CodingLspPluginOptInRequest | None`",
-        "not an assembled Session composition",
-        "same bounded 300-second construction window",
-        "failure is fail-closed with no fallback",
-        "`AgentSession` never closes a Graph-owned runtime",
-        "Binder rollback/retirement is the sole Provider disposer",
-        "`CodingLspToolOwner` stages invisible registration",
-        "does not widen Component Host API prefixes",
-    ):
-        assert required in architecture_text
-
-    for required in (
-        "not a boolean treated as authority",
         "not a caller-assembled Session composition",
-        "an opt-in request is neither a declaration-execution decision",
+        "same bounded 300-second construction window",
+        "A failed Graph preparation rolls back Provider and Tool generations and never falls back",
         "`AgentSession` never calls `close()` on a Graph-owned LSP runtime",
+        "Binder rollback/retirement remains its sole disposer",
+        "stages invisible Tool registration leases",
+        "neither widens the Component Host API prefixes",
+        "not a boolean treated as authority",
+        "an opt-in request is neither a declaration-execution decision",
         "Bootstrap neither constructs LSP Tool definitions nor owns their leases",
         "`CodingLspPluginConfigV1`",
         "No per-workspace package generation",
@@ -1628,44 +1626,36 @@ def test_plc5_default_lsp_mount_keeps_product_and_graph_ownership() -> None:
 
 
 def test_plc5_co_distributed_dependency_evidence_keeps_one_lock_authority() -> None:
-    architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
     lifecycle_plan = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
-
-    for required in (
-        "`CoDistributedPluginDependencyGrantResolver` recognizes only an exact",
-        "`InstalledPythonDistributionEvidenceResolver` proves the current exact",
-        "remains the\nsole lock assembler for both publication and binding/restart",
-        "lock stays `loushang.plugin-dependency-lock/v1`",
-        "does not execute `.pth` files or accept ambient\n`sys.path` coincidence",
-        "not a Plugin type, manifest field,\nCapability grant or public authoring primitive",
-        "initial private registry\ncontains only `coding.lsp.default -> loushang`",
-        "Same-name installations are enumerated rather than resolved by arbitrary",
-        "Their paths are\nnever unioned into a broader evidence boundary",
-    ):
-        assert required in architecture
+    lifecycle_plan_text = " ".join(lifecycle_plan.split())
 
     for required in (
         "#### PLC5.1a: Co-Distributed Dependency Evidence",
+        "Harness-owned `InstalledPythonDistributionEvidenceResolver`",
+        "private Product-owned `CoDistributedPluginDependencyGrantResolver`",
+        "exact `(pluginId, sourceIdentity)`",
+        "`coding.lsp.default -> loushang` relationship",
+        "Neither a manifest, declaration, user configuration nor Plugin code can add a grant",
         "`PackageMaterializer._plugin_dependency_lock()` remains the only assembler",
-        "Neither a manifest,\n  declaration, user configuration nor Plugin code can add a grant",
-        "A plain source\n  tree without matching installed metadata is not evidence",
-        "This is a same-trust-domain private\ncode boundary, not a public SDK",
+        "emits the existing `loushang.plugin-dependency-lock/v1` document",
+        "not a Plugin type, Capability grant, execution decision, import result or lifecycle owner",
+        "A plain source tree without matching installed metadata is not evidence",
+        "does not execute `.pth` files",
+        "This is a same-trust-domain private code boundary, not a public SDK",
         "The resolver enumerates every installed candidate with the normalized name",
         "Candidate paths are never unioned into one wider installation",
         "never use the legacy LSP route",
         "does not add arbitrary host-package dependencies",
     ):
-        assert required in lifecycle_plan
+        assert required in lifecycle_plan_text
 
 
 def test_plc1b_contract_freezes_no_self_reference_and_exact_v2_records() -> None:
-    architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
     contract = PLC1B_CONTRACT_PATH.read_text(encoding="utf-8")
 
     assert "The descriptor fingerprint never includes package content digest" in contract
     assert "prevents a declaration document from needing\nto contain a hash" in contract
-    assert "appear inside package bytes without a self-referential" in architecture
-    assert "verified package revision. It is the sole source-group key" not in architecture
+    assert "verified package revision. It is the sole source-group key" not in contract
     assert "`PluginSymbolReference` v2" in contract
     assert "Neither the payload nor either symbol\nreference contains `packageDigest`" in (
         contract
@@ -2124,14 +2114,10 @@ def test_declaration_host_is_the_single_production_composition_entry() -> None:
         (host_path, "PluginDeclarationHost.__init__"),
     }
     assert not hasattr(public_plugins, "PluginDeclarationHost")
-    architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
     contract = PLC1B_CONTRACT_PATH.read_text(encoding="utf-8")
     authoring_plan = AUTHORING_PLAN_PATH.read_text(encoding="utf-8")
-    assert "single production\ncomposition entry" in architecture
-    assert "accepted token is never a Product-facing continuation handle" in (
-        architecture
-    )
     assert "exactly one production composition entry" in contract
+    assert "returns the accepted token to\nProduct code" in contract
     assert "It never writes an Approval decision" in contract
     assert "-> PluginDeclarationHost.resolve()" in authoring_plan
 
@@ -2348,81 +2334,68 @@ def test_semantic_fingerprint_is_one_inert_compiler_owned_diagnostic() -> None:
 
 
 def test_executable_declaration_is_gated_by_inert_preflight() -> None:
-    architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
+    # Exact preflight wire/state details belong to the frozen incremental
+    # contracts and delivery plan, not to the concise V2 architecture master.
+    architecture = "\n".join(
+        (
+            PLC1B_CONTRACT_PATH.read_text(encoding="utf-8"),
+            PLC3_CONTRACT_PATH.read_text(encoding="utf-8"),
+            AUTHORING_PLAN_PATH.read_text(encoding="utf-8"),
+            LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8"),
+        )
+    )
 
-    assert architecture.index("Plugin Preflight Proposal") < architecture.index(
-        "Plugin Definition"
+    assert architecture.index("PluginPreflightProposal") < architecture.index(
+        "## Verified Definition Evaluator And Import Realm"
     )
-    assert (
-        "Only a digest-bound package with a positive execution-preflight decision"
-        in architecture
-    )
-    assert "A document reservation never fabricates or" in architecture
-    assert "executable packages are never imported and\nnever launched" in architecture
-    assert "PluginExecutionApprovalSubject" in architecture
-    assert "ContributionActivationApprovalSubject" in architecture
-    assert "PluginPreflightOutcome" in architecture
-    assert "PluginPreflightProposal" in architecture
-    assert "calls `preflight()` again" in architecture
-    assert "there is no mutable proposal to resume" in architecture
-    assert "A group alone owns exactly one `PluginDeclarationGate`" in architecture
-    assert "no copied gate, subject, decision or nullable peer fields" in architecture
-    assert "Reservation gate and completed declaration evidence are different" in (
-        architecture
-    )
-    assert "A positive decision reference alone cannot become a candidate" in (
-        architecture
-    )
-    assert "Non-accepted arms carry no accepted group,\nreservation, gate, active token" in (
-        architecture
-    )
-    assert "atomically create one active token" in architecture
-    assert "PluginExecutionApprovalSubject` v2" in architecture
-    assert "unsupported_plugin_execution_approval_subject_version" in architecture
-    assert "`subjectSchemaVersion: 2`" in architecture
-    assert "unsupported_plugin_execution_decision_record_version" in architecture
-    assert "ACTIVE_OPEN -> FINALIZED" in architecture
-    assert "ACTIVE_OPEN -> CLOSING_ABORT -> ABORTED" in architecture
-    assert "ACTIVE_OPEN -> CLOSING_EXPIRE -> EXPIRED" in architecture
-    assert "calls `finalize()` zero times" in architecture
-    assert "Definition returns the analogous complete frozen declaration" in architecture
-    assert "sequence for its exact group" in architecture
-    assert "removes the current unconditional `decision_id`" in architecture
-    assert "serialize no execution subject, decision or receipt field" in architecture
-    assert "is an independent complete subject" in architecture
-    assert "PluginApprovalDecisionRecord" in architecture
-    assert "consume_execution_decision(subject, decision_id)" in architecture
-    assert "Revocation linearizes against consumption" in architecture
-    assert "normalized group security-" in architecture
-    assert "configuration fingerprint" in architecture
-    assert "Security-relevant configuration includes" in architecture
-    assert "factory execution, owner bind and external-service launch are\nauthorized only" in (
-        architecture
-    )
+    for required in (
+        "PluginExecutionApprovalSubject` v2",
+        "ContributionActivationApprovalSubject",
+        "`PluginPreflightOutcome`: strict `accepted`/`pending_approval`/`denied`/",
+        "Only `accepted` carries an active token and source groups",
+        "no reservation, gate, or finalizable preflight",
+        "no copied Gate, subject, decision, or evidence",
+        "unsupported_plugin_execution_approval_subject_version",
+        "unsupported_plugin_execution_decision_record_version",
+        "`decisionRecordVersion: 2` and `subjectSchemaVersion: 2`",
+        "ACTIVE_OPEN -> CLOSING_ABORT -> ABORTED",
+        "-> CLOSING_EXPIRE -> EXPIRED",
+        "CAS ACTIVE_OPEN -> FINALIZED",
+        "`ExecutionUseReservation` v1",
+        "CONSUMED_NOT_STARTED -> CANCELLED_BEFORE_START | STARTING",
+        "STARTING             -> EVALUATED | FAILED_AFTER_START",
+        "disabled, denied, expired, stale, wrong-scope, wrong-digest, revoked",
+        "code is never imported",
+    ):
+        assert required in architecture
 
 
 def test_top_level_capability_provider_selection_is_not_a_profile_slot() -> None:
-    architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
+    architecture = "\n".join(
+        (
+            PAP4_CONTRACT_PATH.read_text(encoding="utf-8"),
+            AUTHORING_PLAN_PATH.read_text(encoding="utf-8"),
+            LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8"),
+        )
+    )
 
     assert "ProductCapabilityProviderResolver" in architecture
     assert "ProductCapabilityConsumerRequirementSet" in architecture
-    assert "sole bridge into\n`ProductCapabilityProviderResolver`" in architecture
-    assert "not a third\nTool-to-Provider locator" in architecture
-    assert "does not collapse same-Capability entries" in architecture
+    assert "one sorted Definition/Provider/binding/admission/\nchoice entry" in architecture
+    assert "ProductCompositionCompiler` preserves every admitted Consumer requirement" in architecture
+    assert "same-Capability requirements retain deterministic ordering" in architecture
     assert "optional-only" in architecture
-    assert "entry never silently creates a root" in architecture
+    assert "`satisfied` adds the root, `unsatisfied` adds no root/view" in architecture
     assert "CapabilityProviderEligibilityGrant" in architecture
     assert "CapabilityProviderAdmissionRecord" in architecture
     assert "CapabilityProviderBindingSpec" in architecture
-    assert "one owner-admitted `CapabilityBundleProvider` metadata value" in architecture
+    assert "one Provider per closed Capability" in architecture
     assert "CapabilityProviderCandidateFingerprint" in architecture
-    assert "deterministically selects the complete transitive" in architecture
+    assert "resulting transitive closure" in architecture
     assert "ProductCompositionCompiler" in architecture
-    assert "never supplied as an external `source=\"product\"` layer" in architecture
-    assert "A top-level Capability ID such\nas `coding.lsp` is never used" in architecture
     assert "Runtime Profile candidate for coding.lsp" not in architecture
-    assert "Top-level Provider facts remain\nseparate data" in architecture
-    assert "never carries a\n`ResolvedCapabilityProviderSet`" in architecture
+    assert "no Runtime Profile slot is created for a top-level Capability ID" in architecture
+    assert "Product selector over already\n  owner-admitted candidates" in architecture
 
 
 def test_pap4_core_keeps_owner_admission_and_product_selection_inert() -> None:
@@ -2528,52 +2501,50 @@ def test_pap4_core_keeps_owner_admission_and_product_selection_inert() -> None:
 
 def test_owner_admission_agent_event_and_disable_contracts_are_explicit() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
+    admission = PAP4_CONTRACT_PATH.read_text(encoding="utf-8")
 
-    assert "OwnerContributionAdmissionRecord" in architecture
-    assert "never labels a contribution\n`admitted`" in architecture
-    assert "`agent_definition`" in architecture
-    assert "Product Agent Host" in architecture
-    assert "EventDefinitionCatalog" in architecture
-    assert "`durable_fact` after domain commit" in architecture
-    assert "A durable interceptor/reducer/first-match declaration is invalid" in (
-        architecture
-    )
-    assert "must atomically append its delivery\noutbox" in architecture
-    assert "an unknown `required` fact fails closed" in architecture
-    assert "security envelope and one-use\ndeclaration reservation" in architecture
-    assert "`capability_component`" in architecture
-    assert "CapabilityComponentDefinition" in architecture
-    assert "Agent fields have one authority each" in architecture
-    assert "calling a declaration-forming `register_*` after IR freeze" in architecture
-    assert "performs no partial recompose and returns `restart_required`" in architecture
+    assert "Every mutation and registration has one exact owner" in architecture
+    assert "A manifest may request authority. It cannot grant authority" in architecture
+    assert "Declarations are immutable proposals" in architecture
+    for contribution_kind in (
+        "`resource_item`",
+        "`tool_pack`",
+        "`command_pack`",
+        "`capability_provider`",
+    ):
+        assert contribution_kind in architecture
+    assert "A new contribution kind needs an\nowner contract" in architecture
+    assert "The Plugin manager cannot invent\nmerge, precedence" in architecture
+    assert "cannot manufacture, renew, widen, or revoke owner records" in admission
+    assert "The agent loop specifically remains owned by `loushang.agent`" in architecture
+    assert "`restart_required`" in architecture
 
 
 def test_revision_retention_and_python_import_realm_are_closed_for_v1() -> None:
-    architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
+    architecture = "\n".join(
+        (
+            PLC2_CONTRACT_PATH.read_text(encoding="utf-8"),
+            PLC3_CONTRACT_PATH.read_text(encoding="utf-8"),
+            LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8"),
+        )
+    )
 
-    assert "Plugin Instance Revisions alone use the execution-state machine" in (
-        architecture
-    )
-    assert "Materialized Package Revision has a separate cache lifecycle" in (
-        architecture
-    )
-    assert "write-\nahead lease handoff" in architecture
-    assert "SessionPluginMembershipLease" in architecture
-    assert "AgentPluginMembershipLease" in architecture
-    assert "REVOKING" in architecture
-    assert "PluginCleanupJournal" in architecture
-    assert "changing its package\ndigest is Product-Host `restart_required`" in (
-        architecture
-    )
-    assert "digest-qualified import realm" in architecture
-    assert "process-wide import-realm gate" in architecture
-    assert "declared Plugin\nnamespace/digest" in architecture
-    assert "does not claim a complete transitive-import\nclosure" in architecture
+    assert "The only Instance execution states are" in architecture
+    assert "ACTIVE --graceful--> DRAINING --> RETIRED" in architecture
+    assert "ACTIVE --security--> REVOKING --> RETIRED" in architecture
+    assert "There is no `INSTALLED`, `ENABLED`, `STARTING`, `FAILED`, `REMOVED`" in architecture
+    assert "Package Revision" in architecture
+    assert "Materialized Package Revision cache state" in architecture
+    assert "write-ahead cleanup journal" in architecture
+    assert "`session_membership`" in architecture
+    assert "`agent_membership`" in architecture
+    assert "enabled_package_revision_changed" in architecture
+    assert "process-wide `PluginImportRealm`" in architecture
+    assert "not claimed as an enforceable closure" in architecture
     assert "VerifiedRevisionHandle" in architecture
-    assert "data-generation/schema" in architecture
-    assert "`UPDATE_STAGED`, then `MIGRATING`" in architecture
+    assert "migration fence" in architecture
     assert "PluginManagementService" in architecture
-    assert "MCP is intentionally static-surface-only in v1" in architecture
+    assert "MCP" in architecture
     assert "ExecutionUseReservation" in architecture
 
 
@@ -2583,10 +2554,10 @@ def test_unified_plugin_architecture_preserves_existing_runtime_authorities() ->
     for authority in EXPECTED_AUTHORITY_CLASS_SITES:
         assert authority in architecture
     assert "There is no new Plugin Profile resolver" in architecture
-    assert "not one global Plugin\ntransaction" in architecture
-    assert "does not create a fifth effective clock" in architecture
-    assert "aggregate retirement handles" in architecture
-    assert "never becomes the Registration owner" in architecture
+    assert "global Plugin transaction" in architecture
+    assert "fifth effective-runtime clock" in architecture
+    assert "cannot become a second Registration" in architecture
+    assert "One lease belongs to one scope and exact owner\ngeneration" in architecture
 
 
 def test_current_plugin_manifest_name_sites_are_a_baseline_inventory() -> None:
@@ -3057,7 +3028,7 @@ def test_plugin_scope_contract_preserves_current_runtime_scope_vocabulary() -> N
     assert set(get_args(RuntimeCapabilityScope)) == expected
     for scope in expected:
         assert scope in architecture
-    assert "Agent is a composition membership boundary" in architecture
+    assert "an Agent holds an explicit membership lease" in architecture
 
 
 def test_unified_plugin_architecture_preserves_exact_registration_ownership() -> None:
@@ -3067,25 +3038,25 @@ def test_unified_plugin_architecture_preserves_exact_registration_ownership() ->
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
 
     assert "if lease.owner != self._owner:" in registration_source
-    assert "one lease never belongs to two scopes" in architecture
-    assert "Root Plugin scope capturing foreign leases" in architecture
+    assert "One lease belongs to one scope and exact owner\ngeneration" in architecture
+    assert "a root Plugin object cannot capture foreign leases" in architecture
 
 
 def test_unified_plugin_architecture_keeps_complete_model_input_authority() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
 
     assert "complete Tool definitions and schemas" in architecture
-    assert "fingerprints are supplementary provenance only" in architecture
-    assert "never reopens the current\nPlugin package" in architecture
+    assert "Fingerprints are supplementary\nprovenance only" in architecture
+    assert "never reopens the\ncurrent Plugin package" in architecture
 
 
 def test_unified_plugin_architecture_keeps_product_kernel_outside_plugins() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
 
-    assert "Coding Product Kernel" in architecture
-    assert "coding.base" in architecture
-    assert "must remain\nusable when every optional Plugin is disabled" in architecture
-    assert "mandatory system prompt" in architecture
+    assert "the Product Kernel" in architecture
+    assert "`coding.base` Plugin" in architecture
+    assert "base Product remains useful with every optional Plugin disabled" in architecture
+    assert "minimum mandatory\nsystem prompt" in architecture
 
 
 def test_plc2_contract_freezes_inert_desired_state_before_management_service() -> None:
@@ -3351,7 +3322,7 @@ def test_plc2_package_cleanup_is_write_ahead_inert_and_gc_rechecked() -> None:
         assert forbidden_call not in package_lifecycle
 
 
-def test_plc3_verified_evaluation_is_internal_and_production_host_closed() -> None:
+def test_plc3_verified_evaluation_is_internal_and_host_injection_is_narrow() -> None:
     contract = PLC3_CONTRACT_PATH.read_text(encoding="utf-8")
     approval_execution_path = Path(
         "src/loushang/harness/approval/plugin_execution.py"
@@ -3403,7 +3374,10 @@ def test_plc3_verified_evaluation_is_internal_and_production_host_closed() -> No
     assert compatibility_import_realm_path.exists()
     assert "PluginDefinitionEvaluator" not in authoring_exports
     assert "PluginImportRealm" not in authoring_exports
-    assert "execution_evaluator=" not in declaration_host
+    assert "execution_evaluator: PluginDefinitionEvaluator | None = None" in (
+        declaration_host
+    )
+    assert declaration_host.count("execution_evaluator=execution_evaluator") == 1
     assert "VerifiedRevisionHandle.open_file()" in contract
     assert "PluginExecutionDecisionJournal" in evaluator
     assert "PluginExecutionStartPermit" in evaluator

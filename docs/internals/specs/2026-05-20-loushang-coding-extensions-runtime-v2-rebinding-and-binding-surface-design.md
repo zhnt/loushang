@@ -1,5 +1,14 @@
 # Loushang Coding Extensions Runtime V2 Rebinding And Binding Surface Design
 
+## Status
+
+Retired historical design. Current Extension generation, binding, and disposal
+are governed by the
+[Extension And Resource Generation Lifecycle](../architecture/harness/extension-generation-lifecycle-boundary.md),
+[Extension Runtime Core](../architecture/harness/extension-runtime-core-boundary.md),
+and [Plugin Architecture](../architecture/harness/plugin/architecture.md). The
+remaining proposal does not override those boundaries.
+
 ## Goal
 
 Promote `loushang-coding`'s extension runtime from a small hook dispatcher into a reload-aware, session-bound runtime surface that is structurally aligned with `pi`.

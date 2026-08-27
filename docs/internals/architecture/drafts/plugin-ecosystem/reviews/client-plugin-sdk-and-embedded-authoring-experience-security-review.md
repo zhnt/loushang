@@ -54,31 +54,31 @@ A repository path is source location, not authorship or trust evidence.
   content digest, and bind/import/launch must revalidate that identity. A local
   source change invalidates the plan and Approval rather than executing changed
   bytes
-  ([unified-plugin-architecture.md:269](../../../harness/unified-plugin-architecture.md#L269)).
+  (historical `unified-plugin-architecture.md:269` in the reviewed revision).
 - Only a digest-bound package with a positive execution-preflight decision may
   evaluate executable declarations. Disabled, unselected, untrusted, denied,
   or unapproved packages are not imported or launched
-  ([unified-plugin-architecture.md:380](../../../harness/unified-plugin-architecture.md#L380)).
+  (historical `unified-plugin-architecture.md:380` in the reviewed revision).
 - Declaration execution and contribution activation are two independent
   Approval subjects. Package Approval does not replace later action-level
   policy
-  ([unified-plugin-architecture.md:390](../../../harness/unified-plugin-architecture.md#L390)).
+  (historical `unified-plugin-architecture.md:390` in the reviewed revision).
 - Factory execution, owner bind, and external-service launch consume activation
   authority at actual start; process reservation and PID/handle publication are
   recovery facts, not implied by a positive decision
-  ([unified-plugin-architecture.md:478](../../../harness/unified-plugin-architecture.md#L478)).
+  (historical `unified-plugin-architecture.md:478` in the reviewed revision).
 - In-process Python is explicitly host-equivalent ambient authority. Typed
   facets improve architecture and audit but are not isolation. Code below that
   trust level must remain declarative or use an accepted isolated Worker
-  ([unified-plugin-architecture.md:1395](../../../harness/unified-plugin-architecture.md#L1395)).
+  (historical `unified-plugin-architecture.md:1395` in the reviewed revision).
 - Executable use must retain a `VerifiedRevisionHandle`/equivalent immutable
   identity through launch. Closing the verified handle and reopening a mutable
   path is forbidden
-  ([unified-plugin-architecture.md:1410](../../../harness/unified-plugin-architecture.md#L1410)).
+  (historical `unified-plugin-architecture.md:1410` in the reviewed revision).
 - A compromised in-process realm is an ambient Host compromise and cannot be
   revoked by pretending typed action policy controls arbitrary already-imported
   Python
-  ([unified-plugin-architecture.md:1087](../../../harness/unified-plugin-architecture.md#L1087)).
+  (historical `unified-plugin-architecture.md:1087` in the reviewed revision).
 
 ### Accepted process and execution boundaries
 

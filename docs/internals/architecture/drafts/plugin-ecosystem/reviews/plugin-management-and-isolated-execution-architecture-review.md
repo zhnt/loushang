@@ -18,10 +18,10 @@ acceptance decision and does not modify the reviewed proposal.
 The review checked the current source and the following authoritative or
 coordinating documents:
 
-- [`Unified Plugin Architecture`](../../../harness/unified-plugin-architecture.md),
+- [`Unified Plugin Architecture`](../../../harness/plugin/architecture.md),
   especially its execution approval, exact-owner, projection, management,
   instance, package-cache, restart, and isolated-worker rules;
-- [`Unified Plugin Lifecycle And Coding Pluginization Delivery Plan`](../../../harness/plugin-lifecycle-coding-pluginization-plan.md),
+- [`Unified Plugin Lifecycle And Coding Pluginization Delivery Plan`](../../../harness/plugin/plugin-lifecycle-coding-pluginization-plan.md),
   including the implemented PLC2 through PLC5.1a status and the unimplemented
   PLC6 through PLC9 scope;
 - [`Harness Process Hosting Boundary`](../../../harness/process-hosting-boundary.md)

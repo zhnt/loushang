@@ -56,14 +56,14 @@ The review used the following current evidence:
 - The accepted architecture keeps typed Capability Provider/Consumer seams as
   runtime injection, the existing owners authoritative, one parser per
   manifest, and one exact Registration owner per live contribution
-  ([UPA invariants](../../../harness/unified-plugin-architecture.md#non-negotiable-invariants)).
+  ([UPA invariants](../../../harness/plugin/architecture.md#non-negotiable-invariants)).
 - Executable declarations must pass pure preflight before import, receive one
   source-group-owned gate and reservations, and finalize only through the
   Coordinator
-  ([UPA preflight](../../../harness/unified-plugin-architecture.md#2-preflight-then-declare-once)).
+  ([UPA preflight](../../../harness/plugin/architecture.md#2-preflight-then-declare-once)).
 - A native filesystem Skill remains an ordinary `<skill>/SKILL.md` without a
   Plugin manifest, entrypoint, install record, or activation decision
-  ([Resource Catalog plan](../../../harness/resource-catalog-pluginization-plan.md#executive-decision)).
+  ([Resource Catalog plan](../../../harness/plugin/resource-catalog-pluginization-plan.md#executive-decision)).
 - Current `PluginManifestParser` is explicitly the canonical parser for one
   `plugin.json`, and parsing produces an inert descriptor
   ([manifest.py](../../../../../../src/loushang/harness/resources/plugins/manifest.py)).

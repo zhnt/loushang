@@ -4,11 +4,13 @@ Status: PAP4-1 generic Capability-owner eligibility/final admission and pure
 Product Provider-closure selection are implemented. PAP4R exact
 Resource/Tool/Command admission and external-Consumer root compilation landed
 at `d2b7724a`. PAP5 activation/Component Host and live Session single-Graph
-binding landed internally at `c8b0088c` and `ee303971`. The production
-`coding.lsp` adapter, public SDK and MCP expansion remain closed.
+binding landed internally at `c8b0088c` and `ee303971`. Subsequent PLC5.1 work
+has implemented the production `coding.lsp` adapter through these contracts;
+the public SDK and MCP expansion remain closed. This PAP4 contract does not
+claim ownership of that adopter's Product wiring.
 
 This document is the normative incremental companion to
-[Unified Plugin Architecture](unified-plugin-architecture.md),
+[Unified Plugin Architecture](architecture.md),
 [Unified Plugin Authoring Primitives Delivery Plan](plugin-authoring-primitives-delivery-plan.md),
 and
 [Unified Plugin Lifecycle And Coding Pluginization Delivery Plan](plugin-lifecycle-coding-pluginization-plan.md).

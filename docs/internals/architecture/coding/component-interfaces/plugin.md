@@ -5,7 +5,10 @@
 Superseded as a Coding-owned component. Product-neutral Plugin identity,
 manifest, source, registry, resolver, and manager mechanics now belong to
 [Harness Platform Resource Layout](../../harness/platform-resource-layout-boundary.md).
-The definitions below are retained for compatibility history.
+Current Plugin identity, lifecycle, execution, and authoring decisions are in
+the [Harness Plugin Architecture](../../harness/plugin/architecture.md). The
+definitions below are retained for compatibility history and must not be used
+to reintroduce a Coding-owned Plugin manager.
 
 ## Role
 

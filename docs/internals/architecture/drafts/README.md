@@ -29,9 +29,10 @@ Current live references:
 
 ## Documents
 
-Draft packages with their own reading order and review evidence:
+Retired design packages preserved for rationale and review evidence:
 
-- [Plugin Ecosystem Architecture](plugin-ecosystem/README.md)
+- [Plugin Ecosystem Design History](plugin-ecosystem/README.md), superseded by
+  the [Harness Plugin Architecture](../harness/plugin/README.md)
 
 Standalone drafts:
 

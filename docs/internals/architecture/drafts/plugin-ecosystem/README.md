@@ -1,84 +1,52 @@
-# Plugin Ecosystem Architecture Draft Package
+# Plugin Ecosystem Design History
 
 ## Status
 
-- Authority: proposed — non-normative cross-scope draft catalog
-- Design status: proposed
-- Implementation status: not-applicable
-- Owner: Loushang architecture; affected owners include Harness, Product,
-  Resource, Extension, Capability, configuration, execution, and distribution
+- Authority: retired design history; non-normative.
+- Superseded by: [Harness Plugin Architecture V2](../../harness/plugin/architecture.md).
+- Delivery authority: [Plugin Lifecycle And Coding Pluginization Plan](../../harness/plugin/plugin-lifecycle-coding-pluginization-plan.md).
+- Implementation status: not applicable. Current source, tests, and exact
+  contracts under `harness/plugin/` remain authoritative.
 
 ## Purpose
 
-This package is the single entrypoint for the proposed Product, package,
-Plugin, executable Resource, and client authoring architecture. It groups the
-proposal documents with their independent review evidence without promoting
-either into accepted architecture.
+This package preserves the broader proposals and independent review evidence
+that informed Plugin Architecture V2. It is no longer an active architecture
+package, acceptance candidate, SDK contract, or competing PLC8/PLC9 plan.
 
-Current source, tests, accepted Harness boundaries, and accepted ARDs remain
-authoritative. The documents here must not be implemented as one monolithic
-contract or accepted merely because their review findings were incorporated.
+The incorporated conclusions were independently restated in the active
+architecture candidate:
 
-## Reading Order
+- artifact, Plugin identity, contribution, Capability, execution topology,
+  trust, lifetime, and placement are orthogonal;
+- a Skill is Resource content while its catalog/parser can be a Plugin
+  component;
+- Skill scripts are supported only through an exact managed execution action;
+- separate process execution is topology, not sufficient containment;
+- long-lived Workers use supervised mechanics plus owner-specific protocols;
+- built-in and embedded authoring stays simple without creating a second
+  runtime; and
+- Loushang has no universal Plugin context or Terraform-style Plugin-wide
+  `plan/apply` state machine.
 
-1. [Unified Product, Package, And Plugin Architecture](unified-product-package-plugin-architecture.md)
-   defines the ecosystem vocabulary, identity model, lifecycle, and proposed
-   cross-product control plane.
-2. [Plugin Management And Isolated Execution Improvement Plan](plugin-management-and-isolated-execution-improvement-plan.md)
-   maps executable Skills and Plugins onto one-shot and Worker execution shapes
-   and the existing Harness delivery spine.
-3. [Client Plugin SDK And Embedded Authoring Experience](client-plugin-sdk-and-embedded-authoring-experience.md)
-   projects those strict runtime contracts into a deliberately small authoring
-   surface for native Resources, packages, built-ins, and Workers.
-4. Read the linked reviews when evaluating acceptance, security, authoring
-   ergonomics, or delivery readiness. They are validation evidence, not a
-   second architecture authority.
+Where any document below conflicts with Plugin Architecture V2 or a frozen
+incremental contract, the active architecture or exact contract wins.
 
-## Artifact Map
+## Historical Documents
 
-| Artifact | Type | Authority | Intended use |
-| --- | --- | --- | --- |
-| [Unified Product, Package, And Plugin Architecture](unified-product-package-plugin-architecture.md) | Architecture proposal | Proposed | Decide shared ecosystem vocabulary, ownership, identity, lifecycle, and distribution boundaries |
-| [Plugin Management And Isolated Execution Improvement Plan](plugin-management-and-isolated-execution-improvement-plan.md) | Delivery plan | Proposed | Sequence executable Resource and Plugin runtime work after owner decisions are accepted |
-| [Client Plugin SDK And Embedded Authoring Experience](client-plugin-sdk-and-embedded-authoring-experience.md) | Authoring contract proposal | Proposed | Define the smallest author-facing projection over accepted runtime owners |
-| [Independent reviews](reviews/README.md) | Validation evidence | Descriptive | Preserve independent findings, dispositions, and remaining acceptance gates |
+- [Unified Product, Package, And Plugin Architecture](unified-product-package-plugin-architecture.md)
+- [Plugin Management And Isolated Execution Improvement Plan](plugin-management-and-isolated-execution-improvement-plan.md)
+- [Client Plugin SDK And Embedded Authoring Experience](client-plugin-sdk-and-embedded-authoring-experience.md)
+- [Independent review evidence](reviews/README.md)
 
-## Acceptance Boundary
+These files intentionally retain proposal-era vocabulary, rejected alternatives,
+and line-relative citations from the reviewed revisions. Do not update those
+citations to make them appear current; use Git history when reconstructing an
+old review finding.
 
-This draft package is intentionally broader than any one decision. Formal
-acceptance should extract small owner decisions instead of relabeling the whole
-directory as normative. At minimum, acceptance should separate:
+## Current Reading Path
 
-1. artifact/source authority, installation scope, release provenance, and
-   executable-source revision identity;
-2. native Skill script ownership, verified one-shot execution, isolated Worker
-   placement, containment, and Approval-use semantics; and
-3. contribution selection, configuration ownership, mutable state, and
-   exact-owner lifecycle authority.
-
-Each accepted decision must update the affected owner documents and add
-executable architecture or conformance gates. Delivery sequencing remains a
-plan, SDK examples remain experimental until implemented, and review files
-remain validation evidence after acceptance.
-
-## Independent Reviews
-
-### Plugin management and isolated execution
-
-- [Architecture review](reviews/plugin-management-and-isolated-execution-architecture-review.md)
-- [Authoring review](reviews/plugin-management-and-isolated-execution-authoring-review.md)
-- [Security review](reviews/plugin-management-and-isolated-execution-security-review.md)
-
-### Client SDK and embedded authoring
-
-- [Architecture review](reviews/client-plugin-sdk-and-embedded-authoring-experience-architecture-review.md)
-- [Authoring review](reviews/client-plugin-sdk-and-embedded-authoring-experience-authoring-review.md)
-- [Security review](reviews/client-plugin-sdk-and-embedded-authoring-experience-security-review.md)
-
-## Adjacent Architecture
-
-- [Cross-Scope Architecture Decisions](../../decisions/README.md)
-- [Harness Unified Plugin Architecture](../../harness/unified-plugin-architecture.md)
-- [Harness Process Hosting Boundary](../../harness/process-hosting-boundary.md)
-- [Harness Workspace Execution Boundary](../../harness/workspace-execution-boundary.md)
-- [Project-Declared Configuration And Pluggable Conversation Persistence](../project-declared-configuration-and-pluggable-conversation-persistence.md)
+1. [Plugin Architecture Hub](../../harness/plugin/README.md)
+2. [Plugin Architecture V2](../../harness/plugin/architecture.md)
+3. [Lifecycle Plan](../../harness/plugin/plugin-lifecycle-coding-pluginization-plan.md)
+4. the exact owner and contract documents linked by the Hub

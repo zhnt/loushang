@@ -65,10 +65,10 @@ its own source-backed review before implementation.
 
 The review compared the plan with:
 
-- [Unified Plugin Architecture](unified-plugin-architecture.md), especially its
+- [Unified Plugin Architecture](architecture.md), especially its
   non-negotiable invariants, current UPA1/UPA2 baseline, delivery sequence, and
   acceptance gates;
-- [Capability Composition Lifecycle Authority Plan](composition-lifecycle-authority-plan.md),
+- [Capability Composition Lifecycle Authority Plan](../composition-lifecycle-authority-plan.md),
   especially one publication authority per owned live object and the completed
   Session-owned Graph;
 - `harness.capabilities.contracts`, `providers`, `provider_binding`,

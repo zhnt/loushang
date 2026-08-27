@@ -1,5 +1,14 @@
 # Loushang Coding Plugin V1 Design
 
+## Status
+
+Retired historical design. Product-neutral Plugin architecture now lives in
+the [Harness Plugin Architecture](../architecture/harness/plugin/architecture.md),
+and package/Resource layout is governed by the
+[Harness Platform Resource Layout Boundary](../architecture/harness/platform-resource-layout-boundary.md).
+The remaining text describes the original Coding-local V1 and is not an active
+implementation contract.
+
 ## Goal
 
 Define `plugin v1` as a new component in `loushang-coding` without turning it into a new runtime core.

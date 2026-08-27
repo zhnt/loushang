@@ -32,7 +32,8 @@ The proposal makes the correct top-level decisions:
 Those decisions align with the accepted trust model: non-host-equivalent code
 must be declarative or use an accepted isolated Worker, and isolation is only
 as strong as Sandbox and Host facets
-([Unified Plugin Architecture, lines 1395-1408](../../../harness/unified-plugin-architecture.md#L1395-L1408)).
+(historical Unified Plugin Architecture, lines 1395-1408 in the reviewed
+revision).
 
 The proposal is nevertheless not yet an executable security contract. Four
 blocking gaps remain: mandatory containment is not concretely selected, the
@@ -50,21 +51,21 @@ contracts.
 - The accepted Plugin architecture forbids import or launch before positive,
   digest-bound preflight and requires isolated discovery when executable code
   is needed below in-process trust
-  ([lines 380-418](../../../harness/unified-plugin-architecture.md#L380-L418)).
+  (historical lines 380-418 in the reviewed revision).
 - It requires durable Approval-owner decisions, one-shot consumption, current
   trust/policy/epoch revalidation, and a fixed lock order before code entry
-  ([lines 420-469](../../../harness/unified-plugin-architecture.md#L420-L469)).
+  (historical lines 420-469 in the reviewed revision).
 - It treats a compromised in-process realm as Host compromise, invalidates
   controlled leases before terminating isolated services, and refuses to call
   incomplete termination a successful disable
-  ([lines 1072-1092](../../../harness/unified-plugin-architecture.md#L1072-L1092)).
+  (historical lines 1072-1092 in the reviewed revision).
 - It requires verified revision handles, no mutable-path reopen, no-follow or
   equivalent immutable snapshots, and rejection on platforms unable to prove
   that property
-  ([lines 1410-1428](../../../harness/unified-plugin-architecture.md#L1410-L1428)).
+  (historical lines 1410-1428 in the reviewed revision).
 - `PluginManagementService`, exact component owners, and the existing
   Registration/Graph owners remain sole mutation/publication authorities
-  ([lines 1607-1634](../../../harness/unified-plugin-architecture.md#L1607-L1634)).
+  (historical lines 1607-1634 in the reviewed revision).
 - The accepted Process Host is only raw, bounded, session-owned child-process
   mechanics. Product code still owns executable admission, protocol,
   supervision, restart, and diagnostics
@@ -607,7 +608,8 @@ The accepted architecture already supplies the required governing order:
 controlled leases are invalidated before isolated-service termination, direct
 authority remains dangerous until confirmed process exit, and incomplete
 termination cannot be reported as successful disable
-([Unified Plugin Architecture, lines 1072-1092](../../../harness/unified-plugin-architecture.md#L1072-L1092)).
+(historical Unified Plugin Architecture, lines 1072-1092 in the reviewed
+revision).
 
 Required narrow correction before PLC9B implementation:
 

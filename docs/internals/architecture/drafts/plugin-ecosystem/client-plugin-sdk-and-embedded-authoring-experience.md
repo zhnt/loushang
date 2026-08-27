@@ -2,8 +2,12 @@
 
 ## Status
 
-- Authority: proposed — non-normative authoring contract
-- Design status: proposed, revised after three independent reviews
+- Authority: retired design history — superseded by the authoring ladder and
+  SDK rules in the
+  [Harness Plugin Architecture V2](../../harness/plugin/architecture.md)
+- Design status: superseded; retained for rationale and examples, not as a
+  stable or competing public SDK contract
+- Prior design status: proposed, revised after three independent reviews
 - Implementation status: not-started as a stable public SDK; internal
   authoring and runtime foundations exist
 - Owner: Loushang architecture; affected owners include Harness and client

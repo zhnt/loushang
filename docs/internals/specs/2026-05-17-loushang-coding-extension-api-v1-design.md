@@ -1,5 +1,14 @@
 # Loushang Coding Extension API v1 Design
 
+## Status
+
+Retired historical design. Current Extension ownership and authoring boundaries
+are defined by the
+[Harness Extension Runtime Core](../architecture/harness/extension-runtime-core-boundary.md),
+[Extension Context Runtime](../architecture/harness/extension-context-runtime-boundary.md),
+and [Plugin Architecture](../architecture/harness/plugin/architecture.md). The
+remaining text is not a stable public API contract.
+
 ## Goal
 
 Define the first stable `ExtensionAPI` for `loushang-coding` before writing extension examples.
