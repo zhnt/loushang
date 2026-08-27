@@ -72,7 +72,7 @@ class StandardSessionCommandResult:
 class StandardSessionExport:
     """Product-neutral result of a completed transcript export."""
 
-    format: Literal["html", "jsonl"]
+    format: Literal["bundle", "html", "jsonl"]
     path: object
 
 
@@ -89,6 +89,7 @@ class StandardSessionCommandPorts:
     set_session_name: SessionNamePort | None = None
     export_html: SessionExportPort | None = None
     export_jsonl: SessionExportPort | None = None
+    export_bundle: SessionExportPort | None = None
     import_session: SessionImportPort | None = None
     compact: CommandPort | None = None
     reload: CommandPort | None = None
@@ -141,14 +142,18 @@ async def execute_standard_session_command_async(
             return StandardSessionCommandResult.completed(command_id, name)
         case StandardSessionCommandId.EXPORT:
             raw_path = args.strip() or None
-            export_format: Literal["html", "jsonl"] = (
-                "jsonl"
-                if raw_path is not None and raw_path.lower().endswith(".jsonl")
-                else "html"
-            )
-            export_port = (
-                ports.export_jsonl if export_format == "jsonl" else ports.export_html
-            )
+            export_format: Literal["bundle", "html", "jsonl"]
+            if raw_path is not None and raw_path.lower().endswith(".jsonl"):
+                export_format = "jsonl"
+            elif raw_path is not None and raw_path.lower().endswith(".zip"):
+                export_format = "bundle"
+            else:
+                export_format = "html"
+            export_port = {
+                "bundle": ports.export_bundle,
+                "html": ports.export_html,
+                "jsonl": ports.export_jsonl,
+            }[export_format]
             if export_port is None:
                 return StandardSessionCommandResult.unavailable(command_id)
             path = await _resolve(export_port(raw_path))

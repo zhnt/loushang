@@ -17,7 +17,7 @@ from threading import RLock
 from typing import Literal, Protocol, TypeAlias
 from uuid import uuid4
 
-from .runtime_scope import RuntimeScope
+from loushang.foundation.runtime_scope import RuntimeScope
 
 ArtifactDisclosure: TypeAlias = Literal["private", "redact", "shareable"]
 
@@ -48,9 +48,7 @@ class ArtifactStorePolicy:
         if self.max_artifact_bytes < 1:
             raise ValueError("max_artifact_bytes must be positive")
         if self.max_total_bytes < self.max_artifact_bytes:
-            raise ValueError(
-                "max_total_bytes must be at least max_artifact_bytes"
-            )
+            raise ValueError("max_total_bytes must be at least max_artifact_bytes")
 
 
 DEFAULT_ARTIFACT_STORE_POLICY = ArtifactStorePolicy()
@@ -322,9 +320,7 @@ class ArtifactStore:
             raise ArtifactStoreQuotaExceeded(
                 f"artifact count limit is {self.policy.max_artifacts}"
             )
-        retained_bytes = sum(
-            record.reference.size_bytes for record in self._records
-        )
+        retained_bytes = sum(record.reference.size_bytes for record in self._records)
         if retained_bytes + next_bytes > self.policy.max_total_bytes:
             raise ArtifactStoreQuotaExceeded(
                 f"artifact byte limit is {self.policy.max_total_bytes} bytes"
@@ -373,6 +369,7 @@ class ArtifactRetentionPolicy:
     max_files: int = 20
     max_total_bytes: int = 512 * 1024 * 1024
     max_age_seconds: float | None = 30 * 24 * 60 * 60
+    max_scan_entries: int = 10_000
 
     def __post_init__(self) -> None:
         if self.max_files < 0:
@@ -381,6 +378,8 @@ class ArtifactRetentionPolicy:
             raise ValueError("max_total_bytes must not be negative")
         if self.max_age_seconds is not None and self.max_age_seconds < 0:
             raise ValueError("max_age_seconds must not be negative")
+        if self.max_scan_entries < 1:
+            raise ValueError("max_scan_entries must be positive")
 
 
 DEFAULT_ARTIFACT_RETENTION_POLICY = ArtifactRetentionPolicy()
@@ -393,6 +392,7 @@ class ArtifactRetentionReport:
     removed_bytes: int = 0
     skipped: int = 0
     failed: int = 0
+    truncated: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -428,33 +428,41 @@ def sweep_managed_artifacts(
     skipped = failed = 0
     try:
         with os.scandir(root) as entries:
-            snapshots = tuple(entries)
+            for index, entry in enumerate(entries):
+                if index >= policy.max_scan_entries:
+                    return ArtifactRetentionReport(
+                        inspected=len(candidates),
+                        skipped=skipped,
+                        failed=failed + 1,
+                        truncated=True,
+                    )
+                if not entry.name.startswith(name_prefix) or not entry.name.endswith(
+                    suffix
+                ):
+                    skipped += 1
+                    continue
+                try:
+                    metadata = entry.stat(follow_symlinks=False)
+                except OSError:
+                    failed += 1
+                    continue
+                if (
+                    not stat.S_ISREG(metadata.st_mode)
+                    or _is_reparse_point(metadata)
+                    or not _owned_by_current_user(metadata)
+                ):
+                    skipped += 1
+                    continue
+                candidates.append(
+                    _RetentionCandidate(
+                        path=Path(entry.path),
+                        size=metadata.st_size,
+                        modified_at=metadata.st_mtime,
+                        identity=(metadata.st_dev, metadata.st_ino),
+                    )
+                )
     except OSError:
         return ArtifactRetentionReport(failed=1)
-    for entry in snapshots:
-        if not entry.name.startswith(name_prefix) or not entry.name.endswith(suffix):
-            skipped += 1
-            continue
-        try:
-            metadata = entry.stat(follow_symlinks=False)
-        except OSError:
-            failed += 1
-            continue
-        if (
-            not stat.S_ISREG(metadata.st_mode)
-            or _is_reparse_point(metadata)
-            or not _owned_by_current_user(metadata)
-        ):
-            skipped += 1
-            continue
-        candidates.append(
-            _RetentionCandidate(
-                path=Path(entry.path),
-                size=metadata.st_size,
-                modified_at=metadata.st_mtime,
-                identity=(metadata.st_dev, metadata.st_ino),
-            )
-        )
 
     current_time = now()
     selected: set[Path] = {
@@ -523,7 +531,9 @@ def _read_stable_source(
                 str(error) or error.__class__.__name__
             ) from error
     if not any(resolved == root or resolved.is_relative_to(root) for root in roots):
-        raise ArtifactSourceRejected(f"artifact source is outside allowed roots: {source}")
+        raise ArtifactSourceRejected(
+            f"artifact source is outside allowed roots: {source}"
+        )
     flags = os.O_RDONLY
     flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
     try:
@@ -539,7 +549,9 @@ def _read_stable_source(
             or not _owned_by_current_user(before)
             or not os.path.samestat(path_metadata, before)
         ):
-            raise ArtifactSourceRejected(f"artifact source is not a safe file: {source}")
+            raise ArtifactSourceRejected(
+                f"artifact source is not a safe file: {source}"
+            )
         if before.st_size > max_bytes:
             raise ArtifactStoreQuotaExceeded(
                 f"artifact is {before.st_size} bytes; per-artifact limit is "
@@ -568,6 +580,31 @@ def _read_stable_source(
         return b"".join(chunks)
     finally:
         os.close(descriptor)
+
+
+def read_stable_artifact_source(
+    source: str | Path,
+    *,
+    allowed_roots: Sequence[str | Path],
+    max_bytes: int,
+) -> bytes:
+    """Read one explicitly authorized regular file with identity verification."""
+
+    if max_bytes < 1:
+        raise ValueError("artifact source max_bytes must be positive")
+    return _read_stable_source(
+        Path(source).expanduser(),
+        allowed_roots=allowed_roots,
+        max_bytes=max_bytes,
+    )
+
+
+def prepare_private_artifact_directory(path: str | Path) -> Path:
+    """Create and validate a private directory for artifact staging."""
+
+    resolved = Path(path).expanduser().resolve(strict=False)
+    _prepare_private_directory(resolved)
+    return resolved
 
 
 def _read_owned_artifact(record: _StoredArtifactRecord) -> bytes:
@@ -647,10 +684,14 @@ def _write_new_private_file(path: Path, content: bytes) -> tuple[int, int]:
 
 def _unlink_owned_file(path: Path, identity: tuple[int, int]) -> None:
     metadata = path.lstat()
-    if not stat.S_ISREG(metadata.st_mode) or (
-        metadata.st_dev,
-        metadata.st_ino,
-    ) != identity:
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or (
+            metadata.st_dev,
+            metadata.st_ino,
+        )
+        != identity
+    ):
         raise PermissionError(f"artifact file identity changed: {path}")
     path.unlink()
 
@@ -688,7 +729,9 @@ def _safe_logical_name(value: str) -> str:
         or str(path) in {"", "."}
         or len(value) > 240
     ):
-        raise ValueError(f"artifact logical name must be a safe relative path: {value!r}")
+        raise ValueError(
+            f"artifact logical name must be a safe relative path: {value!r}"
+        )
     return value
 
 
@@ -702,11 +745,7 @@ def _safe_token(value: str, *, name: str) -> str:
 
 
 def _safe_media_type(value: str) -> str:
-    if (
-        not value
-        or len(value) > 128
-        or any(ord(character) < 32 for character in value)
-    ):
+    if not value or len(value) > 128 or any(ord(character) < 32 for character in value):
         raise ValueError("artifact media type must be a non-empty portable value")
     return value
 
@@ -720,8 +759,11 @@ def _safe_optional_label(value: str | None, *, name: str) -> str | None:
 
 
 def _safe_name_fragment(value: str) -> bool:
-    return bool(value) and "/" not in value and "\\" not in value and not any(
-        ord(character) < 32 for character in value
+    return (
+        bool(value)
+        and "/" not in value
+        and "\\" not in value
+        and not any(ord(character) < 32 for character in value)
     )
 
 
@@ -757,4 +799,6 @@ __all__ = [
     "DEFAULT_ARTIFACT_RETENTION_POLICY",
     "DEFAULT_ARTIFACT_STORE_POLICY",
     "sweep_managed_artifacts",
+    "prepare_private_artifact_directory",
+    "read_stable_artifact_source",
 ]

@@ -39,6 +39,40 @@ class _RecordingCommitter:
             raise RuntimeError("prepared request commit failed")
 
 
+def test_prepared_request_projects_provider_binary_locations() -> None:
+    request = PreparedModelRequest(
+        invocation_id="binary-contract",
+        attempt=1,
+        provider_id="provider",
+        endpoint_id="endpoint",
+        api="api",
+        model_id="model",
+        mode="stream",
+        payload={
+            "input": [
+                {
+                    "type": "input_image",
+                    "image_url": "data:image/png;base64,aGVsbG8=",
+                },
+                {
+                    "type": "base64",
+                    "media_type": "image/jpeg",
+                    "data": "aGVsbG8=",
+                },
+            ]
+        },
+    )
+
+    assert [field.path for field in request.binary_fields] == [
+        ("input", 0, "image_url"),
+        ("input", 1, "data"),
+    ]
+    assert [field.encoding for field in request.binary_fields] == [
+        "data_url",
+        "base64",
+    ]
+
+
 class _PreparedAdapter:
     api = "faux"
 

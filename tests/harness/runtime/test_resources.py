@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import gc
-import multiprocessing
+import subprocess
+import sys
 import time
 from pathlib import Path
 from threading import Event, Thread
 
 import pytest
 
-from loushang.foundation.artifact_store import ArtifactStore
 from loushang.foundation.platform_paths import resolve_platform_paths
-from loushang.foundation.runtime_resources import RuntimeResourceOwner
 from loushang.foundation.runtime_scope import RunLease, resolve_runtime_scope
+from loushang.harness.artifacts import ArtifactStore
+from loushang.harness.runtime.resources import RuntimeResourceOwner
 
 
 def _scope(tmp_path: Path, run_id: str = "a" * 32):
@@ -23,30 +24,54 @@ def _scope(tmp_path: Path, run_id: str = "a" * 32):
     return resolve_runtime_scope(paths=paths, run_id=run_id)
 
 
-def _concurrent_acquire_worker(
-    runtime_root: str,
-    user_home: str,
-    ready,
-    start,
-    release,
-    results,
-) -> None:
-    paths = resolve_platform_paths(
-        environ={"LOUSHANG_RUNTIME_DIR": runtime_root},
-        home=Path(user_home),
-        temporary_root=Path(runtime_root).parent / "temporary",
-    )
-    scope = resolve_runtime_scope(paths=paths, run_id="f" * 32)
-    ready.put(True)
-    start.wait()
-    try:
-        owner = RuntimeResourceOwner.acquire(scope)
-    except BaseException as error:
-        results.put(("error", error.__class__.__name__))
-        return
-    results.put(("acquired", scope.run_id))
-    release.wait()
+_CONCURRENT_ACQUIRE_SCRIPT = """
+import sys
+import time
+from pathlib import Path
+
+from loushang.foundation.platform_paths import resolve_platform_paths
+from loushang.foundation.runtime_scope import resolve_runtime_scope
+from loushang.harness.runtime.resources import RuntimeResourceOwner
+
+runtime_root = Path(sys.argv[1])
+user_home = Path(sys.argv[2])
+ready = Path(sys.argv[3])
+start = Path(sys.argv[4])
+release = Path(sys.argv[5])
+result = Path(sys.argv[6])
+paths = resolve_platform_paths(
+    environ={"LOUSHANG_RUNTIME_DIR": str(runtime_root)},
+    home=user_home,
+    temporary_root=runtime_root.parent / "temporary",
+)
+scope = resolve_runtime_scope(paths=paths, run_id="f" * 32)
+ready.write_text("ready", encoding="utf-8")
+deadline = time.monotonic() + 20
+while not start.exists():
+    if time.monotonic() >= deadline:
+        raise TimeoutError("start signal was not published")
+    time.sleep(0.01)
+try:
+    owner = RuntimeResourceOwner.acquire(scope)
+except BaseException as error:
+    result.write_text(f"error:{error.__class__.__name__}", encoding="utf-8")
+else:
+    result.write_text(f"acquired:{scope.run_id}", encoding="utf-8")
+    deadline = time.monotonic() + 20
+    while not release.exists():
+        if time.monotonic() >= deadline:
+            raise TimeoutError("release signal was not published")
+        time.sleep(0.01)
     owner.close()
+"""
+
+
+def _wait_for_paths(paths: tuple[Path, ...], *, timeout: float) -> None:
+    deadline = time.monotonic() + timeout
+    while not all(path.exists() for path in paths):
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"process signals were not published: {paths!r}")
+        time.sleep(0.01)
 
 
 def test_runtime_resource_owner_composes_one_revocable_run_lifetime(
@@ -319,40 +344,46 @@ def test_runtime_resource_owner_close_drains_inflight_artifact_write(
 def test_runtime_resource_owner_allows_only_one_cross_process_acquire(
     tmp_path: Path,
 ) -> None:
-    context = multiprocessing.get_context("spawn")
-    ready = context.Queue()
-    results = context.Queue()
-    start = context.Event()
-    release = context.Event()
     runtime_root = tmp_path / "runtime"
+    ready_paths = (tmp_path / "ready-1", tmp_path / "ready-2")
+    result_paths = (tmp_path / "result-1", tmp_path / "result-2")
+    start = tmp_path / "start"
+    release = tmp_path / "release"
     processes = [
-        context.Process(
-            target=_concurrent_acquire_worker,
-            args=(
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                _CONCURRENT_ACQUIRE_SCRIPT,
                 str(runtime_root),
                 str(tmp_path / "home"),
-                ready,
-                start,
-                release,
-                results,
-            ),
+                str(ready_path),
+                str(start),
+                str(release),
+                str(result_path),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
         )
-        for _index in range(2)
+        for ready_path, result_path in zip(ready_paths, result_paths, strict=True)
     ]
-    for process in processes:
-        process.start()
     try:
-        assert ready.get(timeout=10) is True
-        assert ready.get(timeout=10) is True
-        start.set()
-        outcomes = sorted((results.get(timeout=10), results.get(timeout=10)))
-        assert [kind for kind, _detail in outcomes] == ["acquired", "error"]
+        _wait_for_paths(ready_paths, timeout=10)
+        start.write_text("start", encoding="utf-8")
+        _wait_for_paths(result_paths, timeout=10)
+        outcomes = sorted(path.read_text(encoding="utf-8") for path in result_paths)
+        assert [item.split(":", 1)[0] for item in outcomes] == [
+            "acquired",
+            "error",
+        ]
         assert (runtime_root / "runs" / ("f" * 32) / ".lease").is_file()
     finally:
-        release.set()
+        release.write_text("release", encoding="utf-8")
         for process in processes:
-            process.join(timeout=10)
-            if process.is_alive():
-                process.terminate()
-                process.join(timeout=5)
-    assert all(process.exitcode == 0 for process in processes)
+            try:
+                process.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate(timeout=5)
+    assert all(process.returncode == 0 for process in processes)

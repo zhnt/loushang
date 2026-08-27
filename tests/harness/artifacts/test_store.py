@@ -8,8 +8,10 @@ from pathlib import Path
 
 import pytest
 
-import loushang.foundation.artifact_store as artifact_store_module
-from loushang.foundation.artifact_store import (
+import loushang.harness.artifacts.store as artifact_store_module
+from loushang.foundation.platform_paths import resolve_platform_paths
+from loushang.foundation.runtime_scope import RunLease, resolve_runtime_scope
+from loushang.harness.artifacts import (
     ArtifactRetentionPolicy,
     ArtifactSourceRejected,
     ArtifactStore,
@@ -18,8 +20,6 @@ from loushang.foundation.artifact_store import (
     ArtifactStoreQuotaExceeded,
     sweep_managed_artifacts,
 )
-from loushang.foundation.platform_paths import resolve_platform_paths
-from loushang.foundation.runtime_scope import RunLease, resolve_runtime_scope
 
 
 def _scope(tmp_path: Path, run_id: str = "a" * 32):
@@ -83,7 +83,9 @@ def test_artifact_store_requires_an_application_owned_live_run(tmp_path: Path) -
     assert not store.scope.run_dir.exists()
 
 
-def test_artifact_store_accepts_exact_limits_then_enforces_count(tmp_path: Path) -> None:
+def test_artifact_store_accepts_exact_limits_then_enforces_count(
+    tmp_path: Path,
+) -> None:
     scope = _scope(tmp_path)
     lease = RunLease.acquire(scope)
     store = ArtifactStore(
@@ -474,6 +476,31 @@ def test_managed_artifact_retention_skips_symlinks(tmp_path: Path) -> None:
     assert outside.read_bytes() == b"keep"
 
 
+def test_managed_artifact_retention_refuses_a_truncated_scan(tmp_path: Path) -> None:
+    root = tmp_path / "diagnostics"
+    root.mkdir(mode=0o700)
+    first = root / "diag-first.zip"
+    second = root / "diag-second.zip"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+
+    report = sweep_managed_artifacts(
+        root,
+        name_prefix="diag-",
+        suffix=".zip",
+        policy=ArtifactRetentionPolicy(
+            max_files=0,
+            max_total_bytes=0,
+            max_scan_entries=1,
+        ),
+    )
+
+    assert report.truncated is True
+    assert report.failed == 1
+    assert first.exists()
+    assert second.exists()
+
+
 @pytest.mark.parametrize(("prefix", "suffix"), (("", ".zip"), ("diag-", "")))
 def test_managed_artifact_retention_requires_a_narrow_name_family(
     tmp_path: Path,
@@ -507,6 +534,7 @@ def test_artifact_store_policy_rejects_invalid_bounds(kwargs) -> None:
         {"max_files": -1},
         {"max_total_bytes": -1},
         {"max_age_seconds": -1},
+        {"max_scan_entries": 0},
     ),
 )
 def test_artifact_retention_policy_rejects_invalid_bounds(kwargs) -> None:

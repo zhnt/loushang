@@ -111,6 +111,18 @@ class ProductTranscriptSessionBinding(Generic[ProductTranscriptSessionT]):
         session_ref: str | Path,
         cwd_override: str | None,
     ) -> ProductTranscriptSessionT:
+        source = Path(session_ref).expanduser()
+        if source.name.lower().endswith((".loushang.zip", ".zip")):
+            return await self.session_type.import_bundle(
+                source,
+                session_dir=self.session_dir,
+                cwd_override=(
+                    self.resolve_cwd_override(cwd_override)
+                    if cwd_override is not None
+                    else None
+                ),
+                persist=self.persist,
+            )
         return await self.session_type.open(
             session_ref,
             session_dir=self.session_dir,

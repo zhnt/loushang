@@ -51,6 +51,7 @@ from loushang.harness.transcript.types import (
     ExtensionData,
     ModelSelectionSnapshot,
     RecordAnnotationPatch,
+    SessionImagePart,
     ThinkingSelectionSnapshot,
 )
 
@@ -428,7 +429,7 @@ def _application_message_from_entry(
 ) -> ApplicationMessage:
     content_value = _field(value, "content")
     if isinstance(content_value, str):
-        content: str | list[TextPart | ImagePart] = content_value
+        content: str | list[TextPart | ImagePart | SessionImagePart] = content_value
     elif isinstance(content_value, list):
         content = []
         for raw_part in content_value:

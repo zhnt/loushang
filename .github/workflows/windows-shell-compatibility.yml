@@ -57,8 +57,12 @@ jobs:
         run: >-
           uv run pytest
           tests/foundation/test_runtime_scope.py
-          tests/foundation/test_runtime_resources.py
-          tests/foundation/test_artifact_store.py
+          tests/harness/runtime/test_resources.py
+          tests/harness/machine_resources/test_control_plane.py
+          tests/harness/artifacts/test_store.py
+          tests/harness/artifacts/test_session_blobs.py
+          tests/harness/session/test_output_artifacts.py
+          tests/harness/transcript/test_session_images.py
           tests/harness/diagnostics/test_export.py
           -q
 

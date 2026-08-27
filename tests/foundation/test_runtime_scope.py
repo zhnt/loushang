@@ -89,9 +89,9 @@ def test_run_lease_creates_private_tree_and_close_removes_it(tmp_path: Path) -> 
     lease = RunLease.acquire(scope, now=lambda: 123.0)
 
     assert lease.active is True
-    assert '"run_id":"' + ("a" * 32) + '"' in (
-        scope.run_dir / ".lease"
-    ).read_text(encoding="utf-8")
+    assert '"run_id":"' + ("a" * 32) + '"' in (scope.run_dir / ".lease").read_text(
+        encoding="utf-8"
+    )
     if os.name == "posix":
         assert stat.S_IMODE(scope.runs_root.stat().st_mode) == 0o700
         assert stat.S_IMODE(scope.run_dir.stat().st_mode) == 0o700
@@ -390,6 +390,27 @@ def test_sweep_preserves_a_corrupt_unlocked_lease(tmp_path: Path) -> None:
 
     assert report.removed == 0
     assert corrupt.exists()
+
+
+def test_sweep_refuses_a_truncated_runtime_scan(tmp_path: Path) -> None:
+    first = _inactive_run(tmp_path, run_id="a" * 32, modified_at=1.0)
+    second = _inactive_run(tmp_path, run_id="b" * 32, modified_at=1.0)
+
+    report = sweep_runtime_runs(
+        _scope(tmp_path, "c" * 32),
+        policy=RuntimeSweepPolicy(
+            stale_after_seconds=0,
+            max_inactive_runs=0,
+            max_inactive_bytes=0,
+            max_scan_entries=1,
+        ),
+        now=lambda: 100.0,
+    )
+
+    assert report.truncated is True
+    assert report.failed == 1
+    assert first.exists()
+    assert second.exists()
 
 
 @pytest.mark.skipif(os.name != "posix", reason="symlink semantics are POSIX-specific")

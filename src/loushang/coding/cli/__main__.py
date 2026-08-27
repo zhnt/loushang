@@ -99,6 +99,7 @@ from loushang.harness.cli import (
     configure_agent_resource_loader,
     cwd_bound_services_factory,
     distribution_version,
+    extract_machine_resource_argv,
     extract_multiagent_argv,
     format_agent_cli_help,
     prepare_agent_cli_host_input,
@@ -107,6 +108,7 @@ from loushang.harness.cli import (
     resolve_effective_tui,
     run_agent_cli_application,
     run_diagnostics_export_operation,
+    run_machine_resource_command,
     run_method_listing,
     run_package_listing_operation,
     run_resource_toggle_operation,
@@ -308,8 +310,17 @@ async def run_cli(
     multiagent_runner=run_coding_multiagent_command,
     workspace_runner=run_coding_workspace_command,
     lsp_runner=run_coding_lsp_command,
+    machine_resource_runner=run_machine_resource_command,
 ) -> int:
     raw_argv = tuple(argv or ())
+    machine_resource_argv = extract_machine_resource_argv(raw_argv)
+    if machine_resource_argv is not None:
+        return await machine_resource_runner(
+            machine_resource_argv,
+            stdout=stdout or sys.stdout,
+            stderr=stderr or sys.stderr,
+            cwd=cwd,
+        )
     workspace_argv = extract_workspace_argv(raw_argv)
     if workspace_argv is not None:
         return await workspace_runner(

@@ -65,6 +65,7 @@ from loushang.harness.session.composition import (
     SessionModelCatalogPort,
 )
 from loushang.harness.session.export import (
+    export_session_to_bundle,
     export_session_to_html,
     export_session_to_jsonl,
 )
@@ -299,6 +300,9 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
 
     def export_to_jsonl(self, output_path: str | None = None) -> str:
         return export_session_to_jsonl(self, output_path)
+
+    def export_to_bundle(self, output_path: str | None = None) -> str:
+        return export_session_to_bundle(self, output_path)
 
     def export_to_html(self, output_path: str | None = None) -> str:
         return export_session_to_html(self, output_path)

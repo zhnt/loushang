@@ -21,7 +21,7 @@ SessionListFormat = Literal["tsv", "json"]
 SkillListFormat = Literal["tsv", "json"]
 PluginListFormat = Literal["tsv", "json"]
 PackageListFormat = Literal["text", "tsv", "json"]
-ExportFormat = Literal["html", "jsonl"]
+ExportFormat = Literal["bundle", "html", "jsonl"]
 ExportResultFormat = Literal["text", "json"]
 CommandResultFormat = Literal["raw", "json"]
 AgentArgsT = TypeVar("AgentArgsT", bound="AgentCliArgs")

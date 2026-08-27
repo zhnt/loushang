@@ -202,7 +202,7 @@ STANDARD_CLI_PROFILE = CliProfile(
         _argument("tools.disable", "--no-tools", "-nt", dest="no_tools", action="store_true"),
         _argument("tools.no_builtin", "--no-builtin-tools", "-nbt", dest="no_builtin_tools", action="store_true"),
         _argument("transcript.export", "--export", dest="export", nargs="?", const=""),
-        _argument("transcript.export_format", "--export-format", dest="export_format", choices=("html", "jsonl"), default="html"),
+        _argument("transcript.export_format", "--export-format", dest="export_format", choices=("bundle", "html", "jsonl"), default="html"),
         _argument("transcript.export_result_format", "--export-result-format", dest="export_result_format", choices=("text", "json"), default="text"),
         _argument("command.select", "--command", dest="command"),
         _argument("command.args", "--command-args", dest="command_args", default=""),

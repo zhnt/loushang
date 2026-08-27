@@ -9,7 +9,14 @@ from threading import Condition
 from typing import Literal
 from weakref import ReferenceType, ref
 
-from .artifact_store import (
+from loushang.foundation.runtime_scope import (
+    DEFAULT_RUNTIME_SWEEP_POLICY,
+    RunLease,
+    RuntimeScope,
+    RuntimeSweepPolicy,
+    RuntimeSweepReport,
+)
+from loushang.harness.artifacts import (
     ArtifactDisclosure,
     ArtifactReader,
     ArtifactRef,
@@ -17,13 +24,6 @@ from .artifact_store import (
     ArtifactStore,
     ArtifactStoreBackend,
     ArtifactWriter,
-)
-from .runtime_scope import (
-    DEFAULT_RUNTIME_SWEEP_POLICY,
-    RunLease,
-    RuntimeScope,
-    RuntimeSweepPolicy,
-    RuntimeSweepReport,
 )
 
 ArtifactStoreFactory = Callable[[RuntimeScope], ArtifactStoreBackend]

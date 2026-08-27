@@ -9,11 +9,6 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Generic, TextIO, TypeVar
 
-from loushang.foundation.runtime_resources import (
-    DEFAULT_ARTIFACT_STORE_FACTORY,
-    ArtifactStoreFactory,
-    RuntimeResourceOwner,
-)
 from loushang.foundation.runtime_scope import (
     DEFAULT_RUNTIME_SWEEP_POLICY,
     RuntimeScope,
@@ -22,6 +17,11 @@ from loushang.foundation.runtime_scope import (
     resolve_runtime_scope,
 )
 from loushang.harness.commands import CommandEffect
+from loushang.harness.runtime.resources import (
+    DEFAULT_ARTIFACT_STORE_FACTORY,
+    ArtifactStoreFactory,
+    RuntimeResourceOwner,
+)
 from loushang.harnesstui.conversation.attachments import PromptImageAttachment
 from loushang.harnesstui.conversation.control import (
     ConversationActionHost,

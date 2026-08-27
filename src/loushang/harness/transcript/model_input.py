@@ -28,6 +28,11 @@ from loushang.harness.transcript.kinds import (
     MODEL_INPUT_PREPARED_KIND,
 )
 from loushang.harness.transcript.model_call_types import ModelCallOutcome
+from loushang.harness.transcript.model_input_blobs import (
+    MODEL_INPUT_BINARY_PROJECTION_VERSION,
+    ModelInputBinaryProjectionError,
+    SessionModelInputBlobCodec,
+)
 from loushang.harness.transcript.model_input_timing import (
     PhaseTimer,
     PhaseTimingSnapshot,
@@ -201,6 +206,7 @@ class ModelInputTranscriptCommitter(
         context: ModelInputCommitContext,
         runtime_references: ModelInputRuntimeReferences,
         max_encoded_record_bytes: int = MODEL_INPUT_MAX_ENCODED_RECORD_BYTES,
+        binary_codec: SessionModelInputBlobCodec | None = None,
     ) -> None:
         if not isinstance(transcript, AgentTranscriptUnitOfWork):
             raise TypeError("Model Input committer requires AgentTranscriptUnitOfWork")
@@ -230,6 +236,13 @@ class ModelInputTranscriptCommitter(
         self._transcript = transcript
         self._context = context
         self._runtime = runtime_references
+        if binary_codec is not None and not isinstance(
+            binary_codec, SessionModelInputBlobCodec
+        ):
+            raise TypeError(
+                "Model Input binary codec must be SessionModelInputBlobCodec"
+            )
+        self._binary_codec = binary_codec
         self._max_encoded_record_bytes = max_encoded_record_bytes
         self._expected_revision = transcript.revision
         self._expected_leaf_id = transcript.leaf_id
@@ -279,6 +292,31 @@ class ModelInputTranscriptCommitter(
                         dict[str, JSONValue],
                         thaw_model_input_json(self._context.logical_input),
                     )
+                stored_logical_input = logical_input
+                stored_prepared_payload = prepared_payload
+                binary_projection_version = 0
+                if self._binary_codec is not None:
+                    with timer.phase("binary_externalize"):
+                        projected_logical = self._binary_codec.externalize_mapping(
+                            logical_input
+                        )
+                        projected_prepared = self._binary_codec.externalize_mapping(
+                            prepared_payload,
+                            binary_fields=request.binary_fields,
+                        )
+                    if (
+                        projected_logical.replacement_count
+                        + projected_prepared.replacement_count
+                    ):
+                        stored_logical_input = projected_logical.value
+                        stored_prepared_payload = projected_prepared.value
+                        binary_projection_version = (
+                            MODEL_INPUT_BINARY_PROJECTION_VERSION
+                        )
+                logical_input_hash = hash_model_input_json(
+                    logical_input,
+                    name="logical Model Input",
+                )
                 writer = ModelInputV2Writer(
                     transcript=self._transcript,
                     expected_revision=self._expected_revision,
@@ -289,8 +327,8 @@ class ModelInputTranscriptCommitter(
                 node_index_cache_status = writer.index_cache_status
                 with timer.phase("materialize"):
                     materialization = await writer.materialize(
-                        logical_input=logical_input,
-                        prepared_payload=prepared_payload,
+                        logical_input=stored_logical_input,
+                        prepared_payload=stored_prepared_payload,
                         model_visible_headers=model_visible_headers,
                     )
                 materialization_timing = writer.materialization_timing
@@ -321,8 +359,9 @@ class ModelInputTranscriptCommitter(
                         model_visible_headers_root=(
                             materialization.model_visible_headers_root
                         ),
-                        logical_input_hash=materialization.logical_input_hash,
+                        logical_input_hash=logical_input_hash,
                         prepared_payload_hash=_prepared_text(request, "payload_hash"),
+                        binary_projection_version=binary_projection_version,
                     )
                     # A canonical mismatch is checked before any writes. Keeping this
                     # assertion here documents that the committed references still
@@ -354,6 +393,7 @@ class ModelInputTranscriptCommitter(
                             commit.record,
                             snapshot,
                             materialization,
+                            logical_input_hash=logical_input_hash,
                             prepared_payload_hash=_prepared_text(
                                 request,
                                 "payload_hash",
@@ -361,10 +401,17 @@ class ModelInputTranscriptCommitter(
                         )
                 except ModelInputIntegrityError:
                     with timer.phase("rebuild_verify_fallback"):
-                        rebuilt = rebuild_model_input(
-                            self._transcript,
-                            snapshot.snapshot_id,
-                        )
+                        if self._binary_codec is None:
+                            rebuilt = rebuild_model_input(
+                                self._transcript,
+                                snapshot.snapshot_id,
+                            )
+                        else:
+                            rebuilt = rebuild_model_input(
+                                self._transcript,
+                                snapshot.snapshot_id,
+                                binary_codec=self._binary_codec,
+                            )
                         if rebuilt.canonical_prepared_payload != canonical:
                             raise ModelInputIntegrityError(
                                 "committed Model Input v2 prepared payload changed"
@@ -602,8 +649,14 @@ def _outcome_with_request_metrics(
 def rebuild_model_input(
     transcript: AgentTranscriptUnitOfWork,
     snapshot_id: str,
+    *,
+    binary_codec: SessionModelInputBlobCodec | None = None,
 ) -> RebuiltModelInput:
-    rebuilt = _rebuild_model_input(transcript, snapshot_id)
+    rebuilt = _rebuild_model_input(
+        transcript,
+        snapshot_id,
+        binary_codec=binary_codec,
+    )
     verification = _verification(rebuilt)
     if not verification.verified:
         raise ModelInputIntegrityError(
@@ -615,13 +668,23 @@ def rebuild_model_input(
 def verify_model_input(
     transcript: AgentTranscriptUnitOfWork,
     snapshot_id: str,
+    *,
+    binary_codec: SessionModelInputBlobCodec | None = None,
 ) -> ModelInputReconstructionVerification:
-    return _verification(_rebuild_model_input(transcript, snapshot_id))
+    return _verification(
+        _rebuild_model_input(
+            transcript,
+            snapshot_id,
+            binary_codec=binary_codec,
+        )
+    )
 
 
 def _rebuild_model_input(
     transcript: AgentTranscriptUnitOfWork,
     snapshot_id: str,
+    *,
+    binary_codec: SessionModelInputBlobCodec | None = None,
 ) -> RebuiltModelInput:
     _require_text(snapshot_id, name="Model Input snapshot id")
     matches = [
@@ -696,6 +759,24 @@ def _rebuild_model_input(
         ):
             raise ModelInputIntegrityError("model-visible headers are not string pairs")
         model_visible_headers = cast(dict[str, str], raw_headers)
+    if (
+        isinstance(snapshot, ModelInputSnapshotV2)
+        and snapshot.binary_projection_version
+    ):
+        if (
+            snapshot.binary_projection_version != MODEL_INPUT_BINARY_PROJECTION_VERSION
+            or binary_codec is None
+        ):
+            raise ModelInputIntegrityError(
+                "Model Input binary projection requires its Session blob authority"
+            )
+        try:
+            logical_input = binary_codec.hydrate_mapping(logical_input)
+            prepared_payload = binary_codec.hydrate_mapping(prepared_payload)
+        except ModelInputBinaryProjectionError as error:
+            raise ModelInputIntegrityError(
+                "Model Input binary projection failed reconstruction"
+            ) from error
     _validate_rebuilt_logical_input(logical_input)
     canonical_prepared = canonical_model_input_json(
         {

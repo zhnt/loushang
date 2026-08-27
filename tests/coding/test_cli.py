@@ -1681,10 +1681,47 @@ def test_run_cli_prints_help_and_exits_before_runtime(tmp_path) -> None:
         assert "--list-sessions-format tsv|json" in stdout.getvalue()
         assert "--list-commands-format tsv|json" in stdout.getvalue()
         assert "--command-result-format raw|json" in stdout.getvalue()
-        assert "--export-format html|jsonl" in stdout.getvalue()
+        assert "--export-format bundle|html|jsonl" in stdout.getvalue()
         assert "--export-result-format text|json" in stdout.getvalue()
         assert stderr.getvalue() == ""
         assert not (tmp_path / ".loushang" / "sessions").exists()
+
+    asyncio.run(scenario())
+
+
+def test_run_cli_storage_paths_exits_before_services_or_session(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "global"))
+    monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(tmp_path / "runtime"))
+    monkeypatch.setenv("LOUSHANG_TMPDIR", str(tmp_path / "scratch"))
+
+    async def scenario() -> None:
+        stdout = StringIO()
+        stderr = StringIO()
+        exit_code = await run_cli(
+            ["storage", "paths", "--format", "json"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path / "project",
+            services=object(),
+            runtime_builder=lambda **_kwargs: (_ for _ in ()).throw(
+                AssertionError("storage command must not construct a runtime")
+            ),
+        )
+
+        assert exit_code == 0
+        assert stderr.getvalue() == ""
+        value = json.loads(stdout.getvalue())
+        assert value["home"] == str((tmp_path / "global").resolve())
+        assert any(
+            resource["resourceId"] == "sessions.cwd_compatibility"
+            for resource in value["resources"]
+        )
 
     asyncio.run(scenario())
 

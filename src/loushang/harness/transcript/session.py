@@ -38,6 +38,7 @@ from loushang.harness.transcript.model_input import (
     RebuiltModelInput,
     rebuild_model_input,
 )
+from loushang.harness.transcript.model_input_blobs import SessionModelInputBlobCodec
 from loushang.harness.transcript.types import (
     AgentTranscriptContext,
     AgentTranscriptRecord,
@@ -301,9 +302,7 @@ class AgentTranscriptSession:
             display=display,
             timestamp=self._clock().timestamp(),
         )
-        return self._complete_application_commit(
-            await self._committer.commit_application_message(message)
-        )
+        return await self.append_message(message)
 
     async def append_label(self, target_id: str, label: str | None) -> str:
         if self._transcript.get(target_id) is None:
@@ -357,12 +356,27 @@ class AgentTranscriptSession:
                 logical_input=logical_input,
             ),
             runtime_references=runtime_references,
+            binary_codec=self._model_input_binary_codec(active_only=True),
         )
 
     def rebuild_model_input(self, snapshot_id: str) -> RebuiltModelInput:
         """Reconstruct one committed request through the Session boundary."""
 
-        return rebuild_model_input(self._transcript, snapshot_id)
+        return rebuild_model_input(
+            self._transcript,
+            snapshot_id,
+            binary_codec=self._model_input_binary_codec(active_only=False),
+        )
+
+    def _model_input_binary_codec(
+        self,
+        *,
+        active_only: bool,
+    ) -> SessionModelInputBlobCodec | None:
+        """Return a Product storage-edge codec when this Session persists blobs."""
+
+        del active_only
+        return None
 
     def get_model_call_invocations(
         self,

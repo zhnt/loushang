@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import Literal, TypeVar, cast
 
 from loushang.agent.json_codec import AgentMessageJsonCodec, CustomMessageJsonCodec
@@ -20,6 +21,7 @@ from loushang.ai.types import (
     UserMessage,
 )
 from loushang.foundation.json import JSONValue, require_json_mapping, require_json_value
+from loushang.harness.artifacts.references import SessionBlobRef
 from loushang.harness.conversation.jsonl_codec import (
     ConversationPayloadCodecRegistry,
     FunctionalConversationPayloadCodec,
@@ -75,6 +77,7 @@ from loushang.harness.transcript.types import (
     ExtensionData,
     ModelSelectionSnapshot,
     RecordAnnotationPatch,
+    SessionImagePart,
     ThinkingSelectionSnapshot,
 )
 
@@ -243,11 +246,72 @@ def _register(
 def _encode_agent_message(payload: object) -> JSONValue:
     if not isinstance(payload, UserMessage | AssistantMessage | ToolResultMessage):
         raise TypeError("agent.message payload must be an AI message")
-    return require_json_value(serialize_message(payload), name="agent message")
+    message, session_images = _inline_message_for_encoding(payload)
+    encoded = serialize_message(message)
+    content = encoded.get("content")
+    if session_images and isinstance(content, list):
+        for index, image in session_images.items():
+            content[index] = {
+                "type": "image",
+                "sessionBlob": image.blob.manifest_entry(),
+            }
+    return require_json_value(encoded, name="agent message")
 
 
 def _decode_agent_message(value: JSONValue) -> Message:
-    return deserialize_message(_object(value, name="agent message"))
+    payload = dict(_object(value, name="agent message"))
+    content = payload.get("content")
+    session_images: dict[int, SessionImagePart] = {}
+    if isinstance(content, list):
+        inline_content = list(content)
+        for index, part in enumerate(content):
+            if not isinstance(part, dict) or "sessionBlob" not in part:
+                continue
+            if set(part) != {"type", "sessionBlob"} or part.get("type") != "image":
+                raise ValueError("session image content part shape is invalid")
+            blob_value = part["sessionBlob"]
+            if not isinstance(blob_value, dict):
+                raise TypeError("session image blob must be an object")
+            image = SessionImagePart(
+                type="image",
+                blob=SessionBlobRef.from_manifest_entry(blob_value),
+            )
+            session_images[index] = image
+            inline_content[index] = {
+                "type": "image",
+                "data": "",
+                "mimeType": image.mime_type,
+            }
+        payload["content"] = inline_content
+    message = deserialize_message(payload)
+    if not session_images:
+        return message
+    decoded_content = getattr(message, "content", None)
+    if not isinstance(decoded_content, list):
+        raise ValueError("session image requires list message content")
+    restored = list(decoded_content)
+    for index, image in session_images.items():
+        restored[index] = image
+    return replace(message, content=restored)  # type: ignore[arg-type]
+
+
+def _inline_message_for_encoding(
+    message: Message,
+) -> tuple[Message, dict[int, SessionImagePart]]:
+    content = getattr(message, "content", None)
+    if not isinstance(content, list):
+        return message, {}
+    session_images = {
+        index: part
+        for index, part in enumerate(content)
+        if isinstance(part, SessionImagePart)
+    }
+    if not session_images:
+        return message, {}
+    inline = list(content)
+    for index, image in session_images.items():
+        inline[index] = ImagePart(type="image", data="", mime_type=image.mime_type)
+    return replace(message, content=inline), session_images  # type: ignore[arg-type]
 
 
 def _encode_thinking_selection(payload: object) -> JSONValue:
@@ -290,7 +354,21 @@ def _encode_command_execution(payload: object) -> JSONValue:
         "exitCode": command.exit_code,
         "cancelled": command.cancelled,
         "truncated": command.truncated,
-        "fullOutputPath": command.full_output_path,
+        "fullOutputBlob": (
+            command.full_output_blob.manifest_entry()
+            if command.full_output_blob is not None
+            else None
+        ),
+        "stdoutBlob": (
+            command.stdout_blob.manifest_entry()
+            if command.stdout_blob is not None
+            else None
+        ),
+        "stderrBlob": (
+            command.stderr_blob.manifest_entry()
+            if command.stderr_blob is not None
+            else None
+        ),
         "excludeFromContext": command.exclude_from_context,
         "metadata": dict(command.metadata),
     }
@@ -307,6 +385,9 @@ def _decode_command_execution(value: JSONValue) -> CommandExecutionRecord:
             "cancelled",
             "truncated",
             "fullOutputPath",
+            "fullOutputBlob",
+            "stdoutBlob",
+            "stderrBlob",
             "excludeFromContext",
             "metadata",
         },
@@ -317,7 +398,14 @@ def _decode_command_execution(value: JSONValue) -> CommandExecutionRecord:
         exit_code=_optional_int(payload, "exitCode"),
         cancelled=_bool(payload, "cancelled"),
         truncated=_bool(payload, "truncated"),
-        full_output_path=_optional_string(payload, "fullOutputPath"),
+        full_output_blob=_optional_session_blob(payload, "fullOutputBlob"),
+        stdout_blob=_optional_session_blob(payload, "stdoutBlob"),
+        stderr_blob=_optional_session_blob(payload, "stderrBlob"),
+        full_output_path=(
+            _optional_string(payload, "fullOutputPath")
+            if "fullOutputPath" in payload
+            else None
+        ),
         exclude_from_context=_bool(payload, "excludeFromContext"),
         metadata=_mapping(payload, "metadata"),
     )
@@ -408,7 +496,15 @@ def _encode_application_message(payload: object) -> JSONValue:
     if isinstance(message.content, str):
         content = message.content
     else:
-        content = [serialize_content_part(part) for part in message.content]
+        content = [
+            {
+                "type": "image",
+                "sessionBlob": part.blob.manifest_entry(),
+            }
+            if isinstance(part, SessionImagePart)
+            else serialize_content_part(part)
+            for part in message.content
+        ]
     return {
         "applicationMessageId": message.application_message_id,
         "customType": message.custom_type,
@@ -447,14 +543,33 @@ def _decode_application_message(
         raise ValueError("application message role is invalid")
     content_value = _field(payload, "content")
     if isinstance(content_value, str):
-        content: str | list[TextPart | ImagePart] = content_value
+        content: str | list[TextPart | ImagePart | SessionImagePart] = content_value
     elif isinstance(content_value, list):
         content = []
         for part_value in content_value:
-            part = deserialize_content_part(
-                _object(part_value, name="application message content part")
+            part: TextPart | ImagePart | SessionImagePart | object
+            part_payload = _object(
+                part_value,
+                name="application message content part",
             )
-            if not isinstance(part, TextPart | ImagePart):
+            if "sessionBlob" in part_payload:
+                if (
+                    set(part_payload) != {"type", "sessionBlob"}
+                    or part_payload.get("type") != "image"
+                ):
+                    raise ValueError(
+                        "application session image content part shape is invalid"
+                    )
+                blob_value = part_payload["sessionBlob"]
+                if not isinstance(blob_value, dict):
+                    raise TypeError("application session image blob must be an object")
+                part = SessionImagePart(
+                    type="image",
+                    blob=SessionBlobRef.from_manifest_entry(blob_value),
+                )
+            else:
+                part = deserialize_content_part(dict(part_payload))
+            if not isinstance(part, TextPart | ImagePart | SessionImagePart):
                 raise ValueError(
                     "application message content supports text and image parts only"
                 )
@@ -802,6 +917,16 @@ def _optional_string(value: Mapping[str, JSONValue], key: str) -> str | None:
     if not isinstance(field, str):
         raise TypeError(f"payload field {key!r} must be a string or null")
     return field
+
+
+def _optional_session_blob(
+    value: Mapping[str, JSONValue], key: str
+) -> SessionBlobRef | None:
+    if key not in value or value[key] is None:
+        return None
+    return SessionBlobRef.from_manifest_entry(
+        require_json_mapping(value[key], name=f"payload field {key!r}")
+    )
 
 
 def _bool(value: Mapping[str, JSONValue], key: str) -> bool:

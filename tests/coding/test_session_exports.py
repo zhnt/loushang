@@ -107,11 +107,37 @@ def test_agent_session_exposes_standard_export_methods(tmp_path) -> None:
 
     jsonl_output = session.export_to_jsonl(str(tmp_path / "session.jsonl"))
     html_output = session.export_to_html(str(tmp_path / "session.html"))
+    bundle_output = session.export_to_bundle(str(tmp_path / "session.loushang.zip"))
 
     assert jsonl_output.endswith(".jsonl")
     assert html_output.endswith(".html")
+    assert bundle_output.endswith(".loushang.zip")
     assert (tmp_path / "session.jsonl").exists()
     assert (tmp_path / "session.html").exists()
+    assert (tmp_path / "session.loushang.zip").exists()
+
+
+def test_export_session_to_bundle_defaults_to_generated_portable_backup(
+    tmp_path,
+) -> None:
+    from loushang.harness.session.export import export_session_to_bundle
+
+    cwd = tmp_path / "project"
+    cwd.mkdir()
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "data" / "sessions",
+            cwd=str(cwd),
+            persist=False,
+        )
+    )
+    session = AgentSession(agent=Agent(), session_manager=manager)
+
+    output = Path(export_session_to_bundle(session))
+
+    assert output.name.startswith("session-")
+    assert output.name.endswith(".loushang.zip")
+    assert output.parent == cwd.resolve()
 
 
 def test_export_session_to_jsonl_defaults_to_generated_filename(tmp_path) -> None:

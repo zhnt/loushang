@@ -35,6 +35,7 @@ from loushang.harness.journal import (
     JsonlJournal,
     JsonlSnapshot,
     LockMode,
+    decode_jsonl,
     journal_file_lock,
 )
 from loushang.harness.transcript.model_input_v2_index_file import (
@@ -178,6 +179,41 @@ def load_agent_transcript_file(
         raise AgentTranscriptFileError(
             "Transcript file must start with a conversation header",
             path=path,
+            code="missing_conversation_header",
+        )
+    return snapshot.header, list(snapshot.records)
+
+
+def decode_agent_transcript_bytes(
+    content: bytes,
+    *,
+    source_path: str | Path,
+) -> tuple[ConversationHeader, list[AgentTranscriptRecord]]:
+    """Decode the exact bytes authorized by a caller's stable file read."""
+
+    target = Path(source_path)
+    try:
+        raw = bytes(content).decode(DEFAULT_JSONL_FORMAT.encoding)
+    except UnicodeDecodeError as exc:
+        raise AgentTranscriptFileError(
+            "Transcript file is not valid UTF-8",
+            path=target,
+            code="invalid_session_encoding",
+        ) from exc
+    try:
+        snapshot = decode_jsonl(
+            raw,
+            target=target,
+            record_codec=_RECORD_CODEC,
+            header_codec=_HEADER_CODEC,
+            load_policy=_READ_LOAD_POLICY,
+        )
+    except JournalFileError as exc:
+        raise _agent_transcript_file_error(exc) from exc
+    if snapshot.header is None:
+        raise AgentTranscriptFileError(
+            "Transcript file must start with a conversation header",
+            path=target,
             code="missing_conversation_header",
         )
     return snapshot.header, list(snapshot.records)
@@ -485,6 +521,7 @@ __all__ = [
     "agent_transcript_journal",
     "create_agent_transcript_file_store",
     "create_agent_transcript_repository",
+    "decode_agent_transcript_bytes",
     "load_agent_transcript_file",
     "load_agent_transcript_repository",
     "load_agent_transcript_header",

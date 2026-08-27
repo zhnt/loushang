@@ -177,6 +177,7 @@ if TYPE_CHECKING:
         ToolPolicyAuditSessionEvent,
     )
     from loushang.harness.session.export import (
+        export_session_to_bundle,
         export_session_to_html,
         export_session_to_jsonl,
     )
@@ -627,6 +628,7 @@ _EXPORT_MODULES = {
     "should_emit_projected_event": "loushang.harness.session.event_projection",
     "should_emit_runtime_event_view": "loushang.harness.session.runtime_event_views",
     "export_session_to_html": "loushang.harness.session.export",
+    "export_session_to_bundle": "loushang.harness.session.export",
     "export_session_to_jsonl": "loushang.harness.session.export",
 }
 

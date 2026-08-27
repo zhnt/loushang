@@ -405,9 +405,19 @@ class ModelInputSnapshotV2:
     schema_version: int = MODEL_INPUT_V2_SCHEMA_VERSION
     projection_version: str = MODEL_INPUT_V2_PROJECTION_VERSION
     outcome: ModelInputV2Outcome = "prepared"
+    binary_projection_version: int = 0
 
     def __post_init__(self) -> None:
         _require_v2_schema(self.schema_version)
+        _require_non_negative_int(
+            self.binary_projection_version,
+            name="ModelInputSnapshotV2.binary_projection_version",
+        )
+        if self.binary_projection_version not in {0, 1}:
+            raise ValueError(
+                "unsupported Model Input binary projection version: "
+                f"{self.binary_projection_version}"
+            )
         if self.projection_version != MODEL_INPUT_V2_PROJECTION_VERSION:
             raise ValueError(
                 "unsupported Model Input v2 projection version: "

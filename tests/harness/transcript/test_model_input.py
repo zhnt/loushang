@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import json
 from collections.abc import AsyncIterator
@@ -24,6 +25,7 @@ from loushang.ai.provider.prepared_request_conformance import (
 )
 from loushang.ai.provider.protocol import ProviderRequest
 from loushang.ai.types import Usage, UserMessage
+from loushang.harness.artifacts import SessionBlobStore
 from loushang.harness.capabilities import (
     MountGraphSnapshot,
     RegistrationInventorySnapshot,
@@ -62,6 +64,7 @@ from loushang.harness.transcript import (
 )
 from loushang.harness.transcript import model_input as model_input_module
 from loushang.harness.transcript import model_input_v2 as model_input_v2_module
+from loushang.harness.transcript.model_input_blobs import SessionModelInputBlobCodec
 from loushang.harness.transcript.model_input_types import (
     canonical_model_input_json,
     hash_model_input_json,
@@ -76,6 +79,7 @@ from loushang.harness.transcript.model_input_v2_types import (
     ModelInputSnapshotV2,
     hash_model_input_node,
     model_input_node_hash_basis,
+    model_input_node_to_json,
 )
 
 
@@ -404,6 +408,153 @@ def test_model_input_records_are_hidden_deduplicated_and_hash_verified() -> None
         assert commit.commit_revision == transcript.revision
         assert rebuilt.commit_revision == commit.commit_revision
         assert rebuilt.snapshot.commit_revision == commit.commit_revision
+
+    asyncio.run(scenario())
+
+
+def test_model_input_externalizes_session_images_without_losing_exact_rebuild(
+    tmp_path,
+) -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        store = SessionBlobStore(tmp_path / "data", "model-input-conversation")
+        image = b"model-input-image-bytes"
+        encoded = base64.b64encode(image).decode("ascii")
+        store.put_bytes(
+            image,
+            logical_name="images/user.png",
+            kind="image",
+            media_type="image/png",
+            source="transcript-image:user",
+        )
+        logical_input = {
+            "system_prompt": "system prompt",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "data": encoded,
+                            "mimeType": "image/png",
+                        }
+                    ],
+                }
+            ],
+            "tools": [],
+            "request_options": {},
+        }
+        prepared_payload = {
+            "model": "model-input-model",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{encoded}"
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+        codec = SessionModelInputBlobCodec(store)
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript, logical_input=logical_input),
+            runtime_references=_runtime_references(),
+            binary_codec=codec,
+        )
+
+        await committer.commit_prepared_request(
+            _prepared(payload=prepared_payload)
+        )
+
+        snapshot_id = committer.commits[0].snapshot_id
+        snapshot_record = next(
+            record
+            for record in transcript.records
+            if record.kind == MODEL_INPUT_PREPARED_KIND
+        )
+        assert isinstance(snapshot_record.payload, ModelInputSnapshotV2)
+        assert snapshot_record.payload.binary_projection_version == 1
+        model_input_wire_repr = json.dumps(
+            [
+                model_input_node_to_json(node)
+                for record in transcript.records
+                if record.kind == MODEL_INPUT_COMPONENT_KIND
+                and isinstance(record.payload, ModelInputNodeBundle)
+                for node in record.payload.nodes
+            ],
+            sort_keys=True,
+        )
+        assert encoded not in model_input_wire_repr
+        assert "$loushang.sessionBlob" in model_input_wire_repr
+
+        rebuilt = rebuild_model_input(
+            transcript,
+            snapshot_id,
+            binary_codec=codec,
+        )
+        assert rebuilt.logical_input == logical_input
+        assert rebuilt.prepared_payload == prepared_payload
+        assert verify_model_input(
+            transcript,
+            snapshot_id,
+            binary_codec=codec,
+        ).verified
+        with pytest.raises(ModelInputIntegrityError, match="blob authority"):
+            rebuild_model_input(transcript, snapshot_id)
+
+    asyncio.run(scenario())
+
+
+def test_model_input_reserved_literal_alone_sets_projection_version(tmp_path) -> None:
+    async def scenario() -> None:
+        transcript = await _memory_transcript()
+        logical_input = {
+            "system_prompt": "system prompt",
+            "messages": [],
+            "tools": [],
+            "request_options": {
+                "$loushang.sessionBlob": {"application": "literal"}
+            },
+        }
+        prepared_payload = {
+            "model": "model-input-model",
+            "metadata": {"$loushang.literal": {"application": "literal"}},
+        }
+        codec = SessionModelInputBlobCodec(
+            SessionBlobStore(tmp_path / "data", "model-input-conversation")
+        )
+        committer = ModelInputTranscriptCommitter(
+            transcript=transcript,
+            context=_context(transcript, logical_input=logical_input),
+            runtime_references=_runtime_references(),
+            binary_codec=codec,
+        )
+
+        await committer.commit_prepared_request(
+            _prepared(payload=prepared_payload)
+        )
+
+        snapshot_id = committer.commits[0].snapshot_id
+        snapshot = next(
+            record.payload
+            for record in transcript.records
+            if record.kind == MODEL_INPUT_PREPARED_KIND
+        )
+        assert isinstance(snapshot, ModelInputSnapshotV2)
+        assert snapshot.binary_projection_version == 1
+        rebuilt = rebuild_model_input(
+            transcript,
+            snapshot_id,
+            binary_codec=codec,
+        )
+        assert rebuilt.logical_input == logical_input
+        assert rebuilt.prepared_payload == prepared_payload
 
     asyncio.run(scenario())
 

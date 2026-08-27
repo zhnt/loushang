@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from loushang.foundation.artifact_store import ArtifactStore
 from loushang.foundation.platform_paths import resolve_platform_paths
 from loushang.foundation.runtime_scope import resolve_runtime_scope
+from loushang.harness.artifacts import ArtifactStore
 from loushang.harness.commands import (
     CommandDef,
     CommandEffect,

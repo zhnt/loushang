@@ -76,6 +76,7 @@ class RuntimeSweepPolicy:
     stale_after_seconds: float = 24 * 60 * 60
     max_inactive_runs: int = 32
     max_inactive_bytes: int = 512 * 1024 * 1024
+    max_scan_entries: int = 10_000
 
     def __post_init__(self) -> None:
         if self.stale_after_seconds < 0:
@@ -84,6 +85,8 @@ class RuntimeSweepPolicy:
             raise ValueError("max_inactive_runs must not be negative")
         if self.max_inactive_bytes < 0:
             raise ValueError("max_inactive_bytes must not be negative")
+        if self.max_scan_entries < 1:
+            raise ValueError("max_scan_entries must be positive")
 
 
 DEFAULT_RUNTIME_SWEEP_POLICY = RuntimeSweepPolicy()
@@ -99,6 +102,7 @@ class RuntimeSweepReport:
     removed_bytes: int = 0
     skipped: int = 0
     failed: int = 0
+    truncated: bool = False
 
 
 @dataclass(slots=True)
@@ -248,38 +252,45 @@ def sweep_runtime_runs(
     inactive: list[_InactiveRun] = []
     current_time = now()
     try:
-        with os.scandir(scope.runs_root) as iterator:
-            entries = tuple(iterator)
-    except OSError:
-        return RuntimeSweepReport(failed=1)
-    try:
-        for entry in entries:
-            entry_identity = _runtime_entry_identity(entry.name)
-            if entry_identity is None:
-                skipped += 1
-                continue
-            expected_run_id, quarantined = entry_identity
-            if not quarantined and expected_run_id == scope.run_id:
-                continue
-            inspected += 1
-            try:
-                candidate = _inspect_inactive_run(
-                    Path(entry.path),
-                    expected_run_id=expected_run_id,
-                    quarantined=quarantined,
-                )
-            except (OSError, RecursionError):
-                failed += 1
-                continue
-            if candidate is None:
-                active += 1
-                continue
-            # Register ownership immediately so BaseException cannot strand
-            # its raw descriptor between inspection and classification.
-            inactive.append(candidate)
-            if candidate.size < 0:
-                skipped += 1
-                _release_candidate(candidate)
+        try:
+            with os.scandir(scope.runs_root) as entries:
+                for index, entry in enumerate(entries):
+                    if index >= policy.max_scan_entries:
+                        return RuntimeSweepReport(
+                            inspected=inspected,
+                            active=active,
+                            skipped=skipped,
+                            failed=failed + 1,
+                            truncated=True,
+                        )
+                    entry_identity = _runtime_entry_identity(entry.name)
+                    if entry_identity is None:
+                        skipped += 1
+                        continue
+                    expected_run_id, quarantined = entry_identity
+                    if not quarantined and expected_run_id == scope.run_id:
+                        continue
+                    inspected += 1
+                    try:
+                        candidate = _inspect_inactive_run(
+                            Path(entry.path),
+                            expected_run_id=expected_run_id,
+                            quarantined=quarantined,
+                        )
+                    except (OSError, RecursionError):
+                        failed += 1
+                        continue
+                    if candidate is None:
+                        active += 1
+                        continue
+                    # Register ownership immediately so BaseException cannot strand
+                    # its raw descriptor between inspection and classification.
+                    inactive.append(candidate)
+                    if candidate.size < 0:
+                        skipped += 1
+                        _release_candidate(candidate)
+        except OSError:
+            return RuntimeSweepReport(failed=failed + 1)
 
         selected: set[Path] = {
             candidate.path
@@ -287,8 +298,7 @@ def sweep_runtime_runs(
             if candidate.size >= 0
             and (
                 candidate.quarantined
-                or current_time - candidate.modified_at
-                >= policy.stale_after_seconds
+                or current_time - candidate.modified_at >= policy.stale_after_seconds
             )
         }
         quota_candidates = sorted(
@@ -589,10 +599,14 @@ def _validate_lease_identity(
     expected: tuple[int, int],
 ) -> None:
     metadata = lease_path.lstat()
-    if not stat.S_ISREG(metadata.st_mode) or (
-        metadata.st_dev,
-        metadata.st_ino,
-    ) != expected:
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or (
+            metadata.st_dev,
+            metadata.st_ino,
+        )
+        != expected
+    ):
         raise PermissionError(f"runtime lease identity changed: {lease_path}")
 
 
@@ -705,9 +719,13 @@ def _lock_descriptor(descriptor: int, *, blocking: bool) -> bool:
         import msvcrt
 
         os.lseek(descriptor, 0, os.SEEK_SET)
-        mode = getattr(msvcrt, "LK_LOCK") if blocking else getattr(
-            msvcrt,
-            "LK_NBLCK",
+        mode = (
+            getattr(msvcrt, "LK_LOCK")
+            if blocking
+            else getattr(
+                msvcrt,
+                "LK_NBLCK",
+            )
         )
         locking = getattr(msvcrt, "locking")
         try:

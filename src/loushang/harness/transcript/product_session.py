@@ -10,25 +10,42 @@ and the binding input to reuse for a fork.
 from __future__ import annotations
 
 import builtins
+from contextlib import suppress
 from pathlib import Path
-from typing import Generic, Self, TypeVar
+from typing import Generic, Self, TypeVar, cast
 
+from loushang.agent.types import AgentMessage
+from loushang.ai.types import AssistantMessage, ToolResultMessage, UserMessage
 from loushang.foundation.json import require_json_value
+from loushang.harness.artifacts import (
+    SessionBlobStore,
+    resolve_session_blob_data_root,
+)
 from loushang.harness.runtime import RuntimeProfileSnapshot
 from loushang.harness.transcript.capability_candidate import (
     AgentTranscriptCapabilityCandidate,
 )
+from loushang.harness.transcript.committer import CommitResult
 from loushang.harness.transcript.compaction import (
     TURN_AWARE_SUMMARY_IMPLEMENTATION,
     TURN_AWARE_SUMMARY_VERSION,
     AgentTranscriptCompactionCapability,
     create_agent_transcript_compaction_capability,
 )
+from loushang.harness.transcript.jsonl_file import (
+    load_agent_transcript_file,
+    load_agent_transcript_header,
+)
 from loushang.harness.transcript.lifecycle import (
     AgentTranscriptLifecycleSession,
     delete_agent_transcript_jsonl,
 )
+from loushang.harness.transcript.model_input_blobs import SessionModelInputBlobCodec
 from loushang.harness.transcript.session import AgentTranscriptSession
+from loushang.harness.transcript.session_artifacts import (
+    collect_agent_transcript_session_blobs,
+    delete_agent_transcript_session_blobs,
+)
 from loushang.harness.transcript.session_catalog import (
     AgentTranscriptSessionCatalog,
     SessionMetadata,
@@ -46,13 +63,21 @@ from loushang.harness.transcript.session_catalog import (
     load_agent_transcript_session_metadata,
     project_agent_transcript_session_summary,
     refresh_all_agent_transcript_session_indexes,
+    same_agent_transcript_session_path,
 )
 from loushang.harness.transcript.session_factory import (
     AgentTranscriptSessionFactory,
 )
+from loushang.harness.transcript.session_images import (
+    SessionImageHydrationContext,
+    externalize_session_message_images,
+    hydrate_session_message_images,
+    rollback_externalized_session_images,
+)
 from loushang.harness.transcript.types import (
     AgentTranscriptContext,
     AgentTranscriptRecord,
+    ApplicationMessage,
 )
 
 BindingInputT = TypeVar("BindingInputT")
@@ -81,6 +106,7 @@ class ProductTranscriptSession(
         self.cwd = lifecycle_session.context.cwd
         self.persist = lifecycle_session.context.persist
         self.session_file = lifecycle_session.context.session_file
+        self.session_blob_health = lifecycle_session.session_blob_health
         self._published_index_revision: int | None = None
         super().__init__(
             transcript=lifecycle_session.transcript,
@@ -89,6 +115,44 @@ class ProductTranscriptSession(
                 lifecycle_session.label_timestamps_by_target_id
             ),
         )
+
+    async def append_message(self, message: object) -> str:
+        """Externalize durable image bytes before committing an Agent message."""
+
+        if not self.persist or not isinstance(
+            message, UserMessage | AssistantMessage | ToolResultMessage
+        ):
+            return await super().append_message(message)
+        externalized = externalize_session_message_images(
+            message,
+            self._session_blob_store(),
+        )
+        try:
+            return await super().append_message(externalized.message)
+        except BaseException as error:
+            rollback_externalized_session_images(externalized, error)
+            raise
+
+    async def commit_application_message(
+        self,
+        message: ApplicationMessage,
+    ) -> CommitResult:
+        """Persist Application images through the same durable boundary."""
+
+        if not self.persist:
+            return await super().commit_application_message(message)
+        externalized = externalize_session_message_images(
+            message,
+            self._session_blob_store(),
+            now=message.timestamp,
+        )
+        try:
+            return await super().commit_application_message(
+                cast(ApplicationMessage, externalized.message)
+            )
+        except BaseException as error:
+            rollback_externalized_session_images(externalized, error)
+            raise
 
     @classmethod
     def _session_factory(
@@ -257,6 +321,23 @@ class ProductTranscriptSession(
         return cls(lifecycle_session=lifecycle_session)
 
     @classmethod
+    async def import_bundle(
+        cls,
+        source_file: str | Path,
+        *,
+        session_dir: str | Path,
+        cwd_override: str | Path | None = None,
+        persist: bool = True,
+    ) -> Self:
+        lifecycle_session = await cls._session_factory().import_bundle(
+            source_file,
+            session_dir=session_dir,
+            cwd_override=cwd_override,
+            persist=persist,
+        )
+        return cls(lifecycle_session=lifecycle_session)
+
+    @classmethod
     async def fork_from(
         cls,
         source_file: str | Path,
@@ -361,7 +442,51 @@ class ProductTranscriptSession(
         return (await self.fork(leaf_id)).session_file
 
     def build_session_context(self) -> AgentTranscriptContext:
-        return build_agent_transcript_session_context(self.entries, self.leaf_id)
+        context = build_agent_transcript_session_context(self.entries, self.leaf_id)
+        if not self.persist:
+            return context
+        store = self._session_blob_store()
+        hydration = SessionImageHydrationContext()
+        return AgentTranscriptContext(
+            messages=tuple(
+                cast(
+                    AgentMessage,
+                    hydrate_session_message_images(
+                        message,
+                        store,
+                        hydration=hydration,
+                    ),
+                )
+                for message in context.messages
+            ),
+            state=context.state,
+        )
+
+    def _session_blob_store(self) -> SessionBlobStore:
+        return SessionBlobStore(
+            resolve_session_blob_data_root(self.session_dir),
+            self.header.conversation_id,
+        )
+
+    def _model_input_binary_codec(
+        self,
+        *,
+        active_only: bool,
+    ) -> SessionModelInputBlobCodec | None:
+        if not self.persist:
+            return None
+        records = (
+            self._transcript.active_path()
+            if active_only
+            else self._transcript.records
+        )
+        return SessionModelInputBlobCodec(
+            self._session_blob_store(),
+            references=collect_agent_transcript_session_blobs(
+                records,
+                expected_session_id=self.header.conversation_id,
+            ),
+        )
 
     @classmethod
     async def rename_session(
@@ -385,13 +510,57 @@ class ProductTranscriptSession(
         current_session_file: str | Path | None = None,
     ) -> bool:
         target = Path(session_file).expanduser()
+        if current_session_file is not None and same_agent_transcript_session_path(
+            target,
+            Path(current_session_file).expanduser(),
+        ):
+            raise ValueError("Cannot delete the currently active session")
+        if not target.is_file():
+            return False
+        header, records = load_agent_transcript_file(target)
+        references = collect_agent_transcript_session_blobs(
+            records,
+            expected_session_id=header.conversation_id,
+        )
+        owns_unique_blob_authority = bool(references) and cls._is_unique_authority(
+            target,
+            header.conversation_id,
+        )
         deleted = await delete_agent_transcript_jsonl(
             target,
             current_session_file=current_session_file,
         )
         if deleted:
+            # The transcript authority has already committed deletion.
+            # Recoverable asset residue is left for explicit maintenance.
+            with suppress(OSError, ValueError):
+                if not owns_unique_blob_authority or not cls._is_unique_authority(
+                    target,
+                    header.conversation_id,
+                ):
+                    raise ValueError(
+                        "Session blob authority still has another transcript owner"
+                    )
+                delete_agent_transcript_session_blobs(
+                    session_dir=target.parent,
+                    session_id=header.conversation_id,
+                )
             cls._repair_index_if_present(target.parent)
         return deleted
+
+    @staticmethod
+    def _is_unique_authority(target: Path, conversation_id: str) -> bool:
+        """Fail closed when another transcript claims the same blob authority."""
+
+        for candidate in target.parent.glob("*.jsonl"):
+            if same_agent_transcript_session_path(candidate, target):
+                continue
+            try:
+                if load_agent_transcript_header(candidate).conversation_id == conversation_id:
+                    return False
+            except (OSError, ValueError):
+                continue
+        return True
 
     @classmethod
     def _repair_index_if_present(cls, session_dir: Path) -> None:

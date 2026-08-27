@@ -773,6 +773,404 @@ async def test_session_manager_delete_session_file_preserves_stable_lock(
 
 
 @_async_test
+async def test_session_manager_delete_removes_owned_blobs_after_transcript(
+    tmp_path,
+) -> None:
+    from loushang.ai.types import UserMessage
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.artifacts import SessionBlobStore
+    from loushang.harness.conversation import CommandExecutionRecord
+
+    session_dir = tmp_path / "data" / "sessions"
+    manager = await SessionManager.new(
+        session_dir=session_dir,
+        cwd="/tmp/project",
+        persist=True,
+        session_id="session-with-assets",
+    )
+    blobs = SessionBlobStore(tmp_path / "data", "session-with-assets")
+    reference = blobs.put_bytes(
+        b"complete output",
+        logical_name="commands/output.txt",
+        kind="command-output",
+        media_type="text/plain",
+    )
+    await manager.append_message(
+        UserMessage(role="user", content="materialize", timestamp=0.0)
+    )
+    await manager.append_message(
+        CommandExecutionRecord(
+            command="build",
+            output="complete...",
+            exit_code=0,
+            truncated=True,
+            full_output_blob=reference,
+        )
+    )
+    session_file = manager.get_session_file()
+    assert session_file is not None
+
+    assert await SessionManager.delete_session(session_file) is True
+    assert not session_file.exists()
+    assert not blobs.root.exists()
+
+
+@_async_test
+async def test_session_delete_does_not_accept_a_duplicate_transcript_as_blob_owner(
+    tmp_path,
+) -> None:
+    import shutil
+
+    from loushang.ai.types import UserMessage
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.artifacts import SessionBlobStore
+    from loushang.harness.conversation import CommandExecutionRecord
+
+    session_dir = tmp_path / "data" / "sessions"
+    manager = await SessionManager.new(
+        session_dir=session_dir,
+        cwd="/tmp/project",
+        persist=True,
+        session_id="shared-authority",
+    )
+    blobs = SessionBlobStore(tmp_path / "data", "shared-authority")
+    reference = blobs.put_bytes(
+        b"private output",
+        logical_name="commands/output.txt",
+        kind="command-output",
+        media_type="text/plain",
+    )
+    await manager.append_message(
+        UserMessage(role="user", content="materialize", timestamp=0.0)
+    )
+    await manager.append_message(
+        CommandExecutionRecord(
+            command="build",
+            output="...",
+            exit_code=0,
+            full_output_blob=reference,
+        )
+    )
+    session_file = manager.get_session_file()
+    assert session_file is not None
+    duplicate = session_dir / "forged-duplicate.jsonl"
+    shutil.copyfile(session_file, duplicate)
+
+    assert await SessionManager.delete_session(duplicate) is True
+    assert session_file.exists()
+    assert blobs.read_bytes(reference) == b"private output"
+
+
+@_async_test
+async def test_persistent_session_externalizes_hydrates_and_forks_images(
+    tmp_path,
+) -> None:
+    import base64
+
+    from loushang.ai.json_codec import serialize_message
+    from loushang.ai.prepared_request import PreparedModelRequest
+    from loushang.ai.types import ImagePart, TextPart, UserMessage
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.artifacts import SessionBlobStore
+    from loushang.harness.transcript import (
+        ModelInputRuntimeReferences,
+        SessionImagePart,
+    )
+
+    session_dir = tmp_path / "data" / "sessions"
+    payload = b"clipboard-or-generated-image-bytes"
+    encoded = base64.b64encode(payload).decode("ascii")
+    manager = await SessionManager.new(
+        session_dir=session_dir,
+        cwd="/tmp/project",
+        persist=True,
+        session_id="image-source",
+    )
+    record_id = await manager.append_message(
+        UserMessage(
+            role="user",
+            content=[
+                TextPart(type="text", text="inspect"),
+                ImagePart(type="image", data=encoded, mime_type="image/png"),
+            ],
+            timestamp=1.0,
+        )
+    )
+
+    stored_message = manager.get_entry(record_id).payload
+    assert isinstance(stored_message, UserMessage)
+    stored_image = stored_message.content[1]
+    assert isinstance(stored_image, SessionImagePart)
+    # Durable Harness placeholders remain valid ImagePart subclasses; generic
+    # AI serializers cannot crash if a caller inspects the stored message.
+    assert serialize_message(stored_message)["content"][1]["data"] == ""
+    session_file = manager.get_session_file()
+    assert session_file is not None
+    assert encoded not in session_file.read_text(encoding="utf-8")
+    source_store = SessionBlobStore(tmp_path / "data", "image-source")
+    assert source_store.read_bytes(stored_image.blob) == payload
+    hydrated = manager.build_session_context().messages[-1]
+    assert isinstance(hydrated, UserMessage)
+    assert isinstance(hydrated.content[1], ImagePart)
+    assert hydrated.content[1].data == encoded
+
+    committer = manager.create_model_input_committer(
+        purpose="main",
+        logical_input={
+            "system_prompt": "inspect the image",
+            "messages": [serialize_message(hydrated)],
+            "tools": [],
+            "request_options": {},
+        },
+        runtime_references=ModelInputRuntimeReferences(
+            product_id="coding",
+            runtime_id="image-runtime",
+            mount_generation=1,
+            profile_fingerprint="a" * 64,
+            registration_revision="b" * 64,
+        ),
+    )
+    prepared_payload = {
+        "model": "image-model",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_image",
+                        "image_url": f"data:image/png;base64,{encoded}",
+                    }
+                ],
+            }
+        ],
+    }
+    await committer.commit_prepared_request(
+        PreparedModelRequest(
+            invocation_id="image-invocation",
+            attempt=1,
+            provider_id="test-provider",
+            endpoint_id="test-endpoint",
+            api="responses",
+            model_id="image-model",
+            mode="stream",
+            payload=prepared_payload,
+        )
+    )
+    snapshot_id = committer.commits[0].snapshot_id
+    rebuilt = manager.rebuild_model_input(snapshot_id)
+    assert rebuilt.prepared_payload == prepared_payload
+    assert encoded not in session_file.read_text(encoding="utf-8")
+
+    snapshot_leaf = manager.get_leaf_id()
+    assert snapshot_leaf is not None
+    forked = await manager.fork(snapshot_leaf)
+    forked_message = forked.get_entry(record_id).payload
+    assert isinstance(forked_message, UserMessage)
+    forked_image = forked_message.content[1]
+    assert isinstance(forked_image, SessionImagePart)
+    assert forked_image.blob.session_id == forked.get_header().conversation_id
+    assert forked_image.blob.session_id != stored_image.blob.session_id
+    fork_store = SessionBlobStore(
+        tmp_path / "data", forked.get_header().conversation_id
+    )
+    assert fork_store.read_bytes(forked_image.blob) == payload
+    assert forked.rebuild_model_input(snapshot_id).prepared_payload == prepared_payload
+
+    await manager.dispose_runtime_profile()
+    resumed = await SessionManager.load(session_file)
+    resumed_message = resumed.build_session_context().messages[-1]
+    assert isinstance(resumed_message, UserMessage)
+    assert isinstance(resumed_message.content[1], ImagePart)
+    assert resumed_message.content[1].data == encoded
+    assert resumed.rebuild_model_input(snapshot_id).prepared_payload == prepared_payload
+
+
+@_async_test
+async def test_persistent_application_message_externalizes_clipboard_image(
+    tmp_path,
+) -> None:
+    from loushang.ai.types import ImagePart
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.transcript import ApplicationMessage, SessionImagePart
+
+    manager = await SessionManager.new(
+        session_dir=tmp_path / "data" / "sessions",
+        cwd="/tmp/project",
+        persist=True,
+        session_id="application-image",
+    )
+    result = await manager.commit_application_message(
+        ApplicationMessage(
+            application_message_id="clipboard-1",
+            custom_type="clipboard",
+            content=[
+                ImagePart(type="image", data="aGVsbG8=", mime_type="image/png")
+            ],
+            timestamp=1.0,
+        )
+    )
+
+    stored = manager.get_entry(result.record_id).payload
+    assert isinstance(stored, ApplicationMessage)
+    assert isinstance(stored.content[0], SessionImagePart)
+    session_file = manager.get_session_file()
+    assert session_file is not None
+    assert "aGVsbG8=" not in session_file.read_text(encoding="utf-8")
+    projected = manager.build_session_context().messages[-1]
+    assert isinstance(projected, ApplicationMessage)
+    assert isinstance(projected.content[0], ImagePart)
+    assert projected.content[0].data == "aGVsbG8="
+
+    await manager.dispose_runtime_profile()
+    resumed = await SessionManager.load(session_file)
+    restored = resumed.get_entry(result.record_id).payload
+    assert isinstance(restored, ApplicationMessage)
+    assert isinstance(restored.content[0], SessionImagePart)
+
+
+@_async_test
+async def test_session_delete_cleanup_failure_does_not_resurrect_transcript(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import loushang.harness.transcript.product_session as product_session_module
+    from loushang.ai.types import UserMessage
+    from loushang.coding.session_manager import SessionManager
+
+    manager = await SessionManager.new(
+        session_dir=tmp_path,
+        cwd="/tmp/project",
+        persist=True,
+    )
+    await manager.append_message(
+        UserMessage(role="user", content="materialize", timestamp=0.0)
+    )
+    session_file = manager.get_session_file()
+    assert session_file is not None
+
+    def fail_cleanup(**_kwargs):
+        raise OSError("cleanup failed")
+
+    monkeypatch.setattr(
+        product_session_module,
+        "delete_agent_transcript_session_blobs",
+        fail_cleanup,
+    )
+
+    assert await SessionManager.delete_session(session_file) is True
+    assert not session_file.exists()
+
+
+@_async_test
+async def test_session_manager_import_bundle_restores_transcript_and_blobs(
+    tmp_path,
+) -> None:
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.artifacts import SessionBlobStore
+    from loushang.harness.conversation import CommandExecutionRecord
+    from loushang.harness.transcript import export_agent_transcript_bundle
+
+    source_dir = tmp_path / "source" / "data" / "sessions"
+    source = await SessionManager.new(
+        session_dir=source_dir,
+        cwd="/tmp/project",
+        persist=True,
+        session_id="portable-session",
+    )
+    source_blobs = SessionBlobStore(
+        tmp_path / "source" / "data",
+        "portable-session",
+    )
+    reference = source_blobs.put_bytes(
+        b"complete output",
+        logical_name="commands/output.txt",
+        kind="command-output",
+        media_type="text/plain",
+    )
+    await source.append_message(
+        CommandExecutionRecord(
+            command="build",
+            output="complete...",
+            exit_code=0,
+            truncated=True,
+            full_output_blob=reference,
+        )
+    )
+    bundle = export_agent_transcript_bundle(
+        source.get_header(),
+        source.get_branch(),
+        session_dir=source_dir,
+        output_path=tmp_path / "portable.loushang.zip",
+        allow_private=True,
+    )
+    target_dir = tmp_path / "target" / "data" / "sessions"
+
+    restored = await SessionManager.import_bundle(
+        bundle,
+        session_dir=target_dir,
+        persist=True,
+    )
+
+    assert restored.get_header().conversation_id == "portable-session"
+    assert restored.session_blob_health[0].state == "available"
+    target_blobs = SessionBlobStore(
+        tmp_path / "target" / "data",
+        "portable-session",
+    )
+    assert target_blobs.read_bytes(
+        target_blobs.records[0]
+    ) == b"complete output"
+
+
+@_async_test
+async def test_session_manager_rejects_detached_bundle_with_blobs(tmp_path) -> None:
+    import pytest
+
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.artifacts import SessionBlobStore
+    from loushang.harness.conversation import CommandExecutionRecord
+    from loushang.harness.transcript import export_agent_transcript_bundle
+
+    source_dir = tmp_path / "source" / "data" / "sessions"
+    source = await SessionManager.new(
+        session_dir=source_dir,
+        cwd="/tmp/project",
+        persist=True,
+        session_id="portable-session",
+    )
+    blobs = SessionBlobStore(tmp_path / "source" / "data", "portable-session")
+    reference = blobs.put_bytes(
+        b"output",
+        logical_name="output.txt",
+        kind="command-output",
+        media_type="text/plain",
+    )
+    await source.append_message(
+        CommandExecutionRecord(
+            command="build",
+            output="...",
+            exit_code=0,
+            truncated=True,
+            full_output_blob=reference,
+        )
+    )
+    bundle = export_agent_transcript_bundle(
+        source.get_header(),
+        source.get_branch(),
+        session_dir=source_dir,
+        output_path=tmp_path / "portable.loushang.zip",
+        allow_private=True,
+    )
+
+    with pytest.raises(ValueError, match="requires persistent"):
+        await SessionManager.import_bundle(
+            bundle,
+            session_dir=tmp_path / "target" / "data" / "sessions",
+            persist=False,
+        )
+
+
+@_async_test
 async def test_session_manager_rename_and_delete_refresh_existing_index(
     tmp_path,
 ) -> None:

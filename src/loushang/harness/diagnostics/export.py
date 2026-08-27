@@ -23,7 +23,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Literal, cast
 from uuid import uuid4
 
-from loushang.foundation.artifact_store import (
+from loushang.harness.artifacts import (
     DEFAULT_ARTIFACT_RETENTION_POLICY,
     ArtifactRef,
     ArtifactRetentionPolicy,

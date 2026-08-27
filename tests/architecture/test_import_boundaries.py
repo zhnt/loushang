@@ -200,6 +200,18 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
     assert offenders == []
 
 
+def test_foundation_does_not_own_harness_resource_policy() -> None:
+    boundary = ImportBoundary(
+        name="foundation",
+        root=Path("src/loushang/foundation"),
+        forbidden_prefixes=("loushang.harness",),
+    )
+
+    assert _find_forbidden_imports(boundary) == []
+    assert not Path("src/loushang/foundation/artifact_store.py").exists()
+    assert not Path("src/loushang/foundation/runtime_resources.py").exists()
+
+
 def test_harness_profiles_have_explicit_ai_agent_dependency_allowlists() -> None:
     harness_root = Path("src/loushang/harness")
     profile_allowlists = {
@@ -332,6 +344,20 @@ def test_harness_internal_dependency_graph_is_acyclic() -> None:
     ]
 
     assert cycles == []
+
+
+def test_machine_resource_composition_dependency_is_one_way() -> None:
+    graph = _harness_internal_dependency_graph(Path("src/loushang/harness"))
+
+    assert graph.get("runtime", set()).isdisjoint(
+        {"cli", "machine_resources", "transcript"}
+    )
+    assert "machine_resources" not in graph.get("transcript", set())
+    assert {
+        "artifacts",
+        "conversation",
+        "transcript",
+    }.issubset(graph.get("machine_resources", set()))
 
 
 def test_session_modules_do_not_import_their_public_barrel() -> None:
@@ -506,7 +532,6 @@ def test_production_harnesstui_imports_only_approved_loushang_layers() -> None:
         "loushang.tui",
         "loushang.harness",
         "loushang.foundation.json",
-        "loushang.foundation.runtime_resources",
         "loushang.foundation.runtime_scope",
     )
     offenders = [

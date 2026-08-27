@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from loushang.agent import AbortController
+from loushang.agent.types import AgentToolResult, TextPart
+from loushang.harness.artifacts import SessionBlobRef
 from loushang.harness.conversation import CommandExecutionRecord
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec import ExecOutputChunk
@@ -173,18 +175,40 @@ class BashCommandExecutionRuntime:
                     ),
                 )
                 result = bash_result_from_tool_result(tool_result)
-            except RuntimeError as exc:
-                if "Command aborted" not in str(exc) or not getattr(
-                    controller.signal, "aborted", False
-                ):
+            except (RuntimeError, TimeoutError) as exc:
+                aborted = "Command aborted" in str(exc) and bool(
+                    getattr(controller.signal, "aborted", False)
+                )
+                error_details = getattr(exc, "tool_result_details", None)
+                if isinstance(error_details, Mapping):
+                    result = bash_result_from_tool_result(
+                        AgentToolResult(
+                            content=[
+                                TextPart(
+                                    type="text",
+                                    text="".join(streamed_chunks) or str(exc),
+                                )
+                            ],
+                            details=dict(error_details),
+                        )
+                    )
+                    if not aborted:
+                        await self.record_result(
+                            command=command,
+                            result=result,
+                            exclude_from_context=exclude_from_context,
+                        )
+                        raise
+                elif not aborted:
                     raise
-                result = {
-                    "output": "".join(streamed_chunks),
-                    "exit_code": None,
-                    "cancelled": True,
-                    "truncated": False,
-                    "full_output_path": None,
-                }
+                else:
+                    result = {
+                        "output": "".join(streamed_chunks),
+                        "exit_code": None,
+                        "cancelled": True,
+                        "truncated": False,
+                        "full_output_path": None,
+                    }
 
             await self.record_result(
                 command=command,
@@ -208,6 +232,9 @@ class BashCommandExecutionRuntime:
         exclude_from_context: bool,
     ) -> None:
         exit_code = result.get("exit_code")
+        stdout_blob = _session_blob_from_result(result.get("stdout_blob"))
+        stderr_blob = _session_blob_from_result(result.get("stderr_blob"))
+        retention_error = result.get("artifact_retention_error")
         await self.append_record(
             CommandExecutionRecord(
                 command=command,
@@ -219,9 +246,18 @@ class BashCommandExecutionRuntime:
                     str(result["full_output_path"])
                     if isinstance(result.get("full_output_path"), str)
                     and result.get("full_output_path")
+                    and stdout_blob is None
+                    and stderr_blob is None
                     else None
                 ),
+                stdout_blob=stdout_blob,
+                stderr_blob=stderr_blob,
                 exclude_from_context=exclude_from_context,
+                metadata=(
+                    {"artifactRetentionError": retention_error}
+                    if isinstance(retention_error, str) and retention_error
+                    else {}
+                ),
             )
         )
         self.refresh_context()
@@ -241,7 +277,7 @@ def bash_result_from_tool_result(tool_result: object) -> dict[str, object]:
     stderr = details.get("stderr")
     if isinstance(stderr, str) and stderr and stderr not in output:
         output = output + stderr
-    return {
+    result: dict[str, object] = {
         "output": output,
         "exit_code": details.get("exit_code"),
         "cancelled": bool(details.get("cancelled", False)),
@@ -251,6 +287,18 @@ def bash_result_from_tool_result(tool_result: object) -> dict[str, object]:
         "full_output_path": details.get("stdout_artifact_path")
         or details.get("stderr_artifact_path"),
     }
+    for key in ("stdout_blob", "stderr_blob", "artifact_retention_error"):
+        if details.get(key) is not None:
+            result[key] = details[key]
+    return result
+
+
+def _session_blob_from_result(value: object) -> SessionBlobRef | None:
+    if value is None or isinstance(value, SessionBlobRef):
+        return value
+    if isinstance(value, Mapping):
+        return SessionBlobRef.from_manifest_entry(value)
+    raise TypeError("command output blob must be a SessionBlobRef manifest")
 
 
 @dataclass(frozen=True)

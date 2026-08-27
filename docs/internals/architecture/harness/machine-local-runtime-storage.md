@@ -33,6 +33,15 @@ transaction. The screen composition root retains that owner and releases it
 after the runner exits. Leaf services such as the input router dispose only the
 resources they own.
 
+The package boundary follows the same ownership split. Foundation supplies
+only the mechanism-level, product-agnostic path and lease primitives:
+`loushang.foundation.platform_paths` and
+`loushang.foundation.runtime_scope`. Harness owns artifact semantics and the
+application composition lifetime in `loushang.harness.artifacts` and
+`loushang.harness.runtime.resources`. Foundation must not import Harness, and
+the former `loushang.foundation.artifact_store` and
+`loushang.foundation.runtime_resources` modules are intentionally removed.
+
 ```text
 PlatformPaths (pure configuration)
         |
@@ -148,3 +157,145 @@ Debug and trace producers remain rotating machine state under
 the evidence needed after a crash. Sessions likewise remain durable user data.
 ArtifactStore therefore unifies capture, provenance, quota, disclosure, and
 export without collapsing distinct lifetimes into one directory.
+
+## Durable resource transitions
+
+Runtime artifacts, user exports, and Session blobs are deliberately different
+authorities rather than three paths into one store:
+
+```text
+RunArtifactRef
+    +-- explicit export ------> UserExportRef
+    `-- verified promotion ---> SessionBlobRef
+```
+
+`RunArtifactRef` is valid only while its `RunLease` is live and must never be
+serialized into a durable transcript. `UserExportRef` is a receipt for an
+explicit user-selected destination; the receipt itself contains no destination
+path because the user owns that file after publication. `SessionBlobRef` is a
+portable, digest-bearing reference whose bytes are owned by exactly one durable
+session. All three carry logical name, kind, media type, disclosure, size, and
+digest; none carries a machine path.
+
+Promotion rereads bytes through the source `ArtifactReader`, verifies size and
+digest, applies disclosure policy, writes a private same-directory temporary,
+fsyncs it, and publishes without overwrite. `private` user export needs an
+additional opt-in, while `redact` export requires an actual redaction transform.
+A Session promotion publishes the immutable object and manifest before its
+reference may enter the transcript.
+
+The first durable layout is intentionally session-local rather than a global
+content-addressed store:
+
+```text
+$LOUSHANG_HOME/data/session-assets/<session-id>/
+    manifest.json
+    objects/<sha256>
+```
+
+Objects are content-addressed only inside their owning session. This avoids a
+global reference-count database and makes delete, backup, restore, and failure
+recovery local transactions. A resumed transcript reports missing or corrupt
+blobs but remains readable. A fork copies only references reachable from its
+selected branch, verifies the source bytes, and rewrites them to the new
+session identity. Transcript deletion commits first; asset cleanup failure
+leaves conservative residue instead of resurrecting or partially deleting the
+transcript.
+
+Portable backup uses a single `.loushang.zip` bundle containing the linearized
+Conversation JSONL branch, a strict portable blob manifest, and verified
+objects. Import bounds member count and bytes, rejects undeclared, duplicate,
+or traversal-shaped members, verifies every digest before publication, creates
+the target blob authority before the transcript, and removes it if transcript
+creation fails. Plain JSONL remains a transcript-only interchange format and
+never claims to carry external bytes.
+
+The durable transcript encoder accepts the old `fullOutputPath` field for
+compatibility reads but never emits it again. New records persist
+`fullOutputBlob`; presentation renders its logical name, not its physical
+location. Therefore a durable transcript can never reference
+`<runtime>/runs/<run-id>`.
+
+## Durable command output and images
+
+Command streams and images share the same Session Blob authority without
+sharing their ingestion adapters. The common invariant is that a durable fact
+contains a typed, digest-bearing reference and never contains a physical path
+or an unbounded binary payload.
+
+The Session composition edge wraps the selected `ExecService` with a private
+scratch owner below `$LOUSHANG_TMPDIR`. It forces full-output capture into that
+scratch root, performs a stable no-follow read, atomically publishes stdout and
+stderr as separate `SessionBlobRef` objects, and clears both temporary paths
+before returning. This applies equally to successful, failed, timed-out, and
+cancelled commands. Failure remains an exception, but its pathless tool-result
+details carry the retained stream references so both Agent tool results and
+interactive command records remain recoverable. Failure to retain output never
+changes a successful process result or masks the original process failure.
+
+Clipboard, user, screenshot/tool-result, and assistant/generated images enter
+through one transcript image boundary. Before a durable message commit, inline
+base64 is validated and bounded, published as a private image Blob, and
+replaced with the Harness-only `SessionImagePart`. It deliberately does not
+subclass the AI `ImagePart`; only successful hydration constructs an AI wire
+image, so an unhydrated durable placeholder fails closed at the provider edge.
+If transcript commit fails, only that
+unchanged publication is rolled back. Model context hydration rereads and
+verifies the Blob; a missing or corrupt image becomes a portable text marker so
+ordinary resume remains usable.
+
+Model Input snapshots are a second durability boundary and must not re-inline
+hydrated images. The Product transcript edge therefore projects exact known
+base64 strings and provider data URLs into content-addressed Session markers
+before Model Input v2 materialization. Provider adapters project encoded image
+locations once into the stable `PreparedRequestBinaryField` contract; Harness
+never guesses provider wire keys while traversing arbitrary JSON. The marker contains only Blob ID,
+encoding form, and a non-binary prefix. The snapshot records the projection
+version; reconstruction requires the owning Session Blob reader, verifies the
+object, restores the provider's exact original JSON shape, and validates the
+original logical and prepared-request hashes. AI types and provider adapters
+remain storage-unaware.
+
+Blob IDs are content digests, so Model Input markers survive fork and bundle
+import without reference rewriting. The authoritative `SessionImagePart` is
+still traversed and rewritten to the target Session identity, which makes the
+same digest available in the new authority. Bundle export includes only
+reachable Blob objects, and delete removes the complete per-Session authority.
+
+## Unified machine-resource control plane
+
+`loushang.harness.machine_resources` exposes one operational view over these
+different lifetimes without
+pretending they share one deletion policy. `loushang storage paths` is pure
+path projection; `storage status` performs a bounded, read-only, no-follow
+inventory. Both show canonical user-global paths and the cwd/user-home
+compatibility session roots, so `cwd` remains a discovery filter rather than a
+hidden storage authority. JSON output is versioned with `schemaVersion: 1`.
+
+`storage clean` is a preview unless `--apply` is explicit. Its initial mutation
+surface is intentionally narrow:
+
+- runtime runs are removed only through `RunLease` liveness proof;
+- diagnostics cleanup targets only the managed `loushang-diag*.zip` family;
+- Session Blob authorities are removed only when a valid canonical Conversation
+  deletion tombstone positively authorizes reclamation and a complete bounded
+  transcript scan finds no live claim. Missing, corrupt, linked, unreadable, or
+  truncated authority state refuses cleanup.
+
+The command does not recursively delete sessions, arbitrary logs, cache roots,
+or the shared temporary root. Those resources either have a stronger owner or
+cannot be proven inactive from a pathname alone.
+
+`storage migrate` is likewise a preview by default. Apply mode accepts strict
+Conversation JSONL files from cwd, legacy user-home, and explicitly supplied
+compatibility session roots. Apply revalidates that a caller-supplied plan stays
+inside those roots and the canonical destination, parses the exact stable-read
+bytes, and applies independent transcript and aggregate Blob budgets. It verifies every Blob,
+copies Blob authority first, commits the canonical transcript second, and rolls
+the copied authority back only when the commit is proven not to have landed.
+Cancellation waits for the shielded commit result; an unknown receipt is
+reconciled against the canonical transcript before assets can be reclaimed.
+Sources are retained. Existing
+destinations are never overwritten, and a changed source invalidates its plan.
+This gives migration recovery the same copy-first transaction used by bundle
+import instead of treating a directory move as an identity change.

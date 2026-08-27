@@ -9,21 +9,21 @@ from pathlib import Path
 import pytest
 
 import loushang.harness.diagnostics.export as export_module
-from loushang.foundation.artifact_store import (
+from loushang.foundation.platform_paths import resolve_platform_paths
+from loushang.foundation.runtime_scope import resolve_runtime_scope
+from loushang.harness.artifacts import (
     ArtifactRef,
     ArtifactRetentionPolicy,
     ArtifactSourceRejected,
     ArtifactStore,
 )
-from loushang.foundation.platform_paths import resolve_platform_paths
-from loushang.foundation.runtime_resources import RuntimeResourceOwner
-from loushang.foundation.runtime_scope import resolve_runtime_scope
 from loushang.harness.diagnostics.export import (
     DiagnosticBundleProfile,
     DiagnosticExportArtifact,
     export_diagnostics_archive,
     export_diagnostics_bundle,
 )
+from loushang.harness.runtime.resources import RuntimeResourceOwner
 
 
 def test_standard_bundle_accepts_product_archive_profile(tmp_path) -> None:

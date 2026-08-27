@@ -78,7 +78,7 @@ def decode_model_input_sequence_tail_projection(
 def encode_model_input_snapshot_v2(payload: object) -> JSONValue:
     if not isinstance(payload, ModelInputSnapshotV2):
         raise TypeError("payload must be ModelInputSnapshotV2")
-    return {
+    encoded: dict[str, JSONValue] = {
         "schemaVersion": payload.schema_version,
         "projectionVersion": payload.projection_version,
         "snapshotId": payload.snapshot_id,
@@ -107,6 +107,9 @@ def encode_model_input_snapshot_v2(payload: object) -> JSONValue:
         "preparedPayloadHash": payload.prepared_payload_hash,
         "outcome": payload.outcome,
     }
+    if payload.binary_projection_version:
+        encoded["binaryProjectionVersion"] = payload.binary_projection_version
+    return encoded
 
 
 def decode_model_input_snapshot_v2(value: JSONValue) -> ModelInputSnapshotV2:
@@ -137,6 +140,8 @@ def decode_model_input_snapshot_v2(value: JSONValue) -> ModelInputSnapshotV2:
         "preparedPayloadHash",
         "outcome",
     }
+    if isinstance(value, Mapping) and "binaryProjectionVersion" in value:
+        fields.add("binaryProjectionVersion")
     payload = _object(value, name="Model Input v2 snapshot", fields=fields)
     outcome = _text(payload, "outcome")
     if outcome != "prepared":
@@ -168,6 +173,11 @@ def decode_model_input_snapshot_v2(value: JSONValue) -> ModelInputSnapshotV2:
         ),
         logical_input_hash=_text(payload, "logicalInputHash"),
         prepared_payload_hash=_text(payload, "preparedPayloadHash"),
+        binary_projection_version=(
+            _non_negative_int(payload, "binaryProjectionVersion")
+            if "binaryProjectionVersion" in payload
+            else 0
+        ),
         outcome=cast(Literal["prepared"], outcome),
     )
 

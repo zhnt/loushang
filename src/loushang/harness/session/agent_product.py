@@ -13,6 +13,7 @@ from loushang.ai.api_registry import (
 )
 from loushang.ai.model import ModelSelection
 from loushang.foundation.json import JSONValue
+from loushang.foundation.platform_paths import resolve_platform_paths
 from loushang.harness.approval import InteractiveApprovalResolver
 from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
@@ -147,6 +148,9 @@ from loushang.harness.session.model_call import (
     build_session_model_call_capability_binding,
 )
 from loushang.harness.session.operations_runtime import SessionOperationsPorts
+from loushang.harness.session.output_artifacts import (
+    persist_session_command_outputs,
+)
 from loushang.harness.session.resource_capability_ports import (
     SessionResourceCapabilityPorts,
 )
@@ -531,8 +535,27 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self._tool_registry = tool_registry
         self.diagnostics_service = diagnostics_service
         self._package_materializer = package_materializer
-        self._exec_service = exec_service or ExecService()
-        self._tool_exec_service = tool_exec_service
+        base_exec_service = exec_service or ExecService()
+        session_temporary_root = resolve_platform_paths().temporary
+        self._exec_service = persist_session_command_outputs(
+            base_exec_service,
+            session_dir=session_manager.session_dir,
+            session_id=session_manager.get_header().conversation_id,
+            persist=session_manager.persist,
+            temporary_root=session_temporary_root,
+        )
+        if not session_manager.persist:
+            self._tool_exec_service = tool_exec_service
+        elif tool_exec_service is None or tool_exec_service is base_exec_service:
+            self._tool_exec_service = self._exec_service
+        else:
+            self._tool_exec_service = persist_session_command_outputs(
+                tool_exec_service,
+                session_dir=session_manager.session_dir,
+                session_id=session_manager.get_header().conversation_id,
+                persist=True,
+                temporary_root=session_temporary_root,
+            )
         self.footer_data_provider = footer_data_provider
         self._base_prompt = (
             base_prompt if base_prompt is not None else self.agent.system_prompt
@@ -811,6 +834,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     set_session_name=self.set_session_name,
                     export_html=self.export_to_html,
                     export_jsonl=self.export_to_jsonl,
+                    export_bundle=self.export_to_bundle,
                     compact=self.compact,
                     reload=self.reload_extension_runtime,
                     get_recent_assistant_texts=self.get_recent_assistant_texts,

@@ -10,6 +10,14 @@ def project_tool_details_for_protocol(details: object | None) -> dict[str, Any]:
         return {}
     projected = dict(details)
     _copy_alias(projected, details, "full_output_path", "fullOutputPath")
+    _copy_alias(projected, details, "stdout_blob", "stdoutBlob")
+    _copy_alias(projected, details, "stderr_blob", "stderrBlob")
+    _copy_alias(
+        projected,
+        details,
+        "artifact_retention_error",
+        "artifactRetentionError",
+    )
     _copy_alias(projected, details, "first_changed_line", "firstChangedLine")
     _copy_limit_alias(
         projected, details, "match_limit_reached", "match_limit", "matchLimitReached"
@@ -38,7 +46,7 @@ def tool_artifact_paths_for_protocol(details: object | None) -> list[str]:
 def normalize_bash_result_from_protocol(
     result: Mapping[str, object],
 ) -> dict[str, object]:
-    return {
+    normalized: dict[str, object] = {
         "output": result.get("output") or "",
         "exit_code": result.get("exit_code", result.get("exitCode")),
         "cancelled": bool(result.get("cancelled", False)),
@@ -47,6 +55,15 @@ def normalize_bash_result_from_protocol(
             "full_output_path", result.get("fullOutputPath")
         ),
     }
+    for snake_key, protocol_key in (
+        ("stdout_blob", "stdoutBlob"),
+        ("stderr_blob", "stderrBlob"),
+        ("artifact_retention_error", "artifactRetentionError"),
+    ):
+        value = result.get(snake_key, result.get(protocol_key))
+        if value is not None:
+            normalized[snake_key] = value
+    return normalized
 
 
 def _copy_alias(

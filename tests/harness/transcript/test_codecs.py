@@ -4,7 +4,8 @@ from dataclasses import replace
 
 import pytest
 
-from loushang.ai.types import TextPart, Usage, UserMessage
+from loushang.ai.types import ImagePart, TextPart, Usage, UserMessage
+from loushang.harness.artifacts import SessionBlobRef
 from loushang.harness.conversation import CommandExecutionRecord
 from loushang.harness.journal import JournalCodecError
 from loushang.harness.transcript import (
@@ -37,13 +38,20 @@ from loushang.harness.transcript import (
     ModelInputSnapshot,
     ModelSelectionSnapshot,
     RecordAnnotationPatch,
+    SessionImagePart,
     ThinkingSelectionSnapshot,
     create_agent_transcript_message_codec,
     create_agent_transcript_payload_registry,
 )
 from loushang.harness.transcript.model_input_types import hash_model_input_json
+from loushang.harness.transcript.model_input_v2_codec import (
+    decode_model_input_snapshot_v2,
+    encode_model_input_snapshot_v2,
+)
 from loushang.harness.transcript.model_input_v2_types import (
     MODEL_INPUT_V2_PAYLOAD_VERSION,
+    ModelInputNodeReference,
+    ModelInputSnapshotV2,
 )
 
 
@@ -79,7 +87,17 @@ def _payloads():
             output="hello",
             exit_code=0,
             truncated=True,
-            full_output_path="/tmp/output",
+            full_output_blob=SessionBlobRef(
+                session_id="session-1",
+                blob_id="a" * 64,
+                logical_name="commands/output.txt",
+                kind="command-output",
+                media_type="text/plain",
+                disclosure="private",
+                size_bytes=5,
+                sha256="a" * 64,
+                created_at=1.0,
+            ),
             metadata={"shell": "bash"},
         ),
         CONTEXT_COMPACTION_CHECKPOINT_KIND: ContextCompactionCheckpoint(
@@ -205,6 +223,105 @@ def test_all_standard_payloads_round_trip_through_versioned_registry() -> None:
         assert decoded == payload
 
 
+def test_legacy_command_output_path_is_read_but_never_reencoded() -> None:
+    registry = create_agent_transcript_payload_registry()
+    legacy = {
+        "command": "build",
+        "output": "truncated",
+        "exitCode": 0,
+        "cancelled": False,
+        "truncated": True,
+        "fullOutputPath": "/tmp/runtime/runs/legacy/output.txt",
+        "excludeFromContext": False,
+        "metadata": {},
+    }
+
+    decoded = registry.decode(COMMAND_EXECUTION_KIND, 1, legacy)
+    assert isinstance(decoded, CommandExecutionRecord)
+    assert decoded.full_output_path == legacy["fullOutputPath"]
+
+    encoded = registry.encode(COMMAND_EXECUTION_KIND, 1, decoded)
+    assert "fullOutputPath" not in encoded
+    assert encoded["fullOutputBlob"] is None
+
+
+def test_session_image_codec_persists_reference_without_inline_bytes() -> None:
+    registry = create_agent_transcript_payload_registry()
+    reference = SessionBlobRef(
+        session_id="session-1",
+        blob_id="b" * 64,
+        logical_name="images/user-bbbbbbbbbbbbbbbb.png",
+        kind="image",
+        media_type="image/png",
+        disclosure="private",
+        size_bytes=5,
+        sha256="b" * 64,
+        created_at=1.0,
+    )
+    message = UserMessage(
+        role="user",
+        content=[
+            TextPart(type="text", text="inspect"),
+            SessionImagePart(type="image", blob=reference),
+        ],
+        timestamp=1.0,
+    )
+
+    encoded = registry.encode(AGENT_MESSAGE_KIND, 1, message)
+
+    image = encoded["content"][1]
+    assert image == {"type": "image", "sessionBlob": reference.manifest_entry()}
+    assert "data" not in image
+    decoded = registry.decode(AGENT_MESSAGE_KIND, 1, encoded)
+    assert isinstance(decoded, UserMessage)
+    assert isinstance(decoded.content[1], SessionImagePart)
+    assert decoded.content[1].blob == reference
+
+
+def test_application_session_image_codec_uses_the_same_reference_shape() -> None:
+    registry = create_agent_transcript_payload_registry()
+    reference = SessionBlobRef(
+        session_id="session-1",
+        blob_id="b" * 64,
+        logical_name="images/application.png",
+        kind="image",
+        media_type="image/png",
+        disclosure="private",
+        size_bytes=5,
+        sha256="b" * 64,
+        created_at=1.0,
+    )
+    message = ApplicationMessage(
+        application_message_id="application-image",
+        custom_type="clipboard",
+        content=[SessionImagePart(type="image", blob=reference)],
+        timestamp=1.0,
+    )
+
+    encoded = registry.encode(APPLICATION_MESSAGE_KIND, 1, message)
+
+    assert encoded["content"] == [
+        {"type": "image", "sessionBlob": reference.manifest_entry()}
+    ]
+    decoded = registry.decode(APPLICATION_MESSAGE_KIND, 1, encoded)
+    assert isinstance(decoded, ApplicationMessage)
+    assert isinstance(decoded.content[0], SessionImagePart)
+
+
+def test_inline_image_codec_remains_backward_compatible() -> None:
+    registry = create_agent_transcript_payload_registry()
+    message = UserMessage(
+        role="user",
+        content=[ImagePart(type="image", data="aGVsbG8=", mime_type="image/png")],
+        timestamp=1.0,
+    )
+
+    encoded = registry.encode(AGENT_MESSAGE_KIND, 1, message)
+
+    assert encoded["content"][0]["data"] == "aGVsbG8="
+    assert registry.decode(AGENT_MESSAGE_KIND, 1, encoded) == message
+
+
 def test_model_call_failure_codec_round_trips_only_safe_typed_fields() -> None:
     registry = create_agent_transcript_payload_registry()
     outcome = ModelCallOutcome(
@@ -280,6 +397,50 @@ def test_summary_v2_lineage_round_trips_without_rewriting_v1(kind, payload) -> N
     legacy_encoded = registry.encode(kind, STANDARD_PAYLOAD_VERSION, legacy)
     assert "lineageVersion" not in legacy_encoded
     assert legacy.derivation_verifiable is False
+
+
+def test_model_input_v2_legacy_wire_defaults_binary_projection_to_zero() -> None:
+    root = ModelInputNodeReference(
+        record_id="root-record",
+        ordinal=0,
+        node_kind="mapping_root",
+        content_hash="c" * 64,
+    )
+    headers_root = ModelInputNodeReference(
+        record_id="headers-record",
+        ordinal=0,
+        node_kind="json_value",
+        content_hash="f" * 64,
+    )
+    snapshot = ModelInputSnapshotV2(
+        snapshot_id="snapshot",
+        invocation_id="invocation",
+        attempt=1,
+        purpose="main",
+        product_id="coding",
+        runtime_id="runtime",
+        mount_generation=1,
+        profile_fingerprint="a" * 64,
+        registration_revision="b" * 64,
+        conversation_id="conversation",
+        source_leaf_id="leaf",
+        source_revision=1,
+        commit_revision=2,
+        provider_id="provider",
+        model_id="model",
+        api_id="responses",
+        endpoint_id="endpoint",
+        logical_root=root,
+        prepared_payload_root=root,
+        model_visible_headers_root=headers_root,
+        logical_input_hash="d" * 64,
+        prepared_payload_hash="e" * 64,
+    )
+
+    encoded = encode_model_input_snapshot_v2(snapshot)
+
+    assert "binaryProjectionVersion" not in encoded
+    assert decode_model_input_snapshot_v2(encoded).binary_projection_version == 0
 
 
 def test_registered_codec_rejects_corrupted_known_payload() -> None:

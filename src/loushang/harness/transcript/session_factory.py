@@ -15,14 +15,23 @@ from typing import Generic, TypeVar
 from uuid import uuid4
 
 from loushang.foundation.json import JSONValue
+from loushang.harness.artifacts import (
+    SessionBlobPublication,
+    SessionBlobStore,
+    resolve_session_blob_data_root,
+)
 from loushang.harness.conversation import (
     CURRENT_CONVERSATION_FORMAT_VERSION,
     ConversationHeader,
 )
+from loushang.harness.transcript.export.bundle import read_agent_transcript_bundle
 from loushang.harness.transcript.lifecycle import (
     AgentTranscriptLifecycle,
     AgentTranscriptLifecycleContext,
     AgentTranscriptLifecycleSession,
+)
+from loushang.harness.transcript.session_artifacts import (
+    clone_agent_transcript_session_blobs,
 )
 from loushang.harness.transcript.session_catalog import (
     AgentTranscriptSessionCatalog,
@@ -174,6 +183,52 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
             session_id=session_id,
         )
 
+    async def import_bundle(
+        self,
+        source_file: str | Path,
+        *,
+        session_dir: str | Path,
+        cwd_override: str | Path | None = None,
+        persist: bool = True,
+    ) -> AgentTranscriptLifecycleSession[ProductBindingT]:
+        """Import one portable transcript-and-blob bundle transactionally."""
+
+        bundle = read_agent_transcript_bundle(source_file)
+        if not persist and bundle.blobs:
+            raise ValueError(
+                "bundle import with blobs requires persistent session storage"
+            )
+        binding_input = self._resolve_binding_input(persist)
+        self._validate_restored_header(bundle.header, binding_input, persist)
+        cwd = str(cwd_override) if cwd_override is not None else str(
+            bundle.header.metadata.get("cwd", ".")
+        )
+        context = self._new_context(
+            session_dir=session_dir,
+            cwd=cwd,
+            persist=persist,
+            header=bundle.header,
+        )
+        publication: SessionBlobPublication | None = None
+        if persist and bundle.blobs:
+            blob_store = SessionBlobStore(
+                resolve_session_blob_data_root(context.session_dir),
+                bundle.header.conversation_id,
+            )
+            publication = blob_store.import_blobs(
+                bundle.blobs,
+                require_new_authority=True,
+            )
+        try:
+            return await self._lifecycle.create(
+                context,
+                binding_input,
+                records=bundle.records,
+            )
+        except BaseException as error:
+            _rollback_publication(publication, error)
+            raise
+
     async def fork_from(
         self,
         source_file: str | Path,
@@ -194,6 +249,8 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
                 parent_conversation_id=source.context.header.conversation_id,
                 parent_session=str(Path(source_file)),
                 records=source.transcript.records,
+                source_session_dir=source.context.session_dir,
+                source_session_id=source.context.header.conversation_id,
             )
         finally:
             await source.dispose()
@@ -225,12 +282,29 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
             persist=source_context.persist,
             header=header,
         )
-        return await self._lifecycle.fork(
-            source.transcript,
-            context,
-            binding_input,
-            leaf_id=leaf_id,
+        records = source.transcript.records_for_fork(leaf_id)
+        prepared_records, rollback_store = (
+            clone_agent_transcript_session_blobs(
+                records,
+                source_session_dir=source_context.session_dir,
+                source_session_id=source_context.header.conversation_id,
+                target_session_dir=context.session_dir,
+                target_session_id=header.conversation_id,
+            )
+            if context.persist
+            else (tuple(records), None)
         )
+        try:
+            return await self._lifecycle.create(
+                context,
+                binding_input,
+                records=prepared_records,
+                leaf_id=leaf_id,
+            )
+        except BaseException as error:
+            if rollback_store is not None:
+                _rollback_publication(rollback_store, error)
+            raise
 
     async def _create(
         self,
@@ -243,6 +317,8 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
         parent_conversation_id: str | None = None,
         parent_session: str | None = None,
         records: Sequence[AgentTranscriptRecord] = (),
+        source_session_dir: str | Path | None = None,
+        source_session_id: str | None = None,
     ) -> AgentTranscriptLifecycleSession[ProductBindingT]:
         header = self._new_header(
             conversation_id=conversation_id,
@@ -257,7 +333,28 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
             persist=persist,
             header=header,
         )
-        return await self._lifecycle.create(context, binding_input, records=records)
+        prepared_records: Sequence[AgentTranscriptRecord] = records
+        rollback_store = None
+        if persist and records and source_session_dir is not None:
+            if source_session_id is None:
+                raise ValueError("source Session identity is required to clone blobs")
+            prepared_records, rollback_store = clone_agent_transcript_session_blobs(
+                records,
+                source_session_dir=source_session_dir,
+                source_session_id=source_session_id,
+                target_session_dir=context.session_dir,
+                target_session_id=header.conversation_id,
+            )
+        try:
+            return await self._lifecycle.create(
+                context,
+                binding_input,
+                records=prepared_records,
+            )
+        except BaseException as error:
+            if rollback_store is not None:
+                _rollback_publication(rollback_store, error)
+            raise
 
     def _new_context(
         self,
@@ -318,6 +415,21 @@ def _validate_nothing(
     persist: bool,
 ) -> None:
     del header, binding_input, persist
+
+
+def _rollback_publication(
+    publication: SessionBlobPublication | None,
+    error: BaseException,
+) -> None:
+    if publication is None:
+        return
+    try:
+        publication.rollback()
+    except BaseException as cleanup_error:
+        error.add_note(
+            "session blob rollback also failed: "
+            f"{cleanup_error.__class__.__name__}: {cleanup_error}"
+        )
 
 
 def _utc_now() -> datetime:

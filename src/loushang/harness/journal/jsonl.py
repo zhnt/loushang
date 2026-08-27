@@ -248,6 +248,27 @@ def load_jsonl(
         return snapshot
 
 
+def decode_jsonl(
+    raw: str,
+    *,
+    target: str | Path,
+    record_codec: JournalRecordCodec[R],
+    header_codec: JournalHeaderCodec[H] | None = None,
+    load_policy: JournalLoadPolicy = JournalLoadPolicy(),
+) -> JsonlSnapshot[H, R]:
+    """Decode an already-authorized JSONL snapshot without reopening a path."""
+
+    if not isinstance(raw, str):
+        raise TypeError("JSONL source must be text")
+    return _decode_jsonl(
+        raw,
+        target=Path(target),
+        record_codec=record_codec,
+        header_codec=header_codec,
+        load_policy=load_policy,
+    )
+
+
 def _decode_jsonl(
     raw: str,
     *,
@@ -607,6 +628,7 @@ __all__ = [
     "LockMode",
     "append_jsonl_record",
     "append_jsonl_records",
+    "decode_jsonl",
     "journal_file_lock",
     "load_jsonl",
     "parse_legacy_jsonl_line",
