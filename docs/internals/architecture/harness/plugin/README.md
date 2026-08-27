@@ -6,15 +6,15 @@
   not make a proposed child design accepted.
 - Design status: mixed and explicitly labeled per document. Architecture V2 is
   independently reviewed and ready for owner acceptance; incremental contracts
-  record implemented slices; plans remain delivery records; baselines and
-  reviews are evidence.
+  record implemented slices; plans remain delivery records; baselines are
+  implementation evidence.
 - Implementation status: partial, summarized by `architecture.md` and tracked
   in the lifecycle plan.
 - Owner: `loushang.harness` Plugin architecture scope; contribution runtime
   authority remains with each exact domain owner.
 
 This directory is the single entrypoint for active Harness Plugin architecture,
-delivery, frozen contracts, baselines, and review evidence.
+delivery, frozen contracts, and baselines.
 
 ## Authority Order
 
@@ -26,8 +26,8 @@ When documents disagree, use this order:
    cross-document decisions;
 4. frozen incremental contracts for their exact implemented slices;
 5. the lifecycle plan for sequencing and delivery status;
-6. baselines and reviews as evidence, not current design authority; and
-7. retired drafts and historical Coding designs only for design archaeology.
+6. baselines as implementation evidence, not current design authority; and
+7. superseded ARDs only for design archaeology.
 
 The architecture document answers what the Plugin system is and which owner
 controls each state. The lifecycle plan answers when a target is delivered.
@@ -68,28 +68,15 @@ These contracts refine the architecture only inside their stated versions and
 implemented slices. An unimplemented Worker, Skill-action, remote-service, or
 public SDK shape cannot be inferred from them.
 
-## Baselines And Prior Reviews
+## Baselines
 
 - [PLC0 Baseline](plugin-lifecycle-plc0-baseline.md)
 - [PLC1A Baseline](plugin-lifecycle-plc1a-baseline.md)
 - [Resource Catalog RCP0 Baseline](resource-catalog-rcp0-baseline.md)
-- [Lifecycle Plan Review](plugin-lifecycle-coding-pluginization-review.md)
-- [Authoring Plan Review](plugin-authoring-primitives-plan-review.md)
 
-Baselines freeze earlier source and authority facts. Reviews record why prior
-plans changed. They are not alternate architecture documents and may contain
-commit-relative or line-relative citations from the revision reviewed.
-
-The independent V2 acceptance reviews required by issue `#502` passed after
-blocking findings were corrected and re-reviewed:
-
-- [Architecture Review](reviews/2026-08-27-v2-architecture-review.md)
-- [Security Review](reviews/2026-08-27-v2-security-review.md)
-- [Developer Experience Review](reviews/2026-08-27-v2-developer-experience-review.md)
-
-These reviews make V2 ready for owner acceptance; they do not self-approve its
-status. A conditional or rejected review never counts until the same reviewer
-verifies the correction.
+Baselines freeze source and authority facts required by later contracts. Review
+discussion and acceptance evidence belong to issue `#502`, its delivery PR,
+and Git history; they are not maintained as parallel architecture documents.
 
 ## Runtime Boundaries That Remain Outside This Directory
 
@@ -114,17 +101,13 @@ They remain outside `plugin/` because their primary reason to change is their
 own runtime domain. Moving them here would make Plugin appear to own the Graph,
 Resource generations, process mechanics, or containment.
 
-## Retired Design Inputs
+## Superseded Decisions
 
-The former
-[Plugin Ecosystem Draft Package](../../drafts/plugin-ecosystem/README.md)
-is retained as design history. Its package/plugin ecosystem, isolated execution,
-and client SDK proposals were reconciled into `architecture.md`. It no longer
-defines a competing target or PLC8/PLC9 sequence.
-
-Historical Coding Plugin V1 documents and superseded Coding package/plugin
-facades are likewise non-authoritative. New work starts here and follows the
-exact owner documents above.
+Superseded ARDs may remain in their owning domain as explicitly historical
+decision records. Retired drafts, dated replacement designs, and review
+transcripts are recovered from Git/issue history rather than kept as searchable
+competitors. New Plugin work starts here and follows the exact owner documents
+above.
 
 ## Placement Rule
 
@@ -135,8 +118,8 @@ domain owner when Plugin is only one consumer of that boundary.
 
 New documents must declare:
 
-- whether they are architecture, an incremental contract, a delivery plan, a
-  baseline, or review evidence;
+- whether they are architecture, an incremental contract, a delivery plan, or
+  a baseline;
 - current versus target implementation status;
 - the sole writer for every new state;
 - the architecture or owner boundary they refine; and

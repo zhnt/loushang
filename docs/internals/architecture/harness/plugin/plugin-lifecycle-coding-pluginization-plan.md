@@ -56,7 +56,8 @@
 - The [PLC1B Contract](plugin-declaration-foundation-plc1b-contract.md)
   normatively freezes PLC1B wire records, kind payloads, fingerprint layers,
   attempt identity, aggregate claims and version diagnostics.
-- Review: [Unified Plugin Lifecycle And Coding Pluginization Review](plugin-lifecycle-coding-pluginization-review.md).
+- Review history is retained in its issue/PR and Git history, not as a parallel
+  architecture document.
 
 This document is a coordinating plan. PLC1B claims only document-backed frozen
 declarations and inert shadow parity. It does not claim owner admission,

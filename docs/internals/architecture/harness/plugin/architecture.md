@@ -23,10 +23,10 @@
   [Plugin Lifecycle And Coding Pluginization Plan](plugin-lifecycle-coding-pluginization-plan.md)
   is the only coordinating Plugin delivery sequence. This architecture does
   not maintain a competing milestone list.
-- Review evidence:
-  [architecture](reviews/2026-08-27-v2-architecture-review.md),
-  [security](reviews/2026-08-27-v2-security-review.md), and
-  [developer experience](reviews/2026-08-27-v2-developer-experience-review.md).
+- Review record: architecture, security, and developer-experience review passed
+  after correction and same-reviewer re-review. The durable process evidence
+  belongs to issue `#502`, its delivery PR, and Git history rather than a second
+  set of architecture documents.
 
 The canonical Product, Capability, Package, Plugin, Extension, and Resource
 terms are grounded in the
@@ -813,7 +813,7 @@ This architecture is accepted only when:
 4. all blocking findings are corrected and re-reviewed by the same independent
    reviewer;
 5. architecture-document validation passes; and
-6. the final review evidence is preserved beside this document.
+6. the final review evidence is preserved in the acceptance issue/PR record.
 
 Future changes must be small and owner-scoped. A new contribution kind needs an
 owner contract. A new execution topology needs a threat model and lifecycle. A new

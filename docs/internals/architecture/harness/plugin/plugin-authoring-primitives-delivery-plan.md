@@ -16,13 +16,12 @@
   by the lifecycle plan; that adopter is not retroactively part of PAP5. This
   document still does not claim a public Plugin SDK, `coding.arch`, Resource/
   Skill catalog cutover, or new MCP functionality.
-- Review status: self-reviewed in
-  [Plugin Authoring Primitives Plan Review](plugin-authoring-primitives-plan-review.md).
-  Three independent source reviews and the final freeze re-review are complete;
+- Review status: three independent source reviews and the final freeze re-review are complete;
   their lifecycle, authority, import-boundary, Provider-resolution, and
   single-Graph findings were closed through `a38c59dd`. Focused regressions,
   Harness Ruff/mypy/full tests, and architecture-documentation gates are green
-  for PR publication.
+  for PR publication. Detailed review discussion remains in issue/PR and Git
+  history rather than a second architecture document.
 
 This plan specializes the broader
 [Unified Plugin Architecture](architecture.md). The accepted
