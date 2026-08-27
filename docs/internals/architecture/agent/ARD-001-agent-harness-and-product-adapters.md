@@ -13,6 +13,11 @@ adapter, command, lifecycle, and diagnostics contracts. ARD-001 remains
 authoritative for the low-level `agent` boundary and for the rule that harness
 must not depend on product packages.
 
+[ARD-001: Agent Loop Ownership And Extension Shape](../decisions/ARD-001-agent-loop-ownership-and-extension-shape.md)
+fixes the follow-on decision that the agent loop stays in `loushang.agent` with
+an injected-port extension shape, rather than moving into harness or becoming a
+replaceable plugin.
+
 ## Context
 
 `loushang.agent` already provides the stable low-level agent runtime surface:

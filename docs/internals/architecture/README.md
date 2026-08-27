@@ -80,6 +80,11 @@ The top-level scopes are:
 - Foundation, represented in the AOD and subsystem map because it is a small
   product-neutral base rather than a large independent architecture package
 
+Cross-scope Architecture Decisions are recorded in the
+[Cross-Scope Architecture Decisions](decisions/README.md) catalog, which owns
+consequential choices that span two or more top-level scopes. A decision owned
+by exactly one scope stays in that scope's own `decisions/` or ARD files.
+
 Established nested Architecture Scopes include:
 
 - [Coding LSP](coding/lsp/README.md), a Coding-owned Product Capability;
