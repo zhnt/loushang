@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import pytest
+
 from loushang.harnesstui.conversation.attachments import (
     PromptImageAttachment,
     PromptImageAttachmentOutcome,
@@ -96,7 +98,9 @@ def test_clipboard_builder_satisfies_standard_router_factory_contract() -> None:
 
 def test_standard_clipboard_image_profile_is_harnesstui_owned(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr("sys.platform", "win32")
     app = _ConversationApp(str(tmp_path))
     assert STANDARD_CLIPBOARD_IMAGE_INPUT_PROFILE.status_copy.attached_prefix == (
         "Attached clipboard image: "
@@ -111,7 +115,7 @@ def test_standard_clipboard_image_profile_is_harnesstui_owned(
         clipboard_image_name_factory=lambda: "shared",
     )
 
-    result = router.handle(InputEvent(kind="key", key="ctrl+v"))
+    result = router.handle(InputEvent(kind="key", key="alt+v"))
 
     expected = tmp_path / ".loushang" / "clipboard" / "clipboard-shared.png"
     assert expected.read_bytes() == b"png"
@@ -124,7 +128,9 @@ def test_standard_clipboard_image_profile_is_harnesstui_owned(
 
 def test_clipboard_image_uses_the_conversation_action_override(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr("sys.platform", "win32")
     app = _ConversationApp(str(tmp_path))
     router = _builder()(
         app,
@@ -137,10 +143,12 @@ def test_clipboard_image_uses_the_conversation_action_override(
         clipboard_image_name_factory=lambda: "override",
     )
 
-    ignored = router.handle(InputEvent(kind="key", key="ctrl+v"))
+    ignored_ctrl = router.handle(InputEvent(kind="key", key="ctrl+v"))
+    ignored_alt = router.handle(InputEvent(kind="key", key="alt+v"))
     attached = router.handle(InputEvent(kind="key", key="ctrl+p"))
 
-    assert ignored.kind == "ignored"
+    assert ignored_ctrl.kind == "ignored"
+    assert ignored_alt.kind == "ignored"
     assert isinstance(attached, ConversationClipboardResult)
 
 

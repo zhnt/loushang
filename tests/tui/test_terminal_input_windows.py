@@ -66,6 +66,76 @@ def test_read_input_chunk_keeps_windows_focus_report_atomic(monkeypatch: Any) ->
     )
 
 
+def test_read_input_chunk_normalizes_native_windows_alt_v(monkeypatch: Any) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+    _install_fake_console(monkeypatch, chars=["\x00", "/"])
+
+    result = asyncio.run(read_input_chunk(_TtyInput()))
+
+    assert result == "\x1bv"
+    assert InputReader().feed(result) == (
+        InputEvent(kind="key", key="alt+v", raw="\x1bv"),
+    )
+
+
+def test_read_input_chunk_recovers_alt_v_when_vt_input_drops_modifier(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(
+        "loushang.tui.terminal_backends.windows._windows_pending_alt_modifier",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "loushang.tui.terminal_backends.windows._windows_alt_pressed",
+        lambda: False,
+    )
+    _install_fake_console(monkeypatch, chars=["v"])
+
+    result = asyncio.run(read_input_chunk(_TtyInput()))
+
+    assert result == "\x1bv"
+    assert InputReader().feed(result) == (
+        InputEvent(kind="key", key="alt+v", raw="\x1bv"),
+    )
+
+
+def test_read_input_chunk_does_not_duplicate_escape_for_legacy_alt_v(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(
+        "loushang.tui.terminal_backends.windows._windows_pending_alt_modifier",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        "loushang.tui.terminal_backends.windows._windows_alt_pressed",
+        lambda: True,
+    )
+    _install_fake_console(monkeypatch, chars=["\x1b", "v"])
+
+    result = asyncio.run(read_input_chunk(_TtyInput()))
+
+    assert result == "\x1bv"
+    assert InputReader().feed(result) == (
+        InputEvent(kind="key", key="alt+v", raw="\x1bv"),
+    )
+
+
+def test_read_input_chunk_keeps_plain_v_without_alt_modifier(monkeypatch: Any) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(
+        "loushang.tui.terminal_backends.windows._windows_alt_pressed",
+        lambda: False,
+    )
+    _install_fake_console(monkeypatch, chars=["v"])
+
+    result = asyncio.run(read_input_chunk(_TtyInput()))
+
+    assert result == "v"
+    assert InputReader().feed(result) == (InputEvent(kind="text", text="v"),)
+
+
 def test_read_input_chunk_keeps_windows_bracketed_paste_atomic(
     monkeypatch: Any,
 ) -> None:

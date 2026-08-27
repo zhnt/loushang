@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
@@ -23,6 +24,12 @@ CONVERSATION_KEYBINDING_DEFINITIONS = {
 }
 CONVERSATION_KEYBINDING_CATALOG = KeybindingCatalog.from_definitions(
     CONVERSATION_KEYBINDING_DEFINITIONS
+)
+_WINDOWS_CONVERSATION_KEYBINDING_CATALOG = KeybindingCatalog.from_definitions(
+    {
+        **CONVERSATION_KEYBINDING_DEFINITIONS,
+        CONVERSATION_PASTE_IMAGE_ACTION: ("ctrl+v", "alt+v"),
+    }
 )
 
 
@@ -59,6 +66,8 @@ DEFAULT_CONVERSATION_INPUT_POLICY = ConversationInputPolicy()
 
 def conversation_keybinding_manager(
     keybindings: KeybindingManager | KeybindingConfig | None = None,
+    *,
+    platform_name: str | None = None,
 ) -> KeybindingManager:
     """Compose conversation actions over generic keybinding definitions."""
 
@@ -67,7 +76,13 @@ def conversation_keybinding_manager(
         if isinstance(keybindings, KeybindingManager)
         else KeybindingManager(keybindings)
     )
-    return manager.with_catalog(CONVERSATION_KEYBINDING_CATALOG)
+    resolved_platform = sys.platform if platform_name is None else platform_name
+    catalog = (
+        _WINDOWS_CONVERSATION_KEYBINDING_CATALOG
+        if resolved_platform == "win32"
+        else CONVERSATION_KEYBINDING_CATALOG
+    )
+    return manager.with_catalog(catalog)
 
 
 __all__ = [
