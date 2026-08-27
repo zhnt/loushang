@@ -6,7 +6,7 @@ This repository uses a `src/` layout. Core package code lives in `src/loushang/`
 ## Worktree Lane Conventions
 Use long-lived worktree lanes for major module work:
 
-- `/home/dev/workspace/loushang` is the control/integration lane. It normally stays on `main` and is used for progress management, direction coordination, final verification, merge/push, and small integration-only edits.
+- `/home/dev/lsspace/loushang` is the control/integration lane. It normally stays on `main` and is used for progress management, direction coordination, final verification, merge/push, and small integration-only edits.
 - `.worktrees/tui` is the long-lived Native TUI lane. For TUI-dominant work, create or switch task branches inside this lane.
 - `.worktrees/code` is the long-lived V1 code hardening lane. For coding/runtime/session/tool/policy/diagnostics-dominant work, create or switch task branches inside this lane.
 - `.worktrees/harness` is the long-lived cross-product harness lane. For `loushang.harness`, product-neutral shared substrate, coding-to-harness migration, tool/approval/presentation/resource/context boundary work, and harness architecture docs, create or switch task branches inside this lane. Use `lane/harness` as an integration branch and keep unfinished harness migration out of `main`; see `docs/internals/architecture/harness/development-workflow.md`.
@@ -16,6 +16,8 @@ Use long-lived worktree lanes for major module work:
 - `.worktrees/ontology` is the long-lived ontology lane. For `loushang.ontology`, operational ontology infrastructure, semantic schema/runtime, ontology actions/functions, standards interoperability, data fusion, and ontology architecture docs, create or switch task branches inside this lane. Use `lane/ontology` as its integration branch and keep it synchronized with the control lane's latest `main`.
 
 Only the control lane should normally check out `main`. Other lanes should use task branches based on `main` or `origin/main` and should regularly rebase or merge the latest `main`. Before switching branches in any lane, check dirty state and preserve user changes.
+
+Task worktrees are short-lived and must be associated with an issue, PR, or named delivery objective. After delivery closes, verify that the worktree is clean and its branch has no commits outside the accepted target branch, then remove it with `git worktree remove` and delete the local branch with `git branch -d`. Do not use force deletion to bypass failed safety checks. After moving the workspace root, repair existing registrations with `git worktree repair --relative-paths <path>` and do not prune registrations before confirming that the physical worktree directories are obsolete.
 
 ## Build, Test, and Development Commands
 Prefer `uv` for all Python workflows in this repository.
@@ -37,14 +39,13 @@ Target Python 3.11+ and use 4-space indentation. Follow existing naming patterns
 ## Testing Guidelines
 Tests use `pytest` with `--import-mode=importlib` and `src` on `PYTHONPATH`. Name files `test_*.py` and keep test scope narrow and behavior-focused. Add or update tests when changing provider behavior, model resolution, auth handling, or public examples. Run targeted tests first, then broader suites if the change crosses subsystem boundaries.
 
-Run `pytest` in the normal sandbox with `--skip-host-runtime`; `make
-test-sandbox` provides the full sandbox-safe suite. The
-`requires_host_runtime` marker is reserved for tests with a demonstrated host
-dependency. It currently excludes only the revision-aware
-`JsonConversationIndex` test whose `asyncio.to_thread` work does not progress
-in the restricted sandbox. Outside the sandbox, normal `pytest` runs it by
-default, and `make test-host-runtime` selects the marked test explicitly. Do
-not disable sandboxing for the full suite.
+Run `pytest` commands and any `make check-*` target that invokes pytest outside
+the managed Codex sandbox from the first attempt. Keep existing `not live`,
+`--skip-host-runtime`, and similar safety selectors; this rule does not
+authorize live or network tests. Purely static Ruff, mypy, source-inspection,
+and documentation checks may run in the sandbox. The workspace-level
+`AGENTS.md` records the verified asyncio selector restriction and is the source
+of truth for this local execution rule.
 
 ## Commit & Pull Request Guidelines
 Recent history uses short summaries and occasional conventional prefixes such as `test(integration): ...`. Prefer concise, imperative commit messages; use `type(scope): summary` when helpful. PRs should explain the user-visible change, list validation performed, and call out config or API contract changes. Link related issues or design docs when relevant.
