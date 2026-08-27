@@ -139,7 +139,11 @@ async def run_agent_cli_early_operation(
         output.write(ports.format_help(extension_flags))
         return 0
     if args.version:
-        stdout.write(f"{ports.package_version()}\n")
+        if args.verbose:
+            identity = ports.runtime_identity(project_root)
+            stdout.write(ports.format_runtime_identity(identity) + "\n")
+        else:
+            stdout.write(f"{ports.package_version()}\n")
         return 0
     if args.source_info:
         source_identity = ports.runtime_identity(project_root)

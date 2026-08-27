@@ -161,6 +161,10 @@ planning, work event persistence, or AI provider behavior.
 - [Effective Runtime Diagnostics Boundary](effective-runtime-diagnostics-boundary.md)
   fixes PR9's four-clock composed view, explicit skew, explain, JSON, and diff
   semantics while retaining the existing graph projector as the only projector.
+- [Runtime Provenance Boundary](runtime-provenance-boundary.md) separates
+  pre-bootstrap installation identity from effective runtime component facts,
+  defines the strict-JSON contributor seam, and keeps Product/TUI presentation
+  outside Harness.
 - [Continuity Stable Reference Boundary](continuity-stable-reference-boundary.md)
   defines the implemented CLA7d process-owned typed stable
   continuity reference and the explicit Session-before-continuity shutdown

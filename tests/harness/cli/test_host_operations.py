@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import nullcontext
 from io import StringIO
 from types import SimpleNamespace
 
 from loushang.harness.cli import (
+    AgentCliEarlyOperationPorts,
+    CliLaunchPlan,
     CliOperationInsertion,
     CliOperationStage,
     CommandExecutionRequest,
@@ -13,6 +16,7 @@ from loushang.harness.cli import (
     StandardCliOperationRequest,
     agent_session_listing_request,
     agent_standard_cli_operation_request,
+    run_agent_cli_early_operation,
     run_agent_cli_session_listing,
     run_command_operation,
     run_session_listing_operation,
@@ -236,3 +240,80 @@ def test_standard_operation_pack_accepts_product_stage_insertions() -> None:
 
     assert result == 0
     assert calls == ["product_catalog"]
+
+
+def test_verbose_version_uses_product_provenance_before_bootstrap(tmp_path) -> None:
+    collected: list[object] = []
+    stdout = StringIO()
+    ports = AgentCliEarlyOperationPorts(
+        collect_help_flags=lambda _argv, _root: {},
+        format_help=lambda _flags: "help\n",
+        package_version=lambda: "1.2.3",
+        runtime_identity=lambda root: (
+            collected.append(root)
+            or {
+                "package_version": "1.2.3",
+                "provenance_schema_version": 1,
+            }
+        ),
+        format_runtime_identity=lambda identity: (
+            f"version={identity['package_version']} "
+            f"schema={identity['provenance_schema_version']}"
+        ),
+        output_guard=lambda _enabled: nullcontext(),
+    )
+
+    result = asyncio.run(
+        run_agent_cli_early_operation(
+            SimpleNamespace(
+                help=False,
+                version=True,
+                verbose=True,
+                source_info=False,
+            ),
+            raw_argv=("--version", "--verbose"),
+            launch_plan=CliLaunchPlan(),
+            project_root=tmp_path,
+            stdout=stdout,
+            stderr=StringIO(),
+            ports=ports,
+        )
+    )
+
+    assert result == 0
+    assert collected == [tmp_path]
+    assert stdout.getvalue() == "version=1.2.3 schema=1\n"
+
+
+def test_plain_version_does_not_collect_runtime_provenance(tmp_path) -> None:
+    ports = AgentCliEarlyOperationPorts(
+        collect_help_flags=lambda _argv, _root: {},
+        format_help=lambda _flags: "help\n",
+        package_version=lambda: "1.2.3",
+        runtime_identity=lambda _root: (_ for _ in ()).throw(
+            AssertionError("plain version must not collect provenance")
+        ),
+        format_runtime_identity=lambda _identity: "unreachable",
+        output_guard=lambda _enabled: nullcontext(),
+    )
+    stdout = StringIO()
+
+    result = asyncio.run(
+        run_agent_cli_early_operation(
+            SimpleNamespace(
+                help=False,
+                version=True,
+                verbose=False,
+                source_info=False,
+            ),
+            raw_argv=("--version",),
+            launch_plan=CliLaunchPlan(),
+            project_root=tmp_path,
+            stdout=stdout,
+            stderr=StringIO(),
+            ports=ports,
+        )
+    )
+
+    assert result == 0
+    assert stdout.getvalue() == "1.2.3\n"
