@@ -19,6 +19,7 @@ ToolTranscriptStatus = Literal[
 ToolVerbResolver = Callable[[str, object | None], str]
 ToolBodyVisibility = Callable[[str, ToolTranscriptStatus], bool]
 ToolCommandResolver = Callable[[str, object | None, str], str | None]
+ToolExpandedCommandResolver = Callable[[str, object | None, str], str | None]
 ToolEventRenderer = Callable[[Mapping[str, Any], bool], str | None]
 ToolResultTextProjector = Callable[[object, int], str]
 ToolResultDetailsProjector = Callable[[object], Mapping[str, Any]]
@@ -68,6 +69,7 @@ class ToolResultView:
     rendered_text: str | None = None
     details: Mapping[str, Any] = field(default_factory=dict)
     error_summary: str | None = None
+    expanded_text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -87,6 +89,8 @@ class ToolTranscriptBlock:
     detail: str | None = None
     body: str | None = None
     command: str | None = None
+    expanded_body: str | None = None
+    expanded_command: str | None = None
 
 
 @dataclass
@@ -96,6 +100,7 @@ class ToolTranscriptProjector:
     verb_resolver: ToolVerbResolver = _default_verb
     body_visibility: ToolBodyVisibility = _hide_body
     command_resolver: ToolCommandResolver = _hide_command
+    expanded_command_resolver: ToolExpandedCommandResolver = _hide_command
     max_body_lines: int = 8
 
     def remember_call(self, view: ToolCallView) -> ToolCallSnapshot:
@@ -114,6 +119,7 @@ class ToolTranscriptProjector:
         args = snapshot.args if snapshot is not None else view.args
         rendered_call = snapshot.rendered_call_text if snapshot is not None else None
         title = _title(tool_name, args, rendered_call)
+        body_visible = self.body_visibility(tool_name, view.status)
         return ToolTranscriptBlock(
             tool_call_id=view.tool_call_id,
             tool_name=tool_name,
@@ -124,10 +130,16 @@ class ToolTranscriptProjector:
             body=_body(
                 tool_name,
                 view,
-                visible=self.body_visibility(tool_name, view.status),
+                visible=body_visible,
                 max_lines=self.max_body_lines,
             ),
             command=self.command_resolver(tool_name, args, title),
+            expanded_body=_expanded_body(view) if body_visible else None,
+            expanded_command=self.expanded_command_resolver(
+                tool_name,
+                args,
+                title,
+            ),
         )
 
 
@@ -156,9 +168,7 @@ class ToolTranscriptProjectionBinding(
             [ToolTranscriptEventT, ToolCallSnapshot | None, str | None],
             ToolResultView,
         ],
-        tool_result_message_view: Callable[
-            [ToolTranscriptMessageT], ToolResultView
-        ],
+        tool_result_message_view: Callable[[ToolTranscriptMessageT], ToolResultView],
     ) -> None:
         self.neutral_projector = neutral_projector
         self._call_id = call_id
@@ -207,9 +217,11 @@ class ToolTranscriptProjectionBinding(
     def project_tool_result_message(
         self,
         message: ToolTranscriptMessageT,
+        snapshot: ToolCallSnapshot | None = None,
     ) -> ToolTranscriptBlock:
         return self.neutral_projector.project_result(
-            self.tool_result_message_view(message)
+            self.tool_result_message_view(message),
+            snapshot,
         )
 
 
@@ -223,6 +235,7 @@ class MappingToolTranscriptViewAdapter:
     error_summary: ToolErrorSummaryProjector
     message_event: ToolResultMessageEventProjector
     render_event_text: ToolEventRenderer | None = None
+    expanded_result_text: ToolResultTextProjector | None = None
     max_body_lines: int = 8
 
     def call_id(self, event: Mapping[str, Any]) -> str:
@@ -240,7 +253,7 @@ class MappingToolTranscriptViewAdapter:
             tool_call_id=self.call_id(event),
             tool_name=self._tool_name(event),
             args=event.get("args"),
-            rendered_text=self._render(event),
+            rendered_text=self._render(event, expanded=False),
         )
 
     def result_view(
@@ -259,15 +272,20 @@ class MappingToolTranscriptViewAdapter:
         result_text = ""
         if workspace_tool_body_visibility(policy_tool_name, status):
             result_text = self.result_text(result, self.max_body_lines)
+        rendered_text = self._render(event, expanded=False)
+        expanded_text = None
+        if self.expanded_result_text is not None:
+            expanded_text = self.expanded_result_text(result, self.max_body_lines)
         return ToolResultView(
             tool_call_id=self.call_id(event) if tool_call_id is None else tool_call_id,
             tool_name=event_tool_name,
             status=status,
             args=event.get("args"),
             result_text=result_text,
-            rendered_text=self._render(event),
+            rendered_text=rendered_text,
             details=details,
             error_summary=self.error_summary(result),
+            expanded_text=expanded_text,
         )
 
     def tool_result_message_view(self, message: object) -> ToolResultView:
@@ -277,10 +295,10 @@ class MappingToolTranscriptViewAdapter:
             tool_call_id=self.message_id(message) or self._tool_name(event),
         )
 
-    def _render(self, event: Mapping[str, Any]) -> str | None:
+    def _render(self, event: Mapping[str, Any], *, expanded: bool) -> str | None:
         if self.render_event_text is None:
             return None
-        return self.render_event_text(event, False)
+        return self.render_event_text(event, expanded)
 
     @staticmethod
     def _event_result(event: Mapping[str, Any]) -> object:
@@ -319,6 +337,7 @@ def build_mapping_tool_transcript_projection(
     error_summary: ToolErrorSummaryProjector,
     message_event: ToolResultMessageEventProjector,
     render_event_text: ToolEventRenderer | None = None,
+    expanded_result_text: ToolResultTextProjector | None = None,
     max_body_lines: int = 8,
 ) -> ToolTranscriptProjectionBinding[Mapping[str, Any], object]:
     """Compose the standard workspace transcript policy with mapping events."""
@@ -330,6 +349,7 @@ def build_mapping_tool_transcript_projection(
         error_summary=error_summary,
         message_event=message_event,
         render_event_text=render_event_text,
+        expanded_result_text=expanded_result_text,
         max_body_lines=max_body_lines,
     )
     return ToolTranscriptProjectionBinding(
@@ -337,6 +357,7 @@ def build_mapping_tool_transcript_projection(
             verb_resolver=workspace_tool_verb,
             body_visibility=workspace_tool_body_visibility,
             command_resolver=workspace_tool_command,
+            expanded_command_resolver=workspace_tool_expanded_command,
             max_body_lines=max_body_lines,
         ),
         call_id=adapter.call_id,
@@ -373,10 +394,8 @@ def workspace_tool_body_visibility(
 ) -> bool:
     """Choose standard command and inspection bodies for collapsed display."""
 
-    if status != "ok":
-        return False
     normalized = tool_name.lower()
-    return any(
+    visible_tool = any(
         part in normalized
         for part in (
             "bash",
@@ -392,6 +411,11 @@ def workspace_tool_body_visibility(
             "pytest",
         )
     )
+    if status == "ok":
+        return visible_tool
+    if status not in {"error", "timed_out", "cancelled"}:
+        return False
+    return any(part in normalized for part in ("bash", "shell", "exec", "run", "test", "lint", "ruff", "pytest"))
 
 
 def workspace_tool_command(
@@ -402,6 +426,18 @@ def workspace_tool_command(
     """Expose command labels for standard run and test tools."""
 
     return title if workspace_tool_verb(tool_name, args) in {"Ran", "Tested"} else None
+
+
+def workspace_tool_expanded_command(
+    tool_name: str,
+    args: object | None,
+    title: str,
+) -> str | None:
+    """Preserve the complete command separately from its compact heading."""
+
+    if workspace_tool_verb(tool_name, args) not in {"Ran", "Tested"}:
+        return None
+    return _workspace_command_from_args(args) or title
 
 
 def _workspace_command_from_args(args: object | None) -> str:
@@ -428,6 +464,9 @@ def tool_block_to_record(
         stderr=(detail if block.status in {"error", "timed_out", "cancelled"} else ""),
         exit_code=_exit_code(detail),
         show_stats=output_kind == "diff",
+        tool_name=block.tool_name,
+        expanded_command=block.expanded_command,
+        expanded_output=block.expanded_body,
     )
 
 
@@ -531,6 +570,14 @@ def _body(
         max_lines=max_lines,
         tail=prefers_tail_tool_output(tool_name),
     )
+
+
+def _expanded_body(view: ToolResultView) -> str | None:
+    text = view.expanded_text
+    if text is None:
+        text = view.rendered_text or view.result_text
+    text = drop_tool_timing_tail_line(text.strip())
+    return text or None
 
 
 def _tool_state(status: ToolTranscriptStatus) -> ToolState:

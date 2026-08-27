@@ -47,17 +47,23 @@ def test_compact_absolute_display_paths_handles_exact_roots_without_mutating_tex
 def test_projection_profile_transforms_tool_record_with_injected_policy() -> None:
     calls: list[tuple[str, ...]] = []
 
-    def project_name(name: str, *, context: str) -> str:
-        calls.append(("name", name, context))
-        return name.replace(context, ".")
+    def project_name(
+        record: ToolExecutionRecord,
+        *,
+        context: str,
+        width: int,
+    ) -> str:
+        calls.append(("name", record.name, context, str(width)))
+        return record.name.replace(context, ".")
 
     def project_output(
         record: ToolExecutionRecord,
         *,
         projected_name: str,
         context: str,
+        width: int,
     ) -> str:
-        calls.append(("output", record.output, projected_name, context))
+        calls.append(("output", record.output, projected_name, context, str(width)))
         return record.output.upper()
 
     profile = TranscriptDisplayProjectionProfile[str](
@@ -74,7 +80,7 @@ def test_projection_profile_transforms_tool_record_with_injected_policy() -> Non
         output="passed",
     )
 
-    projected = profile.project_record(record, context="/repo")
+    projected = profile.project_record(record, context="/repo", width=80)
 
     assert isinstance(projected, ToolExecutionRecord)
     assert projected is not record
@@ -83,15 +89,17 @@ def test_projection_profile_transforms_tool_record_with_injected_policy() -> Non
     assert projected.output == "PASSED"
     assert record.command == "  bash   /repo/check.py  "
     assert calls == [
-        ("name", "bash /repo/check.py", "/repo"),
-        ("output", "passed", "bash ./check.py", "/repo"),
+        ("name", "bash /repo/check.py", "/repo", "80"),
+        ("output", "passed", "bash ./check.py", "/repo", "80"),
     ]
 
 
 def test_projection_profile_preserves_identity_when_policy_makes_no_change() -> None:
     profile = TranscriptDisplayProjectionProfile[str](
-        project_tool_name=lambda name, *, context: name,
-        project_tool_output=lambda record, *, projected_name, context: record.output,
+        project_tool_name=lambda record, *, context, width: record.name,
+        project_tool_output=lambda record, *, projected_name, context, width: (
+            record.output
+        ),
         suppress_duplicate_tool_command=False,
         tool_record_width_inset=0,
     )
@@ -104,14 +112,16 @@ def test_projection_profile_preserves_identity_when_policy_makes_no_change() -> 
     )
     prompt = UserPromptRecord("hello")
 
-    assert profile.project_record(tool, context="workspace") is tool
-    assert profile.project_record(prompt, context="workspace") is prompt
+    assert profile.project_record(tool, context="workspace", width=80) is tool
+    assert profile.project_record(prompt, context="workspace", width=80) is prompt
 
 
 def test_projection_profile_applies_tool_width_inset_only_to_tools() -> None:
     profile = TranscriptDisplayProjectionProfile[str](
-        project_tool_name=lambda name, *, context: name,
-        project_tool_output=lambda record, *, projected_name, context: record.output,
+        project_tool_name=lambda record, *, context, width: record.name,
+        project_tool_output=lambda record, *, projected_name, context, width: (
+            record.output
+        ),
         suppress_duplicate_tool_command=False,
         tool_record_width_inset=2,
     )
@@ -130,8 +140,8 @@ def test_projection_profile_applies_tool_width_inset_only_to_tools() -> None:
 def test_projection_profile_rejects_negative_tool_width_inset() -> None:
     with pytest.raises(ValueError, match="must be non-negative"):
         TranscriptDisplayProjectionProfile[str](
-            project_tool_name=lambda name, *, context: name,
-            project_tool_output=lambda record, *, projected_name, context: (
+            project_tool_name=lambda record, *, context, width: record.name,
+            project_tool_output=lambda record, *, projected_name, context, width: (
                 record.output
             ),
             suppress_duplicate_tool_command=False,

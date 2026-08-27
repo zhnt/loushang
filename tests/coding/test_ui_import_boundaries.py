@@ -651,9 +651,10 @@ def test_shared_transcript_style_does_not_own_screen_product_policy() -> None:
         "loushang.coding",
         "ScreenCodingTuiApp",
         "_project_coding_tool_name",
+        "_project_coding_tool_command",
         "_project_coding_tool_output",
-        "collapse_tool_output_preview",
-        "DEFAULT_TOOL_OUTPUT_PREVIEW_LINES",
+        "_collapse_coding_tool_preview",
+        "DEFAULT_TOOL_PREVIEW_SCREEN_ROWS",
         "bright_cyan",
         'user_prompt_prefix="› "',
         'tool_command_prefix="  │ "',
@@ -668,7 +669,7 @@ def test_shared_transcript_style_does_not_own_screen_product_policy() -> None:
     assert "compact_absolute_display_paths" in shared
     assert "compact_absolute_display_paths" in screen
     assert "_compact_display_paths" not in screen
-    assert "collapse_tool_output_preview" in screen
+    assert "_collapse_coding_tool_preview" in screen
     assert '"transcript.tool.marker": {"color": "bright_cyan"' in screen
 
 
@@ -1363,9 +1364,10 @@ def test_tui_owns_transcript_region_while_coding_owns_presentation_policy() -> N
     assert "class _ScreenTranscriptRegion" not in coding
     for token in (
         "_project_coding_tool_name",
+        "_project_coding_tool_command",
         "_project_coding_tool_output",
-        "collapse_tool_output_preview",
-        "DEFAULT_TOOL_OUTPUT_PREVIEW_LINES",
+        "_collapse_coding_tool_preview",
+        "DEFAULT_TOOL_PREVIEW_SCREEN_ROWS",
         "bright_cyan",
     ):
         assert token not in engine
@@ -1421,7 +1423,7 @@ def test_shared_screen_app_does_not_own_coding_presentation_policy() -> None:
         "LoushangWelcomePanel",
         "Compacted summary:",
         "DEFAULT_ACTIVE_TRANSCRIPT_LINE_BUDGET = 320",
-        "collapse_tool_output_preview",
+        "_collapse_coding_tool_preview",
     ):
         assert token not in shared
         assert token in coding

@@ -1291,7 +1291,11 @@ def _repaint_operations(
                 *_write_lines(render_lines),
             )
         )
-        current_row = viewport_top + max(0, len(render_lines) - 1)
+        # ``render_lines`` contains the complete logical frame in this branch,
+        # starting at row zero. Adding ``viewport_top`` again would overstate
+        # the cursor row after a long-frame resize and move the terminal cursor
+        # past the top of the viewport.
+        current_row = max(0, len(render_lines) - 1)
     else:
         operations.append(TerminalOperation.move_cursor(row=0, column=0))
         operations.extend(

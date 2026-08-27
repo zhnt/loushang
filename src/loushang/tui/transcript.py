@@ -111,6 +111,15 @@ class ToolExecutionRecord:
     stderr: str = ""
     exit_code: int | None = None
     show_stats: bool = False
+    tool_name: str = ""
+    expanded_command: str | None = field(
+        default=None,
+        repr=False,
+    )
+    expanded_output: str | None = field(
+        default=None,
+        repr=False,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -383,7 +392,14 @@ def _render_tool(
     first = _tool_heading(record)
     lines = [truncate_to_width(first, max_width=width)]
     if record.command:
-        lines.extend(_prefixed_block("  $ ", record.command, width=width))
+        lines.extend(
+            _prefixed_block(
+                "  $ ",
+                record.command,
+                width=width,
+                continuation="  | ",
+            )
+        )
     if record.output:
         if record.output_kind == "text":
             lines.extend(_prefixed_block("  ", record.output, width=width))
@@ -581,8 +597,13 @@ def _context_compaction_line(record: ContextCompactionRecord) -> str:
     return line
 
 
-def _prefixed_block(prefix: str, text: str, *, width: int) -> list[str]:
-    continuation = "  "
+def _prefixed_block(
+    prefix: str,
+    text: str,
+    *,
+    width: int,
+    continuation: str = "  ",
+) -> list[str]:
     available = max(1, width - visible_width(prefix))
     continuation_available = max(1, width - visible_width(continuation))
     lines: list[str] = []

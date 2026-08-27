@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from loushang.harnesstui.conversation.source import TranscriptSnapshot, TranscriptSource
 from loushang.tui.cell_width import truncate_to_width, wrap_cells
@@ -27,7 +27,7 @@ _FOOTER_STYLE = {"color": "bright_black", "dim": True}
 _SEARCH_HIGHLIGHT_STYLE = {"bold": True, "reverse": True}
 _FOOTER_LINES = (
     "↑/↓ scroll   PgUp/Ctrl+B · PgDn/Ctrl+F page   Home/End jump",
-    "Ctrl+O/q/Esc close   / search   n/N next   d detail   r raw",
+    "Ctrl+O/Ctrl+T/q/Esc close   / search   n/N next   d detail   r raw",
 )
 _CONSUMED = InputIntent(kind="consumed", note="transcript_reader")
 
@@ -40,6 +40,17 @@ class TranscriptReaderSurface:
     detail_mode: bool = False
     search_query: str = ""
     _snapshot: TranscriptSnapshot = field(init=False, repr=False)
+    _expanded_records: tuple[DisplayRecord, ...] = field(init=False, repr=False)
+    _body_cache_key: tuple[int, bool, bool] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
+    _body_cache_lines: tuple[RenderLine, ...] = field(
+        default=(),
+        init=False,
+        repr=False,
+    )
     _scroll_offset: int = field(default=0, init=False, repr=False)
     _max_scroll_offset: int = field(default=0, init=False, repr=False)
     _last_body_height: int = field(default=1, init=False, repr=False)
@@ -51,6 +62,7 @@ class TranscriptReaderSurface:
 
     def __post_init__(self) -> None:
         self._snapshot = self.source.snapshot()
+        self._expanded_records = _expanded_tool_records(self._snapshot.records)
 
     @property
     def scroll_offset(self) -> int:
@@ -79,7 +91,17 @@ class TranscriptReaderSurface:
         if key in {"esc", "escape"} and self.search_query:
             self._clear_search()
             return _CONSUMED
-        if key in {"q", "esc", "escape", "ctrl+c", "ctrl_c", "ctrl+o", "ctrl_o"}:
+        if key in {
+            "q",
+            "esc",
+            "escape",
+            "ctrl+c",
+            "ctrl_c",
+            "ctrl+o",
+            "ctrl_o",
+            "ctrl+t",
+            "ctrl_t",
+        }:
             return InputIntent(kind="surface_close")
         if key == "up":
             self._scroll_by(-1)
@@ -173,19 +195,26 @@ class TranscriptReaderSurface:
         return tuple(RenderLine(_footer_text(line, width=width)) for line in selected)
 
     def _body_lines(self, *, width: int) -> tuple[RenderLine, ...]:
+        cache_key = (width, self.raw_mode, self.detail_mode)
+        if cache_key == self._body_cache_key:
+            return self._body_cache_lines
         if self.raw_mode:
-            return _render_raw_transcript_records(
-                self._snapshot.records,
+            lines = _render_raw_transcript_records(
+                self._expanded_records,
                 width=width,
                 detail=self.detail_mode,
                 max_height=_MAX_TRANSCRIPT_RENDER_HEIGHT,
             )
-        return render_transcript_records(
-            self._snapshot.records,
-            width=width,
-            max_height=_MAX_TRANSCRIPT_RENDER_HEIGHT,
-            verbose_errors=self.detail_mode,
-        )
+        else:
+            lines = render_transcript_records(
+                self._expanded_records,
+                width=width,
+                max_height=_MAX_TRANSCRIPT_RENDER_HEIGHT,
+                verbose_errors=self.detail_mode,
+            )
+        self._body_cache_key = cache_key
+        self._body_cache_lines = lines
+        return lines
 
     def _scroll_by(self, delta: int) -> None:
         self._follow_tail = False
@@ -261,6 +290,38 @@ class TranscriptReaderSurface:
 
 def _clamp(value: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(value, maximum))
+
+
+def _expanded_tool_records(
+    records: tuple[DisplayRecord, ...],
+) -> tuple[DisplayRecord, ...]:
+    expanded: list[DisplayRecord] = []
+    for record in records:
+        if not isinstance(record, ToolExecutionRecord):
+            expanded.append(record)
+            continue
+        command = (
+            record.expanded_command
+            if record.expanded_command is not None
+            else record.command
+        )
+        output = (
+            record.expanded_output
+            if record.expanded_output is not None
+            else record.output
+        )
+        name = record.tool_name if command and record.tool_name else record.name
+        expanded.append(
+            replace(
+                record,
+                name=name,
+                command=command,
+                output=output,
+                expanded_command=None,
+                expanded_output=None,
+            )
+        )
+    return tuple(expanded)
 
 
 def _footer_text(text: str, *, width: int) -> str:

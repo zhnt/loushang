@@ -57,6 +57,7 @@ compatibility path has been removed. Code should import from `loushang.harness`.
 
 See [ARD-001: Agent Harness and Product Adapter Boundaries](ARD-001-agent-harness-and-product-adapters.md).
 See also [ARD-002: Harness Product Adapter Substrate](ARD-002-harness-product-adapter-substrate.md).
+See also [ARD-001: Agent Loop Ownership And Extension Shape](../decisions/ARD-001-agent-loop-ownership-and-extension-shape.md) — the agent loop stays in `loushang.agent`; its extension shape is fixed skeleton plus injected `AgentLoopConfig` ports, not a replaceable plugin.
 Detailed harness refactoring rules now live in
 [Loushang Harness Architecture](../harness/README.md).
 The current module ownership inventory is

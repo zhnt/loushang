@@ -16,7 +16,26 @@ ContextT_contra = TypeVar("ContextT_contra", contravariant=True)
 class ToolDisplayNameProjector(Protocol[ContextT_contra]):
     """Project a tool heading using product-prepared display context."""
 
-    def __call__(self, name: str, *, context: ContextT_contra) -> str: ...
+    def __call__(
+        self,
+        record: ToolExecutionRecord,
+        *,
+        context: ContextT_contra,
+        width: int,
+    ) -> str: ...
+
+
+class ToolDisplayCommandProjector(Protocol[ContextT_contra]):
+    """Project a command preview without replacing its expanded source."""
+
+    def __call__(
+        self,
+        record: ToolExecutionRecord,
+        *,
+        projected_name: str,
+        context: ContextT_contra,
+        width: int,
+    ) -> str: ...
 
 
 class ToolDisplayOutputProjector(Protocol[ContextT_contra]):
@@ -28,6 +47,7 @@ class ToolDisplayOutputProjector(Protocol[ContextT_contra]):
         *,
         projected_name: str,
         context: ContextT_contra,
+        width: int,
     ) -> str: ...
 
 
@@ -39,6 +59,7 @@ class TranscriptDisplayProjectionProfile(Generic[ContextT]):
     project_tool_output: ToolDisplayOutputProjector[ContextT]
     suppress_duplicate_tool_command: bool
     tool_record_width_inset: int
+    project_tool_command: ToolDisplayCommandProjector[ContextT] | None = None
 
     def __post_init__(self) -> None:
         if self.tool_record_width_inset < 0:
@@ -49,17 +70,34 @@ class TranscriptDisplayProjectionProfile(Generic[ContextT]):
         record: DisplayRecord,
         *,
         context: ContextT,
+        width: int,
     ) -> DisplayRecord:
         if not isinstance(record, ToolExecutionRecord):
             return record
-        name = self.project_tool_name(record.name, context=context)
-        command = record.command
-        if self.suppress_duplicate_tool_command and _command_duplicates_heading(record):
+        name = self.project_tool_name(record, context=context, width=width)
+        command = (
+            self.project_tool_command(
+                record,
+                projected_name=name,
+                context=context,
+                width=width,
+            )
+            if self.project_tool_command is not None
+            else record.command
+        )
+        projected = replace(record, name=name, command=command)
+        duplicate_candidate = (
+            projected if self.project_tool_command is not None else record
+        )
+        if self.suppress_duplicate_tool_command and _command_duplicates_heading(
+            duplicate_candidate
+        ):
             command = ""
         output = self.project_tool_output(
             record,
             projected_name=name,
             context=context,
+            width=width,
         )
         if (
             name == record.name
@@ -129,6 +167,7 @@ def _normalized_path(path: str) -> str:
 
 __all__ = [
     "ToolDisplayNameProjector",
+    "ToolDisplayCommandProjector",
     "ToolDisplayOutputProjector",
     "TranscriptDisplayProjectionProfile",
     "compact_absolute_display_paths",

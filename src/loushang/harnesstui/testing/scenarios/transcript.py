@@ -160,17 +160,17 @@ class _TranscriptRecipes(Generic[AppT]):
         result.assert_local_texts()
         result.assert_no_abort_requested()
         result.assert_visible_contains("draft!")
-        result.assert_visible_not_contains("Ctrl+O/q/Esc close")
+        result.assert_visible_not_contains("Ctrl+O/Ctrl+T/q/Esc close")
         result.assert_no_clear_screen()
 
         opened_screen = _step_screen(result, 1)
         tab_screen = _step_screen(result, 2)
         ctrl_b_screen = _step_screen(result, 3)
         ctrl_f_screen = _step_screen(result, 4)
-        assert "Ctrl+O/q/Esc close" in opened_screen
+        assert "Ctrl+O/Ctrl+T/q/Esc close" in opened_screen
         assert "PgUp/Ctrl+B · PgDn/Ctrl+F page" in opened_screen
         assert "answer line 11" in opened_screen
-        assert "Ctrl+O/q/Esc close" in tab_screen
+        assert "Ctrl+O/Ctrl+T/q/Esc close" in tab_screen
         assert result.step_state_snapshots[2]["composer_text"] == "draft"
         assert "answer line 4" in ctrl_b_screen
         assert "answer line 11" in ctrl_f_screen
@@ -197,14 +197,14 @@ class _TranscriptRecipes(Generic[AppT]):
         result.assert_composer_text("draft!")
         result.assert_no_clear_screen()
         result.assert_visible_contains("draft!")
-        result.assert_visible_not_contains("Ctrl+O/q/Esc close")
+        result.assert_visible_not_contains("Ctrl+O/Ctrl+T/q/Esc close")
 
         opened_screen = _step_screen(result, 1)
         closed_screen = _step_screen(result, 2)
         assert "Transcript window" in opened_screen
         assert "streaming live draft" in opened_screen
-        assert "Ctrl+O/q/Esc close" in opened_screen
-        assert "Ctrl+O/q/Esc close" not in closed_screen
+        assert "Ctrl+O/Ctrl+T/q/Esc close" in opened_screen
+        assert "Ctrl+O/Ctrl+T/q/Esc close" not in closed_screen
         assert "draft" in closed_screen
         return result
 
@@ -234,7 +234,7 @@ class _TranscriptRecipes(Generic[AppT]):
         result.assert_composer_text("draft!")
         result.assert_no_clear_screen()
         result.assert_visible_contains("draft!")
-        result.assert_visible_not_contains("Ctrl+O/q/Esc close")
+        result.assert_visible_not_contains("Ctrl+O/Ctrl+T/q/Esc close")
 
         opened_screen = _step_screen(result, 1)
         detail_screen = _step_screen(result, 2)
@@ -249,7 +249,7 @@ class _TranscriptRecipes(Generic[AppT]):
         assert "Use **markdown** literally." in raw_detail_screen
         assert "Error" in raw_detail_screen
         assert "Traceback detail" in raw_detail_screen
-        assert "Ctrl+O/q/Esc close" not in closed_screen
+        assert "Ctrl+O/Ctrl+T/q/Esc close" not in closed_screen
         assert "draft" in closed_screen
         return result
 
@@ -286,7 +286,7 @@ class _TranscriptRecipes(Generic[AppT]):
         result.assert_composer_text("draft!")
         result.assert_no_clear_screen()
         result.assert_visible_contains("draft!")
-        result.assert_visible_not_contains("Ctrl+O/q/Esc close")
+        result.assert_visible_not_contains("Ctrl+O/Ctrl+T/q/Esc close")
 
         search_input_screen = _step_screen(result, 6)
         first_match_screen = _step_screen(result, 7)
@@ -301,8 +301,8 @@ class _TranscriptRecipes(Generic[AppT]):
         assert "beta second match" in next_match_screen
         assert "Transcript window · search beta 1/2" in previous_match_screen
         assert "Transcript window · search" not in cleared_search_screen
-        assert "Ctrl+O/q/Esc close" in cleared_search_screen
-        assert "Ctrl+O/q/Esc close" not in closed_screen
+        assert "Ctrl+O/Ctrl+T/q/Esc close" in cleared_search_screen
+        assert "Ctrl+O/Ctrl+T/q/Esc close" not in closed_screen
         assert "draft" in closed_screen
         return result
 
