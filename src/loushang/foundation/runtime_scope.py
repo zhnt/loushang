@@ -50,6 +50,10 @@ class RuntimeScope:
     def drafts(self) -> Path:
         return self.run_dir / "drafts"
 
+    @property
+    def artifacts(self) -> Path:
+        return self.run_dir / "artifacts"
+
 
 def resolve_runtime_scope(
     *,

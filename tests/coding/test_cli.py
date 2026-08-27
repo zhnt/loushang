@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import zipfile
 from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
@@ -2219,7 +2220,10 @@ def test_run_cli_exports_session_and_exits_early(tmp_path) -> None:
     asyncio.run(scenario())
 
 
-def test_run_cli_diag_export_exits_before_runtime_creation(tmp_path) -> None:
+def test_run_cli_diag_export_exits_before_runtime_creation(
+    tmp_path,
+    monkeypatch,
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     session_dir = tmp_path / "sessions"
@@ -2232,6 +2236,8 @@ def test_run_cli_diag_export_exits_before_runtime_creation(tmp_path) -> None:
     output = tmp_path / "diag.zip"
     stdout = StringIO()
     stderr = StringIO()
+    runtime_dir = tmp_path / "runtime"
+    monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(runtime_dir))
 
     def runtime_builder(**kwargs):
         raise AssertionError("diag export should not create a runtime")
@@ -2262,6 +2268,10 @@ def test_run_cli_diag_export_exits_before_runtime_creation(tmp_path) -> None:
     assert output.exists()
     assert f"Exported diagnostics to: {output}" in stdout.getvalue()
     assert stderr.getvalue() == ""
+    assert tuple((runtime_dir / "runs").iterdir()) == ()
+    with zipfile.ZipFile(output) as archive:
+        manifest = json.loads(archive.read("manifest.json"))
+        assert manifest["artifacts"][0]["kind"] == "debug-log"
 
 
 def test_run_cli_exports_session_to_default_path_when_path_is_omitted(tmp_path) -> None:
@@ -2657,7 +2667,9 @@ def test_run_cli_list_sessions_supports_no_diagnostics_filter(tmp_path) -> None:
 
     asyncio.run(scenario())
 
-    assert runtime.find_session_summaries_calls == [SessionQuery(has_diagnostics=False)]
+    assert runtime.find_session_summaries_calls == [
+        SessionQuery(cwd=str(tmp_path), has_diagnostics=False)
+    ]
     assert stdout.getvalue() == ""
     assert stderr.getvalue() == ""
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Awaitable, Callable
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Generic, TextIO, TypeVar
@@ -329,10 +330,18 @@ RuntimeScopedInputRouterFactory = Callable[
     ConversationInputRouterFactoryPort,
 ]
 RuntimeSweepObserver = Callable[[RuntimeSweepReport], None]
+RuntimeScopeContextFactory = Callable[
+    [RuntimeScope],
+    AbstractContextManager[object],
+]
 
 
 def _ignore_runtime_sweep(_report: RuntimeSweepReport) -> None:
     return None
+
+
+def _null_runtime_context(_scope: RuntimeScope) -> AbstractContextManager[object]:
+    return nullcontext()
 
 
 @dataclass(frozen=True, slots=True)
@@ -343,6 +352,7 @@ class ConversationScreenRuntimeProfile:
     scope_factory: Callable[[], RuntimeScope] = resolve_runtime_scope
     sweep_policy: RuntimeSweepPolicy = DEFAULT_RUNTIME_SWEEP_POLICY
     observe_sweep: RuntimeSweepObserver = _ignore_runtime_sweep
+    context_factory: RuntimeScopeContextFactory = _null_runtime_context
 
 
 @dataclass(frozen=True, slots=True)
@@ -390,6 +400,7 @@ async def run_action_host_conversation_screen(
     callbacks = bind_action_host_to_screen_runner(action_host)
     lease: RunLease | None = None
     input_router_factory = profile.input_router_factory
+    runtime_context: AbstractContextManager[object] = nullcontext()
     try:
         if profile.runtime is not None:
             scope = profile.runtime.scope_factory()
@@ -399,26 +410,28 @@ async def run_action_host_conversation_screen(
             )
             profile.runtime.observe_sweep(lease.sweep_report)
             input_router_factory = profile.runtime.input_router_factory(scope)
-        return await run_conversation_screen(
-            app=app,
-            stdin=stdin,
-            stdout=stdout,
-            handle_prompt=callbacks.handle_prompt,
-            handle_local=handle_local,
-            handle_steer=callbacks.handle_steer,
-            handle_followup=callbacks.handle_followup,
-            handle_surface_intent=handle_surface_intent,
-            on_abort=callbacks.on_abort,
-            should_exit=should_exit,
-            is_local_command=is_local_command,
-            keybindings=keybindings,
-            terminal_mode_factory=terminal_mode_factory,
-            terminal_size_provider=terminal_size_provider,
-            input_chunk_reader=input_chunk_reader,
-            input_router_factory=input_router_factory,
-            interruption_message=profile.interruption_message,
-            cancellation_message=profile.cancellation_message,
-        )
+            runtime_context = profile.runtime.context_factory(scope)
+        with runtime_context:
+            return await run_conversation_screen(
+                app=app,
+                stdin=stdin,
+                stdout=stdout,
+                handle_prompt=callbacks.handle_prompt,
+                handle_local=handle_local,
+                handle_steer=callbacks.handle_steer,
+                handle_followup=callbacks.handle_followup,
+                handle_surface_intent=handle_surface_intent,
+                on_abort=callbacks.on_abort,
+                should_exit=should_exit,
+                is_local_command=is_local_command,
+                keybindings=keybindings,
+                terminal_mode_factory=terminal_mode_factory,
+                terminal_size_provider=terminal_size_provider,
+                input_chunk_reader=input_chunk_reader,
+                input_router_factory=input_router_factory,
+                interruption_message=profile.interruption_message,
+                cancellation_message=profile.cancellation_message,
+            )
     finally:
         if lease is not None:
             lease.close()
@@ -470,6 +483,7 @@ __all__ = [
     "ConversationScreenRunProfile",
     "ConversationScreenRuntimeProfile",
     "RuntimeScopedInputRouterFactory",
+    "RuntimeScopeContextFactory",
     "RuntimeSweepObserver",
     "RoutedConversationActionHost",
     "bind_action_host_to_screen_runner",

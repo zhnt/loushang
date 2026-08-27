@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loushang.foundation.observability import get_log
+from loushang.foundation.observability import get_log, log_context
 from loushang.foundation.runtime_scope import RuntimeScope, RuntimeSweepReport
 from loushang.harnesstui.conversation.host import (
     ConversationScreenRunProfile,
@@ -52,6 +52,10 @@ def _observe_runtime_sweep(report: RuntimeSweepReport) -> None:
     )
 
 
+def _runtime_observability_context(scope: RuntimeScope):
+    return log_context(run_id=scope.run_id)
+
+
 CODING_SCREEN_RUN_PROFILE = ConversationScreenRunProfile(
     input_router_factory=build_screen_input_router,
     interruption_message=CODING_INTERRUPTION_MESSAGE,
@@ -59,6 +63,7 @@ CODING_SCREEN_RUN_PROFILE = ConversationScreenRunProfile(
     runtime=ConversationScreenRuntimeProfile(
         input_router_factory=build_runtime_screen_input_router,
         observe_sweep=_observe_runtime_sweep,
+        context_factory=_runtime_observability_context,
     ),
 )
 

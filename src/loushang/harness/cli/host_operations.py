@@ -11,6 +11,12 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import TextIO
 
+from loushang.foundation.artifact_store import ArtifactStore
+from loushang.foundation.runtime_scope import (
+    RunLease,
+    RuntimeScope,
+    resolve_runtime_scope,
+)
 from loushang.harness.cli.agent_args import AgentCliArgs
 from loushang.harness.cli.command_execution import (
     CommandExecutionError,
@@ -168,20 +174,25 @@ def run_diagnostics_export_operation(
     stderr: TextIO,
     format_error: CliErrorFormatter = str,
     success_prefix: str = "Exported diagnostics to:",
+    runtime_scope_factory: Callable[[], RuntimeScope] = resolve_runtime_scope,
+    artifact_store_factory: Callable[[RuntimeScope], ArtifactStore] = ArtifactStore,
 ) -> int | None:
     """Export diagnostics through the shared archive engine."""
 
     if not requested:
         return None
     try:
-        output_path = export_diagnostics_bundle(
-            project_root=project_root,
-            session_dir=session_dir,
-            output=output,
-            diagnostics_service=diagnostics_service,
-            debug_latest_path=debug_latest_path,
-            trace_latest_path=trace_latest_path,
-        )
+        scope = runtime_scope_factory()
+        with RunLease.acquire(scope):
+            output_path = export_diagnostics_bundle(
+                project_root=project_root,
+                session_dir=session_dir,
+                output=output,
+                diagnostics_service=diagnostics_service,
+                debug_latest_path=debug_latest_path,
+                trace_latest_path=trace_latest_path,
+                artifact_store=artifact_store_factory(scope),
+            )
     except Exception as error:
         stderr.write(f"Error: {format_error(error)}\n")
         return 1

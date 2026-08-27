@@ -10,7 +10,7 @@ path. A path is an output of that classification, not the storage model.
 | durable user data | `$LOUSHANG_HOME/data` | sessions, user indexes | explicit authority; compatibility roots are read-only discovery |
 | durable machine state | `$LOUSHANG_HOME/state` | debug logs, traces, diagnostics inputs | append/private-file policy owned by the producing service |
 | reproducible cache | `$LOUSHANG_HOME/cache` | downloads, derived metadata | safe to evict and rebuild |
-| live process resources | `$LOUSHANG_RUNTIME_DIR/runs/<run_id>` | leases, drafts, future run artifacts | one `RuntimeScope` and one exclusive `RunLease` per application run |
+| live process resources | `$LOUSHANG_RUNTIME_DIR/runs/<run_id>` | leases, drafts, artifact snapshots | one `RuntimeScope` and one exclusive `RunLease` per application run |
 | disposable scratch | `$LOUSHANG_TMPDIR` | atomic-write intermediates | never used as a durable reference |
 
 `LOUSHANG_HOME` defaults to `~/.loushang`. The runtime root prefers
@@ -42,7 +42,7 @@ RuntimeScope (immutable run identity)
         |
         +--> DraftStore --> bounded clipboard-image drafts
         |
-        `--> ArtifactStore (later phase; exported run artifacts)
+        `--> ArtifactStore -> immutable objects + portable manifest
 ```
 
 ## Crash recovery and safety
@@ -85,10 +85,35 @@ machine state under `$LOUSHANG_HOME/state`, not session content. Diagnostic
 exports may snapshot selected observability files but must not silently include
 the transcript.
 
-## Deferred boundary
+## Run artifacts and explicit export
 
-This phase intentionally does not introduce a general `ArtifactStore`.
-Artifacts need retention, export, and provenance contracts distinct from
-draft cleanup. The next phase may add that service over the already injected
-`RuntimeScope` without changing session authority, clipboard semantics, or the
-path resolver.
+`ArtifactStore` owns immutable objects below `<run>/artifacts`, plus a portable
+manifest containing logical name, kind, media type, disclosure policy, byte
+size, digest, timestamp, and semantic source. Physical machine paths are not
+written into the manifest. The store enforces per-object, count, and total-byte
+bounds before publication. It requires an already-live run directory and never
+creates, closes, or recursively removes a shared `RunLease` tree.
+
+Snapshot sources require explicit allowed roots. The reader resolves the
+source, rejects non-regular or non-owned files and reparse points, uses
+no-follow opens where available, verifies path/file identity, bounds reads, and
+rejects a file that changes during capture. Every artifact declares one of
+three disclosure levels:
+
+- `private`: never implicitly share;
+- `redact`: eligible only through a mandatory redacting exporter;
+- `shareable`: caller has explicitly declared the content safe to publish.
+
+The first production consumer is diagnostics export. The CLI composition root
+creates a short-lived `RuntimeScope`, `RunLease`, and `ArtifactStore`; debug and
+trace `latest` inputs are copied into `redact` snapshots, and only those stable
+snapshots enter the ZIP. The ZIP is fsynced and atomically published without
+replacing an existing file. Default machine-managed archives remain under
+`$LOUSHANG_HOME/state/diagnostics` and are bounded by age, count, and total
+bytes. Explicit user output paths are not garbage-collected.
+
+Debug and trace producers remain rotating machine state under
+`$LOUSHANG_HOME/state`; moving active sinks under a transient run would lose
+the evidence needed after a crash. Sessions likewise remain durable user data.
+ArtifactStore therefore unifies capture, provenance, quota, disclosure, and
+export without collapsing distinct lifetimes into one directory.

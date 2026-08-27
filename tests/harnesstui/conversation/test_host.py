@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
@@ -538,6 +538,7 @@ def test_action_host_screen_run_owns_one_shared_runtime_scope(
     reports = []
     sentinel_factory = object()
     bound_scopes = []
+    context_events = []
 
     class Host:
         async def submit(self, _action) -> None:
@@ -556,9 +557,18 @@ def test_action_host_screen_run_owns_one_shared_runtime_scope(
         bound_scopes.append(bound_scope)
         return sentinel_factory
 
+    @contextmanager
+    def bind_context(bound_scope):
+        context_events.append(("enter", bound_scope))
+        try:
+            yield
+        finally:
+            context_events.append(("exit", bound_scope))
+
     async def fake_runner(**kwargs) -> int:
         assert kwargs["input_router_factory"] is sentinel_factory
         assert (scope.run_dir / ".lease").is_file()
+        assert context_events == [("enter", scope)]
         artifact = scope.run_dir / "artifacts" / "keep"
         artifact.parent.mkdir()
         artifact.write_text("shared", encoding="utf-8")
@@ -574,6 +584,7 @@ def test_action_host_screen_run_owns_one_shared_runtime_scope(
             input_router_factory=bind_scope,
             scope_factory=lambda: scope,
             observe_sweep=reports.append,
+            context_factory=bind_context,
         ),
     )
 
@@ -592,4 +603,5 @@ def test_action_host_screen_run_owns_one_shared_runtime_scope(
     assert bound_scopes == [scope]
     assert len(reports) == 1
     assert reports[0].failed == 0
+    assert context_events == [("enter", scope), ("exit", scope)]
     assert not scope.run_dir.exists()

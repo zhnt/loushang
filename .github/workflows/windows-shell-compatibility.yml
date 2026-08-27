@@ -54,7 +54,11 @@ jobs:
           PYTEST_ADDOPTS: >-
             -o faulthandler_timeout=60
             --junitxml=.artifacts/windows-runtime-lifecycle.xml
-        run: uv run pytest tests/foundation/test_runtime_scope.py -q
+        run: >-
+          uv run pytest
+          tests/foundation/test_runtime_scope.py
+          tests/foundation/test_artifact_store.py
+          -q
 
       - name: Reject empty or failing runtime lifecycle report
         run: uv run python scripts/dev/verify_pytest_xml.py .artifacts/windows-runtime-lifecycle.xml

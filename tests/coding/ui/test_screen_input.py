@@ -8,6 +8,7 @@ from loushang.coding.ui.screen_input import (
     build_runtime_screen_input_router,
     build_screen_input_router,
 )
+from loushang.foundation.observability.context import current_context
 from loushang.foundation.runtime_scope import RunLease, resolve_runtime_scope
 from loushang.harnesstui.conversation.agent_binding import (
     agent_image_parts_from_prompt_attachments,
@@ -46,6 +47,10 @@ def test_coding_screen_profile_uses_the_standard_input_factory_contract() -> Non
         CODING_SCREEN_RUN_PROFILE.runtime.input_router_factory
         is build_runtime_screen_input_router
     )
+    scope = resolve_runtime_scope(run_id="a" * 32)
+    with CODING_SCREEN_RUN_PROFILE.runtime.context_factory(scope):
+        assert current_context().run_id == scope.run_id
+    assert current_context().run_id is None
 
 
 def test_prompt_image_attachments_convert_at_the_agent_boundary() -> None:
