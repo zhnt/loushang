@@ -62,9 +62,9 @@ Rules:
   terminal scrollback as historical transcript content.
 - While completion is open, the ordinary status row is hidden. It returns after
   completion closes.
-- Completion close must not move the composer row. The bottom frame may keep a
-  transient height floor for the current frame and fill released rows with
-  separator/status/blank rows.
+- Completion close must release the suggestion rows immediately. The render
+  loop clears the stale rows and keeps its cursor estimate synchronized while
+  the ordinary separator and status rows return.
 - When `/quit` or another exit command is submitted, the runtime must clean the
   current completion/status area so the shell prompt starts on a clean new line.
 
@@ -180,7 +180,8 @@ replacement for the selection color.
 - slash completion hides ordinary status and restores it after close.
 - slash completion updates in place and does not enter scrollback history.
 - slash completion exit commands leave the shell prompt on a clean line.
-- closing inline completion keeps the composer row visually anchored.
+- closing inline completion releases its rows and leaves the cursor on the
+  composer.
 - model selection suppresses ordinary composer and status rows.
 - model selection uses `>` without shifting ordinal/content columns.
 - model selection aligns ordinals, model names, current markers, descriptions,
