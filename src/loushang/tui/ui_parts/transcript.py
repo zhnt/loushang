@@ -40,7 +40,7 @@ class TranscriptPresentation(Protocol):
     @property
     def cache_token(self) -> Hashable: ...
 
-    def project_record(self, record: DisplayRecord) -> DisplayRecord: ...
+    def project_record(self, record: DisplayRecord, *, width: int) -> DisplayRecord: ...
 
     def record_render_width(
         self,
@@ -54,6 +54,7 @@ class TranscriptPresentation(Protocol):
         lines: tuple[str, ...],
         record: DisplayRecord,
         *,
+        width: int,
         theme: ThemeResolver | None,
         capabilities: Any | None,
     ) -> tuple[str, ...]: ...
@@ -67,7 +68,8 @@ class NeutralTranscriptPresentation:
     def cache_token(self) -> None:
         return None
 
-    def project_record(self, record: DisplayRecord) -> DisplayRecord:
+    def project_record(self, record: DisplayRecord, *, width: int) -> DisplayRecord:
+        del width
         return record
 
     def record_render_width(
@@ -84,10 +86,11 @@ class NeutralTranscriptPresentation:
         lines: tuple[str, ...],
         record: DisplayRecord,
         *,
+        width: int,
         theme: ThemeResolver | None,
         capabilities: Any | None,
     ) -> tuple[str, ...]:
-        del record, theme, capabilities
+        del record, width, theme, capabilities
         return lines
 
 
@@ -287,7 +290,10 @@ class TranscriptRegion:
         markdown_streaming_key: object | None = None,
     ) -> tuple[str, ...]:
         display_record = _presentation_record(
-            self.presentation.project_record(_presentation_record(record))
+            self.presentation.project_record(
+                _presentation_record(record),
+                width=width,
+            )
         )
         render_width = self.presentation.record_render_width(
             display_record, width=width
@@ -312,6 +318,7 @@ class TranscriptRegion:
         return self.presentation.present_lines(
             tuple(line.text for line in rendered.lines),
             display_record,
+            width=render_width,
             theme=self.theme,
             capabilities=self.capabilities,
         )
@@ -508,7 +515,7 @@ class TranscriptRegion:
             )
         )
         display_record = _presentation_record(
-            self.presentation.project_record(source_record)
+            self.presentation.project_record(source_record, width=width)
         )
         if not isinstance(display_record, AssistantMessageRecord):
             return None
@@ -570,6 +577,7 @@ class TranscriptRegion:
                 presented_lines = self.presentation.present_lines(
                     prefixed,
                     display_record,
+                    width=render_width,
                     theme=self.theme,
                     capabilities=self.capabilities,
                 )

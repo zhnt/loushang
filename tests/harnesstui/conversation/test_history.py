@@ -165,6 +165,9 @@ def test_command_execution_projector_uses_standard_payload_shape() -> None:
         command="pytest -q",
         exit_code=0,
         stderr="",
+        tool_name="bash",
+        expanded_command="pytest -q",
+        expanded_output="passed",
     )
     assert (
         project_command_execution_payload(

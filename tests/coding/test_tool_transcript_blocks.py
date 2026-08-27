@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from loushang.agent import AgentToolResult
 from loushang.ai import TextPart
+from loushang.tui.transcript import ToolExecutionRecord
 
 
 def _result(
@@ -62,6 +65,7 @@ def test_builtin_read_tool_transcript_block_uses_call_renderer_without_body() ->
     assert block.title == "read src/loushang/coding/ui/mode.py:10-12"
     assert block.status == "ok"
     assert block.body is None
+    assert block.expanded_body is None
 
 
 def test_builtin_bash_tool_transcript_block_shows_bounded_output_preview() -> None:
@@ -93,6 +97,8 @@ def test_builtin_bash_tool_transcript_block_shows_head_and_tail_preview_by_defau
     assert block.body == (
         "line 1\nline 2\nline 3\n... (6 hidden lines)\nline 10\nline 11\nline 12"
     )
+    assert block.expanded_body == "\n".join(f"line {index}" for index in range(1, 13))
+    assert block.expanded_command == "pytest tests/coding -q"
 
 
 def test_builtin_edit_and_write_blocks_do_not_dump_tool_result_bodies() -> None:
@@ -119,10 +125,12 @@ def test_builtin_edit_and_write_blocks_do_not_dump_tool_result_bodies() -> None:
     assert edit.title == "edit src/example.py (1 edit)"
     assert edit.detail == "+1 -1"
     assert edit.body is None
+    assert edit.expanded_body is None
     assert write.verb == "Edited"
     assert write.title == "write src/new.py"
     assert write.detail == "created, 14 B"
     assert write.body is None
+    assert write.expanded_body is None
 
 
 def test_tool_transcript_block_uses_transcript_projection_for_raw_details() -> None:
@@ -190,6 +198,42 @@ def test_terminate_status_is_identical_for_live_and_replayed_tool_results() -> N
     assert replay.status == "terminate"
 
 
+def test_materialized_history_recovers_full_command_from_tool_call() -> None:
+    from loushang.ai import ToolCall, ToolResultMessage
+    from loushang.harnesstui.conversation.agent_binding import (
+        agent_session_history_records,
+    )
+
+    command = "pytest tests/coding -q\nruff check src"
+    assistant = SimpleNamespace(
+        role="assistant",
+        content=[
+            ToolCall(
+                type="toolCall",
+                id="tc-history",
+                name="bash",
+                arguments={"command": command},
+            )
+        ],
+    )
+    result = ToolResultMessage(
+        role="toolResult",
+        tool_call_id="tc-history",
+        tool_name="bash",
+        content=[TextPart(type="text", text="done")],
+        is_error=False,
+        timestamp=1.0,
+    )
+
+    records = agent_session_history_records((assistant, result))
+
+    assert len(records) == 1
+    record = records[0]
+    assert isinstance(record, ToolExecutionRecord)
+    assert record.tool_name == "bash"
+    assert record.expanded_command == command
+
+
 def test_builtin_search_blocks_show_bounded_result_preview() -> None:
     grep = _project(
         "grep",
@@ -212,11 +256,12 @@ def test_builtin_search_blocks_show_bounded_result_preview() -> None:
     assert ls.body == "agent\nai\n... (2 more lines)"
 
 
-def test_builtin_failed_tool_transcript_block_uses_error_detail_not_body() -> None:
+def test_builtin_failed_run_block_keeps_error_detail_and_output_preview() -> None:
     block = _project(
         "bash", {"command": "exit 1"}, _result("boom\nmore detail"), is_error=True
     )
 
     assert block.status == "error"
     assert block.detail == "failed: boom"
-    assert block.body is None
+    assert block.body == "boom\nmore detail"
+    assert block.expanded_body == "boom\nmore detail"

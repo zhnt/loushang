@@ -22,7 +22,13 @@ from loushang.tui.transcript import (
 )
 
 
-def _project_record(record: DisplayRecord, *, context: str) -> DisplayRecord:
+def _project_record(
+    record: DisplayRecord,
+    *,
+    context: str,
+    width: int,
+) -> DisplayRecord:
+    del width
     if isinstance(record, ToolExecutionRecord):
         return replace(record, name=f"{context}:{record.name}")
     return record
@@ -89,6 +95,7 @@ def test_profiled_transcript_presentation_applies_product_copy_and_style() -> No
             presentation.present_lines(
                 lines,
                 record,
+                width=80,
                 theme=None,
                 capabilities=None,
             )
@@ -105,6 +112,7 @@ def test_profiled_transcript_presentation_structures_tool_body_once() -> None:
         name="shell",
         state="completed",
         elapsed_seconds=0.0,
+        command="echo hello",
     )
 
     assert presentation.present_lines(
@@ -115,6 +123,7 @@ def test_profiled_transcript_presentation_structures_tool_body_once() -> None:
             "  second line",
         ),
         record,
+        width=80,
         theme=None,
         capabilities=None,
     ) == (
@@ -126,9 +135,44 @@ def test_profiled_transcript_presentation_structures_tool_body_once() -> None:
     assert presentation.present_lines(
         ("! Ran shell",),
         record,
+        width=80,
         theme=None,
         capabilities=None,
     ) == ("[TOOL-ERROR shell]",)
+
+
+def test_profiled_transcript_presentation_does_not_treat_pipe_output_as_command() -> (
+    None
+):
+    presentation = ProfiledConversationTranscriptPresentation(
+        profile=_TRANSCRIPT_PROFILE,
+        context="workspace",
+    )
+    record = ToolExecutionRecord(
+        name="shell",
+        state="completed",
+        elapsed_seconds=0.0,
+        command="echo table",
+        output="| first\nsecond",
+    )
+
+    assert presentation.present_lines(
+        (
+            "- Ran shell",
+            "  $ echo table",
+            "  | first",
+            "  second",
+        ),
+        record,
+        width=80,
+        theme=None,
+        capabilities=None,
+    ) == (
+        "[TOOL shell]",
+        "[COMMAND $ echo table]",
+        "[OUTPUT | first]",
+        "[       second]",
+    )
 
 
 def test_profiled_transcript_presentation_context_is_its_cache_token() -> None:

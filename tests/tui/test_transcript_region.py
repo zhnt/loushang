@@ -31,7 +31,8 @@ class _SpyPresentation:
         self.token_reads += 1
         return "stable"
 
-    def project_record(self, record: DisplayRecord) -> DisplayRecord:
+    def project_record(self, record: DisplayRecord, *, width: int) -> DisplayRecord:
+        del width
         self.project_calls += 1
         return record
 
@@ -50,10 +51,11 @@ class _SpyPresentation:
         lines: tuple[str, ...],
         record: DisplayRecord,
         *,
+        width: int,
         theme: ThemeResolver | None,
         capabilities: Any | None,
     ) -> tuple[str, ...]:
-        del record, theme, capabilities
+        del record, width, theme, capabilities
         self.present_calls += 1
         return lines
 
@@ -61,7 +63,8 @@ class _SpyPresentation:
 class _ProjectingPresentation:
     cache_token = "projecting"
 
-    def project_record(self, record: DisplayRecord) -> DisplayRecord:
+    def project_record(self, record: DisplayRecord, *, width: int) -> DisplayRecord:
+        del width
         if isinstance(record, AssistantMessageRecord):
             return replace(record, text="PROJECTED")
         return record
@@ -80,10 +83,11 @@ class _ProjectingPresentation:
         lines: tuple[str, ...],
         record: DisplayRecord,
         *,
+        width: int,
         theme: ThemeResolver | None,
         capabilities: Any | None,
     ) -> tuple[str, ...]:
-        del record, theme, capabilities
+        del record, width, theme, capabilities
         return lines
 
 
@@ -95,7 +99,8 @@ class _TokenPresentation:
     def cache_token(self) -> str:
         return self.token
 
-    def project_record(self, record: DisplayRecord) -> DisplayRecord:
+    def project_record(self, record: DisplayRecord, *, width: int) -> DisplayRecord:
+        del width
         return record
 
     def record_render_width(
@@ -112,17 +117,19 @@ class _TokenPresentation:
         lines: tuple[str, ...],
         record: DisplayRecord,
         *,
+        width: int,
         theme: ThemeResolver | None,
         capabilities: Any | None,
     ) -> tuple[str, ...]:
-        del record, theme, capabilities
+        del record, width, theme, capabilities
         return tuple(f"{self.token}:{line}" for line in lines)
 
 
 class _StabilityPresentation:
     cache_token = "stable-parity"
 
-    def project_record(self, record: DisplayRecord) -> DisplayRecord:
+    def project_record(self, record: DisplayRecord, *, width: int) -> DisplayRecord:
+        del width
         return record
 
     def record_render_width(
@@ -139,10 +146,11 @@ class _StabilityPresentation:
         lines: tuple[str, ...],
         record: DisplayRecord,
         *,
+        width: int,
         theme: ThemeResolver | None,
         capabilities: Any | None,
     ) -> tuple[str, ...]:
-        del theme, capabilities
+        del width, theme, capabilities
         prefix = (
             "S:"
             if not isinstance(record, AssistantMessageRecord) or record.stable
