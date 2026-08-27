@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from loushang.harnesstui.conversation.input import bind_clipboard_image_input_router
 from loushang.harnesstui.conversation.screen_state import ScreenConversationState
 from loushang.harnesstui.testing.screen_loop_playback import (
     BlockingPromptController,
@@ -13,6 +14,7 @@ from loushang.harnesstui.testing.screen_loop_playback import (
     ConversationScreenLoopScenario,
     ScriptedInputChunk,
 )
+from loushang.tui.clipboard_image import ClipboardImage
 from loushang.tui.core import RenderConstraints, RenderResult
 from loushang.tui.framework import SurfaceHost
 from loushang.tui.input import BRACKETED_PASTE_END, BRACKETED_PASTE_START
@@ -169,6 +171,61 @@ def test_screen_loop_playback_preserves_focus_and_paste_tails_at_idle_deadline()
     assert prompts == [pasted]
     assert "[I" not in result.output
     assert "[201~" not in result.output
+
+
+def test_screen_loop_playback_routes_windows_alt_v_to_clipboard_image(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("sys.platform", "win32")
+
+    def app_factory(*, now):
+        app = _ScreenApp(clock=now)
+        app.state.cwd = str(tmp_path)
+        return app
+
+    clipboard_router = bind_clipboard_image_input_router()
+
+    def input_router_factory(
+        *, app, should_exit, is_local_command, keybindings, width, height
+    ):
+        return clipboard_router(
+            app=app,
+            should_exit=should_exit,
+            is_local_command=is_local_command,
+            keybindings=keybindings,
+            width=width,
+            height=height,
+            clipboard_image_reader=lambda: ClipboardImage(
+                bytes=b"png",
+                mime_type="image/png",
+            ),
+            clipboard_image_name_factory=lambda: "playback",
+        )
+
+    playback = ConversationScreenLoopPlayback(
+        app_factory=app_factory,
+        interruption_message="interrupted",
+        cancellation_message="cancelled",
+        width=40,
+        height=8,
+        input_router_factory=input_router_factory,
+    )
+
+    result = playback.run(
+        # The Windows backend normalizes native getwch() bytes NUL + 0x2F
+        # (the V scan code) into this terminal-style Alt+V sequence.
+        (0.00, "\x1bv"),
+        (0.01, ""),
+    )
+
+    marker = "@.loushang/clipboard/clipboard-playback.png"
+    result.assert_exit_code(0)
+    result.assert_composer_text(f"{marker} ")
+    assert (tmp_path / ".loushang" / "clipboard" / "clipboard-playback.png").read_bytes() == b"png"
+    assert playback.app.state.status_message == (
+        "Attached clipboard image: .loushang/clipboard/clipboard-playback.png"
+    )
 
 
 def test_screen_loop_scenario_builds_timed_input_recipe() -> None:

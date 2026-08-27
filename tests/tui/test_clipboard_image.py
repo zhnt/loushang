@@ -32,12 +32,35 @@ def _tiny_tiff_1x1_red() -> bytes:
     return output.getvalue()
 
 
+def test_windows_dib_payload_builds_a_valid_bitmap_file() -> None:
+    from PIL import Image
+
+    from loushang.tui.clipboard_image import _windows_dib_to_bmp
+
+    bitmap = _tiny_bmp_1x1_red()
+    rebuilt = _windows_dib_to_bmp(bitmap[14:])
+
+    assert rebuilt == bitmap
+    assert rebuilt is not None
+    with Image.open(BytesIO(rebuilt)) as image:
+        assert image.convert("RGB").getpixel((0, 0)) == (255, 0, 0)
+
+
 @pytest.mark.parametrize(
     ("platform_name", "env", "expected"),
     [
         ("darwin", {"WAYLAND_DISPLAY": "wayland-0", "WSL_DISTRO_NAME": "Ubuntu"}, "macos"),
         ("linux", {"OS": "Windows_NT", "WSL_DISTRO_NAME": "Ubuntu"}, "wsl"),
         ("win32", {"OS": "Windows_NT"}, "windows"),
+        (
+            "win32",
+            {
+                "OS": "Windows_NT",
+                "WSLENV": "WT_SESSION",
+                "WSL_DISTRO_NAME": "Ubuntu",
+            },
+            "windows",
+        ),
         ("linux", {"WAYLAND_DISPLAY": "wayland-0"}, "wayland"),
         ("linux", {}, "x11"),
     ],
@@ -63,7 +86,10 @@ def test_clipboard_image_resolves_host_kind(
     [
         ("macos", ("macos_native", "pngpaste", "injected_reader")),
         ("wsl", ("wl_paste", "xclip", "wsl_powershell", "injected_reader")),
-        ("windows", ("windows_powershell", "injected_reader")),
+        (
+            "windows",
+            ("windows_native", "windows_powershell", "injected_reader"),
+        ),
         ("wayland", ("wl_paste", "xclip", "injected_reader")),
         ("x11", ("injected_reader", "xclip")),
     ],
@@ -187,6 +213,7 @@ def test_clipboard_image_uses_wsl_powershell_fallback(tmp_path) -> None:
     assert image.mime_type == "image/png"
     assert calls[-2][0] == "wslpath"
     assert calls[-1][0] == "powershell.exe"
+    assert calls[-1][1][:3] == ("-NoProfile", "-STA", "-Command")
 
 
 def test_clipboard_image_prefers_macos_native_png() -> None:
@@ -350,7 +377,8 @@ def test_clipboard_image_uses_native_windows_powershell_without_wslpath(tmp_path
     assert image.mime_type == "image/png"
     assert len(calls) == 1
     assert calls[0][0] == "powershell.exe"
-    assert calls[0][1][:2] == ("-NoProfile", "-Command")
+    assert calls[0][1][:3] == ("-NoProfile", "-STA", "-Command")
+    assert "Start-Sleep -Milliseconds 50" in calls[0][1][3]
 
 
 def test_clipboard_command_runner_forwards_environment(monkeypatch: pytest.MonkeyPatch) -> None:

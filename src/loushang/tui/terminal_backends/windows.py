@@ -13,6 +13,8 @@ from functools import partial
 from typing import Any
 
 _EXTENDED_KEY_SEQUENCES = {
+    # msvcrt.getwch() exposes native Alt+V as NUL followed by scan code 0x2F.
+    "/": "\x1bv",
     "H": "\x1b[A",
     "P": "\x1b[B",
     "M": "\x1b[C",
@@ -56,6 +58,47 @@ _ENABLE_PROCESSED_OUTPUT = 0x0001
 _ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
 _STD_INPUT_HANDLE = -10
 _STD_OUTPUT_HANDLE = -11
+_KEY_EVENT = 0x0001
+_RIGHT_ALT_PRESSED = 0x0001
+_LEFT_ALT_PRESSED = 0x0002
+_VK_MENU = 0x12
+_VK_LMENU = 0xA4
+_VK_RMENU = 0xA5
+_VK_V = 0x56
+_KEY_STATE_DOWN_MASK = 0x8000
+_MAX_PEEKED_INPUT_RECORDS = 32
+
+
+class _WindowsCharUnion(ctypes.Union):
+    _fields_ = [
+        ("UnicodeChar", ctypes.c_wchar),
+        ("AsciiChar", ctypes.c_char),
+    ]
+
+
+class _WindowsKeyEventRecord(ctypes.Structure):
+    _fields_ = [
+        ("bKeyDown", ctypes.c_int32),
+        ("wRepeatCount", ctypes.c_uint16),
+        ("wVirtualKeyCode", ctypes.c_uint16),
+        ("wVirtualScanCode", ctypes.c_uint16),
+        ("uChar", _WindowsCharUnion),
+        ("dwControlKeyState", ctypes.c_uint32),
+    ]
+
+
+class _WindowsInputEventUnion(ctypes.Union):
+    _fields_ = [
+        ("KeyEvent", _WindowsKeyEventRecord),
+        ("padding", ctypes.c_byte * 16),
+    ]
+
+
+class _WindowsInputRecord(ctypes.Structure):
+    _fields_ = [
+        ("EventType", ctypes.c_uint16),
+        ("Event", _WindowsInputEventUnion),
+    ]
 
 
 def _load_console_module() -> Any | None:
@@ -349,11 +392,24 @@ def _read_from_module(console: Any) -> str:
     return chunk + _read_escape_burst(console)
 
 
-def _read_logical_character(console: Any) -> str:
+def _read_logical_character(
+    console: Any,
+    *,
+    recover_plain_alt: bool = True,
+) -> str:
+    pending_alt_modifier = (
+        _windows_pending_alt_modifier() if recover_plain_alt else False
+    )
     char = console.getwch()
     if char in {"\x00", "\xe0"}:
         extended = console.getwch()
         return _EXTENDED_KEY_SEQUENCES.get(extended, char + extended)
+    if recover_plain_alt and char.lower() == "v" and (
+        pending_alt_modifier or _windows_alt_pressed()
+    ):
+        # Some Windows VT hosts preserve the physical Alt key state but expose
+        # Alt+V through getwch() as an unmodified printable character.
+        return "\x1bv"
     if _is_high_surrogate(char):
         trailing = console.getwch()
         if _is_low_surrogate(trailing):
@@ -368,6 +424,54 @@ def _read_logical_character(console: Any) -> str:
     if _is_low_surrogate(char):
         return _REPLACEMENT_CHARACTER
     return char
+
+
+def _windows_alt_pressed() -> bool:
+    try:
+        state = int(ctypes.windll.user32.GetAsyncKeyState(_VK_MENU))  # type: ignore[attr-defined]
+    except (AttributeError, OSError, TypeError, ValueError):
+        return False
+    return bool(state & _KEY_STATE_DOWN_MASK)
+
+
+def _windows_pending_alt_modifier() -> bool:
+    try:
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        handle = ctypes.c_void_p(kernel32.GetStdHandle(_STD_INPUT_HANDLE))
+        available = ctypes.c_uint32()
+        if not kernel32.GetNumberOfConsoleInputEvents(
+            handle,
+            ctypes.byref(available),
+        ):
+            return False
+        record_count = min(int(available.value), _MAX_PEEKED_INPUT_RECORDS)
+        if record_count <= 0:
+            return False
+        records = (_WindowsInputRecord * record_count)()
+        peeked = ctypes.c_uint32()
+        if not kernel32.PeekConsoleInputW(
+            handle,
+            records,
+            record_count,
+            ctypes.byref(peeked),
+        ):
+            return False
+    except (AttributeError, OSError, TypeError, ValueError):
+        return False
+    alt_mask = _LEFT_ALT_PRESSED | _RIGHT_ALT_PRESSED
+    for record in records[: int(peeked.value)]:
+        if record.EventType != _KEY_EVENT:
+            continue
+        key = record.Event.KeyEvent
+        if not key.bKeyDown:
+            continue
+        if key.wVirtualKeyCode in {_VK_MENU, _VK_LMENU, _VK_RMENU}:
+            return True
+        return bool(
+            key.wVirtualKeyCode == _VK_V
+            and key.dwControlKeyState & alt_mask
+        )
+    return False
 
 
 def _read_escape_burst(console: Any) -> str:
@@ -394,7 +498,7 @@ def _read_escape_burst(console: Any) -> str:
                 break
             time.sleep(_INPUT_POLL_INTERVAL_SECONDS)
             continue
-        chunk = _read_logical_character(console)
+        chunk = _read_logical_character(console, recover_plain_alt=False)
         if not chunk:
             break
         remaining = _ESCAPE_BURST_MAX_CHARS - size
