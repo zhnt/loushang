@@ -169,6 +169,7 @@ def build_agent_tool_transcript_projection(
     )
     return build_mapping_tool_transcript_projection(
         result_text=_agent_result_text,
+        expanded_result_text=_agent_expanded_result_text,
         result_details=_agent_result_details,
         result_terminated=lambda result: (
             isinstance(result, AgentToolResult) and result.terminate
@@ -231,12 +232,48 @@ def agent_session_history_records(
         tool_definition_resolver=tool_definition_resolver,
         max_body_lines=max_tool_body_lines,
     )
+    tool_calls = _agent_history_tool_call_snapshots(
+        transcript_items,
+        tool_projector=tool_projector,
+    )
     return project_agent_conversation_history(
         transcript_items,
         tool_result_projector=lambda message: agent_tool_block_to_record(
-            tool_projector.project_tool_result_message(message)
+            tool_projector.project_tool_result_message(
+                message,
+                tool_calls.get(tool_projector.message_id(message)),
+            )
         ),
     )
+
+
+def _agent_history_tool_call_snapshots(
+    items: Sequence[object],
+    *,
+    tool_projector: AgentToolTranscriptProjection,
+) -> dict[str, ToolCallSnapshot]:
+    snapshots: dict[str, ToolCallSnapshot] = {}
+    for item in items:
+        message = getattr(item, "payload", item)
+        if getattr(message, "role", None) != "assistant":
+            continue
+        content = getattr(message, "content", None)
+        if not isinstance(content, Sequence) or isinstance(content, str):
+            continue
+        for part in content:
+            tool_call_id = getattr(part, "id", None)
+            tool_name = getattr(part, "name", None)
+            if not isinstance(tool_call_id, str) or not isinstance(tool_name, str):
+                continue
+            snapshots[tool_call_id] = tool_projector.remember_call(
+                {
+                    "type": "tool_execution_start",
+                    "tool_call_id": tool_call_id,
+                    "tool_name": tool_name,
+                    "args": getattr(part, "arguments", None),
+                }
+            )
+    return snapshots
 
 
 async def load_agent_session_history_records(
@@ -686,6 +723,16 @@ def _agent_result_text(result: object, max_lines: int) -> str:
         _agent_result_details(result),
         max_collapsed_lines=max_lines,
     ).collapsed
+
+
+def _agent_expanded_result_text(result: object, max_lines: int) -> str:
+    del max_lines
+    if not isinstance(result, AgentToolResult):
+        return ""
+    return render_tool_result_presentation(
+        result.content,
+        _agent_result_details(result),
+    ).expanded
 
 
 def _agent_result_details(result: object) -> Mapping[str, Any]:

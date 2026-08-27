@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import errno
 import json
 import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -41,6 +43,82 @@ def test_revision_store_publishes_content_addressed_snapshot_and_keeps_source_id
         assert stream.read() == b"review v1"
     assert handle.entry_kind("resources") == "directory"
     assert handle.entry_kind("resources/prompts/review.md") == "file"
+
+
+def test_revision_store_keeps_staging_root_writable_until_atomic_publish(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _plugin(tmp_path / "source")
+    observed_staging_modes: list[int] = []
+    original_rename = Path.rename
+
+    def capture_staging_mode(path: Path, target: Path) -> Path:
+        if path.name.startswith(".quarantine-"):
+            observed_staging_modes.append(stat.S_IMODE(path.stat().st_mode))
+        return original_rename(path, target)
+
+    monkeypatch.setattr(Path, "rename", capture_staging_mode)
+
+    published = PluginRevisionStore(tmp_path / "revisions").publish(
+        PluginManifestParser().parse(source)
+    )
+
+    assert observed_staging_modes == [0o700]
+    assert stat.S_IMODE(published.root.stat().st_mode) == 0o500
+
+
+def test_revision_store_removes_new_revision_when_final_freeze_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _plugin(tmp_path / "source")
+    revision_root = tmp_path / "revisions" / "sha256"
+    original_chmod = Path.chmod
+
+    def fail_published_root_freeze(path: Path, mode: int, *args, **kwargs) -> None:
+        if (
+            mode == 0o500
+            and path.parent == revision_root
+            and not path.name.startswith(".quarantine-")
+        ):
+            raise PermissionError("final revision freeze failed")
+        original_chmod(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "chmod", fail_published_root_freeze)
+
+    with pytest.raises(PluginRevisionError) as caught:
+        PluginRevisionStore(tmp_path / "revisions").publish(
+            PluginManifestParser().parse(source)
+        )
+
+    assert caught.value.code == "plugin_revision_publish_failed"
+    assert list(revision_root.iterdir()) == []
+
+
+def test_revision_store_reuses_existing_revision_when_rename_reports_eacces(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = _plugin(tmp_path / "first")
+    second = _plugin(tmp_path / "second")
+    store = PluginRevisionStore(tmp_path / "revisions")
+    first_published = store.publish(PluginManifestParser().parse(first))
+    original_rename = Path.rename
+
+    def deny_rename_to_existing_revision(path: Path, target: Path) -> Path:
+        if target == first_published.root:
+            raise PermissionError(errno.EACCES, "target revision is frozen")
+        return original_rename(path, target)
+
+    monkeypatch.setattr(Path, "rename", deny_rename_to_existing_revision)
+
+    second_published = store.publish(PluginManifestParser().parse(second))
+
+    assert second_published.root == first_published.root
+    second_handle = second_published.revision_handle
+    assert second_handle is not None
+    second_handle.verify()
 
 
 def test_portable_revision_backend_preserves_verified_snapshot_contract(
@@ -215,6 +293,7 @@ def test_verified_revision_detects_publication_path_replacement(
     handle = published.revision_handle
     assert handle is not None
     moved = published.root.with_name(f"{published.root.name}.moved")
+    published.root.chmod(0o700)
     published.root.rename(moved)
     published.root.mkdir()
 

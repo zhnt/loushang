@@ -12,6 +12,7 @@ from loushang.harnesstui.conversation.screen_frame import (
     ScreenFramePresentation,
 )
 from loushang.harnesstui.conversation.screen_state import ScreenConversationState
+from loushang.tui.cell_width import wrap_cells
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.transcript import (
     AssistantMessageRecord,
@@ -35,6 +36,7 @@ class TranscriptRecordProjector(Protocol[ContextT_contra]):
         record: DisplayRecord,
         *,
         context: ContextT_contra,
+        width: int,
     ) -> DisplayRecord: ...
 
 
@@ -110,8 +112,17 @@ class ProfiledConversationTranscriptPresentation(Generic[ContextT]):
     def cache_token(self) -> ContextT:
         return self.context
 
-    def project_record(self, record: DisplayRecord) -> DisplayRecord:
-        return self.profile.project_record(record, context=self.context)
+    def project_record(
+        self,
+        record: DisplayRecord,
+        *,
+        width: int = 80,
+    ) -> DisplayRecord:
+        return self.profile.project_record(
+            record,
+            context=self.context,
+            width=width,
+        )
 
     def record_render_width(
         self,
@@ -126,6 +137,7 @@ class ProfiledConversationTranscriptPresentation(Generic[ContextT]):
         lines: tuple[str, ...],
         record: DisplayRecord,
         *,
+        width: int,
         theme: ThemeResolver | None,
         capabilities: Any | None,
     ) -> tuple[str, ...]:
@@ -142,11 +154,13 @@ class ProfiledConversationTranscriptPresentation(Generic[ContextT]):
 
         rendered: list[str] = []
         output_started = False
-        for line in lines:
+        command_line_count = _tool_command_line_count(record.command, width=width)
+        for line_index, line in enumerate(lines):
             if line.startswith("- Ran ") or line.startswith("! Ran "):
                 presented = line
-            elif line.startswith("  $ "):
-                presented = self.profile.copy.tool_command_prefix + line[2:]
+            elif 0 < line_index <= command_line_count:
+                payload = line[2:] if line_index == 1 else line[4:]
+                presented = self.profile.copy.tool_command_prefix + payload
             elif line.startswith("  "):
                 presented = (
                     self.profile.copy.tool_first_output_prefix
@@ -165,7 +179,6 @@ class ProfiledConversationTranscriptPresentation(Generic[ContextT]):
                 )
             )
         return tuple(rendered)
-
     def _present_line(
         self,
         line: str,
@@ -198,6 +211,12 @@ class ProfiledConversationTranscriptPresentation(Generic[ContextT]):
             theme=theme,
             capabilities=capabilities,
         )
+
+
+def _tool_command_line_count(command: str, *, width: int) -> int:
+    if not command:
+        return 0
+    return len(wrap_cells(command, width=max(1, width - 4)))
 
 
 @dataclass(frozen=True, slots=True)

@@ -5,8 +5,6 @@ from dataclasses import dataclass, field
 from typing import ClassVar
 
 from loushang.harness.tools.workspace.output_preview import (
-    DEFAULT_TOOL_OUTPUT_PREVIEW_LINES,
-    collapse_tool_output_preview,
     drop_tool_timing_tail_line,
     prefers_tail_tool_output,
 )
@@ -30,6 +28,7 @@ from loushang.tui import (
     LoushangWelcomePanel,
     loushang_welcome_theme,
 )
+from loushang.tui.cell_width import TAB_WIDTH, truncate_to_width, wrap_cells
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.transcript import (
     ToolExecutionRecord,
@@ -38,6 +37,8 @@ from loushang.tui.ui_parts.transcript import DEFAULT_STABLE_TRANSCRIPT_CACHE_ENT
 
 DEFAULT_ACTIVE_TRANSCRIPT_LINE_BUDGET = 320
 DEFAULT_STABLE_RENDER_CACHE_ENTRY_LIMIT = DEFAULT_STABLE_TRANSCRIPT_CACHE_ENTRY_LIMIT
+DEFAULT_TOOL_PREVIEW_SCREEN_ROWS = 7
+_TOOL_PREVIEW_HINT = "ctrl + t to view transcript"
 
 _CODING_SCREEN_FRAME_COPY = ScreenFrameCopy(
     working_label="Working",
@@ -79,8 +80,41 @@ def _terminal_transcript_theme() -> ThemeResolver:
     )
 
 
-def _project_coding_tool_name(name: str, *, context: str) -> str:
-    return compact_absolute_display_paths(name, cwd=context)
+def _project_coding_tool_name(
+    record: ToolExecutionRecord,
+    *,
+    context: str,
+    width: int,
+) -> str:
+    name = (
+        record.tool_name
+        if _coding_command_needs_block(record, context=context, width=width)
+        else record.name
+    )
+    return compact_absolute_display_paths(name or record.name, cwd=context)
+
+
+def _project_coding_tool_command(
+    record: ToolExecutionRecord,
+    *,
+    projected_name: str,
+    context: str,
+    width: int,
+) -> str:
+    del projected_name
+    command = record.expanded_command
+    if command is None:
+        return record.command.replace("\t", " " * TAB_WIDTH)
+    command = compact_absolute_display_paths(command, cwd=context)
+    command = command.replace("\t", " " * TAB_WIDTH)
+    if not _coding_command_needs_block(record, context=context, width=width):
+        return record.command.replace("\t", " " * TAB_WIDTH)
+    return _collapse_coding_tool_preview(
+        command,
+        width=_tool_preview_content_width(width),
+        max_rows=DEFAULT_TOOL_PREVIEW_SCREEN_ROWS,
+        tail=True,
+    )
 
 
 def _project_coding_tool_output(
@@ -88,16 +122,89 @@ def _project_coding_tool_output(
     *,
     projected_name: str,
     context: str,
+    width: int,
 ) -> str:
     del context
-    output = drop_tool_timing_tail_line(record.output)
+    if not record.output:
+        return record.output
+    output = drop_tool_timing_tail_line(
+        record.expanded_output if record.expanded_output is not None else record.output
+    )
     if record.output_kind == "text":
-        output = collapse_tool_output_preview(
+        output = _collapse_coding_tool_preview(
             output,
-            max_lines=DEFAULT_TOOL_OUTPUT_PREVIEW_LINES,
+            width=_tool_output_preview_content_width(width),
+            max_rows=DEFAULT_TOOL_PREVIEW_SCREEN_ROWS,
             tail=prefers_tail_tool_output(projected_name),
         )
     return output
+
+
+def _coding_command_needs_block(
+    record: ToolExecutionRecord,
+    *,
+    context: str,
+    width: int,
+) -> bool:
+    command = record.expanded_command
+    if command is None:
+        return False
+    command = compact_absolute_display_paths(command, cwd=context)
+    command = command.replace("\t", " " * TAB_WIDTH)
+    return len(wrap_cells(command, width=_tool_preview_content_width(width))) > 1
+
+
+def _tool_preview_content_width(width: int) -> int:
+    # Commands reserve the four-cell rail plus ``$ ``, as well as one terminal
+    # autowrap-safety cell.
+    return max(1, width - 7)
+
+
+def _tool_output_preview_content_width(width: int) -> int:
+    # Tool output uses the four-cell Product rail plus one autowrap-safety cell.
+    return max(1, width - 5)
+
+
+def _collapse_coding_tool_preview(
+    text: str,
+    *,
+    width: int,
+    max_rows: int,
+    tail: bool,
+) -> str:
+    if max_rows < 1:
+        return ""
+    text = text.replace("\t", " " * TAB_WIDTH)
+    rows = wrap_cells(text, width=width)
+    if len(rows) <= max_rows:
+        return "\n".join(rows)
+
+    marker_rows = 1
+    while True:
+        visible_budget = max(0, max_rows - marker_rows)
+        head_budget = visible_budget if not tail else visible_budget // 2
+        tail_budget = 0 if not tail else visible_budget - head_budget
+        hidden_rows = max(0, len(rows) - head_budget - tail_budget)
+        marker = f"… +{hidden_rows} lines ({_TOOL_PREVIEW_HINT})"
+        updated_marker_rows = len(wrap_cells(marker, width=width))
+        if updated_marker_rows <= marker_rows:
+            break
+        marker_rows = updated_marker_rows
+
+    if marker_rows > max_rows:
+        compact_marker = truncate_to_width(
+            f"ctrl+t · +{len(rows)}",
+            max_width=width * max_rows,
+            ellipsis="…",
+        )
+        return "\n".join(wrap_cells(compact_marker, width=width))
+    if marker_rows == max_rows:
+        return "\n".join(wrap_cells(marker, width=width))
+    head = rows[:head_budget]
+    tail_rows = rows[-tail_budget:] if tail_budget else []
+    return "\n".join(
+        [*head, *wrap_cells(marker, width=width), *tail_rows]
+    )
 
 
 def _coding_welcome_panel(
@@ -118,6 +225,7 @@ _CODING_TRANSCRIPT_DISPLAY_PROJECTION = TranscriptDisplayProjectionProfile[str](
     project_tool_output=_project_coding_tool_output,
     suppress_duplicate_tool_command=True,
     tool_record_width_inset=2,
+    project_tool_command=_project_coding_tool_command,
 )
 
 _CODING_TRANSCRIPT_PRESENTATION_PROFILE = ConversationTranscriptPresentationProfile[

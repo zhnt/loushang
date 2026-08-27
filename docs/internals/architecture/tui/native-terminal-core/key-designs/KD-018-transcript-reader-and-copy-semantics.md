@@ -96,11 +96,13 @@ Rules:
 
 ### Transcript Reader
 
-`Ctrl+O` opens a transient transcript reader from normal prompt mode.
+`Ctrl+O` or `Ctrl+T` opens a transient transcript reader from normal prompt
+mode. `Ctrl+O` remains supported for compatibility; `Ctrl+T` is the discoverable
+shortcut shown beside collapsed tool previews.
 
 While the reader is open:
 
-- `Ctrl+O` closes the reader.
+- `Ctrl+O` and `Ctrl+T` close the reader.
 - `q`, `Esc`, and `Ctrl+C` close the reader.
 - `Up` and `Down` scroll by line.
 - `PageUp` and `PageDown` scroll by page.
@@ -112,10 +114,11 @@ While the reader is open:
 the existing composer line-end behavior. Reader-local export shortcuts are not
 reserved in this design; they should be designed with the export feature.
 
-`Ctrl+O` is state-sensitive, not sequence-sensitive. It opens the reader when no
-reader is active and closes the active reader when one is open. The
+The open shortcuts are state-sensitive, not sequence-sensitive. Either shortcut
+opens the reader when no reader is active and closes the active reader when one
+is open. The
 implementation must check current reader state before acting; it must not assume
-that alternating `Ctrl+O` keypresses are the only way the reader opens or
+that alternating presses of one shortcut are the only way the reader opens or
 closes.
 
 The reader is a strict modal in the first implementation. While it is open, all
@@ -269,7 +272,7 @@ Input routing should be mode-first:
 
 1. If the transcript reader is open, route input to it before composer handling.
 2. If the reader consumes a close key, close it and request render.
-3. If no reader is open and `Ctrl+O` is pressed, open the reader.
+3. If no reader is open and `Ctrl+O` or `Ctrl+T` is pressed, open the reader.
 4. Otherwise continue existing completion, selection, queue, and composer
    routing.
 
@@ -301,7 +304,7 @@ Earlier transcript records were trimmed. Export may include more history.
 
 ────────────────────────────────────────────────────────────────
 ↑/↓ scroll   PgUp/Ctrl+B · PgDn/Ctrl+F page   Home/End jump
-Ctrl+O/q/Esc close
+Ctrl+O/Ctrl+T/q/Esc close
 ```
 
 Rules:
@@ -316,9 +319,11 @@ Rules:
 - If `complete=False`, the reader must not label itself "Full transcript".
 - Raw mode should prefer copy-friendly logical text with minimal decoration.
 - Rich mode should preserve current transcript theme behavior.
-- Detail mode may expand tool outputs or thinking blocks later. If no
-  compact/detail renderer exists in the first implementation, the reader should
-  either omit `d` from the footer or treat it as a visibly unsupported no-op.
+- Tool outputs that are eligible for the main transcript preview (for example,
+  run, test, and search tools) use their preserved expanded source in the reader
+  by default. Tools whose bodies are hidden by Product policy, such as read and
+  edit operations, remain hidden. Detail mode may expand additional diagnostics
+  or thinking blocks later.
 
 The footer should only advertise keys that the current reader implementation
 actually handles. `d` detail and `r` raw may remain internal toggles until they
@@ -393,7 +398,7 @@ Unit tests:
 - `/copy N` skips empty or tool-only assistant turns.
 - invalid `/copy N` returns usage guidance.
 - `TranscriptReaderSurface` clamps scroll offset on small and large heights.
-- `q`, `Esc`, `Ctrl+C`, and `Ctrl+O` close the reader.
+- `q`, `Esc`, `Ctrl+C`, `Ctrl+O`, and `Ctrl+T` close the reader.
 - `PageUp`, `PageDown`, `Home`, and `End` update reader scroll state.
 - terminal resize clamps reader scroll offset and redraws header/footer.
 - unrecognized keys are consumed while the reader is open.
@@ -405,7 +410,7 @@ Unit tests:
 
 Playback tests:
 
-- `Ctrl+O` opens the reader and the footer is visible.
+- `Ctrl+O` and `Ctrl+T` each open the reader and the footer is visible.
 - `PageUp` in the reader scrolls transcript content rather than composer text.
 - closing the reader restores focus to the previously focused surface, normally
   the composer, without altering composer text, selection, or cursor position.
@@ -430,7 +435,7 @@ Regression tests:
 1. Add `/copy [N]` backend support and tests.
 2. Add `TranscriptSnapshot` and active-window `TranscriptSource`.
 3. Add `TranscriptReaderSurface` with frozen active-window snapshots.
-4. Wire `Ctrl+O` and reader-local input routing.
+4. Wire `Ctrl+O`, `Ctrl+T`, and reader-local input routing.
 5. Add playback coverage.
 6. Later: session-backed full transcript source.
 7. Later: reader-local export shortcut and raw/detail rendering refinements.

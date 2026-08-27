@@ -311,6 +311,12 @@ def test_input_reader_normalizes_common_editor_control_keys() -> None:
     )
 
 
+def test_input_reader_normalizes_ctrl_t_for_transcript_reader() -> None:
+    assert InputReader().feed("\x14") == (
+        InputEvent(kind="key", key="ctrl+t"),
+    )
+
+
 def test_input_reader_buffers_incomplete_escape_until_flush() -> None:
     reader = InputReader()
 
@@ -460,6 +466,8 @@ def test_keybinding_manager_matches_transcript_reader_alias() -> None:
 
     assert manager.matches("ctrl_o", "tui.transcript.open")
     assert manager.matches("ctrl+o", "tui.transcript.open")
+    assert manager.matches("ctrl_t", "tui.transcript.open")
+    assert manager.matches("ctrl+t", "tui.transcript.open")
 
 
 def test_keybinding_manager_matches_default_redo_key() -> None:

@@ -12,6 +12,7 @@ from uuid import uuid4
 from loushang.ai.errors import AIRequestTooLargeError
 from loushang.ai.json_codec import deserialize_usage, serialize_usage
 from loushang.ai.types import AssistantMessage, StopReason, Usage
+from loushang.ai.utils.async_iter import close_async_source
 from loushang.foundation.json import JSONValue, require_json_mapping
 
 if TYPE_CHECKING:
@@ -390,8 +391,12 @@ async def invoke_prepared_request(
     validate_prepared_request_capacity(prepared, limits)
     await commit_prepared_request(prepared, committer)
     _raise_if_transport_cancelled()
-    async for part in adapter.invoke_prepared_raw(request, prepared):
-        yield part
+    source = adapter.invoke_prepared_raw(request, prepared)
+    try:
+        async for part in source:
+            yield part
+    finally:
+        await close_async_source(source)
 
 
 def validate_prepared_request_capacity(

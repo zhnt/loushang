@@ -333,7 +333,7 @@ def test_screen_tui_input_scenario_reader_short_content_restores_bottom_frame() 
 
     assert (
         open_screen.splitlines()[-1]
-        == "Ctrl+O/q/Esc close   / search   n/N next   d detail   r raw"
+        == "Ctrl+O/Ctrl+T/q/Esc close   / search   n/N next   d detail   r raw"
     )
     assert "› draft" not in open_screen
     assert "› draft" in close_screen
