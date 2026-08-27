@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import stat
 
 import pytest
 
@@ -9,8 +11,60 @@ from loushang.harness.runtime.session_operations import (
     SessionOperationCandidate,
     SessionOperationCoordinator,
     SessionOperationPhase,
+    copy_file_exclusive,
 )
 from loushang.harness.runtime.transition import SessionTransitionHost
+
+
+def test_copy_file_exclusive_atomically_publishes_private_content(tmp_path) -> None:
+    source = tmp_path / "source.jsonl"
+    destination = tmp_path / "destination.jsonl"
+    source.write_bytes(b"complete transcript\n")
+
+    copy_file_exclusive(source, destination)
+
+    assert destination.read_bytes() == b"complete transcript\n"
+    if os.name == "posix":
+        assert stat.S_IMODE(destination.stat().st_mode) == 0o600
+    assert list(tmp_path.glob(f".{destination.name}.*.tmp")) == []
+
+
+def test_copy_file_exclusive_never_publishes_a_partial_copy(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.harness.runtime import session_operations
+
+    source = tmp_path / "source.jsonl"
+    destination = tmp_path / "destination.jsonl"
+    source.write_bytes(b"complete transcript\n")
+
+    def fail_after_partial_copy(_input, output) -> None:
+        output.write(b"partial")
+        raise OSError("copy interrupted")
+
+    monkeypatch.setattr(session_operations, "copyfileobj", fail_after_partial_copy)
+
+    with pytest.raises(OSError, match="copy interrupted"):
+        copy_file_exclusive(source, destination)
+
+    assert destination.exists() is False
+    assert list(tmp_path.glob(f".{destination.name}.*.tmp")) == []
+
+
+def test_copy_file_exclusive_does_not_replace_an_existing_destination(
+    tmp_path,
+) -> None:
+    source = tmp_path / "source.jsonl"
+    destination = tmp_path / "destination.jsonl"
+    source.write_bytes(b"new transcript\n")
+    destination.write_bytes(b"existing transcript\n")
+
+    with pytest.raises(FileExistsError):
+        copy_file_exclusive(source, destination)
+
+    assert destination.read_bytes() == b"existing transcript\n"
+    assert list(tmp_path.glob(f".{destination.name}.*.tmp")) == []
 
 
 def test_session_operation_orders_prepare_replace_and_commit() -> None:

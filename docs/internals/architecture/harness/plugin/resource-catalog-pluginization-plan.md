@@ -128,12 +128,12 @@
   service registry, stable public source-provider SDK publication, LSP/Base/Arch
   migration, remote marketplace work, and new MCP functionality.
 
-The accepted
-[Unified Plugin Architecture](unified-plugin-architecture.md),
+The canonical target
+[Plugin Architecture V2](architecture.md),
 [Unified Plugin Authoring Primitives Delivery Plan](plugin-authoring-primitives-delivery-plan.md),
-[Capability Dependency And Mount Lifecycle](capability-dependency-and-mount-lifecycle.md),
-[Extension And Resource Generation Lifecycle](extension-generation-lifecycle-boundary.md),
-and [Session Resource Refresh Runtime Boundary](session-resource-refresh-boundary.md)
+[Capability Dependency And Mount Lifecycle](../capability-dependency-and-mount-lifecycle.md),
+[Extension And Resource Generation Lifecycle](../extension-generation-lifecycle-boundary.md),
+and [Session Resource Refresh Runtime Boundary](../session-resource-refresh-boundary.md)
 remain authoritative wherever this plan is silent.
 The source-backed [RCP0 Baseline](resource-catalog-rcp0-baseline.md) freezes the
 implemented caller/sink inventory, parity anchors, and per-path disposition;

@@ -674,10 +674,7 @@ class ContinuitySurface:
             return ("updated",)
         return (
             ("updated", "created")
-            if all(
-                "created" in descriptor.supported_sorts
-                for descriptor in providers
-            )
+            if all("created" in descriptor.supported_sorts for descriptor in providers)
             else ("updated",)
         )
 
@@ -722,9 +719,7 @@ class ContinuitySurface:
             )
             elapsed = ""
             if self._activation_started is not None:
-                seconds = max(
-                    0, int(time.monotonic() - self._activation_started)
-                )
+                seconds = max(0, int(time.monotonic() - self._activation_started))
                 elapsed = f" ({seconds}s)"
             return [
                 RenderLine(""),
@@ -886,7 +881,7 @@ def _summary_descriptions(
                 (
                     summary.target.provider_id
                     if show_provider
-                    else summary.primary_domain_id or ""
+                    else summary.subtitle or summary.primary_domain_id or ""
                 )
             ),
             _normalize_column_value(summary.status or ""),

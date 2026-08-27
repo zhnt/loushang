@@ -107,8 +107,20 @@ class StaleContinuityTargetError(RuntimeError):
 class CodingContinuityProvider:
     """Adapt Agent transcript summaries without leaking Coding UI or Git facts."""
 
-    def __init__(self, runtime: CodingContinuityRuntimePort) -> None:
+    def __init__(
+        self,
+        runtime: CodingContinuityRuntimePort,
+        *,
+        cwd: str | Path | None = None,
+        all_sessions: bool = False,
+    ) -> None:
         self._runtime = runtime
+        self._cwd = (
+            str(Path(cwd).expanduser().resolve(strict=False))
+            if cwd is not None
+            else None
+        )
+        self._all_sessions = all_sessions
         self._index_refresh_requested = False
         self._preview_items: OrderedDict[str, IndexedProjection[SessionSummary]] = (
             OrderedDict()
@@ -134,6 +146,7 @@ class CodingContinuityProvider:
         page = await asyncio.to_thread(
             self._runtime.try_query_session_index_page,
             SessionQuery(
+                cwd=None if self._all_sessions else self._query_cwd(),
                 text=request.text or None,
                 sort_by="created" if request.sort_id == "created" else "recent",
                 has_messages=True,
@@ -202,6 +215,17 @@ class CodingContinuityProvider:
             query_snapshot=page.query_snapshot,
             diagnostics=diagnostics,
         )
+
+    def _query_cwd(self) -> str | None:
+        if self._cwd is not None:
+            return self._cwd
+        try:
+            value = getattr(self._runtime, "cwd", None)
+        except Exception:
+            return None
+        if not isinstance(value, str) or not value:
+            return None
+        return str(Path(value).expanduser().resolve(strict=False))
 
     async def preview(self, target: ContinuityTarget) -> ContinuityPreview:
         indexed = self._cached_target(target)
@@ -431,6 +455,8 @@ class CodingContinuityComposition:
 def bind_coding_continuity(
     runtime: CodingContinuityRuntimePort,
     *,
+    cwd: str | Path | None = None,
+    all_sessions: bool = False,
     layers: Iterable[RuntimeProfileLayer] = (),
     grants: Iterable[RuntimeProfileLayerGrant] = (),
     implementations: Iterable[RuntimeCapabilityImplementation] = (),
@@ -476,7 +502,13 @@ def bind_coding_continuity(
                 implementation=CODING_CONTINUITY_IMPLEMENTATION,
                 implementation_version=CODING_CONTINUITY_IMPLEMENTATION_VERSION,
                 create=lambda _selection, context: ContinuityProviderPack(
-                    providers=(CodingContinuityProvider(_require_runtime(context)),)
+                    providers=(
+                        CodingContinuityProvider(
+                            _require_runtime(context),
+                            cwd=cwd,
+                            all_sessions=all_sessions,
+                        ),
+                    )
                 ),
             ),
             *implementation_values,
@@ -537,7 +569,7 @@ def _continuity_summary(
         title=_summary_title(summary),
         updated_at=summary.updated_at,
         created_at=summary.created_at,
-        subtitle=None,
+        subtitle=summary.cwd or None,
         excerpt=summary.last_message_preview or summary.first_message,
         status="Needs attention" if summary.has_diagnostics else None,
     )

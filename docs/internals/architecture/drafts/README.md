@@ -29,10 +29,6 @@ Current live references:
 
 ## Documents
 
-Draft packages with their own reading order and review evidence:
-
-- [Plugin Ecosystem Architecture](plugin-ecosystem/README.md)
-
 Standalone drafts:
 
 - [Foundation Refactor Plan](foundation-refactor-plan.md)

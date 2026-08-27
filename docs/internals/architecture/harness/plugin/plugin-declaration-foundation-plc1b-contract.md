@@ -4,7 +4,7 @@
 
 This document is the normative implementation contract for the PLC1B
 declaration foundation. It refines the
-[Unified Plugin Architecture](unified-plugin-architecture.md) and the two Plugin
+[Unified Plugin Architecture](architecture.md) and the two Plugin
 delivery plans without changing their owner model. Where an older plan uses the
 ambiguous phrase `declaration_source_fingerprint`, the exact identities below
 apply.

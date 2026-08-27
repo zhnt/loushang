@@ -1,11 +1,13 @@
 # Plugin Execution Trust PLC3 Contract
 
-Status: PLC3-3 verified Definition evaluation and mixed-source join implemented;
-production Host ingress, live owner binding, public SDK and MCP expansion remain
-closed.
+Status: PLC3-3 verified Definition evaluation and mixed-source join implemented.
+Subsequent PLC5.1 work uses this trust path for the production `coding.lsp`
+Plugin route; public SDK, isolated Worker, and MCP expansion remain closed. This
+contract still owns only the execution-decision/evaluation slice, not Product
+ingress or live owner binding.
 
 This document is the normative incremental companion to
-[Unified Plugin Architecture](unified-plugin-architecture.md),
+[Unified Plugin Architecture](architecture.md),
 [Unified Plugin Authoring Primitives Delivery Plan](plugin-authoring-primitives-delivery-plan.md),
 and
 [Unified Plugin Lifecycle And Coding Pluginization Delivery Plan](plugin-lifecycle-coding-pluginization-plan.md).
@@ -39,11 +41,14 @@ does not:
 - add an MCP server, tool or integration path.
 
 The Coordinator accepts executable groups only when its internal construction
-receives the PLC3-3 evaluator. The production `PluginDeclarationHost` injects
-no evaluator and therefore continues to reject every executable group as
-`execution_not_consumed`. A durable approved decision is necessary but not
-sufficient execution authority; the executable path still has no production
-caller.
+receives the PLC3-3 evaluator. A `PluginDeclarationHost` constructed without
+one continues to reject every executable group as `execution_not_consumed`.
+Subsequent PLC5.1 delivery made the private `coding.lsp.default` Product
+composer the first production caller: it explicitly constructs a
+`PluginDefinitionEvaluator` and `PluginImportRealm` and injects the evaluator
+into the Host. This does not create default executable ingress or a public SDK.
+A durable approved decision remains necessary but not sufficient execution
+authority.
 
 ## Scope And Approval Subject
 
@@ -83,9 +88,10 @@ import a Definition.
 ## Verified Definition Evaluator And Import Realm
 
 PLC3-3 adds one internal `PluginDefinitionEvaluator` and one caller-owned,
-process-wide `PluginImportRealm`. Neither is a package export. The production
-Host constructs neither. An explicitly injected Coordinator performs the exact
-sequence:
+process-wide `PluginImportRealm`. Neither is a package export. The generic Host
+does not construct either implicitly; the named private Coding LSP Product
+composer now constructs them explicitly and injects the evaluator. A
+Coordinator with that explicit injection performs the exact sequence:
 
 ```text
 claim group
@@ -354,8 +360,9 @@ failure quarantine, fresh-decision retry rejection on a polluted realm,
 mixed document/executable join-before-single-finalization and zero finalization
 after a later executable failure.
 
-The next slice is PLC4/PAP4 exact Capability owner admission. It must consume
-the immutable candidates produced here without letting Definition evaluation
+PLC4/PAP4 subsequently added exact Capability owner admission. It consumes the
+immutable candidates produced here without letting Definition evaluation
 publish a registry, Resource, Mount, live Provider or Graph generation. Public
-exports, general Plugin SDK, production Host ingress and MCP expansion remain
-forbidden until their later explicit delivery gates.
+exports, a general Plugin SDK, Product ingress beyond the named private
+`coding.lsp.default` adopter, and MCP expansion remain forbidden until their
+later explicit delivery gates.

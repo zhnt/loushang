@@ -112,14 +112,21 @@ attachment coordination after the host clipboard has been read. It persists a
 neutral `ClipboardImage` into a caller-supplied directory, derives a composer
 marker relative to a caller-supplied display root, and tracks pending
 attachments so submission order follows marker order in the composed text.
-Read, unsupported-type, and persistence failures are returned as neutral
-outcomes; products supply their own status copy.
+Read, unsupported-type, quota, and persistence failures are returned as
+neutral outcomes; products supply their own status copy.
 
 The host clipboard backend and MIME detection remain in
-`loushang.tui.clipboard_image`. Products continue to choose workspace and
-storage-directory policy and adapt a neutral prompt attachment into model-facing
-values such as `ImagePart`. Harnesstui does not import AI message types or
-hard-code a Coding workspace layout.
+`loushang.tui.clipboard_image`. The standard profile receives one injected
+machine-local `RuntimeScope` and stages bounded drafts below its private run
+tree; products may provide another directory profile and adapt a neutral prompt
+attachment into model-facing values such as `ImagePart`. Harnesstui does not
+import AI message types or hard-code a Coding workspace layout.
+
+`DraftStore` is the preferred bounded owner. The former exported
+`PendingPromptImageRegistry` name remains a compatibility alias during the
+pre-1.0 transition. Existing app-scoped profile callbacks keep their one-app
+argument; only the explicit `ClipboardImageRuntimeStorage` policy receives a
+`RuntimeScope`.
 
 The explicit module path
 `loushang.harnesstui.conversation.attachments` is the stable entrypoint for this
@@ -326,8 +333,8 @@ The reusable control plane for a full-screen conversation lives behind eight
 explicit entrypoints:
 
 - `loushang.harnesstui.conversation.clipboard_policy` owns the standard
-  workspace staging path and user-facing copy for conversation clipboard
-  images;
+  run-scoped draft path, quota policy, and user-facing copy for conversation
+  clipboard images;
 - `loushang.harnesstui.conversation.input_policy` owns neutral projected input
   capabilities, steer-first/fallback policy, and conversation keybinding
   definitions;
@@ -361,7 +368,8 @@ model-facing image types, or command policy. `ConversationRoutingProfile`
 receives the parser, exit predicate, local action mapping, follow-up projection,
 command effect resolver, and lifecycle as explicit callbacks, then compiles
 them into the existing `ConversationHostProfile`. Harnesstui's standard
-clipboard profile owns `.loushang/clipboard` staging and generic outcome copy;
+clipboard profile owns run-scoped `drafts/clipboard` staging and generic
+outcome copy;
 Coding keeps `PromptIntent` and `BashIntent`, `ImagePart`, Session and
 observability setup, and its interruption, queue, and error messages.
 

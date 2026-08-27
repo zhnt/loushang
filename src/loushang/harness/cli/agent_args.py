@@ -9,6 +9,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, TextIO, TypeVar
 
+from loushang.harness.environment import resolve_platform_paths
 from loushang.harness.host.prompt_input import PromptInputPlan, resolve_prompt_input
 
 AgentCliMode = Literal["text", "print", "json", "rpc", "channel"]
@@ -277,24 +278,18 @@ def agent_resource_loader_options(args: AgentCliArgs) -> dict[str, object]:
     options: dict[str, object] = {
         "additional_extension_paths": list(getattr(args, "extensions", ())),
         "additional_skill_paths": list(getattr(args, "skills", ())),
-        "additional_prompt_template_paths": list(
-            getattr(args, "prompt_templates", ())
-        ),
+        "additional_prompt_template_paths": list(getattr(args, "prompt_templates", ())),
         "additional_theme_paths": list(getattr(args, "themes", ())),
         "no_extensions": bool(getattr(args, "no_extensions", False)),
         "no_skills": bool(getattr(args, "no_skills", False)),
-        "no_prompt_templates": bool(
-            getattr(args, "no_prompt_templates", False)
-        ),
+        "no_prompt_templates": bool(getattr(args, "no_prompt_templates", False)),
         "no_themes": bool(getattr(args, "no_themes", False)),
         "no_context_files": bool(getattr(args, "no_context_files", False)),
     }
     if hasattr(args, "system_prompt"):
         options["system_prompt"] = getattr(args, "system_prompt")
     if hasattr(args, "append_system_prompt"):
-        options["append_system_prompt"] = list(
-            getattr(args, "append_system_prompt")
-        )
+        options["append_system_prompt"] = list(getattr(args, "append_system_prompt"))
     return options
 
 
@@ -329,6 +324,34 @@ def resolve_agent_session_dir(
 ) -> Path:
     if args.session_dir:
         return Path(args.session_dir).expanduser().resolve()
+    configured = resolve_trusted_settings_session_dir(settings_manager)
+    if configured is not None:
+        return configured
+    return resolve_platform_paths().data / "sessions"
+
+
+def resolve_trusted_settings_session_dir(
+    settings_manager: object,
+) -> Path | None:
+    """Resolve session/global overrides while excluding repository policy."""
+
+    scoped_settings_available = False
+    for getter_name in ("get_session_settings", "get_global_settings"):
+        getter = getattr(settings_manager, getter_name, None)
+        if not callable(getter):
+            continue
+        scoped_settings_available = True
+        patch = getter()
+        if not isinstance(patch, dict) or "session_dir" not in patch:
+            continue
+        configured = patch["session_dir"]
+        if configured:
+            return Path(str(configured)).expanduser().resolve()
+        return None
+    if scoped_settings_available:
+        return None
+
+    # Compatibility for minimal settings ports that predate scoped accessors.
     get_settings = getattr(settings_manager, "get_settings", None)
     if not callable(get_settings):
         raise TypeError("settings manager does not expose get_settings()")
@@ -336,7 +359,7 @@ def resolve_agent_session_dir(
     configured = getattr(settings, "session_dir", None)
     if configured:
         return Path(configured).expanduser().resolve()
-    return Path(project_root) / ".loushang" / "sessions"
+    return None
 
 
 def agent_image_auto_resize(settings_manager: object | None) -> bool:
@@ -464,7 +487,9 @@ def _normalize_diagnostics_command(argv: list[str]) -> list[str]:
 
 def _normalize_observability_flags(argv: list[str]) -> list[str]:
     return [
-        "--debug=" if token == "--debug" else "--trace=all"
+        "--debug="
+        if token == "--debug"
+        else "--trace=all"
         if token == "--trace"
         else token
         for token in argv
@@ -532,4 +557,5 @@ __all__ = [
     "resolve_agent_session_dir",
     "resolve_agent_prompt_input",
     "split_file_args",
+    "resolve_trusted_settings_session_dir",
 ]

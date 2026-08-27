@@ -29,6 +29,7 @@ from loushang.harness.diagnostics.observability_bridge import (
     diagnostic_source_for_problem,
 )
 from loushang.harness.diagnostics.types import DiagnosticSource
+from loushang.harness.environment import resolve_platform_paths
 
 ProblemSourceResolver = Callable[[ProblemRecord], DiagnosticSource]
 
@@ -49,7 +50,9 @@ def session_observability_context(
 
     cwd_path = Path(cwd).expanduser().resolve()
     session_id = _session_id(session)
-    resolved_session_label = session_label or session_log_label(session_id, now=time.time())
+    resolved_session_label = session_label or session_log_label(
+        session_id, now=time.time()
+    )
     debug_raw = value_from_args_or_env(args, "debug", "LOUSHANG_DEBUG_SCOPES")
     trace_raw = value_from_args_or_env(args, "trace", "LOUSHANG_TRACE_SCOPES")
     debug_scopes = parse_scopes(debug_raw, bare_default=("all",))
@@ -122,7 +125,11 @@ def enable_session_debug(
     debug_dir: str | Path | None = None,
 ) -> Path:
     session_id = _session_id(session)
-    output_dir = Path(debug_dir).expanduser() if debug_dir is not None else Path.home() / ".loushang" / "debug"
+    output_dir = (
+        Path(debug_dir).expanduser()
+        if debug_dir is not None
+        else resolve_platform_paths().state / "debug"
+    )
     debug_path = (
         Path(debug_file).expanduser().resolve()
         if debug_file is not None
@@ -149,9 +156,14 @@ def _output_path(
         return Path(explicit).expanduser().resolve()
     if raw_scope is None:
         return None
-    base = Path(output_dir).expanduser() if output_dir is not None else Path.home() / ".loushang" / "debug"
+    paths = resolve_platform_paths()
+    base = (
+        Path(output_dir).expanduser()
+        if output_dir is not None
+        else paths.state / "debug"
+    )
     if suffix == ".jsonl" and output_dir is None:
-        base = Path.home() / ".loushang" / "traces"
+        base = paths.state / "traces"
     return base / f"{session_label}{suffix}"
 
 

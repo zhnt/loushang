@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from loushang.foundation.platform_paths import resolve_platform_paths
+from loushang.foundation.runtime_scope import RunLease, resolve_runtime_scope
 from loushang.harnesstui.conversation.attachments import (
+    DraftStorePolicy,
     PromptImageAttachment,
     PromptImageAttachmentOutcome,
 )
@@ -55,6 +58,7 @@ _COPY = ClipboardImageStatusCopy(
     read_error_prefix="read: ",
     unsupported_prefix="unsupported: ",
     write_error_prefix="write: ",
+    quota_exceeded_prefix="quota: ",
     attached_prefix="attached: ",
     unknown_type="unspecified",
 )
@@ -96,12 +100,17 @@ def test_clipboard_builder_satisfies_standard_router_factory_contract() -> None:
 
 def test_standard_clipboard_image_profile_is_harnesstui_owned(
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
+    runtime_dir = tmp_path / "runtime"
+    monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(runtime_dir))
     app = _ConversationApp(str(tmp_path))
     assert STANDARD_CLIPBOARD_IMAGE_INPUT_PROFILE.status_copy.attached_prefix == (
         "Attached clipboard image: "
     )
-    router = bind_clipboard_image_input_router()(
+    scope = resolve_runtime_scope()
+    lease = RunLease.acquire(scope)
+    router = bind_clipboard_image_input_router(runtime_scope=scope)(
         app,
         should_exit=lambda _text: False,
         clipboard_image_reader=lambda: ClipboardImage(
@@ -113,13 +122,128 @@ def test_standard_clipboard_image_profile_is_harnesstui_owned(
 
     result = router.handle(InputEvent(kind="key", key="ctrl+v"))
 
-    expected = tmp_path / ".loushang" / "clipboard" / "clipboard-shared.png"
+    expected = next(
+        (runtime_dir / "runs").glob("*/drafts/clipboard/clipboard-shared.png")
+    )
     assert expected.read_bytes() == b"png"
     assert isinstance(result, ConversationClipboardResult)
-    assert app.composer.value == "@.loushang/clipboard/clipboard-shared.png "
+    assert app.composer.value == "@clipboard/clipboard-shared.png "
     assert app.state.status_message == (
-        "Attached clipboard image: .loushang/clipboard/clipboard-shared.png"
+        "Attached clipboard image: clipboard/clipboard-shared.png"
     )
+    assert expected.parents[2] == scope.run_dir
+    assert (scope.run_dir / ".lease").is_file()
+
+    router.dispose()
+
+    assert scope.run_dir.exists()
+    assert not expected.exists()
+    lease.close()
+    assert not scope.run_dir.exists()
+
+
+def test_standard_clipboard_binding_resolves_runtime_environment_once(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    first_runtime = tmp_path / "first-runtime"
+    second_runtime = tmp_path / "second-runtime"
+    monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(first_runtime))
+    scope = resolve_runtime_scope()
+    lease = RunLease.acquire(scope)
+    app = _ConversationApp(str(tmp_path))
+    router = bind_clipboard_image_input_router(runtime_scope=scope)(
+        app,
+        should_exit=lambda _text: False,
+        clipboard_image_reader=lambda: ClipboardImage(
+            bytes=b"png",
+            mime_type="image/png",
+        ),
+        clipboard_image_name_factory=lambda: "once",
+    )
+
+    monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(second_runtime))
+    router.handle(InputEvent(kind="key", key="ctrl+v"))
+
+    assert next(
+        (first_runtime / "runs").glob("*/drafts/clipboard/clipboard-once.png")
+    ).read_bytes() == b"png"
+    assert not second_runtime.exists()
+    router.dispose()
+    lease.close()
+
+
+def test_standard_clipboard_binding_accepts_injected_runtime_scope(
+    tmp_path: Path,
+) -> None:
+    paths = resolve_platform_paths(
+        environ={"LOUSHANG_RUNTIME_DIR": str(tmp_path / "injected")},
+        home=tmp_path / "home",
+    )
+    scope = resolve_runtime_scope(paths=paths, run_id="a" * 32)
+    lease = RunLease.acquire(scope)
+    app = _ConversationApp(str(tmp_path))
+    router = bind_clipboard_image_input_router()(
+        app,
+        should_exit=lambda _text: False,
+        clipboard_image_reader=lambda: ClipboardImage(
+            bytes=b"png",
+            mime_type="image/png",
+        ),
+        clipboard_image_name_factory=lambda: "injected",
+        runtime_scope=scope,
+    )
+
+    router.handle(InputEvent(kind="key", key="ctrl+v"))
+
+    assert (
+        scope.drafts / "clipboard" / "clipboard-injected.png"
+    ).read_bytes() == b"png"
+    router.dispose()
+    assert scope.run_dir.exists()
+    lease.close()
+    assert not scope.run_dir.exists()
+
+
+def test_standard_clipboard_binding_rejects_oversized_image_before_disk(
+    tmp_path: Path,
+) -> None:
+    paths = resolve_platform_paths(
+        environ={"LOUSHANG_RUNTIME_DIR": str(tmp_path / "runtime")},
+        home=tmp_path / "home",
+    )
+    scope = resolve_runtime_scope(paths=paths, run_id="b" * 32)
+    lease = RunLease.acquire(scope)
+    profile = replace(
+        STANDARD_CLIPBOARD_IMAGE_INPUT_PROFILE,
+        draft_policy=DraftStorePolicy(
+            max_attachments=2,
+            max_attachment_bytes=4,
+            max_total_bytes=8,
+        ),
+    )
+    app = _ConversationApp(str(tmp_path))
+    router = bind_clipboard_image_input_router(profile)(
+        app,
+        should_exit=lambda _text: False,
+        clipboard_image_reader=lambda: ClipboardImage(
+            bytes=b"large",
+            mime_type="image/png",
+        ),
+        runtime_scope=scope,
+    )
+
+    result = router.handle(InputEvent(kind="key", key="ctrl+v"))
+
+    assert isinstance(result, ConversationClipboardResult)
+    assert result.outcome.kind == "quota_exceeded"
+    assert app.state.status_message == (
+        "Clipboard image limit reached: image is 5 bytes; "
+        "per-image limit is 4 bytes"
+    )
+    assert not scope.drafts.exists()
+    router.dispose()
+    lease.close()
 
 
 def test_clipboard_image_uses_the_conversation_action_override(
@@ -212,6 +336,13 @@ def test_clipboard_image_status_copy_formats_every_neutral_outcome(
         ),
         (
             PromptImageAttachmentOutcome(
+                kind="quota_exceeded",
+                error_message="too many bytes",
+            ),
+            "quota: too many bytes",
+        ),
+        (
+            PromptImageAttachmentOutcome(
                 kind="attached",
                 attachment=attachment,
             ),
@@ -222,6 +353,9 @@ def test_clipboard_image_status_copy_formats_every_neutral_outcome(
     assert tuple(_COPY.message(outcome) for outcome, _expected in cases) == tuple(
         expected for _outcome, expected in cases
     )
+
+    fallback = replace(_COPY, quota_exceeded_prefix=None)
+    assert fallback.message(cases[-2][0]) == "write: too many bytes"
 
 
 def test_clipboard_image_input_binding_closes_over_router_policy() -> None:

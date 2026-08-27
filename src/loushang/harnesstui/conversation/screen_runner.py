@@ -209,9 +209,7 @@ async def run_conversation_screen(
                     input_chunk_reader=input_chunk_reader,
                     render_wakeup=render_wakeup,
                     pending_input_idle_ms=(
-                        ESCAPE_SEQUENCE_IDLE_TIMEOUT_MS
-                        if reader.has_pending
-                        else None
+                        ESCAPE_SEQUENCE_IDLE_TIMEOUT_MS if reader.has_pending else None
                     ),
                     idle_wakeup_ms=_terminal_runtime_wakeup_ms(terminal_context),
                 )
@@ -361,6 +359,9 @@ async def run_conversation_screen(
                     if result.render_requested:
                         _request_runtime_render(runtime, "input")
     finally:
+        dispose_router = getattr(router, "dispose", None)
+        if callable(dispose_router):
+            dispose_router()
         app.surface_host = None
         app.terminal_diagnostics_provider = previous_terminal_diagnostics_provider
         app.terminal_capabilities = previous_terminal_capabilities

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import stat
 from datetime import date
 from functools import wraps
 from pathlib import Path
@@ -555,6 +557,7 @@ async def test_runtime_lists_all_session_summaries_across_session_dirs(
     second = await runtime_b.create_session(cwd=str(project_b))
     await second.set_session_name("Beta")
     await second.session_manager.append_message(_user_message("beta"))
+    runtime_a.add_session_discovery_dir(sessions_root / "project-b")
 
     summaries = runtime_a.list_all_session_summaries()
 
@@ -589,6 +592,7 @@ async def test_runtime_finds_all_session_summaries_across_session_dirs(
     second = await runtime_b.create_session(cwd=str(project_b))
     await second.set_session_name("Beta")
     await second.session_manager.append_message(_user_message("global lookup target"))
+    runtime_a.add_session_discovery_dir(sessions_root / "project-b")
 
     summaries = runtime_a.find_all_session_summaries(SessionQuery(text="lookup target"))
 
@@ -616,13 +620,14 @@ async def test_runtime_exposes_indexed_session_summary_facades(tmp_path) -> None
     await first.session_manager.append_message(_user_message("indexed alpha"))
     second = await runtime_b.create_session(cwd=str(project_b))
     await second.session_manager.append_message(_user_message("indexed beta"))
+    runtime_a.add_session_discovery_dir(sessions_root / "project-b")
 
     assert [summary.session_id for summary in runtime_a.refresh_session_index()] == [
         first.session_id
     ]
     assert [
         summary.session_id for summary in runtime_a.list_indexed_session_summaries()
-    ] == [first.session_id]
+    ] == [second.session_id, first.session_id]
     assert [
         summary.session_id
         for summary in runtime_a.find_indexed_session_summaries(
@@ -631,7 +636,7 @@ async def test_runtime_exposes_indexed_session_summary_facades(tmp_path) -> None
     ] == [first.session_id]
     assert [
         summary.session_id for summary in runtime_a.refresh_all_session_indexes()
-    ] == [second.session_id, first.session_id]
+    ] == [first.session_id]
     assert [
         summary.session_id
         for summary in runtime_a.find_all_indexed_session_summaries(
@@ -1159,6 +1164,53 @@ async def test_runtime_restore_emits_one_aggregate_performance_event(
     assert data["session_ref"] == str(target_file)
     assert data["file_bytes"] == target_file.stat().st_size
     assert set(data["phases"]) == {"resolve_session", "lifecycle_restore"}
+
+
+@_async_test
+async def test_runtime_restores_legacy_discovery_as_authority_copy(
+    tmp_path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.session_manager import SessionManager
+
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    legacy_dir = project_root / ".loushang" / "sessions"
+    authority_dir = tmp_path / "user-home" / "data" / "sessions"
+    legacy = await SessionManager.new(
+        session_dir=legacy_dir,
+        cwd=str(project_root),
+        persist=True,
+    )
+    await legacy.append_message(_user_message("legacy prompt"))
+    legacy_file = legacy.get_session_file()
+    assert legacy_file is not None
+    legacy_bytes = legacy_file.read_bytes()
+    legacy_id = legacy.get_session_record().session_id
+    await legacy.dispose_runtime_profile()
+
+    runtime = create_agent_session_runtime(
+        session_dir=authority_dir,
+        model=_model(),
+        persist=True,
+    )
+    runtime.add_session_discovery_dir(legacy_dir)
+
+    result = await runtime.restore_session_operation(legacy_id)
+    current = result.current
+    assert current is not None
+    restored_file = current.session_manager.get_session_file()
+    assert restored_file is not None
+    assert restored_file.parent == authority_dir.resolve()
+    assert restored_file != legacy_file
+    if os.name == "posix":
+        assert stat.S_IMODE(restored_file.stat().st_mode) == 0o600
+
+    await current.session_manager.append_message(_user_message("new global turn"))
+
+    assert legacy_file.read_bytes() == legacy_bytes
+    assert b"new global turn" in restored_file.read_bytes()
+    assert runtime.resolve_discovered_session_file(legacy_id) == restored_file
 
 
 @_async_test

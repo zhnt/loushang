@@ -62,6 +62,7 @@ def test_directory_runtime_exposes_current_and_all_root_catalog_queries(
     )
 
     runtime = AgentTranscriptDirectoryRuntime(session_dir=project_a)
+    runtime.add_session_discovery_dir(project_b)
 
     assert [record.session_id for record in runtime.list_sessions()] == ["alpha"]
     assert [
@@ -77,7 +78,95 @@ def test_directory_runtime_exposes_current_and_all_root_catalog_queries(
     ]
     assert [
         summary.session_id for summary in runtime.list_indexed_session_summaries()
-    ] == ["alpha"]
+    ] == ["beta", "alpha"]
+
+
+def test_directory_runtime_merges_read_only_legacy_discovery_roots(
+    tmp_path: Path,
+) -> None:
+    global_dir = tmp_path / "user-home" / "data" / "sessions"
+    legacy_dir = tmp_path / "project" / ".loushang" / "sessions"
+    global_dir.mkdir(parents=True)
+    legacy_dir.mkdir(parents=True)
+    write_agent_transcript_export(
+        global_dir / "global.jsonl",
+        _header("global", cwd="/workspace/project"),
+        [_record("global-record", "new global session", timestamp=2.0)],
+    )
+    write_agent_transcript_export(
+        legacy_dir / "legacy.jsonl",
+        _header("legacy", cwd="/workspace/project"),
+        [_record("legacy-record", "old local session", timestamp=1.0)],
+    )
+    write_agent_transcript_export(
+        legacy_dir / "copied-global.jsonl",
+        _header("global", cwd="/workspace/project"),
+        [_record("copied-record", "copied global session", timestamp=3.0)],
+    )
+    runtime = AgentTranscriptDirectoryRuntime(session_dir=global_dir)
+    runtime.add_session_discovery_dir(legacy_dir)
+    runtime.refresh_session_index()
+
+    summaries = runtime.find_discovered_session_summaries(
+        SessionQuery(cwd="/workspace/project")
+    )
+    first_page = runtime.try_query_session_index_page(
+        SessionQuery(cwd="/workspace/project"),
+        limit=1,
+    )
+    second_page = runtime.try_query_session_index_page(
+        cursor=first_page.items[0].after_cursor,
+        limit=1,
+    )
+
+    assert [summary.session_id for summary in summaries] == ["global", "legacy"]
+    assert summaries[0].session_file == global_dir / "global.jsonl"
+    assert [item.item.projection.session_id for item in first_page.items] == ["legacy"]
+    assert [item.item.projection.session_id for item in second_page.items] == ["global"]
+    assert first_page.index_state == "unavailable"
+    assert first_page.bounded_fallback is True
+    assert first_page.has_more is True
+    assert second_page.has_more is False
+    assert runtime.session_dir == global_dir
+
+
+def test_directory_runtime_indexed_views_share_cwd_and_global_federation(
+    tmp_path: Path,
+) -> None:
+    global_dir = tmp_path / "user-home" / "data" / "sessions"
+    legacy_dir = tmp_path / "project" / ".loushang" / "sessions"
+    global_dir.mkdir(parents=True)
+    legacy_dir.mkdir(parents=True)
+    write_agent_transcript_export(
+        global_dir / "current.jsonl",
+        _header("current", cwd="/workspace/current"),
+        [_record("current-record", "current global", timestamp=2.0)],
+    )
+    write_agent_transcript_export(
+        global_dir / "other.jsonl",
+        _header("other", cwd="/workspace/other"),
+        [_record("other-record", "other global", timestamp=3.0)],
+    )
+    write_agent_transcript_export(
+        legacy_dir / "legacy.jsonl",
+        _header("legacy", cwd="/workspace/current"),
+        [_record("legacy-record", "current legacy", timestamp=1.0)],
+    )
+    runtime = AgentTranscriptDirectoryRuntime(session_dir=global_dir)
+    runtime.add_session_discovery_dir(legacy_dir)
+    runtime.refresh_session_index()
+
+    current = runtime.find_indexed_session_summaries(
+        SessionQuery(cwd="/workspace/current")
+    )
+    user_global = runtime.list_all_indexed_session_summaries()
+
+    assert {summary.session_id for summary in current} == {"current", "legacy"}
+    assert {summary.session_id for summary in user_global} == {
+        "current",
+        "legacy",
+        "other",
+    }
 
 
 def test_directory_runtime_coalesces_requested_index_refreshes(tmp_path: Path) -> None:

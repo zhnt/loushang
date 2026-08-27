@@ -179,7 +179,20 @@ STANDARD_CLI_PROFILE = CliProfile(
         _argument("session.name", "--session-name", dest="session_name"),
         _argument("session.select", "--session", dest="session"),
         _argument("session.list", "--list-sessions", dest="list_sessions", action="store_true"),
-        _argument("session.resume", "--resume", "-r", dest="resume", nargs="?", const=True, default=False, metavar="SESSION"),
+        _argument(
+            "session.resume",
+            "--resume",
+            "-r",
+            dest="resume",
+            nargs="?",
+            const=True,
+            default=False,
+            metavar="SESSION",
+            help=(
+                "resume SESSION, or choose from sessions for the current cwd "
+                "in interactive TUI mode"
+            ),
+        ),
         _argument("session.continue", "--continue", "-c", dest="continue_", action="store_true"),
         _argument("session.cwd", "--cwd", dest="cwd"),
         _argument("ai.provider", "--provider", dest="provider"),
@@ -203,7 +216,13 @@ STANDARD_CLI_PROFILE = CliProfile(
             help="show executable, import, Git, and bundled component provenance",
         ),
         _argument("diagnostics.source_info_format", "--source-info-format", dest="source_info_format", choices=("text", "json"), default="text"),
-        _argument("session.all", "--all-sessions", dest="all_sessions", action="store_true"),
+        _argument(
+            "session.all",
+            "--all-sessions",
+            dest="all_sessions",
+            action="store_true",
+            help="include user-global sessions from every cwd",
+        ),
         _argument("session.index", "--session-index", dest="session_index", action="store_true"),
         _argument("session.refresh_index", "--refresh-session-index", dest="refresh_session_index", action="store_true"),
         _argument("session.directory_cwd", "--session-cwd", dest="session_cwd"),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from threading import RLock
 
@@ -78,9 +79,10 @@ class DebugLogSink:
     def _write_line(self, line: str) -> None:
         data = f"{line}\n".encode("utf-8")
         with self._lock:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             self._rotate_if_needed(len(data))
             with self.path.open("ab") as handle:
+                _fchmod_private(handle.fileno())
                 handle.write(data)
             self._update_latest()
 
@@ -117,15 +119,25 @@ def _format_optional(name: str, value: object | None) -> str:
     return f"{name}={_format_inline(str(value))}"
 
 
+def _fchmod_private(descriptor: int) -> None:
+    fchmod = getattr(os, "fchmod", None)
+    if callable(fchmod):
+        fchmod(descriptor, 0o600)
+
+
 def _format_details(details: dict[str, JSONValue]) -> str:
-    return " ".join(f"{key}={_format_detail_value(value)}" for key, value in sorted(details.items()))
+    return " ".join(
+        f"{key}={_format_detail_value(value)}" for key, value in sorted(details.items())
+    )
 
 
 def _format_detail_value(value: JSONValue) -> str:
     if isinstance(value, str):
         return _format_inline(value)
     if isinstance(value, dict | list):
-        return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return json.dumps(
+            value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
     return str(value)
 
 

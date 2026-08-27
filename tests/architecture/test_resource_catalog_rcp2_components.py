@@ -27,6 +27,7 @@ EXTENSION_RESOURCE_SOURCE_PATH = RESOURCE_ROOT / "_catalog_extension_source.py"
 EXTENSION_RESOURCE_RUNTIME_PATH = Path("src/loushang/harness/extensions/resources.py")
 CODING_SHADOW_ADAPTER_PATH = Path("src/loushang/coding/_resource_catalog_shadow.py")
 CODING_BOOTSTRAP_PATH = Path("src/loushang/coding/bootstrap.py")
+CODING_LSP_PLUGIN_OPT_IN_PATH = Path("src/loushang/coding/lsp/_plugin_opt_in.py")
 
 
 def _imported_modules(path: Path) -> set[str]:
@@ -280,7 +281,7 @@ def test_rcp4_plc5_product_composition_assembly_is_one_private_product_root() ->
         for path in production_paths
         if "loushang.harness.session.product_composition_assembly"
         in _imported_modules(path)
-    } == {CODING_BOOTSTRAP_PATH}
+    } == {CODING_BOOTSTRAP_PATH, CODING_LSP_PLUGIN_OPT_IN_PATH}
     imports = _imported_modules(PRODUCT_COMPOSITION_ASSEMBLY_PATH)
     assert not imports & {
         "time",

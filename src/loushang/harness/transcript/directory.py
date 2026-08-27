@@ -13,7 +13,7 @@ import base64
 import json
 import secrets
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from threading import Lock
@@ -27,11 +27,7 @@ from loushang.harness.transcript.session_catalog import (
     SessionQuery,
     SessionRecord,
     SessionSummary,
-    find_all_agent_transcript_session_summaries,
-    find_all_indexed_agent_transcript_session_summaries,
-    list_all_agent_transcript_session_summaries,
-    list_all_indexed_agent_transcript_session_summaries,
-    refresh_all_agent_transcript_session_indexes,
+    filter_agent_transcript_session_summaries,
 )
 
 IndexRefreshFailureRecorder = Callable[[Exception, bool], None]
@@ -67,6 +63,7 @@ class _SessionIndexTraversal:
     index_state: ConversationIndexState = "fresh"
     bounded_fallback: bool = False
     ignored_authority: Path | None = None
+    aggregate_snapshot: bool = False
 
 
 class AgentTranscriptDirectoryRuntime:
@@ -85,8 +82,12 @@ class AgentTranscriptDirectoryRuntime:
         session_index_refresh_interval: float = 0.5,
         session_index_flush_delay: float = 0.25,
         record_index_refresh_failure: IndexRefreshFailureRecorder | None = None,
+        discovery_session_dirs: Sequence[str | Path] = (),
     ) -> None:
         self.session_dir = Path(session_dir)
+        self._discovery_session_dirs: list[Path] = []
+        for directory in discovery_session_dirs:
+            self.add_session_discovery_dir(directory)
         self.auto_refresh_session_index = auto_refresh_session_index
         self.session_index_refresh_interval = session_index_refresh_interval
         self.session_index_flush_delay = session_index_flush_delay
@@ -112,6 +113,43 @@ class AgentTranscriptDirectoryRuntime:
     def list_session_summaries(self) -> list[SessionSummary]:
         return self.session_catalog.list_summaries()
 
+    @property
+    def discovery_session_dirs(self) -> tuple[Path, ...]:
+        return tuple(self._discovery_session_dirs)
+
+    def add_session_discovery_dir(self, session_dir: str | Path) -> None:
+        """Add a read-only compatibility root without changing write authority."""
+
+        candidate = Path(session_dir).expanduser().resolve(strict=False)
+        authority = self.session_dir.expanduser().resolve(strict=False)
+        if candidate == authority or candidate in self._discovery_session_dirs:
+            return
+        self._discovery_session_dirs.append(candidate)
+
+    def is_authority_session_file(self, path: str | Path) -> bool:
+        return _path_is_within(path, self.session_dir)
+
+    def is_discovery_session_file(self, path: str | Path) -> bool:
+        return any(
+            _path_is_within(path, directory)
+            for directory in self._discovery_session_dirs
+        )
+
+    def list_discovered_session_summaries(self) -> list[SessionSummary]:
+        summaries = self.list_session_summaries()
+        for directory in self._discovery_session_dirs:
+            summaries.extend(AgentTranscriptSessionCatalog(directory).list_summaries())
+        return _deduplicate_session_summaries(summaries)
+
+    def find_discovered_session_summaries(
+        self,
+        query: SessionQuery | None = None,
+    ) -> list[SessionSummary]:
+        return _filter_discovered_session_summaries(
+            self.list_discovered_session_summaries(),
+            query or SessionQuery(),
+        )
+
     def find_session_summaries(
         self,
         query: SessionQuery | None = None,
@@ -119,16 +157,13 @@ class AgentTranscriptDirectoryRuntime:
         return self.session_catalog.find_summaries(query)
 
     def list_all_session_summaries(self) -> list[SessionSummary]:
-        return list_all_agent_transcript_session_summaries(self.session_dir.parent)
+        return self.list_discovered_session_summaries()
 
     def find_all_session_summaries(
         self,
         query: SessionQuery | None = None,
     ) -> list[SessionSummary]:
-        return find_all_agent_transcript_session_summaries(
-            self.session_dir.parent,
-            query,
-        )
+        return self.find_discovered_session_summaries(query)
 
     def refresh_session_index(self) -> list[SessionSummary]:
         summaries = self.session_catalog.refresh_index()
@@ -146,11 +181,9 @@ class AgentTranscriptDirectoryRuntime:
         return summaries
 
     def refresh_all_session_indexes(self) -> list[SessionSummary]:
-        summaries = refresh_all_agent_transcript_session_indexes(
-            self.session_dir.parent
-        )
-        self._last_session_index_refresh = monotonic()
-        return summaries
+        # Compatibility roots are read-only. The global authority is the only
+        # directory whose projection index this runtime may mutate.
+        return self.refresh_session_index()
 
     def list_indexed_session_summaries(
         self,
@@ -159,13 +192,42 @@ class AgentTranscriptDirectoryRuntime:
     ) -> list[SessionSummary]:
         if self.auto_refresh_session_index and not refresh:
             self.request_session_index_refresh_if_due()
+        if any(path.is_dir() for path in self._discovery_session_dirs):
+            if refresh:
+                self.refresh_session_index()
+            return self._collect_indexed_session_summaries(SessionQuery())
         return self.session_catalog.list_indexed_summaries(refresh=refresh)
 
     def find_indexed_session_summaries(
         self,
         query: SessionQuery | None = None,
     ) -> list[SessionSummary]:
+        if any(path.is_dir() for path in self._discovery_session_dirs):
+            return self._collect_indexed_session_summaries(query or SessionQuery())
         return self.session_catalog.find_indexed_summaries(query)
+
+    def _collect_indexed_session_summaries(
+        self,
+        query: SessionQuery,
+    ) -> list[SessionSummary]:
+        """Collect one pinned authority-plus-discovery index traversal."""
+
+        requested_limit = query.limit
+        if requested_limit == 0:
+            return []
+        page_limit = min(100, requested_limit or 100)
+        page = self.try_query_session_index_page(query, limit=page_limit)
+        summaries: list[SessionSummary] = []
+        while True:
+            summaries.extend(item.item.projection for item in page.items)
+            if requested_limit is not None and len(summaries) >= requested_limit:
+                return summaries[:requested_limit]
+            if not page.has_more or not page.items or page.restart_required:
+                return summaries
+            page = self.try_query_session_index_page(
+                cursor=page.items[-1].after_cursor,
+                limit=page_limit,
+            )
 
     def try_query_session_index_page(
         self,
@@ -186,6 +248,13 @@ class AgentTranscriptDirectoryRuntime:
             raise ValueError("session index page limit must be between 1 and 100")
         if cursor is not None:
             return self._continue_session_index_page(cursor=cursor, limit=limit)
+
+        if any(path.is_dir() for path in self._discovery_session_dirs):
+            return self._start_discovered_session_index_page(
+                query=query,
+                limit=limit,
+                ignore_authority=ignore_authority,
+            )
 
         requested = replace(query or SessionQuery(), limit=None)
         ignored_authority = (
@@ -241,6 +310,98 @@ class AgentTranscriptDirectoryRuntime:
                 self._index_traversals.popitem(last=False)
         return self._session_index_page(traversal, token=token, start=0, limit=limit)
 
+    def _start_discovered_session_index_page(
+        self,
+        *,
+        query: SessionQuery | None,
+        limit: int,
+        ignore_authority: str | Path | None,
+    ) -> SessionIndexPage:
+        """Pin one merged snapshot across global authority and legacy cwd roots."""
+
+        requested = replace(query or SessionQuery(), limit=None)
+        ignored_authority = (
+            Path(ignore_authority).expanduser().resolve(strict=False)
+            if ignore_authority is not None
+            else None
+        )
+        catalogs = (
+            self.session_catalog,
+            *(
+                AgentTranscriptSessionCatalog(path)
+                for path in self._discovery_session_dirs
+                if path.is_dir()
+            ),
+        )
+        current_snapshot = catalogs[0].try_query_index_snapshot(
+            requested,
+            ignore_modified_paths=(ignored_authority,)
+            if ignored_authority is not None
+            else (),
+        )
+        current_bounded = current_snapshot.index_state != "fresh"
+        current_items = (
+            catalogs[0].bounded_index_snapshot(requested).items
+            if current_bounded
+            else current_snapshot.items
+        )
+        items = list(current_items)
+        index_states = [current_snapshot.index_state]
+        any_bounded = current_bounded
+        for catalog in catalogs[1:]:
+            snapshot = catalog.try_query_index_snapshot(requested)
+            index_states.append(snapshot.index_state)
+            bounded = snapshot.index_state != "fresh"
+            any_bounded = any_bounded or bounded
+            items.extend(
+                snapshot.items
+                if not bounded
+                else catalog.bounded_index_snapshot(requested).items
+            )
+
+        unique_items: dict[str, IndexedProjection[SessionSummary]] = {}
+        for item in items:
+            session_file = item.projection.session_file
+            key = item.projection.session_id or (
+                str(session_file.expanduser().resolve(strict=False))
+                if session_file is not None
+                else f"{item.locator.provider_id}:{item.locator.key}"
+            )
+            unique_items.setdefault(key, item)
+        selected = _filter_discovered_session_summaries(
+            [item.projection for item in unique_items.values()], requested
+        )
+        by_projection = {id(item.projection): item for item in unique_items.values()}
+        token = secrets.token_urlsafe(18)
+        visible_state: ConversationIndexState = (
+            "unavailable"
+            if "unavailable" in index_states
+            else "stale"
+            if "stale" in index_states
+            else "fresh"
+        )
+        traversal = _SessionIndexTraversal(
+            items=tuple(by_projection[id(summary)] for summary in selected),
+            index_generation=f"aggregate:{current_snapshot.index_generation}",
+            query_snapshot=token,
+            expires_at=monotonic() + _INDEX_TRAVERSAL_TTL,
+            index_state=visible_state,
+            bounded_fallback=any_bounded,
+            ignored_authority=ignored_authority,
+            aggregate_snapshot=True,
+        )
+        with self._index_traversal_lock:
+            self._evict_index_traversals()
+            self._index_traversals[token] = traversal
+            while len(self._index_traversals) > _MAX_INDEX_TRAVERSALS:
+                self._index_traversals.popitem(last=False)
+        return self._session_index_page(
+            traversal,
+            token=token,
+            start=0,
+            limit=limit,
+        )
+
     def list_all_indexed_session_summaries(
         self,
         *,
@@ -248,19 +409,15 @@ class AgentTranscriptDirectoryRuntime:
     ) -> list[SessionSummary]:
         if self.auto_refresh_session_index and not refresh:
             self.request_session_index_refresh_if_due(all_sessions=True)
-        return list_all_indexed_agent_transcript_session_summaries(
-            self.session_dir.parent,
-            refresh=refresh,
-        )
+        if refresh:
+            self.refresh_session_index()
+        return self._collect_indexed_session_summaries(SessionQuery())
 
     def find_all_indexed_session_summaries(
         self,
         query: SessionQuery | None = None,
     ) -> list[SessionSummary]:
-        return find_all_indexed_agent_transcript_session_summaries(
-            self.session_dir.parent,
-            query,
-        )
+        return self._collect_indexed_session_summaries(query or SessionQuery())
 
     def request_session_index_refresh(self, *, all_sessions: bool = False) -> None:
         """Schedule one best-effort index refresh after Product state changes."""
@@ -336,7 +493,7 @@ class AgentTranscriptDirectoryRuntime:
                 query_snapshot=token,
                 restart_required=True,
             )
-        if traversal.bounded_fallback:
+        if traversal.bounded_fallback or traversal.aggregate_snapshot:
             return self._session_index_page(
                 traversal,
                 token=token,
@@ -421,6 +578,62 @@ def _merge_index_maintenance(
         "refresh_all": 3,
     }
     return left if priority[left] >= priority[right] else right
+
+
+def _deduplicate_session_summaries(
+    summaries: Sequence[SessionSummary],
+) -> list[SessionSummary]:
+    selected: dict[str, SessionSummary] = {}
+    for summary in summaries:
+        session_file = summary.session_file
+        key = summary.session_id or (
+            str(session_file.expanduser().resolve(strict=False))
+            if session_file is not None
+            else ""
+        )
+        selected.setdefault(key, summary)
+    return sorted(
+        selected.values(),
+        key=lambda summary: _session_summary_sort_key(summary, "recent"),
+        reverse=True,
+    )
+
+
+def _filter_discovered_session_summaries(
+    summaries: Sequence[SessionSummary],
+    query: SessionQuery,
+) -> list[SessionSummary]:
+    ordered = sorted(
+        summaries,
+        key=lambda summary: _session_summary_sort_key(summary, query.sort_by),
+        reverse=True,
+    )
+    return filter_agent_transcript_session_summaries(ordered, query)
+
+
+def _session_summary_sort_key(
+    summary: SessionSummary,
+    sort_by: str,
+) -> tuple[str, str, str]:
+    timestamp = summary.created_at if sort_by == "created" else summary.updated_at
+    session_file = summary.session_file
+    return (
+        timestamp,
+        summary.session_id,
+        str(session_file.expanduser().resolve(strict=False))
+        if session_file is not None
+        else "",
+    )
+
+
+def _path_is_within(path: str | Path, directory: str | Path) -> bool:
+    candidate = Path(path).expanduser().resolve(strict=False)
+    root = Path(directory).expanduser().resolve(strict=False)
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return False
+    return True
 
 
 def _encode_index_cursor(token: str, offset: int) -> str:

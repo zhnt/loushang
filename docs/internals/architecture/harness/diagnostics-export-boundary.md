@@ -3,6 +3,12 @@
 `loushang.harness.diagnostics.export` owns the reusable diagnostics archive
 mechanism. It writes a deterministic set of archive members, protects archive
 member names, and redacts both text artifacts and JSON values before writing.
+Archive publication uses a private same-directory temporary file, fsync, and
+atomic no-replace publication, so a failed or colliding export cannot expose a
+partial ZIP or overwrite an existing artifact. Publication verifies the
+temporary object's file identity before and after the no-replace operation;
+archive member names are portable relative paths under both POSIX and Windows
+semantics.
 
 The low-level archive writer does not decide a product's storage root, file
 name, package identity, README wording, JSON field convention, or artifacts.
@@ -30,11 +36,25 @@ writer; it must not fall back to an unrestricted `repr()` in the archive.
 ## Standard Product Bundle
 
 `loushang.harness.diagnostics.export_diagnostics_bundle` supplies the standard
-`.loushang/diagnostics` output default, `loushang-diag-*` name, README,
-camelCase manifest, latest debug/trace/session artifacts, and standard
-diagnostic serialization. These are shared Loushang host contracts rather than
-Coding semantics. Research, Design, PPT, OEM-configured Products, and Extensions
-can use the default profile or inject another `DiagnosticBundleProfile`.
+`$LOUSHANG_HOME/state/diagnostics` output, `loushang-diag-*` name, README,
+camelCase manifest, latest debug/trace snapshots, and standard diagnostic
+serialization. Conversation transcripts and prompt drafts are excluded.
+
+The standard CLI operation creates a short-lived run lease and ArtifactStore.
+Observability inputs must first become bounded `redact` artifacts with portable
+provenance; the archive reads them through ArtifactStore integrity checks and
+never races a live sink directly. The operation passes the same resolved
+`PlatformPaths` owned by its `RuntimeScope`, so no leaf exporter reinterprets
+environment variables mid-operation. The default managed
+archive family applies age, count, and total-byte retention after successful
+publication while preserving the new output. An explicit output path is caller
+owned and is never included in automatic retention.
+
+These are shared Loushang host contracts rather than Coding semantics.
+Research, Design, PPT, OEM-configured Products, and Extensions can use the
+default profile or inject another `DiagnosticBundleProfile`. A custom profile
+defaults to project-relative output; the standard profile explicitly selects
+the user-global platform root.
 
 The removed `loushang.coding.diag_export` facade is not retained. Coding CLI
 calls the Harness operation directly, preserving the existing archive schema.

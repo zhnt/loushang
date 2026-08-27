@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Literal
+
+from loushang.harness.environment import resolve_platform_home
 
 ResourceScope = Literal["temporary", "project", "user", "package", "built_in"]
 
@@ -21,19 +22,6 @@ DEFAULT_SCOPE_PRECEDENCE: tuple[ResourceScope, ...] = (
     "package",
     "built_in",
 )
-
-
-def resolve_platform_home(
-    *,
-    environ: Mapping[str, str] | None = None,
-    home: str | Path | None = None,
-) -> Path:
-    values = os.environ if environ is None else environ
-    configured = values.get("LOUSHANG_HOME")
-    if configured:
-        return Path(configured).expanduser().resolve(strict=False)
-    base = Path.home() if home is None else Path(home).expanduser()
-    return (base / ".loushang").resolve(strict=False)
 
 
 def resolve_workspace_resource_root(workspace_root: str | Path) -> Path:
@@ -60,6 +48,8 @@ def resolve_user_resource_roots(
     home: str | Path | None = None,
     include_missing_platform_home: bool = False,
 ) -> tuple[tuple[Path, ...], frozenset[Path]]:
+    import os
+
     platform_home = resolve_platform_home(environ=environ, home=home)
     values = os.environ if environ is None else environ
     roots: list[Path] = []

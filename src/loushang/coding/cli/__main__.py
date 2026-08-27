@@ -121,6 +121,7 @@ from loushang.harness.diagnostics.observability_runtime import (
     session_observability_context,
     startup_observability_context,
 )
+from loushang.harness.environment import resolve_platform_paths
 from loushang.harness.host.product_host import ProductHostLifecycle, stream_is_tty
 from loushang.harness.host.rpc import run_rpc_host
 from loushang.harness.policy_engine import PolicyEngine
@@ -208,9 +209,7 @@ def build_builtin_tool_registry(
         else None,
         shell_path=get_shell_path() if callable(get_shell_path) else None,
         command_prefix=(
-            get_shell_command_prefix()
-            if callable(get_shell_command_prefix)
-            else None
+            get_shell_command_prefix() if callable(get_shell_command_prefix) else None
         ),
     )
     register_coding_arch_tools(
@@ -269,7 +268,7 @@ def default_runtime_builder(
         resource_loader_options,
         create_services=create_agent_session_services,
     )
-    return create_agent_session_runtime(
+    runtime = create_agent_session_runtime(
         session_dir=session_dir,
         services=services,
         services_factory=services_factory,
@@ -281,6 +280,12 @@ def default_runtime_builder(
         tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=True,
     )
+    platform_sessions = resolve_platform_paths().data / "sessions"
+    if session_dir.expanduser().resolve(strict=False) == platform_sessions:
+        platform_sessions.mkdir(mode=0o700, parents=True, exist_ok=True)
+        platform_sessions.chmod(0o700)
+        runtime.add_session_discovery_dir(cwd / ".loushang" / "sessions")
+    return runtime
 
 
 async def run_cli(
@@ -454,7 +459,11 @@ async def _run_coding_pre_session_bootstrap(
             "use --continue for the latest session or --resume <session>"
         )
 
-    composition = bind_coding_continuity(context.runtime)
+    composition = bind_coding_continuity(
+        context.runtime,
+        cwd=context.bootstrap.project_root,
+        all_sessions=args.all_sessions,
+    )
     continuity_reference = composition.hub.reference()
     activated = False
     try:

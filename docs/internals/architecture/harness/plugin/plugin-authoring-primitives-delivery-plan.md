@@ -11,25 +11,26 @@
   root compilation landed at `d2b7724a`; PAP5-A activation authority and the
   narrow Component Host landed at `c8b0088c`; PAP5-B Session single-Graph
   composition and its production-shaped lifecycle proof landed at `ee303971`.
-  These are internal Harness primitives. This document does not claim a public
-  Plugin SDK, `coding.lsp`, `coding.arch`, Skill catalog convergence, or new
-  MCP functionality.
-- Review status: self-reviewed in
-  [Plugin Authoring Primitives Plan Review](plugin-authoring-primitives-plan-review.md).
-  Three independent source reviews and the final freeze re-review are complete;
+  These are the internal Harness primitives delivered by this plan. Subsequent
+  PLC5.1 work has implemented the production `coding.lsp` Plugin route described
+  by the lifecycle plan; that adopter is not retroactively part of PAP5. This
+  document still does not claim a public Plugin SDK, `coding.arch`, Resource/
+  Skill catalog cutover, or new MCP functionality.
+- Review status: three independent source reviews and the final freeze re-review are complete;
   their lifecycle, authority, import-boundary, Provider-resolution, and
   single-Graph findings were closed through `a38c59dd`. Focused regressions,
   Harness Ruff/mypy/full tests, and architecture-documentation gates are green
-  for PR publication.
+  for PR publication. Detailed review discussion remains in issue/PR and Git
+  history rather than a second architecture document.
 
 This plan specializes the broader
-[Unified Plugin Architecture](unified-plugin-architecture.md). The accepted
+[Unified Plugin Architecture](architecture.md). The accepted
 [PLC1B Contract](plugin-declaration-foundation-plc1b-contract.md) freezes the
 exact source/index/declaration/document/approval/evidence records, fingerprint
 layers, attempt identity and aggregate state required by PAP1B. The accepted
-[Capability Dependency And Mount Lifecycle](capability-dependency-and-mount-lifecycle.md),
-[Capability Composition Lifecycle Authority Plan](composition-lifecycle-authority-plan.md),
-and [Extension And Resource Generation Lifecycle](extension-generation-lifecycle-boundary.md)
+[Capability Dependency And Mount Lifecycle](../capability-dependency-and-mount-lifecycle.md),
+[Capability Composition Lifecycle Authority Plan](../composition-lifecycle-authority-plan.md),
+and [Extension And Resource Generation Lifecycle](../extension-generation-lifecycle-boundary.md)
 remain authoritative wherever this plan is silent or ambiguous.
 
 ## Decision
@@ -473,7 +474,8 @@ Do not merge all slices as one change.
 
 Scope:
 
-- create a tracking issue and record the exact UPA1/UPA2 source commit;
+- create a tracking issue and record the exact pre-PLC1B resolve/preflight
+  source commit;
 - reconcile the three known architecture-baseline failures against the current
   source and restore the qualified inventory to green without broadening an
   allowlist merely because a new sink exists;
@@ -492,7 +494,7 @@ Primary files:
 ```text
 tests/architecture/test_unified_plugin_architecture.py
 tests/harness/resources/plugins/conftest.py
-docs/internals/architecture/harness/plugin-authoring-primitives-delivery-plan.md
+docs/internals/architecture/harness/plugin/plugin-authoring-primitives-delivery-plan.md
 ```
 
 Exit gate:
@@ -534,7 +536,7 @@ Exit gate:
 - JSON round-trip and canonical fingerprint fixtures are stable;
 - builder output exact-matches hand-authored IR;
 - the builder cannot import, register, bind, or access a Session;
-- existing UPA2 preflight/finalize tests remain byte-for-byte compatible except
+- existing pre-PLC1B preflight/finalize tests remain byte-for-byte compatible except
   for explicitly versioned fixture evolution.
 
 Rollback: remove the new codec/builder; existing generic payload remains valid.
@@ -1093,8 +1095,9 @@ attempt to roll an active Mount generation backward.
 
 ### PAP7: SDK Stabilization And Author Conformance
 
-Prerequisite: the accepted UPA5 `coding.base` and UPA6 `coding.arch` production
-slices are complete, or an accepted UPA revision explicitly changes that gate.
+Prerequisite: PLC6 `coding.base` and PLC7 `coding.arch` production slices are
+complete under Plugin Architecture V2, or that architecture and the sole PLC
+plan explicitly revise the gate.
 The public SDK must not be declared stable after only a synthetic fixture and
 one LSP implementation. Before the prerequisite is met, this slice may maintain
 an internal SDK candidate and author conformance suite, but it may not add the
@@ -1251,7 +1254,7 @@ Binder, and Session publication seams are the completion evidence.
 ## Definition Of Done
 
 The authoring-primitives milestone is complete only after PAP0-PAP7, including
-PAP1B, and PAP7's UPA5/UPA6 prerequisites, not after the first builder lands.
+PAP1B, and PAP7's PLC6/PLC7 prerequisites, not after the first builder lands.
 Completion means:
 
 1. one documented Provider declaration compiles to the canonical IR;

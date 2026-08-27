@@ -17,6 +17,7 @@ from loushang.coding.multiagent import (
     coding_read_only_agent_types,
     coding_recipe_context_plan,
 )
+from loushang.harness.cli.agent_args import resolve_trusted_settings_session_dir
 from loushang.harness.cli.multiagent import (
     MultiAgentCliUsageError,
     MultiAgentRecipesCommand,
@@ -29,6 +30,7 @@ from loushang.harness.cli.multiagent import (
     write_multiagent_recipe_catalog,
     write_multiagent_recipe_result,
 )
+from loushang.harness.environment import resolve_platform_paths
 from loushang.harness.multiagent import (
     ImmediateRecipeExecutor,
     RecipeRunRequest,
@@ -145,6 +147,10 @@ async def run_coding_multiagent_command(
             project_root=project_root,
             settings_manager=settings_manager,
         )
+        platform_sessions = resolve_platform_paths().data / "sessions"
+        if session_dir == platform_sessions:
+            platform_sessions.mkdir(mode=0o700, parents=True, exist_ok=True)
+            platform_sessions.chmod(0o700)
         tool_registry = build_tool_registry(
             diagnostics_service=getattr(
                 resolved_services,
@@ -268,12 +274,11 @@ def _resolve_session_dir(
 ) -> Path:
     if value:
         return Path(value).expanduser().resolve()
-    get_settings = getattr(settings_manager, "get_settings", None)
-    if callable(get_settings):
-        configured = getattr(get_settings(), "session_dir", None)
-        if configured:
-            return Path(configured).expanduser().resolve()
-    return project_root / ".loushang" / "sessions"
+    if settings_manager is not None:
+        configured = resolve_trusted_settings_session_dir(settings_manager)
+        if configured is not None:
+            return configured
+    return resolve_platform_paths().data / "sessions"
 
 
 __all__ = [

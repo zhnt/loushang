@@ -9,6 +9,7 @@ from typing import Any, Protocol
 from loushang.harness.cli.agent_args import AgentCliArgs
 from loushang.harness.runtime import SessionOperationResult
 from loushang.harness.session import require_session_operation_session
+from loushang.harness.transcript import SessionQuery
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,6 +19,7 @@ class SessionResolutionRequest:
     resume: bool | str = False
     fork: str | None = None
     cwd: str | Path = "."
+    all_sessions: bool = False
 
 
 class SessionResolutionRuntime(Protocol):
@@ -53,6 +55,7 @@ def agent_session_resolution_request(
         resume=args.resume,
         fork=args.fork,
         cwd=cwd,
+        all_sessions=bool(getattr(args, "all_sessions", False)),
     )
 
 
@@ -67,7 +70,11 @@ async def resolve_session(
             await runtime.restore_session_operation(request.resume)
         )
     elif request.continue_ or request.resume:
-        latest_session_file = resolve_latest_session_file(runtime)
+        latest_session_file = resolve_latest_session_file(
+            runtime,
+            cwd=None if request.all_sessions else request.cwd,
+            discovered=request.all_sessions,
+        )
         if latest_session_file is None:
             raise RuntimeError(
                 "No existing session found. Use --session or --resume <session> "
@@ -108,9 +115,30 @@ async def resolve_agent_cli_session(
     )
 
 
-def resolve_latest_session_file(runtime: SessionResolutionRuntime) -> str | None:
+def resolve_latest_session_file(
+    runtime: SessionResolutionRuntime,
+    *,
+    cwd: str | Path | None = None,
+    discovered: bool = False,
+) -> str | None:
+    """Return the newest resumable transcript, scoped to ``cwd`` when possible."""
+
     try:
-        sessions = runtime.list_sessions()
+        finder = getattr(runtime, "find_discovered_session_summaries", None)
+        if not callable(finder):
+            finder = getattr(runtime, "find_session_summaries", None)
+        sessions = (
+            finder(
+                SessionQuery(
+                    cwd=str(Path(cwd).expanduser().resolve(strict=False)),
+                    sort_by="recent",
+                )
+            )
+            if cwd is not None and callable(finder)
+            else finder(SessionQuery(sort_by="recent"))
+            if discovered and callable(finder)
+            else runtime.list_sessions()
+        )
     except Exception as error:
         raise RuntimeError(f"Failed to list sessions: {error}") from error
     if not isinstance(sessions, list):

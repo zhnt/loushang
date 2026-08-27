@@ -384,7 +384,10 @@ def test_resource_settings_errors_are_reported_for_standard_operations() -> None
 
 def test_agent_application_state_preparation_binds_product_tools_and_approval(
     tmp_path,
+    monkeypatch,
 ) -> None:
+    platform_sessions = tmp_path / "user-home" / "data" / "sessions"
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "user-home"))
     calls: list[object] = []
     policy_engine = object()
     args = _ApplicationArgs()
@@ -423,11 +426,11 @@ def test_agent_application_state_preparation_binds_product_tools_and_approval(
 
     assert result.exit_code is None
     assert result.value is not None
-    assert result.value.session_dir == tmp_path / ".loushang" / "sessions"
+    assert result.value.session_dir == platform_sessions
     assert result.value.tool_registry == "registry"
     assert result.value.approval_resolver == "interactive"
     assert calls == [
-        ("pre_runtime", tmp_path / ".loushang" / "sessions"),
+        ("pre_runtime", platform_sessions),
         (
             "tools",
             WorkspaceToolRuntimeSettings(policy_engine=policy_engine),
@@ -489,11 +492,11 @@ def test_agent_application_state_preparation_resolves_tool_settings_once(
     assert result.value.tool_registry == "registry"
     assert policy_calls == [
         {
-                "blocked_tools": ("bash",),
-                "ask_tools": (),
-                "blocked_capabilities": ("workspace.command",),
-                "ask_capabilities": (),
-                "blocked_substrings": (),
+            "blocked_tools": ("bash",),
+            "ask_tools": (),
+            "blocked_capabilities": ("workspace.command",),
+            "ask_capabilities": (),
+            "blocked_substrings": (),
             "ask_substrings": (),
             "blocked_path_substrings": (),
             "ask_path_substrings": (),

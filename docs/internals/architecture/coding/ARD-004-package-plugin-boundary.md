@@ -12,6 +12,9 @@ imported from `loushang.harness.resources`; Coding binds product defaults in
 terminology and current ownership are defined by the
 [Product And OEM Glossary](../../glossary/loushang-product.md) and
 [Harness Platform Resource Layout Boundary](../harness/platform-resource-layout-boundary.md).
+Current Plugin identity, declaration, lifecycle, execution, and authoring
+decisions are defined by the
+[Harness Plugin Architecture](../harness/plugin/architecture.md).
 
 ## Context
 

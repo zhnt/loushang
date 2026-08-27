@@ -154,22 +154,32 @@ class SessionLifecycleOperationAdapter(
         missing_cwd: MissingCwdPolicy = "error",
         metadata: dict[str, object] | None = None,
     ) -> PreparedSessionLifecycleOperation[SessionT, PayloadT]:
-        session_file = self.resolve_session_file(session_id)
+        session_file = self.resolve_discovered_session_file(session_id)
+        lifecycle_metadata = self._lifecycle_metadata(
+            operation="restore_session",
+            metadata=metadata,
+            session_ref=str(session_id),
+            target_session_file=str(session_file),
+            fallback_cwd=(str(fallback_cwd) if fallback_cwd is not None else None),
+            missing_cwd=missing_cwd,
+        )
         try:
+            if self._restore_requires_authority_import(session_file):
+                return await self.lifecycle.prepare_import_file(
+                    session_file,
+                    destination_dir=self.session_dir,
+                    cwd_override=(
+                        str(fallback_cwd)
+                        if missing_cwd == "fallback" and fallback_cwd is not None
+                        else None
+                    ),
+                    metadata=lifecycle_metadata,
+                )
             return await super().prepare_restore_session_operation(
                 session_file,
                 fallback_cwd=(str(fallback_cwd) if fallback_cwd is not None else None),
                 missing_cwd=missing_cwd,
-                metadata=self._lifecycle_metadata(
-                    operation="restore_session",
-                    metadata=metadata,
-                    session_ref=str(session_id),
-                    target_session_file=str(session_file),
-                    fallback_cwd=(
-                        str(fallback_cwd) if fallback_cwd is not None else None
-                    ),
-                    missing_cwd=missing_cwd,
-                ),
+                metadata=lifecycle_metadata,
             )
         except MissingSessionCwdError as exc:
             raise self._translate_missing_cwd_error(exc) from exc
@@ -188,26 +198,36 @@ class SessionLifecycleOperationAdapter(
         session_file: Path | None = None
         try:
             with timer.phase("resolve_session"):
-                session_file = self.resolve_session_file(session_id)
+                session_file = self.resolve_discovered_session_file(session_id)
+            lifecycle_metadata = self._lifecycle_metadata(
+                operation="restore_session",
+                options=options,
+                metadata=metadata,
+                session_ref=str(session_id),
+                target_session_file=str(session_file),
+                fallback_cwd=(str(fallback_cwd) if fallback_cwd is not None else None),
+                missing_cwd=missing_cwd,
+            )
             with timer.phase("lifecycle_restore"):
-                result = await super().restore_session_operation(
-                    session_file,
-                    fallback_cwd=(
-                        str(fallback_cwd) if fallback_cwd is not None else None
-                    ),
-                    missing_cwd=missing_cwd,
-                    metadata=self._lifecycle_metadata(
-                        operation="restore_session",
-                        options=options,
-                        metadata=metadata,
-                        session_ref=str(session_id),
-                        target_session_file=str(session_file),
+                if self._restore_requires_authority_import(session_file):
+                    result = await super().import_session_operation(
+                        session_file,
+                        cwd_override=(
+                            str(fallback_cwd)
+                            if missing_cwd == "fallback" and fallback_cwd is not None
+                            else None
+                        ),
+                        metadata=lifecycle_metadata,
+                    )
+                else:
+                    result = await super().restore_session_operation(
+                        session_file,
                         fallback_cwd=(
                             str(fallback_cwd) if fallback_cwd is not None else None
                         ),
                         missing_cwd=missing_cwd,
-                    ),
-                )
+                        metadata=lifecycle_metadata,
+                    )
             outcome = "cancelled" if result.cancelled else "completed"
             return result
         except MissingSessionCwdError as exc:
@@ -219,6 +239,11 @@ class SessionLifecycleOperationAdapter(
                 session_file=session_file,
                 outcome=outcome,
             )
+
+    def _restore_requires_authority_import(self, session_file: Path) -> bool:
+        return bool(getattr(self, "persist", False)) and not (
+            self.is_authority_session_file(session_file)
+        )
 
     async def fork_session(
         self,

@@ -22,12 +22,16 @@ from loushang.harness.transcript import (
 )
 
 
-def _header(conversation_id: str) -> ConversationHeader:
+def _header(
+    conversation_id: str,
+    *,
+    cwd: str = "/workspace/project",
+) -> ConversationHeader:
     return ConversationHeader(
         conversation_id=conversation_id,
         version=1,
         created_at="2026-07-24T00:00:00Z",
-        metadata={"cwd": "/workspace/project"},
+        metadata={"cwd": cwd},
     )
 
 
@@ -109,6 +113,7 @@ def test_coding_provider_projects_common_summary_preview_and_activation(
         assert len(page.items) == 1
         summary = page.items[0]
         assert summary.title == "Explain the parser architecture"
+        assert summary.subtitle == "/workspace/project"
         assert summary.domain_ids == ("coding",)
         assert summary.target.opaque_id == "session-1"
         assert not hasattr(summary, "branch")
@@ -127,6 +132,90 @@ def test_coding_provider_projects_common_summary_preview_and_activation(
         assert runtime.restored == [str(transcript)]
         await composition.dispose()
         assert bind_coding_continuity(runtime) is composition
+        await shutdown_coding_continuity(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_coding_resume_discovery_defaults_to_current_cwd(tmp_path: Path) -> None:
+    runtime = _Runtime(tmp_path)
+    write_agent_transcript_export(
+        tmp_path / "current.jsonl",
+        _header("current", cwd="/workspace/current"),
+        [_record("current-record", "Resume current workspace")],
+    )
+    write_agent_transcript_export(
+        tmp_path / "other.jsonl",
+        _header("other", cwd="/workspace/other"),
+        [_record("other-record", "Resume other workspace")],
+    )
+    runtime.refresh_session_index()
+    composition = bind_coding_continuity(runtime, cwd="/workspace/current")
+
+    async def scenario() -> None:
+        page = await composition.hub.query(ContinuityQuery(page_size=10))
+        assert [item.target.opaque_id for item in page.items] == ["current"]
+        assert page.items[0].subtitle == "/workspace/current"
+        await shutdown_coding_continuity(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_coding_resume_discovery_can_list_user_global_sessions(tmp_path: Path) -> None:
+    runtime = _Runtime(tmp_path)
+    write_agent_transcript_export(
+        tmp_path / "current.jsonl",
+        _header("current", cwd="/workspace/current"),
+        [_record("current-record", "Resume current workspace")],
+    )
+    write_agent_transcript_export(
+        tmp_path / "other.jsonl",
+        _header("other", cwd="/workspace/other"),
+        [_record("other-record", "Resume other workspace")],
+    )
+    runtime.refresh_session_index()
+    composition = bind_coding_continuity(
+        runtime,
+        cwd="/workspace/current",
+        all_sessions=True,
+    )
+
+    async def scenario() -> None:
+        page = await composition.hub.query(ContinuityQuery(page_size=10))
+        assert {item.target.opaque_id for item in page.items} == {
+            "current",
+            "other",
+        }
+        assert {item.subtitle for item in page.items} == {
+            "/workspace/current",
+            "/workspace/other",
+        }
+        await shutdown_coding_continuity(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_coding_resume_discovery_includes_legacy_current_cwd_sessions(
+    tmp_path: Path,
+) -> None:
+    global_dir = tmp_path / "user-home" / "data" / "sessions"
+    legacy_dir = tmp_path / "project" / ".loushang" / "sessions"
+    global_dir.mkdir(parents=True)
+    legacy_dir.mkdir(parents=True)
+    runtime = _Runtime(global_dir)
+    runtime.add_session_discovery_dir(legacy_dir)
+    write_agent_transcript_export(
+        legacy_dir / "legacy.jsonl",
+        _header("legacy", cwd="/workspace/current"),
+        [_record("legacy-record", "Resume legacy workspace session")],
+    )
+    runtime.refresh_session_index()
+    composition = bind_coding_continuity(runtime, cwd="/workspace/current")
+
+    async def scenario() -> None:
+        page = await composition.hub.query(ContinuityQuery(page_size=10))
+        assert [item.target.opaque_id for item in page.items] == ["legacy"]
+        assert page.items[0].subtitle == "/workspace/current"
         await shutdown_coding_continuity(runtime)
 
     asyncio.run(scenario())

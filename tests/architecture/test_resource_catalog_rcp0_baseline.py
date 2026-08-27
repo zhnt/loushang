@@ -6,12 +6,12 @@ from functools import cache
 from pathlib import Path
 
 BASELINE_PATH = Path(
-    "docs/internals/architecture/harness/resource-catalog-rcp0-baseline.md"
+    "docs/internals/architecture/harness/plugin/resource-catalog-rcp0-baseline.md"
 )
 PLAN_PATH = Path(
-    "docs/internals/architecture/harness/resource-catalog-pluginization-plan.md"
+    "docs/internals/architecture/harness/plugin/resource-catalog-pluginization-plan.md"
 )
-README_PATH = Path("docs/internals/architecture/harness/README.md")
+README_PATH = Path("docs/internals/architecture/harness/plugin/README.md")
 SOURCE_ROOT = Path("src/loushang")
 LEGACY_LOADER_ROOT = Path("src/loushang/harness/resources")
 PACKAGE_SOURCE_PATH = Path("src/loushang/harness/resources/_catalog_package_source.py")
@@ -492,7 +492,7 @@ def test_rcp0_baseline_is_indexed_and_distinguishes_private_rcp3_implementation(
     readme = README_PATH.read_text(encoding="utf-8")
 
     assert "resource-catalog-rcp0-baseline.md" in plan
-    assert readme.count("resource-catalog-rcp0-baseline.md") == 2
+    assert readme.count("resource-catalog-rcp0-baseline.md") == 1
     assert "RCP1 through RCP3 remain private foundations" in baseline
     assert "No Product invokes\n  them by default" in baseline
     assert "v1 legacy loader remains the default Resource" in baseline

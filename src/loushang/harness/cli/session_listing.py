@@ -61,8 +61,7 @@ def list_session_records(
     runtime: object,
     request: SessionListingRequest,
     *,
-    record_projector: Callable[[object], dict[str, object] | None]
-    | None = None,
+    record_projector: Callable[[object], dict[str, object] | None] | None = None,
 ) -> list[dict[str, object]]:
     """Read and project session summaries from an injected catalog runtime."""
 
@@ -93,6 +92,8 @@ def list_session_records(
         method_name = (
             "find_indexed_session_summaries"
             if indexed
+            else "find_discovered_session_summaries"
+            if callable(getattr(runtime, "find_discovered_session_summaries", None))
             else "find_session_summaries"
         )
         call_lister = _resolve_callable(runtime, method_name, query)
@@ -107,6 +108,8 @@ def list_session_records(
         method_name = (
             "list_indexed_session_summaries"
             if indexed
+            else "list_discovered_session_summaries"
+            if callable(getattr(runtime, "list_discovered_session_summaries", None))
             else "list_session_summaries"
         )
         call_lister = _resolve_callable(runtime, method_name)
@@ -123,9 +126,7 @@ def list_session_records(
         raise SessionListingError("session listing returned an invalid response.")
     project = record_projector or try_project_session_record
     return [
-        projected
-        for record in records
-        if (projected := project(record)) is not None
+        projected for record in records if (projected := project(record)) is not None
     ]
 
 
