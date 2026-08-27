@@ -7,6 +7,7 @@ from pathlib import Path
 
 from loushang.ai.types import ImagePart
 from loushang.coding.ui.product_binding import (
+    ScreenCodingDebugBinding,
     build_screen_coding_action_host,
 )
 from loushang.harness.host.types import HostActionResult
@@ -82,12 +83,14 @@ def _host(
     *,
     stderr: StringIO | None = None,
     verbose: bool = False,
+    debug: ScreenCodingDebugBinding | None = None,
 ):
     return build_screen_coding_action_host(
         presenter=presenter,
         controller=controller,
         stderr=stderr or StringIO(),
         verbose=verbose,
+        debug=debug,
     )
 
 
@@ -168,3 +171,40 @@ def test_screen_action_host_aborts_then_waits_for_session_to_settle() -> None:
         ("dispatch", AbortIntent()),
         ("wait_for_idle", None),
     ]
+
+
+def test_screen_action_host_projects_debug_status_without_dispatching_session() -> None:
+    controller = _Controller()
+    presenter = _Presenter()
+    session = object()
+    enabled: list[tuple[object, tuple[str, ...]]] = []
+    disabled: list[bool] = []
+
+    def enable_debug(*, session: object, scopes: tuple[str, ...]) -> Path:
+        enabled.append((session, scopes))
+        return Path("/repo/.loushang/debug/session.log")
+
+    host = _host(
+        controller,
+        presenter,
+        debug=ScreenCodingDebugBinding(
+            current_session=lambda: session,
+            current_cwd=lambda: "/repo",
+            enable=enable_debug,
+            disable=lambda: disabled.append(True),
+        ),
+    )
+
+    enabled_result = asyncio.run(host.submit(ConversationTextAction("/debug tui,agent")))
+    disabled_result = asyncio.run(host.submit(ConversationTextAction("/debug off")))
+
+    assert enabled_result is None
+    assert disabled_result is None
+    assert enabled == [(session, ("tui", "agent"))]
+    assert disabled == [True]
+    assert controller.calls == []
+    assert "Debug logging enabled:" in presenter.statuses[0]
+    assert "Scopes: tui,agent" in presenter.statuses[0]
+    assert "Runtime provenance:" in presenter.statuses[0]
+    assert "provenance_scope: installation" in presenter.statuses[0]
+    assert presenter.statuses[1] == "Debug logging disabled."

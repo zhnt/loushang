@@ -1013,6 +1013,42 @@ def test_screen_loop_dispatches_session_command_without_prompting_agent() -> Non
     result.assert_no_clear_screen()
 
 
+def test_screen_loop_renders_debug_provenance_as_a_status_record() -> None:
+    from loushang.coding.ui.product_binding import (
+        ScreenCodingDebugBinding,
+        build_coding_ui_controller,
+        build_screen_coding_action_host,
+    )
+    from tests.coding.tui_support.playback import ScreenTuiLoopPlayback
+
+    playback = ScreenTuiLoopPlayback()
+    session = object()
+    controller = build_coding_ui_controller(session=session)
+    host = build_screen_coding_action_host(
+        presenter=playback.app,
+        controller=controller,
+        stderr=StringIO(),
+        verbose=False,
+        debug=ScreenCodingDebugBinding(
+            current_session=lambda: session,
+            current_cwd=lambda: "/repo",
+            enable=lambda **_kwargs: Path("/repo/.loushang/debug/session.log"),
+            disable=lambda: None,
+        ),
+    )
+
+    result = playback.run(
+        (0.0, "/debug\r"),
+        handle_prompt=_bind_host_action(host.submit, source="prompt"),
+    )
+
+    assert result.exit_code == 0
+    assert "Debug logging enabled:" in result.text
+    assert "Runtime provenance:" in result.text
+    assert "provenance_scope: installation" in result.text
+    result.assert_no_clear_screen()
+
+
 def test_screen_loop_renders_streaming_updates_without_waiting_for_keyboard() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 

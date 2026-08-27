@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import inspect
+import traceback
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, TextIO, cast
 
 from loushang.ai.types import ImagePart
+from loushang.coding.diagnostics.debug_status import debug_status_text
 from loushang.foundation.observability import get_log
 from loushang.harness.commands import CommandEffectKind
 from loushang.harness.host.types import HostActionResult
@@ -30,9 +35,22 @@ from loushang.harnesstui.conversation.controller import (
     ConversationUiController,
     build_standard_conversation_ui_controller,
 )
-from loushang.harnesstui.conversation.intents import ConversationIntent
+from loushang.harnesstui.conversation.intents import (
+    ConversationIntent,
+    DebugIntent,
+)
 
 _LOG = get_log(__name__).bind(component="CodingUiController")
+
+
+@dataclass(frozen=True, slots=True)
+class ScreenCodingDebugBinding:
+    """Late-bound Product effects for the Native screen ``/debug`` command."""
+
+    current_session: Callable[[], object]
+    current_cwd: Callable[[], str]
+    enable: Callable[..., Path]
+    disable: Callable[[], None]
 
 
 def build_coding_ui_controller(
@@ -159,16 +177,50 @@ def build_screen_coding_action_host(
     controller: ConversationUiController,
     stderr: TextIO,
     verbose: bool,
+    debug: ScreenCodingDebugBinding | None = None,
 ) -> PresentedConversationActionHost[
     ConversationIntent,
     tuple[ImagePart, ...] | None,
 ]:
+    async def dispatch_intent(intent: ConversationIntent) -> HostActionResult:
+        if not isinstance(intent, DebugIntent) or debug is None:
+            return await controller.dispatch(intent)
+        try:
+            if not intent.enabled:
+                debug.disable()
+                return HostActionResult(status_message="Debug logging disabled.")
+            debug_path = debug.enable(
+                session=debug.current_session(),
+                scopes=intent.scopes,
+            )
+            return HostActionResult(
+                status_message=debug_status_text(
+                    debug_path,
+                    scopes=intent.scopes,
+                    cwd=debug.current_cwd(),
+                )
+            )
+        except Exception as error:
+            message = str(error) or error.__class__.__name__
+            _LOG.problem(
+                "coding_ui_debug_failed",
+                source="tui",
+                message=message,
+                recoverable=True,
+                exc=error,
+            )
+            return HostActionResult(
+                error_message=message,
+                traceback_text=traceback.format_exc() if verbose else None,
+            )
+
     return build_standard_presented_conversation_action_host(
         presenter=presenter,
         controller=controller,
         stderr=stderr,
         verbose=verbose,
         attachments=agent_image_parts_from_prompt_attachments,
+        dispatch_intent=dispatch_intent,
     )
 
 
@@ -176,4 +228,5 @@ __all__ = [
     "build_coding_session_operation_resolver",
     "build_coding_ui_controller",
     "build_screen_coding_action_host",
+    "ScreenCodingDebugBinding",
 ]

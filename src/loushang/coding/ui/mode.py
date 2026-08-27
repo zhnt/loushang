@@ -11,6 +11,7 @@ from loushang.coding.presentation.tui.plain import (
 from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.plain_app import build_plain_coding_tui_app
 from loushang.coding.ui.product_binding import (
+    ScreenCodingDebugBinding,
     build_coding_ui_controller,
     build_screen_coding_action_host,
 )
@@ -111,17 +112,27 @@ async def _run_screen_interactive_tui(
         session=session,
         verbose=verbose,
     )
+
+    def current_session():
+        return current_agent_runtime_session(runtime, session)
+
     action_host = build_screen_coding_action_host(
         presenter=app,
         controller=controller,
         stderr=stderr,
         verbose=verbose,
+        debug=ScreenCodingDebugBinding(
+            current_session=current_session,
+            current_cwd=lambda: app.state.cwd,
+            enable=observability_runtime.enable_session_debug,
+            disable=observability_runtime.disable_session_debug,
+        ),
     )
     event_source = RebindableEventSource(session)
 
     def current_approval_interaction():
         return getattr(
-            current_agent_runtime_session(runtime, session),
+            current_session(),
             "approval_interaction",
             None,
         )
