@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from loushang.foundation.artifact_store import ArtifactStore
 from loushang.foundation.platform_paths import resolve_platform_paths
 from loushang.foundation.runtime_scope import resolve_runtime_scope
 from loushang.harness.commands import (
@@ -539,6 +540,7 @@ def test_action_host_screen_run_owns_one_shared_runtime_scope(
     sentinel_factory = object()
     bound_scopes = []
     context_events = []
+    artifact_stores = []
 
     class Host:
         async def submit(self, _action) -> None:
@@ -562,6 +564,12 @@ def test_action_host_screen_run_owns_one_shared_runtime_scope(
         assert context_events == [("enter", scope)]
         reports.append(report)
 
+    def build_artifact_store(bound_scope):
+        assert context_events == [("enter", scope)]
+        store = ArtifactStore(bound_scope)
+        artifact_stores.append(store)
+        return store
+
     @contextmanager
     def bind_context(bound_scope):
         context_events.append(("enter", bound_scope))
@@ -575,10 +583,14 @@ def test_action_host_screen_run_owns_one_shared_runtime_scope(
         assert kwargs["input_router_factory"] is sentinel_factory
         assert (scope.run_dir / ".lease").is_file()
         assert context_events == [("enter", scope)]
-        artifact = scope.run_dir / "artifacts" / "keep"
-        artifact.parent.mkdir()
-        artifact.write_text("shared", encoding="utf-8")
-        assert artifact.read_text(encoding="utf-8") == "shared"
+        assert len(artifact_stores) == 1
+        artifact = artifact_stores[0].put_bytes(
+            b"shared",
+            logical_name="outputs/shared.txt",
+            kind="output",
+            media_type="text/plain",
+        )
+        assert artifact_stores[0].read_bytes(artifact) == b"shared"
         return 23
 
     monkeypatch.setattr(host_module, "run_conversation_screen", fake_runner)
@@ -591,6 +603,7 @@ def test_action_host_screen_run_owns_one_shared_runtime_scope(
             scope_factory=lambda: scope,
             observe_sweep=observe_sweep,
             context_factory=bind_context,
+            artifact_store_factory=build_artifact_store,
         ),
     )
 
@@ -609,5 +622,6 @@ def test_action_host_screen_run_owns_one_shared_runtime_scope(
     assert bound_scopes == [scope]
     assert len(reports) == 1
     assert reports[0].failed == 0
+    assert len(artifact_stores) == 1
     assert context_events == [("enter", scope), ("exit", scope)]
     assert not scope.run_dir.exists()

@@ -122,6 +122,13 @@ tree; products may provide another directory profile and adapt a neutral prompt
 attachment into model-facing values such as `ImagePart`. Harnesstui does not
 import AI message types or hard-code a Coding workspace layout.
 
+The screen host obtains that scope from one application-owned
+`RuntimeResourceOwner`, which also retains the exclusive run Lease and concrete
+ArtifactStore. The host closes the owner inside the Product-supplied runtime
+context after the screen and run-local consumers finish. Harnesstui continues
+to pass only `RuntimeScope` to the clipboard input builder; it does not expose
+the Lease or concrete ArtifactStore to attachment code.
+
 `DraftStore` is the preferred bounded owner. The former exported
 `PendingPromptImageRegistry` name remains a compatibility alias during the
 pre-1.0 transition. Existing app-scoped profile callbacks keep their one-app

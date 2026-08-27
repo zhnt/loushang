@@ -9,9 +9,13 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Generic, TextIO, TypeVar
 
+from loushang.foundation.runtime_resources import (
+    DEFAULT_ARTIFACT_STORE_FACTORY,
+    ArtifactStoreFactory,
+    RuntimeResourceOwner,
+)
 from loushang.foundation.runtime_scope import (
     DEFAULT_RUNTIME_SWEEP_POLICY,
-    RunLease,
     RuntimeScope,
     RuntimeSweepPolicy,
     RuntimeSweepReport,
@@ -353,6 +357,7 @@ class ConversationScreenRuntimeProfile:
     sweep_policy: RuntimeSweepPolicy = DEFAULT_RUNTIME_SWEEP_POLICY
     observe_sweep: RuntimeSweepObserver = _ignore_runtime_sweep
     context_factory: RuntimeScopeContextFactory = _null_runtime_context
+    artifact_store_factory: ArtifactStoreFactory = DEFAULT_ARTIFACT_STORE_FACTORY
 
 
 @dataclass(frozen=True, slots=True)
@@ -398,7 +403,7 @@ async def run_action_host_conversation_screen(
     """Run a screen by binding one neutral action host exactly once."""
 
     callbacks = bind_action_host_to_screen_runner(action_host)
-    lease: RunLease | None = None
+    runtime_resources: RuntimeResourceOwner | None = None
     scope: RuntimeScope | None = None
     input_router_factory = profile.input_router_factory
     runtime_context: AbstractContextManager[object] = nullcontext()
@@ -409,11 +414,12 @@ async def run_action_host_conversation_screen(
         try:
             if profile.runtime is not None:
                 assert scope is not None
-                lease = RunLease.acquire(
+                runtime_resources = RuntimeResourceOwner.acquire(
                     scope,
                     sweep_policy=profile.runtime.sweep_policy,
+                    artifact_store_factory=profile.runtime.artifact_store_factory,
                 )
-                profile.runtime.observe_sweep(lease.sweep_report)
+                profile.runtime.observe_sweep(runtime_resources.sweep_report)
                 input_router_factory = profile.runtime.input_router_factory(scope)
             return await run_conversation_screen(
                 app=app,
@@ -436,8 +442,8 @@ async def run_action_host_conversation_screen(
                 cancellation_message=profile.cancellation_message,
             )
         finally:
-            if lease is not None:
-                lease.close()
+            if runtime_resources is not None:
+                runtime_resources.close()
 
 
 TextActionHandler = Callable[

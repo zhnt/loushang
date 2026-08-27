@@ -506,6 +506,7 @@ def test_production_harnesstui_imports_only_approved_loushang_layers() -> None:
         "loushang.tui",
         "loushang.harness",
         "loushang.foundation.json",
+        "loushang.foundation.runtime_resources",
         "loushang.foundation.runtime_scope",
     )
     offenders = [

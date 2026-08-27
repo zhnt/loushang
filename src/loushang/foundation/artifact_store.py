@@ -14,7 +14,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from threading import RLock
-from typing import Literal, TypeAlias
+from typing import Literal, Protocol, TypeAlias
 from uuid import uuid4
 
 from .runtime_scope import RuntimeScope
@@ -86,6 +86,47 @@ class StoredArtifact:
             "createdAt": self.created_at,
             "source": self.source,
         }
+
+
+class ArtifactWriter(Protocol):
+    """Narrow capability for publishing immutable run-local bytes."""
+
+    def put_bytes(
+        self,
+        content: bytes,
+        *,
+        logical_name: str,
+        kind: str,
+        media_type: str,
+        disclosure: ArtifactDisclosure = "private",
+        source: str | None = None,
+    ) -> StoredArtifact: ...
+
+
+class ArtifactReader(Protocol):
+    """Narrow capability for verified reads of previously stored artifacts."""
+
+    def read_bytes(self, artifact: StoredArtifact) -> bytes: ...
+
+
+class ArtifactSnapshotStore(ArtifactReader, Protocol):
+    """Narrow capability for authorized file snapshots and verified reads."""
+
+    def snapshot_file(
+        self,
+        source_path: str | Path,
+        *,
+        logical_name: str,
+        kind: str,
+        media_type: str,
+        allowed_roots: Sequence[str | Path],
+        disclosure: ArtifactDisclosure = "private",
+        source: str | None = None,
+    ) -> StoredArtifact: ...
+
+
+class ArtifactStorePort(ArtifactWriter, ArtifactSnapshotStore, Protocol):
+    """Full storage capability retained only by a runtime composition owner."""
 
 
 class ArtifactStore:
@@ -651,13 +692,17 @@ def _is_reparse_point(metadata: os.stat_result) -> bool:
 
 __all__ = [
     "ArtifactDisclosure",
+    "ArtifactReader",
     "ArtifactRetentionPolicy",
     "ArtifactRetentionReport",
     "ArtifactSourceRejected",
+    "ArtifactSnapshotStore",
     "ArtifactStore",
     "ArtifactStoreError",
+    "ArtifactStorePort",
     "ArtifactStorePolicy",
     "ArtifactStoreQuotaExceeded",
+    "ArtifactWriter",
     "DEFAULT_ARTIFACT_RETENTION_POLICY",
     "DEFAULT_ARTIFACT_STORE_POLICY",
     "StoredArtifact",

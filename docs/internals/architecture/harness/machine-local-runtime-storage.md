@@ -26,24 +26,39 @@ environment variables and do not infer cwd or user-home policy. This makes a
 scope deterministic in tests and prevents behavior from changing midway
 through a run.
 
-`RuntimeScope` exposes only run-local namespaces. `RunLease` is the effectful
-owner that creates the private tree and holds an exclusive lock in `.lease`.
-The screen composition root retains that lease across every run-local service
-and releases it after the runner exits. Leaf services such as the input router
-dispose only the resources they own.
+`RuntimeScope` exposes only run-local namespaces. `RuntimeResourceOwner` is the
+application-level effectful owner: it acquires one `RunLease`, constructs one
+ArtifactStore, retains both for the complete run, and closes them as one
+transaction. The screen composition root retains that owner and releases it
+after the runner exits. Leaf services such as the input router dispose only the
+resources they own.
 
 ```text
 PlatformPaths (pure configuration)
         |
         v
-RuntimeScope (immutable run identity)
+RuntimeResourceOwner (application lifetime)
         |
-        +--> RunLease ----> liveness + stale sweep
+        +--> RuntimeScope --> immutable run identity
+        |
+        +--> RunLease -----> liveness + stale sweep
         |
         +--> DraftStore --> bounded clipboard-image drafts
         |
         `--> ArtifactStore -> immutable objects + portable manifest
 ```
+
+The concrete store does not cross the composition edge. Producers receive an
+`ArtifactWriter`; verified consumers receive an `ArtifactReader`; snapshotting
+exporters receive an `ArtifactSnapshotStore`. These are revocable projections:
+once the application owner closes, a previously captured port rejects new
+operations. No leaf receives the Lease or authority to delete the run tree.
+
+Construction is transactional. If a run-local service cannot be created after
+the Lease is acquired, `RuntimeResourceOwner.acquire` closes the Lease and
+removes the incomplete run before returning the failure. Both the interactive
+screen host and the diagnostics CLI operation use this same owner instead of
+assembling peer lifetimes independently.
 
 ## Crash recovery and safety
 

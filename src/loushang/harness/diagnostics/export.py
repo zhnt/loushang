@@ -26,8 +26,8 @@ from uuid import uuid4
 from loushang.foundation.artifact_store import (
     DEFAULT_ARTIFACT_RETENTION_POLICY,
     ArtifactRetentionPolicy,
+    ArtifactSnapshotStore,
     ArtifactSourceRejected,
-    ArtifactStore,
     ArtifactStoreError,
     StoredArtifact,
     sweep_managed_artifacts,
@@ -129,7 +129,7 @@ def export_diagnostics_bundle(
     diagnostics_service: object | None = None,
     debug_latest_path: str | Path | None = None,
     trace_latest_path: str | Path | None = None,
-    artifact_store: ArtifactStore | None = None,
+    artifact_store: ArtifactSnapshotStore | None = None,
     platform_paths: PlatformPaths | None = None,
     now: Callable[[], datetime] | None = None,
     profile: DiagnosticBundleProfile = DEFAULT_DIAGNOSTIC_BUNDLE_PROFILE,
@@ -382,7 +382,7 @@ def _standard_manifest(
 
 
 def _snapshot_observability_artifacts(
-    store: ArtifactStore | None,
+    store: ArtifactSnapshotStore | None,
     *,
     debug_latest: Path,
     trace_latest: Path,
@@ -420,7 +420,7 @@ def _snapshot_observability_artifacts(
 
 
 def _bundle_export_artifacts(
-    store: ArtifactStore | None,
+    store: ArtifactSnapshotStore | None,
     *,
     debug_latest: Path,
     trace_latest: Path,
@@ -451,7 +451,7 @@ def _bundle_export_artifacts(
 
 
 def _snapshot_latest(
-    store: ArtifactStore,
+    store: ArtifactSnapshotStore,
     path: Path,
     *,
     logical_name: str,

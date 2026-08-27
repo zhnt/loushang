@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import TextIO
 
 from loushang.foundation.artifact_store import ArtifactStore
+from loushang.foundation.runtime_resources import RuntimeResourceOwner
 from loushang.foundation.runtime_scope import (
-    RunLease,
     RuntimeScope,
     resolve_runtime_scope,
 )
@@ -183,7 +183,10 @@ def run_diagnostics_export_operation(
         return None
     try:
         scope = runtime_scope_factory()
-        with RunLease.acquire(scope):
+        with RuntimeResourceOwner.acquire(
+            scope,
+            artifact_store_factory=artifact_store_factory,
+        ) as runtime_resources:
             output_path = export_diagnostics_bundle(
                 project_root=project_root,
                 session_dir=session_dir,
@@ -191,7 +194,7 @@ def run_diagnostics_export_operation(
                 diagnostics_service=diagnostics_service,
                 debug_latest_path=debug_latest_path,
                 trace_latest_path=trace_latest_path,
-                artifact_store=artifact_store_factory(scope),
+                artifact_store=runtime_resources.artifact_snapshots,
                 platform_paths=scope.paths,
             )
     except Exception as error:
