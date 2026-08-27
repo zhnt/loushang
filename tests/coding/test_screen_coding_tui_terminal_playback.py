@@ -25,7 +25,7 @@ from loushang.tui import (
 )
 from loushang.tui._runner_utils import finish_tui_exit
 from loushang.tui.theme import ThemeResolver
-from loushang.tui.transcript import ToolExecutionRecord
+from loushang.tui.transcript import AssistantMessageRecord, ToolExecutionRecord
 from tests.coding.tui_support.playback import ScreenTuiScenario
 
 pytestmark = pytest.mark.tui_render_contract
@@ -469,6 +469,53 @@ def test_screen_coding_tui_resize_repaints_without_replaying_working_or_composer
     assert resize_step.diagnostics.operation_class == "resize_repaint"
     assert visible.count("› resize me") == 1
     assert visible.count("Working") == 1
+
+
+def test_screen_coding_tui_resize_keeps_cursor_on_composer_in_long_viewport() -> (
+    None
+):
+    app = _app()
+    app.state.records.append(
+        AssistantMessageRecord(
+            "\n".join(f"history line {index}" for index in range(60))
+        )
+    )
+    app.state.mark_records_changed()
+    runtime, port = _runtime(app, width=120, height=24)
+    before = runtime.render_now()
+
+    assert before.diagnostics.viewport_top > 0
+
+    resized_size = TerminalSize(columns=88, rows=18)
+    port.resize(resized_size)
+    resized = runtime.render_now()
+    expected_resize_cursor_row = (
+        resized.diagnostics.logical_cursor_row - resized.diagnostics.viewport_top
+    )
+
+    assert resized.diagnostics.operation_class == "resize_repaint"
+    assert 0 < expected_resize_cursor_row < resized_size.rows
+    assert port.screen.cursor_row == expected_resize_cursor_row
+    assert port.screen.cursor_column == resized.diagnostics.logical_cursor_column
+
+    router = build_screen_input_router(
+        app,
+        should_exit=lambda text: False,
+        width=resized_size.columns,
+        height=resized_size.rows,
+    )
+    router.handle(InputEvent(kind="text", text="hi"))
+    typed = runtime.render_now()
+    expected_typed_cursor_row = (
+        typed.diagnostics.logical_cursor_row - typed.diagnostics.viewport_top
+    )
+    visible_lines = tuple(
+        strip_control_sequences(line).rstrip() for line in port.screen.visible_lines
+    )
+
+    assert port.screen.cursor_row == expected_typed_cursor_row
+    assert visible_lines[expected_typed_cursor_row] == "› hi"
+    assert visible_lines[0] != "› hi"
 
 
 def test_screen_coding_tui_tool_completion_and_append_do_not_replay_active_turn() -> None:

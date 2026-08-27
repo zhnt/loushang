@@ -765,6 +765,33 @@ def test_screen_input_router_ctrl_o_opens_transcript_reader_overlay() -> None:
     assert app.state.records[-1] == AssistantMessageRecord("answer")
 
 
+def test_screen_input_router_ctrl_t_opens_transcript_reader_overlay() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import build_screen_input_router
+    from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
+    from loushang.tui import SurfaceHost
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+        now=lambda: 10.0,
+    )
+    app.surface_host = SurfaceHost()
+
+    result = build_screen_input_router(app, should_exit=lambda text: False).handle(
+        InputEvent(kind="key", key="ctrl+t")
+    )
+
+    assert isinstance(result, ConversationInputHandled)
+    assert len(app.surface_host.entries) == 1
+    assert isinstance(
+        app.surface_host.entries[0].surface.renderable,
+        TranscriptReaderSurface,
+    )
+
+
 def test_screen_input_router_ctrl_o_fallback_reader_includes_streaming_assistant_draft() -> (
     None
 ):

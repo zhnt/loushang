@@ -134,6 +134,9 @@ def project_command_execution_payload(
         command=command,
         exit_code=exit_code,
         stderr="cancelled" if cancelled else "",
+        tool_name="bash",
+        expanded_command=command,
+        expanded_output=output,
     )
 
 
