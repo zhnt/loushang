@@ -228,7 +228,7 @@ state machine. The minimum durable state families are:
 
 ```text
 Installation desired state
-  absent | installed-disabled | installed-enabled(current revision)
+  absent | installed_disabled | installed_enabled(current revision)
 
 Activation operation
   preparing -> preflighted -> declared -> admitted -> starting

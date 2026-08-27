@@ -371,14 +371,19 @@ There is no single Plugin state machine. Four related state families remain
 independent and are correlated by exact identity:
 
 ```text
-artifact:    quarantined -> verified -> retained -> gc_eligible
-desired:     absent -> installed_disabled -> enabled -> update_staged -> absent
-Instance:    prepared -> active -> draining/revoking -> retired
-owner state: proposed -> admitted -> staged -> published -> retired
+artifact/cache: Package lifecycle-owned quarantine, retention, and GC states
+desired set:   {absent, installed_disabled, installed_enabled}
+Instance:      ACTIVE --graceful--> DRAINING --> RETIRED
+               ACTIVE --security--> REVOKING --> RETIRED
+               DRAINING --security--> REVOKING
+owner state:   exact domain-owner generation lifecycle
 ```
 
 An update creates a new artifact and Instance revision. It never mutates the
-bytes or live objects of the old revision in place.
+bytes or live objects of the old revision in place. `update_staged` is progress
+in the management operation journal while desired selection remains unchanged;
+it is not a desired state. Preparation likewise belongs to an activation or
+owner operation, not to the Plugin Instance execution-state machine.
 
 ### Resolve and inspect
 

@@ -2548,6 +2548,29 @@ def test_revision_retention_and_python_import_realm_are_closed_for_v1() -> None:
     assert "ExecutionUseReservation" in architecture
 
 
+def test_master_lifecycle_families_match_the_frozen_plc2_contract() -> None:
+    architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
+    contract = PLC2_CONTRACT_PATH.read_text(encoding="utf-8")
+
+    assert "desired set:   {absent, installed_disabled, installed_enabled}" in (
+        architecture
+    )
+    assert "`update_staged` is progress\nin the management operation journal" in (
+        architecture
+    )
+    assert "it is not a desired state" in architecture
+    assert "Preparation likewise belongs to an activation or\nowner operation" in (
+        architecture
+    )
+    assert "The desired states are exactly `absent`, `installed_disabled`, and" in (
+        contract
+    )
+    assert "`update_staged` persists the complete target while leaving desired selection\nunchanged" in (
+        contract
+    )
+    assert "desired:     absent -> installed_disabled -> enabled" not in architecture
+
+
 def test_unified_plugin_architecture_preserves_existing_runtime_authorities() -> None:
     architecture = ARCHITECTURE_PATH.read_text(encoding="utf-8")
 
@@ -3359,13 +3382,21 @@ def test_plc3_verified_evaluation_is_internal_and_host_injection_is_narrow() -> 
     assert "Status: PLC3-3 verified Definition evaluation and mixed-source join" in (
         contract
     )
-    assert "A durable approved decision is necessary but not\nsufficient" in contract
+    assert "A durable approved decision remains necessary but not sufficient" in (
+        contract
+    )
+    assert "private `coding.lsp.default` Product\ncomposer the first production caller" in (
+        contract
+    )
+    assert "generic Host\ndoes not construct either implicitly" in contract
+    assert "the executable path still has no production\ncaller" not in contract
+    assert "The production\nHost constructs neither" not in contract
     assert "Consumption and reservation creation are therefore one replay transition" in (
         contract
     )
     assert "one-event multi-use recovery" in contract
     assert "claim group\n-> issue aggregate start permit" in contract
-    assert "The next slice is PLC4/PAP4 exact Capability owner admission" in contract
+    assert "PLC4/PAP4 subsequently added exact Capability owner admission" in contract
     assert "PluginExecutionDecisionJournal" not in approval_exports
     assert "PluginExecutionStartPermit" not in public_plugins.__all__
     assert "execution_not_consumed" in coordinator
