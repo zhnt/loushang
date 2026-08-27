@@ -27,9 +27,23 @@ def test_executable_source_identity_projects_stable_runtime_details(
     assert isinstance(details["package_root"], str)
     assert isinstance(details["loushang_module_file"], str)
     assert isinstance(details["coding_module_file"], str)
+    assert "source_project_root" in details
+    assert "source_git_branch" in details
+    assert "source_git_commit" in details
+    assert "source_git_dirty" in details
+    assert "build_revision" not in details
+    assert details["provenance_schema_version"] == 1
+    assert details["provenance_scope"] == "installation"
+    components = details["components"]
+    assert isinstance(components, dict)
+    assert components["native-screen"]["kind"] == "renderer"
+    assert components["native-screen"]["availability"] == "bundled"
+    assert components["native-screen"]["contract_version"] == 1
+    assert isinstance(components["native-screen"]["module_file"], str)
     assert "project_root" in details
     assert "git_branch" in details
     assert "git_commit" in details
+    assert "git_dirty" in details
     assert "virtual_env" in details
     assert isinstance(details["sys_prefix"], str)
     assert isinstance(details["sys_base_prefix"], str)
@@ -40,6 +54,12 @@ def test_executable_source_identity_projects_stable_runtime_details(
         "unknown",
     }
     assert details["install_mode"] in {"editable", "source-tree", "package", "unknown"}
+    assert details["launch_mode"] in {
+        "virtualenv-console-script",
+        "console-script",
+        "python-module",
+        "direct",
+    }
 
 
 def test_executable_source_identity_marks_path_candidates_active_and_shadowed(
@@ -79,7 +99,36 @@ def test_executable_source_identity_gracefully_degrades_outside_git(tmp_path) ->
     assert details["project_root"] is None
     assert details["git_branch"] is None
     assert details["git_commit"] is None
+    assert "source_git_commit" in details
     assert details["path_candidates"] == []
+
+
+def test_coding_runtime_identity_accepts_product_composed_contributors(tmp_path) -> None:
+    from loushang.coding.diagnostics.profile import coding_runtime_identity
+    from loushang.harness.diagnostics.runtime_provenance import (
+        StaticRuntimeProvenanceContributor,
+    )
+
+    details = coding_runtime_identity(
+        cwd=tmp_path,
+        env={"PATH": ""},
+        contributors=(
+            StaticRuntimeProvenanceContributor(
+                component_id="harness-stat",
+                kind="plugin",
+                installation_details={
+                    "availability": "installed",
+                    "schema_version": 1,
+                },
+            ),
+        ),
+    )
+
+    assert details["components"]["harness-stat"] == {
+        "kind": "plugin",
+        "availability": "installed",
+        "schema_version": 1,
+    }
 
 
 def test_source_info_from_resource_descriptor_projects_package_provenance() -> None:

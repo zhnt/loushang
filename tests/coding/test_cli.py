@@ -856,6 +856,16 @@ def test_parse_args_supports_tooling_and_continuation_flags() -> None:
     assert args.messages == ("hello",)
 
 
+def test_cli_help_explains_runtime_provenance_flags() -> None:
+    from loushang.coding.cli.args import help_text
+
+    output = help_text()
+
+    assert "show package version; combine with --verbose for runtime provenance" in output
+    assert "show executable, import, Git, and bundled component provenance" in output
+    assert "with --version, show runtime provenance" in output
+
+
 def test_parse_args_supports_resume_session_reference() -> None:
     from loushang.coding.cli.args import parse_args
 
@@ -1908,6 +1918,45 @@ def test_run_cli_prints_version_and_exits_before_runtime(tmp_path) -> None:
     asyncio.run(scenario())
 
 
+def test_run_cli_prints_verbose_version_provenance_before_runtime(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    def runtime_builder(**kwargs):
+        del kwargs
+        raise AssertionError("verbose version should exit before runtime creation")
+
+    async def scenario() -> None:
+        stdout = StringIO()
+        stderr = StringIO()
+        exit_code = await run_cli(
+            ["--version", "--verbose"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            runtime_builder=runtime_builder,
+        )
+        assert exit_code == 0
+        output = stdout.getvalue()
+        assert "loushang source info" in output
+        assert "package_version:" in output
+        assert "entrypoint:" in output
+        assert "python_executable:" in output
+        assert "module_file:" in output
+        assert "launch_mode:" in output
+        assert "source_git_commit:" in output
+        assert "source_git_dirty:" in output
+        assert "provenance_scope: installation" in output
+        assert "components:" in output
+        assert "  native-screen:" in output
+        assert "    kind: renderer" in output
+        assert "    availability: bundled" in output
+        assert "    contract_version: 1" in output
+        assert stderr.getvalue() == ""
+
+    asyncio.run(scenario())
+
+
 def test_run_cli_prints_source_info_and_exits_before_runtime(
     tmp_path, monkeypatch
 ) -> None:
@@ -1952,14 +2001,27 @@ def test_run_cli_prints_source_info_and_exits_before_runtime(
     assert "python_executable:" in output
     assert "module_file:" in output
     assert "package_root:" in output
+    assert "source_project_root:" in output
+    assert "source_git_branch:" in output
+    assert "source_git_commit:" in output
+    assert "source_git_dirty:" in output
     assert "project_root:" in output
     assert "git_branch:" in output
     assert "git_commit:" in output
+    assert "git_dirty:" in output
     assert "cwd:" in output
     assert "virtual_env:" in output
     assert "sys_prefix:" in output
     assert "package_version:" in output
     assert "install_mode:" in output
+    assert "launch_mode:" in output
+    assert "provenance_schema_version: 1" in output
+    assert "provenance_scope: installation" in output
+    assert "components:" in output
+    assert "  native-screen:" in output
+    assert "    kind: renderer" in output
+    assert "    availability: bundled" in output
+    assert "    contract_version: 1" in output
     assert f"{active} [active]" in output
     assert f"{shadowed} [shadowed]" in output
     assert stderr.getvalue() == ""
@@ -2002,6 +2064,11 @@ def test_run_cli_prints_source_info_as_json(tmp_path, monkeypatch) -> None:
         "status": "active",
         "active": True,
     }
+    assert payload["provenance_schema_version"] == 1
+    assert payload["provenance_scope"] == "installation"
+    assert payload["components"]["native-screen"]["kind"] == "renderer"
+    assert payload["components"]["native-screen"]["availability"] == "bundled"
+    assert payload["components"]["native-screen"]["contract_version"] == 1
     assert stderr.getvalue() == ""
 
 

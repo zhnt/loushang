@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import shlex
+from collections.abc import Mapping
 from pathlib import Path
 
+from loushang.coding.diagnostics.profile import (
+    coding_runtime_identity,
+    format_coding_runtime_provenance_text,
+)
 from loushang.foundation.observability.problem_text import (
     is_problem_log_line,
     recent_problem_store_lines,
@@ -11,13 +16,23 @@ from loushang.foundation.observability.runtime import get_problem_store
 
 
 def debug_status_text(
-    debug_path: Path, *, scopes: tuple[str, ...] = ("all",), cwd: str | None = None
+    debug_path: Path,
+    *,
+    scopes: tuple[str, ...] = ("all",),
+    cwd: str | None = None,
+    runtime_identity: Mapping[str, object] | None = None,
 ) -> str:
     lines = [
         "Debug logging enabled:",
         str(debug_path),
         str(debug_path.parent / "latest"),
         f"Scopes: {','.join(scopes)}",
+        "",
+        format_coding_runtime_provenance_text(
+            coding_runtime_identity(cwd=cwd)
+            if runtime_identity is None
+            else runtime_identity
+        ),
     ]
     if cwd:
         lines.extend(

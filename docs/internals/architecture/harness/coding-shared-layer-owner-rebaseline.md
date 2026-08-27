@@ -78,10 +78,10 @@ ports.
 
 | Source region | LOC | Current shared owner or adopted mechanism | Classification | Next action |
 | --- | ---: | --- | --- | --- |
-| removed `coding.source_info` | 0 | `harness.resources.source` and profiled `foundation.observability.identity` | `shared adopted` | Runtime identity Product labels live in `coding.diagnostics.profile`; no source-info facade remains |
+| removed `coding.source_info` | 0 | `harness.resources.source`, profiled `foundation.observability.identity`, and `harness.diagnostics.runtime_provenance` | `shared adopted` | Coding composes Product labels and peer component contributors in `coding.diagnostics.profile`; collection, schema, and aggregation stay shared |
 | `coding.interaction.*` | 68 | HarnessTUI settings/schema primitives | `product adapter` | Retain Coding settings profile declarations |
 | `coding.model_selection`, `coding.model_selection_tui` | 105 | `ai.model`, `harness.session.model_selection`, and `harnesstui.selection` | `product adapter` | Retain preferred-model policy, persistence, and warning wording |
-| `coding.diagnostics.*`; removed `diag_export` and `observability` | 472 -> 138 | Harness diagnostics/export and observability runtime | `shared adopted` | Retain Coding debug-status presentation and its source/identity profile only |
+| `coding.diagnostics.*`; removed `diag_export` and `observability` | 472 -> 138 | Harness diagnostics/export, runtime provenance, and observability runtime | `shared adopted` | Retain only Coding Product labels, contributor composition, and debug-status presentation; do not add shared collection or aggregation logic |
 | `coding.sdk_surface` | 138 -> 61 | `harness.sdk_surface` owns generic export/signature inspection | `product adapter` | Retain the Coding entry-name contract and default-module binding |
 
 ## Non-Duplicates

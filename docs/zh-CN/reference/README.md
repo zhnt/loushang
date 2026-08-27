@@ -9,6 +9,9 @@
 ```bash
 loushang --help
 loushang --version
+loushang --version --verbose
+loushang --source-info
+loushang --source-info --source-info-format json
 loushang --list-models
 loushang --list-commands
 loushang --list-sessions
@@ -19,6 +22,13 @@ loushang --list-skills
 loushang --list-plugins
 loushang --list-packages
 ```
+
+需要确认实际运行的是哪个可执行文件和 Python 环境时，使用
+`--version --verbose`。输出包含当前 entrypoint、被 PATH 遮蔽的其他
+`loushang`、实际导入的模块路径、安装/启动模式、源码 Git revision 与 dirty
+状态，以及 Native TUI renderer 等随安装提供的组件契约。`bundled` 只表示
+随安装提供，不表示组件已经激活。交互会话中的 `/debug` 会显示同一组精简安装
+来源信息；真实生效的 runtime/plugin 状态需要在 runtime composition 后另行投影。
 
 ## 输出格式
 
