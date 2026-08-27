@@ -576,10 +576,14 @@ def test_screen_input_router_orders_clipboard_images_by_marker_position(
 
 def test_screen_input_router_uses_default_workspace_clipboard_directory_and_clears_registry(
     tmp_path,
+    monkeypatch,
 ) -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import build_screen_input_router
     from loushang.tui.clipboard_image import ClipboardImage
+
+    runtime_dir = tmp_path / "runtime"
+    monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(runtime_dir))
 
     app = ScreenCodingTuiApp(
         model_label="kimi",
@@ -600,14 +604,15 @@ def test_screen_input_router_uses_default_workspace_clipboard_directory_and_clea
 
     router.handle(InputEvent(kind="key", key="ctrl+v"))
 
-    marker = "@.loushang/clipboard/clipboard-image.png"
-    saved_path = tmp_path / ".loushang" / "clipboard" / "clipboard-image.png"
+    marker = "@clipboard/clipboard-image.png"
+    saved_path = next((runtime_dir / "runs").glob("*/clipboard/clipboard-image.png"))
     assert saved_path.read_bytes() == b"png"
     assert app.composer.value == f"{marker} "
 
     first_submit = router.handle(InputEvent(kind="key", key="enter"))
     assert isinstance(first_submit, ConversationPromptResult)
     assert first_submit.attachments is not None
+    assert saved_path.exists() is False
 
     app.complete_run(elapsed_seconds=0.1)
     app.composer.set_text(f"reuse {marker}")
@@ -615,7 +620,7 @@ def test_screen_input_router_uses_default_workspace_clipboard_directory_and_clea
 
     assert isinstance(second_submit, ConversationPromptResult)
     assert second_submit.attachments is None
-    assert saved_path.read_bytes() == b"png"
+    assert saved_path.exists() is False
 
 
 def test_screen_input_router_exit_command_returns_exit_code_without_transcript() -> (

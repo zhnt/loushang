@@ -224,12 +224,17 @@ class StandardCliOperationRequest:
 
 def agent_session_listing_request(
     args: AgentCliArgs,
+    *,
+    default_cwd: str | Path | None = None,
 ) -> SessionListingOperationRequest | None:
     if not args.list_sessions:
         return None
+    cwd = args.session_cwd
+    if cwd is None and not args.all_sessions and default_cwd is not None:
+        cwd = str(Path(default_cwd).expanduser().resolve(strict=False))
     return SessionListingOperationRequest(
         output_format=args.list_sessions_format,
-        cwd=args.session_cwd,
+        cwd=cwd,
         name=args.session_name_filter,
         parent_session=args.session_parent,
         text=args.session_query,
@@ -247,13 +252,14 @@ def run_agent_cli_session_listing(
     *,
     stdout: TextIO,
     stderr: TextIO,
+    default_cwd: str | Path | None = None,
     format_error: CliErrorFormatter = str,
 ) -> int | None:
     """Run the session listing selected by standard Agent CLI arguments."""
 
     return run_session_listing_operation(
         runtime,
-        agent_session_listing_request(args),
+        agent_session_listing_request(args, default_cwd=default_cwd),
         stdout=stdout,
         stderr=stderr,
         format_error=format_error,

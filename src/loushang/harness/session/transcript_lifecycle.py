@@ -485,21 +485,83 @@ class AgentTranscriptSessionRuntime(
         return runtime.get_last_error_report() if runtime else None
 
     def resolve_session_file(self, session_ref: str | Path) -> Path:
-        """Resolve an exact path, filename, or unambiguous current-session id."""
+        """Resolve a mutation target from the writable authority only."""
+
+        return self._resolve_session_file_from_summaries(
+            session_ref,
+            summaries=self.list_session_summaries(),
+            allow_external_path=False,
+        )
+
+    def resolve_discovered_session_file(self, session_ref: str | Path) -> Path:
+        """Resolve a restore source using authority-first compatibility reads."""
+
+        return self._resolve_session_file_from_summaries(
+            session_ref,
+            summaries=self.list_discovered_session_summaries(),
+            allow_external_path=True,
+        )
+
+    def _resolve_session_file_from_summaries(
+        self,
+        session_ref: str | Path,
+        *,
+        summaries: list[SessionSummary],
+        allow_external_path: bool,
+    ) -> Path:
+        """Apply one identity and authority policy to exact and prefix lookup."""
 
         candidate = Path(session_ref).expanduser()
         if candidate.exists():
-            return candidate.resolve()
+            resolved = candidate.resolve()
+            if allow_external_path or self.is_authority_session_file(resolved):
+                return resolved
+            raise FileNotFoundError(
+                errno.ENOENT,
+                "No such session in the writable authority",
+                str(candidate),
+            )
 
         session_name = candidate.name
-        matches = sorted(self.session_dir.glob(f"*_{session_name}.jsonl"))
-        if len(matches) == 1:
-            return matches[0]
-        if len(matches) > 1:
+        authority_named = self.session_dir / session_name
+        if authority_named.is_file():
+            return authority_named
+        authority_suffix_matches = sorted(
+            self.session_dir.glob(f"*_{session_name}.jsonl")
+        )
+        if len(authority_suffix_matches) == 1:
+            return authority_suffix_matches[0]
+        if len(authority_suffix_matches) > 1:
+            raise ValueError(f"Ambiguous session reference: {session_name}")
+        exact_matches = [
+            summary
+            for summary in summaries
+            if summary.session_file is not None
+            and (
+                summary.session_id == session_name
+                or summary.session_file.name == session_name
+            )
+        ]
+        if len(exact_matches) == 1 and exact_matches[0].session_file is not None:
+            return exact_matches[0].session_file
+        if len(exact_matches) > 1:
+            exact_ids = {summary.session_id for summary in exact_matches}
+            if len(exact_ids) == 1:
+                authority = next(
+                    (
+                        summary.session_file
+                        for summary in exact_matches
+                        if summary.session_file is not None
+                        and self.is_authority_session_file(summary.session_file)
+                    ),
+                    None,
+                )
+                if authority is not None:
+                    return authority
             raise ValueError(f"Ambiguous session reference: {session_name}")
         prefix_matches = [
             summary
-            for summary in self.list_session_summaries()
+            for summary in summaries
             if summary.session_file is not None
             and summary.session_id.startswith(session_name)
         ]

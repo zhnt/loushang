@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 import zipfile
 from types import SimpleNamespace
 
@@ -47,6 +49,9 @@ def test_export_diagnostics_bundle_collects_latest_artifacts(tmp_path) -> None:
         trace_latest_path=trace_latest,
     )
 
+    if os.name == "posix":
+        assert stat.S_IMODE(bundle.stat().st_mode) == 0o600
+
     with zipfile.ZipFile(bundle) as archive:
         names = set(archive.namelist())
         assert {
@@ -54,30 +59,35 @@ def test_export_diagnostics_bundle_collects_latest_artifacts(tmp_path) -> None:
             "manifest.json",
             "debug/latest.log",
             "traces/latest.jsonl",
-            "sessions/latest.jsonl",
             "diagnostics.json",
         } <= names
+        assert "sessions/latest.jsonl" not in names
         manifest = json.loads(archive.read("manifest.json"))
         assert manifest["schemaVersion"] == 1
         assert manifest["cwd"] == str(project_root)
         assert manifest["included"]["debugLatest"] is True
         assert manifest["included"]["traceLatest"] is True
-        assert manifest["included"]["sessionLatest"] is True
+        assert manifest["included"]["sessionTranscript"] is False
         assert json.loads(archive.read("diagnostics.json"))[0]["code"] == "tool_failed"
         assert "secret-token" not in archive.read("debug/latest.log").decode("utf-8")
         assert "secret-key" not in archive.read("traces/latest.jsonl").decode("utf-8")
 
 
-def test_export_diagnostics_bundle_uses_default_project_output(tmp_path) -> None:
+def test_export_diagnostics_bundle_uses_private_platform_output(
+    tmp_path,
+    monkeypatch,
+) -> None:
     project_root = tmp_path / "project"
     project_root.mkdir()
+    platform_home = tmp_path / "user-home"
+    monkeypatch.setenv("LOUSHANG_HOME", str(platform_home))
 
     bundle = export_diagnostics_bundle(
         project_root=project_root,
         session_dir=project_root / ".loushang" / "sessions",
     )
 
-    assert bundle.parent == project_root / ".loushang" / "diagnostics"
+    assert bundle.parent == platform_home / "state" / "diagnostics"
     assert bundle.name.startswith("loushang-diag-")
     assert bundle.suffix == ".zip"
 

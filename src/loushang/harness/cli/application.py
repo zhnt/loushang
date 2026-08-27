@@ -543,6 +543,7 @@ def build_agent_cli_application_ports(
             context.runtime,
             stdout=context.bootstrap.stdout,
             stderr=context.bootstrap.stderr,
+            default_cwd=context.bootstrap.project_root,
             format_error=binding.format_error,
         ),
         pre_session_bootstrap=(

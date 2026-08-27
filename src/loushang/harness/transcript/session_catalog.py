@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import stat as stat_module
 from collections.abc import Callable, Mapping, Sequence
@@ -1239,7 +1240,7 @@ def filter_agent_transcript_session_summaries(
     query: SessionQuery,
 ) -> list[SessionSummary]:
     def matches(summary: SessionSummary) -> bool:
-        if query.cwd is not None and summary.cwd != query.cwd:
+        if query.cwd is not None and not _same_session_cwd(summary.cwd, query.cwd):
             return False
         if (
             query.name is not None
@@ -1287,6 +1288,19 @@ def filter_agent_transcript_session_summaries(
             limit=query.limit,
         ).apply(summaries)
     )
+
+
+def _same_session_cwd(left: str, right: str) -> bool:
+    if left == right:
+        return True
+    if not left or not right:
+        return False
+    try:
+        normalized_left = os.path.normcase(os.path.realpath(os.path.expanduser(left)))
+        normalized_right = os.path.normcase(os.path.realpath(os.path.expanduser(right)))
+    except (OSError, ValueError):
+        return False
+    return normalized_left == normalized_right
 
 
 def _message_preview(message: AgentMessage) -> str | None:

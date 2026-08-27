@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import stat
 from dataclasses import FrozenInstanceError
 
 import pytest
@@ -32,6 +34,8 @@ def test_persist_clipboard_image_creates_neutral_relative_attachment(tmp_path) -
         display_path=".clips/clipboard-abc123.png",
         marker="@.clips/clipboard-abc123.png",
     )
+    if os.name == "posix":
+        assert stat.S_IMODE(expected_path.stat().st_mode) == 0o600
 
 
 def test_persist_clipboard_image_sanitizes_filename_token(tmp_path) -> None:
@@ -138,6 +142,55 @@ def test_pending_registry_clear_removes_all_images(tmp_path) -> None:
 
     assert len(registry) == 0
     assert registry.select_for_text(attachment.marker) == ()
+    assert attachment.path.exists() is False
+
+
+def test_pending_registry_take_transfers_bytes_and_disposes_all_draft_files(
+    tmp_path,
+) -> None:
+    selected = persist_clipboard_image(
+        ClipboardImage(bytes=b"selected", mime_type="image/png"),
+        directory=tmp_path,
+        display_root=tmp_path,
+        name_token="selected",
+    )
+    unused = persist_clipboard_image(
+        ClipboardImage(bytes=b"unused", mime_type="image/png"),
+        directory=tmp_path,
+        display_root=tmp_path,
+        name_token="unused",
+    )
+    registry = PendingPromptImageRegistry()
+    registry.add(selected)
+    registry.add(unused)
+
+    transferred = registry.take_for_text(f"inspect {selected.marker}")
+
+    assert len(transferred) == 1
+    assert transferred[0].path is None
+    assert transferred[0].bytes == selected.bytes
+    assert transferred[0].bytes == b"selected"
+    assert selected.path.exists() is False
+    assert unused.path.exists() is False
+
+
+def test_pending_registry_does_not_delete_unowned_attachment_path(tmp_path) -> None:
+    unrelated = tmp_path / "unrelated.txt"
+    unrelated.write_text("keep", encoding="utf-8")
+    registry = PendingPromptImageRegistry()
+    registry.add(
+        PromptImageAttachment(
+            bytes=b"not-owned",
+            mime_type="image/png",
+            path=unrelated,
+            display_path=unrelated.name,
+            marker=f"@{unrelated.name}",
+        )
+    )
+
+    registry.clear()
+
+    assert unrelated.read_text(encoding="utf-8") == "keep"
 
 
 def test_stage_clipboard_image_returns_attached_outcome(tmp_path) -> None:

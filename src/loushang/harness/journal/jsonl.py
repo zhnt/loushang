@@ -76,8 +76,9 @@ def journal_file_lock(
     load_msvcrt: Callable[[], Any] | None = None,
 ) -> Iterator[None]:
     lock_path = path.with_name(f"{path.name}{lock_suffix}")
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     with lock_path.open("a+b") as handle:
+        _fchmod_private(handle.fileno())
         _prepare_lock_byte(handle)
         windows = (is_windows or _is_windows)()
         if windows:
@@ -116,8 +117,9 @@ def append_jsonl_record(
         durability=durability,
         lock_factory=lock_factory,
     ):
-        target.parent.mkdir(parents=True, exist_ok=True)
+        target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         with target.open("a", encoding=format_profile.encoding) as handle:
+            _fchmod_private(handle.fileno())
             handle.write(line)
             handle.write(format_profile.newline)
             _sync_handle(handle, durability)
@@ -149,8 +151,9 @@ def append_jsonl_records(
         durability=durability,
         lock_factory=lock_factory,
     ):
-        target.parent.mkdir(parents=True, exist_ok=True)
+        target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         with target.open("a", encoding=format_profile.encoding) as handle:
+            _fchmod_private(handle.fileno())
             handle.write(payload)
             _sync_handle(handle, durability)
 
@@ -520,6 +523,12 @@ def _sync_handle(handle: Any, durability: JournalDurabilityProfile) -> None:
         os.fsync(handle.fileno())
 
 
+def _fchmod_private(descriptor: int) -> None:
+    fchmod = getattr(os, "fchmod", None)
+    if callable(fchmod):
+        fchmod(descriptor, 0o600)
+
+
 def _has_trailing_newline(raw: str) -> bool:
     return raw.endswith(("\n", "\r"))
 
@@ -540,10 +549,11 @@ def _replace_text_unlocked(
     encoding: str,
     durability: JournalDurabilityProfile,
 ) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
+    target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     temp_path = target.with_name(f".{target.name}.{os.getpid()}.tmp")
     try:
         with temp_path.open("w", encoding=encoding) as handle:
+            _fchmod_private(handle.fileno())
             handle.write(data)
             _sync_handle(handle, durability)
         temp_path.replace(target)

@@ -6,7 +6,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
+from uuid import uuid4
 
+from loushang.foundation.platform_paths import resolve_platform_paths
 from loushang.harnesstui.conversation.attachments import (
     PromptImageAttachmentOutcome,
 )
@@ -52,6 +54,7 @@ class ClipboardImageInputProfile:
     directory: ClipboardImageAppPath
     display_root: ClipboardImageAppPath
     status_copy: ClipboardImageStatusCopy
+    explicit_directory_display_root: ClipboardImageAppPath | None = None
 
 
 def _app_cwd(app: ClipboardImageInputApp) -> Path:
@@ -70,10 +73,18 @@ STANDARD_CLIPBOARD_IMAGE_STATUS_COPY = ClipboardImageStatusCopy(
     unknown_type="unknown",
 )
 
+_PROCESS_CLIPBOARD_RUN_ID = uuid4().hex
+
+
+def _clipboard_run_root(_app: ClipboardImageInputApp) -> Path:
+    return resolve_platform_paths().runtime / "runs" / _PROCESS_CLIPBOARD_RUN_ID
+
+
 STANDARD_CLIPBOARD_IMAGE_INPUT_PROFILE = ClipboardImageInputProfile(
-    directory=lambda app: _app_cwd(app) / ".loushang" / "clipboard",
-    display_root=_app_cwd,
+    directory=lambda app: _clipboard_run_root(app) / "clipboard",
+    display_root=_clipboard_run_root,
     status_copy=STANDARD_CLIPBOARD_IMAGE_STATUS_COPY,
+    explicit_directory_display_root=_app_cwd,
 )
 
 

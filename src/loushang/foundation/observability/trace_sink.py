@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from collections.abc import Mapping
 from pathlib import Path
 from threading import RLock
@@ -35,13 +36,19 @@ class TraceJSONLSink:
 
     def _write_json(self, payload: dict[str, JSONValue]) -> None:
         data = (
-            json.dumps(_json_safe_payload(payload), ensure_ascii=False, sort_keys=True, allow_nan=False)
+            json.dumps(
+                _json_safe_payload(payload),
+                ensure_ascii=False,
+                sort_keys=True,
+                allow_nan=False,
+            )
             + "\n"
         ).encode("utf-8")
         with self._lock:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             self._rotate_if_needed(len(data))
             with self.path.open("ab") as handle:
+                _fchmod_private(handle.fileno())
                 handle.write(data)
             self._update_latest()
 
@@ -74,6 +81,12 @@ class TraceJSONLSink:
 
 def _same_path(left: Path, right: Path) -> bool:
     return left.resolve(strict=False) == right.resolve(strict=False)
+
+
+def _fchmod_private(descriptor: int) -> None:
+    fchmod = getattr(os, "fchmod", None)
+    if callable(fchmod):
+        fchmod(descriptor, 0o600)
 
 
 def _json_safe_payload(value: object) -> JSONValue:

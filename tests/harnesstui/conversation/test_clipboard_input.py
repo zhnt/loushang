@@ -96,7 +96,10 @@ def test_clipboard_builder_satisfies_standard_router_factory_contract() -> None:
 
 def test_standard_clipboard_image_profile_is_harnesstui_owned(
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
+    runtime_dir = tmp_path / "runtime"
+    monkeypatch.setenv("LOUSHANG_RUNTIME_DIR", str(runtime_dir))
     app = _ConversationApp(str(tmp_path))
     assert STANDARD_CLIPBOARD_IMAGE_INPUT_PROFILE.status_copy.attached_prefix == (
         "Attached clipboard image: "
@@ -113,12 +116,12 @@ def test_standard_clipboard_image_profile_is_harnesstui_owned(
 
     result = router.handle(InputEvent(kind="key", key="ctrl+v"))
 
-    expected = tmp_path / ".loushang" / "clipboard" / "clipboard-shared.png"
+    expected = next((runtime_dir / "runs").glob("*/clipboard/clipboard-shared.png"))
     assert expected.read_bytes() == b"png"
     assert isinstance(result, ConversationClipboardResult)
-    assert app.composer.value == "@.loushang/clipboard/clipboard-shared.png "
+    assert app.composer.value == "@clipboard/clipboard-shared.png "
     assert app.state.status_message == (
-        "Attached clipboard image: .loushang/clipboard/clipboard-shared.png"
+        "Attached clipboard image: clipboard/clipboard-shared.png"
     )
 
 

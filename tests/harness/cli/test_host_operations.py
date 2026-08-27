@@ -25,6 +25,9 @@ from loushang.harness.cli import (
 
 
 class _Runtime:
+    def __init__(self) -> None:
+        self.queries: list[object] = []
+
     def list_session_summaries(self) -> list[object]:
         return [
             "invalid",
@@ -41,6 +44,10 @@ class _Runtime:
                 ),
             ),
         ]
+
+    def find_session_summaries(self, query: object) -> list[object]:
+        self.queries.append(query)
+        return self.list_session_summaries()
 
 
 class _Session:
@@ -148,6 +155,7 @@ def test_agent_session_listing_runs_the_standard_projected_request(
     stdout = StringIO()
     stderr = StringIO()
 
+    runtime = _Runtime()
     result = run_agent_cli_session_listing(
         SimpleNamespace(
             list_sessions=True,
@@ -162,15 +170,18 @@ def test_agent_session_listing_runs_the_standard_projected_request(
             session_index=False,
             refresh_session_index=False,
         ),
-        _Runtime(),
+        runtime,
         stdout=stdout,
         stderr=stderr,
+        default_cwd="/workspace/current",
     )
 
     assert result == 0
     assert [item["session_id"] for item in json.loads(stdout.getvalue())] == [
         "session-1"
     ]
+    assert len(runtime.queries) == 1
+    assert getattr(runtime.queries[0], "cwd") == "/workspace/current"
     assert stderr.getvalue() == ""
 
 

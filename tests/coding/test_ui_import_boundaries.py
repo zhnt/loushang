@@ -899,7 +899,8 @@ def test_shared_conversation_interaction_separates_product_and_clipboard_policy(
     assert "ImagePart" not in screen_input
     assert "ImagePart" in product_binding
     assert '".loushang" / "clipboard"' not in screen_input
-    assert '".loushang" / "clipboard"' in clipboard_policy
+    assert "resolve_platform_paths().runtime" in clipboard_policy
+    assert '"runs"' in clipboard_policy
     assert "Attached clipboard image: " in clipboard_policy
     assert "ClipboardImageInputProfile" not in screen_input
     assert "class ScreenInputResult" not in screen_input

@@ -3,7 +3,7 @@ from __future__ import annotations
 import errno
 import inspect
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Generic, Literal, Protocol, TypeVar
 
@@ -416,6 +416,44 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
             candidate=candidate,
         )
 
+    async def prepare_import_file(
+        self,
+        input_path: str | Path,
+        *,
+        destination_dir: Path,
+        cwd_override: str | None = None,
+        metadata: Mapping[str, object] | None = None,
+    ) -> PreparedSessionLifecycleOperation[SessionT, PayloadT]:
+        """Stage an external transcript as an abortable authority restore."""
+
+        source = Path(input_path).expanduser().resolve()
+        staged = stage_file_import(
+            source,
+            destination_dir,
+            copy_file=self._copy_file,
+        )
+        try:
+            prepared = await self.prepare_restore(
+                staged.destination,
+                fallback_cwd=cwd_override,
+                missing_cwd="fallback" if cwd_override is not None else "error",
+                metadata=metadata,
+            )
+        except BaseException:
+            staged.cleanup()
+            raise
+        original_rollback = prepared._candidate.rollback
+
+        async def rollback() -> None:
+            try:
+                if original_rollback is not None:
+                    await _maybe_await(original_rollback())
+            finally:
+                staged.cleanup()
+
+        prepared._candidate = replace(prepared._candidate, rollback=rollback)
+        return prepared
+
     async def fork(
         self,
         entry_id: str | None = None,
@@ -697,9 +735,7 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
     ) -> bool:
         if self.hooks.before_transition is None:
             return False
-        decision = await _maybe_await(
-            self.hooks.before_transition(session, transition)
-        )
+        decision = await _maybe_await(self.hooks.before_transition(session, transition))
         return decision is not None and decision.cancelled
 
     def _missing_cwd_issue(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import os
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
@@ -8,6 +9,7 @@ from enum import Enum
 from pathlib import Path
 from shutil import copyfileobj
 from typing import Generic, TypeVar, Union, cast
+from uuid import uuid4
 
 from loushang.harness.runtime.transition import SessionTransitionHost
 
@@ -220,17 +222,57 @@ class SessionOperationCoordinator(Generic[S]):
 
 
 def copy_file_exclusive(source: Path, destination: Path) -> None:
-    created = False
+    """Durably publish a complete private copy without replacing a peer."""
+
+    temporary = destination.with_name(
+        f".{destination.name}.{uuid4().hex}.tmp"
+    )
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = -1
+    published = False
     try:
         with source.open("rb") as input_handle:
-            with destination.open("xb") as output_handle:
-                created = True
+            descriptor = os.open(temporary, flags, 0o600)
+            with os.fdopen(descriptor, "wb") as output_handle:
+                descriptor = -1
                 copyfileobj(input_handle, output_handle)
-    except Exception:
-        if created:
-            with suppress(FileNotFoundError):
-                destination.unlink()
-        raise
+                output_handle.flush()
+                os.fsync(output_handle.fileno())
+        _publish_file_exclusive(temporary, destination)
+        published = True
+        _sync_directory(destination.parent)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        with suppress(FileNotFoundError):
+            temporary.unlink()
+        if published:
+            _sync_directory(destination.parent)
+
+
+def _publish_file_exclusive(temporary: Path, destination: Path) -> None:
+    if os.name == "nt":
+        # Windows rename does not replace an existing destination.
+        temporary.rename(destination)
+        return
+    # Same-directory hard-link publication is atomic and fails when the final
+    # path already exists. Both names briefly reference the complete inode.
+    os.link(temporary, destination)
+
+
+def _sync_directory(directory: Path) -> None:
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        descriptor = os.open(directory, flags)
+    except OSError:
+        return
+    try:
+        os.fsync(descriptor)
+    except OSError:
+        return
+    finally:
+        os.close(descriptor)
 
 
 def stage_file_import(

@@ -861,7 +861,9 @@ def test_cli_help_explains_runtime_provenance_flags() -> None:
 
     output = help_text()
 
-    assert "show package version; combine with --verbose for runtime provenance" in output
+    assert (
+        "show package version; combine with --verbose for runtime provenance" in output
+    )
     assert "show executable, import, Git, and bundled component provenance" in output
     assert "with --version, show runtime provenance" in output
 
@@ -1002,6 +1004,7 @@ def test_parse_args_rewrites_diag_export_subcommand() -> None:
 
 def test_default_runtime_builder_maps_tools_to_allowed_and_active_tools(
     tmp_path,
+    monkeypatch,
 ) -> None:
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
@@ -1012,6 +1015,7 @@ def test_default_runtime_builder_maps_tools_to_allowed_and_active_tools(
         WorkspaceToolRegistry as ToolRegistry,
     )
 
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "user-home"))
     registry = ToolRegistry()
     register_builtin_tools(registry)
     runtime = default_runtime_builder(
@@ -1032,6 +1036,7 @@ def test_default_runtime_builder_maps_tools_to_allowed_and_active_tools(
     assert session.multiagent_runtime is not None
     assert session.multiagent_runtime.control.agent_type("explorer") is not None
     assert session.multiagent_runtime.control.agent_type("reviewer") is not None
+    assert runtime.discovery_session_dirs == ()
     assert not {
         "spawn_agent",
         "send_message",
@@ -2450,7 +2455,12 @@ def test_run_cli_lists_sessions_without_creating_new_session(tmp_path) -> None:
 
     asyncio.run(scenario())
 
-    assert runtime.list_sessions_calls == 1
+    from loushang.harness.transcript import SessionQuery
+
+    assert runtime.list_sessions_calls == 0
+    assert runtime.find_session_summaries_calls == [
+        SessionQuery(cwd=str(tmp_path.resolve()))
+    ]
     assert runtime.new_session_calls == []
     assert stdout.getvalue() == (
         "session-2\t/tmp/session-2.jsonl\t/tmp/project-b\t2026-05-22T10:00:00Z\tSecond\n"
@@ -2496,7 +2506,12 @@ def test_run_cli_lists_sessions_as_json_without_creating_new_session(tmp_path) -
 
     asyncio.run(scenario())
 
-    assert runtime.list_sessions_calls == 1
+    from loushang.harness.transcript import SessionQuery
+
+    assert runtime.list_sessions_calls == 0
+    assert runtime.find_session_summaries_calls == [
+        SessionQuery(cwd=str(tmp_path.resolve()))
+    ]
     assert runtime.new_session_calls == []
     assert json.loads(stdout.getvalue()) == [
         {
@@ -4434,7 +4449,12 @@ def test_run_cli_dispatches_continue_by_restoring_latest_session(tmp_path) -> No
 
     asyncio.run(scenario())
 
-    assert runtime.list_sessions_calls == 1
+    from loushang.harness.transcript import SessionQuery
+
+    assert runtime.list_sessions_calls == 0
+    assert runtime.find_session_summaries_calls == [
+        SessionQuery(cwd=str(tmp_path.resolve()), sort_by="recent")
+    ]
     assert runtime.restore_session_calls == [str(latest)]
     assert print_runner.calls[0]["user_input"] == "hello"
 
@@ -4533,7 +4553,8 @@ def test_run_cli_reports_continue_errors_when_list_sessions_fails(tmp_path) -> N
     from loushang.coding.cli.__main__ import run_cli
 
     class BrokenListSessionsRuntime(FakeRuntime):
-        def list_sessions(self):
+        def find_session_summaries(self, query):
+            del query
             raise RuntimeError("session listing failed")
 
     runtime = BrokenListSessionsRuntime(FakeSession("session-1"))
@@ -4561,7 +4582,8 @@ def test_run_cli_reports_continue_invalid_list_sessions_payload(tmp_path) -> Non
     from loushang.coding.cli.__main__ import run_cli
 
     class BrokenListSessionsRuntime(FakeRuntime):
-        def list_sessions(self):
+        def find_session_summaries(self, query):
+            del query
             return {"sessions": []}
 
     runtime = BrokenListSessionsRuntime(FakeSession("session-1"))
@@ -4646,14 +4668,20 @@ def test_run_cli_reports_missing_cwd_from_runtime(tmp_path) -> None:
     assert str(missing_cwd.resolve()) in stderr.getvalue()
 
 
-def test_run_cli_dispatches_rpc_mode_and_creates_new_session(tmp_path) -> None:
+def test_run_cli_dispatches_rpc_mode_and_creates_new_session(
+    tmp_path,
+    monkeypatch,
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     runtime = FakeRuntime(FakeSession("session-1"))
     rpc_runner = FakeRunner()
 
+    platform_sessions = tmp_path / "user-home" / "data" / "sessions"
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "user-home"))
+
     def runtime_builder(**kwargs):
-        assert kwargs["session_dir"] == tmp_path / ".loushang" / "sessions"
+        assert kwargs["session_dir"] == platform_sessions
         return runtime
 
     async def scenario() -> None:
@@ -6022,6 +6050,58 @@ def test_run_cli_bare_resume_cancels_before_creating_placeholder_session(
     assert tui_runner.calls == []
 
 
+def test_run_cli_bare_resume_can_request_user_global_session_listing(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.coding.cli import __main__ as cli_main
+
+    runtime = FakeRuntime(FakeSession("placeholder"))
+    bindings: list[dict[str, object]] = []
+
+    class _Reference:
+        def release(self) -> None:
+            return None
+
+    class _Hub:
+        def reference(self):
+            return _Reference()
+
+    class _Composition:
+        hub = _Hub()
+
+        async def dispose(self) -> None:
+            return None
+
+    def bind(_runtime, **kwargs):
+        bindings.append(kwargs)
+        return _Composition()
+
+    async def cancel_picker(**_kwargs):
+        return None
+
+    monkeypatch.setattr(cli_main, "bind_coding_continuity", bind)
+
+    exit_code = asyncio.run(
+        cli_main.run_cli(
+            ["--resume", "--all-sessions"],
+            stdin=TtyStringIO(),
+            stdout=TtyStringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            tui_runner=FakeRunner(),
+            continuity_runner=cancel_picker,
+        )
+    )
+
+    assert exit_code == 0
+    assert bindings == [
+        {"cwd": tmp_path.resolve(), "all_sessions": True},
+    ]
+
+
 def test_run_cli_bare_resume_activates_selection_before_starting_main_tui(
     tmp_path,
     monkeypatch,
@@ -6075,7 +6155,7 @@ def test_run_cli_bare_resume_activates_selection_before_starting_main_tui(
     monkeypatch.setattr(
         cli_main,
         "bind_coding_continuity",
-        lambda _runtime: _Composition(),
+        lambda _runtime, **_kwargs: _Composition(),
     )
 
     exit_code = asyncio.run(

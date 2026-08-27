@@ -177,6 +177,8 @@ class ConversationInputRouterPort(Protocol):
 
     def handle(self, event: InputEvent) -> ConversationInputResult: ...
 
+    def dispose(self) -> None: ...
+
 
 class ConversationInputRouterFactoryPort(Protocol):
     """Construct a product-neutral conversation input adapter."""
@@ -240,6 +242,11 @@ class ConversationInputRouter:
 
         self.app = app
         self._composer_target = ComposerInputTarget(app.composer)
+
+    def dispose(self) -> None:
+        """Idempotently release draft-owned resources on every runner exit."""
+
+        self._clear_prompt_attachments()
 
     def handle(self, event: InputEvent) -> ConversationInputResult:
         if event.kind == "key" and event.event_type == "release":
@@ -388,9 +395,8 @@ class ConversationInputRouter:
                 if mode is None
                 else self._submit_running(mode=mode)
             )
-        attachments = self._prompt_attachments_for_text(text)
+        attachments = self._take_prompt_attachments_for_text(text)
         self.app.start_prompt(text)
-        self._clear_prompt_attachments()
         return ConversationPromptResult(
             text=text,
             attachments=attachments,
@@ -406,10 +412,9 @@ class ConversationInputRouter:
         text = self.app.composer.value
         if not text.strip():
             return ConversationInputIgnored()
-        attachments = self._prompt_attachments_for_text(text)
+        attachments = self._take_prompt_attachments_for_text(text)
         self.app.composer.add_history(text)
         self.app.composer.clear()
-        self._clear_prompt_attachments()
         if mode == "follow_up":
             self.app.queue_followup(text)
             return ConversationFollowupResult(
@@ -470,8 +475,12 @@ class ConversationInputRouter:
             return ConversationClipboardResult(outcome=outcome)
         if attachment is None:
             raise RuntimeError("attached clipboard outcome requires an attachment")
-        self.app.composer.paste(f"{attachment.marker} ")
         self._pending_prompt_images.add(attachment)
+        try:
+            self.app.composer.paste(f"{attachment.marker} ")
+        except BaseException:
+            self._pending_prompt_images.discard(attachment)
+            raise
         self._present_clipboard_outcome(outcome)
         return ConversationClipboardResult(outcome=outcome)
 
@@ -482,11 +491,11 @@ class ConversationInputRouter:
         if self.clipboard_outcome_presenter is not None:
             self.clipboard_outcome_presenter(outcome)
 
-    def _prompt_attachments_for_text(
+    def _take_prompt_attachments_for_text(
         self,
         text: str,
     ) -> tuple[PromptImageAttachment, ...] | None:
-        attachments = self._pending_prompt_images.select_for_text(text)
+        attachments = self._pending_prompt_images.take_for_text(text)
         return attachments or None
 
     def _clear_prompt_attachments(self) -> None:
@@ -525,6 +534,7 @@ def bind_clipboard_image_input_router(
 
         def stage_image() -> PromptImageAttachmentOutcome:
             bound_app = current_app()
+            explicit_display_root = profile.explicit_directory_display_root
             return stage_clipboard_image(
                 clipboard_image_reader,
                 directory=(
@@ -532,7 +542,12 @@ def bind_clipboard_image_input_router(
                     if clipboard_image_dir is not None
                     else profile.directory(bound_app)
                 ),
-                display_root=profile.display_root(bound_app),
+                display_root=(
+                    explicit_display_root(bound_app)
+                    if clipboard_image_dir is not None
+                    and explicit_display_root is not None
+                    else profile.display_root(bound_app)
+                ),
                 name_factory=clipboard_image_name_factory,
             )
 

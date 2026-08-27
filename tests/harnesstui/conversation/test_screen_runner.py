@@ -67,6 +67,7 @@ def test_conversation_screen_forwards_neutral_attachments_end_to_end() -> None:
     attachment = object()
     seen: dict[str, object] = {}
     other_actions: list[str] = []
+    disposed: list[bool] = []
 
     class Router:
         def __init__(self, **_kwargs: object) -> None:
@@ -80,6 +81,9 @@ def test_conversation_screen_forwards_neutral_attachments_end_to_end() -> None:
                 text="describe",
                 attachments=(attachment,),
             )
+
+        def dispose(self) -> None:
+            disposed.append(True)
 
     async def handle_prompt(
         text: str,
@@ -115,6 +119,7 @@ def test_conversation_screen_forwards_neutral_attachments_end_to_end() -> None:
         "attachments": (attachment,),
     }
     assert other_actions == []
+    assert disposed == [True]
 
 
 def test_finish_active_task_preserves_success_error_and_cancellation_state() -> None:

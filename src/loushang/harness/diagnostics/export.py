@@ -20,6 +20,7 @@ from pathlib import Path, PurePosixPath
 from typing import cast
 
 from loushang.harness.diagnostics.types import DiagnosticRecord
+from loushang.harness.environment import resolve_platform_paths
 
 
 @dataclass(frozen=True)
@@ -35,17 +36,18 @@ class DiagnosticBundleProfile:
     """Stable archive identity shared by Loushang Product hosts."""
 
     package_name: str = "loushang"
-    archive_directory: str = ".loushang/diagnostics"
+    archive_directory: str = "state/diagnostics"
     archive_prefix: str = "loushang-diag"
-    debug_directory: str = ".loushang/debug"
-    trace_directory: str = ".loushang/traces"
+    debug_directory: str = "state/debug"
+    trace_directory: str = "state/traces"
     readme: str = (
         "Loushang diagnostics bundle\n"
         "\n"
         "This archive contains recent local debugging artifacts for troubleshooting.\n"
-        "It may include debug logs, structured trace events, the latest session JSONL,\n"
-        "and a diagnostics summary. Common bearer tokens and API key fields are redacted\n"
-        "on export, but review the archive before sharing it outside your machine.\n"
+        "It may include debug logs, structured trace events, and a diagnostics summary.\n"
+        "Conversation transcripts and prompt attachments are not included. Common bearer\n"
+        "tokens and API key fields are redacted on export, but review the archive before\n"
+        "sharing it outside your machine.\n"
     )
 
 
@@ -71,13 +73,15 @@ def export_diagnostics_bundle(
     root = Path(project_root).expanduser().resolve()
     sessions = Path(session_dir).expanduser().resolve()
     generated_at = (now or utc_now)()
+    platform_home = resolve_platform_paths().home
     bundle_path = resolve_export_output_path(
-        root,
+        platform_home,
         output,
         generated_at,
         directory=profile.archive_directory,
         prefix=profile.archive_prefix,
     )
+
     def serialize_record(record: object) -> Mapping[str, object]:
         return serialize_diagnostic(cast(DiagnosticRecord, record))
 
@@ -87,16 +91,15 @@ def export_diagnostics_bundle(
         limit=DEFAULT_DIAGNOSTICS_LIMIT,
     )
     debug_latest = (
-        Path.home() / profile.debug_directory / "latest"
+        platform_home / profile.debug_directory / "latest"
         if debug_latest_path is None
         else Path(debug_latest_path).expanduser()
     )
     trace_latest = (
-        Path.home() / profile.trace_directory / "latest"
+        platform_home / profile.trace_directory / "latest"
         if trace_latest_path is None
         else Path(trace_latest_path).expanduser()
     )
-    session_latest = sessions / "latest.jsonl"
     return export_diagnostics_archive(
         output_path=bundle_path,
         readme=profile.readme,
@@ -107,14 +110,12 @@ def export_diagnostics_bundle(
             generated_at=generated_at,
             debug_latest=debug_latest,
             trace_latest=trace_latest,
-            session_latest=session_latest,
             diagnostics=diagnostics,
         ),
         diagnostics=diagnostics,
         artifacts=(
             DiagnosticExportArtifact("debug/latest.log", debug_latest),
             DiagnosticExportArtifact("traces/latest.jsonl", trace_latest),
-            DiagnosticExportArtifact("sessions/latest.jsonl", session_latest),
         ),
     )
 
@@ -136,7 +137,7 @@ def export_diagnostics_archive(
     """
 
     resolved_output = Path(output_path).expanduser().resolve()
-    resolved_output.parent.mkdir(parents=True, exist_ok=True)
+    resolved_output.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     redacted_manifest = redact_json_value(dict(manifest))
     redacted_diagnostics = [redact_json_value(dict(item)) for item in diagnostics]
 
@@ -148,6 +149,7 @@ def export_diagnostics_archive(
         archive.writestr("diagnostics.json", _json_text(redacted_diagnostics))
         for artifact in artifacts:
             _write_text_artifact(archive, artifact)
+    resolved_output.chmod(0o600)
     return resolved_output
 
 
@@ -197,7 +199,11 @@ def resolve_export_output_path(
     if output is not None:
         return Path(output).expanduser().resolve()
     timestamp = generated_at.strftime("%Y%m%dT%H%M%SZ")
-    return Path(project_root).expanduser().resolve() / directory / f"{prefix}-{timestamp}.zip"
+    return (
+        Path(project_root).expanduser().resolve()
+        / directory
+        / f"{prefix}-{timestamp}.zip"
+    )
 
 
 def path_exists(path: str | Path) -> bool:
@@ -223,7 +229,6 @@ def _standard_manifest(
     generated_at: datetime,
     debug_latest: Path,
     trace_latest: Path,
-    session_latest: Path,
     diagnostics: list[dict[str, object]],
 ) -> dict[str, object]:
     return {
@@ -239,7 +244,7 @@ def _standard_manifest(
         "included": {
             "debugLatest": path_exists(debug_latest),
             "traceLatest": path_exists(trace_latest),
-            "sessionLatest": path_exists(session_latest),
+            "sessionTranscript": False,
             "diagnostics": bool(diagnostics),
         },
     }

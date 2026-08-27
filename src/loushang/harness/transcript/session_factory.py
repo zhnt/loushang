@@ -325,7 +325,9 @@ def _utc_now() -> datetime:
 
 
 def _default_id() -> str:
-    return uuid4().hex[:8]
+    # User-global authorities need collision resistance across every cwd and
+    # long-lived installation, while legacy short IDs remain valid prefixes.
+    return uuid4().hex
 
 
 def _encode_timestamp(value: datetime) -> str:
