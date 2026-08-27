@@ -351,9 +351,11 @@ async def _process_responses_events(
                     thinking_closed = True
                 if (not text_closed) and text_buf:
                     text_closed = True
+                await _drain_terminal_events(openai_stream)
                 for part in _response_terminal_parts(resp, source=source):
                     yield part
                 return
+            await _drain_terminal_events(openai_stream)
             yield provider_error_part_from_raw(
                 "response terminal event did not include a response",
                 code="provider_protocol",
@@ -366,6 +368,7 @@ async def _process_responses_events(
             err = (
                 f"Error Code {code}: {message}" if code or message else "Unknown error"
             )
+            await _drain_terminal_events(openai_stream)
             yield provider_error_part_from_raw(err, code=code, source=source)
             return
 
@@ -376,6 +379,19 @@ async def _process_responses_events(
         ),
         source=source,
     )
+
+
+async def _drain_terminal_events(openai_stream: AsyncIterator[object]) -> None:
+    """Reach transport EOF before exposing a terminal part to the runtime."""
+
+    try:
+        async for _ in openai_stream:
+            pass
+    except Exception:
+        # The terminal event already determines the request outcome. Advancing to
+        # EOF here owns generator cleanup; a trailing transport error must not
+        # replace that outcome.
+        pass
 
 
 def process_responses_response(
