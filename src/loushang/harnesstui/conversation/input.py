@@ -5,10 +5,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Protocol, TypeAlias
 
+from loushang.foundation.runtime_scope import RuntimeScope
 from loushang.harnesstui.conversation.attachments import (
     ClipboardImageNameFactory,
     ClipboardImageReader,
-    PendingPromptImageRegistry,
+    DraftStore,
+    DraftStoreQuotaExceeded,
     PromptImageAttachment,
     PromptImageAttachmentOutcome,
     new_prompt_image_name_token,
@@ -209,6 +211,7 @@ class ClipboardImageInputRouterBuilder(ConversationInputRouterFactoryPort, Proto
         clipboard_image_reader: ClipboardImageReader = ...,
         clipboard_image_dir: Path | str | None = ...,
         clipboard_image_name_factory: ClipboardImageNameFactory = ...,
+        runtime_scope: RuntimeScope | None = ...,
     ) -> ConversationInputRouter: ...
 
 
@@ -226,8 +229,12 @@ class ConversationInputRouter:
     prompt_image_stager: PromptImageAttachmentStager | None = None
     clipboard_outcome_presenter: ClipboardOutcomePresenter | None = None
     _jump_mode: PromptJumpDirection | None = None
-    _pending_prompt_images: PendingPromptImageRegistry = field(
-        default_factory=PendingPromptImageRegistry,
+    draft_store: DraftStore = field(
+        default_factory=DraftStore,
+        repr=False,
+    )
+    _disposed: bool = field(
+        default=False,
         init=False,
         repr=False,
     )
@@ -246,9 +253,14 @@ class ConversationInputRouter:
     def dispose(self) -> None:
         """Idempotently release draft-owned resources on every runner exit."""
 
+        if self._disposed:
+            return
+        self._disposed = True
         self._clear_prompt_attachments()
 
     def handle(self, event: InputEvent) -> ConversationInputResult:
+        if self._disposed:
+            return ConversationInputIgnored()
         if event.kind == "key" and event.event_type == "release":
             return ConversationInputIgnored()
         if self._runtime_surface_active():
@@ -475,11 +487,20 @@ class ConversationInputRouter:
             return ConversationClipboardResult(outcome=outcome)
         if attachment is None:
             raise RuntimeError("attached clipboard outcome requires an attachment")
-        self._pending_prompt_images.add(attachment)
+        try:
+            self.draft_store.add(attachment)
+        except DraftStoreQuotaExceeded as error:
+            quota_outcome = PromptImageAttachmentOutcome(
+                kind="quota_exceeded",
+                mime_type=attachment.mime_type,
+                error_message=str(error),
+            )
+            self._present_clipboard_outcome(quota_outcome)
+            return ConversationClipboardResult(outcome=quota_outcome)
         try:
             self.app.composer.paste(f"{attachment.marker} ")
         except BaseException:
-            self._pending_prompt_images.discard(attachment)
+            self.draft_store.discard(attachment)
             raise
         self._present_clipboard_outcome(outcome)
         return ConversationClipboardResult(outcome=outcome)
@@ -495,17 +516,18 @@ class ConversationInputRouter:
         self,
         text: str,
     ) -> tuple[PromptImageAttachment, ...] | None:
-        attachments = self._pending_prompt_images.take_for_text(text)
+        attachments = self.draft_store.take_for_text(text)
         return attachments or None
 
     def _clear_prompt_attachments(self) -> None:
-        self._pending_prompt_images.clear()
+        self.draft_store.clear()
 
 
 def bind_clipboard_image_input_router(
     profile: ClipboardImageInputProfile = STANDARD_CLIPBOARD_IMAGE_INPUT_PROFILE,
     *,
     policy: ConversationInputPolicy = DEFAULT_CONVERSATION_INPUT_POLICY,
+    runtime_scope: RuntimeScope | None = None,
 ) -> ClipboardImageInputRouterBuilder:
     """Bind app-aware staging and status presentation to a router builder.
 
@@ -513,6 +535,8 @@ def bind_clipboard_image_input_router(
     app therefore also replaces the workspace and status destination without
     rebuilding the router.
     """
+
+    configured_runtime_scope = runtime_scope
 
     def build(
         app: ConversationScreenInputPort,
@@ -526,7 +550,12 @@ def bind_clipboard_image_input_router(
         clipboard_image_name_factory: ClipboardImageNameFactory = (
             new_prompt_image_name_token
         ),
+        runtime_scope: RuntimeScope | None = None,
     ) -> ConversationInputRouter:
+        scope = runtime_scope or configured_runtime_scope
+        scope_required = (
+            profile.runtime_storage is not None and clipboard_image_dir is None
+        )
         router: ConversationInputRouter
 
         def current_app() -> ConversationScreenInputPort:
@@ -535,20 +564,26 @@ def bind_clipboard_image_input_router(
         def stage_image() -> PromptImageAttachmentOutcome:
             bound_app = current_app()
             explicit_display_root = profile.explicit_directory_display_root
+            if scope_required and scope is None:
+                return PromptImageAttachmentOutcome(
+                    kind="write_error",
+                    error_message="runtime scope is not bound",
+                )
             return stage_clipboard_image(
                 clipboard_image_reader,
                 directory=(
                     clipboard_image_dir
                     if clipboard_image_dir is not None
-                    else profile.directory(bound_app)
+                    else profile.directory_for(bound_app, scope)
                 ),
                 display_root=(
                     explicit_display_root(bound_app)
                     if clipboard_image_dir is not None
                     and explicit_display_root is not None
-                    else profile.display_root(bound_app)
+                    else profile.display_root_for(bound_app, scope)
                 ),
                 name_factory=clipboard_image_name_factory,
+                max_bytes=profile.draft_policy.max_attachment_bytes,
             )
 
         def present_outcome(outcome: PromptImageAttachmentOutcome) -> None:
@@ -566,6 +601,7 @@ def bind_clipboard_image_input_router(
             height=height,
             prompt_image_stager=stage_image,
             clipboard_outcome_presenter=present_outcome,
+            draft_store=DraftStore(policy=profile.draft_policy),
         )
         return router
 

@@ -7,6 +7,9 @@ from dataclasses import FrozenInstanceError
 import pytest
 
 from loushang.harnesstui.conversation.attachments import (
+    DraftStore,
+    DraftStorePolicy,
+    DraftStoreQuotaExceeded,
     PendingPromptImageRegistry,
     PromptImageAttachment,
     persist_clipboard_image,
@@ -96,6 +99,10 @@ def test_prompt_image_attachment_is_immutable(tmp_path) -> None:
         attachment.marker = "@different"  # type: ignore[misc]
 
 
+def test_pending_registry_name_remains_a_compatibility_alias() -> None:
+    assert PendingPromptImageRegistry is DraftStore
+
+
 def test_pending_registry_selects_images_in_body_marker_order(tmp_path) -> None:
     first = persist_clipboard_image(
         ClipboardImage(bytes=b"first", mime_type="image/png"),
@@ -115,7 +122,7 @@ def test_pending_registry_selects_images_in_body_marker_order(tmp_path) -> None:
         display_root=tmp_path,
         name_token="unused",
     )
-    registry = PendingPromptImageRegistry()
+    registry = DraftStore()
     registry.add(first)
     registry.add(second)
     registry.add(unused)
@@ -135,7 +142,7 @@ def test_pending_registry_clear_removes_all_images(tmp_path) -> None:
         display_root=tmp_path,
         name_token="image",
     )
-    registry = PendingPromptImageRegistry()
+    registry = DraftStore()
     registry.add(attachment)
 
     registry.clear()
@@ -160,7 +167,7 @@ def test_pending_registry_take_transfers_bytes_and_disposes_all_draft_files(
         display_root=tmp_path,
         name_token="unused",
     )
-    registry = PendingPromptImageRegistry()
+    registry = DraftStore()
     registry.add(selected)
     registry.add(unused)
 
@@ -177,7 +184,7 @@ def test_pending_registry_take_transfers_bytes_and_disposes_all_draft_files(
 def test_pending_registry_does_not_delete_unowned_attachment_path(tmp_path) -> None:
     unrelated = tmp_path / "unrelated.txt"
     unrelated.write_text("keep", encoding="utf-8")
-    registry = PendingPromptImageRegistry()
+    registry = DraftStore()
     registry.add(
         PromptImageAttachment(
             bytes=b"not-owned",
@@ -278,3 +285,102 @@ def test_stage_clipboard_image_returns_write_error_outcome(tmp_path) -> None:
     assert outcome.mime_type == "image/png"
     assert outcome.error_message
     assert outcome.attachment is None
+
+
+def test_stage_clipboard_image_enforces_per_image_limit_before_writing(
+    tmp_path,
+) -> None:
+    directory = tmp_path / "images"
+
+    outcome = stage_clipboard_image(
+        lambda: ClipboardImage(bytes=b"large", mime_type="image/png"),
+        directory=directory,
+        display_root=tmp_path,
+        max_bytes=4,
+    )
+
+    assert outcome.kind == "quota_exceeded"
+    assert "per-image limit is 4 bytes" in outcome.error_message
+    assert not directory.exists()
+
+
+def test_draft_store_enforces_count_and_total_bytes_and_disposes_rejected_file(
+    tmp_path,
+) -> None:
+    store = DraftStore(
+        policy=DraftStorePolicy(
+            max_attachments=2,
+            max_attachment_bytes=4,
+            max_total_bytes=5,
+        )
+    )
+    first = persist_clipboard_image(
+        ClipboardImage(bytes=b"123", mime_type="image/png"),
+        directory=tmp_path,
+        display_root=tmp_path,
+        name_token="first",
+    )
+    second = persist_clipboard_image(
+        ClipboardImage(bytes=b"456", mime_type="image/png"),
+        directory=tmp_path,
+        display_root=tmp_path,
+        name_token="second",
+    )
+    store.add(first)
+
+    with pytest.raises(DraftStoreQuotaExceeded, match="draft byte limit"):
+        store.add(second)
+
+    assert store.total_bytes == 3
+    assert first.path is not None and first.path.exists()
+    assert second.path is not None and not second.path.exists()
+    store.clear()
+
+
+def test_draft_store_accepts_exact_limits_then_enforces_attachment_count(
+    tmp_path,
+) -> None:
+    store = DraftStore(
+        policy=DraftStorePolicy(
+            max_attachments=1,
+            max_attachment_bytes=4,
+            max_total_bytes=4,
+        )
+    )
+    accepted = persist_clipboard_image(
+        ClipboardImage(bytes=b"1234", mime_type="image/png"),
+        directory=tmp_path,
+        display_root=tmp_path,
+        name_token="accepted",
+    )
+    rejected = persist_clipboard_image(
+        ClipboardImage(bytes=b"1", mime_type="image/png"),
+        directory=tmp_path,
+        display_root=tmp_path,
+        name_token="rejected",
+    )
+
+    store.add(accepted)
+    with pytest.raises(DraftStoreQuotaExceeded, match="attachment limit"):
+        store.add(rejected)
+
+    assert store.total_bytes == 4
+    assert accepted.path is not None and accepted.path.exists()
+    assert rejected.path is not None and not rejected.path.exists()
+    store.clear()
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    (
+        ({"max_attachments": 0}, "max_attachments"),
+        ({"max_attachment_bytes": 0}, "max_attachment_bytes"),
+        (
+            {"max_attachment_bytes": 2, "max_total_bytes": 1},
+            "max_total_bytes",
+        ),
+    ),
+)
+def test_draft_store_policy_rejects_invalid_limits(kwargs, message) -> None:
+    with pytest.raises(ValueError, match=message):
+        DraftStorePolicy(**kwargs)

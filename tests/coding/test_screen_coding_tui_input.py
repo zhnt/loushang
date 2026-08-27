@@ -579,7 +579,8 @@ def test_screen_input_router_uses_default_workspace_clipboard_directory_and_clea
     monkeypatch,
 ) -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_input import build_screen_input_router
+    from loushang.coding.ui.screen_input import build_runtime_screen_input_router
+    from loushang.foundation.runtime_scope import RunLease, resolve_runtime_scope
     from loushang.tui.clipboard_image import ClipboardImage
 
     runtime_dir = tmp_path / "runtime"
@@ -592,7 +593,9 @@ def test_screen_input_router_uses_default_workspace_clipboard_directory_and_clea
         session_label="abcd",
         now=lambda: 12.0,
     )
-    router = build_screen_input_router(
+    scope = resolve_runtime_scope()
+    lease = RunLease.acquire(scope)
+    router = build_runtime_screen_input_router(scope)(
         app,
         should_exit=lambda text: False,
         clipboard_image_reader=lambda: ClipboardImage(
@@ -605,7 +608,9 @@ def test_screen_input_router_uses_default_workspace_clipboard_directory_and_clea
     router.handle(InputEvent(kind="key", key="ctrl+v"))
 
     marker = "@clipboard/clipboard-image.png"
-    saved_path = next((runtime_dir / "runs").glob("*/clipboard/clipboard-image.png"))
+    saved_path = next(
+        (runtime_dir / "runs").glob("*/drafts/clipboard/clipboard-image.png")
+    )
     assert saved_path.read_bytes() == b"png"
     assert app.composer.value == f"{marker} "
 
@@ -621,6 +626,8 @@ def test_screen_input_router_uses_default_workspace_clipboard_directory_and_clea
     assert isinstance(second_submit, ConversationPromptResult)
     assert second_submit.attachments is None
     assert saved_path.exists() is False
+    router.dispose()
+    lease.close()
 
 
 def test_screen_input_router_exit_command_returns_exit_code_without_transcript() -> (

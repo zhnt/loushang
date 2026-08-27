@@ -37,6 +37,7 @@ PromptImageAttachmentOutcomeKind = Literal[
     "unsupported",
     "read_error",
     "write_error",
+    "quota_exceeded",
 ]
 
 
@@ -60,9 +61,37 @@ def new_prompt_image_name_token() -> str:
     return uuid.uuid4().hex
 
 
+class DraftStoreQuotaExceeded(ValueError):
+    """Raised when a draft cannot safely retain another attachment."""
+
+
+@dataclass(frozen=True, slots=True)
+class DraftStorePolicy:
+    """Hard bounds for one in-memory and on-disk prompt draft."""
+
+    max_attachments: int = 16
+    max_attachment_bytes: int = 20 * 1024 * 1024
+    max_total_bytes: int = 64 * 1024 * 1024
+
+    def __post_init__(self) -> None:
+        if self.max_attachments < 1:
+            raise ValueError("max_attachments must be positive")
+        if self.max_attachment_bytes < 1:
+            raise ValueError("max_attachment_bytes must be positive")
+        if self.max_total_bytes < self.max_attachment_bytes:
+            raise ValueError(
+                "max_total_bytes must be at least max_attachment_bytes"
+            )
+
+
+DEFAULT_DRAFT_STORE_POLICY = DraftStorePolicy()
+
+
 @dataclass(slots=True)
-class PendingPromptImageRegistry:
-    """Own staged image files until their in-memory bytes leave the draft."""
+class DraftStore:
+    """Own bounded staged files until their bytes leave the current draft."""
+
+    policy: DraftStorePolicy = DEFAULT_DRAFT_STORE_POLICY
 
     _attachments: list[PromptImageAttachment] = field(
         default_factory=list,
@@ -71,6 +100,10 @@ class PendingPromptImageRegistry:
     )
 
     def add(self, attachment: PromptImageAttachment) -> None:
+        reason = self._capacity_error(attachment)
+        if reason is not None:
+            _dispose_owned_attachment_file(attachment)
+            raise DraftStoreQuotaExceeded(reason)
         self._attachments.append(attachment)
 
     def discard(self, attachment: PromptImageAttachment) -> None:
@@ -115,6 +148,28 @@ class PendingPromptImageRegistry:
     def __len__(self) -> int:
         return len(self._attachments)
 
+    @property
+    def total_bytes(self) -> int:
+        return sum(len(attachment.bytes) for attachment in self._attachments)
+
+    def _capacity_error(self, attachment: PromptImageAttachment) -> str | None:
+        size = len(attachment.bytes)
+        if size > self.policy.max_attachment_bytes:
+            return (
+                f"image is {size} bytes; per-image limit is "
+                f"{self.policy.max_attachment_bytes} bytes"
+            )
+        if len(self._attachments) >= self.policy.max_attachments:
+            return f"draft attachment limit is {self.policy.max_attachments}"
+        if self.total_bytes + size > self.policy.max_total_bytes:
+            return f"draft byte limit is {self.policy.max_total_bytes} bytes"
+        return None
+
+
+# Pre-1.0 compatibility: DraftStore is the lifecycle-complete replacement,
+# while existing callers may still import the former public registry name.
+PendingPromptImageRegistry = DraftStore
+
 
 def persist_clipboard_image(
     image: ClipboardImage,
@@ -158,6 +213,7 @@ def stage_clipboard_image(
     display_root: Path | str,
     name_token: str | None = None,
     name_factory: ClipboardImageNameFactory | None = None,
+    max_bytes: int | None = None,
 ) -> PromptImageAttachmentOutcome:
     """Read and persist one clipboard image without applying product copy."""
 
@@ -176,6 +232,15 @@ def stage_clipboard_image(
         return PromptImageAttachmentOutcome(
             kind="unsupported",
             mime_type=mime_type,
+        )
+    if max_bytes is not None and len(image.bytes) > max_bytes:
+        return PromptImageAttachmentOutcome(
+            kind="quota_exceeded",
+            mime_type=mime_type,
+            error_message=(
+                f"image is {len(image.bytes)} bytes; per-image limit is "
+                f"{max_bytes} bytes"
+            ),
         )
 
     try:
@@ -288,6 +353,10 @@ def _exception_message(error: BaseException) -> str:
 __all__ = [
     "ClipboardImageNameFactory",
     "ClipboardImageReader",
+    "DEFAULT_DRAFT_STORE_POLICY",
+    "DraftStore",
+    "DraftStorePolicy",
+    "DraftStoreQuotaExceeded",
     "PendingPromptImageRegistry",
     "PromptImageAttachment",
     "PromptImageAttachmentOutcome",

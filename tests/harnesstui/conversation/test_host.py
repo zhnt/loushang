@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from loushang.foundation.platform_paths import resolve_platform_paths
+from loushang.foundation.runtime_scope import resolve_runtime_scope
 from loushang.harness.commands import (
     CommandDef,
     CommandEffect,
@@ -519,3 +521,75 @@ def test_action_host_screen_run_forwards_profile_and_product_overrides(
     assert captured["handle_surface_intent"] is surface
     assert captured["terminal_mode_factory"] is terminal_factory
     assert captured["terminal_size_provider"] is size_provider
+
+
+def test_action_host_screen_run_owns_one_shared_runtime_scope(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import loushang.harnesstui.conversation.host as host_module
+
+    paths = resolve_platform_paths(
+        environ={"LOUSHANG_RUNTIME_DIR": str(tmp_path / "runtime")},
+        home=tmp_path / "home",
+        temporary_root=tmp_path / "temporary",
+    )
+    scope = resolve_runtime_scope(paths=paths, run_id="a" * 32)
+    reports = []
+    sentinel_factory = object()
+    bound_scopes = []
+
+    class Host:
+        async def submit(self, _action) -> None:
+            return None
+
+        async def steer(self, _action) -> None:
+            return None
+
+        async def follow_up(self, _action) -> None:
+            return None
+
+        async def abort(self) -> None:
+            return None
+
+    def bind_scope(bound_scope):
+        bound_scopes.append(bound_scope)
+        return sentinel_factory
+
+    async def fake_runner(**kwargs) -> int:
+        assert kwargs["input_router_factory"] is sentinel_factory
+        assert (scope.run_dir / ".lease").is_file()
+        artifact = scope.run_dir / "artifacts" / "keep"
+        artifact.parent.mkdir()
+        artifact.write_text("shared", encoding="utf-8")
+        assert artifact.read_text(encoding="utf-8") == "shared"
+        return 23
+
+    monkeypatch.setattr(host_module, "run_conversation_screen", fake_runner)
+    profile = host_module.ConversationScreenRunProfile(
+        input_router_factory=None,
+        interruption_message="interrupted",
+        cancellation_message="cancelled",
+        runtime=host_module.ConversationScreenRuntimeProfile(
+            input_router_factory=bind_scope,
+            scope_factory=lambda: scope,
+            observe_sweep=reports.append,
+        ),
+    )
+
+    result = asyncio.run(
+        host_module.run_action_host_conversation_screen(
+            app=object(),  # type: ignore[arg-type]
+            stdin=StringIO(),
+            stdout=StringIO(),
+            action_host=Host(),
+            profile=profile,
+            should_exit=lambda _text: False,
+        )
+    )
+
+    assert result == 23
+    assert bound_scopes == [scope]
+    assert len(reports) == 1
+    assert reports[0].failed == 0
+    assert not scope.run_dir.exists()

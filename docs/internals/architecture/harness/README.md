@@ -416,6 +416,9 @@ description.
 - [Workspace And Terminal Platform Capabilities Boundary](workspace-platform-capabilities-boundary.md)
   defines canonical Harness Git and Native TUI clipboard ownership, direct
   Product adoption, and retired Coding platform paths.
+- [Machine-Local Runtime Storage](machine-local-runtime-storage.md) defines
+  lifecycle-based platform roots, injected run scopes, live leases, safe stale
+  sweeping, and bounded clipboard draft ownership.
 - [Workspace Tool Pack Boundary](workspace-tool-pack-boundary.md) defines
   reusable concrete read/search/edit/exec ownership and the product-owned
   activation and policy boundary.

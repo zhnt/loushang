@@ -439,6 +439,34 @@ def test_conversation_input_router_reports_unconfigured_clipboard_as_unhandled()
     assert isinstance(result, ConversationInputIgnored)
 
 
+def test_conversation_input_router_ignores_events_after_dispose(tmp_path: Path) -> None:
+    app = _ConversationApp()
+    calls = 0
+
+    def stage() -> PromptImageAttachmentOutcome:
+        nonlocal calls
+        calls += 1
+        attachment = _owned_attachment(tmp_path)
+        return PromptImageAttachmentOutcome(
+            kind="attached",
+            attachment=attachment,
+            mime_type=attachment.mime_type,
+        )
+
+    router = ConversationInputRouter(
+        app=app,
+        should_exit=lambda _text: False,
+        prompt_image_stager=stage,
+    )
+    router.dispose()
+
+    result = router.handle(InputEvent(kind="key", key="ctrl+v"))
+
+    assert isinstance(result, ConversationInputIgnored)
+    assert calls == 0
+    assert tuple(tmp_path.iterdir()) == ()
+
+
 def test_conversation_input_router_presents_each_clipboard_outcome_once(
     tmp_path: Path,
 ) -> None:
