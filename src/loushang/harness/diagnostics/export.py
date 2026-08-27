@@ -25,11 +25,11 @@ from uuid import uuid4
 
 from loushang.foundation.artifact_store import (
     DEFAULT_ARTIFACT_RETENTION_POLICY,
+    ArtifactRef,
     ArtifactRetentionPolicy,
     ArtifactSnapshotStore,
     ArtifactSourceRejected,
     ArtifactStoreError,
-    StoredArtifact,
     sweep_managed_artifacts,
 )
 from loushang.harness.diagnostics.types import DiagnosticRecord
@@ -359,7 +359,7 @@ def _standard_manifest(
     debug_included: bool,
     trace_included: bool,
     diagnostics: list[dict[str, object]],
-    artifacts: tuple[StoredArtifact, ...],
+    artifacts: tuple[ArtifactRef, ...],
 ) -> dict[str, object]:
     return {
         "schemaVersion": 1,
@@ -386,10 +386,10 @@ def _snapshot_observability_artifacts(
     *,
     debug_latest: Path,
     trace_latest: Path,
-) -> tuple[StoredArtifact, ...]:
+) -> tuple[ArtifactRef, ...]:
     if store is None:
         return ()
-    snapshots: list[StoredArtifact] = []
+    snapshots: list[ArtifactRef] = []
     for path, logical_name, kind, media_type, source in (
         (
             debug_latest,
@@ -424,8 +424,8 @@ def _bundle_export_artifacts(
     *,
     debug_latest: Path,
     trace_latest: Path,
-    debug_snapshot: StoredArtifact | None,
-    trace_snapshot: StoredArtifact | None,
+    debug_snapshot: ArtifactRef | None,
+    trace_snapshot: ArtifactRef | None,
 ) -> tuple[DiagnosticExportArtifact, ...]:
     artifacts: list[DiagnosticExportArtifact] = []
     for archive_name, latest, snapshot in (
@@ -458,7 +458,7 @@ def _snapshot_latest(
     kind: str,
     media_type: str,
     source: str,
-) -> StoredArtifact | None:
+) -> ArtifactRef | None:
     try:
         source_path = _resolve_latest_source(path)
     except (ArtifactSourceRejected, OSError):
@@ -472,7 +472,6 @@ def _snapshot_latest(
                 media_type=media_type,
                 disclosure="redact",
                 source=source,
-                allowed_roots=(path.parent,),
             )
         except ArtifactSourceRejected:
             continue

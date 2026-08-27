@@ -625,3 +625,61 @@ def test_action_host_screen_run_owns_one_shared_runtime_scope(
     assert len(artifact_stores) == 1
     assert context_events == [("enter", scope), ("exit", scope)]
     assert not scope.run_dir.exists()
+
+
+@pytest.mark.parametrize("failure_type", (RuntimeError, asyncio.CancelledError))
+def test_action_host_screen_run_releases_runtime_owner_on_failure(
+    tmp_path: Path,
+    monkeypatch,
+    failure_type,
+) -> None:
+    import loushang.harnesstui.conversation.host as host_module
+
+    paths = resolve_platform_paths(
+        environ={"LOUSHANG_RUNTIME_DIR": str(tmp_path / "runtime")},
+        home=tmp_path / "home",
+        temporary_root=tmp_path / "temporary",
+    )
+    scope = resolve_runtime_scope(paths=paths, run_id="b" * 32)
+
+    class Host:
+        async def submit(self, _action) -> None:
+            return None
+
+        async def steer(self, _action) -> None:
+            return None
+
+        async def follow_up(self, _action) -> None:
+            return None
+
+        async def abort(self) -> None:
+            return None
+
+    async def fail_runner(**_kwargs) -> int:
+        assert (scope.run_dir / ".lease").is_file()
+        raise failure_type("screen failed")
+
+    monkeypatch.setattr(host_module, "run_conversation_screen", fail_runner)
+    profile = host_module.ConversationScreenRunProfile(
+        input_router_factory=None,
+        interruption_message="interrupted",
+        cancellation_message="cancelled",
+        runtime=host_module.ConversationScreenRuntimeProfile(
+            input_router_factory=lambda _scope: object(),  # type: ignore[arg-type]
+            scope_factory=lambda: scope,
+        ),
+    )
+
+    async def scenario() -> None:
+        with pytest.raises(failure_type, match="screen failed"):
+            await host_module.run_action_host_conversation_screen(
+                app=object(),  # type: ignore[arg-type]
+                stdin=StringIO(),
+                stdout=StringIO(),
+                action_host=Host(),
+                profile=profile,
+                should_exit=lambda _text: False,
+            )
+
+    asyncio.run(scenario())
+    assert not scope.run_dir.exists()

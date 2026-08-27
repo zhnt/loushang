@@ -127,11 +127,15 @@ The screen host obtains that scope from one application-owned
 ArtifactStore. The host closes the owner inside the Product-supplied runtime
 context after the screen and run-local consumers finish. Harnesstui continues
 to pass only `RuntimeScope` to the clipboard input builder; it does not expose
-the Lease or concrete ArtifactStore to attachment code.
+the Lease or concrete ArtifactStore to attachment code. In Phase 4A the
+interactive path does not require an artifact projection; future consumers
+must receive only the focused port they use.
 
 `DraftStore` is the preferred bounded owner. The former exported
 `PendingPromptImageRegistry` name remains a compatibility alias during the
-pre-1.0 transition. Existing app-scoped profile callbacks keep their one-app
+pre-1.0 transition. It is owned and disposed by the nested input-router
+lifetime, not by `RuntimeResourceOwner`; the shared scope only locates its
+private files. Existing app-scoped profile callbacks keep their one-app
 argument; only the explicit `ClipboardImageRuntimeStorage` policy receives a
 `RuntimeScope`.
 

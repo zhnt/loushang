@@ -43,16 +43,22 @@ RuntimeResourceOwner (application lifetime)
         |
         +--> RunLease -----> liveness + stale sweep
         |
-        +--> DraftStore --> bounded clipboard-image drafts
-        |
         `--> ArtifactStore -> immutable objects + portable manifest
+
+RuntimeScope
+        |
+        `--> input-router lifetime --> DraftStore --> bounded clipboard drafts
 ```
 
 The concrete store does not cross the composition edge. Producers receive an
 `ArtifactWriter`; verified consumers receive an `ArtifactReader`; snapshotting
-exporters receive an `ArtifactSnapshotStore`. These are revocable projections:
-once the application owner closes, a previously captured port rejects new
-operations. No leaf receives the Lease or authority to delete the run tree.
+exporters receive an `ArtifactSnapshotStore`. These are separate runtime
+proxies, not type-only views of one broad object. Snapshot source roots are
+bound when the composition root creates that projection; a leaf cannot widen
+them per call. The projections are revocable: closing first rejects new
+operations, waits for already admitted operations to finish, and only then
+releases the Lease. No leaf receives the Lease, concrete backend, or authority
+to delete the run tree.
 
 Construction is transactional. If a run-local service cannot be created after
 the Lease is acquired, `RuntimeResourceOwner.acquire` closes the Lease and
@@ -87,8 +93,11 @@ user sees `@clipboard/...` rather than a machine-specific absolute path.
 `DraftStore` owns both the in-memory bytes and the private file until submit,
 cancel, EOF, exceptional paste, or router disposal. It enforces per-image,
 attachment-count, and total-draft byte limits. Oversized images are rejected
-before disk persistence. On submit, bytes transfer to the model-facing
-boundary and the path/cleanup identity are deliberately dropped.
+before disk persistence. It belongs to the nested input-router/draft lifetime,
+not to `RuntimeResourceOwner`; the shared `RuntimeScope` supplies its location
+without transferring cleanup authority for the whole run. On submit, bytes
+transfer to the model-facing boundary and the path/cleanup identity are
+deliberately dropped.
 
 ## Session and observability separation
 
@@ -105,16 +114,19 @@ the transcript.
 `ArtifactStore` owns immutable objects below `<run>/artifacts`, plus a portable
 manifest containing logical name, kind, media type, disclosure policy, byte
 size, digest, timestamp, and semantic source. Physical machine paths are not
-written into the manifest. The store enforces per-object, count, and total-byte
-bounds before publication. It requires an already-live run directory and never
-creates, closes, or recursively removes a shared `RunLease` tree.
+written into the manifest or exposed by the public `ArtifactRef`; physical
+paths and file identities remain private backend records. The store enforces
+per-object, count, and total-byte bounds before publication. It requires an
+already-live run directory and never creates, closes, or recursively removes a
+shared `RunLease` tree.
 
-Snapshot sources require explicit allowed roots. The reader resolves the
-source, rejects non-regular or non-owned files and reparse points, uses
+Snapshot sources require explicit allowed roots. The composition root binds
+those roots into a snapshot capability before injection. The backend resolves
+the source, rejects non-regular or non-owned files and reparse points, uses
 no-follow opens where available, verifies path/file identity, bounds reads, and
-rejects a file that changes during capture. The allowed source roots are a
-required capability supplied by the caller; the store never infers authority
-from the source path. Every artifact declares one of
+rejects a file that changes during capture. The store never infers authority
+from the source path, and a leaf exporter cannot supply or widen roots. Every
+artifact declares one of
 three disclosure levels:
 
 - `private`: never implicitly share;

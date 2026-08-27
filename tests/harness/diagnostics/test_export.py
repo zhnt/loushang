@@ -10,12 +10,14 @@ import pytest
 
 import loushang.harness.diagnostics.export as export_module
 from loushang.foundation.artifact_store import (
+    ArtifactRef,
     ArtifactRetentionPolicy,
     ArtifactSourceRejected,
     ArtifactStore,
 )
 from loushang.foundation.platform_paths import resolve_platform_paths
-from loushang.foundation.runtime_scope import RunLease, resolve_runtime_scope
+from loushang.foundation.runtime_resources import RuntimeResourceOwner
+from loushang.foundation.runtime_scope import resolve_runtime_scope
 from loushang.harness.diagnostics.export import (
     DiagnosticBundleProfile,
     DiagnosticExportArtifact,
@@ -147,14 +149,20 @@ def test_standard_bundle_snapshots_observability_through_artifact_store(
         home=tmp_path / "home",
     )
     scope = resolve_runtime_scope(paths=paths, run_id="a" * 32)
-    lease = RunLease.acquire(scope)
     store = ArtifactStore(scope, now=lambda: 123.0)
+    owner = RuntimeResourceOwner.acquire(
+        scope,
+        artifact_store_factory=lambda _scope: store,
+    )
     debug = tmp_path / "state" / "debug" / "latest"
     trace = tmp_path / "state" / "traces" / "latest"
     debug.parent.mkdir(parents=True)
     trace.parent.mkdir(parents=True)
     debug.write_text("Authorization: Bearer private-debug\n", encoding="utf-8")
     trace.write_text('{"token":"private-trace"}\n', encoding="utf-8")
+    snapshots = owner.artifact_snapshots(
+        allowed_roots=(debug.parent, trace.parent),
+    )
 
     bundle = export_diagnostics_bundle(
         project_root=tmp_path,
@@ -162,7 +170,7 @@ def test_standard_bundle_snapshots_observability_through_artifact_store(
         output=tmp_path / "bundle.zip",
         debug_latest_path=debug,
         trace_latest_path=trace,
-        artifact_store=store,
+        artifact_store=snapshots,
     )
 
     assert [record.kind for record in store.records] == [
@@ -179,9 +187,56 @@ def test_standard_bundle_snapshots_observability_through_artifact_store(
         assert "private-debug" not in archive.read("debug/latest.log").decode()
         assert "private-trace" not in archive.read("traces/latest.jsonl").decode()
 
-    lease.close()
+    owner.close()
     assert not scope.run_dir.exists()
     assert bundle.exists()
+
+
+def test_standard_bundle_accepts_a_minimal_snapshot_capability(tmp_path) -> None:
+    debug = tmp_path / "debug" / "latest"
+    debug.parent.mkdir()
+    debug.write_text("live source must not be reopened", encoding="utf-8")
+    reference = ArtifactRef(
+        artifact_id="a" * 32,
+        logical_name="debug/latest.log",
+        kind="debug-log",
+        media_type="text/plain",
+        disclosure="redact",
+        size_bytes=13,
+        sha256="b" * 64,
+        created_at=123.0,
+        source="observability.debug.latest",
+    )
+
+    class MinimalSnapshots:
+        def __init__(self) -> None:
+            self.snapshot_calls = []
+            self.read_calls = []
+
+        def snapshot_file(self, source_path, **_metadata):
+            self.snapshot_calls.append(Path(source_path))
+            if Path(source_path) == debug:
+                return reference
+            raise ArtifactSourceRejected("missing")
+
+        def read_bytes(self, artifact):
+            self.read_calls.append(artifact)
+            assert artifact is reference
+            return b"captured-safe"
+
+    snapshots = MinimalSnapshots()
+    bundle = export_diagnostics_bundle(
+        project_root=tmp_path,
+        session_dir=tmp_path / "sessions",
+        output=tmp_path / "bundle.zip",
+        debug_latest_path=debug,
+        trace_latest_path=tmp_path / "missing-trace",
+        artifact_store=snapshots,
+    )
+
+    assert snapshots.read_calls == [reference]
+    with zipfile.ZipFile(bundle) as archive:
+        assert archive.read("debug/latest.log") == b"captured-safe"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="symlink semantics are POSIX-specific")
@@ -194,8 +249,11 @@ def test_standard_bundle_verifies_snapshot_identity_before_archive_read(
         home=tmp_path / "home",
     )
     scope = resolve_runtime_scope(paths=paths, run_id="e" * 32)
-    lease = RunLease.acquire(scope)
     store = ArtifactStore(scope)
+    owner = RuntimeResourceOwner.acquire(
+        scope,
+        artifact_store_factory=lambda _scope: store,
+    )
     debug = tmp_path / "debug" / "latest"
     debug.parent.mkdir()
     debug.write_text("safe", encoding="utf-8")
@@ -205,8 +263,9 @@ def test_standard_bundle_verifies_snapshot_identity_before_archive_read(
 
     def replace_snapshot(*args, **kwargs):
         artifact = snapshot_file(*args, **kwargs)
-        artifact.path.unlink()
-        artifact.path.symlink_to(outside)
+        object_path = store.root / "objects" / artifact.artifact_id
+        object_path.unlink()
+        object_path.symlink_to(outside)
         return artifact
 
     monkeypatch.setattr(store, "snapshot_file", replace_snapshot)
@@ -218,12 +277,14 @@ def test_standard_bundle_verifies_snapshot_identity_before_archive_read(
             output=tmp_path / "bundle.zip",
             debug_latest_path=debug,
             trace_latest_path=tmp_path / "missing-trace",
-            artifact_store=store,
+            artifact_store=owner.artifact_snapshots(
+                allowed_roots=(debug.parent, (tmp_path / "missing-trace").parent),
+            ),
             platform_paths=paths,
         )
 
     assert not (tmp_path / "bundle.zip").exists()
-    lease.close()
+    owner.close()
 
 
 def test_standard_bundle_resolves_windows_style_latest_pointer_through_store(
@@ -234,8 +295,11 @@ def test_standard_bundle_resolves_windows_style_latest_pointer_through_store(
         home=tmp_path / "home",
     )
     scope = resolve_runtime_scope(paths=paths, run_id="b" * 32)
-    lease = RunLease.acquire(scope)
     store = ArtifactStore(scope)
+    owner = RuntimeResourceOwner.acquire(
+        scope,
+        artifact_store_factory=lambda _scope: store,
+    )
     debug_dir = tmp_path / "debug"
     debug_dir.mkdir()
     source = debug_dir / "session.log"
@@ -249,13 +313,13 @@ def test_standard_bundle_resolves_windows_style_latest_pointer_through_store(
         output=tmp_path / "bundle.zip",
         debug_latest_path=latest,
         trace_latest_path=tmp_path / "missing-trace",
-        artifact_store=store,
+        artifact_store=owner.artifact_snapshots(allowed_roots=(debug_dir, tmp_path)),
     )
 
     with zipfile.ZipFile(bundle) as archive:
         assert archive.read("debug/latest.log") == b"actual log content\n"
         assert "traces/latest.jsonl" not in archive.namelist()
-    lease.close()
+    owner.close()
 
 
 def test_standard_bundle_omits_windows_style_pointer_outside_state_root(
@@ -266,8 +330,11 @@ def test_standard_bundle_omits_windows_style_pointer_outside_state_root(
         home=tmp_path / "home",
     )
     scope = resolve_runtime_scope(paths=paths, run_id="d" * 32)
-    lease = RunLease.acquire(scope)
     store = ArtifactStore(scope)
+    owner = RuntimeResourceOwner.acquire(
+        scope,
+        artifact_store_factory=lambda _scope: store,
+    )
     debug_dir = tmp_path / "debug"
     debug_dir.mkdir()
     outside = tmp_path / "outside.log"
@@ -281,13 +348,13 @@ def test_standard_bundle_omits_windows_style_pointer_outside_state_root(
         output=tmp_path / "bundle.zip",
         debug_latest_path=latest,
         trace_latest_path=tmp_path / "missing-trace",
-        artifact_store=store,
+        artifact_store=owner.artifact_snapshots(allowed_roots=(debug_dir, tmp_path)),
     )
 
     with zipfile.ZipFile(bundle) as archive:
         assert "debug/latest.log" not in archive.namelist()
     assert store.records == ()
-    lease.close()
+    owner.close()
 
 
 @pytest.mark.skipif(os.name != "posix", reason="symlink semantics are POSIX-specific")
@@ -299,22 +366,28 @@ def test_standard_bundle_omits_latest_symlink_outside_authorized_state_root(
         home=tmp_path / "home",
     )
     scope = resolve_runtime_scope(paths=paths, run_id="c" * 32)
-    lease = RunLease.acquire(scope)
     store = ArtifactStore(scope)
+    owner = RuntimeResourceOwner.acquire(
+        scope,
+        artifact_store_factory=lambda _scope: store,
+    )
     debug_dir = tmp_path / "debug"
     debug_dir.mkdir()
     outside = tmp_path / "outside.log"
     outside.write_text("must not export", encoding="utf-8")
     latest = debug_dir / "latest"
     latest.symlink_to(outside)
+    trace_missing = tmp_path / "traces" / "missing"
 
     bundle = export_diagnostics_bundle(
         project_root=tmp_path,
         session_dir=tmp_path / "sessions",
         output=tmp_path / "bundle.zip",
         debug_latest_path=latest,
-        trace_latest_path=tmp_path / "missing-trace",
-        artifact_store=store,
+        trace_latest_path=trace_missing,
+        artifact_store=owner.artifact_snapshots(
+            allowed_roots=(debug_dir, trace_missing.parent),
+        ),
     )
 
     with zipfile.ZipFile(bundle) as archive:
@@ -323,7 +396,7 @@ def test_standard_bundle_omits_latest_symlink_outside_authorized_state_root(
             "debugLatest"
         ] is False
     assert store.records == ()
-    lease.close()
+    owner.close()
 
 
 def test_diagnostics_archive_publication_never_replaces_existing_output(

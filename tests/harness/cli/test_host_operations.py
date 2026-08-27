@@ -4,8 +4,11 @@ import asyncio
 import json
 from contextlib import nullcontext
 from io import StringIO
+from pathlib import Path
 from types import SimpleNamespace
 
+from loushang.foundation.platform_paths import resolve_platform_paths
+from loushang.foundation.runtime_scope import resolve_runtime_scope
 from loushang.harness.cli import (
     AgentCliEarlyOperationPorts,
     CliLaunchPlan,
@@ -19,6 +22,7 @@ from loushang.harness.cli import (
     run_agent_cli_early_operation,
     run_agent_cli_session_listing,
     run_command_operation,
+    run_diagnostics_export_operation,
     run_session_listing_operation,
     run_standard_cli_operations,
 )
@@ -53,6 +57,46 @@ class _Runtime:
 class _Session:
     async def execute_command_async(self, name: str, args: str) -> object:
         return SimpleNamespace(result={"name": name, "args": args})
+
+
+def test_diagnostics_export_operation_releases_runtime_owner_on_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from loushang.harness.cli import host_operations
+
+    paths = resolve_platform_paths(
+        environ={"LOUSHANG_RUNTIME_DIR": str(tmp_path / "runtime")},
+        home=tmp_path / "home",
+        temporary_root=tmp_path / "temporary",
+    )
+    scope = resolve_runtime_scope(paths=paths, run_id="c" * 32)
+
+    def fail_export(**_kwargs):
+        assert (scope.run_dir / ".lease").is_file()
+        raise RuntimeError("export failed")
+
+    monkeypatch.setattr(host_operations, "export_diagnostics_bundle", fail_export)
+    stdout = StringIO()
+    stderr = StringIO()
+
+    result = run_diagnostics_export_operation(
+        requested=True,
+        project_root=tmp_path,
+        session_dir=tmp_path / "sessions",
+        output=None,
+        diagnostics_service=None,
+        debug_latest_path=None,
+        trace_latest_path=None,
+        stdout=stdout,
+        stderr=stderr,
+        runtime_scope_factory=lambda: scope,
+    )
+
+    assert result == 1
+    assert stdout.getvalue() == ""
+    assert stderr.getvalue() == "Error: export failed\n"
+    assert not scope.run_dir.exists()
 
 
 def test_standard_agent_arguments_project_operation_requests() -> None:

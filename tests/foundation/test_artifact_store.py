@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -47,6 +48,8 @@ def test_artifact_store_writes_private_immutable_object_and_portable_manifest(
     )
 
     assert store.records == (artifact,)
+    assert not hasattr(artifact, "path")
+    assert not hasattr(artifact, "_identity")
     assert store.total_bytes == len(b'{"event":"ready"}\n')
     assert store.read_bytes(artifact) == b'{"event":"ready"}\n'
     manifest = json.loads(store.manifest_path.read_text(encoding="utf-8"))
@@ -54,8 +57,11 @@ def test_artifact_store_writes_private_immutable_object_and_portable_manifest(
     assert manifest["runId"] == scope.run_id
     assert manifest["artifacts"] == [artifact.manifest_entry()]
     assert str(scope.paths.runtime) not in json.dumps(manifest)
+    with pytest.raises(ArtifactSourceRejected, match="not owned"):
+        store.read_bytes(replace(artifact))
     if os.name == "posix":
-        assert stat.S_IMODE(artifact.path.stat().st_mode) == 0o600
+        object_path = store.root / "objects" / artifact.artifact_id
+        assert stat.S_IMODE(object_path.stat().st_mode) == 0o600
         assert stat.S_IMODE(store.root.stat().st_mode) == 0o700
 
     lease.close()
@@ -369,8 +375,9 @@ def test_artifact_store_read_does_not_follow_a_replaced_object(tmp_path: Path) -
     )
     outside = tmp_path / "outside"
     outside.write_text("secret", encoding="utf-8")
-    artifact.path.unlink()
-    artifact.path.symlink_to(outside)
+    object_path = store.root / "objects" / artifact.artifact_id
+    object_path.unlink()
+    object_path.symlink_to(outside)
 
     with pytest.raises(ArtifactSourceRejected, match="identity changed"):
         store.read_bytes(artifact)

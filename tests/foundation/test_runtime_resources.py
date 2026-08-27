@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import gc
+import multiprocessing
+import time
 from pathlib import Path
+from threading import Event, Thread
 
 import pytest
 
 from loushang.foundation.artifact_store import ArtifactStore
 from loushang.foundation.platform_paths import resolve_platform_paths
 from loushang.foundation.runtime_resources import RuntimeResourceOwner
-from loushang.foundation.runtime_scope import resolve_runtime_scope
+from loushang.foundation.runtime_scope import RunLease, resolve_runtime_scope
 
 
 def _scope(tmp_path: Path, run_id: str = "a" * 32):
@@ -18,6 +21,32 @@ def _scope(tmp_path: Path, run_id: str = "a" * 32):
         temporary_root=tmp_path / "temporary",
     )
     return resolve_runtime_scope(paths=paths, run_id=run_id)
+
+
+def _concurrent_acquire_worker(
+    runtime_root: str,
+    user_home: str,
+    ready,
+    start,
+    release,
+    results,
+) -> None:
+    paths = resolve_platform_paths(
+        environ={"LOUSHANG_RUNTIME_DIR": runtime_root},
+        home=Path(user_home),
+        temporary_root=Path(runtime_root).parent / "temporary",
+    )
+    scope = resolve_runtime_scope(paths=paths, run_id="f" * 32)
+    ready.put(True)
+    start.wait()
+    try:
+        owner = RuntimeResourceOwner.acquire(scope)
+    except BaseException as error:
+        results.put(("error", error.__class__.__name__))
+        return
+    results.put(("acquired", scope.run_id))
+    release.wait()
+    owner.close()
 
 
 def test_runtime_resource_owner_composes_one_revocable_run_lifetime(
@@ -62,17 +91,20 @@ def test_runtime_resource_owner_supplies_a_snapshot_only_port(tmp_path: Path) ->
     source.write_bytes(b"debug")
 
     with RuntimeResourceOwner.acquire(scope) as owner:
-        snapshots = owner.artifact_snapshots
+        snapshots = owner.artifact_snapshots(allowed_roots=(source_root,))
         artifact = snapshots.snapshot_file(
             source,
             logical_name="debug/latest.log",
             kind="debug-log",
             media_type="text/plain",
             disclosure="redact",
-            allowed_roots=(source_root,),
         )
 
         assert snapshots.read_bytes(artifact) == b"debug"
+        assert not hasattr(snapshots, "put_bytes")
+        assert not hasattr(owner.artifact_writer, "read_bytes")
+        assert not hasattr(owner.artifact_writer, "snapshot_file")
+        assert not hasattr(owner.artifact_reader, "put_bytes")
 
 
 def test_runtime_resource_owner_rolls_back_lease_when_service_build_fails(
@@ -111,8 +143,7 @@ def test_runtime_resource_owner_constructs_one_store_and_closes_idempotently(
     )
 
     assert len(stores) == 1
-    assert owner.artifact_writer is owner.artifact_reader
-    assert owner.artifact_reader is owner.artifact_snapshots
+    assert owner.artifact_writer is not owner.artifact_reader
     owner.close()
     owner.close()
 
@@ -149,3 +180,179 @@ def test_artifact_ports_do_not_extend_root_ownership(tmp_path: Path) -> None:
             kind="output",
             media_type="text/plain",
         )
+
+
+def test_runtime_resource_owner_rejects_direct_construction(tmp_path: Path) -> None:
+    scope = _scope(tmp_path)
+    lease = RunLease.acquire(scope)
+    try:
+        with pytest.raises(TypeError, match="created with acquire"):
+            RuntimeResourceOwner(
+                scope=scope,
+                lease=lease,
+                artifact_store=ArtifactStore(scope),
+            )
+    finally:
+        lease.close()
+
+
+def test_runtime_resource_owner_rejects_mismatched_store_scope(
+    tmp_path: Path,
+) -> None:
+    target = _scope(tmp_path, "a" * 32)
+    other = _scope(tmp_path, "b" * 32)
+    other_lease = RunLease.acquire(other)
+    try:
+        with pytest.raises(ValueError, match="mismatched scope"):
+            RuntimeResourceOwner.acquire(
+                target,
+                artifact_store_factory=lambda _scope: ArtifactStore(other),
+            )
+        assert not target.run_dir.exists()
+        assert other_lease.active is True
+        assert other.run_dir.exists()
+    finally:
+        other_lease.close()
+
+
+@pytest.mark.parametrize("failure", (RuntimeError("failed"), KeyboardInterrupt()))
+def test_runtime_resource_owner_rolls_back_partially_written_store(
+    tmp_path: Path,
+    failure: BaseException,
+) -> None:
+    scope = _scope(tmp_path)
+
+    def fail_after_write(bound_scope):
+        store = ArtifactStore(bound_scope)
+        store.put_bytes(
+            b"partial",
+            logical_name="outputs/partial.txt",
+            kind="output",
+            media_type="text/plain",
+        )
+        raise failure
+
+    with pytest.raises(failure.__class__, match=str(failure) or None):
+        RuntimeResourceOwner.acquire(
+            scope,
+            artifact_store_factory=fail_after_write,
+        )
+
+    assert not scope.run_dir.exists()
+
+
+def test_runtime_resource_owner_context_preserves_body_failure(tmp_path: Path) -> None:
+    scope = _scope(tmp_path)
+
+    with pytest.raises(RuntimeError, match="body failed"):
+        with RuntimeResourceOwner.acquire(scope):
+            raise RuntimeError("body failed")
+
+    assert not scope.run_dir.exists()
+
+
+def test_runtime_resource_owner_close_drains_inflight_artifact_write(
+    tmp_path: Path,
+) -> None:
+    scope = _scope(tmp_path)
+    entered = Event()
+    release = Event()
+    outcomes = []
+    failures = []
+
+    class BlockingArtifactStore(ArtifactStore):
+        def put_bytes(self, *args, **kwargs):
+            entered.set()
+            if not release.wait(timeout=5):
+                raise TimeoutError("test write was not released")
+            return super().put_bytes(*args, **kwargs)
+
+    owner = RuntimeResourceOwner.acquire(
+        scope,
+        artifact_store_factory=BlockingArtifactStore,
+    )
+    writer = owner.artifact_writer
+
+    def write() -> None:
+        try:
+            outcomes.append(
+                writer.put_bytes(
+                    b"complete",
+                    logical_name="outputs/complete.txt",
+                    kind="output",
+                    media_type="text/plain",
+                )
+            )
+        except BaseException as error:
+            failures.append(error)
+
+    write_thread = Thread(target=write)
+    close_thread = Thread(target=owner.close)
+    write_thread.start()
+    assert entered.wait(timeout=5)
+    close_thread.start()
+    deadline = time.monotonic() + 5
+    while owner.active and time.monotonic() < deadline:
+        time.sleep(0.001)
+    assert owner.active is False
+    assert close_thread.is_alive()
+    assert scope.run_dir.exists()
+    with pytest.raises(RuntimeError, match="closed"):
+        writer.put_bytes(
+            b"too late",
+            logical_name="outputs/too-late.txt",
+            kind="output",
+            media_type="text/plain",
+        )
+    release.set()
+    write_thread.join(timeout=5)
+    close_thread.join(timeout=5)
+
+    assert not write_thread.is_alive()
+    assert not close_thread.is_alive()
+    assert failures == []
+    assert len(outcomes) == 1
+    assert not scope.run_dir.exists()
+    assert not (scope.run_dir / ".lease").exists()
+
+
+def test_runtime_resource_owner_allows_only_one_cross_process_acquire(
+    tmp_path: Path,
+) -> None:
+    context = multiprocessing.get_context("spawn")
+    ready = context.Queue()
+    results = context.Queue()
+    start = context.Event()
+    release = context.Event()
+    runtime_root = tmp_path / "runtime"
+    processes = [
+        context.Process(
+            target=_concurrent_acquire_worker,
+            args=(
+                str(runtime_root),
+                str(tmp_path / "home"),
+                ready,
+                start,
+                release,
+                results,
+            ),
+        )
+        for _index in range(2)
+    ]
+    for process in processes:
+        process.start()
+    try:
+        assert ready.get(timeout=10) is True
+        assert ready.get(timeout=10) is True
+        start.set()
+        outcomes = sorted((results.get(timeout=10), results.get(timeout=10)))
+        assert [kind for kind, _detail in outcomes] == ["acquired", "error"]
+        assert (runtime_root / "runs" / ("f" * 32) / ".lease").is_file()
+    finally:
+        release.set()
+        for process in processes:
+            process.join(timeout=10)
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=5)
+    assert all(process.exitcode == 0 for process in processes)

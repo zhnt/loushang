@@ -11,8 +11,11 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import TextIO
 
-from loushang.foundation.artifact_store import ArtifactStore
-from loushang.foundation.runtime_resources import RuntimeResourceOwner
+from loushang.foundation.runtime_resources import (
+    DEFAULT_ARTIFACT_STORE_FACTORY,
+    ArtifactStoreFactory,
+    RuntimeResourceOwner,
+)
 from loushang.foundation.runtime_scope import (
     RuntimeScope,
     resolve_runtime_scope,
@@ -175,7 +178,7 @@ def run_diagnostics_export_operation(
     format_error: CliErrorFormatter = str,
     success_prefix: str = "Exported diagnostics to:",
     runtime_scope_factory: Callable[[], RuntimeScope] = resolve_runtime_scope,
-    artifact_store_factory: Callable[[RuntimeScope], ArtifactStore] = ArtifactStore,
+    artifact_store_factory: ArtifactStoreFactory = DEFAULT_ARTIFACT_STORE_FACTORY,
 ) -> int | None:
     """Export diagnostics through the shared archive engine."""
 
@@ -187,6 +190,18 @@ def run_diagnostics_export_operation(
             scope,
             artifact_store_factory=artifact_store_factory,
         ) as runtime_resources:
+            snapshot_roots = (
+                (
+                    Path(debug_latest_path).expanduser().parent
+                    if debug_latest_path is not None
+                    else scope.paths.state / "debug"
+                ),
+                (
+                    Path(trace_latest_path).expanduser().parent
+                    if trace_latest_path is not None
+                    else scope.paths.state / "traces"
+                ),
+            )
             output_path = export_diagnostics_bundle(
                 project_root=project_root,
                 session_dir=session_dir,
@@ -194,7 +209,9 @@ def run_diagnostics_export_operation(
                 diagnostics_service=diagnostics_service,
                 debug_latest_path=debug_latest_path,
                 trace_latest_path=trace_latest_path,
-                artifact_store=runtime_resources.artifact_snapshots,
+                artifact_store=runtime_resources.artifact_snapshots(
+                    allowed_roots=snapshot_roots,
+                ),
                 platform_paths=scope.paths,
             )
     except Exception as error:

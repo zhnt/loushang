@@ -43,6 +43,8 @@ serialization. Conversation transcripts and prompt drafts are excluded.
 The standard CLI operation creates one short-lived `RuntimeResourceOwner` and
 receives only its `ArtifactSnapshotStore` projection. The owner composes the
 run lease and concrete ArtifactStore as one application lifetime.
+The CLI composition root binds the resolved debug and trace directories into
+that projection, so the leaf exporter cannot choose or widen filesystem roots.
 Observability inputs must first become bounded `redact` artifacts with portable
 provenance; the archive reads them through ArtifactStore integrity checks and
 never races a live sink directly. The operation passes the same resolved

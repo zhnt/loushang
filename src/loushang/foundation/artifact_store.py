@@ -11,7 +11,7 @@ import stat
 import time
 from collections.abc import Callable, Iterable, Sequence
 from contextlib import suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from threading import RLock
 from typing import Literal, Protocol, TypeAlias
@@ -57,8 +57,8 @@ DEFAULT_ARTIFACT_STORE_POLICY = ArtifactStorePolicy()
 
 
 @dataclass(frozen=True, slots=True)
-class StoredArtifact:
-    """Immutable artifact metadata plus its run-private physical location."""
+class ArtifactRef:
+    """Opaque portable reference to one immutable run-local artifact."""
 
     artifact_id: str
     logical_name: str
@@ -68,9 +68,7 @@ class StoredArtifact:
     size_bytes: int
     sha256: str
     created_at: float
-    path: Path = field(compare=False, repr=False)
     source: str | None = None
-    _identity: tuple[int, int] = field(compare=False, repr=False, default=(0, 0))
 
     def manifest_entry(self) -> dict[str, object]:
         """Return portable provenance without leaking a machine-local path."""
@@ -88,6 +86,15 @@ class StoredArtifact:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class _StoredArtifactRecord:
+    """Store-private physical authority for one public artifact reference."""
+
+    reference: ArtifactRef
+    path: Path
+    identity: tuple[int, int]
+
+
 class ArtifactWriter(Protocol):
     """Narrow capability for publishing immutable run-local bytes."""
 
@@ -100,13 +107,13 @@ class ArtifactWriter(Protocol):
         media_type: str,
         disclosure: ArtifactDisclosure = "private",
         source: str | None = None,
-    ) -> StoredArtifact: ...
+    ) -> ArtifactRef: ...
 
 
 class ArtifactReader(Protocol):
     """Narrow capability for verified reads of previously stored artifacts."""
 
-    def read_bytes(self, artifact: StoredArtifact) -> bytes: ...
+    def read_bytes(self, artifact: ArtifactRef) -> bytes: ...
 
 
 class ArtifactSnapshotStore(ArtifactReader, Protocol):
@@ -119,14 +126,28 @@ class ArtifactSnapshotStore(ArtifactReader, Protocol):
         logical_name: str,
         kind: str,
         media_type: str,
+        disclosure: ArtifactDisclosure = "private",
+        source: str | None = None,
+    ) -> ArtifactRef: ...
+
+
+class ArtifactStoreBackend(ArtifactWriter, ArtifactReader, Protocol):
+    """Trusted backend capability retained by a runtime composition owner."""
+
+    @property
+    def scope(self) -> RuntimeScope: ...
+
+    def snapshot_file(
+        self,
+        source_path: str | Path,
+        *,
+        logical_name: str,
+        kind: str,
+        media_type: str,
         allowed_roots: Sequence[str | Path],
         disclosure: ArtifactDisclosure = "private",
         source: str | None = None,
-    ) -> StoredArtifact: ...
-
-
-class ArtifactStorePort(ArtifactWriter, ArtifactSnapshotStore, Protocol):
-    """Full storage capability retained only by a runtime composition owner."""
+    ) -> ArtifactRef: ...
 
 
 class ArtifactStore:
@@ -143,12 +164,16 @@ class ArtifactStore:
         policy: ArtifactStorePolicy = DEFAULT_ARTIFACT_STORE_POLICY,
         now: Callable[[], float] = time.time,
     ) -> None:
-        self.scope = scope
+        self._scope = scope
         self.policy = policy
         self._now = now
-        self._records: list[StoredArtifact] = []
+        self._records: list[_StoredArtifactRecord] = []
         self._lock = RLock()
         self._initialized = False
+
+    @property
+    def scope(self) -> RuntimeScope:
+        return self._scope
 
     @property
     def root(self) -> Path:
@@ -159,14 +184,14 @@ class ArtifactStore:
         return self.root / "manifest.json"
 
     @property
-    def records(self) -> tuple[StoredArtifact, ...]:
+    def records(self) -> tuple[ArtifactRef, ...]:
         with self._lock:
-            return tuple(self._records)
+            return tuple(record.reference for record in self._records)
 
     @property
     def total_bytes(self) -> int:
         with self._lock:
-            return sum(record.size_bytes for record in self._records)
+            return sum(record.reference.size_bytes for record in self._records)
 
     def put_bytes(
         self,
@@ -177,7 +202,7 @@ class ArtifactStore:
         media_type: str,
         disclosure: ArtifactDisclosure = "private",
         source: str | None = None,
-    ) -> StoredArtifact:
+    ) -> ArtifactRef:
         """Persist one immutable artifact and atomically refresh its manifest."""
 
         payload = bytes(content)
@@ -198,7 +223,7 @@ class ArtifactStore:
             artifact_id = uuid4().hex
             object_path = objects / artifact_id
             identity = _write_new_private_file(object_path, payload)
-            record = StoredArtifact(
+            reference = ArtifactRef(
                 artifact_id=artifact_id,
                 logical_name=normalized_name,
                 kind=normalized_kind,
@@ -207,9 +232,12 @@ class ArtifactStore:
                 size_bytes=len(payload),
                 sha256=hashlib.sha256(payload).hexdigest(),
                 created_at=created_at,
-                path=object_path,
                 source=normalized_source,
-                _identity=identity,
+            )
+            record = _StoredArtifactRecord(
+                reference=reference,
+                path=object_path,
+                identity=identity,
             )
             try:
                 self._write_manifest((*self._records, record))
@@ -218,7 +246,7 @@ class ArtifactStore:
                 raise
             self._initialized = True
             self._records.append(record)
-            return record
+            return reference
 
     def snapshot_file(
         self,
@@ -230,7 +258,7 @@ class ArtifactStore:
         disclosure: ArtifactDisclosure = "private",
         source: str | None = None,
         allowed_roots: Sequence[str | Path],
-    ) -> StoredArtifact:
+    ) -> ArtifactRef:
         """Capture one stable regular file after explicit root authorization."""
 
         source_file = Path(source_path).expanduser()
@@ -245,7 +273,7 @@ class ArtifactStore:
                     f"artifact count limit is {self.policy.max_artifacts}"
                 )
             available = self.policy.max_total_bytes - sum(
-                record.size_bytes for record in self._records
+                record.reference.size_bytes for record in self._records
             )
             if available <= 0:
                 raise ArtifactStoreQuotaExceeded(
@@ -265,13 +293,21 @@ class ArtifactStore:
                 source=source,
             )
 
-    def read_bytes(self, artifact: StoredArtifact) -> bytes:
+    def read_bytes(self, artifact: ArtifactRef) -> bytes:
         """Read back a record owned by this store and verify its digest."""
 
         with self._lock:
-            if not any(record is artifact for record in self._records):
+            record = next(
+                (
+                    candidate
+                    for candidate in self._records
+                    if candidate.reference is artifact
+                ),
+                None,
+            )
+            if record is None:
                 raise ArtifactSourceRejected("artifact is not owned by this store")
-            payload = _read_owned_artifact(artifact)
+            payload = _read_owned_artifact(record)
             if hashlib.sha256(payload).hexdigest() != artifact.sha256:
                 raise ArtifactSourceRejected("artifact digest no longer matches")
             return payload
@@ -286,17 +322,19 @@ class ArtifactStore:
             raise ArtifactStoreQuotaExceeded(
                 f"artifact count limit is {self.policy.max_artifacts}"
             )
-        retained_bytes = sum(record.size_bytes for record in self._records)
+        retained_bytes = sum(
+            record.reference.size_bytes for record in self._records
+        )
         if retained_bytes + next_bytes > self.policy.max_total_bytes:
             raise ArtifactStoreQuotaExceeded(
                 f"artifact byte limit is {self.policy.max_total_bytes} bytes"
             )
 
-    def _write_manifest(self, records: Iterable[StoredArtifact]) -> None:
+    def _write_manifest(self, records: Iterable[_StoredArtifactRecord]) -> None:
         manifest = {
             "schemaVersion": 1,
             "runId": self.scope.run_id,
-            "artifacts": [record.manifest_entry() for record in records],
+            "artifacts": [record.reference.manifest_entry() for record in records],
         }
         payload = (
             json.dumps(
@@ -472,9 +510,18 @@ def _read_stable_source(
 ) -> bytes:
     try:
         resolved = source.resolve(strict=True)
-        roots = tuple(Path(root).expanduser().resolve(strict=True) for root in allowed_roots)
     except OSError as error:
         raise ArtifactSourceRejected(str(error) or error.__class__.__name__) from error
+    roots: list[Path] = []
+    for root in allowed_roots:
+        try:
+            roots.append(Path(root).expanduser().resolve(strict=True))
+        except FileNotFoundError:
+            continue
+        except OSError as error:
+            raise ArtifactSourceRejected(
+                str(error) or error.__class__.__name__
+            ) from error
     if not any(resolved == root or resolved.is_relative_to(root) for root in roots):
         raise ArtifactSourceRejected(f"artifact source is outside allowed roots: {source}")
     flags = os.O_RDONLY
@@ -523,31 +570,34 @@ def _read_stable_source(
         os.close(descriptor)
 
 
-def _read_owned_artifact(artifact: StoredArtifact) -> bytes:
+def _read_owned_artifact(record: _StoredArtifactRecord) -> bytes:
     flags = os.O_RDONLY
     flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
     try:
-        descriptor = os.open(artifact.path, flags)
+        descriptor = os.open(record.path, flags)
     except OSError as error:
         raise ArtifactSourceRejected("artifact file identity changed") from error
     try:
         metadata = os.fstat(descriptor)
         if (
             not stat.S_ISREG(metadata.st_mode)
-            or (metadata.st_dev, metadata.st_ino) != artifact._identity
-            or metadata.st_size != artifact.size_bytes
+            or (metadata.st_dev, metadata.st_ino) != record.identity
+            or metadata.st_size != record.reference.size_bytes
         ):
             raise ArtifactSourceRejected("artifact file identity changed")
         payload = bytearray()
-        while len(payload) <= artifact.size_bytes:
+        while len(payload) <= record.reference.size_bytes:
             chunk = os.read(
                 descriptor,
-                min(1024 * 1024, artifact.size_bytes + 1 - len(payload)),
+                min(
+                    1024 * 1024,
+                    record.reference.size_bytes + 1 - len(payload),
+                ),
             )
             if not chunk:
                 break
             payload.extend(chunk)
-        if len(payload) != artifact.size_bytes:
+        if len(payload) != record.reference.size_bytes:
             raise ArtifactSourceRejected("artifact file size changed")
         return bytes(payload)
     finally:
@@ -692,19 +742,19 @@ def _is_reparse_point(metadata: os.stat_result) -> bool:
 
 __all__ = [
     "ArtifactDisclosure",
+    "ArtifactRef",
     "ArtifactReader",
     "ArtifactRetentionPolicy",
     "ArtifactRetentionReport",
     "ArtifactSourceRejected",
     "ArtifactSnapshotStore",
     "ArtifactStore",
+    "ArtifactStoreBackend",
     "ArtifactStoreError",
-    "ArtifactStorePort",
     "ArtifactStorePolicy",
     "ArtifactStoreQuotaExceeded",
     "ArtifactWriter",
     "DEFAULT_ARTIFACT_RETENTION_POLICY",
     "DEFAULT_ARTIFACT_STORE_POLICY",
-    "StoredArtifact",
     "sweep_managed_artifacts",
 ]
