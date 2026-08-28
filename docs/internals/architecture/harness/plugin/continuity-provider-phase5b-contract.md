@@ -71,7 +71,12 @@ anchored to a no-follow directory descriptor; path ancestors must not be
 non-sticky shared-writable. The bridge wraps the Product candidate in the full
 `PreparedActivationLease` contract, preserving the external target and
 declaring Coding's in-place disposition. Consume remains the existing canonical
-Session transition; abort remains the existing unpublished-candidate rollback.
+Session transition; a failed or cancelled consume cancellation-atomically
+aborts the underlying Product candidate exactly once. Abort remains the
+existing unpublished-candidate rollback. Platforms without secure
+directory-relative no-follow creation fail closed in Phase 5B; a Windows
+reparse-safe handle bridge is a separate implementation requirement, not a
+path-based fallback.
 
 ## Composition and presentation
 

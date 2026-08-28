@@ -6,7 +6,6 @@ import asyncio
 import os
 import secrets
 import stat
-import tempfile
 from collections import OrderedDict
 from collections.abc import Iterable
 from contextlib import suppress
@@ -193,7 +192,7 @@ class CodingContinuityActivationBridge:
         return CallbackPreparedActivationLease(
             target=target,
             disposition="in_place",
-            consume=prepared.consume,
+            consume=lambda: _consume_coding_prepared_operation(prepared),
             abort=prepared.abort,
         )
 
@@ -696,12 +695,29 @@ def bind_coding_continuity(
     return result
 
 
+async def _consume_coding_prepared_operation(
+    prepared: CodingPreparedSessionOperation,
+) -> object:
+    try:
+        return await prepared.consume()
+    except BaseException as operation_error:
+        try:
+            abort_task = asyncio.create_task(prepared.abort())
+            await _await_owned_task_cancellation_atomic(abort_task)
+        except BaseException as abort_error:
+            operation_error.add_note(
+                "Coding prepared Session abort also failed: "
+                f"{type(abort_error).__name__}"
+            )
+        raise
+
+
 @dataclass(frozen=True, slots=True)
 class _PrivateContinuityPayload:
     path: Path
     file_identity: tuple[int, int]
     root_identity: tuple[int, int]
-    root_descriptor: int | None
+    root_descriptor: int
 
 
 def _write_private_continuity_payload(
@@ -710,9 +726,12 @@ def _write_private_continuity_payload(
 ) -> _PrivateContinuityPayload:
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     _validate_private_continuity_path_chain(root)
-    if _supports_continuity_directory_handles():
-        return _write_private_continuity_payload_at(root, payload)
-    return _write_private_continuity_payload_by_path(root, payload)
+    if not _supports_continuity_directory_handles():
+        raise OSError(
+            "Secure directory-relative Continuity staging is unavailable "
+            "on this platform"
+        )
+    return _write_private_continuity_payload_at(root, payload)
 
 
 def _write_private_continuity_payload_at(
@@ -769,44 +788,6 @@ def _write_private_continuity_payload_at(
                 os.unlink(name, dir_fd=root_descriptor)
         os.close(root_descriptor)
         raise
-
-
-def _write_private_continuity_payload_by_path(
-    root: Path,
-    payload: ContinuityActivationPayload,
-) -> _PrivateContinuityPayload:
-    root_status = root.lstat()
-    _validate_private_continuity_root(root, root_status)
-    root_identity = (root_status.st_dev, root_status.st_ino)
-    if os.name == "posix":
-        root.chmod(0o700)
-    descriptor, raw_path = tempfile.mkstemp(
-        prefix="continuity-",
-        suffix=_continuity_payload_suffix(payload),
-        dir=root,
-    )
-    path = Path(raw_path)
-    try:
-        fchmod = getattr(os, "fchmod", None)
-        if callable(fchmod):
-            fchmod(descriptor, 0o600)
-        _write_continuity_payload_bytes(descriptor, payload.data)
-        status = os.fstat(descriptor)
-        file_identity = (status.st_dev, status.st_ino)
-        current_root = root.lstat()
-        if (current_root.st_dev, current_root.st_ino) != root_identity:
-            raise OSError("Coding continuity temporary root identity changed")
-    except BaseException:
-        os.close(descriptor)
-        path.unlink(missing_ok=True)
-        raise
-    os.close(descriptor)
-    return _PrivateContinuityPayload(
-        path=path,
-        file_identity=file_identity,
-        root_identity=root_identity,
-        root_descriptor=None,
-    )
 
 
 def _validate_private_continuity_root(
@@ -876,43 +857,27 @@ def _supports_continuity_directory_handles() -> bool:
 
 
 def _remove_private_continuity_payload(staged: _PrivateContinuityPayload) -> None:
-    if staged.root_descriptor is not None:
-        try:
-            root_status = os.fstat(staged.root_descriptor)
-            if (root_status.st_dev, root_status.st_ino) != staged.root_identity:
-                raise OSError("Coding continuity temporary root identity changed")
-            try:
-                status = os.stat(
-                    staged.path.name,
-                    dir_fd=staged.root_descriptor,
-                    follow_symlinks=False,
-                )
-            except FileNotFoundError:
-                return
-            if (
-                stat.S_ISLNK(status.st_mode)
-                or bool(getattr(status, "st_reparse_tag", 0))
-                or (status.st_dev, status.st_ino) != staged.file_identity
-            ):
-                raise OSError("Coding continuity temporary file identity changed")
-            os.unlink(staged.path.name, dir_fd=staged.root_descriptor)
-            return
-        finally:
-            os.close(staged.root_descriptor)
     try:
-        root_status = staged.path.parent.lstat()
+        root_status = os.fstat(staged.root_descriptor)
         if (root_status.st_dev, root_status.st_ino) != staged.root_identity:
             raise OSError("Coding continuity temporary root identity changed")
-        status = staged.path.lstat()
-    except FileNotFoundError:
-        return
-    if (
-        stat.S_ISLNK(status.st_mode)
-        or bool(getattr(status, "st_reparse_tag", 0))
-        or (status.st_dev, status.st_ino) != staged.file_identity
-    ):
-        raise OSError("Coding continuity temporary file identity changed")
-    staged.path.unlink()
+        try:
+            status = os.stat(
+                staged.path.name,
+                dir_fd=staged.root_descriptor,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            return
+        if (
+            stat.S_ISLNK(status.st_mode)
+            or bool(getattr(status, "st_reparse_tag", 0))
+            or (status.st_dev, status.st_ino) != staged.file_identity
+        ):
+            raise OSError("Coding continuity temporary file identity changed")
+        os.unlink(staged.path.name, dir_fd=staged.root_descriptor)
+    finally:
+        os.close(staged.root_descriptor)
 
 
 async def _remove_private_continuity_payload_atomic(

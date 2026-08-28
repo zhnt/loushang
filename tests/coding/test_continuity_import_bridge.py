@@ -23,22 +23,34 @@ from loushang.harness.continuity import (
     PreparedActivationLease,
 )
 
+requires_secure_staging = pytest.mark.skipif(
+    not continuity_module._supports_continuity_directory_handles(),
+    reason="secure directory-relative staging is unavailable",
+)
+
 
 @dataclass
 class _PreparedOperation:
     result: object = "canonical-session"
     consumed: bool = False
-    aborted: bool = False
+    abort_count: int = 0
+    consume_error: BaseException | None = None
 
     async def consume(self) -> object:
         self.consumed = True
+        if self.consume_error is not None:
+            raise self.consume_error
         return self.result
 
     async def abort(self) -> None:
-        self.aborted = True
+        self.abort_count += 1
 
     async def close(self) -> None:
         await self.abort()
+
+    @property
+    def aborted(self) -> bool:
+        return self.abort_count > 0
 
 
 @dataclass
@@ -83,6 +95,7 @@ def _source() -> ContinuityProviderSourceDescriptor:
         (CONTINUITY_BUNDLE_MEDIA_TYPE, ".loushang.zip"),
     ),
 )
+@requires_secure_staging
 def test_coding_portable_activation_bridge_uses_private_bounded_temporary_copy(
     tmp_path: Path,
     media_type: str,
@@ -125,6 +138,87 @@ def test_coding_portable_activation_bridge_uses_private_bounded_temporary_copy(
     assert prepared.consumed
 
 
+@requires_secure_staging
+def test_coding_portable_activation_bridge_aborts_failed_consume_exactly_once(
+    tmp_path: Path,
+) -> None:
+    runtime = _Runtime(
+        prepared=_PreparedOperation(consume_error=RuntimeError("consume failed"))
+    )
+    bridge = CodingContinuityActivationBridge(
+        runtime,  # type: ignore[arg-type]
+        temporary_root=tmp_path / "continuity",
+    )
+    payload = ContinuityActivationPayload.from_bytes(
+        b"{}\n",
+        media_type=CONTINUITY_JSONL_MEDIA_TYPE,
+    )
+    prepared = asyncio.run(
+        bridge.prepare(
+            ContinuityTarget(
+                provider_id="cloud.sessions",
+                opaque_id="remote-1",
+            ),
+            payload,
+            _source(),
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="consume failed"):
+        asyncio.run(prepared.consume())
+    asyncio.run(prepared.abort())
+
+    assert runtime.prepared.abort_count == 1
+
+
+@requires_secure_staging
+def test_coding_portable_activation_bridge_aborts_cancelled_consume_exactly_once(
+    tmp_path: Path,
+) -> None:
+    class _BlockingPreparedOperation(_PreparedOperation):
+        def __init__(self) -> None:
+            super().__init__()
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def consume(self) -> object:
+            self.consumed = True
+            self.started.set()
+            await self.release.wait()
+            return self.result
+
+    candidate = _BlockingPreparedOperation()
+    runtime = _Runtime(prepared=candidate)
+    bridge = CodingContinuityActivationBridge(
+        runtime,  # type: ignore[arg-type]
+        temporary_root=tmp_path / "continuity",
+    )
+    payload = ContinuityActivationPayload.from_bytes(
+        b"{}\n",
+        media_type=CONTINUITY_JSONL_MEDIA_TYPE,
+    )
+
+    async def scenario() -> None:
+        prepared = await bridge.prepare(
+            ContinuityTarget(
+                provider_id="cloud.sessions",
+                opaque_id="remote-1",
+            ),
+            payload,
+            _source(),
+        )
+        task = asyncio.create_task(prepared.consume())
+        await asyncio.wait_for(candidate.started.wait(), timeout=1)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        await prepared.abort()
+
+    asyncio.run(scenario())
+
+    assert candidate.abort_count == 1
+
+
 def test_coding_portable_activation_bridge_rejects_product_budget_before_write(
     tmp_path: Path,
 ) -> None:
@@ -150,6 +244,39 @@ def test_coding_portable_activation_bridge_rejects_product_budget_before_write(
     assert not (tmp_path / "continuity").exists()
 
 
+@pytest.mark.skipif(
+    continuity_module._supports_continuity_directory_handles(),
+    reason="secure directory-relative staging is available",
+)
+def test_coding_portable_activation_bridge_fails_closed_without_secure_staging(
+    tmp_path: Path,
+) -> None:
+    runtime = _Runtime()
+    bridge = CodingContinuityActivationBridge(
+        runtime,  # type: ignore[arg-type]
+        temporary_root=tmp_path / "continuity",
+    )
+    payload = ContinuityActivationPayload.from_bytes(
+        b"{}\n",
+        media_type=CONTINUITY_JSONL_MEDIA_TYPE,
+    )
+
+    with pytest.raises(OSError, match="unavailable"):
+        asyncio.run(
+            bridge.prepare(
+                ContinuityTarget(
+                    provider_id="cloud.sessions",
+                    opaque_id="remote-1",
+                ),
+                payload,
+                _source(),
+            )
+        )
+
+    assert runtime.observed_path is None
+
+
+@requires_secure_staging
 def test_coding_portable_activation_bridge_does_not_trust_source_cwd(
     tmp_path: Path,
 ) -> None:
@@ -243,6 +370,7 @@ def test_coding_portable_activation_bridge_rejects_writable_path_ancestor(
     assert runtime.observed_path is None
 
 
+@requires_secure_staging
 def test_coding_portable_activation_bridge_cleans_up_when_product_prepare_fails(
     tmp_path: Path,
 ) -> None:
@@ -279,6 +407,7 @@ def test_coding_portable_activation_bridge_cleans_up_when_product_prepare_fails(
     assert not runtime.observed_path.exists()
 
 
+@requires_secure_staging
 def test_coding_portable_activation_bridge_cleans_up_when_write_is_cancelled(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -339,6 +468,7 @@ def test_coding_portable_activation_bridge_cleans_up_when_write_is_cancelled(
     assert runtime.observed_path is None
 
 
+@requires_secure_staging
 def test_coding_portable_activation_bridge_cleans_up_when_prepare_is_cancelled(
     tmp_path: Path,
 ) -> None:
@@ -394,6 +524,7 @@ def test_coding_portable_activation_bridge_cleans_up_when_prepare_is_cancelled(
     assert not runtime.observed_path.exists()
 
 
+@requires_secure_staging
 def test_coding_portable_activation_bridge_rejects_replaced_temporary_file(
     tmp_path: Path,
 ) -> None:
