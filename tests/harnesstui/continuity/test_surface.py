@@ -10,6 +10,7 @@ from loushang.harness.continuity import (
     ContinuityPreview,
     ContinuityPreviewSection,
     ContinuityProviderDescriptor,
+    ContinuityProviderSourceDescriptor,
     ContinuityQuery,
     ContinuitySummary,
     ContinuityTarget,
@@ -24,6 +25,7 @@ from loushang.harnesstui.continuity import (
 from loushang.harnesstui.continuity.keybindings import (
     CONTINUITY_DOMAIN_ACTION,
     CONTINUITY_PREVIEW_ACTION,
+    CONTINUITY_PROVIDER_ACTION,
     CONTINUITY_SORT_ACTION,
     continuity_keybinding_manager,
 )
@@ -48,11 +50,22 @@ def test_continuity_keybinding_catalog_owns_continuity_actions() -> None:
 
     assert manager.keys_for(CONTINUITY_PREVIEW_ACTION) == ("space",)
     assert manager.keys_for(CONTINUITY_DOMAIN_ACTION) == ("tab",)
+    assert manager.keys_for(CONTINUITY_PROVIDER_ACTION) == ("ctrl+p",)
     assert manager.keys_for(CONTINUITY_SORT_ACTION) == ("ctrl+s",)
     assert continuity_keybinding_manager(manager) is manager
 
 
 def _reference(hub: "_Hub") -> StableContinuityReference:
+    for index, bound in enumerate(hub.composition.continuity_providers):
+        if not hasattr(bound, "source"):
+            provider_id = bound.provider.descriptor.provider_id
+            bound.source = ContinuityProviderSourceDescriptor(
+                provider_id=provider_id,
+                source="product",
+                source_id="product:studio",
+                implementation=f"test-{index}",
+                implementation_version=1,
+            )
     return StableContinuityReference(hub)  # type: ignore[arg-type]
 
 
@@ -450,9 +463,54 @@ def test_common_resume_adds_neutral_domain_filter_for_multi_provider_experience(
     toolbar = strip_control_sequences(rendered.lines[2].text)
 
     assert toolbar.startswith("Type to search")
+    assert "Provider: [All] Coding Design" in toolbar
     assert "Domain: [All] Coding Design" in toolbar
     assert toolbar.rstrip().endswith("Sort: [Updated] Created")
     assert "Cwd" not in toolbar
+
+
+def test_common_resume_filters_by_provider_without_widening_domain() -> None:
+    async def scenario() -> None:
+        hub = _Hub()
+        design = ContinuityProviderDescriptor(
+            provider_id="design.canvases",
+            experience_id="studio",
+            domain_ids=("design",),
+            label="Design",
+            supported_sorts=("updated", "created"),
+        )
+        hub.composition = SimpleNamespace(
+            experience=hub.composition.experience,
+            continuity_providers=(
+                *hub.composition.continuity_providers,
+                SimpleNamespace(provider=_Provider(design)),
+            ),
+        )
+        surface = ContinuitySurface(
+            reference=_reference(hub),
+            request_render=lambda _kind: None,
+        )
+        await surface.start()
+
+        intent = surface.handle_input(InputEvent(kind="key", key="ctrl+p"))
+        assert intent == InputIntent(
+            kind="consumed",
+            note="continuity_provider",
+        )
+        assert surface.query.provider_ids == ("coding.sessions",)
+        assert surface.query.domain_ids == ()
+        assert surface._query_task is not None
+        await surface._query_task
+        assert hub.queries[-1].provider_ids == ("coding.sessions",)
+
+        surface.handle_input(InputEvent(kind="key", key="tab"))
+        assert surface.query.domain_ids == ("coding",)
+        surface.handle_input(InputEvent(kind="key", key="ctrl+p"))
+        assert surface.query.provider_ids == ("design.canvases",)
+        assert surface.query.domain_ids == ()
+        surface.close()
+
+    asyncio.run(scenario())
 
 
 def test_common_resume_loads_next_page_without_wrapping_to_first_item() -> None:

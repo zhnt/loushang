@@ -21,6 +21,7 @@ from loushang.harness.continuity import (
 from loushang.harnesstui.continuity.keybindings import (
     CONTINUITY_DOMAIN_ACTION,
     CONTINUITY_PREVIEW_ACTION,
+    CONTINUITY_PROVIDER_ACTION,
     CONTINUITY_SORT_ACTION,
     continuity_keybinding_manager,
 )
@@ -133,6 +134,12 @@ class ContinuitySurface:
             else (None,)
         )
         self._domain_index = 0
+        self._provider_options = (
+            (None, *(provider.provider_id for provider in observation.providers))
+            if len(observation.providers) > 1
+            else (None,)
+        )
+        self._provider_index = 0
         self._selection = self._build_selection()
 
     @property
@@ -254,6 +261,9 @@ class ContinuitySurface:
         if event.kind == "key" and event.key == "tab":
             self._cycle_domain()
             return InputIntent(kind="consumed", note="continuity_domain")
+        if event.kind == "key" and event.key in {"ctrl+p", "ctrl_p"}:
+            self._cycle_provider()
+            return InputIntent(kind="consumed", note="continuity_provider")
         if event.kind == "key" and event.key in {"ctrl+s", "ctrl_s"}:
             self._toggle_sort()
             return InputIntent(kind="consumed", note="continuity_sort")
@@ -290,6 +300,8 @@ class ContinuitySurface:
         ]
         if len(self._domain_options) > 1:
             hints.append(f"{self._key_label(CONTINUITY_DOMAIN_ACTION)} domain")
+        if len(self._provider_options) > 1:
+            hints.append(f"{self._key_label(CONTINUITY_PROVIDER_ACTION)} provider")
         if len(self._sort_options()) > 1:
             hints.append(f"{self._key_label(CONTINUITY_SORT_ACTION)} sort")
         hints.extend(
@@ -533,6 +545,34 @@ class ContinuitySurface:
         self._rebuild_selection(selected=self.selected_target)
         self._schedule_query(reset=True)
 
+    def _cycle_provider(self) -> None:
+        if len(self._provider_options) == 1:
+            return
+        self._provider_index = (self._provider_index + 1) % len(
+            self._provider_options
+        )
+        provider_id = self._provider_options[self._provider_index]
+        domain_ids = self._query.domain_ids
+        if provider_id is not None and domain_ids:
+            descriptor = next(
+                provider
+                for provider in self._reference.observation.providers
+                if provider.provider_id == provider_id
+            )
+            if not set(domain_ids).intersection(descriptor.domain_ids):
+                domain_ids = ()
+                self._domain_index = 0
+        self._query = replace(
+            self._query,
+            provider_ids=() if provider_id is None else (provider_id,),
+            domain_ids=domain_ids,
+            cursor=None,
+        )
+        if self._query.sort_id not in self._sort_options():
+            self._query = replace(self._query, sort_id="updated")
+        self._rebuild_selection(selected=self.selected_target)
+        self._schedule_query(reset=True)
+
     def _toggle_sort(self) -> None:
         sort_options = self._sort_options()
         if len(sort_options) < 2:
@@ -623,6 +663,26 @@ class ContinuitySurface:
 
     def _toolbar_copy(self, *, compact: bool) -> str:
         controls: list[str] = []
+        if len(self._provider_options) > 1:
+            labels = {
+                provider.provider_id: provider.label
+                for provider in self._reference.observation.providers
+            }
+            controls.append(
+                self._toolbar_control(
+                    "Provider",
+                    tuple(
+                        (
+                            "All"
+                            if provider_id is None
+                            else labels.get(provider_id, provider_id)
+                        )
+                        for provider_id in self._provider_options
+                    ),
+                    active_index=self._provider_index,
+                    compact=compact,
+                )
+            )
         if len(self._domain_options) > 1:
             controls.append(
                 self._toolbar_control(
@@ -679,7 +739,12 @@ class ContinuitySurface:
         return f"{label_copy}{' '.join(values)}"
 
     def _sort_options(self) -> tuple[ContinuitySort, ...]:
-        providers = self._reference.observation.providers
+        selected = self._query.provider_ids
+        providers = tuple(
+            provider
+            for provider in self._reference.observation.providers
+            if not selected or provider.provider_id in selected
+        )
         if not providers:
             return ("updated",)
         return (
@@ -694,6 +759,7 @@ class ContinuitySurface:
         actions = (
             (CONTINUITY_PREVIEW_ACTION, "space"),
             (CONTINUITY_DOMAIN_ACTION, "tab"),
+            (CONTINUITY_PROVIDER_ACTION, "ctrl+p"),
             (CONTINUITY_SORT_ACTION, "ctrl+s"),
             ("tui.select.confirm", "enter"),
             ("tui.select.cancel", "escape"),
