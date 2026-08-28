@@ -1214,6 +1214,56 @@ async def test_runtime_restores_legacy_discovery_as_authority_copy(
 
 
 @_async_test
+async def test_runtime_refuses_same_id_with_different_discovery_content(
+    tmp_path,
+) -> None:
+    import pytest
+
+    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.session_manager import SessionManager
+
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    authority_dir = tmp_path / "home" / "data" / "sessions"
+    cwd_legacy_dir = project_root / ".loushang" / "sessions"
+    home_legacy_dir = tmp_path / "home" / ".loushang" / "sessions"
+    cwd_legacy = await SessionManager.new(
+        session_dir=cwd_legacy_dir,
+        cwd=str(project_root),
+        persist=True,
+        session_id="duplicate-session",
+    )
+    home_legacy = await SessionManager.new(
+        session_dir=home_legacy_dir,
+        cwd=str(project_root),
+        persist=True,
+        session_id="duplicate-session",
+    )
+    await cwd_legacy.append_message(_user_message("cwd legacy content"))
+    await home_legacy.append_message(_user_message("different home legacy content"))
+    cwd_legacy_file = cwd_legacy.get_session_file()
+    home_legacy_file = home_legacy.get_session_file()
+    assert cwd_legacy_file is not None
+    assert home_legacy_file is not None
+    await cwd_legacy.dispose_runtime_profile()
+    await home_legacy.dispose_runtime_profile()
+    runtime = create_agent_session_runtime(
+        session_dir=authority_dir,
+        model=_model(),
+        persist=True,
+    )
+    runtime.add_session_discovery_dir(cwd_legacy_dir)
+    runtime.add_session_discovery_dir(home_legacy_dir)
+
+    with pytest.raises(ValueError, match="across discovery sources"):
+        await runtime.restore_session_operation("duplicate-session")
+
+    assert tuple(authority_dir.glob("*.jsonl")) == ()
+    assert cwd_legacy_file.exists()
+    assert home_legacy_file.exists()
+
+
+@_async_test
 async def test_runtime_switches_from_provisional_session_without_persisting_it(
     tmp_path,
 ) -> None:

@@ -1,0 +1,96 @@
+# Session Discovery and Continuity
+
+Phase 5A turns the machine-local storage substrate into a visible Product
+experience without creating a second Session store. Transcript JSONL and
+Session Blob authorities remain the source of truth. Discovery is a bounded,
+read-only projection; Continuity is the existing Product/OEM provider seam;
+and the transcript lifecycle remains the only restore/import transaction
+owner.
+
+## Authority and origins
+
+The default Coding Product declares one canonical source and two compatibility
+sources:
+
+| source | origin | mode | meaning |
+| --- | --- | --- | --- |
+| `sessions.global` | `global` | canonical | `$LOUSHANG_HOME/data/sessions` writable authority |
+| `sessions.cwd_compatibility` | `cwd` | compatibility | `<cwd>/.loushang/sessions` read-only discovery |
+| `sessions.home_compatibility` | `home` | compatibility | `$LOUSHANG_HOME/sessions` read-only discovery |
+
+Additional admitted sources use the same `SessionDiscoverySource` contract and
+receive a stable `source_id`, origin, mode, and priority. Visibility never
+grants write authority. Resuming a compatibility transcript uses the existing
+copy-first import operation: Blob objects are published first, the canonical
+transcript commits second, the source remains unchanged, and no destination is
+overwritten.
+
+## Read model
+
+Each selected summary carries `SessionDiscoveryMetadata`:
+
+- `SessionLocator` identifies the exact source, Conversation ID, transcript
+  path, and observed revision;
+- `origin` and `mode` explain why the Session is visible;
+- `health` is one of `available`, `legacy`, `needs_attention`, or `conflict`;
+- `aliases` are byte-identical copies of the selected authority;
+- `conflicts` are same-ID candidates whose exact equality cannot be proven.
+
+The CLI JSON projection preserves this structure. TSV appends origin and
+health only when a discovery projection is available, retaining the legacy
+five-column projection for injected older catalog records.
+
+## Merge and selection rules
+
+Candidates are grouped by Conversation ID. Canonical mode wins selection;
+within one mode the declared source priority and stable source identity decide
+order. Duplicate files are compared through no-follow descriptors with a
+strict aggregate comparison bound. Exact copies become aliases. A changed,
+unsafe, oversized, unreadable, or racing candidate is not guessed equal and
+therefore becomes a conflict.
+
+When only compatibility sources disagree and no canonical Session exists, the
+conflict remains visible for diagnosis but is not resumable or deletable by
+opaque ID. CLI resolution and the Continuity Provider both reject it. Once a
+canonical Session exists, it remains authoritative: a changed retained
+compatibility copy is reported as `needs_attention` with conflict provenance,
+but cannot veto canonical resume. An explicit existing path remains an
+intentional exact-source import request and does not rely on ambiguous
+discovery lookup.
+
+Compatibility roots and transcript candidates are not followed through
+symbolic links or Windows reparse points. Index mutation remains restricted to
+the canonical authority; compatibility indexes are read only.
+
+## Product projection
+
+The existing Coding Continuity Provider maps discovery health into the common
+TUI picker:
+
+- canonical healthy Sessions retain the compact existing presentation;
+- compatibility Sessions show their origin and `Legacy` state;
+- unresolved compatibility conflicts remain visible with a `Conflict` status;
+- canonical Sessions with drifting compatibility copies show `Needs attention`;
+- selected previews report storage origin, compatible/conflicting copies, and
+  durable asset health.
+
+Asset inspection is intentionally selection-scoped. The list path never loads
+image bytes. Preview loads the selected transcript, validates Session Blob
+ownership, and reports reference/object counts, bytes, and missing/corrupt
+objects. Model-call hydration remains a separate bounded operation.
+
+## Plugin boundary
+
+`SessionDiscoverySource` is a contribution value, not a filesystem capability.
+Future Continuity Providers may discover remote or database-backed Sessions,
+but must return portable summaries and opaque targets. Plugins may contribute
+sources, metadata, health checks, and presentation. Harness continues to own:
+
+- canonical authority selection;
+- identity and revision validation;
+- admission budgets and no-follow policy;
+- copy-first commit, cancellation, and recovery;
+- deletion tombstones and positive reclamation evidence.
+
+Mutation plugins may propose a typed plan in a later phase. They must not
+receive an unrestricted path deletion or transcript-write side door.

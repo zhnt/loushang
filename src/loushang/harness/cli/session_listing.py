@@ -143,9 +143,19 @@ def format_session_records(
         metadata = record["metadata"]
         name = metadata["name"] if isinstance(metadata, dict) else ""
         name = name if isinstance(name, str) else ""
+        discovery = record.get("discovery")
+        provenance = ""
+        if isinstance(discovery, dict):
+            origin = discovery.get("origin")
+            health = discovery.get("health")
+            provenance = (
+                f"\t{origin if isinstance(origin, str) else ''}"
+                f"\t{health if isinstance(health, str) else ''}"
+            )
         lines.append(
             f"{record['session_id']}\t{record['session_file']}\t{record['cwd']}\t"
             f"{metadata['updated_at'] if isinstance(metadata, dict) else ''}\t{name}"
+            f"{provenance}"
         )
     return "\n".join(lines) + ("\n" if lines else "")
 

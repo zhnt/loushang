@@ -10,6 +10,7 @@ import hashlib
 import importlib
 import json
 import os
+import stat as stat_module
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -322,7 +323,7 @@ class AgentTranscriptFileLayout:
     def resolve_path(self, key: ConversationKey) -> Path | None:
         self._require_namespace(key)
         known = self._known_paths.get(key)
-        if known is not None and known.is_file():
+        if known is not None and _is_regular_file_no_follow(known):
             return known
         for path in self.scan_paths(key.namespace):
             try:
@@ -349,6 +350,7 @@ class AgentTranscriptFileLayout:
             path
             for path in sorted(self.root.glob("*.jsonl"))
             if not path.name.endswith("-export.jsonl")
+            and _is_regular_file_no_follow(path)
         )
 
     def has_transcript_modified_after(self, modified_at_ns: int) -> bool:
@@ -369,7 +371,11 @@ class AgentTranscriptFileLayout:
             if path.name.endswith("-export.jsonl"):
                 continue
             try:
-                if path.is_file() and path.stat().st_mtime_ns > modified_at_ns:
+                status = path.lstat()
+                if (
+                    _status_is_regular_no_follow(status)
+                    and status.st_mtime_ns > modified_at_ns
+                ):
                     changed.append(path)
             except OSError:
                 continue
@@ -476,13 +482,48 @@ def _agent_transcript_file_error(error: JournalFileError) -> AgentTranscriptFile
 def _is_conversation_jsonl_candidate(path: Path) -> bool:
     """Exclude other JSONL families; malformed Conversation files stay visible."""
 
+    if not _is_regular_file_no_follow(path):
+        return False
     try:
-        with path.open("r", encoding=DEFAULT_JSONL_FORMAT.encoding) as handle:
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        descriptor = os.open(path, flags)
+        try:
+            handle = os.fdopen(
+                descriptor,
+                "r",
+                encoding=DEFAULT_JSONL_FORMAT.encoding,
+                closefd=True,
+            )
+        except Exception:
+            os.close(descriptor)
+            raise
+        with handle:
             line = next((line for line in handle if line.strip()), "")
         value = json.loads(line)
     except Exception:
         return True
     return not isinstance(value, dict) or value.get("type") == "conversation"
+
+
+def _is_regular_file_no_follow(path: Path) -> bool:
+    try:
+        return _status_is_regular_no_follow(path.lstat())
+    except OSError:
+        return False
+
+
+def _status_is_regular_no_follow(status: os.stat_result) -> bool:
+    return stat_module.S_ISREG(status.st_mode) and not (
+        stat_module.S_ISLNK(status.st_mode)
+        or bool(
+            getattr(status, "st_file_attributes", 0)
+            & getattr(stat_module, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        )
+    )
 
 
 def _reject_json_constant(token: str) -> NoReturn:

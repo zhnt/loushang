@@ -39,6 +39,7 @@ from loushang.harness.conversation import (
     JsonConversationIndex,
     ProjectionQuery,
 )
+from loushang.harness.transcript.discovery import SessionDiscoveryMetadata
 from loushang.harness.transcript.jsonl_file import (
     AgentTranscriptFileLayout,
     create_agent_transcript_file_store,
@@ -117,6 +118,7 @@ class SessionSummary:
     authority_fingerprint: str | None = None
     bounded: bool = False
     counts_exact: bool = True
+    discovery: SessionDiscoveryMetadata | None = None
 
 
 @dataclass(frozen=True)
@@ -208,6 +210,9 @@ def project_session_record(record: object) -> dict[str, object]:
         value = _safe_session_getattr(record, field_name, _MISSING)
         if value is not _MISSING:
             normalized[field_name] = _json_safe_session_value(value)
+    discovery = _safe_session_getattr(record, "discovery", None)
+    if isinstance(discovery, SessionDiscoveryMetadata):
+        normalized["discovery"] = discovery.to_dict()
     return normalized
 
 

@@ -1048,6 +1048,38 @@ def test_default_runtime_builder_maps_tools_to_allowed_and_active_tools(
     }.intersection(session.get_active_tool_names())
 
 
+def test_default_runtime_builder_declares_global_cwd_and_home_session_sources(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.cli.__main__ import default_runtime_builder
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+
+    home = tmp_path / "user-home"
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.setenv("LOUSHANG_HOME", str(home))
+    runtime = default_runtime_builder(
+        args=SimpleNamespace(no_tools=True, tools=(), no_session=True),
+        cwd=project,
+        session_dir=home / "data" / "sessions",
+        services=create_services(),
+        tool_registry=WorkspaceToolRegistry(),
+    )
+
+    assert runtime.authority_session_source.source_id == "sessions.global"
+    assert runtime.authority_session_source.origin == "global"
+    assert [source.source_id for source in runtime.discovery_session_sources] == [
+        "sessions.cwd_compatibility",
+        "sessions.home_compatibility",
+    ]
+    assert [source.origin for source in runtime.discovery_session_sources] == [
+        "cwd",
+        "home",
+    ]
+
+
 def test_default_runtime_builder_maps_no_tools_to_empty_allowed_tools(tmp_path) -> None:
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
@@ -1912,9 +1944,9 @@ def test_run_cli_routes_machine_readable_command_runtime_stdout_chatter_to_stder
     from loushang.coding.cli.__main__ import run_cli
 
     class ChatteringRuntime(FakeRuntime):
-        def list_sessions(self) -> list[object]:
+        def find_session_summaries(self, query) -> list[object]:
             print("list chatter")
-            return super().list_sessions()
+            return super().find_session_summaries(query)
 
     runtime = ChatteringRuntime(FakeSession("session-1"), records=[])
     leaked_stdout = StringIO()
@@ -2806,7 +2838,7 @@ def test_run_cli_list_sessions_can_use_session_index(tmp_path) -> None:
     asyncio.run(scenario())
 
     assert runtime.find_indexed_session_summaries_calls == [
-        SessionQuery(text="indexed")
+        SessionQuery(cwd=str(tmp_path.resolve()), text="indexed")
     ]
     assert runtime.find_session_summaries_calls == []
     assert json.loads(stdout.getvalue())[0]["session_id"] == "session-indexed"
@@ -2876,15 +2908,16 @@ def test_run_cli_list_sessions_rejects_invalid_session_limit(tmp_path) -> None:
 
 def test_run_cli_prefers_session_summaries_for_listing(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.harness.transcript import SessionQuery
 
     class SummaryRuntime(FakeRuntime):
         def __init__(self, session: FakeSession, summaries: list[object]) -> None:
             super().__init__(session)
             self.session_summaries = list(summaries)
-            self.list_session_summaries_calls = 0
+            self.find_session_summaries_calls = []
 
-        def list_session_summaries(self) -> list[object]:
-            self.list_session_summaries_calls += 1
+        def find_session_summaries(self, query) -> list[object]:
+            self.find_session_summaries_calls.append(query)
             return self.session_summaries
 
     runtime = SummaryRuntime(
@@ -2923,7 +2956,9 @@ def test_run_cli_prefers_session_summaries_for_listing(tmp_path) -> None:
 
     asyncio.run(scenario())
 
-    assert runtime.list_session_summaries_calls == 1
+    assert runtime.find_session_summaries_calls == [
+        SessionQuery(cwd=str(tmp_path.resolve()))
+    ]
     assert runtime.list_sessions_calls == 0
     assert json.loads(stdout.getvalue()) == [
         {
@@ -2950,7 +2985,8 @@ def test_run_cli_reports_list_sessions_errors(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     class BrokenListSessionsRuntime(FakeRuntime):
-        def list_sessions(self) -> list[object]:
+        def find_session_summaries(self, query) -> list[object]:
+            del query
             raise RuntimeError("session listing failed")
 
     runtime = BrokenListSessionsRuntime(FakeSession("unused"))
@@ -2979,7 +3015,8 @@ def test_run_cli_reports_list_sessions_unexpected_errors(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     class BrokenListSessionsRuntime(FakeRuntime):
-        def list_sessions(self) -> list[object]:
+        def find_session_summaries(self, query) -> list[object]:
+            del query
             raise TypeError("session listing type error")
 
     runtime = BrokenListSessionsRuntime(FakeSession("unused"))
@@ -3008,7 +3045,8 @@ def test_run_cli_reports_list_sessions_invalid_payload(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     class BrokenListSessionsRuntime(FakeRuntime):
-        def list_sessions(self):
+        def find_session_summaries(self, query):
+            del query
             return {"sessions": []}
 
     runtime = BrokenListSessionsRuntime(FakeSession("unused"))

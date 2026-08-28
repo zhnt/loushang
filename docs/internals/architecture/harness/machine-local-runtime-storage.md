@@ -299,3 +299,7 @@ Sources are retained. Existing
 destinations are never overwritten, and a changed source invalidates its plan.
 This gives migration recovery the same copy-first transaction used by bundle
 import instead of treating a directory move as an identity change.
+
+The Product-facing discovery, provenance, conflict, Continuity, and selected
+asset-health projection built on this control plane is specified in
+[Session Discovery and Continuity](session-discovery-continuity.md).

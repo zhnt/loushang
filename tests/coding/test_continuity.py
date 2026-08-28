@@ -9,15 +9,18 @@ import pytest
 
 from loushang.ai.types import UserMessage
 from loushang.coding.continuity import (
+    ConflictedContinuityTargetError,
     StaleContinuityTargetError,
     bind_coding_continuity,
     shutdown_coding_continuity,
 )
+from loushang.harness.artifacts import SessionBlobStore
 from loushang.harness.continuity import ContinuityQuery
 from loushang.harness.conversation import ConversationHeader, ConversationRecord
 from loushang.harness.transcript import (
     AGENT_MESSAGE_KIND,
     AgentTranscriptDirectoryRuntime,
+    SessionImagePart,
     write_agent_transcript_export,
 )
 
@@ -124,6 +127,8 @@ def test_coding_provider_projects_common_summary_preview_and_activation(
         assert preview.heading == summary.title
         assert preview.sections[1].kind == "key_value"
         assert ("Messages", "1") in preview.sections[1].rows
+        assert ("Storage", "Custom canonical") in preview.sections[1].rows
+        assert ("Assets", "None") in preview.sections[1].rows
 
         lease = await composition.hub.prepare(summary.target)
         assert runtime.prepared == [str(transcript)]
@@ -215,7 +220,130 @@ def test_coding_resume_discovery_includes_legacy_current_cwd_sessions(
     async def scenario() -> None:
         page = await composition.hub.query(ContinuityQuery(page_size=10))
         assert [item.target.opaque_id for item in page.items] == ["legacy"]
-        assert page.items[0].subtitle == "/workspace/current"
+        assert page.items[0].subtitle == (
+            "/workspace/current · Configured compatibility"
+        )
+        assert page.items[0].status == "Legacy · configured"
+        preview = await composition.hub.preview(page.items[0].target)
+        assert ("Storage", "Configured compatibility") in preview.sections[1].rows
+        assert ("Assets", "None") in preview.sections[1].rows
+        await shutdown_coding_continuity(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_coding_resume_refuses_conflicting_discovery_authorities(
+    tmp_path: Path,
+) -> None:
+    global_dir = tmp_path / "home" / "data" / "sessions"
+    cwd_legacy_dir = tmp_path / "project" / ".loushang" / "sessions"
+    home_legacy_dir = tmp_path / "home" / ".loushang" / "sessions"
+    global_dir.mkdir(parents=True)
+    cwd_legacy_dir.mkdir(parents=True)
+    home_legacy_dir.mkdir(parents=True)
+    write_agent_transcript_export(
+        cwd_legacy_dir / "cwd.jsonl",
+        _header("duplicate"),
+        [_record("cwd-record", "Cwd legacy content")],
+    )
+    write_agent_transcript_export(
+        home_legacy_dir / "home.jsonl",
+        _header("duplicate"),
+        [_record("home-record", "Different home legacy content")],
+    )
+    runtime = _Runtime(global_dir)
+    runtime.add_session_discovery_dir(cwd_legacy_dir)
+    runtime.add_session_discovery_dir(home_legacy_dir)
+    runtime.refresh_session_index()
+    composition = bind_coding_continuity(runtime, all_sessions=True)
+
+    async def scenario() -> None:
+        page = await composition.hub.query(ContinuityQuery(page_size=10))
+        assert len(page.items) == 1
+        assert page.items[0].status == "Conflict"
+        preview = await composition.hub.preview(page.items[0].target)
+        assert ("Conflicting copies", "1") in preview.sections[1].rows
+        with pytest.raises(ConflictedContinuityTargetError, match="different"):
+            await composition.hub.prepare(page.items[0].target)
+        assert runtime.prepared == []
+        await shutdown_coding_continuity(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_coding_resume_preview_inspects_durable_clipboard_image_health(
+    tmp_path: Path,
+) -> None:
+    session_dir = tmp_path / "data" / "sessions"
+    session_dir.mkdir(parents=True)
+    store = SessionBlobStore(tmp_path / "data", "image-session")
+    image = store.put_bytes(
+        b"clipboard image",
+        logical_name="images/clipboard.png",
+        kind="image",
+        media_type="image/png",
+    )
+    write_agent_transcript_export(
+        session_dir / "image-session.jsonl",
+        _header("image-session"),
+        [
+            ConversationRecord(
+                record_id="image-record",
+                parent_id=None,
+                kind=AGENT_MESSAGE_KIND,
+                payload_version=1,
+                created_at="2026-07-24T00:00:01Z",
+                payload=UserMessage(
+                    role="user",
+                    content=[SessionImagePart(type="image", blob=image)],  # type: ignore[list-item]
+                    timestamp=1.0,
+                ),
+            )
+        ],
+    )
+    runtime = _Runtime(session_dir)
+    runtime.refresh_session_index()
+    composition = bind_coding_continuity(runtime, all_sessions=True)
+
+    async def scenario() -> None:
+        page = await composition.hub.query(ContinuityQuery(page_size=10))
+        preview = await composition.hub.preview(page.items[0].target)
+        assert (
+            "Assets",
+            "Available · 1 objects · 15 bytes",
+        ) in preview.sections[1].rows
+        (store.objects_root / image.blob_id).unlink()
+        degraded = await composition.hub.preview(page.items[0].target)
+        assert (
+            "Assets",
+            "Missing · 1 objects · 15 bytes · 1 missing · 0 corrupt",
+        ) in degraded.sections[1].rows
+        await shutdown_coding_continuity(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_coding_resume_reports_unsafe_discovery_source(tmp_path: Path) -> None:
+    global_dir = tmp_path / "global"
+    external_dir = tmp_path / "external"
+    linked_dir = tmp_path / "linked"
+    global_dir.mkdir()
+    external_dir.mkdir()
+    try:
+        os.symlink(external_dir, linked_dir, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("directory symlinks are unavailable")
+    runtime = _Runtime(global_dir)
+    runtime.add_session_discovery_dir(linked_dir)
+    composition = bind_coding_continuity(runtime, all_sessions=True)
+
+    async def scenario() -> None:
+        page = await composition.hub.query(ContinuityQuery(page_size=10))
+        assert page.items == ()
+        assert [item.code for item in page.provider_diagnostics] == [
+            "coding_session_discovery_unsafe_root",
+            "coding_continuity_bounded_catalog",
+        ]
         await shutdown_coding_continuity(runtime)
 
     asyncio.run(scenario())

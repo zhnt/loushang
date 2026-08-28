@@ -123,9 +123,9 @@ from loushang.harness.diagnostics.observability_runtime import (
     session_observability_context,
     startup_observability_context,
 )
-from loushang.harness.environment import resolve_platform_paths
 from loushang.harness.host.product_host import ProductHostLifecycle, stream_is_tty
 from loushang.harness.host.rpc import run_rpc_host
+from loushang.harness.machine_resources import resolve_machine_resource_layout
 from loushang.harness.policy_engine import PolicyEngine
 from loushang.harness.resources.packages import (
     record_package_source_policy_denial,
@@ -139,6 +139,10 @@ from loushang.harness.tools.workspace import (
     workspace_tool_runtime_settings,
 )
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+from loushang.harness.transcript import (
+    SessionDiscoverySource,
+    session_origin_from_resource_id,
+)
 from loushang.harnesstui.continuity import run_continuity_picker
 from loushang.harnesstui.conversation.agent_binding import (
     run_agent_mode,
@@ -282,11 +286,51 @@ def default_runtime_builder(
         tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=True,
     )
-    platform_sessions = resolve_platform_paths().data / "sessions"
+    resource_layout = resolve_machine_resource_layout(cwd=cwd)
+    platform_sessions = resource_layout.sessions
     if session_dir.expanduser().resolve(strict=False) == platform_sessions:
         platform_sessions.mkdir(mode=0o700, parents=True, exist_ok=True)
         platform_sessions.chmod(0o700)
-        runtime.add_session_discovery_dir(cwd / ".loushang" / "sessions")
+        set_authority = getattr(runtime, "set_session_authority_source", None)
+        if callable(set_authority):
+            set_authority(
+                SessionDiscoverySource(
+                    source_id="sessions.global",
+                    root=platform_sessions,
+                    mode="canonical",
+                    origin="global",
+                    priority=0,
+                )
+            )
+        add_source = getattr(runtime, "add_session_discovery_source", None)
+        if callable(add_source):
+            for resource in resource_layout.resources:
+                if not (
+                    resource.resource_id.startswith("sessions.")
+                    and resource.mode == "compatibility"
+                ):
+                    continue
+                add_source(
+                    SessionDiscoverySource(
+                        source_id=resource.resource_id,
+                        root=resource.path,
+                        mode="compatibility",
+                        origin=session_origin_from_resource_id(resource.resource_id),
+                        priority=(
+                            10
+                            if resource.resource_id
+                            == "sessions.cwd_compatibility"
+                            else 20
+                            if resource.resource_id
+                            == "sessions.home_compatibility"
+                            else 100
+                        ),
+                    )
+                )
+        else:
+            add_legacy_source = getattr(runtime, "add_session_discovery_dir", None)
+            if callable(add_legacy_source):
+                add_legacy_source(cwd / ".loushang" / "sessions")
     return runtime
 
 

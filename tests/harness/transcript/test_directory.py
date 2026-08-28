@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
+
+import pytest
 
 from loushang.ai.types import UserMessage
 from loushang.harness.conversation import (
@@ -12,6 +15,7 @@ from loushang.harness.conversation import (
 from loushang.harness.transcript import (
     AGENT_MESSAGE_KIND,
     AgentTranscriptDirectoryRuntime,
+    SessionDiscoverySource,
     SessionQuery,
     SessionSummary,
     write_agent_transcript_export,
@@ -121,6 +125,13 @@ def test_directory_runtime_merges_read_only_legacy_discovery_roots(
 
     assert [summary.session_id for summary in summaries] == ["global", "legacy"]
     assert summaries[0].session_file == global_dir / "global.jsonl"
+    assert summaries[0].discovery is not None
+    assert summaries[0].discovery.origin == "custom"
+    assert summaries[0].discovery.health == "needs_attention"
+    assert summaries[0].discovery.resumable is True
+    assert len(summaries[0].discovery.conflicts) == 1
+    assert summaries[1].discovery is not None
+    assert summaries[1].discovery.health == "legacy"
     assert [item.item.projection.session_id for item in first_page.items] == ["legacy"]
     assert [item.item.projection.session_id for item in second_page.items] == ["global"]
     assert first_page.index_state == "unavailable"
@@ -128,6 +139,107 @@ def test_directory_runtime_merges_read_only_legacy_discovery_roots(
     assert first_page.has_more is True
     assert second_page.has_more is False
     assert runtime.session_dir == global_dir
+
+
+def test_directory_runtime_projects_typed_origins_and_identical_aliases(
+    tmp_path: Path,
+) -> None:
+    global_dir = tmp_path / "home" / "data" / "sessions"
+    legacy_dir = tmp_path / "project" / ".loushang" / "sessions"
+    global_dir.mkdir(parents=True)
+    legacy_dir.mkdir(parents=True)
+    canonical = global_dir / "canonical.jsonl"
+    legacy = legacy_dir / "legacy.jsonl"
+    write_agent_transcript_export(
+        canonical,
+        _header("shared", cwd="/workspace/project"),
+        [_record("record", "same content", timestamp=1.0)],
+    )
+    legacy.write_bytes(canonical.read_bytes())
+    runtime = AgentTranscriptDirectoryRuntime(
+        session_dir=global_dir,
+        authority_session_source=SessionDiscoverySource(
+            "sessions.global",
+            global_dir,
+            "canonical",
+            "global",
+            priority=0,
+        ),
+        discovery_session_sources=(
+            SessionDiscoverySource(
+                "sessions.cwd_compatibility",
+                legacy_dir,
+                "compatibility",
+                "cwd",
+                priority=10,
+            ),
+        ),
+    )
+
+    summaries = runtime.list_discovered_session_summaries()
+
+    assert len(summaries) == 1
+    discovery = summaries[0].discovery
+    assert discovery is not None
+    assert discovery.origin == "global"
+    assert discovery.health == "available"
+    assert discovery.locator.source_id == "sessions.global"
+    assert [alias.source_id for alias in discovery.aliases] == [
+        "sessions.cwd_compatibility"
+    ]
+    assert discovery.conflicts == ()
+
+
+def test_directory_runtime_ignores_linked_compatibility_root(
+    tmp_path: Path,
+) -> None:
+    global_dir = tmp_path / "global"
+    external_dir = tmp_path / "external"
+    linked_dir = tmp_path / "linked"
+    global_dir.mkdir()
+    external_dir.mkdir()
+    write_agent_transcript_export(
+        external_dir / "external.jsonl",
+        _header("external", cwd="/workspace/project"),
+        [_record("record", "must not follow", timestamp=1.0)],
+    )
+    try:
+        os.symlink(external_dir, linked_dir, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("directory symlinks are unavailable")
+    runtime = AgentTranscriptDirectoryRuntime(session_dir=global_dir)
+    runtime.add_session_discovery_dir(linked_dir)
+
+    assert runtime.list_discovered_session_summaries() == []
+    page = runtime.try_query_session_index_page(limit=10)
+    assert page.items == ()
+    assert [issue.code for issue in page.discovery_issues] == ["unsafe_root"]
+
+
+def test_directory_runtime_ignores_linked_transcript_candidate(
+    tmp_path: Path,
+) -> None:
+    global_dir = tmp_path / "global"
+    compatibility_dir = tmp_path / "compatibility"
+    external_dir = tmp_path / "external"
+    global_dir.mkdir()
+    compatibility_dir.mkdir()
+    external_dir.mkdir()
+    external = external_dir / "external.jsonl"
+    write_agent_transcript_export(
+        external,
+        _header("external", cwd="/workspace/project"),
+        [_record("record", "must not follow", timestamp=1.0)],
+    )
+    try:
+        os.symlink(external, compatibility_dir / "linked.jsonl")
+    except (NotImplementedError, OSError):
+        pytest.skip("file symlinks are unavailable")
+    runtime = AgentTranscriptDirectoryRuntime(session_dir=global_dir)
+    runtime.add_session_discovery_dir(compatibility_dir)
+
+    assert runtime.list_discovered_session_summaries() == []
+    assert runtime.try_query_session_index_page(limit=10).items == ()
 
 
 def test_directory_runtime_indexed_views_share_cwd_and_global_federation(

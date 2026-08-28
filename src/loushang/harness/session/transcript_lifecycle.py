@@ -535,6 +535,21 @@ class AgentTranscriptSessionRuntime(
             )
 
         session_name = candidate.name
+        conflicted_ids = {
+            summary.session_id
+            for summary in summaries
+            if summary.discovery is not None
+            and summary.discovery.health == "conflict"
+            and (
+                summary.session_id == session_name
+                or summary.session_id.startswith(session_name)
+            )
+        }
+        if conflicted_ids:
+            raise ValueError(
+                "Ambiguous session reference across discovery sources: "
+                f"{session_name}"
+            )
         authority_named = self.session_dir / session_name
         if authority_named.is_file():
             return authority_named

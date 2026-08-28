@@ -44,6 +44,7 @@ from loushang.harness.runtime import (
 )
 from loushang.harness.transcript import (
     AgentTranscriptSessionCatalog,
+    SessionAssetHealthSummary,
     SessionIndexPage,
     SessionQuery,
     SessionSummary,
@@ -102,6 +103,10 @@ class CodingPreparedSessionOperation(Protocol):
 
 class StaleContinuityTargetError(RuntimeError):
     """Raised when a selected summary no longer matches transcript authority."""
+
+
+class ConflictedContinuityTargetError(RuntimeError):
+    """Raised when one Session identity has different discovered authorities."""
 
 
 class CodingContinuityProvider:
@@ -171,14 +176,23 @@ class CodingContinuityProvider:
                     after_cursor=page_item.after_cursor,
                 )
             )
-        diagnostics: tuple[ContinuityDiagnostic, ...] = ()
+        diagnostics = [
+            ContinuityDiagnostic(
+                code=f"coding_session_discovery_{issue.code}",
+                message=(
+                    f"Ignored Session source {issue.source_id}: {issue.detail}."
+                ),
+                provider_id=CODING_CONTINUITY_PROVIDER_ID,
+            )
+            for issue in page.discovery_issues
+        ]
         if page.restart_required:
-            diagnostics = (
+            diagnostics.append(
                 ContinuityDiagnostic(
                     code="coding_continuity_snapshot_expired",
                     message="The Coding session index traversal expired; restart search.",
                     provider_id=CODING_CONTINUITY_PROVIDER_ID,
-                ),
+                )
             )
         elif page.index_state != "fresh":
             if not self._index_refresh_requested:
@@ -187,7 +201,7 @@ class CodingContinuityProvider:
                 else:
                     self._runtime.request_session_index_repair()
                 self._index_refresh_requested = True
-            diagnostics = (
+            diagnostics.append(
                 ContinuityDiagnostic(
                     code=(
                         "coding_continuity_bounded_catalog"
@@ -201,7 +215,7 @@ class CodingContinuityProvider:
                         else "Coding session history is being indexed."
                     ),
                     provider_id=CODING_CONTINUITY_PROVIDER_ID,
-                ),
+                )
             )
         else:
             self._index_refresh_requested = False
@@ -213,7 +227,7 @@ class CodingContinuityProvider:
             ),
             index_generation=page.index_generation,
             query_snapshot=page.query_snapshot,
-            diagnostics=diagnostics,
+            diagnostics=tuple(diagnostics),
         )
 
     def _query_cwd(self) -> str | None:
@@ -245,6 +259,30 @@ class CodingContinuityProvider:
                 else f"at least {summary.entry_count}",
             ),
         ]
+        discovery = summary.discovery
+        if discovery is not None:
+            rows.extend(
+                (
+                    ("Storage", _session_storage_label(summary)),
+                    ("Health", _session_health_label(summary)),
+                )
+            )
+            if discovery.aliases:
+                rows.append(("Compatible copies", str(len(discovery.aliases))))
+            if discovery.conflicts:
+                rows.append(("Conflicting copies", str(len(discovery.conflicts))))
+        inspect_assets = getattr(
+            self._runtime,
+            "inspect_discovered_session_assets",
+            None,
+        )
+        if callable(inspect_assets) and summary.session_file is not None:
+            asset_health = await asyncio.to_thread(
+                inspect_assets,
+                summary.session_file,
+            )
+            if isinstance(asset_health, SessionAssetHealthSummary):
+                rows.append(("Assets", _asset_health_label(asset_health)))
         if summary.model:
             provider = summary.model.get("provider")
             model_id = summary.model.get("model_id")
@@ -291,6 +329,7 @@ class CodingContinuityProvider:
     ) -> CallbackPreparedActivationLease:
         indexed = self._cached_target(target)
         summary = indexed.projection
+        _require_unconflicted_summary(summary)
         expected_revision = session_summary_revision(
             summary,
             indexed.source_revision,
@@ -350,6 +389,7 @@ class CodingContinuityProvider:
     async def delete(self, target: ContinuityTarget) -> bool:
         indexed = self._cached_target(target)
         summary = indexed.projection
+        _require_unconflicted_summary(summary)
         expected_revision = session_summary_revision(
             summary,
             indexed.source_revision,
@@ -569,9 +609,9 @@ def _continuity_summary(
         title=_summary_title(summary),
         updated_at=summary.updated_at,
         created_at=summary.created_at,
-        subtitle=summary.cwd or None,
+        subtitle=_session_subtitle(summary),
         excerpt=summary.last_message_preview or summary.first_message,
-        status="Needs attention" if summary.has_diagnostics else None,
+        status=_session_status(summary),
     )
 
 
@@ -582,6 +622,64 @@ def _summary_title(summary: SessionSummary) -> str:
     return summary.session_id[:8]
 
 
+def _require_unconflicted_summary(summary: SessionSummary) -> None:
+    discovery = summary.discovery
+    if discovery is not None and not discovery.resumable:
+        raise ConflictedContinuityTargetError(
+            "This Session ID has different transcripts in multiple discovery "
+            "sources. Select an exact path or resolve the conflict before resume."
+        )
+
+
+def _session_status(summary: SessionSummary) -> str | None:
+    discovery = summary.discovery
+    if discovery is None:
+        return "Needs attention" if summary.has_diagnostics else None
+    if discovery.health == "conflict":
+        return "Conflict"
+    if discovery.health == "legacy":
+        return f"Legacy · {discovery.origin}"
+    if discovery.health == "needs_attention":
+        return "Needs attention"
+    return None
+
+
+def _session_subtitle(summary: SessionSummary) -> str | None:
+    discovery = summary.discovery
+    if discovery is None or discovery.mode == "canonical":
+        return summary.cwd or None
+    origin = discovery.origin.capitalize()
+    return f"{summary.cwd or 'Unknown workspace'} · {origin} compatibility"
+
+
+def _session_storage_label(summary: SessionSummary) -> str:
+    discovery = summary.discovery
+    if discovery is None:
+        return "Unknown"
+    if discovery.mode == "canonical":
+        return f"{discovery.origin.capitalize()} canonical"
+    return f"{discovery.origin.capitalize()} compatibility"
+
+
+def _session_health_label(summary: SessionSummary) -> str:
+    discovery = summary.discovery
+    if discovery is None:
+        return "Needs attention" if summary.has_diagnostics else "Unknown"
+    return discovery.health.replace("_", " ").title()
+
+
+def _asset_health_label(health: SessionAssetHealthSummary) -> str:
+    if health.state == "none":
+        return "None"
+    suffix = f" · {health.object_count} objects · {health.total_bytes} bytes"
+    if health.state == "available":
+        return f"Available{suffix}"
+    return (
+        f"{health.state.title()}{suffix} · "
+        f"{health.missing} missing · {health.corrupt} corrupt"
+    )
+
+
 __all__ = [
     "CODING_CONTINUITY_IMPLEMENTATION",
     "CODING_CONTINUITY_IMPLEMENTATION_VERSION",
@@ -589,6 +687,7 @@ __all__ = [
     "CODING_EXPERIENCE_ID",
     "CodingContinuityComposition",
     "CodingContinuityProvider",
+    "ConflictedContinuityTargetError",
     "StaleContinuityTargetError",
     "bind_coding_continuity",
     "shutdown_coding_continuity",
