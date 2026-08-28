@@ -11,6 +11,7 @@ ContinuitySort = Literal["updated", "created"]
 ContinuityIndexState = Literal["fresh", "stale", "rebuilding", "unavailable", "unknown"]
 ContinuityPreviewSectionKind = Literal["text", "key_value", "artifacts"]
 ActivationDisposition = Literal["in_place", "relaunch", "new_window", "unsupported"]
+ContinuityAction = Literal["activate", "delete"]
 
 MAX_CONTINUITY_PAGE_SIZE = 100
 MAX_CONTINUITY_TEXT_LENGTH = 512
@@ -144,6 +145,7 @@ class ContinuitySummary:
     subtitle: str | None = None
     excerpt: str | None = None
     status: str | None = None
+    actions: tuple[ContinuityAction, ...] = ("activate",)
 
     def __post_init__(self) -> None:
         if not isinstance(self.target, ContinuityTarget):
@@ -166,7 +168,13 @@ class ContinuitySummary:
         _optional_text(self.subtitle, name="summary subtitle")
         _optional_text(self.excerpt, name="summary excerpt")
         _optional_text(self.status, name="summary status")
+        actions = tuple(self.actions)
+        if not actions or any(action not in {"activate", "delete"} for action in actions):
+            raise ValueError("summary actions must contain supported actions")
+        if len(set(actions)) != len(actions):
+            raise ValueError("summary actions must be unique")
         object.__setattr__(self, "domain_ids", domain_ids)
+        object.__setattr__(self, "actions", actions)
 
 
 @dataclass(frozen=True)
@@ -392,6 +400,7 @@ class ContinuityPreview:
 __all__ = [
     "ActivationDisposition",
     "ContinuityArtifactReference",
+    "ContinuityAction",
     "ContinuityDiagnostic",
     "ContinuityIndexState",
     "ContinuityPage",

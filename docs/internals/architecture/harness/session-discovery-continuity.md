@@ -36,9 +36,9 @@ Each selected summary carries `SessionDiscoveryMetadata`:
 - `aliases` are byte-identical copies of the selected authority;
 - `conflicts` are same-ID candidates whose exact equality cannot be proven.
 
-The CLI JSON projection preserves this structure. TSV appends origin and
-health only when a discovery projection is available, retaining the legacy
-five-column projection for injected older catalog records.
+The CLI JSON projection preserves this structure. TSV remains the stable
+five-column compatibility projection; provenance is available only in JSON so
+its column count never changes according to the selected row.
 
 ## Merge and selection rules
 
@@ -74,10 +74,19 @@ TUI picker:
 - selected previews report storage origin, compatible/conflicting copies, and
   durable asset health.
 
-Asset inspection is intentionally selection-scoped. The list path never loads
-image bytes. Preview loads the selected transcript, validates Session Blob
-ownership, and reports reference/object counts, bytes, and missing/corrupt
-objects. Model-call hydration remains a separate bounded operation.
+Asset inspection is intentionally selection-scoped and strictly bounded. The
+list path never loads image bytes. Preview accepts only a bounded transcript,
+caps reference count, and validates Session Blob ownership and object metadata
+without hashing image contents. It reports `partial` when objects are present,
+because full content integrity remains part of the separately bounded model-call
+hydration path. Oversized or racing previews report `unavailable` instead of
+blocking the picker.
+
+Continuity summaries advertise per-target actions. Compatibility targets expose
+activation only; canonical targets may also expose deletion. Canonical deletion
+publishes the existing Conversation identity tombstone before unlinking the
+transcript. Discovery consults that tombstone so retained compatibility copies
+cannot silently resurrect an explicitly deleted Session.
 
 ## Plugin boundary
 

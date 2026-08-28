@@ -28,6 +28,7 @@ from loushang.harness.continuity.reference import (
 from loushang.harness.continuity.types import (
     CONTINUITY_PROVIDER_PROFILE_VERSION,
     ActivationDisposition,
+    ContinuityAction,
     ContinuityArtifactReference,
     ContinuityDiagnostic,
     ContinuityIndexState,
@@ -48,6 +49,7 @@ from loushang.harness.continuity.types import (
 
 __all__ = [
     "ActivationDisposition",
+    "ContinuityAction",
     "ActivationLeaseStateError",
     "BoundContinuityProvider",
     "CallbackPreparedActivationLease",

@@ -53,6 +53,8 @@ IndexMaintenance = Literal["bounded_refresh", "repair", "refresh", "refresh_all"
 _MAX_INDEX_TRAVERSALS = 8
 _INDEX_TRAVERSAL_TTL = 900.0
 _MAX_DUPLICATE_COMPARISON_BYTES = 64 * 1024 * 1024
+_MAX_ASSET_PREVIEW_TRANSCRIPT_BYTES = 8 * 1024 * 1024
+_MAX_ASSET_PREVIEW_REFERENCES = 256
 _MAX_DISCOVERY_SOURCES = 32
 
 
@@ -267,12 +269,14 @@ class AgentTranscriptDirectoryRuntime:
             for summary in self.session_catalog.list_summaries()
         ]
         for source in self._safe_discovery_session_sources():
+            catalog = AgentTranscriptSessionCatalog(
+                source.root,
+                index_writable=False,
+            )
             candidates.extend(
                 (source, summary)
-                for summary in AgentTranscriptSessionCatalog(
-                    source.root,
-                    index_writable=False,
-                ).list_path_summaries()
+                for summary in catalog.list_path_summaries()
+                if not self.session_catalog.is_tombstoned(summary.session_id)
             )
         return _merge_discovered_session_summaries(candidates)
 
@@ -293,7 +297,7 @@ class AgentTranscriptDirectoryRuntime:
 
         candidate = Path(session_ref).expanduser()
         if candidate.is_file():
-            session_file = candidate.resolve()
+            session_file = Path(os.path.abspath(candidate))
         else:
             matches = [
                 summary
@@ -312,12 +316,20 @@ class AgentTranscriptDirectoryRuntime:
             or self.is_discovery_session_file(session_file)
         ):
             raise ValueError("session asset inspection is outside discovery authority")
-        header, records = load_agent_transcript_file(session_file)
-        health = inspect_agent_transcript_session_blobs(
-            session_dir=session_file.parent,
-            session_id=header.conversation_id,
-            records=records,
-        )
+        try:
+            header, records = load_agent_transcript_file(
+                session_file,
+                max_bytes=_MAX_ASSET_PREVIEW_TRANSCRIPT_BYTES,
+            )
+            health = inspect_agent_transcript_session_blobs(
+                session_dir=session_file.parent,
+                session_id=header.conversation_id,
+                records=records,
+                verify_content=False,
+                max_references=_MAX_ASSET_PREVIEW_REFERENCES,
+            )
+        except (OSError, ValueError):
+            return SessionAssetHealthSummary(state="unavailable")
         if not health:
             return SessionAssetHealthSummary(state="none")
         unique_objects = {
@@ -327,7 +339,7 @@ class AgentTranscriptDirectoryRuntime:
         missing = sum(item.state == "missing" for item in health)
         corrupt = sum(item.state == "corrupt" for item in health)
         state: SessionAssetHealthState = (
-            "corrupt" if corrupt else "missing" if missing else "available"
+            "corrupt" if corrupt else "missing" if missing else "partial"
         )
         return SessionAssetHealthSummary(
             state=state,
@@ -581,12 +593,16 @@ class AgentTranscriptDirectoryRuntime:
             index_states.append(snapshot.index_state)
             bounded = snapshot.index_state != "fresh"
             any_bounded = any_bounded or bounded
+            source_items = (
+                snapshot.items
+                if not bounded
+                else catalog.bounded_index_snapshot(unfiltered).items
+            )
             items.extend(
                 (source, item)
-                for item in (
-                    snapshot.items
-                    if not bounded
-                    else catalog.bounded_index_snapshot(unfiltered).items
+                for item in source_items
+                if not self.session_catalog.is_tombstoned(
+                    item.projection.session_id
                 )
             )
         merged_items = _merge_discovered_index_items(items)
@@ -900,7 +916,7 @@ def _merge_discovered_group(
         "conflict"
         if conflicts and selected.source.mode == "compatibility"
         else "needs_attention"
-        if conflicts or selected.summary.has_diagnostics
+        if conflicts
         else "legacy"
         if selected.source.mode == "compatibility"
         else "available"
@@ -937,11 +953,7 @@ def _decorate_session_summary(
     source_revision: int,
 ) -> SessionSummary:
     health: SessionDiscoveryHealth = (
-        "needs_attention"
-        if summary.has_diagnostics
-        else "legacy"
-        if source.mode == "compatibility"
-        else "available"
+        "legacy" if source.mode == "compatibility" else "available"
     )
     return replace(
         summary,

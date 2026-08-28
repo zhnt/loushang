@@ -542,6 +542,24 @@ class AgentTranscriptSessionCatalog:
                 continue
         return _sort_summaries(summaries)
 
+    def is_tombstoned(self, session_id: str) -> bool:
+        """Return whether the local authority durably deleted this identity."""
+
+        if self._layout is None:
+            return False
+        path = self._layout.tombstone_path(self._layout.key(session_id))
+        try:
+            metadata = path.lstat()
+        except OSError:
+            return False
+        return stat_module.S_ISREG(metadata.st_mode) and not (
+            stat_module.S_ISLNK(metadata.st_mode)
+            or bool(
+                getattr(metadata, "st_file_attributes", 0)
+                & getattr(stat_module, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+            )
+        )
+
     def find_summaries(
         self,
         query: SessionQuery | None = None,

@@ -340,6 +340,68 @@ class SessionBlobStore(SessionBlobReader, SessionBlobWriter):
                 health.append(SessionBlobHealth(blob, "available"))
         return tuple(health)
 
+    def inspect_metadata(
+        self,
+        blobs: Iterable[SessionBlobRef] | None = None,
+    ) -> tuple[SessionBlobHealth, ...]:
+        """Inspect bounded ownership and object metadata without reading bytes.
+
+        This is an advisory preview operation. Model-input hydration continues
+        to use ``read_bytes`` and therefore performs full digest validation.
+        """
+
+        with self._lock, self._authority_lock("shared"):
+            self._load_manifest_if_present()
+            records = tuple(self._records)
+            selected = records if blobs is None else tuple(blobs)
+            owned = set(records)
+            health: list[SessionBlobHealth] = []
+            for blob in selected:
+                object_path = self.objects_root / blob.blob_id
+                if blob.session_id != self.session_id or blob not in owned:
+                    try:
+                        object_path.lstat()
+                    except FileNotFoundError:
+                        object_exists = False
+                    except OSError:
+                        object_exists = True
+                    else:
+                        object_exists = True
+                    health.append(
+                        SessionBlobHealth(
+                            blob,
+                            "corrupt" if object_exists else "missing",
+                            "blob is not owned by this session",
+                        )
+                    )
+                    continue
+                try:
+                    metadata = object_path.lstat()
+                except FileNotFoundError:
+                    health.append(
+                        SessionBlobHealth(blob, "missing", "object is missing")
+                    )
+                    continue
+                except OSError as error:
+                    health.append(SessionBlobHealth(blob, "corrupt", str(error)))
+                    continue
+                if (
+                    not stat.S_ISREG(metadata.st_mode)
+                    or _is_reparse_point(metadata)
+                    or not _owned_by_current_user(metadata)
+                    or metadata.st_size != blob.size_bytes
+                ):
+                    health.append(
+                        SessionBlobHealth(
+                            blob,
+                            "corrupt",
+                            "object metadata does not match its manifest",
+                        )
+                    )
+                    continue
+                health.append(SessionBlobHealth(blob, "available"))
+            return tuple(health)
+
     def clone_into(
         self,
         target: SessionBlobStore,
@@ -500,7 +562,13 @@ class SessionBlobStore(SessionBlobReader, SessionBlobWriter):
                 )
             if metadata.st_size > 8 * 1024 * 1024:
                 raise SessionBlobManifestError("session blob manifest is too large")
-            value = json.loads(self.manifest_path.read_text(encoding="utf-8"))
+            value = json.loads(
+                _read_stable_private_file(
+                    self.manifest_path,
+                    metadata,
+                    max_bytes=8 * 1024 * 1024,
+                ).decode("utf-8")
+            )
         except SessionBlobManifestError:
             raise
         except (OSError, UnicodeError, json.JSONDecodeError) as error:
@@ -634,6 +702,74 @@ def _read_blob_object(path: Path, reference: SessionBlobRef) -> bytes:
         return content
     finally:
         os.close(descriptor)
+
+
+def _read_stable_private_file(
+    path: Path,
+    expected: os.stat_result,
+    *,
+    max_bytes: int,
+) -> bytes:
+    flags = os.O_RDONLY
+    flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    parent_descriptor = -1
+    directory_flag = getattr(os, "O_DIRECTORY", 0)
+    try:
+        if os.name != "nt" and directory_flag:
+            parent_flags = os.O_RDONLY | directory_flag
+            parent_flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+            parent_descriptor = os.open(path.parent, parent_flags)
+            descriptor = os.open(path.name, flags, dir_fd=parent_descriptor)
+        else:
+            descriptor = os.open(path, flags)
+        try:
+            opened = os.fstat(descriptor)
+            if (
+                not os.path.samestat(expected, opened)
+                or not stat.S_ISREG(opened.st_mode)
+                or _is_reparse_point(opened)
+                or not _owned_by_current_user(opened)
+                or opened.st_size > max_bytes
+            ):
+                raise SessionBlobManifestError(
+                    "session blob manifest identity changed"
+                )
+            remaining = opened.st_size
+            chunks: list[bytes] = []
+            while remaining:
+                chunk = os.read(descriptor, min(remaining, 1024 * 1024))
+                if not chunk:
+                    raise SessionBlobManifestError(
+                        "session blob manifest changed while reading"
+                    )
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            after = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+    finally:
+        if parent_descriptor >= 0:
+            os.close(parent_descriptor)
+    current = path.lstat()
+    if not _same_file_status(opened, after) or not _same_file_status(expected, current):
+        raise SessionBlobManifestError("session blob manifest changed while reading")
+    return b"".join(chunks)
+
+
+def _same_file_status(left: os.stat_result, right: os.stat_result) -> bool:
+    return (
+        left.st_dev,
+        left.st_ino,
+        left.st_size,
+        left.st_mtime_ns,
+        left.st_ctime_ns,
+    ) == (
+        right.st_dev,
+        right.st_ino,
+        right.st_size,
+        right.st_mtime_ns,
+        right.st_ctime_ns,
+    )
 
 
 __all__ = [

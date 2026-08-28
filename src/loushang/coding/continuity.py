@@ -277,10 +277,13 @@ class CodingContinuityProvider:
             None,
         )
         if callable(inspect_assets) and summary.session_file is not None:
-            asset_health = await asyncio.to_thread(
-                inspect_assets,
-                summary.session_file,
-            )
+            try:
+                asset_health = await asyncio.to_thread(
+                    inspect_assets,
+                    summary.session_file,
+                )
+            except (OSError, ValueError):
+                asset_health = SessionAssetHealthSummary(state="unavailable")
             if isinstance(asset_health, SessionAssetHealthSummary):
                 rows.append(("Assets", _asset_health_label(asset_health)))
         if summary.model:
@@ -398,6 +401,10 @@ class CodingContinuityProvider:
         indexed = self._cached_target(target)
         summary = indexed.projection
         _require_unconflicted_summary(summary)
+        if summary.discovery is not None and summary.discovery.mode != "canonical":
+            raise RuntimeError(
+                "Compatibility Sessions are read-only; resume them before deletion."
+            )
         expected_revision = session_summary_revision(
             summary,
             indexed.source_revision,
@@ -620,6 +627,11 @@ def _continuity_summary(
         subtitle=_session_subtitle(summary),
         excerpt=summary.last_message_preview or summary.first_message,
         status=_session_status(summary),
+        actions=(
+            ("activate", "delete")
+            if summary.discovery is None or summary.discovery.mode == "canonical"
+            else ("activate",)
+        ),
     )
 
 
@@ -645,10 +657,12 @@ def _session_status(summary: SessionSummary) -> str | None:
         return "Needs attention" if summary.has_diagnostics else None
     if discovery.health == "conflict":
         return "Conflict"
-    if discovery.health == "legacy":
-        return f"Legacy · {discovery.origin}"
     if discovery.health == "needs_attention":
         return "Needs attention"
+    if summary.has_diagnostics:
+        return "Needs attention"
+    if discovery.health == "legacy":
+        return f"Legacy · {discovery.origin}"
     return None
 
 
@@ -672,16 +686,20 @@ def _session_storage_label(summary: SessionSummary) -> str:
 def _session_health_label(summary: SessionSummary) -> str:
     discovery = summary.discovery
     if discovery is None:
-        return "Needs attention" if summary.has_diagnostics else "Unknown"
+        return "Unknown"
     return discovery.health.replace("_", " ").title()
 
 
 def _asset_health_label(health: SessionAssetHealthSummary) -> str:
     if health.state == "none":
         return "None"
+    if health.state == "unavailable":
+        return "Unavailable (preview budget or read boundary)"
     suffix = f" · {health.object_count} objects · {health.total_bytes} bytes"
     if health.state == "available":
         return f"Available{suffix}"
+    if health.state == "partial":
+        return f"Present (integrity checked on resume){suffix}"
     return (
         f"{health.state.title()}{suffix} · "
         f"{health.missing} missing · {health.corrupt} corrupt"

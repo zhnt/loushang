@@ -117,4 +117,7 @@ def test_listing_projects_session_provenance_for_json_and_tsv() -> None:
         "aliases": [],
         "conflicts": [],
     }
-    assert format_session_records(records, "tsv").endswith("\tcwd\tlegacy\n")
+    assert format_session_records(records, "tsv") == (
+        "session-1\t/tmp/session-1.jsonl\t/tmp/project\t"
+        "2026-01-02T00:00:00Z\tdraft\n"
+    )

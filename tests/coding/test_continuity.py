@@ -310,7 +310,7 @@ def test_coding_resume_preview_inspects_durable_clipboard_image_health(
         preview = await composition.hub.preview(page.items[0].target)
         assert (
             "Assets",
-            "Available · 1 objects · 15 bytes",
+            "Present (integrity checked on resume) · 1 objects · 15 bytes",
         ) in preview.sections[1].rows
         (store.objects_root / image.blob_id).unlink()
         degraded = await composition.hub.preview(page.items[0].target)

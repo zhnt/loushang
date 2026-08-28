@@ -169,11 +169,15 @@ def load_agent_transcript_repository(
 
 def load_agent_transcript_file(
     path: Path,
+    *,
+    max_bytes: int | None = None,
 ) -> tuple[ConversationHeader, list[AgentTranscriptRecord]]:
     target = Path(path)
+    if max_bytes is not None and (type(max_bytes) is not int or max_bytes < 1):
+        raise ValueError("transcript read limit must be positive")
     try:
         with agent_transcript_file_lock(target, "shared"):
-            content = _read_stable_regular_file(target)
+            content = _read_stable_regular_file(target, max_bytes=max_bytes)
     except OSError as exc:
         raise AgentTranscriptFileError(
             "Transcript file could not be read safely",
@@ -529,10 +533,20 @@ def _absolute_path_preserving_leaf(path: str | Path) -> Path:
     return absolute.parent.resolve(strict=False) / absolute.name
 
 
-def _read_stable_regular_file(path: Path) -> bytes:
+def _read_stable_regular_file(
+    path: Path,
+    *,
+    max_bytes: int | None = None,
+) -> bytes:
     before = path.lstat()
     if not _status_is_regular_no_follow(before):
         raise OSError("transcript source must be a regular file")
+    if max_bytes is not None and before.st_size > max_bytes:
+        raise AgentTranscriptFileError(
+            "Transcript file exceeds the selected read budget",
+            path=path,
+            code="session_file_too_large",
+        )
     flags = os.O_RDONLY
     flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
     descriptor = os.open(path, flags)

@@ -29,9 +29,11 @@ SessionDiscoveryHealth = Literal[
 ]
 SessionAssetHealthState = Literal[
     "available",
+    "partial",
     "missing",
     "corrupt",
     "none",
+    "unavailable",
 ]
 SessionDiscoveryIssueCode = Literal[
     "unsafe_root",
@@ -197,7 +199,14 @@ class SessionAssetHealthSummary:
     corrupt: int = 0
 
     def __post_init__(self) -> None:
-        if self.state not in {"available", "missing", "corrupt", "none"}:
+        if self.state not in {
+            "available",
+            "partial",
+            "missing",
+            "corrupt",
+            "none",
+            "unavailable",
+        }:
             raise ValueError("session asset health state is invalid")
         for name in (
             "reference_count",

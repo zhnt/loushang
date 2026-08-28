@@ -95,8 +95,12 @@ class ContinuitySurface:
         self._reference = reference
         self._request_render = request_render
         self._theme = theme if theme is not None else CONTINUITY_PAGE_THEME
-        self._include_summary = include_summary or (lambda _summary: True)
         self._selection_action = selection_action
+        requested_action = "delete" if selection_action == "delete" else "activate"
+        product_filter = include_summary or (lambda _summary: True)
+        self._include_summary = lambda summary: (
+            requested_action in summary.actions and product_filter(summary)
+        )
         self._keybindings = continuity_keybinding_manager(keybindings)
         self._query = ContinuityQuery(page_size=page_size)
         self._summaries: list[ContinuitySummary] = []

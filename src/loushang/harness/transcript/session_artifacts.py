@@ -59,6 +59,8 @@ def inspect_agent_transcript_session_blobs(
     session_dir: str | Path,
     session_id: str,
     records: Sequence[AgentTranscriptRecord],
+    verify_content: bool = True,
+    max_references: int | None = None,
 ) -> tuple[SessionBlobHealth, ...]:
     """Return availability diagnostics while leaving transcript resume usable."""
 
@@ -67,11 +69,18 @@ def inspect_agent_transcript_session_blobs(
         records,
         expected_session_id=authority_id,
     )
+    if max_references is not None and len(references) > max_references:
+        raise ValueError("session blob preview reference limit exceeded")
     if not references:
         return ()
     data_root = resolve_session_blob_data_root(session_dir)
     try:
-        return SessionBlobStore(data_root, authority_id).inspect(references)
+        store = SessionBlobStore(data_root, authority_id)
+        return (
+            store.inspect(references)
+            if verify_content
+            else store.inspect_metadata(references)
+        )
     except (OSError, ValueError) as error:
         return tuple(
             SessionBlobHealth(blob, "corrupt", str(error)) for blob in references
