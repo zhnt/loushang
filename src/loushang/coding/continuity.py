@@ -155,6 +155,9 @@ class CodingContinuityProvider:
                 text=request.text or None,
                 sort_by="created" if request.sort_id == "created" else "recent",
                 has_messages=True,
+                source_mode=(
+                    "canonical" if "delete" in request.required_actions else None
+                ),
             ),
             cursor=request.cursor,
             limit=request.limit,

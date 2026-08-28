@@ -40,7 +40,10 @@ from loushang.harness.conversation import (
     ProjectionQuery,
     load_conversation_deletion_receipt,
 )
-from loushang.harness.transcript.discovery import SessionDiscoveryMetadata
+from loushang.harness.transcript.discovery import (
+    SessionDiscoveryMetadata,
+    SessionSourceMode,
+)
 from loushang.harness.transcript.jsonl_file import (
     AgentTranscriptFileLayout,
     create_agent_transcript_file_store,
@@ -69,12 +72,13 @@ RecordT = TypeVar("RecordT")
 
 _LEAF_UNSET = object()
 _MISSING = object()
-_SESSION_INDEX_VERSION = 2
+_SESSION_INDEX_VERSION = 3
 _SESSION_INDEX_FILENAME = ".session-index.json"
 _BOUNDED_SEGMENT_BYTES = 64 * 1024
 _BOUNDED_ENRICH_LIMIT = 50
 _MAX_PATH_SUMMARY_FILE_BYTES = 8 * 1024 * 1024
 _MAX_PATH_SUMMARY_TOTAL_BYTES = 64 * 1024 * 1024
+_MAX_PATH_SUMMARY_HEADER_BYTES = 64 * 1024
 _PROFILE = AgentTranscriptProfile.default()
 _HEADER_CODEC = ConversationJsonlHeaderCodec()
 _RECORD_CODEC = ConversationJsonlRecordCodec(_PROFILE.payload_codecs)
@@ -132,6 +136,7 @@ class BoundedSessionCatalogSnapshot:
     authority_count: int
     enriched_count: int
     bytes_read: int
+    complete: bool = True
 
 
 @dataclass(frozen=True)
@@ -140,6 +145,29 @@ class _BoundedSessionCandidate:
     size: int
     mtime_ns: int
     fingerprint: str
+
+
+@dataclass
+class SessionDiscoveryReadBudget:
+    """One request-wide compatibility discovery I/O and candidate budget."""
+
+    remaining_candidates: int = 4096
+    remaining_bytes: int = _MAX_PATH_SUMMARY_TOTAL_BYTES
+    truncated: bool = False
+
+    def reserve(self, *, candidates: int = 0, bytes_: int = 0) -> bool:
+        if (
+            candidates > self.remaining_candidates
+            or bytes_ > self.remaining_bytes
+        ):
+            self.truncated = True
+            return False
+        self.remaining_candidates -= candidates
+        self.remaining_bytes -= bytes_
+        return True
+
+    def mark_incomplete(self) -> None:
+        self.truncated = True
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -153,6 +181,7 @@ class SessionQuery:
     has_diagnostics: bool | None = None
     has_messages: bool | None = None
     limit: int | None = None
+    source_mode: SessionSourceMode | None = None
 
 
 @dataclass(frozen=True)
@@ -526,14 +555,24 @@ class AgentTranscriptSessionCatalog:
         self,
         *,
         session_id_prefix: str | None = None,
+        read_budget: SessionDiscoveryReadBudget | None = None,
     ) -> list[SessionSummary]:
         """Project physical paths with bounded reads and no identity collapse."""
 
         if self._layout is None:
             return self.list_summaries()
+        budget = read_budget or SessionDiscoveryReadBudget()
+        if budget.remaining_candidates <= 0 or budget.remaining_bytes <= 0:
+            budget.mark_incomplete()
+            return []
         summaries: list[SessionSummary] = []
-        remaining = _MAX_PATH_SUMMARY_TOTAL_BYTES
-        for candidate in self._bounded_candidates():
+        candidates, complete = self._bounded_candidates_with_completeness()
+        if not complete:
+            budget.mark_incomplete()
+        for candidate in candidates:
+            header_charge = min(candidate.size, _MAX_PATH_SUMMARY_HEADER_BYTES)
+            if not budget.reserve(candidates=1, bytes_=header_charge):
+                break
             try:
                 header = load_agent_transcript_header(candidate.path)
                 if session_id_prefix is not None and not (
@@ -545,9 +584,8 @@ class AgentTranscriptSessionCatalog:
                 locator = ConversationLocator(self._provider.provider_id, key)
                 if (
                     candidate.size <= _MAX_PATH_SUMMARY_FILE_BYTES
-                    and candidate.size <= remaining
+                    and budget.reserve(bytes_=candidate.size - header_charge)
                 ):
-                    remaining -= candidate.size
                     loaded_header, records = load_agent_transcript_file(
                         candidate.path,
                         max_bytes=_MAX_PATH_SUMMARY_FILE_BYTES,
@@ -596,13 +634,30 @@ class AgentTranscriptSessionCatalog:
             self.tombstone_path(session_id)
         ) is not None
 
-    def list_path_collision_summaries(self) -> list[SessionSummary]:
+    def list_path_collision_summaries(
+        self,
+        *,
+        read_budget: SessionDiscoveryReadBudget | None = None,
+    ) -> list[SessionSummary]:
         """Return header-only projections for physical paths sharing one ID."""
 
         if self._layout is None:
             return []
+        budget = read_budget or SessionDiscoveryReadBudget(
+            remaining_bytes=(
+                _MAX_PATH_SUMMARY_HEADER_BYTES * 4096
+            ),
+        )
         by_id: dict[str, list[SessionSummary]] = {}
-        for candidate in self._bounded_candidates():
+        candidates, complete = self._bounded_candidates_with_completeness()
+        if not complete:
+            budget.mark_incomplete()
+        for candidate in candidates:
+            if not budget.reserve(
+                candidates=1,
+                bytes_=min(candidate.size, _MAX_PATH_SUMMARY_HEADER_BYTES),
+            ):
+                break
             try:
                 header = load_agent_transcript_header(candidate.path)
                 key = self._layout.key(header.conversation_id)
@@ -643,13 +698,44 @@ class AgentTranscriptSessionCatalog:
         )
 
     def refresh_index(self) -> list[SessionSummary]:
+        before, before_complete = self._bounded_candidates_with_completeness()
+        if not before_complete:
+            raise RuntimeError("session authority scan was truncated")
+        collision_budget = SessionDiscoveryReadBudget(
+            remaining_bytes=_MAX_PATH_SUMMARY_HEADER_BYTES * 4096,
+        )
+        collisions = self.list_path_collision_summaries(
+            read_budget=collision_budget
+        )
+        if collision_budget.truncated:
+            raise RuntimeError("session authority scan was truncated")
+        if collisions:
+            raise RuntimeError("session authority contains duplicate identities")
         if self.session_dir is not None:
             self.session_dir.mkdir(parents=True, exist_ok=True)
         result = _run_catalog(self._catalog(indexed=True).refresh())
+        after, after_complete = self._bounded_candidates_with_completeness()
+        if not after_complete or _bounded_candidate_identities(
+            before
+        ) != _bounded_candidate_identities(after):
+            if self.session_dir is not None:
+                self.index_path.unlink(missing_ok=True)
+            raise RuntimeError("session authority changed during index refresh")
         return _sort_summaries(item.projection for item in result.items)
 
     def repair_index(self) -> list[SessionSummary]:
         """Incrementally repair changed local transcripts, rebuilding as fallback."""
+
+        collision_budget = SessionDiscoveryReadBudget(
+            remaining_bytes=_MAX_PATH_SUMMARY_HEADER_BYTES * 4096,
+        )
+        collisions = self.list_path_collision_summaries(
+            read_budget=collision_budget
+        )
+        if collision_budget.truncated:
+            raise RuntimeError("session authority scan was truncated")
+        if collisions:
+            raise RuntimeError("session authority contains duplicate identities")
 
         if (
             self.session_dir is None
@@ -755,6 +841,7 @@ class AgentTranscriptSessionCatalog:
             or item.locator.key.namespace != self._layout.namespace
             or item.locator.key.conversation_id != summary.session_id
             or path is None
+            or summary.authority_fingerprint is None
         ):
             return False
         absolute = Path(os.path.abspath(path.expanduser()))
@@ -770,6 +857,7 @@ class AgentTranscriptSessionCatalog:
         *,
         enrich_limit: int = _BOUNDED_ENRICH_LIMIT,
         segment_bytes: int = _BOUNDED_SEGMENT_BYTES,
+        read_budget: SessionDiscoveryReadBudget | None = None,
     ) -> BoundedSessionCatalogSnapshot:
         """Build a bounded resume view without replaying transcript authority.
 
@@ -786,9 +874,30 @@ class AgentTranscriptSessionCatalog:
         if type(segment_bytes) is not int or segment_bytes < 1:
             raise ValueError("bounded catalog segment size must be positive")
 
-        candidates = self._bounded_candidates()
+        budget = read_budget
+        if budget is not None and (
+            budget.remaining_candidates <= 0 or budget.remaining_bytes <= 0
+        ):
+            budget.mark_incomplete()
+            return BoundedSessionCatalogSnapshot((), 0, 0, 0, complete=False)
+        candidates, complete = self._bounded_candidates_with_completeness()
+        if budget is not None:
+            allowed = min(len(candidates), budget.remaining_candidates)
+            if allowed < len(candidates):
+                budget.mark_incomplete()
+            budget.reserve(candidates=allowed)
+            candidates = candidates[:allowed]
+            enriched: list[_BoundedSessionCandidate] = []
+            for candidate in candidates[:enrich_limit]:
+                charge = min(candidate.size, segment_bytes * 2)
+                if not budget.reserve(bytes_=charge):
+                    break
+                enriched.append(candidate)
+            selected_candidates: Sequence[_BoundedSessionCandidate] = enriched
+        else:
+            selected_candidates = candidates[:enrich_limit]
         projected, bytes_read = self._project_bounded_candidates(
-            candidates[:enrich_limit],
+            selected_candidates,
             segment_bytes=segment_bytes,
         )
 
@@ -796,8 +905,9 @@ class AgentTranscriptSessionCatalog:
         return BoundedSessionCatalogSnapshot(
             items=selected,
             authority_count=len(candidates),
-            enriched_count=min(len(candidates), enrich_limit),
+            enriched_count=len(selected_candidates),
             bytes_read=bytes_read,
+            complete=complete and not (budget is not None and budget.truncated),
         )
 
     def refresh_bounded_index(
@@ -819,12 +929,18 @@ class AgentTranscriptSessionCatalog:
         if type(segment_bytes) is not int or segment_bytes < 1:
             raise ValueError("bounded catalog segment size must be positive")
         self.session_dir.mkdir(parents=True, exist_ok=True)
-        before = self._bounded_candidates()
+        before, before_complete = self._bounded_candidates_with_completeness()
+        if not before_complete:
+            raise RuntimeError("session authority scan was truncated")
         projected, _bytes_read = self._project_bounded_candidates(
             before,
             segment_bytes=segment_bytes,
         )
-        after = self._bounded_candidates()
+        if len({item.projection.session_id for item in projected}) != len(projected):
+            raise RuntimeError("session authority contains duplicate identities")
+        after, after_complete = self._bounded_candidates_with_completeness()
+        if not after_complete:
+            raise RuntimeError("session authority scan was truncated")
         if _bounded_candidate_identities(before) != _bounded_candidate_identities(
             after
         ):
@@ -864,11 +980,15 @@ class AgentTranscriptSessionCatalog:
         return projected, bytes_read
 
     def _bounded_candidates(self) -> tuple[_BoundedSessionCandidate, ...]:
+        return self._bounded_candidates_with_completeness()[0]
+
+    def _bounded_candidates_with_completeness(
+        self,
+    ) -> tuple[tuple[_BoundedSessionCandidate, ...], bool]:
         if self._layout is None:
-            return ()
-        return _bounded_session_candidates(
-            self._layout.scan_candidate_paths(self._layout.namespace)
-        )
+            return (), True
+        scan = self._layout.scan_candidate_path_snapshot(self._layout.namespace)
+        return _bounded_session_candidates(scan.paths), scan.complete
 
     async def upsert_summary(
         self,
@@ -1522,6 +1642,11 @@ def filter_agent_transcript_session_summaries(
     def matches(summary: SessionSummary) -> bool:
         if query.cwd is not None and not _same_session_cwd(summary.cwd, query.cwd):
             return False
+        if query.source_mode is not None and (
+            summary.discovery is None
+            or summary.discovery.mode != query.source_mode
+        ):
+            return False
         if (
             query.name is not None
             and query.name.lower() not in (summary.name or "").lower()
@@ -1902,6 +2027,7 @@ __all__ = [
     "SessionQuery",
     "SessionRecord",
     "SessionSummary",
+    "SessionDiscoveryReadBudget",
     "SessionTreeNode",
     "agent_transcript_header_cwd",
     "agent_transcript_header_parent_session",

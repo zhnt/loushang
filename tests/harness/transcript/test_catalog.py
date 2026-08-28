@@ -467,6 +467,20 @@ def test_read_only_index_rejects_links_oversize_and_external_projection_paths(
     catalog = AgentTranscriptSessionCatalog(tmp_path)
     catalog.refresh_index()
     payload = json.loads(catalog.index_path.read_text(encoding="utf-8"))
+    without_fingerprint = json.loads(json.dumps(payload))
+    without_fingerprint["items"][0]["projection"][
+        "authority_fingerprint"
+    ] = None
+    catalog.index_path.write_text(
+        json.dumps(without_fingerprint),
+        encoding="utf-8",
+    )
+    legacy = AgentTranscriptSessionCatalog(
+        tmp_path, index_writable=False
+    ).try_query_index_snapshot()
+    assert legacy.index_state == "stale"
+    assert legacy.items == ()
+
     external = tmp_path.parent / "external.jsonl"
     external.write_bytes(transcript.read_bytes())
     payload["items"][0]["projection"]["session_file"] = str(external)
@@ -496,6 +510,30 @@ def test_read_only_index_rejects_links_oversize_and_external_projection_paths(
     read_only = AgentTranscriptSessionCatalog(tmp_path, index_writable=False)
     assert read_only.try_query_index_snapshot().index_state == "stale"
     assert outside_index.read_text(encoding="utf-8") == "{}"
+
+
+def test_fresh_index_query_never_scans_transcript_collisions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transcript = tmp_path / "session.jsonl"
+    write_agent_transcript_export(
+        transcript,
+        _header("session", cwd="/workspace"),
+        [_record("record", "prompt")],
+    )
+    catalog = AgentTranscriptSessionCatalog(tmp_path)
+    catalog.refresh_index()
+
+    monkeypatch.setattr(
+        catalog,
+        "list_path_collision_summaries",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("fresh query touched transcript authority")
+        ),
+    )
+
+    assert catalog.try_query_index_snapshot().index_state == "fresh"
 
 
 def test_targeted_path_projection_never_replays_unrelated_large_transcript(

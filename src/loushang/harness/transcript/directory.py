@@ -25,7 +25,6 @@ from typing import Literal
 
 from loushang.harness.conversation import (
     ConversationIndexState,
-    ConversationLocator,
     IndexedProjection,
     StoreDataError,
 )
@@ -45,6 +44,7 @@ from loushang.harness.transcript.session_artifacts import (
 )
 from loushang.harness.transcript.session_catalog import (
     AgentTranscriptSessionCatalog,
+    SessionDiscoveryReadBudget,
     SessionQuery,
     SessionRecord,
     SessionSummary,
@@ -105,6 +105,7 @@ class _SessionDiscoveryCandidate:
 @dataclass
 class _DuplicateComparisonBudget:
     remaining: int = _MAX_DUPLICATE_COMPARISON_BYTES
+    exhausted: bool = False
 
 
 class AgentTranscriptDirectoryRuntime:
@@ -292,17 +293,24 @@ class AgentTranscriptDirectoryRuntime:
         *,
         session_id_prefix: str | None = None,
     ) -> list[SessionSummary]:
+        self._session_discovery_runtime_issues.pop("discovery_budget", None)
+        budget = SessionDiscoveryReadBudget()
         authority_catalog = self.session_catalog
+        authority_summaries = authority_catalog.list_path_summaries(
+            session_id_prefix=session_id_prefix,
+            read_budget=budget,
+        )
         candidates = [
             (self._authority_session_source, summary)
-            for summary in (
-                authority_catalog.list_path_summaries(
-                    session_id_prefix=session_id_prefix
-                )
-                if session_id_prefix is not None
-                else authority_catalog.list_summaries()
-            )
+            for summary in authority_summaries
+            if not self._identity_is_tombstoned(summary.session_id)
         ]
+        if budget.truncated:
+            self._record_discovery_truncation(self._authority_session_source)
+            return _merge_discovered_session_summaries(
+                candidates,
+                read_budget=budget,
+            )
         for source in self._safe_discovery_session_sources():
             catalog = AgentTranscriptSessionCatalog(
                 source.root,
@@ -311,11 +319,36 @@ class AgentTranscriptDirectoryRuntime:
             candidates.extend(
                 (source, summary)
                 for summary in catalog.list_path_summaries(
-                    session_id_prefix=session_id_prefix
+                    session_id_prefix=session_id_prefix,
+                    read_budget=budget,
                 )
                 if not self._identity_is_tombstoned(summary.session_id)
             )
-        return _merge_discovered_session_summaries(candidates)
+            if budget.truncated:
+                self._record_discovery_truncation(source)
+                break
+        merged = _merge_discovered_session_summaries(
+            candidates,
+            read_budget=budget,
+        )
+        if budget.truncated and "discovery_budget" not in (
+            self._session_discovery_runtime_issues
+        ):
+            self._record_discovery_truncation(self._authority_session_source)
+        return merged
+
+    def _record_discovery_truncation(
+        self,
+        source: SessionDiscoverySource,
+    ) -> None:
+        self._session_discovery_runtime_issues["discovery_budget"] = (
+            SessionDiscoveryIssue(
+                source_id=source.source_id,
+                code="discovery_truncated",
+                path=source.root,
+                detail="Session discovery exceeded its request-wide read budget",
+            )
+        )
 
     def find_discovered_session_summaries(
         self,
@@ -506,6 +539,8 @@ class AgentTranscriptDirectoryRuntime:
         if cursor is not None:
             return self._continue_session_index_page(cursor=cursor, limit=limit)
 
+        self._session_discovery_runtime_issues.pop("discovery_budget", None)
+
         if self._safe_discovery_session_sources():
             return self._start_discovered_session_index_page(
                 query=query,
@@ -530,15 +565,20 @@ class AgentTranscriptDirectoryRuntime:
                 "stale" if snapshot.index_state == "stale" else "unavailable"
             )
             bounded = self.session_catalog.bounded_index_snapshot(requested)
+            if not bounded.complete:
+                self._record_discovery_truncation(self._authority_session_source)
+            bounded_items = _merge_discovered_index_items(
+                [
+                    (self._authority_session_source, item)
+                    for item in bounded.items
+                    if not self._identity_is_tombstoned(
+                        item.projection.session_id
+                    )
+                ],
+            )
             token = secrets.token_urlsafe(18)
             traversal = _SessionIndexTraversal(
-                items=tuple(
-                    _decorate_indexed_session_summary(
-                        item,
-                        self._authority_session_source,
-                    )
-                    for item in bounded.items
-                ),
+                items=tuple(bounded_items),
                 index_generation=f"bounded:{snapshot.index_generation}",
                 query_snapshot=token,
                 expires_at=monotonic() + _INDEX_TRAVERSAL_TTL,
@@ -591,6 +631,7 @@ class AgentTranscriptDirectoryRuntime:
         """Pin one merged snapshot across global authority and legacy cwd roots."""
 
         requested = replace(query or SessionQuery(), limit=None)
+        discovery_budget = SessionDiscoveryReadBudget()
         ignored_authority = (
             Path(ignore_authority).expanduser().resolve(strict=False)
             if ignore_authority is not None
@@ -617,12 +658,28 @@ class AgentTranscriptDirectoryRuntime:
             else (),
         )
         current_bounded = current_snapshot.index_state != "fresh"
-        current_items = (
-            catalogs[0][1].bounded_index_snapshot(unfiltered).items
+        current_bounded_snapshot = (
+            catalogs[0][1].bounded_index_snapshot(
+                unfiltered,
+                read_budget=discovery_budget,
+            )
             if current_bounded
+            else None
+        )
+        if current_bounded_snapshot is not None and not (
+            current_bounded_snapshot.complete
+        ):
+            self._record_discovery_truncation(catalogs[0][0])
+        current_items = (
+            current_bounded_snapshot.items
+            if current_bounded_snapshot is not None
             else current_snapshot.items
         )
-        items = [(catalogs[0][0], item) for item in current_items]
+        items = [
+            (catalogs[0][0], item)
+            for item in current_items
+            if not self._identity_is_tombstoned(item.projection.session_id)
+        ]
         index_states = [current_snapshot.index_state]
         any_bounded = current_bounded
         for source, catalog in catalogs[1:]:
@@ -630,30 +687,21 @@ class AgentTranscriptDirectoryRuntime:
             index_states.append(snapshot.index_state)
             bounded = snapshot.index_state != "fresh"
             any_bounded = any_bounded or bounded
+            bounded_snapshot = (
+                catalog.bounded_index_snapshot(
+                    unfiltered,
+                    read_budget=discovery_budget,
+                )
+                if bounded
+                else None
+            )
+            if bounded_snapshot is not None and not bounded_snapshot.complete:
+                self._record_discovery_truncation(source)
             source_items = (
                 snapshot.items
-                if not bounded
-                else catalog.bounded_index_snapshot(unfiltered).items
+                if bounded_snapshot is None
+                else bounded_snapshot.items
             )
-            if not bounded:
-                collisions = catalog.list_path_collision_summaries()
-                if collisions:
-                    collision_ids = {summary.session_id for summary in collisions}
-                    source_items = (
-                        *(
-                            item
-                            for item in source_items
-                            if item.projection.session_id not in collision_ids
-                        ),
-                        *(
-                            IndexedProjection(
-                                locator=_required_conversation_locator(summary),
-                                source_revision=summary.entry_count,
-                                projection=summary,
-                            )
-                            for summary in collisions
-                        ),
-                    )
             items.extend(
                 (source, item)
                 for item in source_items
@@ -661,7 +709,14 @@ class AgentTranscriptDirectoryRuntime:
                     item.projection.session_id
                 )
             )
-        merged_items = _merge_discovered_index_items(items)
+        merged_items = _merge_discovered_index_items(
+            items,
+            read_budget=discovery_budget,
+        )
+        if discovery_budget.truncated and "discovery_budget" not in (
+            self._session_discovery_runtime_issues
+        ):
+            self._record_discovery_truncation(self._authority_session_source)
         selected = _filter_discovered_session_summaries(
             [item.projection for item in merged_items], requested
         )
@@ -880,6 +935,8 @@ def _merge_index_maintenance(
 
 def _merge_discovered_session_summaries(
     values: Sequence[tuple[SessionDiscoverySource, SessionSummary]],
+    *,
+    read_budget: SessionDiscoveryReadBudget | None = None,
 ) -> list[SessionSummary]:
     candidates = [
         _SessionDiscoveryCandidate(
@@ -890,7 +947,13 @@ def _merge_discovered_session_summaries(
         for source, summary in values
     ]
     return sorted(
-        (candidate.summary for candidate in _merge_discovered_candidates(candidates)),
+        (
+            candidate.summary
+            for candidate in _merge_discovered_candidates(
+                candidates,
+                read_budget=read_budget,
+            )
+        ),
         key=lambda summary: _session_summary_sort_key(summary, "recent"),
         reverse=True,
     )
@@ -900,6 +963,8 @@ def _merge_discovered_index_items(
     values: Sequence[
         tuple[SessionDiscoverySource, IndexedProjection[SessionSummary]]
     ],
+    *,
+    read_budget: SessionDiscoveryReadBudget | None = None,
 ) -> list[IndexedProjection[SessionSummary]]:
     candidates = [
         _SessionDiscoveryCandidate(
@@ -910,7 +975,7 @@ def _merge_discovered_index_items(
         )
         for source, item in values
     ]
-    merged = _merge_discovered_candidates(candidates)
+    merged = _merge_discovered_candidates(candidates, read_budget=read_budget)
     return [
         replace(candidate.indexed, projection=candidate.summary)
         for candidate in merged
@@ -920,15 +985,27 @@ def _merge_discovered_index_items(
 
 def _merge_discovered_candidates(
     candidates: Sequence[_SessionDiscoveryCandidate],
+    *,
+    read_budget: SessionDiscoveryReadBudget | None = None,
 ) -> list[_SessionDiscoveryCandidate]:
     grouped: dict[str, list[_SessionDiscoveryCandidate]] = {}
     for candidate in candidates:
         grouped.setdefault(candidate.summary.session_id, []).append(candidate)
-    comparison_budget = _DuplicateComparisonBudget()
-    return [
+    available = (
+        _MAX_DUPLICATE_COMPARISON_BYTES
+        if read_budget is None
+        else min(_MAX_DUPLICATE_COMPARISON_BYTES, read_budget.remaining_bytes)
+    )
+    comparison_budget = _DuplicateComparisonBudget(remaining=available)
+    merged = [
         _merge_discovered_group(group, comparison_budget=comparison_budget)
         for group in grouped.values()
     ]
+    if read_budget is not None:
+        read_budget.reserve(bytes_=available - comparison_budget.remaining)
+        if comparison_budget.exhausted:
+            read_budget.mark_incomplete()
+    return merged
 
 
 def _merge_discovered_group(
@@ -968,9 +1045,17 @@ def _merge_discovered_group(
             aliases.append(locator)
         else:
             conflicts.append(locator)
+    same_source_conflict = any(
+        candidate.source.source_id == selected.source.source_id
+        and _session_locator(candidate) in conflicts
+        for candidate in values
+        if candidate is not selected
+    )
     health: SessionDiscoveryHealth = (
         "conflict"
-        if conflicts and selected.source.mode == "compatibility"
+        if conflicts and (
+            selected.source.mode == "compatibility" or same_source_conflict
+        )
         else "needs_attention"
         if conflicts
         else "legacy"
@@ -1045,12 +1130,6 @@ def _required_session_file(summary: SessionSummary) -> Path:
     return summary.session_file
 
 
-def _required_conversation_locator(summary: SessionSummary) -> ConversationLocator:
-    if summary.locator is None:
-        raise ValueError("local Session summary requires a Conversation locator")
-    return summary.locator
-
-
 def _session_discovery_candidate_key(
     candidate: _SessionDiscoveryCandidate,
 ) -> tuple[int, int, str, str]:
@@ -1075,8 +1154,10 @@ def _bounded_file_digest(
     if (
         not stat_module.S_ISREG(before.st_mode)
         or _status_is_link_or_reparse(before)
-        or before.st_size > budget.remaining
     ):
+        return None
+    if before.st_size > budget.remaining:
+        budget.exhausted = True
         return None
     # Reserve the complete fixed snapshot before opening. A failed or racing
     # read still consumes its reservation, so one merge can never retry past

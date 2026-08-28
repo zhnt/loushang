@@ -535,6 +535,14 @@ class AgentTranscriptSessionRuntime(
                 session_id_prefix=candidate.name
             )
         )
+        if not candidate.exists() and any(
+            issue.code == "discovery_truncated"
+            for issue in self.session_discovery_issues
+        ):
+            raise ValueError(
+                "Session discovery was truncated; use an exact file path or "
+                "reduce configured compatibility roots"
+            )
         path = self._resolve_session_file_from_summaries(
             session_ref,
             summaries=summaries,

@@ -313,7 +313,7 @@ def stage_file_import(
     source: Path,
     destination_dir: Path,
     *,
-    copy_file: Callable[[Path, Path], None] = copy_file_exclusive,
+    copy_file: Callable[..., None] = copy_file_exclusive,
     expected_source_fingerprint: str | None = None,
 ) -> StagedFileImport:
     """Copy a file to an import-safe destination without overwriting a peer."""
@@ -352,7 +352,14 @@ def stage_file_import(
                         raise OSError(
                             "session import source no longer matches discovery"
                         )
-                copy_file(source, destination)
+                if expected_source_fingerprint is None:
+                    copy_file(source, destination)
+                else:
+                    copy_file(
+                        source,
+                        destination,
+                        expected_source_fingerprint=expected_source_fingerprint,
+                    )
         except FileExistsError:
             continue
         except Exception:

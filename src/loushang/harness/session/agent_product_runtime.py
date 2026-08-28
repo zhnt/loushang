@@ -160,7 +160,7 @@ def build_agent_product_session_runtime_ports(
     persist: bool,
     diagnostics_runtime: Callable[[SessionT | None], SessionDiagnosticsRuntime] | None,
     record_shutdown_failure: Callable[[object, SessionShutdownEvent, Exception], None],
-    copy_file: Callable[[Path, Path], None],
+    copy_file: Callable[..., None],
     before_release: Callable[
         [SessionT, SessionT | None, SessionLifecycleTransition],
         Awaitable[None] | None,
@@ -287,7 +287,7 @@ class AgentProductSessionRuntime(
         persist: bool = True,
         current_session: SessionT | None = None,
         diagnostics_service: DiagnosticsService | None = None,
-        copy_file: Callable[[Path, Path], None] = copy_file_exclusive,
+        copy_file: Callable[..., None] = copy_file_exclusive,
         before_release: Callable[
             [SessionT, SessionT | None, SessionLifecycleTransition],
             Awaitable[None] | None,

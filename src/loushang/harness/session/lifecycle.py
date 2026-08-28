@@ -36,7 +36,7 @@ TransitionReleaseCallback = Callable[
     Awaitable[None] | None,
 ]
 LifecycleCallback = Callable[[], Awaitable[None] | None]
-FileCopy = Callable[[Path, Path], None]
+FileCopy = Callable[..., None]
 
 
 def _absolute_path_preserving_leaf(path: str | Path) -> Path:

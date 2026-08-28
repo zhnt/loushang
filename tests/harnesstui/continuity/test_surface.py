@@ -147,7 +147,7 @@ def test_common_resume_view_is_a_real_page_and_renders_loading_first() -> None:
     after = view.render(RenderConstraints(width=80, max_height=12))
 
     assert any("Review the parser" in line.text for line in after.lines)
-    assert hub.queries == [ContinuityQuery()]
+    assert hub.queries == [ContinuityQuery(required_actions=("activate",))]
     assert renders
 
 
@@ -202,29 +202,15 @@ def test_delete_surface_filters_targets_by_advertised_action() -> None:
     asyncio.run(scenario())
 
 
-def test_delete_surface_advances_past_a_read_only_page() -> None:
+def test_delete_surface_requests_provider_side_action_filter() -> None:
     hub = _Hub()
-    read_only = replace(hub.summary, actions=("activate",))
     deletable = replace(
         hub.summary,
         target=replace(hub.summary.target, opaque_id="session-2"),
         title="Delete the parser session",
         actions=("activate", "delete"),
     )
-
-    async def query(request: ContinuityQuery) -> ContinuityPage:
-        hub.queries.append(request)
-        return ContinuityPage(
-            items=(deletable,) if request.cursor == "page-2" else (read_only,),
-            next_cursor=None if request.cursor == "page-2" else "page-2",
-            provider_diagnostics=(),
-            partial=False,
-            ordering_complete=True,
-            provider_states={},
-            aggregate_index_state="fresh",
-        )
-
-    hub.query = query  # type: ignore[method-assign]
+    hub.summary = deletable
     surface = ContinuitySurface(
         reference=_reference(hub),
         request_render=lambda _kind: None,
@@ -234,7 +220,7 @@ def test_delete_surface_advances_past_a_read_only_page() -> None:
     async def scenario() -> None:
         await surface.start()
         assert surface.selected_target == deletable.target
-        assert [request.cursor for request in hub.queries] == [None, "page-2"]
+        assert hub.queries[0].required_actions == ("delete",)
         surface.close()
 
     asyncio.run(scenario())

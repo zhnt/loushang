@@ -111,7 +111,7 @@ class ProductSessionRuntimePorts(Generic[SessionT, TranscriptT, PayloadT]):
     validate_restored_transcript: TranscriptValidator[TranscriptT] | None
     fork_profile: ForkProfile
     fork_target_resolver: ForkTargetResolver[SessionT, PayloadT]
-    copy_file: Callable[[Path, Path], None] = copy_file_exclusive
+    copy_file: Callable[..., None] = copy_file_exclusive
     hooks: SessionLifecycleHooks[SessionT, PayloadT] = SessionLifecycleHooks()
     diagnostics_runtime: SessionDiagnosticsRuntime | Callable[
         [SessionT | None], SessionDiagnosticsRuntime

@@ -288,6 +288,12 @@ def load_agent_transcript_header(path: Path) -> ConversationHeader:
 FilenameForKey = Callable[[ConversationKey], str]
 
 
+@dataclass(frozen=True)
+class AgentTranscriptCandidateScan:
+    paths: tuple[Path, ...]
+    complete: bool
+
+
 @dataclass
 class AgentTranscriptFileLayout:
     """Map transcript identities to Conversation JSONL paths.
@@ -356,12 +362,22 @@ class AgentTranscriptFileLayout:
     def scan_candidate_paths(self, namespace: str) -> tuple[Path, ...]:
         """Discover possible transcripts without opening their contents."""
 
+        return self.scan_candidate_path_snapshot(namespace).paths
+
+    def scan_candidate_path_snapshot(
+        self,
+        namespace: str,
+    ) -> AgentTranscriptCandidateScan:
+        """Return bounded candidates and whether the directory was exhausted."""
+
         if namespace != self.namespace or not _is_directory_no_follow(self.root):
-            return ()
+            return AgentTranscriptCandidateScan((), complete=True)
         candidates: list[Path] = []
+        complete = True
         try:
             for inspected, path in enumerate(self.root.iterdir(), start=1):
                 if inspected > _MAX_DISCOVERY_DIRECTORY_ENTRIES:
+                    complete = False
                     break
                 if (
                     path.suffix == ".jsonl"
@@ -370,10 +386,11 @@ class AgentTranscriptFileLayout:
                 ):
                     candidates.append(path)
                     if len(candidates) >= _MAX_DISCOVERY_CANDIDATES:
+                        complete = False
                         break
         except OSError:
-            return ()
-        return tuple(sorted(candidates))
+            return AgentTranscriptCandidateScan((), complete=False)
+        return AgentTranscriptCandidateScan(tuple(sorted(candidates)), complete)
 
     def has_transcript_modified_after(self, modified_at_ns: int) -> bool:
         """Check local authority freshness without decoding transcript bodies."""
@@ -699,6 +716,7 @@ def _load_msvcrt() -> Any:
 
 __all__ = [
     "AgentTranscriptFileError",
+    "AgentTranscriptCandidateScan",
     "AgentTranscriptFileLayout",
     "FilenameForKey",
     "LockMode",

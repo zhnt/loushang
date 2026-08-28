@@ -265,6 +265,7 @@ class ContinuityHub:
                 descending=request.descending,
                 limit=request.page_size,
                 cursor=provider_cursor.cursor,
+                required_actions=request.required_actions,
             )
             try:
                 async with semaphore:
@@ -274,7 +275,7 @@ class ContinuityHub:
                         provider.query(provider_request),
                         timeout=self._provider_timeout,
                     )
-                self._validate_provider_page(provider, page)
+                self._validate_provider_page(provider, page, provider_request)
                 return _QueryResult(provider=provider, page=page, diagnostic=None)
             except Exception as exc:
                 return _QueryResult(
@@ -491,6 +492,7 @@ class ContinuityHub:
         self,
         provider: ContinuityProvider,
         page: ProviderPage,
+        request: ProviderQuery,
     ) -> None:
         if not isinstance(page, ProviderPage):
             raise TypeError("continuity providers must return ProviderPage values")
@@ -502,6 +504,8 @@ class ContinuityHub:
                 raise ValueError("provider returned a target owned by another provider")
             if not set(summary.domain_ids).issubset(provider_domains):
                 raise ValueError("provider returned a summary for an undeclared Domain")
+            if not set(request.required_actions).issubset(summary.actions):
+                raise ValueError("provider returned a summary without required actions")
 
     def _provider_for_target(self, target: ContinuityTarget) -> ContinuityProvider:
         try:
@@ -538,6 +542,7 @@ class ContinuityHub:
             "sort_id": request.sort_id,
             "descending": request.descending,
             "page_size": request.page_size,
+            "required_actions": list(request.required_actions),
         }
         return hashlib.sha256(_canonical_json(payload)).hexdigest()
 

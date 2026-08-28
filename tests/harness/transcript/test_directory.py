@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import loushang.harness.transcript.directory as directory_module
 from loushang.ai.types import UserMessage
 from loushang.harness.conversation import (
     ConversationHeader,
@@ -664,7 +665,7 @@ def test_invalid_canonical_tombstone_fails_closed_with_discovery_issue(
     ]
 
 
-def test_fresh_compatibility_index_overlays_same_source_identity_collisions(
+def test_duplicate_compatibility_identity_refuses_fresh_index_and_stays_conflicted(
     tmp_path: Path,
 ) -> None:
     canonical_dir = tmp_path / "canonical"
@@ -683,14 +684,85 @@ def test_fresh_compatibility_index_overlays_same_source_identity_collisions(
     )
     from loushang.harness.transcript import AgentTranscriptSessionCatalog
 
-    AgentTranscriptSessionCatalog(compatibility_dir).refresh_index()
+    with pytest.raises(RuntimeError, match="duplicate identities"):
+        AgentTranscriptSessionCatalog(compatibility_dir).refresh_index()
     runtime = AgentTranscriptDirectoryRuntime(session_dir=canonical_dir)
     runtime.add_session_discovery_dir(compatibility_dir)
 
     page = runtime.try_query_session_index_page(limit=10)
 
     assert len(page.items) == 1
+    assert page.bounded_fallback is True
     discovery = page.items[0].item.projection.discovery
     assert discovery is not None
     assert discovery.health == "conflict"
     assert len(discovery.conflicts) == 1
+
+
+def test_duplicate_canonical_identity_is_conflicted_and_tombstone_hides_residual(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "first.jsonl"
+    second = tmp_path / "second.jsonl"
+    write_agent_transcript_export(
+        first,
+        _header("duplicate", cwd="/workspace/project"),
+        [_record("first", "first content", timestamp=1.0)],
+    )
+    write_agent_transcript_export(
+        second,
+        _header("duplicate", cwd="/workspace/project"),
+        [_record("second", "different content", timestamp=2.0)],
+    )
+    runtime = AgentTranscriptDirectoryRuntime(session_dir=tmp_path)
+
+    summaries = runtime.list_discovered_session_summaries(
+        session_id_prefix="duplicate"
+    )
+    assert len(summaries) == 1
+    assert summaries[0].discovery is not None
+    assert summaries[0].discovery.health == "conflict"
+    with pytest.raises(RuntimeError, match="duplicate identities"):
+        runtime.refresh_session_index()
+    page = runtime.try_query_session_index_page(limit=10)
+    assert page.bounded_fallback is True
+    assert page.items[0].item.projection.discovery is not None
+    assert page.items[0].item.projection.discovery.health == "conflict"
+
+    assert asyncio.run(delete_agent_transcript_jsonl(first)) is True
+    assert second.exists()
+    assert runtime.list_discovered_session_summaries() == []
+
+
+def test_discovery_budget_is_shared_across_roots_and_reports_truncation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    canonical_dir = tmp_path / "canonical"
+    first_dir = tmp_path / "first"
+    second_dir = tmp_path / "second"
+    canonical_dir.mkdir()
+    first_dir.mkdir()
+    second_dir.mkdir()
+    for root, session_id in ((first_dir, "first"), (second_dir, "second")):
+        write_agent_transcript_export(
+            root / f"{session_id}.jsonl",
+            _header(session_id, cwd="/workspace/project"),
+            [_record("record", session_id, timestamp=1.0)],
+        )
+    budget_type = directory_module.SessionDiscoveryReadBudget
+    monkeypatch.setattr(
+        directory_module,
+        "SessionDiscoveryReadBudget",
+        lambda: budget_type(remaining_candidates=1, remaining_bytes=1024 * 1024),
+    )
+    runtime = AgentTranscriptDirectoryRuntime(session_dir=canonical_dir)
+    runtime.add_session_discovery_dir(first_dir)
+    runtime.add_session_discovery_dir(second_dir)
+
+    summaries = runtime.list_discovered_session_summaries()
+
+    assert len(summaries) == 1
+    assert [issue.code for issue in runtime.session_discovery_issues] == [
+        "discovery_truncated"
+    ]

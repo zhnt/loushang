@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from loushang.harness.continuity import (
+    ContinuityAction,
     ContinuityPage,
     ContinuityPreview,
     ContinuityQuery,
@@ -54,7 +55,6 @@ _MAX_CONTEXT_COLUMN_WIDTH = 24
 _MIN_PRIMARY_COLUMN_WIDTH = 32
 _MAX_PRIMARY_COLUMN_WIDTH = 72
 _PRIMARY_COLUMN_RATIO = 0.55
-_MAX_FILTERED_PAGE_ADVANCES = 32
 ContinuitySort = Literal["updated", "created"]
 _PageSelectionTarget = int | Literal["last"]
 _PendingPageSelection = tuple[ContinuityTarget, _PageSelectionTarget]
@@ -97,13 +97,18 @@ class ContinuitySurface:
         self._request_render = request_render
         self._theme = theme if theme is not None else CONTINUITY_PAGE_THEME
         self._selection_action = selection_action
-        requested_action = "delete" if selection_action == "delete" else "activate"
+        requested_action: ContinuityAction = (
+            "delete" if selection_action == "delete" else "activate"
+        )
         product_filter = include_summary or (lambda _summary: True)
         self._include_summary = lambda summary: (
             requested_action in summary.actions and product_filter(summary)
         )
         self._keybindings = continuity_keybinding_manager(keybindings)
-        self._query = ContinuityQuery(page_size=page_size)
+        self._query = ContinuityQuery(
+            page_size=page_size,
+            required_actions=(requested_action,),
+        )
         self._summaries: list[ContinuitySummary] = []
         self._targets: dict[str, ContinuityTarget] = {}
         self._loading = True
@@ -360,22 +365,6 @@ class ContinuitySurface:
             self._request_render("product")
         try:
             page = await self._reference.query(request)
-            advances = 0
-            diagnostics = list(page.provider_diagnostics)
-            while (
-                not any(self._include_summary(item) for item in page.items)
-                and page.next_cursor is not None
-                and advances < _MAX_FILTERED_PAGE_ADVANCES
-            ):
-                request = replace(self._query, cursor=page.next_cursor)
-                page = await self._reference.query(request)
-                diagnostics.extend(page.provider_diagnostics)
-                advances += 1
-            if diagnostics != list(page.provider_diagnostics):
-                page = replace(
-                    page,
-                    provider_diagnostics=tuple(diagnostics),
-                )
         except asyncio.CancelledError:
             raise
         except Exception as exc:

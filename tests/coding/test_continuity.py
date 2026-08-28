@@ -405,6 +405,40 @@ def test_coding_continuity_projects_delete_only_for_canonical_targets(
     asyncio.run(scenario())
 
 
+def test_delete_action_filters_before_provider_pagination(tmp_path: Path) -> None:
+    canonical = tmp_path / "canonical"
+    compatibility = tmp_path / "compatibility"
+    canonical.mkdir()
+    compatibility.mkdir()
+    write_agent_transcript_export(
+        canonical / "canonical.jsonl",
+        _header("canonical"),
+        [_record("canonical-record", "Canonical")],
+    )
+    for index in range(40):
+        write_agent_transcript_export(
+            compatibility / f"legacy-{index}.jsonl",
+            _header(f"legacy-{index}"),
+            [_record(f"legacy-record-{index}", "Legacy")],
+        )
+    runtime = _Runtime(canonical)
+    runtime.add_session_discovery_dir(compatibility)
+    composition = bind_coding_continuity(runtime, all_sessions=True)
+
+    async def scenario() -> None:
+        page = await composition.hub.query(
+            ContinuityQuery(
+                page_size=1,
+                required_actions=("delete",),
+            )
+        )
+        assert [item.target.opaque_id for item in page.items] == ["canonical"]
+        assert page.next_cursor is None
+        await shutdown_coding_continuity(runtime)
+
+    asyncio.run(scenario())
+
+
 def test_clipboard_image_persists_through_transcript_and_continuity_preview(
     tmp_path: Path,
 ) -> None:

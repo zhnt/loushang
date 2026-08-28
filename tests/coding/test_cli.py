@@ -1052,16 +1052,24 @@ def test_default_runtime_builder_declares_global_cwd_and_home_session_sources(
     tmp_path,
     monkeypatch,
 ) -> None:
+    from loushang.ai.types import UserMessage
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
+    from loushang.coding.continuity import (
+        bind_coding_continuity,
+        shutdown_coding_continuity,
+    )
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.continuity import ContinuityQuery
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+    from loushang.harness.transcript import SessionQuery
 
     home = tmp_path / "user-home"
     project = tmp_path / "project"
     project.mkdir()
     monkeypatch.setenv("LOUSHANG_HOME", str(home))
     runtime = default_runtime_builder(
-        args=SimpleNamespace(no_tools=True, tools=(), no_session=True),
+        args=SimpleNamespace(no_tools=True, tools=(), no_session=False),
         cwd=project,
         session_dir=home / "data" / "sessions",
         services=create_services(),
@@ -1078,6 +1086,76 @@ def test_default_runtime_builder_declares_global_cwd_and_home_session_sources(
         "cwd",
         "home",
     ]
+
+    source_roots = {
+        source.origin: source.root for source in runtime.discovery_session_sources
+    }
+
+    async def seed_and_restore() -> None:
+        async def seed(root: Path, session_id: str, cwd: str) -> Path:
+            manager = await SessionManager.new(
+                session_dir=root,
+                cwd=cwd,
+                persist=True,
+                session_id=session_id,
+            )
+            await manager.append_message(
+                UserMessage(role="user", content=session_id, timestamp=1.0)
+            )
+            path = manager.get_session_file()
+            assert path is not None
+            await manager.dispose_runtime_profile()
+            return path
+
+        await seed(runtime.session_dir, "global-session", "/workspace/global")
+        cwd_file = await seed(
+            source_roots["cwd"],
+            "cwd-session",
+            str(project),
+        )
+        await seed(source_roots["home"], "home-session", "/workspace/home")
+
+        summaries = runtime.list_discovered_session_summaries()
+        assert {
+            summary.session_id: summary.discovery.origin
+            for summary in summaries
+            if summary.discovery is not None
+        } == {
+            "global-session": "global",
+            "cwd-session": "cwd",
+            "home-session": "home",
+        }
+        assert [
+            summary.session_id
+            for summary in runtime.find_discovered_session_summaries(
+                SessionQuery(cwd=str(project))
+            )
+        ] == ["cwd-session"]
+
+        composition = bind_coding_continuity(runtime, all_sessions=True)
+        page = await composition.hub.query(
+            ContinuityQuery(
+                page_size=10,
+                required_actions=("activate",),
+            )
+        )
+        assert {item.target.opaque_id for item in page.items} == {
+            "global-session",
+            "cwd-session",
+            "home-session",
+        }
+
+        prepared = await runtime.prepare_restore_session_operation("cwd-session")
+        result = await prepared.consume()
+        assert result.current is not None
+        restored = result.current.session_manager.get_session_file()
+        assert restored is not None
+        assert restored.parent == runtime.session_dir.resolve()
+        assert restored != cwd_file
+        await shutdown_coding_continuity(runtime)
+        await runtime.dispose_session_runtime()
+
+    asyncio.run(seed_and_restore())
 
 
 def test_default_runtime_builder_maps_no_tools_to_empty_allowed_tools(tmp_path) -> None:

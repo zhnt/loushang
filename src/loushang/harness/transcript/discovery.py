@@ -36,6 +36,7 @@ SessionAssetHealthState = Literal[
     "unavailable",
 ]
 SessionDiscoveryIssueCode = Literal[
+    "discovery_truncated",
     "invalid_tombstone",
     "unsafe_root",
     "unreadable_root",
@@ -174,6 +175,7 @@ class SessionDiscoveryIssue:
     def __post_init__(self) -> None:
         _nonempty(self.source_id, name="session discovery issue source_id")
         if self.code not in {
+            "discovery_truncated",
             "invalid_tombstone",
             "unsafe_root",
             "unreadable_root",

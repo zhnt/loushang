@@ -189,6 +189,7 @@ class ContinuityQuery:
     descending: bool = True
     page_size: int = 25
     cursor: str | None = None
+    required_actions: tuple[ContinuityAction, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.text, str):
@@ -219,6 +220,12 @@ class ContinuityQuery:
             )
         if self.cursor is not None:
             _nonempty(self.cursor, name="query cursor")
+        actions = tuple(self.required_actions)
+        if any(action not in {"activate", "delete"} for action in actions):
+            raise ValueError("query required_actions contains an unknown action")
+        if len(set(actions)) != len(actions):
+            raise ValueError("query required_actions must be unique")
+        object.__setattr__(self, "required_actions", actions)
 
 
 @dataclass(frozen=True)
@@ -228,6 +235,7 @@ class ProviderQuery:
     descending: bool
     limit: int
     cursor: str | None = None
+    required_actions: tuple[ContinuityAction, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.text, str):
@@ -243,6 +251,12 @@ class ProviderQuery:
             raise ValueError(
                 f"provider query limit must be between 1 and {MAX_CONTINUITY_PAGE_SIZE}"
             )
+        actions = tuple(self.required_actions)
+        if any(action not in {"activate", "delete"} for action in actions):
+            raise ValueError("provider query required_actions is invalid")
+        if len(set(actions)) != len(actions):
+            raise ValueError("provider query required_actions must be unique")
+        object.__setattr__(self, "required_actions", actions)
 
 
 @dataclass(frozen=True)
