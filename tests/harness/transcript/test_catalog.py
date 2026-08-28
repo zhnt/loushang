@@ -499,6 +499,39 @@ def test_bounded_index_refresh_does_not_publish_a_racing_directory(
     assert not catalog.index_path.exists()
 
 
+def test_bounded_index_refresh_revalidates_authority_after_publish(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    transcript = tmp_path / "session.jsonl"
+    write_agent_transcript_export(
+        transcript,
+        _header("session", cwd="/workspace"),
+        [_record("record", "prompt")],
+    )
+    catalog = AgentTranscriptSessionCatalog(tmp_path)
+    original_replace = catalog_module.JsonConversationIndex.replace
+
+    async def replace_then_add_duplicate(index, items):
+        published = await original_replace(index, items)
+        write_agent_transcript_export(
+            tmp_path / "duplicate.jsonl",
+            _header("session", cwd="/workspace"),
+            [_record("duplicate", "different")],
+        )
+        return published
+
+    monkeypatch.setattr(
+        catalog_module.JsonConversationIndex,
+        "replace",
+        replace_then_add_duplicate,
+    )
+
+    with pytest.raises(RuntimeError, match="changed"):
+        catalog.refresh_bounded_index()
+    assert catalog.index_path.exists() is False
+
+
 def test_index_freshness_can_ignore_only_the_active_transcript(
     tmp_path: Path,
 ) -> None:

@@ -510,10 +510,13 @@ class AgentTranscriptSessionRuntime(
     def resolve_session_file(self, session_ref: str | Path) -> Path:
         """Resolve a mutation target from the writable authority only."""
 
-        return self._resolve_session_file_from_summaries(
-            session_ref,
-            summaries=self.list_session_summaries(),
-            allow_external_path=False,
+        resolved = self.resolve_discovered_session_source(session_ref).path
+        if self.is_authority_session_file(resolved):
+            return resolved
+        raise FileNotFoundError(
+            errno.ENOENT,
+            "No such session in the writable authority",
+            str(session_ref),
         )
 
     def resolve_discovered_session_file(self, session_ref: str | Path) -> Path:

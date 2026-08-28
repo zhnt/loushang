@@ -741,6 +741,51 @@ def test_coding_provider_rejects_preserved_mtime_canonical_duplicate(
     asyncio.run(scenario())
 
 
+def test_real_coding_runtime_delete_rechecks_path_level_authority(
+    tmp_path: Path,
+) -> None:
+    authority = tmp_path / "authority"
+    project = tmp_path / "project"
+    authority.mkdir()
+    project.mkdir()
+    original = authority / "original.jsonl"
+    duplicate = authority / "duplicate.jsonl"
+    write_agent_transcript_export(
+        original,
+        _header("shared", cwd=str(project)),
+        [_record("original-record", "Original content")],
+    )
+    runtime = create_agent_session_runtime(
+        session_dir=authority,
+        model=_image_model(),
+        persist=True,
+    )
+    runtime.refresh_session_index()
+    composition = bind_coding_continuity(runtime, cwd=str(project))
+
+    async def scenario() -> None:
+        page = await composition.hub.query(
+            ContinuityQuery(page_size=10, required_actions=("delete",))
+        )
+        assert [item.target.opaque_id for item in page.items] == ["shared"]
+        write_agent_transcript_export(
+            duplicate,
+            _header("shared", cwd=str(project)),
+            [_record("duplicate-record", "Different content")],
+        )
+
+        with pytest.raises(ValueError, match="Ambiguous session reference"):
+            await composition.hub.delete(page.items[0].target)
+
+        assert original.exists() is True
+        assert duplicate.exists() is True
+        assert runtime.session_catalog.is_tombstoned("shared") is False
+        await shutdown_coding_continuity(runtime)
+        await runtime.dispose_session_runtime()
+
+    asyncio.run(scenario())
+
+
 def test_coding_provider_cannot_delete_an_excluded_current_session(
     tmp_path: Path,
 ) -> None:

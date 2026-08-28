@@ -953,6 +953,16 @@ class AgentTranscriptSessionCatalog:
         ):
             raise RuntimeError("session authority changed during bounded index refresh")
         published = _run_catalog(self._projection_index().replace(projected))
+        after_publish, after_publish_complete = (
+            self._bounded_candidates_with_completeness()
+        )
+        if not after_publish_complete or _bounded_candidate_identities(
+            before
+        ) != _bounded_candidate_identities(after_publish):
+            self.index_path.unlink(missing_ok=True)
+            raise RuntimeError(
+                "session authority changed during bounded index refresh"
+            )
         return _sort_summaries(item.projection for item in published)
 
     def _project_bounded_candidates(
