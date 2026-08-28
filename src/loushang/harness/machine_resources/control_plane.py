@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import json
 import os
 import re
 import stat
@@ -35,7 +34,12 @@ from loushang.harness.artifacts import (
     session_blob_authority_id,
     sweep_managed_artifacts,
 )
-from loushang.harness.conversation import ConversationKey, StoreCommitOutcomeUnknown
+from loushang.harness.conversation import (
+    ConversationKey,
+    StoreCommitOutcomeUnknown,
+    StoreDataError,
+    load_conversation_deletion_receipt,
+)
 from loushang.harness.transcript.jsonl_file import (
     AgentTranscriptFileLayout,
     create_agent_transcript_file_store,
@@ -1046,20 +1050,10 @@ def _has_canonical_deletion_tombstone(
             or metadata.st_size > 16 * 1024
         ):
             return False
-        value = json.loads(_read_stable_regular_file(tombstone, metadata))
-    except (OSError, UnicodeError, ValueError):
+        receipt = load_conversation_deletion_receipt(tombstone)
+    except (OSError, StoreDataError, UnicodeError, ValueError):
         return False
-    return (
-        isinstance(value, dict)
-        and set(value) == {"revision", "deleted_at", "operation_id"}
-        and isinstance(value.get("revision"), int)
-        and not isinstance(value.get("revision"), bool)
-        and value["revision"] >= 0
-        and isinstance(value.get("deleted_at"), str)
-        and bool(value["deleted_at"])
-        and isinstance(value.get("operation_id"), str)
-        and bool(value["operation_id"])
-    )
+    return receipt is not None
 
 
 def _status_for(
