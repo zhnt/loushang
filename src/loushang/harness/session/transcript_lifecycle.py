@@ -37,7 +37,10 @@ from loushang.harness.transcript.directory import (
 from loushang.harness.transcript.product_session import (
     ProductTranscriptSession,
 )
-from loushang.harness.transcript.session_catalog import SessionSummary
+from loushang.harness.transcript.session_catalog import (
+    SessionSummary,
+    session_file_authority_fingerprint,
+)
 
 SessionT = TypeVar("SessionT")
 PayloadT = TypeVar("PayloadT")
@@ -56,6 +59,12 @@ TranscriptSessionBuilder = Callable[
     SessionT | Awaitable[SessionT],
 ]
 TranscriptSessionValidator = Callable[[TranscriptSessionT], None | Awaitable[None]]
+
+
+@dataclass(frozen=True)
+class ResolvedDiscoveredSessionFile:
+    path: Path
+    authority_fingerprint: str
 
 
 @dataclass(frozen=True)
@@ -417,12 +426,14 @@ class AgentTranscriptSessionRuntime(
         input_path: str | Path,
         *,
         cwd_override: str | None = None,
+        expected_source_fingerprint: str | None = None,
         metadata: dict[str, object] | None = None,
     ) -> SessionOperationResult[SessionT, PayloadT | None]:
         return await self._lifecycle.import_file(
             input_path,
             destination_dir=self.session_dir,
             cwd_override=cwd_override,
+            expected_source_fingerprint=expected_source_fingerprint,
             metadata=metadata,
         )
 
@@ -508,11 +519,42 @@ class AgentTranscriptSessionRuntime(
     def resolve_discovered_session_file(self, session_ref: str | Path) -> Path:
         """Resolve a restore source using authority-first compatibility reads."""
 
-        return self._resolve_session_file_from_summaries(
+        return self.resolve_discovered_session_source(session_ref).path
+
+    def resolve_discovered_session_source(
+        self,
+        session_ref: str | Path,
+    ) -> ResolvedDiscoveredSessionFile:
+        """Resolve a source together with the identity selected by discovery."""
+
+        candidate = Path(session_ref).expanduser()
+        summaries = (
+            []
+            if candidate.exists()
+            else self.list_discovered_session_summaries(
+                session_id_prefix=candidate.name
+            )
+        )
+        path = self._resolve_session_file_from_summaries(
             session_ref,
-            summaries=self.list_discovered_session_summaries(),
+            summaries=summaries,
             allow_external_path=True,
         )
+        selected = next(
+            (
+                summary
+                for summary in summaries
+                if summary.session_file is not None
+                and summary.session_file.absolute() == path.absolute()
+            ),
+            None,
+        )
+        fingerprint = (
+            selected.authority_fingerprint
+            if selected is not None and selected.authority_fingerprint is not None
+            else session_file_authority_fingerprint(path)
+        )
+        return ResolvedDiscoveredSessionFile(path, fingerprint)
 
     def _resolve_session_file_from_summaries(
         self,
@@ -624,6 +666,7 @@ __all__ = [
     "ProductTranscriptSessionBinding",
     "ProductTranscriptSessionLifecyclePorts",
     "ProductTranscriptSessionLifecycleStore",
+    "ResolvedDiscoveredSessionFile",
     "require_session_operation_session",
     "SessionDiagnosticsProvider",
 ]

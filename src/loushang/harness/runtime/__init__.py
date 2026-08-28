@@ -84,6 +84,7 @@ from loushang.harness.runtime.session_operations import (
     SessionOperationResult,
     StagedFileImport,
     copy_file_exclusive,
+    file_status_fingerprint,
     run_replacement_callbacks,
     stage_file_import,
 )
@@ -191,6 +192,7 @@ __all__ = [
     "SealedRuntimeCapabilityError",
     "UnboundProductRuntimeContext",
     "copy_file_exclusive",
+    "file_status_fingerprint",
     "normalize_streaming_behavior",
     "run_replacement_callbacks",
     "stage_file_import",

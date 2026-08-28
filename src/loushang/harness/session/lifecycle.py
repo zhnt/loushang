@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import errno
 import inspect
+import os
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -36,6 +37,11 @@ TransitionReleaseCallback = Callable[
 ]
 LifecycleCallback = Callable[[], Awaitable[None] | None]
 FileCopy = Callable[[Path, Path], None]
+
+
+def _absolute_path_preserving_leaf(path: str | Path) -> Path:
+    absolute = Path(os.path.abspath(Path(path).expanduser()))
+    return absolute.parent.resolve(strict=False) / absolute.name
 
 
 @dataclass(frozen=True)
@@ -422,6 +428,7 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
         *,
         destination_dir: Path,
         cwd_override: str | None = None,
+        expected_source_fingerprint: str | None = None,
         metadata: Mapping[str, object] | None = None,
     ) -> PreparedSessionLifecycleOperation[SessionT, PayloadT]:
         """Stage an external transcript as an abortable authority restore."""
@@ -431,6 +438,7 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
             source,
             destination_dir,
             copy_file=self._copy_file,
+            expected_source_fingerprint=expected_source_fingerprint,
         )
         try:
             prepared = await self.prepare_restore(
@@ -492,9 +500,10 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
         *,
         destination_dir: Path,
         cwd_override: str | None = None,
+        expected_source_fingerprint: str | None = None,
         metadata: Mapping[str, object] | None = None,
     ) -> SessionOperationResult[SessionT, PayloadT | None]:
-        source = Path(input_path).expanduser().resolve()
+        source = _absolute_path_preserving_leaf(input_path)
         preflight = SessionLifecycleTransition(
             reason="resume",
             target_session_ref=str(source),
@@ -509,6 +518,7 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
                 source,
                 destination_dir,
                 copy_file=self._copy_file,
+                expected_source_fingerprint=expected_source_fingerprint,
             )
         except Exception as exc:
             await self._notify_preflight_failure(preflight, exc)

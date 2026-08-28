@@ -12,6 +12,7 @@ from loushang.harness.runtime.session_operations import (
     SessionOperationCoordinator,
     SessionOperationPhase,
     copy_file_exclusive,
+    file_status_fingerprint,
 )
 from loushang.harness.runtime.transition import SessionTransitionHost
 
@@ -82,6 +83,25 @@ def test_copy_file_exclusive_rejects_a_linked_source(tmp_path) -> None:
 
     assert destination.exists() is False
     assert outside.read_bytes() == b"outside transcript\n"
+
+
+def test_copy_file_exclusive_binds_the_discovered_source_identity(tmp_path) -> None:
+    source = tmp_path / "source.jsonl"
+    replacement = tmp_path / "replacement.jsonl"
+    destination = tmp_path / "destination.jsonl"
+    source.write_bytes(b"selected transcript\n")
+    expected = file_status_fingerprint(source.lstat())
+    replacement.write_bytes(b"replacement transcript\n")
+    replacement.replace(source)
+
+    with pytest.raises(OSError, match="no longer matches discovery"):
+        copy_file_exclusive(
+            source,
+            destination,
+            expected_source_fingerprint=expected,
+        )
+
+    assert destination.exists() is False
 
 
 def test_copy_file_exclusive_rejects_a_source_append_without_reading_to_eof(

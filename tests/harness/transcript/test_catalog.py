@@ -27,6 +27,7 @@ from loushang.harness.transcript import (
     project_session_record,
     write_agent_transcript_export,
 )
+from loushang.harness.transcript import session_catalog as catalog_module
 
 
 def _header(conversation_id: str, *, cwd: str) -> ConversationHeader:
@@ -452,6 +453,84 @@ def test_index_fingerprint_detects_replaced_authority_even_with_older_mtime(
 
     assert transcript.stat().st_mtime_ns < index_mtime
     assert catalog.try_query_index_snapshot().index_state == "stale"
+
+
+def test_read_only_index_rejects_links_oversize_and_external_projection_paths(
+    tmp_path: Path,
+) -> None:
+    transcript = tmp_path / "session.jsonl"
+    write_agent_transcript_export(
+        transcript,
+        _header("session", cwd="/workspace"),
+        [_record("record", "prompt")],
+    )
+    catalog = AgentTranscriptSessionCatalog(tmp_path)
+    catalog.refresh_index()
+    payload = json.loads(catalog.index_path.read_text(encoding="utf-8"))
+    external = tmp_path.parent / "external.jsonl"
+    external.write_bytes(transcript.read_bytes())
+    payload["items"][0]["projection"]["session_file"] = str(external)
+    catalog.index_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    forged = AgentTranscriptSessionCatalog(
+        tmp_path, index_writable=False
+    ).try_query_index_snapshot()
+    assert forged.index_state == "stale"
+    assert forged.items == ()
+
+    with catalog.index_path.open("wb") as handle:
+        handle.truncate(64 * 1024 * 1024 + 1)
+    oversized = AgentTranscriptSessionCatalog(
+        tmp_path, index_writable=False
+    ).try_query_index_snapshot()
+    assert oversized.index_state == "stale"
+    assert oversized.items == ()
+
+    catalog.index_path.unlink()
+    outside_index = tmp_path.parent / "outside-index.json"
+    outside_index.write_text("{}", encoding="utf-8")
+    try:
+        catalog.index_path.symlink_to(outside_index)
+    except (NotImplementedError, OSError):
+        pytest.skip("file symlinks are unavailable")
+    read_only = AgentTranscriptSessionCatalog(tmp_path, index_writable=False)
+    assert read_only.try_query_index_snapshot().index_state == "stale"
+    assert outside_index.read_text(encoding="utf-8") == "{}"
+
+
+def test_targeted_path_projection_never_replays_unrelated_large_transcript(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "target.jsonl"
+    unrelated = tmp_path / "unrelated.jsonl"
+    write_agent_transcript_export(
+        target,
+        _header("target", cwd="/workspace"),
+        [_record("record", "target prompt")],
+    )
+    write_agent_transcript_export(
+        unrelated,
+        _header("unrelated", cwd="/workspace"),
+        [_record("record", "unrelated prompt")],
+    )
+    with unrelated.open("ab") as handle:
+        handle.truncate(16 * 1024 * 1024)
+    original = catalog_module.load_agent_transcript_file
+    loaded: list[Path] = []
+
+    def record_load(path: Path, *, max_bytes: int | None = None):
+        loaded.append(path)
+        return original(path, max_bytes=max_bytes)
+
+    monkeypatch.setattr(catalog_module, "load_agent_transcript_file", record_load)
+
+    summaries = AgentTranscriptSessionCatalog(tmp_path).list_path_summaries(
+        session_id_prefix="target"
+    )
+
+    assert [summary.session_id for summary in summaries] == ["target"]
+    assert loaded == [target]
 
 
 def test_resume_index_omits_and_does_not_search_full_message_text(

@@ -36,6 +36,7 @@ SessionAssetHealthState = Literal[
     "unavailable",
 ]
 SessionDiscoveryIssueCode = Literal[
+    "invalid_tombstone",
     "unsafe_root",
     "unreadable_root",
 ]
@@ -172,7 +173,11 @@ class SessionDiscoveryIssue:
 
     def __post_init__(self) -> None:
         _nonempty(self.source_id, name="session discovery issue source_id")
-        if self.code not in {"unsafe_root", "unreadable_root"}:
+        if self.code not in {
+            "invalid_tombstone",
+            "unsafe_root",
+            "unreadable_root",
+        }:
             raise ValueError("session discovery issue code is invalid")
         _nonempty(self.detail, name="session discovery issue detail")
         object.__setattr__(self, "path", _absolute_path(self.path))

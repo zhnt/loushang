@@ -222,7 +222,12 @@ class SessionOperationCoordinator(Generic[S]):
         )
 
 
-def copy_file_exclusive(source: Path, destination: Path) -> None:
+def copy_file_exclusive(
+    source: Path,
+    destination: Path,
+    *,
+    expected_source_fingerprint: str | None = None,
+) -> None:
     """Durably publish a complete private copy without replacing a peer."""
 
     temporary = destination.with_name(
@@ -238,6 +243,12 @@ def copy_file_exclusive(source: Path, destination: Path) -> None:
         source_metadata = source.lstat()
         if not _is_regular_file_no_follow(source_metadata):
             raise OSError("session import source must be a regular file")
+        if (
+            expected_source_fingerprint is not None
+            and file_status_fingerprint(source_metadata)
+            != expected_source_fingerprint
+        ):
+            raise OSError("session import source no longer matches discovery")
         source_descriptor, parent_descriptor = _open_source_no_follow(source)
         opened = os.fstat(source_descriptor)
         if not _same_file_status(source_metadata, opened):
@@ -303,9 +314,17 @@ def stage_file_import(
     destination_dir: Path,
     *,
     copy_file: Callable[[Path, Path], None] = copy_file_exclusive,
+    expected_source_fingerprint: str | None = None,
 ) -> StagedFileImport:
     """Copy a file to an import-safe destination without overwriting a peer."""
     source = _absolute_path_preserving_leaf(source)
+    if expected_source_fingerprint is not None:
+        current = source.lstat()
+        if (
+            not _is_regular_file_no_follow(current)
+            or file_status_fingerprint(current) != expected_source_fingerprint
+        ):
+            raise OSError("session import source no longer matches discovery")
     destination_dir = destination_dir.resolve()
     destination_dir.mkdir(parents=True, exist_ok=True)
     for index in range(10_000):
@@ -316,7 +335,24 @@ def stage_file_import(
         if destination.exists():
             continue
         try:
-            copy_file(source, destination)
+            if copy_file is copy_file_exclusive:
+                copy_file_exclusive(
+                    source,
+                    destination,
+                    expected_source_fingerprint=expected_source_fingerprint,
+                )
+            else:
+                if expected_source_fingerprint is not None:
+                    current = source.lstat()
+                    if (
+                        not _is_regular_file_no_follow(current)
+                        or file_status_fingerprint(current)
+                        != expected_source_fingerprint
+                    ):
+                        raise OSError(
+                            "session import source no longer matches discovery"
+                        )
+                copy_file(source, destination)
         except FileExistsError:
             continue
         except Exception:
@@ -371,6 +407,15 @@ def _is_regular_file_no_follow(metadata: os.stat_result) -> bool:
             getattr(metadata, "st_file_attributes", 0)
             & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
         )
+    )
+
+
+def file_status_fingerprint(metadata: os.stat_result) -> str:
+    """Encode the stable local identity carried by discovery projections."""
+
+    return (
+        f"stat-v1:{metadata.st_dev}:{metadata.st_ino}:{metadata.st_size}:"
+        f"{metadata.st_mtime_ns}:{metadata.st_ctime_ns}"
     )
 
 
@@ -447,6 +492,7 @@ __all__ = [
     "StagedFileImport",
     "ReplacementCallbackFailure",
     "copy_file_exclusive",
+    "file_status_fingerprint",
     "run_replacement_callbacks",
     "stage_file_import",
 ]

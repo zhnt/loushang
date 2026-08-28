@@ -634,3 +634,63 @@ def test_canonical_delete_tombstone_prevents_compatibility_resurrection(
     assert runtime.session_catalog.is_tombstoned("deleted") is True
     assert runtime.list_discovered_session_summaries() == []
     assert runtime.try_query_session_index_page(limit=10).items == ()
+
+
+def test_invalid_canonical_tombstone_fails_closed_with_discovery_issue(
+    tmp_path: Path,
+) -> None:
+    canonical_dir = tmp_path / "canonical"
+    compatibility_dir = tmp_path / "compatibility"
+    canonical_dir.mkdir()
+    compatibility_dir.mkdir()
+    canonical = canonical_dir / "canonical.jsonl"
+    write_agent_transcript_export(
+        canonical,
+        _header("deleted", cwd="/workspace/project"),
+        [_record("record", "same", timestamp=1.0)],
+    )
+    (compatibility_dir / "legacy.jsonl").write_bytes(canonical.read_bytes())
+    runtime = AgentTranscriptDirectoryRuntime(session_dir=canonical_dir)
+    runtime.add_session_discovery_dir(compatibility_dir)
+    assert asyncio.run(delete_agent_transcript_jsonl(canonical)) is True
+    runtime.session_catalog.tombstone_path("deleted").write_text(
+        "not-json\n",
+        encoding="utf-8",
+    )
+
+    assert runtime.list_discovered_session_summaries() == []
+    assert [issue.code for issue in runtime.session_discovery_issues] == [
+        "invalid_tombstone"
+    ]
+
+
+def test_fresh_compatibility_index_overlays_same_source_identity_collisions(
+    tmp_path: Path,
+) -> None:
+    canonical_dir = tmp_path / "canonical"
+    compatibility_dir = tmp_path / "compatibility"
+    canonical_dir.mkdir()
+    compatibility_dir.mkdir()
+    write_agent_transcript_export(
+        compatibility_dir / "first.jsonl",
+        _header("duplicate", cwd="/workspace/project"),
+        [_record("first", "first content", timestamp=1.0)],
+    )
+    write_agent_transcript_export(
+        compatibility_dir / "second.jsonl",
+        _header("duplicate", cwd="/workspace/project"),
+        [_record("second", "different content", timestamp=2.0)],
+    )
+    from loushang.harness.transcript import AgentTranscriptSessionCatalog
+
+    AgentTranscriptSessionCatalog(compatibility_dir).refresh_index()
+    runtime = AgentTranscriptDirectoryRuntime(session_dir=canonical_dir)
+    runtime.add_session_discovery_dir(compatibility_dir)
+
+    page = runtime.try_query_session_index_page(limit=10)
+
+    assert len(page.items) == 1
+    discovery = page.items[0].item.projection.discovery
+    assert discovery is not None
+    assert discovery.health == "conflict"
+    assert len(discovery.conflicts) == 1

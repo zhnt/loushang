@@ -1214,6 +1214,52 @@ async def test_runtime_restores_legacy_discovery_as_authority_copy(
 
 
 @_async_test
+async def test_runtime_rejects_compatibility_source_replaced_after_discovery(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import pytest
+
+    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.session_manager import SessionManager
+
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    legacy_dir = project_root / ".loushang" / "sessions"
+    authority_dir = tmp_path / "user-home" / "data" / "sessions"
+    legacy = await SessionManager.new(
+        session_dir=legacy_dir,
+        cwd=str(project_root),
+        persist=True,
+    )
+    await legacy.append_message(_user_message("selected legacy prompt"))
+    legacy_file = legacy.get_session_file()
+    assert legacy_file is not None
+    legacy_id = legacy.get_session_record().session_id
+    await legacy.dispose_runtime_profile()
+
+    runtime = create_agent_session_runtime(
+        session_dir=authority_dir,
+        model=_model(),
+        persist=True,
+    )
+    runtime.add_session_discovery_dir(legacy_dir)
+    selected = runtime.resolve_discovered_session_source(legacy_id)
+    with legacy_file.open("ab") as handle:
+        handle.write(b" \n")
+    monkeypatch.setattr(
+        runtime,
+        "resolve_discovered_session_source",
+        lambda _session_ref: selected,
+    )
+
+    with pytest.raises(OSError, match="no longer matches discovery"):
+        await runtime.restore_session_operation(legacy_id)
+
+    assert not authority_dir.exists() or not tuple(authority_dir.glob("*.jsonl"))
+
+
+@_async_test
 async def test_runtime_refuses_same_id_with_different_discovery_content(
     tmp_path,
 ) -> None:

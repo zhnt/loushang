@@ -23,7 +23,12 @@ from threading import Lock
 from time import monotonic
 from typing import Literal
 
-from loushang.harness.conversation import ConversationIndexState, IndexedProjection
+from loushang.harness.conversation import (
+    ConversationIndexState,
+    ConversationLocator,
+    IndexedProjection,
+    StoreDataError,
+)
 from loushang.harness.runtime import CoalescingScheduler
 from loushang.harness.transcript.discovery import (
     SessionAssetHealthState,
@@ -143,6 +148,7 @@ class AgentTranscriptDirectoryRuntime:
         self.session_index_flush_delay = session_index_flush_delay
         self._record_index_refresh_failure = record_index_refresh_failure
         self._last_session_index_refresh = 0.0
+        self._session_discovery_runtime_issues: dict[str, SessionDiscoveryIssue] = {}
         self._index_traversals: OrderedDict[str, _SessionIndexTraversal] = OrderedDict()
         self._index_traversal_lock = Lock()
         self._session_index_flush = CoalescingScheduler[IndexMaintenance](
@@ -195,11 +201,29 @@ class AgentTranscriptDirectoryRuntime:
 
     @property
     def session_discovery_issues(self) -> tuple[SessionDiscoveryIssue, ...]:
-        return tuple(
+        root_issues = tuple(
             issue
             for source in self._discovery_session_sources
             if (issue := _discovery_root_issue(source)) is not None
         )
+        return (*root_issues, *self._session_discovery_runtime_issues.values())
+
+    def _identity_is_tombstoned(self, session_id: str) -> bool:
+        catalog = self.session_catalog
+        try:
+            retired = catalog.is_tombstoned(session_id)
+        except (OSError, StoreDataError) as error:
+            self._session_discovery_runtime_issues[session_id] = (
+                SessionDiscoveryIssue(
+                    source_id=self._authority_session_source.source_id,
+                    code="invalid_tombstone",
+                    path=catalog.tombstone_path(session_id),
+                    detail=str(error) or type(error).__name__,
+                )
+            )
+            return True
+        self._session_discovery_runtime_issues.pop(session_id, None)
+        return retired
 
     def add_session_discovery_dir(self, session_dir: str | Path) -> None:
         """Add a read-only compatibility root without changing write authority."""
@@ -263,10 +287,21 @@ class AgentTranscriptDirectoryRuntime:
             for source in self._safe_discovery_session_sources()
         )
 
-    def list_discovered_session_summaries(self) -> list[SessionSummary]:
+    def list_discovered_session_summaries(
+        self,
+        *,
+        session_id_prefix: str | None = None,
+    ) -> list[SessionSummary]:
+        authority_catalog = self.session_catalog
         candidates = [
             (self._authority_session_source, summary)
-            for summary in self.session_catalog.list_summaries()
+            for summary in (
+                authority_catalog.list_path_summaries(
+                    session_id_prefix=session_id_prefix
+                )
+                if session_id_prefix is not None
+                else authority_catalog.list_summaries()
+            )
         ]
         for source in self._safe_discovery_session_sources():
             catalog = AgentTranscriptSessionCatalog(
@@ -275,8 +310,10 @@ class AgentTranscriptDirectoryRuntime:
             )
             candidates.extend(
                 (source, summary)
-                for summary in catalog.list_path_summaries()
-                if not self.session_catalog.is_tombstoned(summary.session_id)
+                for summary in catalog.list_path_summaries(
+                    session_id_prefix=session_id_prefix
+                )
+                if not self._identity_is_tombstoned(summary.session_id)
             )
         return _merge_discovered_session_summaries(candidates)
 
@@ -598,10 +635,29 @@ class AgentTranscriptDirectoryRuntime:
                 if not bounded
                 else catalog.bounded_index_snapshot(unfiltered).items
             )
+            if not bounded:
+                collisions = catalog.list_path_collision_summaries()
+                if collisions:
+                    collision_ids = {summary.session_id for summary in collisions}
+                    source_items = (
+                        *(
+                            item
+                            for item in source_items
+                            if item.projection.session_id not in collision_ids
+                        ),
+                        *(
+                            IndexedProjection(
+                                locator=_required_conversation_locator(summary),
+                                source_revision=summary.entry_count,
+                                projection=summary,
+                            )
+                            for summary in collisions
+                        ),
+                    )
             items.extend(
                 (source, item)
                 for item in source_items
-                if not self.session_catalog.is_tombstoned(
+                if not self._identity_is_tombstoned(
                     item.projection.session_id
                 )
             )
@@ -987,6 +1043,12 @@ def _required_session_file(summary: SessionSummary) -> Path:
     if summary.session_file is None:
         raise ValueError("local Session discovery requires a transcript path")
     return summary.session_file
+
+
+def _required_conversation_locator(summary: SessionSummary) -> ConversationLocator:
+    if summary.locator is None:
+        raise ValueError("local Session summary requires a Conversation locator")
+    return summary.locator
 
 
 def _session_discovery_candidate_key(

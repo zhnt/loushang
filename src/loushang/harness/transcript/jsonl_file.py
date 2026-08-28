@@ -86,6 +86,9 @@ _LOAD_INDEX_COMPATIBILITY_TOKEN = (
     f"{MODEL_INPUT_V2_PROJECTION_VERSION}:schema-{MODEL_INPUT_V2_SCHEMA_VERSION}:"
     "deferred-node-index-v1"
 )
+_MAX_HEADER_BYTES = 64 * 1024
+_MAX_DISCOVERY_DIRECTORY_ENTRIES = 8192
+_MAX_DISCOVERY_CANDIDATES = 4096
 
 
 @contextmanager
@@ -228,8 +231,15 @@ def load_agent_transcript_header(path: Path) -> ConversationHeader:
     target = Path(path)
     try:
         with agent_transcript_file_lock(target, "shared"):
-            with target.open("r", encoding=DEFAULT_JSONL_FORMAT.encoding) as handle:
-                line = next((line for line in handle if line.strip()), "")
+            prefix = _read_stable_regular_prefix(
+                target,
+                max_bytes=_MAX_HEADER_BYTES,
+            )
+            line_bytes = next(
+                (line for line in prefix.splitlines() if line.strip()),
+                b"",
+            )
+            line = line_bytes.decode(DEFAULT_JSONL_FORMAT.encoding)
     except OSError as exc:
         raise AgentTranscriptFileError(
             "Transcript file could not be read",
@@ -346,14 +356,24 @@ class AgentTranscriptFileLayout:
     def scan_candidate_paths(self, namespace: str) -> tuple[Path, ...]:
         """Discover possible transcripts without opening their contents."""
 
-        if namespace != self.namespace or not self.root.is_dir():
+        if namespace != self.namespace or not _is_directory_no_follow(self.root):
             return ()
-        return tuple(
-            path
-            for path in sorted(self.root.glob("*.jsonl"))
-            if not path.name.endswith("-export.jsonl")
-            and _is_regular_file_no_follow(path)
-        )
+        candidates: list[Path] = []
+        try:
+            for inspected, path in enumerate(self.root.iterdir(), start=1):
+                if inspected > _MAX_DISCOVERY_DIRECTORY_ENTRIES:
+                    break
+                if (
+                    path.suffix == ".jsonl"
+                    and not path.name.endswith("-export.jsonl")
+                    and _is_regular_file_no_follow(path)
+                ):
+                    candidates.append(path)
+                    if len(candidates) >= _MAX_DISCOVERY_CANDIDATES:
+                        break
+        except OSError:
+            return ()
+        return tuple(sorted(candidates))
 
     def has_transcript_modified_after(self, modified_at_ns: int) -> bool:
         """Check local authority freshness without decoding transcript bodies."""
@@ -487,25 +507,9 @@ def _is_conversation_jsonl_candidate(path: Path) -> bool:
     if not _is_regular_file_no_follow(path):
         return False
     try:
-        flags = (
-            os.O_RDONLY
-            | getattr(os, "O_CLOEXEC", 0)
-            | getattr(os, "O_NOFOLLOW", 0)
-        )
-        descriptor = os.open(path, flags)
-        try:
-            handle = os.fdopen(
-                descriptor,
-                "r",
-                encoding=DEFAULT_JSONL_FORMAT.encoding,
-                closefd=True,
-            )
-        except Exception:
-            os.close(descriptor)
-            raise
-        with handle:
-            line = next((line for line in handle if line.strip()), "")
-        value = json.loads(line)
+        prefix = _read_stable_regular_prefix(path, max_bytes=_MAX_HEADER_BYTES)
+        line = next((line for line in prefix.splitlines() if line.strip()), b"")
+        value = json.loads(line.decode(DEFAULT_JSONL_FORMAT.encoding))
     except Exception:
         return True
     return not isinstance(value, dict) or value.get("type") == "conversation"
@@ -516,6 +520,20 @@ def _is_regular_file_no_follow(path: Path) -> bool:
         return _status_is_regular_no_follow(path.lstat())
     except OSError:
         return False
+
+
+def _is_directory_no_follow(path: Path) -> bool:
+    try:
+        status = path.lstat()
+    except OSError:
+        return False
+    return stat_module.S_ISDIR(status.st_mode) and not (
+        stat_module.S_ISLNK(status.st_mode)
+        or bool(
+            getattr(status, "st_file_attributes", 0)
+            & getattr(stat_module, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        )
+    )
 
 
 def _status_is_regular_no_follow(status: os.stat_result) -> bool:
@@ -549,7 +567,7 @@ def _read_stable_regular_file(
         )
     flags = os.O_RDONLY
     flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
-    descriptor = os.open(path, flags)
+    descriptor, parent_descriptor = _open_file_no_follow(path, flags=flags)
     try:
         opened = os.fstat(descriptor)
         if not _same_file_status(before, opened):
@@ -565,10 +583,75 @@ def _read_stable_regular_file(
         after = os.fstat(descriptor)
     finally:
         os.close(descriptor)
+        if parent_descriptor >= 0:
+            os.close(parent_descriptor)
     current = path.lstat()
     if not _same_file_status(before, after) or not _same_file_status(before, current):
         raise OSError("transcript source changed while reading")
     return b"".join(chunks)
+
+
+def _read_stable_regular_prefix(path: Path, *, max_bytes: int) -> bytes:
+    before = path.lstat()
+    if not _status_is_regular_no_follow(before):
+        raise OSError("transcript source must be a regular file")
+    flags = os.O_RDONLY
+    flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    descriptor, parent_descriptor = _open_file_no_follow(path, flags=flags)
+    try:
+        opened = os.fstat(descriptor)
+        if not _same_file_status(before, opened):
+            raise OSError("transcript source identity changed")
+        chunks: list[bytes] = []
+        consumed = 0
+        while consumed < max_bytes:
+            chunk = os.read(descriptor, min(4096, max_bytes - consumed))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            consumed += len(chunk)
+            content = b"".join(chunks)
+            if _has_complete_nonblank_line(content):
+                break
+        content = b"".join(chunks)
+        if (
+            consumed == max_bytes
+            and opened.st_size > consumed
+            and not _has_complete_nonblank_line(content)
+        ):
+            raise OSError("transcript header exceeds the read limit")
+        after = os.fstat(descriptor)
+        current = path.lstat()
+        if not _same_file_status(before, after) or not _same_file_status(
+            before, current
+        ):
+            raise OSError("transcript source changed while reading")
+        return content
+    finally:
+        os.close(descriptor)
+        if parent_descriptor >= 0:
+            os.close(parent_descriptor)
+
+
+def _has_complete_nonblank_line(content: bytes) -> bool:
+    return any(
+        line.strip() and line.endswith((b"\n", b"\r"))
+        for line in content.splitlines(keepends=True)
+    )
+
+
+def _open_file_no_follow(path: Path, *, flags: int) -> tuple[int, int]:
+    directory_flag = getattr(os, "O_DIRECTORY", 0)
+    if os.name != "nt" and directory_flag:
+        parent_flags = os.O_RDONLY | directory_flag
+        parent_flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        parent = os.open(path.parent, parent_flags)
+        try:
+            return os.open(path.name, flags, dir_fd=parent), parent
+        except BaseException:
+            os.close(parent)
+            raise
+    return os.open(path, flags), -1
 
 
 def _same_file_status(left: os.stat_result, right: os.stat_result) -> bool:

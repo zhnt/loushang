@@ -38,12 +38,14 @@ from loushang.harness.conversation import (
     IndexedProjection,
     JsonConversationIndex,
     ProjectionQuery,
+    load_conversation_deletion_receipt,
 )
 from loushang.harness.transcript.discovery import SessionDiscoveryMetadata
 from loushang.harness.transcript.jsonl_file import (
     AgentTranscriptFileLayout,
     create_agent_transcript_file_store,
     load_agent_transcript_file,
+    load_agent_transcript_header,
 )
 from loushang.harness.transcript.kinds import (
     AGENT_MESSAGE_KIND,
@@ -71,6 +73,8 @@ _SESSION_INDEX_VERSION = 2
 _SESSION_INDEX_FILENAME = ".session-index.json"
 _BOUNDED_SEGMENT_BYTES = 64 * 1024
 _BOUNDED_ENRICH_LIMIT = 50
+_MAX_PATH_SUMMARY_FILE_BYTES = 8 * 1024 * 1024
+_MAX_PATH_SUMMARY_TOTAL_BYTES = 64 * 1024 * 1024
 _PROFILE = AgentTranscriptProfile.default()
 _HEADER_CODEC = ConversationJsonlHeaderCodec()
 _RECORD_CODEC = ConversationJsonlRecordCodec(_PROFILE.payload_codecs)
@@ -518,47 +522,117 @@ class AgentTranscriptSessionCatalog:
         result = _run_catalog(self._catalog(indexed=False).scan())
         return _sort_summaries(item.projection for item in result.items)
 
-    def list_path_summaries(self) -> list[SessionSummary]:
-        """Project each local transcript path without collapsing duplicate IDs."""
+    def list_path_summaries(
+        self,
+        *,
+        session_id_prefix: str | None = None,
+    ) -> list[SessionSummary]:
+        """Project physical paths with bounded reads and no identity collapse."""
 
         if self._layout is None:
             return self.list_summaries()
         summaries: list[SessionSummary] = []
-        for path in self._layout.scan_paths(self._layout.namespace):
+        remaining = _MAX_PATH_SUMMARY_TOTAL_BYTES
+        for candidate in self._bounded_candidates():
             try:
-                header, records = load_agent_transcript_file(path)
+                header = load_agent_transcript_header(candidate.path)
+                if session_id_prefix is not None and not (
+                    header.conversation_id.startswith(session_id_prefix)
+                    or candidate.path.name == session_id_prefix
+                ):
+                    continue
                 key = self._layout.key(header.conversation_id)
                 locator = ConversationLocator(self._provider.provider_id, key)
-                summaries.append(
-                    project_agent_transcript_session_summary(
-                        header,
+                if (
+                    candidate.size <= _MAX_PATH_SUMMARY_FILE_BYTES
+                    and candidate.size <= remaining
+                ):
+                    remaining -= candidate.size
+                    loaded_header, records = load_agent_transcript_file(
+                        candidate.path,
+                        max_bytes=_MAX_PATH_SUMMARY_FILE_BYTES,
+                    )
+                    if (
+                        loaded_header.conversation_id != header.conversation_id
+                        or session_file_authority_fingerprint(candidate.path)
+                        != candidate.fingerprint
+                    ):
+                        continue
+                    summary = project_agent_transcript_session_summary(
+                        loaded_header,
                         records,
                         records[-1].record_id if records else None,
-                        path,
+                        candidate.path,
                         locator=locator,
                     )
-                )
+                    summaries.append(
+                        replace(
+                            summary,
+                            authority_fingerprint=candidate.fingerprint,
+                        )
+                    )
+                else:
+                    summaries.append(
+                        _header_only_session_summary(
+                            header,
+                            candidate,
+                            locator=locator,
+                        )
+                    )
             except (OSError, ValueError):
                 continue
         return _sort_summaries(summaries)
 
     def is_tombstoned(self, session_id: str) -> bool:
-        """Return whether the local authority durably deleted this identity."""
+        """Return whether a validated local receipt retired this identity.
+
+        Invalid or unreadable receipts raise ``StoreDataError`` so callers can
+        fail closed and surface a typed discovery diagnostic.
+        """
 
         if self._layout is None:
             return False
-        path = self._layout.tombstone_path(self._layout.key(session_id))
-        try:
-            metadata = path.lstat()
-        except OSError:
-            return False
-        return stat_module.S_ISREG(metadata.st_mode) and not (
-            stat_module.S_ISLNK(metadata.st_mode)
-            or bool(
-                getattr(metadata, "st_file_attributes", 0)
-                & getattr(stat_module, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-            )
+        return load_conversation_deletion_receipt(
+            self.tombstone_path(session_id)
+        ) is not None
+
+    def list_path_collision_summaries(self) -> list[SessionSummary]:
+        """Return header-only projections for physical paths sharing one ID."""
+
+        if self._layout is None:
+            return []
+        by_id: dict[str, list[SessionSummary]] = {}
+        for candidate in self._bounded_candidates():
+            try:
+                header = load_agent_transcript_header(candidate.path)
+                key = self._layout.key(header.conversation_id)
+                locator = ConversationLocator(self._provider.provider_id, key)
+                summary = _header_only_session_summary(
+                    header,
+                    candidate,
+                    locator=locator,
+                )
+                if (
+                    session_file_authority_fingerprint(candidate.path)
+                    != candidate.fingerprint
+                ):
+                    continue
+            except (OSError, ValueError):
+                continue
+            by_id.setdefault(summary.session_id, []).append(summary)
+        return _sort_summaries(
+            summary
+            for values in by_id.values()
+            if len(values) > 1
+            for summary in values
         )
+
+    def tombstone_path(self, session_id: str) -> Path:
+        """Return the authority-owned receipt path for one logical identity."""
+
+        if self._layout is None:
+            raise ValueError("provider-backed catalogs have no local tombstones")
+        return self._layout.tombstone_path(self._layout.key(session_id))
 
     def find_summaries(
         self,
@@ -633,16 +707,20 @@ class AgentTranscriptSessionCatalog:
         else:
             snapshot = _run_catalog(query_snapshot(requested))
         index_state = snapshot.index_state
+        valid_items = tuple(
+            item for item in snapshot.items if self._local_index_item_is_valid(item)
+        )
+        if len(valid_items) != len(snapshot.items):
+            index_state = "stale"
         if (
             index_state == "fresh"
             and self.session_dir is not None
             and (
                 any(
                     not _indexed_summary_authority_is_current(
-                        item.projection,
-                        ignore_paths=ignored_paths,
+                        item.projection, ignore_paths=ignored_paths
                     )
-                    for item in snapshot.items
+                    for item in valid_items
                 )
                 or self._local_index_is_older_than_authority(
                     ignore_modified_paths=ignored_paths,
@@ -657,11 +735,33 @@ class AgentTranscriptSessionCatalog:
                     source_revision=item.source_revision,
                     projection=replace(item.projection, locator=item.locator),
                 )
-                for item in snapshot.items
+                for item in valid_items
             ),
             index_state=index_state,
             index_generation=snapshot.index_generation,
             query_snapshot=snapshot.query_snapshot,
+        )
+
+    def _local_index_item_is_valid(
+        self,
+        item: IndexedProjection[SessionSummary],
+    ) -> bool:
+        if self.session_dir is None or self._layout is None:
+            return True
+        summary = item.projection
+        path = summary.session_file
+        if (
+            item.locator.provider_id != self._provider.provider_id
+            or item.locator.key.namespace != self._layout.namespace
+            or item.locator.key.conversation_id != summary.session_id
+            or path is None
+        ):
+            return False
+        absolute = Path(os.path.abspath(path.expanduser()))
+        return (
+            absolute.parent == self.session_dir
+            and absolute.suffix == ".jsonl"
+            and not absolute.name.endswith("-export.jsonl")
         )
 
     def bounded_index_snapshot(
@@ -1063,6 +1163,15 @@ def session_summary_authority_is_current(summary: SessionSummary) -> bool:
     return current is not None and current.fingerprint == summary.authority_fingerprint
 
 
+def session_file_authority_fingerprint(path: str | Path) -> str:
+    """Return a no-follow stat identity suitable for copy-time revalidation."""
+
+    candidate = _bounded_candidate(Path(path))
+    if candidate is None:
+        raise OSError("session source must be a direct regular file")
+    return candidate.fingerprint
+
+
 def _summary_with_authority_fingerprint(summary: SessionSummary) -> SessionSummary:
     if summary.session_file is None:
         return summary
@@ -1073,6 +1182,39 @@ def _summary_with_authority_fingerprint(summary: SessionSummary) -> SessionSumma
     if candidate is None:
         return summary
     return replace(summary, authority_fingerprint=candidate.fingerprint)
+
+
+def _header_only_session_summary(
+    header: ConversationHeader,
+    candidate: _BoundedSessionCandidate,
+    *,
+    locator: ConversationLocator,
+) -> SessionSummary:
+    updated_at = (
+        datetime.fromtimestamp(candidate.mtime_ns / 1_000_000_000, UTC)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+    return SessionSummary(
+        session_id=header.conversation_id,
+        cwd=agent_transcript_header_cwd(header),
+        session_file=candidate.path,
+        parent_session=agent_transcript_header_parent_session(header),
+        leaf_id=None,
+        created_at=header.created_at,
+        updated_at=updated_at,
+        name=_normalize_nonblank(header.metadata.get("name")),
+        message_count=0,
+        entry_count=0,
+        first_message="(preview unavailable)",
+        all_messages_text="",
+        last_message_preview=None,
+        model=None,
+        locator=locator,
+        authority_fingerprint=candidate.fingerprint,
+        bounded=True,
+        counts_exact=False,
+    )
 
 
 def _bounded_session_candidates(
@@ -1096,18 +1238,61 @@ def _bounded_session_candidates(
 
 
 def _bounded_candidate(path: Path) -> _BoundedSessionCandidate | None:
-    status = path.stat()
-    if not stat_module.S_ISREG(status.st_mode):
+    status = path.lstat()
+    if not stat_module.S_ISREG(status.st_mode) or _status_is_link_or_reparse(status):
         return None
-    fingerprint = (
-        f"stat-v1:{status.st_dev}:{status.st_ino}:{status.st_size}:"
-        f"{status.st_mtime_ns}:{status.st_ctime_ns}"
-    )
+    fingerprint = _status_fingerprint(status)
     return _BoundedSessionCandidate(
         path=path,
         size=status.st_size,
         mtime_ns=status.st_mtime_ns,
         fingerprint=fingerprint,
+    )
+
+
+def _status_fingerprint(status: os.stat_result) -> str:
+    return (
+        f"stat-v1:{status.st_dev}:{status.st_ino}:{status.st_size}:"
+        f"{status.st_mtime_ns}:{status.st_ctime_ns}"
+    )
+
+
+def _status_is_link_or_reparse(status: os.stat_result) -> bool:
+    return stat_module.S_ISLNK(status.st_mode) or bool(
+        getattr(status, "st_file_attributes", 0)
+        & getattr(stat_module, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    )
+
+
+def _open_file_no_follow(path: Path) -> tuple[int, int]:
+    flags = os.O_RDONLY
+    flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    directory_flag = getattr(os, "O_DIRECTORY", 0)
+    if os.name != "nt" and directory_flag:
+        parent_flags = os.O_RDONLY | directory_flag
+        parent_flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        parent = os.open(path.parent, parent_flags)
+        try:
+            return os.open(path.name, flags, dir_fd=parent), parent
+        except BaseException:
+            os.close(parent)
+            raise
+    return os.open(path, flags), -1
+
+
+def _same_file_status(left: os.stat_result, right: os.stat_result) -> bool:
+    return (
+        left.st_dev,
+        left.st_ino,
+        left.st_size,
+        left.st_mtime_ns,
+        left.st_ctime_ns,
+    ) == (
+        right.st_dev,
+        right.st_ino,
+        right.st_size,
+        right.st_mtime_ns,
+        right.st_ctime_ns,
     )
 
 
@@ -1256,13 +1441,51 @@ def _read_bounded_segments(
     *,
     segment_bytes: int,
 ) -> tuple[bytes, bytes]:
-    with candidate.path.open("rb") as handle:
-        head = handle.read(segment_bytes)
-        if candidate.size <= segment_bytes:
-            return head, b""
-        tail_size = min(segment_bytes, candidate.size)
-        handle.seek(candidate.size - tail_size)
-        return head, handle.read(tail_size)
+    before = candidate.path.lstat()
+    if not stat_module.S_ISREG(before.st_mode) or _status_is_link_or_reparse(before):
+        raise OSError("session candidate must be a direct regular file")
+    if _status_fingerprint(before) != candidate.fingerprint:
+        raise OSError("session candidate identity changed")
+    descriptor = -1
+    parent_descriptor = -1
+    try:
+        descriptor, parent_descriptor = _open_file_no_follow(candidate.path)
+        opened = os.fstat(descriptor)
+        if not _same_file_status(before, opened):
+            raise OSError("session candidate identity changed")
+        head = _read_descriptor_bytes(
+            descriptor,
+            min(segment_bytes, candidate.size),
+        )
+        tail = b""
+        if candidate.size > segment_bytes:
+            tail_size = min(segment_bytes, candidate.size)
+            os.lseek(descriptor, candidate.size - tail_size, os.SEEK_SET)
+            tail = _read_descriptor_bytes(descriptor, tail_size)
+        after = os.fstat(descriptor)
+        current = candidate.path.lstat()
+        if not _same_file_status(before, after) or not _same_file_status(
+            before, current
+        ):
+            raise OSError("session candidate changed while reading")
+        return head, tail
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if parent_descriptor >= 0:
+            os.close(parent_descriptor)
+
+
+def _read_descriptor_bytes(descriptor: int, size: int) -> bytes:
+    chunks: list[bytes] = []
+    remaining = size
+    while remaining:
+        chunk = os.read(descriptor, remaining)
+        if not chunk:
+            raise OSError("session candidate was truncated while reading")
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    return b"".join(chunks)
 
 
 def _complete_segment_lines(
@@ -1695,5 +1918,6 @@ __all__ = [
     "refresh_all_agent_transcript_session_indexes",
     "same_agent_transcript_session_path",
     "session_summary_authority_is_current",
+    "session_file_authority_fingerprint",
     "session_summary_revision",
 ]

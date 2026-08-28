@@ -89,6 +89,7 @@ from loushang.harness.conversation.store import (
 from loushang.harness.conversation.stores import (
     FileConversationStore,
     MemoryConversationStore,
+    load_conversation_deletion_receipt,
 )
 from loushang.harness.conversation.types import (
     BranchDelta,
@@ -158,6 +159,7 @@ __all__ = [
     "MissingCheckpointPolicy",
     "MemoryConversationStore",
     "MemoryConversationIndex",
+    "load_conversation_deletion_receipt",
     "MIN_CONVERSATION_FORMAT_VERSION",
     "ConversationJsonlHeaderCodec",
     "ConversationJsonlRecordCodec",

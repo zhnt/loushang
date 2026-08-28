@@ -35,7 +35,7 @@ def test_common_summary_is_a_fixed_json_safe_product_neutral_envelope() -> None:
         "status",
         "actions",
     )
-    assert summary.actions == ("activate",)
+    assert summary.actions == ("activate", "delete")
     encoded = json.dumps(asdict(summary))
     for product_field in (
         "branch",

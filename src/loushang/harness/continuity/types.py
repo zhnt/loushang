@@ -145,7 +145,10 @@ class ContinuitySummary:
     subtitle: str | None = None
     excerpt: str | None = None
     status: str | None = None
-    actions: tuple[ContinuityAction, ...] = ("activate",)
+    # Profile v1 providers historically exposed deletion whenever their Provider
+    # implemented that optional protocol. Preserve that implicit default; newer
+    # providers narrow read-only targets explicitly.
+    actions: tuple[ContinuityAction, ...] = ("activate", "delete")
 
     def __post_init__(self) -> None:
         if not isinstance(self.target, ContinuityTarget):

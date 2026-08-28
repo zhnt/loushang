@@ -7,6 +7,8 @@ import hashlib
 import hmac
 import json
 import math
+import os
+import stat
 from collections.abc import Callable, Iterable, Sequence
 from contextlib import AbstractContextManager, suppress
 from dataclasses import dataclass, replace
@@ -68,6 +70,7 @@ _OPERATION_FILTER_INITIAL_CAPACITY = 10_000
 _OPERATION_FILTER_FALSE_POSITIVE_BUDGET = 1e-5
 _OPERATION_FILTER_MAX_SEGMENTS = 32
 _RECENT_RECORD_LIMIT = 64
+_TOMBSTONE_MAX_BYTES = 64 * 1024
 
 
 @dataclass(frozen=True)
@@ -1522,15 +1525,116 @@ def _store_head_checksum(value: dict[str, object]) -> str:
 
 
 def _load_tombstone(target: Path) -> dict[str, object] | None:
-    try:
-        value = json.loads(target.read_text(encoding="utf-8"))
-    except FileNotFoundError:
+    value = _read_tombstone_json(target)
+    if value is None:
         return None
+    _validated_deletion_receipt(value)
+    return value
+
+
+def load_conversation_deletion_receipt(target: str | Path) -> DeletionReceipt | None:
+    """Read and validate one deletion receipt without following filesystem links."""
+
+    value = _read_tombstone_json(Path(target))
+    return None if value is None else _validated_deletion_receipt(value)
+
+
+def _validated_deletion_receipt(value: dict[str, object]) -> DeletionReceipt:
+    try:
+        return _decode_deletion_receipt(value)
+    except StoreDataError:
+        raise
     except Exception as exc:
         raise StoreDataError("conversation deletion tombstone is invalid") from exc
+
+
+def _read_tombstone_json(target: Path) -> dict[str, object] | None:
+    try:
+        before = target.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise StoreDataError("conversation deletion tombstone is unreadable") from exc
+    if not _regular_file_status_no_follow(before):
+        raise StoreDataError("conversation deletion tombstone is unsafe")
+    if before.st_size > _TOMBSTONE_MAX_BYTES:
+        raise StoreDataError("conversation deletion tombstone exceeds the read limit")
+    descriptor = -1
+    parent_descriptor = -1
+    try:
+        descriptor, parent_descriptor = _open_file_no_follow(target)
+        opened = os.fstat(descriptor)
+        if not _same_file_status(before, opened):
+            raise StoreDataError("conversation deletion tombstone changed before read")
+        remaining = opened.st_size
+        chunks: list[bytes] = []
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 64 * 1024))
+            if not chunk:
+                raise StoreDataError("conversation deletion tombstone was truncated")
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        after = os.fstat(descriptor)
+        current = target.lstat()
+        if not _same_file_status(before, after) or not _same_file_status(
+            before, current
+        ):
+            raise StoreDataError("conversation deletion tombstone changed while read")
+        value = json.loads(b"".join(chunks).decode("utf-8"))
+    except StoreDataError:
+        raise
+    except Exception as exc:
+        raise StoreDataError("conversation deletion tombstone is invalid") from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if parent_descriptor >= 0:
+            os.close(parent_descriptor)
     if not isinstance(value, dict):
         raise StoreDataError("conversation deletion tombstone is invalid")
     return value
+
+
+def _open_file_no_follow(path: Path) -> tuple[int, int]:
+    file_flags = os.O_RDONLY
+    file_flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    directory_flag = getattr(os, "O_DIRECTORY", 0)
+    if os.name != "nt" and directory_flag:
+        parent_flags = os.O_RDONLY | directory_flag
+        parent_flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        parent = os.open(path.parent, parent_flags)
+        try:
+            return os.open(path.name, file_flags, dir_fd=parent), parent
+        except BaseException:
+            os.close(parent)
+            raise
+    return os.open(path, file_flags), -1
+
+
+def _regular_file_status_no_follow(value: os.stat_result) -> bool:
+    return stat.S_ISREG(value.st_mode) and not (
+        stat.S_ISLNK(value.st_mode)
+        or bool(
+            getattr(value, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        )
+    )
+
+
+def _same_file_status(left: os.stat_result, right: os.stat_result) -> bool:
+    return (
+        left.st_dev,
+        left.st_ino,
+        left.st_size,
+        left.st_mtime_ns,
+        left.st_ctime_ns,
+    ) == (
+        right.st_dev,
+        right.st_ino,
+        right.st_size,
+        right.st_mtime_ns,
+        right.st_ctime_ns,
+    )
 
 
 def _write_tombstone(path: Path, receipt: DeletionReceipt) -> None:
@@ -1585,4 +1689,4 @@ def _data_error(
     return StoreDataError(f"failed to {action} conversation {key!r}: {detail}")
 
 
-__all__ = ["FileConversationStore"]
+__all__ = ["FileConversationStore", "load_conversation_deletion_receipt"]
