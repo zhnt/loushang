@@ -81,10 +81,14 @@ objects. Model-call hydration remains a separate bounded operation.
 
 ## Plugin boundary
 
-`SessionDiscoverySource` is a contribution value, not a filesystem capability.
-Future Continuity Providers may discover remote or database-backed Sessions,
-but must return portable summaries and opaque targets. Plugins may contribute
-sources, metadata, health checks, and presentation. Harness continues to own:
+`SessionDiscoverySource` is deliberately a machine-local filesystem value, not
+a provider-neutral plugin identity or an ambient filesystem capability. The 5A
+runtime admits its roots explicitly and applies the same bounded, no-follow
+read policy to each one. Remote, database-backed, or plugin-owned Sessions must
+enter through `ConversationProviderBinding` and a Continuity Provider, returning
+portable summaries and opaque targets instead of fabricating local paths.
+Plugins may later contribute provider bindings, metadata, health checks, and
+presentation. Harness continues to own:
 
 - canonical authority selection;
 - identity and revision validation;

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import os
+import stat
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
@@ -230,21 +231,43 @@ def copy_file_exclusive(source: Path, destination: Path) -> None:
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     descriptor = -1
+    source_descriptor = -1
+    parent_descriptor = -1
     published = False
     try:
-        with source.open("rb") as input_handle:
-            descriptor = os.open(temporary, flags, 0o600)
-            with os.fdopen(descriptor, "wb") as output_handle:
-                descriptor = -1
-                copyfileobj(input_handle, output_handle)
-                output_handle.flush()
-                os.fsync(output_handle.fileno())
+        source_metadata = source.lstat()
+        if not _is_regular_file_no_follow(source_metadata):
+            raise OSError("session import source must be a regular file")
+        source_descriptor, parent_descriptor = _open_source_no_follow(source)
+        opened = os.fstat(source_descriptor)
+        if not _same_file_status(source_metadata, opened):
+            raise OSError("session import source identity changed")
+        descriptor = os.open(temporary, flags, 0o600)
+        with os.fdopen(descriptor, "wb") as output_handle:
+            descriptor = -1
+            bounded_source = _FixedLengthReader(source_descriptor, opened.st_size)
+            copyfileobj(bounded_source, output_handle)
+            if bounded_source.remaining:
+                raise OSError("session import source was truncated")
+            output_handle.flush()
+            os.fsync(output_handle.fileno())
+        after = os.fstat(source_descriptor)
+        current = source.lstat()
+        if not _same_file_status(opened, after) or not _same_file_status(
+            source_metadata,
+            current,
+        ):
+            raise OSError("session import source changed while copying")
         _publish_file_exclusive(temporary, destination)
         published = True
         _sync_directory(destination.parent)
     finally:
         if descriptor >= 0:
             os.close(descriptor)
+        if source_descriptor >= 0:
+            os.close(source_descriptor)
+        if parent_descriptor >= 0:
+            os.close(parent_descriptor)
         with suppress(FileNotFoundError):
             temporary.unlink()
         if published:
@@ -282,7 +305,7 @@ def stage_file_import(
     copy_file: Callable[[Path, Path], None] = copy_file_exclusive,
 ) -> StagedFileImport:
     """Copy a file to an import-safe destination without overwriting a peer."""
-    source = source.resolve()
+    source = _absolute_path_preserving_leaf(source)
     destination_dir = destination_dir.resolve()
     destination_dir.mkdir(parents=True, exist_ok=True)
     for index in range(10_000):
@@ -302,6 +325,69 @@ def stage_file_import(
             raise
         return StagedFileImport(source, destination, copied=True)
     raise FileExistsError(f"No available import destination for {source}")
+
+
+def _absolute_path_preserving_leaf(path: str | Path) -> Path:
+    absolute = Path(os.path.abspath(Path(path).expanduser()))
+    return absolute.parent.resolve(strict=False) / absolute.name
+
+
+@dataclass
+class _FixedLengthReader:
+    descriptor: int
+    remaining: int
+
+    def read(self, size: int = -1) -> bytes:
+        if self.remaining <= 0:
+            return b""
+        requested = self.remaining if size < 0 else min(size, self.remaining)
+        chunk = os.read(self.descriptor, requested)
+        self.remaining -= len(chunk)
+        return chunk
+
+
+def _open_source_no_follow(source: Path) -> tuple[int, int]:
+    file_flags = os.O_RDONLY
+    file_flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    directory_flag = getattr(os, "O_DIRECTORY", 0)
+    if os.name != "nt" and directory_flag:
+        parent_flags = os.O_RDONLY | directory_flag
+        parent_flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        parent_descriptor = os.open(source.parent, parent_flags)
+        try:
+            return os.open(source.name, file_flags, dir_fd=parent_descriptor), (
+                parent_descriptor
+            )
+        except BaseException:
+            os.close(parent_descriptor)
+            raise
+    return os.open(source, file_flags), -1
+
+
+def _is_regular_file_no_follow(metadata: os.stat_result) -> bool:
+    return stat.S_ISREG(metadata.st_mode) and not (
+        stat.S_ISLNK(metadata.st_mode)
+        or bool(
+            getattr(metadata, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        )
+    )
+
+
+def _same_file_status(left: os.stat_result, right: os.stat_result) -> bool:
+    return (
+        left.st_dev,
+        left.st_ino,
+        left.st_size,
+        left.st_mtime_ns,
+        left.st_ctime_ns,
+    ) == (
+        right.st_dev,
+        right.st_ino,
+        right.st_size,
+        right.st_mtime_ns,
+        right.st_ctime_ns,
+    )
 
 
 async def run_replacement_callbacks(

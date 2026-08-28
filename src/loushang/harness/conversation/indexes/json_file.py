@@ -170,6 +170,7 @@ class JsonConversationIndex(Generic[P, Q]):
         version: int,
         codec: ProjectionCodec[P],
         query_items: IndexQuery[Q, P],
+        writable: bool = True,
     ) -> None:
         if version < 1:
             raise ValueError("conversation index version must be positive")
@@ -177,6 +178,7 @@ class JsonConversationIndex(Generic[P, Q]):
         self.version = version
         self.codec = codec
         self._query_items = query_items
+        self._writable = writable
         self._lock = Lock()
 
     async def upsert(self, item: IndexedProjection[P]) -> bool:
@@ -325,7 +327,8 @@ class JsonConversationIndex(Generic[P, Q]):
             if type(raw_sequence) is not int or raw_sequence < 0:
                 raise ValueError("conversation index sequence is invalid")
         except Exception:
-            self._preserve_corrupt()
+            if self._writable:
+                self._preserve_corrupt()
             return _JsonConversationIndexState(
                 items={},
                 tombstones={},
@@ -389,6 +392,8 @@ class JsonConversationIndex(Generic[P, Q]):
         generation: str,
         sequence: int,
     ) -> None:
+        if not self._writable:
+            raise RuntimeError("read-only conversation index cannot be modified")
         payload = {
             "version": self.version,
             "generated_at": _now_iso(),

@@ -43,6 +43,7 @@ from loushang.harness.transcript.discovery import SessionDiscoveryMetadata
 from loushang.harness.transcript.jsonl_file import (
     AgentTranscriptFileLayout,
     create_agent_transcript_file_store,
+    load_agent_transcript_file,
 )
 from loushang.harness.transcript.kinds import (
     AGENT_MESSAGE_KIND,
@@ -443,8 +444,14 @@ def build_agent_transcript_session_tree(
 class AgentTranscriptSessionCatalog:
     """Agent projection facade over a provider-bound conversation catalog."""
 
-    def __init__(self, session_dir: str | Path) -> None:
-        resolved_session_dir = Path(session_dir).expanduser().resolve(strict=False)
+    def __init__(
+        self,
+        session_dir: str | Path,
+        *,
+        index_writable: bool = True,
+    ) -> None:
+        absolute = Path(os.path.abspath(Path(session_dir).expanduser()))
+        resolved_session_dir = absolute.parent.resolve(strict=False) / absolute.name
         layout = AgentTranscriptFileLayout(resolved_session_dir)
         self.session_dir: Path | None = resolved_session_dir
         self._layout: AgentTranscriptFileLayout | None = layout
@@ -456,6 +463,7 @@ class AgentTranscriptSessionCatalog:
         self._external_index: ConversationIndex[SessionSummary, SessionQuery] | None = (
             None
         )
+        self._index_writable = index_writable
         self._session_file_for: Callable[[ConversationLocator], Path | None] = (
             lambda locator: layout.resolve_path(locator.key)
         )
@@ -478,6 +486,7 @@ class AgentTranscriptSessionCatalog:
         catalog._layout = None
         catalog._provider = provider
         catalog._external_index = index
+        catalog._index_writable = True
         catalog._session_file_for = session_file_for or (lambda locator: None)
         return catalog
 
@@ -508,6 +517,30 @@ class AgentTranscriptSessionCatalog:
     def list_summaries(self) -> list[SessionSummary]:
         result = _run_catalog(self._catalog(indexed=False).scan())
         return _sort_summaries(item.projection for item in result.items)
+
+    def list_path_summaries(self) -> list[SessionSummary]:
+        """Project each local transcript path without collapsing duplicate IDs."""
+
+        if self._layout is None:
+            return self.list_summaries()
+        summaries: list[SessionSummary] = []
+        for path in self._layout.scan_paths(self._layout.namespace):
+            try:
+                header, records = load_agent_transcript_file(path)
+                key = self._layout.key(header.conversation_id)
+                locator = ConversationLocator(self._provider.provider_id, key)
+                summaries.append(
+                    project_agent_transcript_session_summary(
+                        header,
+                        records,
+                        records[-1].record_id if records else None,
+                        path,
+                        locator=locator,
+                    )
+                )
+            except (OSError, ValueError):
+                continue
+        return _sort_summaries(summaries)
 
     def find_summaries(
         self,
@@ -842,6 +875,7 @@ class AgentTranscriptSessionCatalog:
                 decoder=_decode_summary_index_item,
             ),
             query_items=_query_indexed_summaries,
+            writable=self._index_writable,
         )
 
     async def _repair_local_index(

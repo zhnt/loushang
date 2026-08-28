@@ -525,7 +525,7 @@ class AgentTranscriptSessionRuntime(
 
         candidate = Path(session_ref).expanduser()
         if candidate.exists():
-            resolved = candidate.resolve()
+            resolved = candidate.absolute()
             if allow_external_path or self.is_authority_session_file(resolved):
                 return resolved
             raise FileNotFoundError(

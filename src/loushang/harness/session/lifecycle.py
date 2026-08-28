@@ -426,7 +426,7 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
     ) -> PreparedSessionLifecycleOperation[SessionT, PayloadT]:
         """Stage an external transcript as an abortable authority restore."""
 
-        source = Path(input_path).expanduser().resolve()
+        source = Path(input_path).expanduser()
         staged = stage_file_import(
             source,
             destination_dir,

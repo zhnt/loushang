@@ -269,7 +269,10 @@ class AgentTranscriptDirectoryRuntime:
         for source in self._safe_discovery_session_sources():
             candidates.extend(
                 (source, summary)
-                for summary in AgentTranscriptSessionCatalog(source.root).list_summaries()
+                for summary in AgentTranscriptSessionCatalog(
+                    source.root,
+                    index_writable=False,
+                ).list_path_summaries()
             )
         return _merge_discovered_session_summaries(candidates)
 
@@ -547,7 +550,13 @@ class AgentTranscriptDirectoryRuntime:
         catalogs = (
             (self._authority_session_source, self.session_catalog),
             *(
-                (source, AgentTranscriptSessionCatalog(source.root))
+                (
+                    source,
+                    AgentTranscriptSessionCatalog(
+                        source.root,
+                        index_writable=False,
+                    ),
+                )
                 for source in self._safe_discovery_session_sources()
             ),
         )
@@ -856,6 +865,15 @@ def _merge_discovered_group(
     comparison_budget: _DuplicateComparisonBudget,
 ) -> _SessionDiscoveryCandidate:
     selected = min(values, key=_session_discovery_candidate_key)
+    if len(values) == 1:
+        return replace(
+            selected,
+            summary=_decorate_session_summary(
+                selected.summary,
+                selected.source,
+                source_revision=selected.source_revision,
+            ),
+        )
     aliases: list[SessionLocator] = []
     conflicts: list[SessionLocator] = []
     selected_path = selected.summary.session_file
@@ -974,7 +992,7 @@ def _session_discovery_candidate_key(
 def _bounded_file_digest(
     path: Path,
     *,
-    max_bytes: int,
+    budget: _DuplicateComparisonBudget,
 ) -> tuple[int, bytes] | None:
     try:
         before = path.lstat()
@@ -983,9 +1001,13 @@ def _bounded_file_digest(
     if (
         not stat_module.S_ISREG(before.st_mode)
         or _status_is_link_or_reparse(before)
-        or before.st_size > max_bytes
+        or before.st_size > budget.remaining
     ):
         return None
+    # Reserve the complete fixed snapshot before opening. A failed or racing
+    # read still consumes its reservation, so one merge can never retry past
+    # the process-wide comparison budget.
+    budget.remaining -= before.st_size
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(path, flags)
@@ -1002,8 +1024,13 @@ def _bounded_file_digest(
             opened = os.fstat(handle.fileno())
             if not _same_file_status(before, opened):
                 return None
-            while chunk := handle.read(1024 * 1024):
+            remaining = before.st_size
+            while remaining:
+                chunk = handle.read(min(remaining, 1024 * 1024))
+                if not chunk:
+                    return None
                 digest.update(chunk)
+                remaining -= len(chunk)
             after = os.fstat(handle.fileno())
     except OSError:
         return None
@@ -1022,10 +1049,7 @@ def _consume_bounded_file_digest(
 ) -> tuple[int, bytes] | None:
     if budget.remaining <= 0:
         return None
-    result = _bounded_file_digest(path, max_bytes=budget.remaining)
-    if result is not None:
-        budget.remaining -= result[0]
-    return result
+    return _bounded_file_digest(path, budget=budget)
 
 
 def _same_file_status(left: os.stat_result, right: os.stat_result) -> bool:

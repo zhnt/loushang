@@ -46,12 +46,18 @@ def _nonempty(value: object, *, name: str) -> str:
 
 
 def _absolute_path(value: str | Path) -> Path:
-    return Path(os.path.abspath(Path(value).expanduser()))
+    absolute = Path(os.path.abspath(Path(value).expanduser()))
+    return absolute.parent.resolve(strict=False) / absolute.name
 
 
 @dataclass(frozen=True, slots=True)
 class SessionDiscoverySource:
-    """One declared transcript root and its authority mode and origin label."""
+    """One declared local transcript root, authority mode, and origin label.
+
+    This path contract is intentionally machine-local. Remote and plugin-backed
+    stores participate through Conversation providers instead of impersonating a
+    filesystem root.
+    """
 
     source_id: str
     root: Path
@@ -81,7 +87,7 @@ class SessionDiscoverySource:
 
 @dataclass(frozen=True, slots=True)
 class SessionLocator:
-    """Provider-neutral identity for one exact discovered transcript."""
+    """Stable identity for one exact machine-local discovered transcript."""
 
     source_id: str
     conversation_id: str

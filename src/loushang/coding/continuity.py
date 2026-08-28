@@ -338,7 +338,15 @@ class CodingContinuityProvider:
             raise StaleContinuityTargetError(
                 "The selected Coding session summary is stale."
             )
-        reference: str | Path = summary.session_file or summary.session_id
+        # Compatibility index rows are advisory projections. Resolve their raw
+        # identity against a fresh path-level discovery scan so a same-source
+        # duplicate cannot be activated through a stale collapsed index entry.
+        reference: str | Path = (
+            summary.session_id
+            if summary.discovery is not None
+            and summary.discovery.mode == "compatibility"
+            else summary.session_file or summary.session_id
+        )
         current = self._runtime.get_current_session()
         if current is not None and _same_session_reference(
             self._runtime.get_current_session_ref(),

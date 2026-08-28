@@ -170,19 +170,17 @@ def load_agent_transcript_repository(
 def load_agent_transcript_file(
     path: Path,
 ) -> tuple[ConversationHeader, list[AgentTranscriptRecord]]:
+    target = Path(path)
     try:
-        snapshot: JsonlSnapshot[ConversationHeader, AgentTranscriptRecord] = (
-            agent_transcript_journal(path).load()
-        )
-    except JournalFileError as exc:
-        raise _agent_transcript_file_error(exc) from exc
-    if snapshot.header is None:
+        with agent_transcript_file_lock(target, "shared"):
+            content = _read_stable_regular_file(target)
+    except OSError as exc:
         raise AgentTranscriptFileError(
-            "Transcript file must start with a conversation header",
-            path=path,
-            code="missing_conversation_header",
-        )
-    return snapshot.header, list(snapshot.records)
+            "Transcript file could not be read safely",
+            path=target,
+            code="session_file_read_failed",
+        ) from exc
+    return decode_agent_transcript_bytes(content, source_path=target)
 
 
 def decode_agent_transcript_bytes(
@@ -289,7 +287,7 @@ class AgentTranscriptFileLayout:
     _known_paths: dict[ConversationKey, Path] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        self.root = self.root.expanduser().resolve(strict=False)
+        self.root = _absolute_path_preserving_leaf(self.root)
 
     @property
     def namespace(self) -> str:
@@ -303,7 +301,7 @@ class AgentTranscriptFileLayout:
 
     def bind_path(self, key: ConversationKey, path: str | Path) -> None:
         self._require_namespace(key)
-        self._known_paths[key] = Path(path).expanduser().resolve(strict=False)
+        self._known_paths[key] = _absolute_path_preserving_leaf(path)
 
     def create_path(self, key: ConversationKey) -> Path:
         self._require_namespace(key)
@@ -389,7 +387,7 @@ class AgentTranscriptFileLayout:
         return key
 
     def bind_existing_path(self, path: str | Path) -> ConversationKey:
-        resolved = Path(path).expanduser().resolve(strict=False)
+        resolved = _absolute_path_preserving_leaf(path)
         return self.key_for_path(self.namespace, resolved)
 
     def bind_create_path(self, key: ConversationKey, path: str | Path) -> None:
@@ -523,6 +521,55 @@ def _status_is_regular_no_follow(status: os.stat_result) -> bool:
             getattr(status, "st_file_attributes", 0)
             & getattr(stat_module, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
         )
+    )
+
+
+def _absolute_path_preserving_leaf(path: str | Path) -> Path:
+    absolute = Path(os.path.abspath(Path(path).expanduser()))
+    return absolute.parent.resolve(strict=False) / absolute.name
+
+
+def _read_stable_regular_file(path: Path) -> bytes:
+    before = path.lstat()
+    if not _status_is_regular_no_follow(before):
+        raise OSError("transcript source must be a regular file")
+    flags = os.O_RDONLY
+    flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    descriptor = os.open(path, flags)
+    try:
+        opened = os.fstat(descriptor)
+        if not _same_file_status(before, opened):
+            raise OSError("transcript source identity changed")
+        remaining = opened.st_size
+        chunks: list[bytes] = []
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 1024 * 1024))
+            if not chunk:
+                raise OSError("transcript source was truncated while reading")
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    current = path.lstat()
+    if not _same_file_status(before, after) or not _same_file_status(before, current):
+        raise OSError("transcript source changed while reading")
+    return b"".join(chunks)
+
+
+def _same_file_status(left: os.stat_result, right: os.stat_result) -> bool:
+    return (
+        left.st_dev,
+        left.st_ino,
+        left.st_size,
+        left.st_mtime_ns,
+        left.st_ctime_ns,
+    ) == (
+        right.st_dev,
+        right.st_ino,
+        right.st_size,
+        right.st_mtime_ns,
+        right.st_ctime_ns,
     )
 
 
