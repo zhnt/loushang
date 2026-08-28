@@ -11,7 +11,7 @@ from collections.abc import Iterable
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, TypeVar
 
 from loushang.foundation.platform_paths import resolve_platform_paths
 from loushang.harness.continuity import (
@@ -68,6 +68,8 @@ CODING_EXPERIENCE_ID = "coding"
 _MAX_PREVIEW_CACHE = 256
 _MAX_CODING_CONTINUITY_IMPORT_BYTES = 64 * 1024 * 1024
 _RUNTIME_BINDING_ATTRIBUTE = "_loushang_coding_continuity"
+
+T = TypeVar("T")
 
 
 class CodingContinuityRuntimePort(Protocol):
@@ -164,12 +166,27 @@ class CodingContinuityActivationBridge:
                     "fallback" if payload.cwd_override is not None else "error"
                 ),
             )
-        finally:
-            await asyncio.to_thread(
-                _remove_private_continuity_payload,
-                path,
-                identity,
-            )
+        except BaseException as operation_error:
+            try:
+                await _remove_private_continuity_payload_atomic(path, identity)
+            except BaseException as cleanup_error:
+                operation_error.add_note(
+                    "Coding continuity temporary cleanup also failed: "
+                    f"{cleanup_error!r}"
+                )
+            raise
+        try:
+            await _remove_private_continuity_payload_atomic(path, identity)
+        except BaseException as cleanup_error:
+            try:
+                abort_task = asyncio.create_task(prepared.abort())
+                await _await_owned_task_cancellation_atomic(abort_task)
+            except BaseException as abort_error:
+                cleanup_error.add_note(
+                    "Coding continuity prepared-operation abort also failed: "
+                    f"{abort_error!r}"
+                )
+            raise
         return prepared
 
 
@@ -752,6 +769,40 @@ def _remove_private_continuity_payload(
     if stat.S_ISLNK(status.st_mode) or (status.st_dev, status.st_ino) != expected_identity:
         raise OSError("Coding continuity temporary file identity changed")
     path.unlink()
+
+
+async def _remove_private_continuity_payload_atomic(
+    path: Path,
+    expected_identity: tuple[int, int],
+) -> None:
+    task = asyncio.create_task(
+        asyncio.to_thread(
+            _remove_private_continuity_payload,
+            path,
+            expected_identity,
+        )
+    )
+    await _await_owned_task_cancellation_atomic(task)
+
+
+async def _await_owned_task_cancellation_atomic(
+    task: asyncio.Task[T],
+) -> T:
+    """Join an owned cleanup task before propagating caller cancellation."""
+
+    cancellation: asyncio.CancelledError | None = None
+    caller = asyncio.current_task()
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as exc:
+            if caller is None or caller.cancelling() == 0:
+                return task.result()
+            cancellation = exc
+    result = task.result()
+    if cancellation is not None:
+        raise cancellation
+    return result
 
 
 async def shutdown_coding_continuity(runtime: object) -> None:

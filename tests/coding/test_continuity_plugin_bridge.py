@@ -178,6 +178,42 @@ def test_coding_plugin_activation_bridge_rejects_linked_temporary_root(
     assert os.listdir(target_root) == []
 
 
+def test_coding_plugin_activation_bridge_cleans_up_when_product_prepare_fails(
+    tmp_path: Path,
+) -> None:
+    class _FailingRuntime(_Runtime):
+        async def prepare_restore_session_operation(
+            self,
+            session_id: str | Path,
+            *,
+            fallback_cwd: str | Path | None = None,
+            missing_cwd: str = "error",
+        ) -> CallbackPreparedActivationLease:
+            self.observed_path = Path(session_id)
+            self.observed_bytes = self.observed_path.read_bytes()
+            raise RuntimeError("canonical prepare failed")
+
+    runtime = _FailingRuntime()
+    bridge = CodingContinuityActivationBridge(
+        runtime,  # type: ignore[arg-type]
+        temporary_root=tmp_path / "continuity",
+    )
+    payload = ContinuityActivationPayload.from_bytes(
+        b"{}\n",
+        media_type=CONTINUITY_JSONL_MEDIA_TYPE,
+    )
+    target = ContinuityTarget(
+        provider_id="cloud.sessions",
+        opaque_id="remote-1",
+    )
+
+    with pytest.raises(RuntimeError, match="canonical prepare failed"):
+        asyncio.run(bridge.prepare(target, payload, _source()))
+
+    assert runtime.observed_path is not None
+    assert not runtime.observed_path.exists()
+
+
 class _RemoteProvider:
     @property
     def descriptor(self) -> ContinuityProviderDescriptor:
