@@ -360,9 +360,13 @@ class ContinuitySurface:
         reset: bool,
         background: bool = False,
         page_selection: _PendingPageSelection | None = None,
+        generation: int | None = None,
     ) -> None:
-        self._generation += 1
-        generation = self._generation
+        if generation is None:
+            self._generation += 1
+            generation = self._generation
+        elif generation != self._generation:
+            return
         if not background:
             self._loading = True
             self._error = None
@@ -444,6 +448,8 @@ class ContinuitySurface:
         reset: bool,
         page_selection: _PendingPageSelection | None = None,
     ) -> None:
+        self._generation += 1
+        generation = self._generation
         if self._query_task is not None and not self._query_task.done():
             self._query_task.cancel()
         self._loading = True
@@ -457,6 +463,7 @@ class ContinuitySurface:
             await self._load(
                 reset=reset,
                 page_selection=page_selection,
+                generation=generation,
             )
 
         self._query_task = asyncio.create_task(run())
@@ -567,17 +574,25 @@ class ContinuitySurface:
         provider_id = self._provider_options[self._provider_index]
         self._domain_options = self._domain_options_for(provider_id)
         domain_ids = self._query.domain_ids
-        if provider_id is not None and domain_ids:
-            descriptor = next(
-                provider
-                for provider in self._available_providers
-                if provider.provider_id == provider_id
-            )
-            if not set(domain_ids).intersection(descriptor.domain_ids):
-                domain_ids = ()
-                self._domain_index = 0
-        elif domain_ids and domain_ids[0] not in self._domain_options:
+        selected_domain = domain_ids[0] if domain_ids else None
+        compatible_domains = {
+            domain_id
+            for provider in self._available_providers
+            if provider_id is None or provider.provider_id == provider_id
+            for domain_id in provider.domain_ids
+        }
+        if (
+            selected_domain is not None
+            and selected_domain not in compatible_domains
+        ):
             domain_ids = ()
+            self._domain_index = 0
+        elif selected_domain in self._domain_options:
+            self._domain_index = self._domain_options.index(selected_domain)
+        else:
+            # A single compatible Domain is hidden as redundant once its
+            # Provider is selected. Keep the query narrow and reset only the
+            # presentation index.
             self._domain_index = 0
         self._query = replace(
             self._query,

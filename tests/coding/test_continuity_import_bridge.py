@@ -6,20 +6,39 @@ import asyncio
 import hashlib
 import os
 import stat
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
 
+from loushang.coding import continuity as continuity_module
 from loushang.coding.continuity import CodingContinuityActivationBridge
 from loushang.harness.continuity import (
     CONTINUITY_BUNDLE_MEDIA_TYPE,
     CONTINUITY_JSONL_MEDIA_TYPE,
-    CallbackPreparedActivationLease,
     ContinuityActivationPayload,
     ContinuityProviderSourceDescriptor,
     ContinuityTarget,
+    PreparedActivationLease,
 )
+
+
+@dataclass
+class _PreparedOperation:
+    result: object = "canonical-session"
+    consumed: bool = False
+    aborted: bool = False
+
+    async def consume(self) -> object:
+        self.consumed = True
+        return self.result
+
+    async def abort(self) -> None:
+        self.aborted = True
+
+    async def close(self) -> None:
+        await self.abort()
 
 
 @dataclass
@@ -29,6 +48,7 @@ class _Runtime:
     observed_mode: int | None = None
     fallback_cwd: str | None = None
     missing_cwd: str | None = None
+    prepared: _PreparedOperation = field(default_factory=_PreparedOperation)
 
     async def prepare_restore_session_operation(
         self,
@@ -36,22 +56,14 @@ class _Runtime:
         *,
         fallback_cwd: str | Path | None = None,
         missing_cwd: str = "error",
-    ) -> CallbackPreparedActivationLease:
+    ) -> _PreparedOperation:
         path = Path(session_id)
         self.observed_path = path
         self.observed_bytes = path.read_bytes()
         self.observed_mode = stat.S_IMODE(path.stat().st_mode)
         self.fallback_cwd = None if fallback_cwd is None else str(fallback_cwd)
         self.missing_cwd = missing_cwd
-        target = ContinuityTarget(
-            provider_id="cloud.sessions",
-            opaque_id="remote-1",
-        )
-        return CallbackPreparedActivationLease(
-            target=target,
-            disposition="in_place",
-            consume=lambda: "canonical-session",
-        )
+        return self.prepared
 
 
 def _source() -> ContinuityProviderSourceDescriptor:
@@ -105,7 +117,12 @@ def test_coding_portable_activation_bridge_uses_private_bounded_temporary_copy(
     assert runtime.fallback_cwd == "/workspace"
     assert runtime.missing_cwd == "fallback"
     assert not runtime.observed_path.exists()
+    assert isinstance(prepared, PreparedActivationLease)
+    assert prepared.target == target
+    assert prepared.disposition == "in_place"
+    assert not prepared.consumed
     assert asyncio.run(prepared.consume()) == "canonical-session"
+    assert prepared.consumed
 
 
 def test_coding_portable_activation_bridge_rejects_product_budget_before_write(
@@ -161,6 +178,7 @@ def test_coding_portable_activation_bridge_does_not_trust_source_cwd(
     assert runtime.fallback_cwd is None
     assert runtime.missing_cwd == "error"
     asyncio.run(prepared.abort())
+    assert runtime.prepared.aborted
 
 
 def test_coding_portable_activation_bridge_rejects_linked_temporary_root(
@@ -193,6 +211,38 @@ def test_coding_portable_activation_bridge_rejects_linked_temporary_root(
     assert os.listdir(target_root) == []
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX mode contract")
+def test_coding_portable_activation_bridge_rejects_writable_path_ancestor(
+    tmp_path: Path,
+) -> None:
+    shared = tmp_path / "shared"
+    shared.mkdir(mode=0o777)
+    shared.chmod(0o777)
+    runtime = _Runtime()
+    bridge = CodingContinuityActivationBridge(
+        runtime,  # type: ignore[arg-type]
+        temporary_root=shared / "continuity",
+    )
+    payload = ContinuityActivationPayload.from_bytes(
+        b"{}\n",
+        media_type=CONTINUITY_JSONL_MEDIA_TYPE,
+    )
+
+    with pytest.raises(PermissionError, match="writable ancestor"):
+        asyncio.run(
+            bridge.prepare(
+                ContinuityTarget(
+                    provider_id="cloud.sessions",
+                    opaque_id="remote-1",
+                ),
+                payload,
+                _source(),
+            )
+        )
+
+    assert runtime.observed_path is None
+
+
 def test_coding_portable_activation_bridge_cleans_up_when_product_prepare_fails(
     tmp_path: Path,
 ) -> None:
@@ -203,7 +253,7 @@ def test_coding_portable_activation_bridge_cleans_up_when_product_prepare_fails(
             *,
             fallback_cwd: str | Path | None = None,
             missing_cwd: str = "error",
-        ) -> CallbackPreparedActivationLease:
+        ) -> _PreparedOperation:
             self.observed_path = Path(session_id)
             self.observed_bytes = self.observed_path.read_bytes()
             raise RuntimeError("canonical prepare failed")
@@ -227,3 +277,168 @@ def test_coding_portable_activation_bridge_cleans_up_when_product_prepare_fails(
 
     assert runtime.observed_path is not None
     assert not runtime.observed_path.exists()
+
+
+def test_coding_portable_activation_bridge_cleans_up_when_write_is_cancelled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = threading.Event()
+    release = threading.Event()
+    staged_path: list[Path] = []
+    original = continuity_module._write_private_continuity_payload
+
+    def delayed_write(
+        root: Path,
+        payload: ContinuityActivationPayload,
+    ) -> object:
+        started.set()
+        if not release.wait(timeout=5):
+            raise TimeoutError("test did not release continuity write")
+        staged = original(root, payload)
+        staged_path.append(staged.path)
+        return staged
+
+    monkeypatch.setattr(
+        continuity_module,
+        "_write_private_continuity_payload",
+        delayed_write,
+    )
+    runtime = _Runtime()
+    bridge = CodingContinuityActivationBridge(
+        runtime,  # type: ignore[arg-type]
+        temporary_root=tmp_path / "continuity",
+    )
+    payload = ContinuityActivationPayload.from_bytes(
+        b"{}\n",
+        media_type=CONTINUITY_JSONL_MEDIA_TYPE,
+    )
+
+    async def scenario() -> None:
+        task = asyncio.create_task(
+            bridge.prepare(
+                ContinuityTarget(
+                    provider_id="cloud.sessions",
+                    opaque_id="remote-1",
+                ),
+                payload,
+                _source(),
+            )
+        )
+        assert await asyncio.to_thread(started.wait, 5)
+        task.cancel()
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(scenario())
+
+    assert staged_path
+    assert not staged_path[0].exists()
+    assert list((tmp_path / "continuity").iterdir()) == []
+    assert runtime.observed_path is None
+
+
+def test_coding_portable_activation_bridge_cleans_up_when_prepare_is_cancelled(
+    tmp_path: Path,
+) -> None:
+    class _BlockingRuntime(_Runtime):
+        def __init__(self) -> None:
+            super().__init__()
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def prepare_restore_session_operation(
+            self,
+            session_id: str | Path,
+            *,
+            fallback_cwd: str | Path | None = None,
+            missing_cwd: str = "error",
+        ) -> _PreparedOperation:
+            path = Path(session_id)
+            self.observed_path = path
+            self.observed_bytes = path.read_bytes()
+            self.started.set()
+            await self.release.wait()
+            return self.prepared
+
+    runtime = _BlockingRuntime()
+    bridge = CodingContinuityActivationBridge(
+        runtime,  # type: ignore[arg-type]
+        temporary_root=tmp_path / "continuity",
+    )
+    payload = ContinuityActivationPayload.from_bytes(
+        b"{}\n",
+        media_type=CONTINUITY_JSONL_MEDIA_TYPE,
+    )
+
+    async def scenario() -> None:
+        task = asyncio.create_task(
+            bridge.prepare(
+                ContinuityTarget(
+                    provider_id="cloud.sessions",
+                    opaque_id="remote-1",
+                ),
+                payload,
+                _source(),
+            )
+        )
+        await asyncio.wait_for(runtime.started.wait(), timeout=1)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(scenario())
+
+    assert runtime.observed_path is not None
+    assert not runtime.observed_path.exists()
+
+
+def test_coding_portable_activation_bridge_rejects_replaced_temporary_file(
+    tmp_path: Path,
+) -> None:
+    replacement = b"replacement"
+
+    class _ReplacingRuntime(_Runtime):
+        async def prepare_restore_session_operation(
+            self,
+            session_id: str | Path,
+            *,
+            fallback_cwd: str | Path | None = None,
+            missing_cwd: str = "error",
+        ) -> _PreparedOperation:
+            prepared = await super().prepare_restore_session_operation(
+                session_id,
+                fallback_cwd=fallback_cwd,
+                missing_cwd=missing_cwd,
+            )
+            path = Path(session_id)
+            path.unlink()
+            path.write_bytes(replacement)
+            return prepared
+
+    runtime = _ReplacingRuntime()
+    bridge = CodingContinuityActivationBridge(
+        runtime,  # type: ignore[arg-type]
+        temporary_root=tmp_path / "continuity",
+    )
+    payload = ContinuityActivationPayload.from_bytes(
+        b"{}\n",
+        media_type=CONTINUITY_JSONL_MEDIA_TYPE,
+    )
+
+    with pytest.raises(OSError, match="identity changed"):
+        asyncio.run(
+            bridge.prepare(
+                ContinuityTarget(
+                    provider_id="cloud.sessions",
+                    opaque_id="remote-1",
+                ),
+                payload,
+                _source(),
+            )
+        )
+
+    assert runtime.prepared.aborted
+    assert runtime.observed_path is not None
+    assert runtime.observed_path.read_bytes() == replacement

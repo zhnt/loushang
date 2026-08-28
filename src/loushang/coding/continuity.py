@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import secrets
 import stat
 import tempfile
 from collections import OrderedDict
@@ -147,7 +148,7 @@ class CodingContinuityActivationBridge:
         target: ContinuityTarget,
         payload: ContinuityActivationPayload,
         source: ContinuityProviderSourceDescriptor,
-    ) -> CodingPreparedSessionOperation:
+    ) -> CallbackPreparedActivationLease:
         if not isinstance(target, ContinuityTarget):
             raise TypeError("Coding continuity activation target is invalid")
         if not isinstance(payload, ContinuityActivationPayload):
@@ -158,20 +159,19 @@ class CodingContinuityActivationBridge:
             raise ValueError("Coding continuity activation source does not own target")
         if payload.byte_size > self._max_bytes:
             raise ValueError("Coding continuity activation exceeds Product limit")
-        path, identity = await asyncio.to_thread(
-            _write_private_continuity_payload,
+        staged = await _write_private_continuity_payload_atomic(
             self._temporary_root,
             payload,
         )
         try:
             prepared = await self._runtime.prepare_restore_session_operation(
-                path,
+                staged.path,
                 fallback_cwd=self._fallback_cwd,
                 missing_cwd="fallback" if self._fallback_cwd is not None else "error",
             )
         except BaseException as operation_error:
             try:
-                await _remove_private_continuity_payload_atomic(path, identity)
+                await _remove_private_continuity_payload_atomic(staged)
             except BaseException as cleanup_error:
                 operation_error.add_note(
                     "Coding continuity temporary cleanup also failed: "
@@ -179,7 +179,7 @@ class CodingContinuityActivationBridge:
                 )
             raise
         try:
-            await _remove_private_continuity_payload_atomic(path, identity)
+            await _remove_private_continuity_payload_atomic(staged)
         except BaseException as cleanup_error:
             try:
                 abort_task = asyncio.create_task(prepared.abort())
@@ -190,7 +190,12 @@ class CodingContinuityActivationBridge:
                     f"{abort_error!r}"
                 )
             raise
-        return prepared
+        return CallbackPreparedActivationLease(
+            target=target,
+            disposition="in_place",
+            consume=prepared.consume,
+            abort=prepared.abort,
+        )
 
 
 class StaleContinuityTargetError(RuntimeError):
@@ -691,33 +696,93 @@ def bind_coding_continuity(
     return result
 
 
+@dataclass(frozen=True, slots=True)
+class _PrivateContinuityPayload:
+    path: Path
+    file_identity: tuple[int, int]
+    root_identity: tuple[int, int]
+    root_descriptor: int | None
+
+
 def _write_private_continuity_payload(
     root: Path,
     payload: ContinuityActivationPayload,
-) -> tuple[Path, tuple[int, int]]:
+) -> _PrivateContinuityPayload:
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    _validate_private_continuity_path_chain(root)
+    if _supports_continuity_directory_handles():
+        return _write_private_continuity_payload_at(root, payload)
+    return _write_private_continuity_payload_by_path(root, payload)
+
+
+def _write_private_continuity_payload_at(
+    root: Path,
+    payload: ContinuityActivationPayload,
+) -> _PrivateContinuityPayload:
+    root_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    root_flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    root_descriptor = os.open(root, root_flags)
+    descriptor = -1
+    name = ""
+    try:
+        root_status = os.fstat(root_descriptor)
+        path_status = root.lstat()
+        _validate_private_continuity_root(root, root_status)
+        if not os.path.samestat(root_status, path_status):
+            raise OSError("Coding continuity temporary root identity changed")
+        os.fchmod(root_descriptor, 0o700)
+        root_identity = (root_status.st_dev, root_status.st_ino)
+        suffix = _continuity_payload_suffix(payload)
+        file_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        file_flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+        for _attempt in range(128):
+            name = f"continuity-{secrets.token_hex(16)}{suffix}"
+            try:
+                descriptor = os.open(
+                    name,
+                    file_flags,
+                    0o600,
+                    dir_fd=root_descriptor,
+                )
+            except FileExistsError:
+                continue
+            break
+        else:
+            raise FileExistsError("Coding continuity temporary namespace is exhausted")
+        os.fchmod(descriptor, 0o600)
+        _write_continuity_payload_bytes(descriptor, payload.data)
+        status = os.fstat(descriptor)
+        file_identity = (status.st_dev, status.st_ino)
+        os.close(descriptor)
+        descriptor = -1
+        return _PrivateContinuityPayload(
+            path=root / name,
+            file_identity=file_identity,
+            root_identity=root_identity,
+            root_descriptor=root_descriptor,
+        )
+    except BaseException:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if name:
+            with suppress(OSError):
+                os.unlink(name, dir_fd=root_descriptor)
+        os.close(root_descriptor)
+        raise
+
+
+def _write_private_continuity_payload_by_path(
+    root: Path,
+    payload: ContinuityActivationPayload,
+) -> _PrivateContinuityPayload:
     root_status = root.lstat()
-    if (
-        not stat.S_ISDIR(root_status.st_mode)
-        or stat.S_ISLNK(root_status.st_mode)
-        or bool(getattr(root_status, "st_reparse_tag", 0))
-    ):
-        raise OSError("Coding continuity temporary root is unsafe")
-    getuid = getattr(os, "getuid", None)
-    if os.name == "posix" and callable(getuid):
-        if root_status.st_uid != getuid():
-            raise PermissionError(
-                "Coding continuity temporary root belongs to another user"
-            )
+    _validate_private_continuity_root(root, root_status)
+    root_identity = (root_status.st_dev, root_status.st_ino)
+    if os.name == "posix":
         root.chmod(0o700)
-    suffix = (
-        ".loushang.zip"
-        if payload.media_type.endswith("session-bundle+zip")
-        else ".jsonl"
-    )
     descriptor, raw_path = tempfile.mkstemp(
         prefix="continuity-",
-        suffix=suffix,
+        suffix=_continuity_payload_suffix(payload),
         dir=root,
     )
     path = Path(raw_path)
@@ -725,52 +790,175 @@ def _write_private_continuity_payload(
         fchmod = getattr(os, "fchmod", None)
         if callable(fchmod):
             fchmod(descriptor, 0o600)
-        view = memoryview(payload.data)
-        while view:
-            written = os.write(descriptor, view)
-            if written < 1:
-                raise OSError("Coding continuity temporary write made no progress")
-            view = view[written:]
-        os.fsync(descriptor)
+        _write_continuity_payload_bytes(descriptor, payload.data)
         status = os.fstat(descriptor)
-        identity = (status.st_dev, status.st_ino)
+        file_identity = (status.st_dev, status.st_ino)
+        current_root = root.lstat()
+        if (current_root.st_dev, current_root.st_ino) != root_identity:
+            raise OSError("Coding continuity temporary root identity changed")
     except BaseException:
         os.close(descriptor)
         path.unlink(missing_ok=True)
         raise
     os.close(descriptor)
-    return path, identity
+    return _PrivateContinuityPayload(
+        path=path,
+        file_identity=file_identity,
+        root_identity=root_identity,
+        root_descriptor=None,
+    )
 
 
-def _remove_private_continuity_payload(
-    path: Path,
-    expected_identity: tuple[int, int],
+def _validate_private_continuity_root(
+    root: Path,
+    root_status: os.stat_result,
 ) -> None:
+    if (
+        not stat.S_ISDIR(root_status.st_mode)
+        or stat.S_ISLNK(root_status.st_mode)
+        or bool(getattr(root_status, "st_reparse_tag", 0))
+    ):
+        raise OSError("Coding continuity temporary root is unsafe")
+    getuid = getattr(os, "getuid", None)
+    if os.name == "posix" and callable(getuid) and root_status.st_uid != getuid():
+        raise PermissionError(
+            f"Coding continuity temporary root belongs to another user: {root}"
+        )
+
+
+def _validate_private_continuity_path_chain(root: Path) -> None:
+    for directory in (root, *root.parents):
+        metadata = directory.lstat()
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or bool(getattr(metadata, "st_reparse_tag", 0))
+        ):
+            raise OSError("Coding continuity temporary path contains an unsafe link")
+        if (
+            os.name == "posix"
+            and metadata.st_mode & 0o022
+            and not metadata.st_mode & stat.S_ISVTX
+        ):
+            raise PermissionError(
+                "Coding continuity temporary path has a writable ancestor"
+            )
+
+
+def _continuity_payload_suffix(payload: ContinuityActivationPayload) -> str:
+    return (
+        ".loushang.zip"
+        if payload.media_type.endswith("session-bundle+zip")
+        else ".jsonl"
+    )
+
+
+def _write_continuity_payload_bytes(descriptor: int, data: bytes) -> None:
+    view = memoryview(data)
+    while view:
+        written = os.write(descriptor, view)
+        if written < 1:
+            raise OSError("Coding continuity temporary write made no progress")
+        view = view[written:]
+    os.fsync(descriptor)
+
+
+def _supports_continuity_directory_handles() -> bool:
+    supports_dir_fd = getattr(os, "supports_dir_fd", ())
+    return (
+        os.name == "posix"
+        and isinstance(getattr(os, "O_DIRECTORY", None), int)
+        and isinstance(getattr(os, "O_NOFOLLOW", None), int)
+        and os.open in supports_dir_fd
+        and os.stat in supports_dir_fd
+        and os.unlink in supports_dir_fd
+    )
+
+
+def _remove_private_continuity_payload(staged: _PrivateContinuityPayload) -> None:
+    if staged.root_descriptor is not None:
+        try:
+            root_status = os.fstat(staged.root_descriptor)
+            if (root_status.st_dev, root_status.st_ino) != staged.root_identity:
+                raise OSError("Coding continuity temporary root identity changed")
+            try:
+                status = os.stat(
+                    staged.path.name,
+                    dir_fd=staged.root_descriptor,
+                    follow_symlinks=False,
+                )
+            except FileNotFoundError:
+                return
+            if (
+                stat.S_ISLNK(status.st_mode)
+                or bool(getattr(status, "st_reparse_tag", 0))
+                or (status.st_dev, status.st_ino) != staged.file_identity
+            ):
+                raise OSError("Coding continuity temporary file identity changed")
+            os.unlink(staged.path.name, dir_fd=staged.root_descriptor)
+            return
+        finally:
+            os.close(staged.root_descriptor)
     try:
-        status = path.lstat()
+        root_status = staged.path.parent.lstat()
+        if (root_status.st_dev, root_status.st_ino) != staged.root_identity:
+            raise OSError("Coding continuity temporary root identity changed")
+        status = staged.path.lstat()
     except FileNotFoundError:
         return
     if (
         stat.S_ISLNK(status.st_mode)
         or bool(getattr(status, "st_reparse_tag", 0))
-        or (status.st_dev, status.st_ino) != expected_identity
+        or (status.st_dev, status.st_ino) != staged.file_identity
     ):
         raise OSError("Coding continuity temporary file identity changed")
-    path.unlink()
+    staged.path.unlink()
 
 
 async def _remove_private_continuity_payload_atomic(
-    path: Path,
-    expected_identity: tuple[int, int],
+    staged: _PrivateContinuityPayload,
 ) -> None:
     task = asyncio.create_task(
-        asyncio.to_thread(
-            _remove_private_continuity_payload,
-            path,
-            expected_identity,
-        )
+        asyncio.to_thread(_remove_private_continuity_payload, staged)
     )
     await _await_owned_task_cancellation_atomic(task)
+
+
+async def _write_private_continuity_payload_atomic(
+    root: Path,
+    payload: ContinuityActivationPayload,
+) -> _PrivateContinuityPayload:
+    task = asyncio.create_task(
+        asyncio.to_thread(_write_private_continuity_payload, root, payload)
+    )
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError as first_cancellation:
+        cancellation = first_cancellation
+        caller = asyncio.current_task()
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError as repeated:
+                if caller is None or caller.cancelling() == 0:
+                    return task.result()
+                cancellation = repeated
+        try:
+            staged = task.result()
+        except BaseException as write_error:
+            cancellation.add_note(
+                "Coding continuity temporary write also failed: "
+                f"{type(write_error).__name__}"
+            )
+            raise cancellation
+        try:
+            await _remove_private_continuity_payload_atomic(staged)
+        except BaseException as cleanup_error:
+            cancellation.add_note(
+                "Coding continuity cancelled-write cleanup also failed: "
+                f"{type(cleanup_error).__name__}"
+            )
+        raise cancellation
 
 
 async def _await_owned_task_cancellation_atomic(

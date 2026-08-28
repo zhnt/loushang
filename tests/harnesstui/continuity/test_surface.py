@@ -379,11 +379,16 @@ def test_common_resume_distinguishes_empty_and_partial_responsive_views() -> Non
         message="Design history is temporarily unavailable",
         provider_id="design.canvases",
     )
+    secondary_diagnostic = ContinuityDiagnostic(
+        code="provider_stale",
+        message="Coding index is stale",
+        provider_id="coding.sessions",
+    )
     partial_hub = _PageHub(
         ContinuityPage(
             items=(empty_hub.summary,),
             next_cursor=None,
-            provider_diagnostics=(diagnostic,),
+            provider_diagnostics=(diagnostic, secondary_diagnostic),
             partial=True,
             ordering_complete=False,
             provider_states={
@@ -396,6 +401,19 @@ def test_common_resume_distinguishes_empty_and_partial_responsive_views() -> Non
             aggregate_index_state="fresh",
         )
     )
+    design = ContinuityProviderDescriptor(
+        provider_id="design.canvases",
+        experience_id="studio",
+        domain_ids=("design",),
+        label="Design",
+    )
+    partial_hub.composition = SimpleNamespace(
+        experience=partial_hub.composition.experience,
+        continuity_providers=(
+            *partial_hub.composition.continuity_providers,
+            SimpleNamespace(provider=_Provider(design)),
+        ),
+    )
     partial_view = build_continuity_surface_view(
         reference=_reference(partial_hub),
         request_render=lambda _kind: None,
@@ -403,7 +421,8 @@ def test_common_resume_distinguishes_empty_and_partial_responsive_views() -> Non
     asyncio.run(partial_view.content.start())
     wide = partial_view.render(RenderConstraints(width=120, max_height=24))
     assert any("Partial results:" in line.text for line in wide.lines)
-    assert any("design.canvases:" in line.text for line in wide.lines)
+    assert any("Design:" in line.text for line in wide.lines)
+    assert any("(+1 more)" in line.text for line in wide.lines)
     assert all(visible_width(line.text) <= 120 for line in wide.lines)
 
 
@@ -559,6 +578,123 @@ def test_provider_switch_invalidates_old_target_until_new_query_publishes() -> N
         hub.release.set()
         assert surface._query_task is not None
         await surface._query_task
+        surface.close()
+
+    asyncio.run(scenario())
+
+
+def test_provider_switch_rejects_late_result_from_cancel_suppressing_query() -> None:
+    class _CancellationSuppressingHub(_Hub):
+        def __init__(self) -> None:
+            super().__init__()
+            self.old_started = asyncio.Event()
+            self.new_started = asyncio.Event()
+            self.release_old = asyncio.Event()
+            self.release_new = asyncio.Event()
+
+        async def query(self, request: ContinuityQuery) -> ContinuityPage:
+            page = await super().query(request)
+            query_number = len(self.queries)
+            if query_number == 2:
+                self.old_started.set()
+                try:
+                    await self.release_old.wait()
+                except asyncio.CancelledError:
+                    return page
+            elif query_number == 3:
+                self.new_started.set()
+                await self.release_new.wait()
+            return page
+
+    async def scenario() -> None:
+        hub = _CancellationSuppressingHub()
+        design = ContinuityProviderDescriptor(
+            provider_id="design.canvases",
+            experience_id="studio",
+            domain_ids=("design",),
+            label="Design",
+        )
+        hub.composition = SimpleNamespace(
+            experience=hub.composition.experience,
+            continuity_providers=(
+                *hub.composition.continuity_providers,
+                SimpleNamespace(provider=_Provider(design)),
+            ),
+        )
+        surface = ContinuitySurface(
+            reference=_reference(hub),
+            request_render=lambda _kind: None,
+        )
+        await surface.start()
+
+        surface.handle_input(InputEvent(kind="text", text="parser"))
+        await asyncio.wait_for(hub.old_started.wait(), timeout=1)
+        surface.handle_input(InputEvent(kind="key", key="ctrl+p"))
+        await asyncio.sleep(0)
+
+        assert surface.loading is True
+        assert surface.selected_target is None
+        assert surface.begin_activation() is False
+
+        await asyncio.wait_for(hub.new_started.wait(), timeout=1)
+        assert surface.loading is True
+        assert surface.selected_target is None
+        hub.release_new.set()
+        assert surface._query_task is not None
+        await surface._query_task
+        surface.close()
+
+    asyncio.run(scenario())
+
+
+def test_provider_switch_reindexes_compatible_domain_subset() -> None:
+    async def scenario() -> None:
+        hub = _Hub()
+        broad = ContinuityProviderDescriptor(
+            provider_id="coding.sessions",
+            experience_id="studio",
+            domain_ids=("coding", "design", "presentation"),
+            label="Coding",
+        )
+        narrow = ContinuityProviderDescriptor(
+            provider_id="design.canvases",
+            experience_id="studio",
+            domain_ids=("design", "presentation"),
+            label="Design",
+        )
+        hub.composition = SimpleNamespace(
+            experience=SimpleNamespace(
+                domain_ids=("coding", "design", "presentation")
+            ),
+            continuity_providers=(
+                SimpleNamespace(provider=_Provider(broad)),
+                SimpleNamespace(provider=_Provider(narrow)),
+            ),
+        )
+        surface = ContinuitySurface(
+            reference=_reference(hub),
+            request_render=lambda _kind: None,
+        )
+        await surface.start()
+
+        for _ in range(3):
+            surface.handle_input(InputEvent(kind="key", key="tab"))
+        assert surface.query.domain_ids == ("presentation",)
+
+        surface.handle_input(InputEvent(kind="key", key="ctrl+p"))
+        assert surface.query.provider_ids == ("coding.sessions",)
+        assert surface._domain_index == 3
+        surface.handle_input(InputEvent(kind="key", key="ctrl+p"))
+
+        assert surface.query.provider_ids == ("design.canvases",)
+        assert surface.query.domain_ids == ("presentation",)
+        assert surface._domain_options == (None, "design", "presentation")
+        assert surface._domain_index == 2
+        rendered = surface.render(RenderConstraints(width=120, max_height=14))
+        assert any(
+            "[Presentation]" in strip_control_sequences(line.text)
+            for line in rendered.lines
+        )
         surface.close()
 
     asyncio.run(scenario())

@@ -238,7 +238,12 @@ def test_provider_page_cannot_exceed_requested_limit() -> None:
 
     assert page.items == ()
     assert page.partial is True
+    assert page.ordering_complete is False
+    assert page.next_cursor is None
     assert page.provider_diagnostics[0].code == "continuity_provider_query_failed"
+    assert page.provider_diagnostics[0].message == (
+        "provider returned more items than the requested limit"
+    )
 
 
 async def _failed_provider_marks_page_partial_and_withholds_canonical_cursor() -> None:

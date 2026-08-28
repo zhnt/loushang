@@ -64,9 +64,14 @@ explicitly configured fallback.
 
 The Coding Product bridge writes the payload to a private temporary file, asks
 the existing transcript lifecycle to prepare a copy-first import, and removes
-the temporary source before returning the activation lease. Consume remains
-the existing canonical Session transition; abort remains the existing
-unpublished-candidate rollback.
+the temporary source before returning the activation lease. Cancellation joins
+an in-flight owned write before identity-checked cleanup, so the worker cannot
+leave an unreachable transcript behind. On POSIX, creation and removal stay
+anchored to a no-follow directory descriptor; path ancestors must not be
+non-sticky shared-writable. The bridge wraps the Product candidate in the full
+`PreparedActivationLease` contract, preserving the external target and
+declaring Coding's in-place disposition. Consume remains the existing canonical
+Session transition; abort remains the existing unpublished-candidate rollback.
 
 ## Composition and presentation
 
@@ -80,9 +85,11 @@ by required action, rejects pages larger than the requested limit, and rejects
 summary actions outside the Provider declaration.
 
 The common Resume surface can filter by Provider and Domain. Filter changes
-invalidate the prior result generation immediately, so an old target cannot be
-previewed or activated while the next query is pending. Provider and Domain
-options are restricted to the current action and selected Provider.
+reserve and invalidate the prior result generation synchronously, so an old
+Provider that suppresses task cancellation still cannot republish its target
+while the next query is pending. Provider and Domain options are restricted to
+the current action and selected Provider, and a retained Domain is reindexed
+when the Provider narrows its option set.
 
 ## Phase 5C handoff
 
