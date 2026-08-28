@@ -10,6 +10,7 @@ from loushang.harness.continuity.types import (
     ContinuityPage,
     ContinuityPreview,
     ContinuityProviderDescriptor,
+    ContinuityProviderSourceDescriptor,
     ContinuityQuery,
     ContinuityTarget,
     ExperienceDescriptor,
@@ -29,6 +30,24 @@ class ContinuityObservationDescriptor:
 
     experience: ExperienceDescriptor
     providers: tuple[ContinuityProviderDescriptor, ...]
+    provider_sources: tuple[ContinuityProviderSourceDescriptor, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.provider_sources and len(self.provider_sources) != len(self.providers):
+            raise ValueError(
+                "continuity observation Provider sources must align with Providers"
+            )
+        if self.provider_sources and any(
+            source.provider_id != provider.provider_id
+            for provider, source in zip(
+                self.providers,
+                self.provider_sources,
+                strict=True,
+            )
+        ):
+            raise ValueError(
+                "continuity observation Provider source identity does not match"
+            )
 
 
 class StableContinuityReference:
@@ -49,6 +68,9 @@ class StableContinuityReference:
             providers=tuple(
                 bound.provider.descriptor
                 for bound in hub.composition.continuity_providers
+            ),
+            provider_sources=tuple(
+                bound.source for bound in hub.composition.continuity_providers
             ),
         )
 

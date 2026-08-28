@@ -413,6 +413,8 @@ class ContinuityHub:
         target: ContinuityTarget,
     ) -> PreparedActivationLease:
         provider = self._provider_for_target(target)
+        if "activate" not in provider.descriptor.supported_actions:
+            raise RuntimeError("The selected continuity item cannot be activated")
         lease = await self._call_provider(
             provider,
             "prepare",
@@ -425,7 +427,10 @@ class ContinuityHub:
         """Delete a target only when its owning Provider explicitly supports it."""
 
         provider = self._provider_for_target(target)
-        if not isinstance(provider, ContinuityDeletionProvider):
+        if (
+            "delete" not in provider.descriptor.supported_actions
+            or not isinstance(provider, ContinuityDeletionProvider)
+        ):
             raise RuntimeError("The selected continuity item cannot be deleted")
         return await self._call_provider(
             provider,
@@ -476,6 +481,13 @@ class ContinuityHub:
                 for provider in candidates
                 if selected_domains.intersection(provider.descriptor.domain_ids)
             )
+        if request.required_actions:
+            required_actions = set(request.required_actions)
+            candidates = tuple(
+                provider
+                for provider in candidates
+                if required_actions.issubset(provider.descriptor.supported_actions)
+            )
         unsupported = tuple(
             provider.descriptor.provider_id
             for provider in candidates
@@ -504,6 +516,8 @@ class ContinuityHub:
                 raise ValueError("provider returned a target owned by another provider")
             if not set(summary.domain_ids).issubset(provider_domains):
                 raise ValueError("provider returned a summary for an undeclared Domain")
+            if not set(summary.actions).issubset(descriptor.supported_actions):
+                raise ValueError("provider returned an unsupported target action")
             if not set(request.required_actions).issubset(summary.actions):
                 raise ValueError("provider returned a summary without required actions")
 
@@ -558,9 +572,8 @@ class ContinuityHub:
                     "domain_ids": list(descriptor.domain_ids),
                     "implementation_version": descriptor.implementation_version,
                     "profile_version": descriptor.profile_version,
-                    "source": bound.provenance.source,
-                    "layer_id": bound.provenance.layer_id,
-                    "implementation": (bound.provenance.selection.implementation),
+                    "supported_actions": list(descriptor.supported_actions),
+                    "source": bound.source.to_dict(),
                 }
             )
         payload = {

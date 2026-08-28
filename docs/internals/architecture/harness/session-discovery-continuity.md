@@ -107,3 +107,12 @@ presentation. Harness continues to own:
 
 Mutation plugins may propose a typed plan in a later phase. They must not
 receive an unrestricted path deletion or transcript-write side door.
+
+Phase 5B implements the first read-only Plugin contribution path. An admitted
+Plugin contributes bounded query/preview plus a portable activation payload;
+the Product bridge imports that payload through the canonical transcript
+lifecycle. Exact Instance and trust identity are revalidated before every
+operation, and the common surface can filter the resulting Providers. The
+normative boundary is
+[Continuity Provider Plugin Contract](plugin/continuity-provider-phase5b-contract.md).
+Deletion and other mutation contributions remain outside this phase.

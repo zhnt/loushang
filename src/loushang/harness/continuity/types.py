@@ -12,6 +12,13 @@ ContinuityIndexState = Literal["fresh", "stale", "rebuilding", "unavailable", "u
 ContinuityPreviewSectionKind = Literal["text", "key_value", "artifacts"]
 ActivationDisposition = Literal["in_place", "relaunch", "new_window", "unsupported"]
 ContinuityAction = Literal["activate", "delete"]
+ContinuityProviderSourceKind = Literal[
+    "product",
+    "oem",
+    "plugin",
+    "extension",
+    "session",
+]
 
 MAX_CONTINUITY_PAGE_SIZE = 100
 MAX_CONTINUITY_TEXT_LENGTH = 512
@@ -73,7 +80,7 @@ class ExperienceDescriptor:
 
 @dataclass(frozen=True)
 class ContinuityProviderDescriptor:
-    """Admission-time metadata for one Product- or OEM-owned provider."""
+    """Admission-time metadata for one admitted continuity provider."""
 
     provider_id: str
     experience_id: str
@@ -83,6 +90,7 @@ class ContinuityProviderDescriptor:
     supported_sorts: tuple[ContinuitySort, ...] = ("updated",)
     supports_startup: bool = True
     supports_in_place: bool = True
+    supported_actions: tuple[ContinuityAction, ...] = ("activate", "delete")
     implementation_version: int = 1
     profile_version: int = 1
 
@@ -109,6 +117,11 @@ class ContinuityProviderDescriptor:
             raise TypeError("supports_startup must be a bool")
         if type(self.supports_in_place) is not bool:
             raise TypeError("supports_in_place must be a bool")
+        actions = tuple(self.supported_actions)
+        if not actions or any(action not in {"activate", "delete"} for action in actions):
+            raise ValueError("supported_actions must contain supported actions")
+        if len(set(actions)) != len(actions):
+            raise ValueError("supported_actions must be unique")
         if type(self.implementation_version) is not int:
             raise TypeError("implementation_version must be an integer")
         if type(self.profile_version) is not int:
@@ -117,6 +130,80 @@ class ContinuityProviderDescriptor:
             raise ValueError("provider versions must be at least 1")
         object.__setattr__(self, "domain_ids", domain_ids)
         object.__setattr__(self, "supported_sorts", sorts)
+        object.__setattr__(self, "supported_actions", actions)
+
+
+@dataclass(frozen=True)
+class ContinuityProviderSourceDescriptor:
+    """Redacted composition provenance for one admitted Provider."""
+
+    provider_id: str
+    source: ContinuityProviderSourceKind
+    source_id: str
+    implementation: str
+    implementation_version: int
+    plugin_id: str | None = None
+    contribution_id: str | None = None
+    instance_id: str | None = None
+    instance_revision: int | None = None
+    source_trust_class: str | None = None
+    source_trust_policy_revision: str | None = None
+
+    def __post_init__(self) -> None:
+        _nonempty(self.provider_id, name="provider source provider_id")
+        if self.source not in {"product", "oem", "plugin", "extension", "session"}:
+            raise ValueError("provider source is invalid")
+        _nonempty(self.source_id, name="provider source_id")
+        _nonempty(self.implementation, name="provider implementation")
+        if (
+            isinstance(self.implementation_version, bool)
+            or not isinstance(self.implementation_version, int)
+            or self.implementation_version < 1
+        ):
+            raise ValueError("provider implementation version must be positive")
+        plugin_values = (
+            self.plugin_id,
+            self.contribution_id,
+            self.instance_id,
+            self.instance_revision,
+            self.source_trust_class,
+            self.source_trust_policy_revision,
+        )
+        if self.source == "plugin":
+            for value, name in (
+                (self.plugin_id, "provider Plugin id"),
+                (self.contribution_id, "provider Plugin contribution id"),
+                (self.instance_id, "provider Plugin instance id"),
+                (self.source_trust_class, "provider Plugin trust class"),
+                (
+                    self.source_trust_policy_revision,
+                    "provider Plugin trust policy revision",
+                ),
+            ):
+                _nonempty(value, name=name)
+            if (
+                isinstance(self.instance_revision, bool)
+                or not isinstance(self.instance_revision, int)
+                or self.instance_revision < 1
+            ):
+                raise ValueError("provider Plugin instance revision must be positive")
+        elif any(value is not None for value in plugin_values):
+            raise ValueError("non-Plugin provider source cannot carry Plugin identity")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "providerId": self.provider_id,
+            "source": self.source,
+            "sourceId": self.source_id,
+            "implementation": self.implementation,
+            "implementationVersion": self.implementation_version,
+            "pluginId": self.plugin_id,
+            "contributionId": self.contribution_id,
+            "instanceId": self.instance_id,
+            "instanceRevision": self.instance_revision,
+            "sourceTrustClass": self.source_trust_class,
+            "sourceTrustPolicyRevision": self.source_trust_policy_revision,
+        }
 
 
 @dataclass(frozen=True)
@@ -425,6 +512,8 @@ __all__ = [
     "ContinuityPreviewSection",
     "ContinuityPreviewSectionKind",
     "ContinuityProviderDescriptor",
+    "ContinuityProviderSourceDescriptor",
+    "ContinuityProviderSourceKind",
     "ContinuityQuery",
     "ContinuitySort",
     "ContinuitySummary",
