@@ -66,6 +66,10 @@ Neither may silently override a narrower implemented owner contract.
 - [Phase 5B Continuity Provider Foundation](continuity-provider-phase5b-contract.md)
   freezes portable read-only Provider contracts, Product lifecycle bridging,
   and the handoff requirements for later Plugin admission.
+- [Phase 5C Continuity Provider Plugin Lifecycle](continuity-provider-phase5c-contract.md)
+  freezes the planned installed-Plugin declaration, exact owner-component
+  lifecycle, sealed process composition, and revocation linearization. Its
+  runtime slices are not implemented yet.
 
 These contracts refine the architecture only inside their stated versions and
 implemented slices. An unimplemented Worker, Skill-action, remote-service, or
