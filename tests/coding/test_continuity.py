@@ -7,7 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from loushang.ai.types import UserMessage
+from loushang.ai.model import Capabilities, Model
+from loushang.ai.types import TextPart, UserMessage
+from loushang.coding.bootstrap import create_agent_session_runtime
 from loushang.coding.continuity import (
     ConflictedContinuityTargetError,
     StaleContinuityTargetError,
@@ -23,6 +25,11 @@ from loushang.harness.transcript import (
     SessionImagePart,
     write_agent_transcript_export,
 )
+from loushang.harnesstui.conversation.agent_binding import (
+    agent_image_parts_from_prompt_attachments,
+)
+from loushang.harnesstui.conversation.attachments import stage_clipboard_image
+from loushang.tui.clipboard_image import ClipboardImage
 
 
 def _header(
@@ -46,6 +53,20 @@ def _record(record_id: str, text: str, *, parent_id: str | None = None):
         payload_version=1,
         created_at="2026-07-24T00:00:01Z",
         payload=UserMessage(role="user", content=text, timestamp=1.0),
+    )
+
+
+def _image_model() -> Model:
+    return Model(
+        id="image-model",
+        name="Image model",
+        provider="test",
+        endpoint="anthropic-messages",
+        capabilities=Capabilities(
+            input=("text", "image"),
+            context_window=128_000,
+            max_tokens=4_096,
+        ),
     )
 
 
@@ -319,6 +340,121 @@ def test_coding_resume_preview_inspects_durable_clipboard_image_health(
             "Missing · 1 objects · 15 bytes · 1 missing · 0 corrupt",
         ) in degraded.sections[1].rows
         await shutdown_coding_continuity(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_coding_continuity_builds_a_bounded_fallback_when_index_is_missing(
+    tmp_path: Path,
+) -> None:
+    runtime = _Runtime(tmp_path)
+    write_agent_transcript_export(
+        tmp_path / "fallback.jsonl",
+        _header("fallback"),
+        [_record("fallback-record", "Resume without an index")],
+    )
+    composition = bind_coding_continuity(runtime, all_sessions=True)
+
+    async def scenario() -> None:
+        page = await composition.hub.query(ContinuityQuery(page_size=10))
+        assert [item.target.opaque_id for item in page.items] == ["fallback"]
+        assert page.aggregate_index_state == "rebuilding"
+        assert [item.code for item in page.provider_diagnostics] == [
+            "coding_continuity_bounded_catalog"
+        ]
+        assert not runtime.session_catalog.index_path.exists()
+        await shutdown_coding_continuity(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_coding_continuity_projects_delete_only_for_canonical_targets(
+    tmp_path: Path,
+) -> None:
+    canonical = tmp_path / "canonical"
+    compatibility = tmp_path / "compatibility"
+    canonical.mkdir()
+    compatibility.mkdir()
+    write_agent_transcript_export(
+        canonical / "canonical.jsonl",
+        _header("canonical"),
+        [_record("canonical-record", "Canonical")],
+    )
+    write_agent_transcript_export(
+        compatibility / "legacy.jsonl",
+        _header("legacy"),
+        [_record("legacy-record", "Legacy")],
+    )
+    runtime = _Runtime(canonical)
+    runtime.add_session_discovery_dir(compatibility)
+    composition = bind_coding_continuity(runtime, all_sessions=True)
+
+    async def scenario() -> None:
+        page = await composition.hub.query(ContinuityQuery(page_size=10))
+        actions = {item.target.opaque_id: item.actions for item in page.items}
+        assert actions == {
+            "canonical": ("activate", "delete"),
+            "legacy": ("activate",),
+        }
+        legacy = next(item for item in page.items if item.target.opaque_id == "legacy")
+        with pytest.raises(RuntimeError, match="read-only"):
+            await composition.hub.delete(legacy.target)
+        assert runtime.deleted == []
+        await shutdown_coding_continuity(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_clipboard_image_persists_through_transcript_and_continuity_preview(
+    tmp_path: Path,
+) -> None:
+    session_dir = tmp_path / "data" / "sessions"
+    project = tmp_path / "project"
+    session_dir.mkdir(parents=True)
+    project.mkdir()
+    clipboard_bytes = b"real clipboard png payload"
+    outcome = stage_clipboard_image(
+        lambda: ClipboardImage(bytes=clipboard_bytes, mime_type="image/png"),
+        directory=tmp_path / "runtime" / "drafts" / "clipboard",
+        display_root=project,
+        name_token="e2e",
+    )
+    assert outcome.attachment is not None
+    image_parts = agent_image_parts_from_prompt_attachments((outcome.attachment,))
+    assert image_parts is not None
+
+    async def scenario() -> None:
+        writer = create_agent_session_runtime(
+            session_dir=session_dir,
+            model=_image_model(),
+            persist=True,
+        )
+        session = await writer.create_session(cwd=str(project))
+        await session.session_manager.append_message(
+            UserMessage(
+                role="user",
+                content=[
+                    TextPart(type="text", text="Describe this clipboard image"),
+                    *image_parts,
+                ],
+                timestamp=1.0,
+            )
+        )
+        await session.session_manager.dispose_runtime_profile()
+
+        reader = _Runtime(session_dir)
+        composition = bind_coding_continuity(reader, all_sessions=True)
+        page = await composition.hub.query(ContinuityQuery(page_size=10))
+        assert len(page.items) == 1
+        preview = await composition.hub.preview(page.items[0].target)
+        assert (
+            "Assets",
+            "Present (integrity checked on resume) · 1 objects · 26 bytes",
+        ) in preview.sections[1].rows
+        store = SessionBlobStore(tmp_path / "data", session.session_id)
+        assert len(store.records) == 1
+        assert store.read_bytes(store.records[0]) == clipboard_bytes
+        await shutdown_coding_continuity(reader)
 
     asyncio.run(scenario())
 

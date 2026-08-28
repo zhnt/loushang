@@ -67,6 +67,48 @@ def test_copy_file_exclusive_does_not_replace_an_existing_destination(
     assert list(tmp_path.glob(f".{destination.name}.*.tmp")) == []
 
 
+def test_copy_file_exclusive_rejects_a_linked_source(tmp_path) -> None:
+    outside = tmp_path / "outside.jsonl"
+    linked = tmp_path / "linked.jsonl"
+    destination = tmp_path / "destination.jsonl"
+    outside.write_bytes(b"outside transcript\n")
+    try:
+        linked.symlink_to(outside)
+    except (NotImplementedError, OSError):
+        pytest.skip("file symlinks are unavailable")
+
+    with pytest.raises(OSError, match="regular file"):
+        copy_file_exclusive(linked, destination)
+
+    assert destination.exists() is False
+    assert outside.read_bytes() == b"outside transcript\n"
+
+
+def test_copy_file_exclusive_rejects_a_source_append_without_reading_to_eof(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.harness.runtime import session_operations
+
+    source = tmp_path / "source.jsonl"
+    destination = tmp_path / "destination.jsonl"
+    source.write_bytes(b"fixed snapshot\n")
+    copy = session_operations.copyfileobj
+
+    def append_during_copy(input_handle, output_handle) -> None:
+        with source.open("ab") as source_handle:
+            source_handle.write(b"racing append\n")
+        copy(input_handle, output_handle)
+
+    monkeypatch.setattr(session_operations, "copyfileobj", append_during_copy)
+
+    with pytest.raises(OSError, match="changed while copying"):
+        copy_file_exclusive(source, destination)
+
+    assert destination.exists() is False
+    assert list(tmp_path.glob(f".{destination.name}.*.tmp")) == []
+
+
 def test_session_operation_orders_prepare_replace_and_commit() -> None:
     events: list[str] = []
     host = SessionTransitionHost(

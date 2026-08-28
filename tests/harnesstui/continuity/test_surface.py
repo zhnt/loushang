@@ -169,6 +169,35 @@ def test_continuity_surface_can_exclude_non_selectable_summaries() -> None:
     asyncio.run(scenario())
 
 
+def test_delete_surface_filters_targets_by_advertised_action() -> None:
+    read_only_hub = _Hub()
+    read_only = ContinuitySurface(
+        reference=_reference(read_only_hub),
+        request_render=lambda _kind: None,
+        selection_action="delete",
+    )
+    deletable_hub = _Hub()
+    deletable_hub.summary = replace(
+        deletable_hub.summary,
+        actions=("activate", "delete"),
+    )
+    deletable = ContinuitySurface(
+        reference=_reference(deletable_hub),
+        request_render=lambda _kind: None,
+        selection_action="delete",
+    )
+
+    async def scenario() -> None:
+        await read_only.start()
+        await deletable.start()
+        assert read_only.selected_target is None
+        assert deletable.selected_target == deletable_hub.summary.target
+        read_only.close()
+        deletable.close()
+
+    asyncio.run(scenario())
+
+
 def test_delete_continuity_view_uses_the_delete_surface_purpose() -> None:
     view = build_continuity_surface_view(
         reference=_reference(_Hub()),

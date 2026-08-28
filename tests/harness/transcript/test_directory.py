@@ -14,10 +14,13 @@ from loushang.harness.conversation import (
 )
 from loushang.harness.transcript import (
     AGENT_MESSAGE_KIND,
+    EXTENSION_DATA_KIND,
     AgentTranscriptDirectoryRuntime,
+    ExtensionData,
     SessionDiscoverySource,
     SessionQuery,
     SessionSummary,
+    delete_agent_transcript_jsonl,
     write_agent_transcript_export,
 )
 
@@ -477,3 +480,157 @@ def test_directory_can_finish_bounded_index_rebuild_off_the_listing_path(
     assert rebuilt.bounded_fallback is False
     assert len(rebuilt.items) == 3
     assert all(item.item.projection.bounded for item in rebuilt.items)
+
+
+def test_compatibility_corrupt_index_read_is_strictly_non_mutating(
+    tmp_path: Path,
+) -> None:
+    canonical = tmp_path / "canonical"
+    compatibility = tmp_path / "compatibility"
+    canonical.mkdir()
+    compatibility.mkdir()
+    write_agent_transcript_export(
+        compatibility / "legacy.jsonl",
+        _header("legacy", cwd="/workspace/project"),
+        [_record("legacy-record", "legacy", timestamp=1.0)],
+    )
+    corrupt_index = compatibility / ".session-index.json"
+    corrupt_index.write_text("{broken", encoding="utf-8")
+    runtime = AgentTranscriptDirectoryRuntime(session_dir=canonical)
+    runtime.add_session_discovery_dir(compatibility)
+
+    page = runtime.try_query_session_index_page(limit=10)
+
+    assert [item.item.projection.session_id for item in page.items] == ["legacy"]
+    assert page.bounded_fallback is True
+    assert corrupt_index.read_text(encoding="utf-8") == "{broken"
+    assert not list(compatibility.glob(".session-index.json.corrupt-*"))
+
+
+def test_same_source_duplicate_identity_is_visible_as_a_conflict(
+    tmp_path: Path,
+) -> None:
+    canonical = tmp_path / "canonical"
+    compatibility = tmp_path / "compatibility"
+    canonical.mkdir()
+    compatibility.mkdir()
+    write_agent_transcript_export(
+        compatibility / "first.jsonl",
+        _header("duplicate", cwd="/workspace/project"),
+        [_record("first-record", "first", timestamp=1.0)],
+    )
+    write_agent_transcript_export(
+        compatibility / "second.jsonl",
+        _header("duplicate", cwd="/workspace/project"),
+        [_record("second-record", "second", timestamp=2.0)],
+    )
+    runtime = AgentTranscriptDirectoryRuntime(session_dir=canonical)
+    runtime.add_session_discovery_dir(compatibility)
+
+    summaries = runtime.list_discovered_session_summaries()
+
+    assert len(summaries) == 1
+    assert summaries[0].discovery is not None
+    assert summaries[0].discovery.health == "conflict"
+    assert len(summaries[0].discovery.conflicts) == 1
+
+
+def test_singleton_discovery_does_not_spend_duplicate_hash_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harness.transcript import directory
+
+    write_agent_transcript_export(
+        tmp_path / "only.jsonl",
+        _header("only", cwd="/workspace/project"),
+        [_record("only-record", "only", timestamp=1.0)],
+    )
+
+    def reject_hash(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("a singleton must not be hashed")
+
+    monkeypatch.setattr(directory, "_consume_bounded_file_digest", reject_hash)
+
+    summaries = AgentTranscriptDirectoryRuntime(
+        session_dir=tmp_path
+    ).list_discovered_session_summaries()
+
+    assert [summary.session_id for summary in summaries] == ["only"]
+
+
+def test_discovery_storage_health_is_independent_from_transcript_diagnostics(
+    tmp_path: Path,
+) -> None:
+    diagnostic = ConversationRecord(
+        record_id="diagnostic-record",
+        parent_id=None,
+        kind=EXTENSION_DATA_KIND,
+        payload_version=1,
+        created_at="2026-07-19T00:00:01Z",
+        payload=ExtensionData(
+            extension_type="diagnostic",
+            data={"code": "provider_failed", "level": "error"},
+        ),
+    )
+    write_agent_transcript_export(
+        tmp_path / "diagnostic.jsonl",
+        _header("diagnostic", cwd="/workspace/project"),
+        [diagnostic],
+    )
+
+    summary = AgentTranscriptDirectoryRuntime(
+        session_dir=tmp_path
+    ).list_discovered_session_summaries()[0]
+
+    assert summary.has_diagnostics is True
+    assert summary.discovery is not None
+    assert summary.discovery.health == "available"
+
+
+def test_asset_preview_rejects_oversized_transcript_before_blob_reads(
+    tmp_path: Path,
+) -> None:
+    transcript = tmp_path / "large.jsonl"
+    write_agent_transcript_export(
+        transcript,
+        _header("large", cwd="/workspace/project"),
+        [_record("record", "message", timestamp=1.0)],
+    )
+    with transcript.open("ab") as handle:
+        handle.truncate(8 * 1024 * 1024 + 1)
+
+    health = AgentTranscriptDirectoryRuntime(
+        session_dir=tmp_path
+    ).inspect_discovered_session_assets(transcript)
+
+    assert health.state == "unavailable"
+    assert health.reference_count == 0
+
+
+def test_canonical_delete_tombstone_prevents_compatibility_resurrection(
+    tmp_path: Path,
+) -> None:
+    canonical_dir = tmp_path / "canonical"
+    compatibility_dir = tmp_path / "compatibility"
+    canonical_dir.mkdir()
+    compatibility_dir.mkdir()
+    canonical = canonical_dir / "canonical.jsonl"
+    compatibility = compatibility_dir / "legacy.jsonl"
+    write_agent_transcript_export(
+        canonical,
+        _header("deleted", cwd="/workspace/project"),
+        [_record("record", "same", timestamp=1.0)],
+    )
+    compatibility.write_bytes(canonical.read_bytes())
+    runtime = AgentTranscriptDirectoryRuntime(session_dir=canonical_dir)
+    runtime.add_session_discovery_dir(compatibility_dir)
+    assert [
+        summary.session_id for summary in runtime.list_discovered_session_summaries()
+    ] == ["deleted"]
+
+    assert asyncio.run(delete_agent_transcript_jsonl(canonical)) is True
+
+    assert runtime.session_catalog.is_tombstoned("deleted") is True
+    assert runtime.list_discovered_session_summaries() == []
+    assert runtime.try_query_session_index_page(limit=10).items == ()
