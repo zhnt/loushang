@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import stat
+from pathlib import Path
 
 import pytest
 
@@ -13,6 +14,7 @@ from loushang.harness.runtime.session_operations import (
     SessionOperationPhase,
     copy_file_exclusive,
     file_status_fingerprint,
+    stage_file_import,
 )
 from loushang.harness.runtime.transition import SessionTransitionHost
 
@@ -102,6 +104,28 @@ def test_copy_file_exclusive_binds_the_discovered_source_identity(tmp_path) -> N
         )
 
     assert destination.exists() is False
+
+
+def test_stage_file_import_preserves_legacy_two_argument_copy_port(tmp_path) -> None:
+    source = tmp_path / "source.jsonl"
+    destination_dir = tmp_path / "authority"
+    source.write_bytes(b"selected transcript\n")
+    expected = file_status_fingerprint(source.lstat())
+    calls: list[tuple[Path, Path]] = []
+
+    def legacy_copy(selected: Path, destination: Path) -> None:
+        calls.append((selected, destination))
+        destination.write_bytes(selected.read_bytes())
+
+    staged = stage_file_import(
+        source,
+        destination_dir,
+        copy_file=legacy_copy,
+        expected_source_fingerprint=expected,
+    )
+
+    assert calls == [(source, staged.destination)]
+    assert staged.destination.read_bytes() == b"selected transcript\n"
 
 
 def test_copy_file_exclusive_rejects_a_source_append_without_reading_to_eof(

@@ -90,12 +90,32 @@ class _Runtime(AgentTranscriptDirectoryRuntime):
     def get_current_session_ref(self) -> str | None:
         return self.current_session_ref
 
+    def _resolve_reference(self, session_id: str | Path) -> Path:
+        candidate = Path(session_id).expanduser()
+        if candidate.exists():
+            return candidate.resolve()
+        matches = [
+            summary
+            for summary in self.list_discovered_session_summaries(
+                session_id_prefix=str(session_id)
+            )
+            if summary.session_id == str(session_id)
+        ]
+        if len(matches) != 1 or matches[0].session_file is None:
+            raise ValueError("Session identity is not uniquely resolvable")
+        discovery = matches[0].discovery
+        if discovery is not None and not discovery.resumable:
+            raise ConflictedContinuityTargetError(
+                "Session identity is conflicted"
+            )
+        return matches[0].session_file
+
     async def prepare_restore_session_operation(
         self,
         session_id: str | Path,
         **_kwargs: object,
     ) -> object:
-        reference = str(session_id)
+        reference = str(self._resolve_reference(session_id))
         self.prepared.append(reference)
         if self.on_prepare is not None:
             self.on_prepare()
@@ -112,7 +132,7 @@ class _Runtime(AgentTranscriptDirectoryRuntime):
         return _Candidate()
 
     async def delete_session(self, session_id: str | Path) -> bool:
-        reference = str(session_id)
+        reference = str(self._resolve_reference(session_id))
         self.deleted.append(reference)
         Path(reference).unlink()
         return True
@@ -579,6 +599,36 @@ def test_coding_provider_excludes_current_session_from_resume(tmp_path: Path) ->
     asyncio.run(scenario())
 
 
+def test_coding_provider_excludes_current_session_before_page_slicing(
+    tmp_path: Path,
+) -> None:
+    runtime = _Runtime(tmp_path)
+    current = tmp_path / "current.jsonl"
+    history = tmp_path / "history.jsonl"
+    write_agent_transcript_export(
+        current,
+        _header("z-current"),
+        [_record("current-record", "Current prompt")],
+    )
+    write_agent_transcript_export(
+        history,
+        _header("a-history"),
+        [_record("history-record", "Resume me")],
+    )
+    runtime.refresh_session_index()
+    runtime.current_session = object()
+    runtime.current_session_ref = str(current)
+    composition = bind_coding_continuity(runtime)
+
+    async def scenario() -> None:
+        page = await composition.hub.query(ContinuityQuery(page_size=1))
+        assert [item.target.opaque_id for item in page.items] == ["a-history"]
+        assert page.next_cursor is None
+        await shutdown_coding_continuity(runtime)
+
+    asyncio.run(scenario())
+
+
 def test_coding_provider_does_not_stale_index_for_active_session_appends(
     tmp_path: Path,
 ) -> None:
@@ -628,6 +678,64 @@ def test_coding_provider_deletes_only_a_fresh_noncurrent_target(tmp_path: Path) 
         assert await composition.hub.delete(page.items[0].target) is True
         assert runtime.deleted == [str(transcript)]
         assert transcript.exists() is False
+        await shutdown_coding_continuity(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_coding_provider_lists_canonical_delete_targets_without_compatibility_roots(
+    tmp_path: Path,
+) -> None:
+    runtime = _Runtime(tmp_path)
+    transcript = tmp_path / "session-1.jsonl"
+    write_agent_transcript_export(
+        transcript,
+        _header("session-1"),
+        [_record("record-1", "Delete this session")],
+    )
+    runtime.refresh_session_index()
+    composition = bind_coding_continuity(runtime)
+
+    async def scenario() -> None:
+        page = await composition.hub.query(
+            ContinuityQuery(page_size=1, required_actions=("delete",))
+        )
+        assert [item.target.opaque_id for item in page.items] == ["session-1"]
+        assert await composition.hub.delete(page.items[0].target) is True
+        assert transcript.exists() is False
+        await shutdown_coding_continuity(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_coding_provider_rejects_preserved_mtime_canonical_duplicate(
+    tmp_path: Path,
+) -> None:
+    runtime = _Runtime(tmp_path)
+    first = tmp_path / "first.jsonl"
+    duplicate = tmp_path / "duplicate.jsonl"
+    write_agent_transcript_export(
+        first,
+        _header("shared"),
+        [_record("first-record", "First content")],
+    )
+    runtime.refresh_session_index()
+    index_modified = runtime.session_catalog.index_path.stat().st_mtime_ns
+    write_agent_transcript_export(
+        duplicate,
+        _header("shared"),
+        [_record("duplicate-record", "Different content")],
+    )
+    os.utime(duplicate, ns=(index_modified - 1, index_modified - 1))
+    composition = bind_coding_continuity(runtime)
+
+    async def scenario() -> None:
+        page = await composition.hub.query(ContinuityQuery(page_size=10))
+        assert len(page.items) == 1
+        assert page.items[0].status == "Conflict"
+        with pytest.raises(ConflictedContinuityTargetError):
+            await composition.hub.prepare(page.items[0].target)
+        assert runtime.prepared == []
         await shutdown_coding_continuity(runtime)
 
     asyncio.run(scenario())

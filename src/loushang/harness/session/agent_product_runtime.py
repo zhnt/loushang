@@ -16,7 +16,7 @@ from loushang.harness.extensions.context import (
     SessionShutdownEvent,
     SessionStartEvent,
 )
-from loushang.harness.runtime import copy_file_exclusive
+from loushang.harness.runtime import FileCopy, VerifiedFileCopy, copy_file_exclusive
 from loushang.harness.session.composition import SessionExtensionCompositionPort
 from loushang.harness.session.diagnostics import (
     SessionDiagnosticScope,
@@ -160,7 +160,8 @@ def build_agent_product_session_runtime_ports(
     persist: bool,
     diagnostics_runtime: Callable[[SessionT | None], SessionDiagnosticsRuntime] | None,
     record_shutdown_failure: Callable[[object, SessionShutdownEvent, Exception], None],
-    copy_file: Callable[..., None],
+    copy_file: FileCopy,
+    verified_copy_file: VerifiedFileCopy | None = None,
     before_release: Callable[
         [SessionT, SessionT | None, SessionLifecycleTransition],
         Awaitable[None] | None,
@@ -262,6 +263,7 @@ def build_agent_product_session_runtime_ports(
         ),
         fork_target_resolver=fork_target,
         copy_file=copy_file,
+        verified_copy_file=verified_copy_file,
         hooks=hooks,
         diagnostics_runtime=diagnostics_runtime,
         rename_transcript=transcript.rename,
@@ -287,7 +289,8 @@ class AgentProductSessionRuntime(
         persist: bool = True,
         current_session: SessionT | None = None,
         diagnostics_service: DiagnosticsService | None = None,
-        copy_file: Callable[..., None] = copy_file_exclusive,
+        copy_file: FileCopy = copy_file_exclusive,
+        verified_copy_file: VerifiedFileCopy | None = None,
         before_release: Callable[
             [SessionT, SessionT | None, SessionLifecycleTransition],
             Awaitable[None] | None,
@@ -307,6 +310,7 @@ class AgentProductSessionRuntime(
                 session_factory=session_factory,
                 persist=persist,
                 copy_file=copy_file,
+                verified_copy_file=verified_copy_file,
                 diagnostics_runtime=self._agent_session_diagnostics_runtime,
                 record_shutdown_failure=self._record_agent_shutdown_failure,
                 before_release=before_release,

@@ -367,11 +367,25 @@ class AgentTranscriptFileLayout:
     def scan_candidate_path_snapshot(
         self,
         namespace: str,
+        *,
+        max_candidates: int | None = None,
     ) -> AgentTranscriptCandidateScan:
         """Return bounded candidates and whether the directory was exhausted."""
 
         if namespace != self.namespace or not _is_directory_no_follow(self.root):
             return AgentTranscriptCandidateScan((), complete=True)
+        if max_candidates is not None and (
+            type(max_candidates) is not int or max_candidates < 0
+        ):
+            raise ValueError("candidate scan limit must be a non-negative integer")
+        candidate_limit = min(
+            _MAX_DISCOVERY_CANDIDATES,
+            max_candidates
+            if max_candidates is not None
+            else _MAX_DISCOVERY_CANDIDATES,
+        )
+        if candidate_limit == 0:
+            return AgentTranscriptCandidateScan((), complete=False)
         candidates: list[Path] = []
         complete = True
         try:
@@ -379,15 +393,14 @@ class AgentTranscriptFileLayout:
                 if inspected > _MAX_DISCOVERY_DIRECTORY_ENTRIES:
                     complete = False
                     break
-                if (
-                    path.suffix == ".jsonl"
-                    and not path.name.endswith("-export.jsonl")
-                    and _is_regular_file_no_follow(path)
+                if path.suffix == ".jsonl" and not path.name.endswith(
+                    "-export.jsonl"
                 ):
-                    candidates.append(path)
-                    if len(candidates) >= _MAX_DISCOVERY_CANDIDATES:
+                    if len(candidates) >= candidate_limit:
                         complete = False
                         break
+                    if _is_regular_file_no_follow(path):
+                        candidates.append(path)
         except OSError:
             return AgentTranscriptCandidateScan((), complete=False)
         return AgentTranscriptCandidateScan(tuple(sorted(candidates)), complete)
@@ -403,17 +416,17 @@ class AgentTranscriptFileLayout:
     ) -> tuple[Path, ...]:
         """List changed authority candidates using directory metadata only."""
 
-        if not self.root.is_dir():
-            return ()
         changed: list[Path] = []
-        for path in self.root.glob("*.jsonl"):
-            if path.name.endswith("-export.jsonl"):
-                continue
+        scan = self.scan_candidate_path_snapshot(self.namespace)
+        for path in scan.paths:
             try:
                 status = path.lstat()
                 if (
                     _status_is_regular_no_follow(status)
-                    and status.st_mtime_ns > modified_at_ns
+                    and (
+                        status.st_mtime_ns > modified_at_ns
+                        or status.st_ctime_ns > modified_at_ns
+                    )
                 ):
                     changed.append(path)
             except OSError:

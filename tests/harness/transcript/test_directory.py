@@ -734,6 +734,38 @@ def test_duplicate_canonical_identity_is_conflicted_and_tombstone_hides_residual
     assert runtime.list_discovered_session_summaries() == []
 
 
+def test_canonical_only_index_applies_provenance_and_tombstones_before_filtering(
+    tmp_path: Path,
+) -> None:
+    indexed = tmp_path / "indexed.jsonl"
+    removed_duplicate = tmp_path / "removed.jsonl"
+    write_agent_transcript_export(
+        indexed,
+        _header("canonical", cwd="/workspace/project"),
+        [_record("indexed", "indexed", timestamp=1.0)],
+    )
+    runtime = AgentTranscriptDirectoryRuntime(session_dir=tmp_path)
+    runtime.refresh_session_index()
+
+    page = runtime.try_query_session_index_page(
+        SessionQuery(source_mode="canonical"),
+        limit=10,
+    )
+
+    assert [item.item.projection.session_id for item in page.items] == ["canonical"]
+    assert page.items[0].item.projection.discovery is not None
+    assert page.items[0].item.projection.discovery.mode == "canonical"
+
+    write_agent_transcript_export(
+        removed_duplicate,
+        _header("canonical", cwd="/workspace/project"),
+        [_record("removed", "removed", timestamp=2.0)],
+    )
+    assert asyncio.run(delete_agent_transcript_jsonl(removed_duplicate)) is True
+
+    assert runtime.try_query_session_index_page(limit=10).items == ()
+
+
 def test_discovery_budget_is_shared_across_roots_and_reports_truncation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

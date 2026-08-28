@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from loushang.harness.runtime import SessionOperationPhase
+from loushang.harness.runtime import SessionOperationPhase, file_status_fingerprint
 from loushang.harness.session.lifecycle import (
     DEFAULT_FORK_PROFILE,
     ForkProfile,
@@ -449,6 +449,37 @@ def test_lifecycle_reports_import_preflight_failure(tmp_path: Path) -> None:
     failure, transition = failures[0]
     assert failure.phase is SessionOperationPhase.PREPARE
     assert transition.target_session_ref == str(tmp_path / "missing.jsonl")
+
+
+def test_lifecycle_import_with_fingerprint_preserves_legacy_copy_port(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "legacy.jsonl"
+    destination_dir = tmp_path / "sessions"
+    source.write_bytes(b"legacy transcript\n")
+    calls: list[tuple[Path, Path]] = []
+
+    def legacy_copy(selected: Path, destination: Path) -> None:
+        calls.append((selected, destination))
+        destination.write_bytes(selected.read_bytes())
+
+    lifecycle = SessionLifecycleRuntime[_Session, object](
+        store=_Store(restored_cwd=str(tmp_path)),
+        hooks=SessionLifecycleHooks(dispose_session=lambda _session: None),
+        copy_file=legacy_copy,
+    )
+
+    result = asyncio.run(
+        lifecycle.import_file(
+            source,
+            destination_dir=destination_dir,
+            expected_source_fingerprint=file_status_fingerprint(source.lstat()),
+        )
+    )
+
+    assert calls == [(source, destination_dir / "legacy.jsonl")]
+    assert result.current is not None
+    assert result.current.ref == str(destination_dir / "legacy.jsonl")
 
 
 def test_lifecycle_module_exports_prepared_operation_contracts() -> None:

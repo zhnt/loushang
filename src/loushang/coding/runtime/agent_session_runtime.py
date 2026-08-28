@@ -55,6 +55,7 @@ class AgentSessionRuntime(
             current_session=current_session,
             diagnostics_service=diagnostics_service,
             copy_file=_copy_session_import,
+            verified_copy_file=_copy_session_import,
             before_release=compose_multiagent_before_release(
                 resolve_runtime=lambda session: getattr(
                     session,

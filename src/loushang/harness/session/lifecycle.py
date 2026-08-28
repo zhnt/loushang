@@ -10,12 +10,14 @@ from typing import Generic, Literal, Protocol, TypeVar
 
 from loushang.harness.runtime import (
     CancelledSessionOperation,
+    FileCopy,
     SessionOperationCandidate,
     SessionOperationCoordinator,
     SessionOperationFailure,
     SessionOperationPhase,
     SessionOperationResult,
     SessionTransitionHost,
+    VerifiedFileCopy,
     copy_file_exclusive,
     stage_file_import,
 )
@@ -36,9 +38,6 @@ TransitionReleaseCallback = Callable[
     Awaitable[None] | None,
 ]
 LifecycleCallback = Callable[[], Awaitable[None] | None]
-FileCopy = Callable[..., None]
-
-
 def _absolute_path_preserving_leaf(path: str | Path) -> Path:
     absolute = Path(os.path.abspath(Path(path).expanduser()))
     return absolute.parent.resolve(strict=False) / absolute.name
@@ -273,6 +272,7 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
         fork_profile: ForkProfile = DEFAULT_FORK_PROFILE,
         fork_target_resolver: ForkTargetResolver[SessionT, PayloadT] | None = None,
         copy_file: FileCopy = copy_file_exclusive,
+        verified_copy_file: VerifiedFileCopy | None = None,
     ) -> None:
         if hooks.dispose_session is None:
             raise ValueError("Session lifecycle hooks require dispose_session.")
@@ -282,6 +282,7 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
         self.fork_profile = fork_profile
         self._fork_target_resolver = fork_target_resolver or _default_fork_target
         self._copy_file = copy_file
+        self._verified_copy_file = verified_copy_file
         self._host = SessionTransitionHost(
             current_session,
             dispose=self._dispose_session,
@@ -438,6 +439,7 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
             source,
             destination_dir,
             copy_file=self._copy_file,
+            verified_copy_file=self._verified_copy_file,
             expected_source_fingerprint=expected_source_fingerprint,
         )
         try:
@@ -518,6 +520,7 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
                 source,
                 destination_dir,
                 copy_file=self._copy_file,
+                verified_copy_file=self._verified_copy_file,
                 expected_source_fingerprint=expected_source_fingerprint,
             )
         except Exception as exc:
@@ -860,6 +863,7 @@ __all__ = [
     "SessionLifecycleRuntime",
     "SessionLifecycleStore",
     "SessionLifecycleTransition",
+    "VerifiedFileCopy",
     "TransitionCandidateCallback",
     "TransitionReleaseCallback",
 ]

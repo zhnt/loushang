@@ -228,6 +228,107 @@ def test_catalog_repairs_only_changed_new_and_deleted_transcripts(
     assert catalog.try_query_index_snapshot().index_state == "fresh"
 
 
+def test_catalog_freshness_detects_new_candidate_with_preserved_old_mtime(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "first.jsonl"
+    duplicate = tmp_path / "duplicate.jsonl"
+    write_agent_transcript_export(
+        first,
+        _header("shared", cwd="/workspace"),
+        [_record("first", "first")],
+    )
+    catalog = AgentTranscriptSessionCatalog(tmp_path)
+    catalog.refresh_index()
+    index_modified = catalog.index_path.stat().st_mtime_ns
+    write_agent_transcript_export(
+        duplicate,
+        _header("shared", cwd="/workspace"),
+        [_record("duplicate", "different")],
+    )
+    os.utime(duplicate, ns=(index_modified - 1, index_modified - 1))
+
+    assert catalog.try_query_index_snapshot().index_state == "stale"
+
+
+def test_catalog_upsert_refuses_duplicate_physical_identity_and_invalidates_index(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "first.jsonl"
+    duplicate = tmp_path / "duplicate.jsonl"
+    write_agent_transcript_export(
+        first,
+        _header("shared", cwd="/workspace"),
+        [_record("first", "first")],
+    )
+    catalog = AgentTranscriptSessionCatalog(tmp_path)
+    catalog.refresh_index()
+    write_agent_transcript_export(
+        duplicate,
+        _header("shared", cwd="/workspace"),
+        [_record("duplicate", "different")],
+    )
+    duplicate_summary = next(
+        summary
+        for summary in catalog.list_path_summaries(session_id_prefix="shared")
+        if summary.session_file == duplicate
+    )
+
+    with pytest.raises(RuntimeError, match="duplicate identities"):
+        asyncio.run(
+            catalog.upsert_summary(
+                duplicate_summary,
+                source_revision=duplicate_summary.entry_count,
+            )
+        )
+
+    assert catalog.index_path.exists() is False
+
+
+def test_catalog_repair_revalidates_authority_before_publish(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    first = tmp_path / "first.jsonl"
+    second = tmp_path / "second.jsonl"
+    write_agent_transcript_export(
+        first,
+        _header("first", cwd="/workspace"),
+        [_record("first-record", "first")],
+    )
+    write_agent_transcript_export(
+        second,
+        _header("second", cwd="/workspace"),
+        [_record("second-record", "second")],
+    )
+    catalog = AgentTranscriptSessionCatalog(tmp_path)
+    catalog.refresh_index()
+    write_agent_transcript_export(
+        second,
+        _header("second", cwd="/workspace"),
+        [
+            _record("second-record", "second"),
+            _record("second-update", "updated", parent_id="second-record"),
+        ],
+    )
+    original = catalog._repair_local_index
+
+    async def race_repair(indexed, changed_paths):
+        result = await original(indexed, changed_paths)
+        write_agent_transcript_export(
+            tmp_path / "duplicate.jsonl",
+            _header("first", cwd="/workspace"),
+            [_record("duplicate", "different")],
+        )
+        return result
+
+    monkeypatch.setattr(catalog, "_repair_local_index", race_repair)
+
+    with pytest.raises(RuntimeError, match="duplicate identities"):
+        catalog.repair_index()
+    assert catalog.try_query_index_snapshot().index_state == "stale"
+
+
 def test_catalog_query_can_exclude_sessions_without_messages(tmp_path: Path) -> None:
     write_agent_transcript_export(
         tmp_path / "empty.jsonl",

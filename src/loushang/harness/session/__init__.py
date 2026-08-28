@@ -245,6 +245,7 @@ if TYPE_CHECKING:
         SessionLifecycleTransition,
         TransitionCandidateCallback,
         TransitionReleaseCallback,
+        VerifiedFileCopy,
         resolve_fork_target,
     )
     from loushang.harness.session.lifecycle_adapter import (
@@ -444,6 +445,7 @@ _EXPORT_MODULES = {
     "ExtensionCommandResultFactory": "loushang.harness.session.command_sources",
     "ExtensionCommandSourceRuntime": "loushang.harness.session.command_sources",
     "FileCopy": "loushang.harness.session.lifecycle",
+    "VerifiedFileCopy": "loushang.harness.session.lifecycle",
     "ForkProfile": "loushang.harness.session.lifecycle",
     "ForkSelection": "loushang.harness.session.lifecycle",
     "ForkTargetResolver": "loushang.harness.session.lifecycle",

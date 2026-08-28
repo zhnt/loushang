@@ -144,6 +144,7 @@ class _BoundedSessionCandidate:
     path: Path
     size: int
     mtime_ns: int
+    ctime_ns: int
     fingerprint: str
 
 
@@ -182,6 +183,7 @@ class SessionQuery:
     has_messages: bool | None = None
     limit: int | None = None
     source_mode: SessionSourceMode | None = None
+    exclude_session_file: str | None = None
 
 
 @dataclass(frozen=True)
@@ -566,7 +568,9 @@ class AgentTranscriptSessionCatalog:
             budget.mark_incomplete()
             return []
         summaries: list[SessionSummary] = []
-        candidates, complete = self._bounded_candidates_with_completeness()
+        candidates, complete = self._bounded_candidates_with_completeness(
+            max_candidates=budget.remaining_candidates,
+        )
         if not complete:
             budget.mark_incomplete()
         for candidate in candidates:
@@ -649,7 +653,9 @@ class AgentTranscriptSessionCatalog:
             ),
         )
         by_id: dict[str, list[SessionSummary]] = {}
-        candidates, complete = self._bounded_candidates_with_completeness()
+        candidates, complete = self._bounded_candidates_with_completeness(
+            max_candidates=budget.remaining_candidates,
+        )
         if not complete:
             budget.mark_incomplete()
         for candidate in candidates:
@@ -698,19 +704,7 @@ class AgentTranscriptSessionCatalog:
         )
 
     def refresh_index(self) -> list[SessionSummary]:
-        before, before_complete = self._bounded_candidates_with_completeness()
-        if not before_complete:
-            raise RuntimeError("session authority scan was truncated")
-        collision_budget = SessionDiscoveryReadBudget(
-            remaining_bytes=_MAX_PATH_SUMMARY_HEADER_BYTES * 4096,
-        )
-        collisions = self.list_path_collision_summaries(
-            read_budget=collision_budget
-        )
-        if collision_budget.truncated:
-            raise RuntimeError("session authority scan was truncated")
-        if collisions:
-            raise RuntimeError("session authority contains duplicate identities")
+        before = self._validated_unique_authority_snapshot()
         if self.session_dir is not None:
             self.session_dir.mkdir(parents=True, exist_ok=True)
         result = _run_catalog(self._catalog(indexed=True).refresh())
@@ -726,16 +720,7 @@ class AgentTranscriptSessionCatalog:
     def repair_index(self) -> list[SessionSummary]:
         """Incrementally repair changed local transcripts, rebuilding as fallback."""
 
-        collision_budget = SessionDiscoveryReadBudget(
-            remaining_bytes=_MAX_PATH_SUMMARY_HEADER_BYTES * 4096,
-        )
-        collisions = self.list_path_collision_summaries(
-            read_budget=collision_budget
-        )
-        if collision_budget.truncated:
-            raise RuntimeError("session authority scan was truncated")
-        if collisions:
-            raise RuntimeError("session authority contains duplicate identities")
+        before = self._validated_unique_authority_snapshot()
 
         if (
             self.session_dir is None
@@ -753,12 +738,28 @@ class AgentTranscriptSessionCatalog:
         try:
             index_modified = self.index_path.stat().st_mtime_ns
             changed_paths = self._layout.transcript_paths_modified_after(index_modified)
-            repaired = _run_catalog(
+            replacement, changed = _run_catalog(
                 self._repair_local_index(
                     snapshot.items,
                     changed_paths,
                 )
             )
+            before_publish, before_publish_complete = (
+                self._bounded_candidates_with_completeness()
+            )
+            if not before_publish_complete or _bounded_candidate_identities(
+                before
+            ) != _bounded_candidate_identities(before_publish):
+                raise RuntimeError("session authority changed during index repair")
+            repaired = (
+                _run_catalog(index.replace(replacement)) if changed else replacement
+            )
+            after, after_complete = self._bounded_candidates_with_completeness()
+            if not after_complete or _bounded_candidate_identities(
+                before
+            ) != _bounded_candidate_identities(after):
+                self.index_path.unlink(missing_ok=True)
+                raise RuntimeError("session authority changed during index repair")
         except Exception:
             return self.refresh_index()
         return _sort_summaries(item.projection for item in repaired)
@@ -772,6 +773,7 @@ class AgentTranscriptSessionCatalog:
         query: SessionQuery | None = None,
         *,
         ignore_modified_paths: Sequence[str | Path] = (),
+        read_budget: SessionDiscoveryReadBudget | None = None,
     ) -> ConversationIndexSnapshot[SessionSummary]:
         """Read the current projection index without scanning transcript authority."""
 
@@ -810,6 +812,7 @@ class AgentTranscriptSessionCatalog:
                 )
                 or self._local_index_is_older_than_authority(
                     ignore_modified_paths=ignored_paths,
+                    read_budget=read_budget,
                 )
             )
         ):
@@ -880,7 +883,11 @@ class AgentTranscriptSessionCatalog:
         ):
             budget.mark_incomplete()
             return BoundedSessionCatalogSnapshot((), 0, 0, 0, complete=False)
-        candidates, complete = self._bounded_candidates_with_completeness()
+        candidates, complete = self._bounded_candidates_with_completeness(
+            max_candidates=(
+                budget.remaining_candidates if budget is not None else None
+            ),
+        )
         if budget is not None:
             allowed = min(len(candidates), budget.remaining_candidates)
             if allowed < len(candidates):
@@ -984,11 +991,34 @@ class AgentTranscriptSessionCatalog:
 
     def _bounded_candidates_with_completeness(
         self,
+        *,
+        max_candidates: int | None = None,
     ) -> tuple[tuple[_BoundedSessionCandidate, ...], bool]:
         if self._layout is None:
             return (), True
-        scan = self._layout.scan_candidate_path_snapshot(self._layout.namespace)
+        scan = self._layout.scan_candidate_path_snapshot(
+            self._layout.namespace,
+            max_candidates=max_candidates,
+        )
         return _bounded_session_candidates(scan.paths), scan.complete
+
+    def _validated_unique_authority_snapshot(
+        self,
+    ) -> tuple[_BoundedSessionCandidate, ...]:
+        candidates, complete = self._bounded_candidates_with_completeness()
+        if not complete:
+            raise RuntimeError("session authority scan was truncated")
+        collision_budget = SessionDiscoveryReadBudget(
+            remaining_bytes=_MAX_PATH_SUMMARY_HEADER_BYTES * 4096,
+        )
+        collisions = self.list_path_collision_summaries(
+            read_budget=collision_budget
+        )
+        if collision_budget.truncated:
+            raise RuntimeError("session authority scan was truncated")
+        if collisions:
+            raise RuntimeError("session authority contains duplicate identities")
+        return candidates
 
     async def upsert_summary(
         self,
@@ -1004,18 +1034,31 @@ class AgentTranscriptSessionCatalog:
             raise ValueError("local session summary has no transcript path")
         if source_revision != summary.entry_count:
             raise ValueError("session summary revision must equal its entry count")
-        key = self._layout.bind_existing_path(summary.session_file)
-        if key.conversation_id != summary.session_id:
-            raise ValueError("session summary identity does not match its transcript")
-        locator = ConversationLocator(self._provider.provider_id, key)
-        indexed_summary = _summary_with_authority_fingerprint(summary)
-        return await self._projection_index().upsert(
-            IndexedProjection(
-                locator=locator,
-                source_revision=source_revision,
-                projection=replace(indexed_summary, locator=locator),
+        try:
+            before = self._validated_unique_authority_snapshot()
+            key = self._layout.bind_existing_path(summary.session_file)
+            if key.conversation_id != summary.session_id:
+                raise ValueError(
+                    "session summary identity does not match its transcript"
+                )
+            locator = ConversationLocator(self._provider.provider_id, key)
+            indexed_summary = _summary_with_authority_fingerprint(summary)
+            changed = await self._projection_index().upsert(
+                IndexedProjection(
+                    locator=locator,
+                    source_revision=source_revision,
+                    projection=replace(indexed_summary, locator=locator),
+                )
             )
-        )
+            after, after_complete = self._bounded_candidates_with_completeness()
+            if not after_complete or _bounded_candidate_identities(
+                before
+            ) != _bounded_candidate_identities(after):
+                raise RuntimeError("session authority changed during index upsert")
+            return changed
+        except Exception:
+            self.index_path.unlink(missing_ok=True)
+            raise
 
     def load_authoritative_revision(self, locator: ConversationLocator) -> int:
         """Load one selected authority object and return its current revision."""
@@ -1120,10 +1163,9 @@ class AgentTranscriptSessionCatalog:
         self,
         indexed: Sequence[IndexedProjection[SessionSummary]],
         changed_paths: Sequence[Path],
-    ) -> tuple[IndexedProjection[SessionSummary], ...]:
+    ) -> tuple[tuple[IndexedProjection[SessionSummary], ...], bool]:
         if self._layout is None:
             raise ValueError("provider-backed catalogs cannot repair a local index")
-        index = self._projection_index()
         replacement = {item.locator: item for item in indexed}
         updated_locators: set[ConversationLocator] = set()
         for path in changed_paths:
@@ -1153,24 +1195,23 @@ class AgentTranscriptSessionCatalog:
             ):
                 replacement.pop(item.locator, None)
                 changed = True
-        repaired = (
-            await index.replace(tuple(replacement.values()))
-            if changed
-            else tuple(replacement.values())
-        )
-        return tuple(
-            IndexedProjection(
-                locator=item.locator,
-                source_revision=item.source_revision,
-                projection=replace(item.projection, locator=item.locator),
-            )
-            for item in repaired
+        return (
+            tuple(
+                IndexedProjection(
+                    locator=item.locator,
+                    source_revision=item.source_revision,
+                    projection=replace(item.projection, locator=item.locator),
+                )
+                for item in replacement.values()
+            ),
+            changed,
         )
 
     def _local_index_is_older_than_authority(
         self,
         *,
         ignore_modified_paths: Sequence[str | Path] = (),
+        read_budget: SessionDiscoveryReadBudget | None = None,
     ) -> bool:
         if self.session_dir is None or self._layout is None:
             return False
@@ -1180,14 +1221,33 @@ class AgentTranscriptSessionCatalog:
                 Path(path).expanduser().resolve(strict=False)
                 for path in ignore_modified_paths
             )
+            candidates, complete = self._bounded_candidates_with_completeness(
+                max_candidates=(
+                    read_budget.remaining_candidates
+                    if read_budget is not None
+                    else None
+                ),
+            )
+            if read_budget is not None and not read_budget.reserve(
+                candidates=len(candidates)
+            ):
+                return True
+            if not complete:
+                if read_budget is not None:
+                    read_budget.mark_incomplete()
+                return True
             return any(
                 not any(
-                    same_agent_transcript_session_path(path, ignored_path)
+                    same_agent_transcript_session_path(
+                        candidate.path, ignored_path
+                    )
                     for ignored_path in ignored
                 )
-                for path in self._layout.transcript_paths_modified_after(
-                    index_modified,
+                and (
+                    candidate.mtime_ns > index_modified
+                    or candidate.ctime_ns > index_modified
                 )
+                for candidate in candidates
             )
         except OSError:
             return True
@@ -1366,6 +1426,7 @@ def _bounded_candidate(path: Path) -> _BoundedSessionCandidate | None:
         path=path,
         size=status.st_size,
         mtime_ns=status.st_mtime_ns,
+        ctime_ns=status.st_ctime_ns,
         fingerprint=fingerprint,
     )
 
@@ -1645,6 +1706,14 @@ def filter_agent_transcript_session_summaries(
         if query.source_mode is not None and (
             summary.discovery is None
             or summary.discovery.mode != query.source_mode
+        ):
+            return False
+        if (
+            query.exclude_session_file is not None
+            and summary.session_file is not None
+            and _same_session_reference(
+                str(summary.session_file), query.exclude_session_file
+            )
         ):
             return False
         if (

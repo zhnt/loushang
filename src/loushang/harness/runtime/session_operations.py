@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from shutil import copyfileobj
-from typing import Generic, TypeVar, Union, cast
+from typing import Generic, Protocol, TypeVar, Union, cast
 from uuid import uuid4
 
 from loushang.harness.runtime.transition import SessionTransitionHost
@@ -18,6 +18,19 @@ S = TypeVar("S")
 P = TypeVar("P")
 
 LifecycleCallback = Callable[[], Awaitable[None] | None]
+FileCopy = Callable[[Path, Path], None]
+
+
+class VerifiedFileCopy(Protocol):
+    """Optional copy capability that binds a discovered source identity."""
+
+    def __call__(
+        self,
+        source: Path,
+        destination: Path,
+        *,
+        expected_source_fingerprint: str,
+    ) -> None: ...
 
 
 class SessionOperationPhase(str, Enum):
@@ -313,7 +326,8 @@ def stage_file_import(
     source: Path,
     destination_dir: Path,
     *,
-    copy_file: Callable[..., None] = copy_file_exclusive,
+    copy_file: FileCopy = copy_file_exclusive,
+    verified_copy_file: VerifiedFileCopy | None = None,
     expected_source_fingerprint: str | None = None,
 ) -> StagedFileImport:
     """Copy a file to an import-safe destination without overwriting a peer."""
@@ -341,7 +355,17 @@ def stage_file_import(
                     destination,
                     expected_source_fingerprint=expected_source_fingerprint,
                 )
+            elif (
+                expected_source_fingerprint is not None
+                and verified_copy_file is not None
+            ):
+                verified_copy_file(
+                    source,
+                    destination,
+                    expected_source_fingerprint=expected_source_fingerprint,
+                )
             else:
+                copy_file(source, destination)
                 if expected_source_fingerprint is not None:
                     current = source.lstat()
                     if (
@@ -352,14 +376,6 @@ def stage_file_import(
                         raise OSError(
                             "session import source no longer matches discovery"
                         )
-                if expected_source_fingerprint is None:
-                    copy_file(source, destination)
-                else:
-                    copy_file(
-                        source,
-                        destination,
-                        expected_source_fingerprint=expected_source_fingerprint,
-                    )
         except FileExistsError:
             continue
         except Exception:

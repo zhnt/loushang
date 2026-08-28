@@ -75,6 +75,7 @@ from loushang.harness.runtime.retry import RetryCoordinator, RetryPolicy
 from loushang.harness.runtime.scheduling import CoalescingScheduler
 from loushang.harness.runtime.session_operations import (
     CancelledSessionOperation,
+    FileCopy,
     ReplacementCallbackFailure,
     SessionOperationCandidate,
     SessionOperationCoordinator,
@@ -83,6 +84,7 @@ from loushang.harness.runtime.session_operations import (
     SessionOperationPreparation,
     SessionOperationResult,
     StagedFileImport,
+    VerifiedFileCopy,
     copy_file_exclusive,
     file_status_fingerprint,
     run_replacement_callbacks,
@@ -117,6 +119,7 @@ __all__ = [
     "CONTEXT_COMPACTION_SLOT",
     "CONTINUITY_PROVIDER_PACKS_SLOT",
     "CONVERSATION_STORE_SLOT",
+    "FileCopy",
     "HostInputQueue",
     "HostRuntime",
     "HostSnapshot",
@@ -185,6 +188,7 @@ __all__ = [
     "SessionTransitionHost",
     "StreamingBehavior",
     "StagedFileImport",
+    "VerifiedFileCopy",
     "TOOL_PACKS_SLOT",
     "TurnInput",
     "TurnInputQueue",

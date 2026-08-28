@@ -541,85 +541,11 @@ class AgentTranscriptDirectoryRuntime:
 
         self._session_discovery_runtime_issues.pop("discovery_budget", None)
 
-        if self._safe_discovery_session_sources():
-            return self._start_discovered_session_index_page(
-                query=query,
-                limit=limit,
-                ignore_authority=ignore_authority,
-            )
-
-        requested = replace(query or SessionQuery(), limit=None)
-        ignored_authority = (
-            Path(ignore_authority).expanduser().resolve(strict=False)
-            if ignore_authority is not None
-            else None
+        return self._start_discovered_session_index_page(
+            query=query,
+            limit=limit,
+            ignore_authority=ignore_authority,
         )
-        snapshot = self.session_catalog.try_query_index_snapshot(
-            requested,
-            ignore_modified_paths=(ignored_authority,)
-            if ignored_authority is not None
-            else (),
-        )
-        if snapshot.index_state != "fresh":
-            visible_state: ConversationIndexState = (
-                "stale" if snapshot.index_state == "stale" else "unavailable"
-            )
-            bounded = self.session_catalog.bounded_index_snapshot(requested)
-            if not bounded.complete:
-                self._record_discovery_truncation(self._authority_session_source)
-            bounded_items = _merge_discovered_index_items(
-                [
-                    (self._authority_session_source, item)
-                    for item in bounded.items
-                    if not self._identity_is_tombstoned(
-                        item.projection.session_id
-                    )
-                ],
-            )
-            token = secrets.token_urlsafe(18)
-            traversal = _SessionIndexTraversal(
-                items=tuple(bounded_items),
-                index_generation=f"bounded:{snapshot.index_generation}",
-                query_snapshot=token,
-                expires_at=monotonic() + _INDEX_TRAVERSAL_TTL,
-                index_state=visible_state,
-                bounded_fallback=True,
-                ignored_authority=ignored_authority,
-                discovery_issues=self.session_discovery_issues,
-            )
-            with self._index_traversal_lock:
-                self._evict_index_traversals()
-                self._index_traversals[token] = traversal
-                while len(self._index_traversals) > _MAX_INDEX_TRAVERSALS:
-                    self._index_traversals.popitem(last=False)
-            return self._session_index_page(
-                traversal,
-                token=token,
-                start=0,
-                limit=limit,
-            )
-
-        token = secrets.token_urlsafe(18)
-        traversal = _SessionIndexTraversal(
-            items=tuple(
-                _decorate_indexed_session_summary(
-                    item,
-                    self._authority_session_source,
-                )
-                for item in snapshot.items
-            ),
-            index_generation=snapshot.index_generation,
-            query_snapshot=token,
-            expires_at=monotonic() + _INDEX_TRAVERSAL_TTL,
-            ignored_authority=ignored_authority,
-            discovery_issues=self.session_discovery_issues,
-        )
-        with self._index_traversal_lock:
-            self._evict_index_traversals()
-            self._index_traversals[token] = traversal
-            while len(self._index_traversals) > _MAX_INDEX_TRAVERSALS:
-                self._index_traversals.popitem(last=False)
-        return self._session_index_page(traversal, token=token, start=0, limit=limit)
 
     def _start_discovered_session_index_page(
         self,
@@ -656,6 +582,7 @@ class AgentTranscriptDirectoryRuntime:
             ignore_modified_paths=(ignored_authority,)
             if ignored_authority is not None
             else (),
+            read_budget=discovery_budget,
         )
         current_bounded = current_snapshot.index_state != "fresh"
         current_bounded_snapshot = (
@@ -683,7 +610,10 @@ class AgentTranscriptDirectoryRuntime:
         index_states = [current_snapshot.index_state]
         any_bounded = current_bounded
         for source, catalog in catalogs[1:]:
-            snapshot = catalog.try_query_index_snapshot(unfiltered)
+            snapshot = catalog.try_query_index_snapshot(
+                unfiltered,
+                read_budget=discovery_budget,
+            )
             index_states.append(snapshot.index_state)
             bounded = snapshot.index_state != "fresh"
             any_bounded = any_bounded or bounded
@@ -722,6 +652,7 @@ class AgentTranscriptDirectoryRuntime:
         )
         by_projection = {id(item.projection): item for item in merged_items}
         token = secrets.token_urlsafe(18)
+        aggregate_snapshot = len(catalogs) > 1
         visible_state: ConversationIndexState = (
             "unavailable"
             if "unavailable" in index_states
@@ -731,13 +662,17 @@ class AgentTranscriptDirectoryRuntime:
         )
         traversal = _SessionIndexTraversal(
             items=tuple(by_projection[id(summary)] for summary in selected),
-            index_generation=f"aggregate:{current_snapshot.index_generation}",
+            index_generation=(
+                f"aggregate:{current_snapshot.index_generation}"
+                if aggregate_snapshot
+                else current_snapshot.index_generation
+            ),
             query_snapshot=token,
             expires_at=monotonic() + _INDEX_TRAVERSAL_TTL,
             index_state=visible_state,
             bounded_fallback=any_bounded,
             ignored_authority=ignored_authority,
-            aggregate_snapshot=True,
+            aggregate_snapshot=aggregate_snapshot,
             discovery_issues=self.session_discovery_issues,
         )
         with self._index_traversal_lock:

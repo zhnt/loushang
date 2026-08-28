@@ -158,6 +158,7 @@ class CodingContinuityProvider:
                 source_mode=(
                     "canonical" if "delete" in request.required_actions else None
                 ),
+                exclude_session_file=current_reference,
             ),
             cursor=request.cursor,
             limit=request.limit,
@@ -166,12 +167,6 @@ class CodingContinuityProvider:
         items: list[ProviderPageItem] = []
         for page_item in page.items:
             indexed = page_item.item
-            summary_reference = indexed.projection.session_file
-            if summary_reference is not None and _same_session_reference(
-                current_reference,
-                summary_reference,
-            ):
-                continue
             self._remember(indexed)
             items.append(
                 ProviderPageItem(
@@ -344,13 +339,12 @@ class CodingContinuityProvider:
             raise StaleContinuityTargetError(
                 "The selected Coding session summary is stale."
             )
-        # Compatibility index rows are advisory projections. Resolve their raw
-        # identity against a fresh path-level discovery scan so a same-source
-        # duplicate cannot be activated through a stale collapsed index entry.
+        # Index rows are advisory projections. Resolve their raw identity against
+        # fresh path-level discovery so a same-source duplicate cannot be activated
+        # through a stale collapsed index entry.
         reference: str | Path = (
             summary.session_id
             if summary.discovery is not None
-            and summary.discovery.mode == "compatibility"
             else summary.session_file or summary.session_id
         )
         current = self._runtime.get_current_session()
@@ -416,7 +410,11 @@ class CodingContinuityProvider:
             raise StaleContinuityTargetError(
                 "The selected Coding session summary is stale."
             )
-        reference: str | Path = summary.session_file or summary.session_id
+        reference: str | Path = (
+            summary.session_id
+            if summary.discovery is not None
+            else summary.session_file or summary.session_id
+        )
         if _same_session_reference(
             self._runtime.get_current_session_ref(),
             reference,
