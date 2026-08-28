@@ -63,6 +63,9 @@ Neither may silently override a narrower implemented owner contract.
   evaluation, and recovery.
 - [PAP4 Capability Admission Contract](plugin-capability-admission-pap4-contract.md)
   freezes exact Capability-owner admission and Product Provider selection.
+- [Phase 5B Continuity Provider Foundation](continuity-provider-phase5b-contract.md)
+  freezes portable read-only Provider contracts, Product lifecycle bridging,
+  and the handoff requirements for later Plugin admission.
 
 These contracts refine the architecture only inside their stated versions and
 implemented slices. An unimplemented Worker, Skill-action, remote-service, or

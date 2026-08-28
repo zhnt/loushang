@@ -21,6 +21,7 @@ from loushang.harness.continuity import (
 from loushang.harnesstui.continuity.keybindings import (
     CONTINUITY_DOMAIN_ACTION,
     CONTINUITY_PREVIEW_ACTION,
+    CONTINUITY_PROVIDER_ACTION,
     CONTINUITY_SORT_ACTION,
     continuity_keybinding_manager,
 )
@@ -100,6 +101,7 @@ class ContinuitySurface:
         requested_action: ContinuityAction = (
             "delete" if selection_action == "delete" else "activate"
         )
+        self._requested_action = requested_action
         product_filter = include_summary or (lambda _summary: True)
         self._include_summary = lambda summary: (
             requested_action in summary.actions and product_filter(summary)
@@ -127,12 +129,19 @@ class ContinuitySurface:
         self._preview_task: asyncio.Task[None] | None = None
         self._index_requery_task: asyncio.Task[None] | None = None
         observation = reference.observation
-        self._domain_options = (
-            (None, *observation.experience.domain_ids)
-            if len(observation.providers) > 1
+        self._available_providers = tuple(
+            provider
+            for provider in observation.providers
+            if requested_action in provider.supported_actions
+        )
+        self._domain_options = self._domain_options_for(None)
+        self._domain_index = 0
+        self._provider_options = (
+            (None, *(provider.provider_id for provider in self._available_providers))
+            if len(self._available_providers) > 1
             else (None,)
         )
-        self._domain_index = 0
+        self._provider_index = 0
         self._selection = self._build_selection()
 
     @property
@@ -166,7 +175,7 @@ class ContinuitySurface:
     def begin_activation(self) -> bool:
         """Mark the selected target as activating and reject duplicate submits."""
 
-        if self._activating or self.selected_target is None:
+        if self._loading or self._activating or self.selected_target is None:
             return False
         self._activating = True
         self._error = None
@@ -254,6 +263,9 @@ class ContinuitySurface:
         if event.kind == "key" and event.key == "tab":
             self._cycle_domain()
             return InputIntent(kind="consumed", note="continuity_domain")
+        if event.kind == "key" and event.key in {"ctrl+p", "ctrl_p"}:
+            self._cycle_provider()
+            return InputIntent(kind="consumed", note="continuity_provider")
         if event.kind == "key" and event.key in {"ctrl+s", "ctrl_s"}:
             self._toggle_sort()
             return InputIntent(kind="consumed", note="continuity_sort")
@@ -290,6 +302,8 @@ class ContinuitySurface:
         ]
         if len(self._domain_options) > 1:
             hints.append(f"{self._key_label(CONTINUITY_DOMAIN_ACTION)} domain")
+        if len(self._provider_options) > 1:
+            hints.append(f"{self._key_label(CONTINUITY_PROVIDER_ACTION)} provider")
         if len(self._sort_options()) > 1:
             hints.append(f"{self._key_label(CONTINUITY_SORT_ACTION)} sort")
         hints.extend(
@@ -346,9 +360,13 @@ class ContinuitySurface:
         reset: bool,
         background: bool = False,
         page_selection: _PendingPageSelection | None = None,
+        generation: int | None = None,
     ) -> None:
-        self._generation += 1
-        generation = self._generation
+        if generation is None:
+            self._generation += 1
+            generation = self._generation
+        elif generation != self._generation:
+            return
         if not background:
             self._loading = True
             self._error = None
@@ -430,9 +448,13 @@ class ContinuitySurface:
         reset: bool,
         page_selection: _PendingPageSelection | None = None,
     ) -> None:
+        self._generation += 1
+        generation = self._generation
         if self._query_task is not None and not self._query_task.done():
             self._query_task.cancel()
         self._loading = True
+        if reset:
+            self._invalidate_query_projection()
         self._request_render("product")
 
         async def run() -> None:
@@ -441,9 +463,19 @@ class ContinuitySurface:
             await self._load(
                 reset=reset,
                 page_selection=page_selection,
+                generation=generation,
             )
 
         self._query_task = asyncio.create_task(run())
+
+    def _invalidate_query_projection(self) -> None:
+        self._summaries.clear()
+        self._page = None
+        self._preview = None
+        self._preview_target = None
+        if self._preview_task is not None and not self._preview_task.done():
+            self._preview_task.cancel()
+        self._rebuild_selection(selected=None)
 
     def _page_selection_for(
         self,
@@ -530,6 +562,46 @@ class ContinuitySurface:
             domain_ids=() if domain is None else (domain,),
             cursor=None,
         )
+        self._rebuild_selection(selected=self.selected_target)
+        self._schedule_query(reset=True)
+
+    def _cycle_provider(self) -> None:
+        if len(self._provider_options) == 1:
+            return
+        self._provider_index = (self._provider_index + 1) % len(
+            self._provider_options
+        )
+        provider_id = self._provider_options[self._provider_index]
+        self._domain_options = self._domain_options_for(provider_id)
+        domain_ids = self._query.domain_ids
+        selected_domain = domain_ids[0] if domain_ids else None
+        compatible_domains = {
+            domain_id
+            for provider in self._available_providers
+            if provider_id is None or provider.provider_id == provider_id
+            for domain_id in provider.domain_ids
+        }
+        if (
+            selected_domain is not None
+            and selected_domain not in compatible_domains
+        ):
+            domain_ids = ()
+            self._domain_index = 0
+        elif selected_domain in self._domain_options:
+            self._domain_index = self._domain_options.index(selected_domain)
+        else:
+            # A single compatible Domain is hidden as redundant once its
+            # Provider is selected. Keep the query narrow and reset only the
+            # presentation index.
+            self._domain_index = 0
+        self._query = replace(
+            self._query,
+            provider_ids=() if provider_id is None else (provider_id,),
+            domain_ids=domain_ids,
+            cursor=None,
+        )
+        if self._query.sort_id not in self._sort_options():
+            self._query = replace(self._query, sort_id="updated")
         self._rebuild_selection(selected=self.selected_target)
         self._schedule_query(reset=True)
 
@@ -623,6 +695,26 @@ class ContinuitySurface:
 
     def _toolbar_copy(self, *, compact: bool) -> str:
         controls: list[str] = []
+        if len(self._provider_options) > 1:
+            labels = {
+                provider.provider_id: provider.label
+                for provider in self._available_providers
+            }
+            controls.append(
+                self._toolbar_control(
+                    "Provider",
+                    tuple(
+                        (
+                            "All"
+                            if provider_id is None
+                            else labels.get(provider_id, provider_id)
+                        )
+                        for provider_id in self._provider_options
+                    ),
+                    active_index=self._provider_index,
+                    compact=compact,
+                )
+            )
         if len(self._domain_options) > 1:
             controls.append(
                 self._toolbar_control(
@@ -679,7 +771,12 @@ class ContinuitySurface:
         return f"{label_copy}{' '.join(values)}"
 
     def _sort_options(self) -> tuple[ContinuitySort, ...]:
-        providers = self._reference.observation.providers
+        selected = self._query.provider_ids
+        providers = tuple(
+            provider
+            for provider in self._available_providers
+            if not selected or provider.provider_id in selected
+        )
         if not providers:
             return ("updated",)
         return (
@@ -688,12 +785,27 @@ class ContinuitySurface:
             else ("updated",)
         )
 
+    def _domain_options_for(self, provider_id: str | None) -> tuple[str | None, ...]:
+        domain_ids = {
+            domain_id
+            for provider in self._available_providers
+            if provider_id is None or provider.provider_id == provider_id
+            for domain_id in provider.domain_ids
+        }
+        ordered = tuple(
+            domain_id
+            for domain_id in self._reference.observation.experience.domain_ids
+            if domain_id in domain_ids
+        )
+        return (None, *ordered) if len(ordered) > 1 else (None,)
+
     def _resolve_keybinding(self, event: InputEvent) -> InputEvent:
         if event.kind != "key":
             return event
         actions = (
             (CONTINUITY_PREVIEW_ACTION, "space"),
             (CONTINUITY_DOMAIN_ACTION, "tab"),
+            (CONTINUITY_PROVIDER_ACTION, "ctrl+p"),
             (CONTINUITY_SORT_ACTION, "ctrl+s"),
             ("tui.select.confirm", "enter"),
             ("tui.select.cancel", "escape"),
@@ -768,11 +880,27 @@ class ContinuitySurface:
             ]
         lines: list[RenderLine] = []
         if self._page is not None and self._page.partial:
-            detail = (
-                self._page.provider_diagnostics[0].message
-                if self._page.provider_diagnostics
-                else "one or more providers are unavailable"
-            )
+            diagnostics = self._page.provider_diagnostics
+            if diagnostics:
+                first = diagnostics[0]
+                labels = {
+                    provider.provider_id: provider.label
+                    for provider in self._available_providers
+                }
+                provider_label = (
+                    labels.get(first.provider_id, first.provider_id)
+                    if first.provider_id is not None
+                    else None
+                )
+                prefix = f"{provider_label}: " if provider_label else ""
+                suffix = (
+                    f" (+{len(diagnostics) - 1} more)"
+                    if len(diagnostics) > 1
+                    else ""
+                )
+                detail = f"{prefix}{first.message}{suffix}"
+            else:
+                detail = "one or more providers are unavailable"
             lines.extend(
                 (
                     RenderLine(""),

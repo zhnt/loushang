@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import secrets
+import stat
 from collections import OrderedDict
 from collections.abc import Iterable
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, TypeVar
 
+from loushang.foundation.platform_paths import resolve_platform_paths
 from loushang.harness.continuity import (
     CallbackPreparedActivationLease,
+    ContinuityActivationPayload,
     ContinuityArtifactReference,
     ContinuityDiagnostic,
     ContinuityHub,
@@ -19,6 +24,7 @@ from loushang.harness.continuity import (
     ContinuityPreviewSection,
     ContinuityProviderDescriptor,
     ContinuityProviderPack,
+    ContinuityProviderSourceDescriptor,
     ContinuitySummary,
     ContinuityTarget,
     ExperienceDescriptor,
@@ -59,7 +65,10 @@ CODING_CONTINUITY_IMPLEMENTATION_VERSION = 1
 CODING_EXPERIENCE_ID = "coding"
 
 _MAX_PREVIEW_CACHE = 256
+_MAX_CODING_CONTINUITY_IMPORT_BYTES = 64 * 1024 * 1024
 _RUNTIME_BINDING_ATTRIBUTE = "_loushang_coding_continuity"
+
+T = TypeVar("T")
 
 
 class CodingContinuityRuntimePort(Protocol):
@@ -99,6 +108,93 @@ class CodingPreparedSessionOperation(Protocol):
     async def consume(self) -> object: ...
 
     async def abort(self) -> None: ...
+
+    async def close(self) -> None: ...
+
+
+class CodingContinuityActivationBridge:
+    """Import portable bytes through Coding's canonical Session lifecycle."""
+
+    def __init__(
+        self,
+        runtime: CodingContinuityRuntimePort,
+        *,
+        temporary_root: str | Path | None = None,
+        fallback_cwd: str | Path | None = None,
+        max_bytes: int = _MAX_CODING_CONTINUITY_IMPORT_BYTES,
+    ) -> None:
+        if isinstance(max_bytes, bool) or not isinstance(max_bytes, int):
+            raise TypeError("Coding continuity import limit must be an integer")
+        if not 1 <= max_bytes <= _MAX_CODING_CONTINUITY_IMPORT_BYTES:
+            raise ValueError("Coding continuity import limit is invalid")
+        self._runtime = runtime
+        temporary_path = Path(
+            temporary_root
+            if temporary_root is not None
+            else resolve_platform_paths().temporary / "continuity-import"
+        ).expanduser()
+        absolute = Path(os.path.abspath(temporary_path))
+        self._temporary_root = absolute.parent.resolve(strict=False) / absolute.name
+        self._fallback_cwd = (
+            None
+            if fallback_cwd is None
+            else str(Path(fallback_cwd).expanduser().resolve(strict=False))
+        )
+        self._max_bytes = max_bytes
+
+    async def prepare(
+        self,
+        target: ContinuityTarget,
+        payload: ContinuityActivationPayload,
+        source: ContinuityProviderSourceDescriptor,
+    ) -> CallbackPreparedActivationLease:
+        if not isinstance(target, ContinuityTarget):
+            raise TypeError("Coding continuity activation target is invalid")
+        if not isinstance(payload, ContinuityActivationPayload):
+            raise TypeError("Coding continuity activation payload is invalid")
+        if not isinstance(source, ContinuityProviderSourceDescriptor):
+            raise TypeError("Coding continuity activation source is invalid")
+        if source.provider_id != target.provider_id:
+            raise ValueError("Coding continuity activation source does not own target")
+        if payload.byte_size > self._max_bytes:
+            raise ValueError("Coding continuity activation exceeds Product limit")
+        staged = await _write_private_continuity_payload_atomic(
+            self._temporary_root,
+            payload,
+        )
+        try:
+            prepared = await self._runtime.prepare_restore_session_operation(
+                staged.path,
+                fallback_cwd=self._fallback_cwd,
+                missing_cwd="fallback" if self._fallback_cwd is not None else "error",
+            )
+        except BaseException as operation_error:
+            try:
+                await _remove_private_continuity_payload_atomic(staged)
+            except BaseException as cleanup_error:
+                operation_error.add_note(
+                    "Coding continuity temporary cleanup also failed: "
+                    f"{cleanup_error!r}"
+                )
+            raise
+        try:
+            await _remove_private_continuity_payload_atomic(staged)
+        except BaseException as cleanup_error:
+            try:
+                abort_task = asyncio.create_task(prepared.abort())
+                await _await_owned_task_cancellation_atomic(abort_task)
+            except BaseException as abort_error:
+                cleanup_error.add_note(
+                    "Coding continuity prepared-operation abort also failed: "
+                    f"{abort_error!r}"
+                )
+            raise
+        return CallbackPreparedActivationLease(
+            target=target,
+            disposition="in_place",
+            consume=lambda: _consume_coding_prepared_operation(prepared),
+            abort=prepared.abort,
+        )
 
 
 class StaleContinuityTargetError(RuntimeError):
@@ -517,11 +613,15 @@ def bind_coding_continuity(
     grants: Iterable[RuntimeProfileLayerGrant] = (),
     implementations: Iterable[RuntimeCapabilityImplementation] = (),
 ) -> CodingContinuityComposition:
-    """Bind process-scoped Product/OEM packs once, then compose Coding."""
+    """Bind Product/OEM continuity packs once for one Coding runtime."""
 
     layer_values = tuple(layers)
     grant_values = tuple(grants)
     implementation_values = tuple(implementations)
+    if any(layer.source == "extension" for layer in layer_values):
+        raise ValueError(
+            "Coding continuity does not admit direct extension layers"
+        )
     cached = getattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, None)
     if isinstance(cached, CodingContinuityComposition):
         if layer_values or grant_values or implementation_values:
@@ -592,6 +692,257 @@ def bind_coding_continuity(
         pass
     else:
         result.runtime_owned = True
+    return result
+
+
+async def _consume_coding_prepared_operation(
+    prepared: CodingPreparedSessionOperation,
+) -> object:
+    try:
+        return await prepared.consume()
+    except BaseException as operation_error:
+        try:
+            abort_task = asyncio.create_task(prepared.abort())
+            await _await_owned_task_cancellation_atomic(abort_task)
+        except BaseException as abort_error:
+            operation_error.add_note(
+                "Coding prepared Session abort also failed: "
+                f"{type(abort_error).__name__}"
+            )
+        raise
+
+
+@dataclass(frozen=True, slots=True)
+class _PrivateContinuityPayload:
+    path: Path
+    file_identity: tuple[int, int]
+    root_identity: tuple[int, int]
+    root_descriptor: int
+
+
+def _write_private_continuity_payload(
+    root: Path,
+    payload: ContinuityActivationPayload,
+) -> _PrivateContinuityPayload:
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    _validate_private_continuity_path_chain(root)
+    if not _supports_continuity_directory_handles():
+        raise OSError(
+            "Secure directory-relative Continuity staging is unavailable "
+            "on this platform"
+        )
+    return _write_private_continuity_payload_at(root, payload)
+
+
+def _write_private_continuity_payload_at(
+    root: Path,
+    payload: ContinuityActivationPayload,
+) -> _PrivateContinuityPayload:
+    root_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    root_flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    root_descriptor = os.open(root, root_flags)
+    descriptor = -1
+    name = ""
+    try:
+        root_status = os.fstat(root_descriptor)
+        path_status = root.lstat()
+        _validate_private_continuity_root(root, root_status)
+        if not os.path.samestat(root_status, path_status):
+            raise OSError("Coding continuity temporary root identity changed")
+        os.fchmod(root_descriptor, 0o700)
+        root_identity = (root_status.st_dev, root_status.st_ino)
+        suffix = _continuity_payload_suffix(payload)
+        file_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        file_flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+        for _attempt in range(128):
+            name = f"continuity-{secrets.token_hex(16)}{suffix}"
+            try:
+                descriptor = os.open(
+                    name,
+                    file_flags,
+                    0o600,
+                    dir_fd=root_descriptor,
+                )
+            except FileExistsError:
+                continue
+            break
+        else:
+            raise FileExistsError("Coding continuity temporary namespace is exhausted")
+        os.fchmod(descriptor, 0o600)
+        _write_continuity_payload_bytes(descriptor, payload.data)
+        status = os.fstat(descriptor)
+        file_identity = (status.st_dev, status.st_ino)
+        os.close(descriptor)
+        descriptor = -1
+        return _PrivateContinuityPayload(
+            path=root / name,
+            file_identity=file_identity,
+            root_identity=root_identity,
+            root_descriptor=root_descriptor,
+        )
+    except BaseException:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if name:
+            with suppress(OSError):
+                os.unlink(name, dir_fd=root_descriptor)
+        os.close(root_descriptor)
+        raise
+
+
+def _validate_private_continuity_root(
+    root: Path,
+    root_status: os.stat_result,
+) -> None:
+    if (
+        not stat.S_ISDIR(root_status.st_mode)
+        or stat.S_ISLNK(root_status.st_mode)
+        or bool(getattr(root_status, "st_reparse_tag", 0))
+    ):
+        raise OSError("Coding continuity temporary root is unsafe")
+    getuid = getattr(os, "getuid", None)
+    if os.name == "posix" and callable(getuid) and root_status.st_uid != getuid():
+        raise PermissionError(
+            f"Coding continuity temporary root belongs to another user: {root}"
+        )
+
+
+def _validate_private_continuity_path_chain(root: Path) -> None:
+    for directory in (root, *root.parents):
+        metadata = directory.lstat()
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or bool(getattr(metadata, "st_reparse_tag", 0))
+        ):
+            raise OSError("Coding continuity temporary path contains an unsafe link")
+        if (
+            os.name == "posix"
+            and metadata.st_mode & 0o022
+            and not metadata.st_mode & stat.S_ISVTX
+        ):
+            raise PermissionError(
+                "Coding continuity temporary path has a writable ancestor"
+            )
+
+
+def _continuity_payload_suffix(payload: ContinuityActivationPayload) -> str:
+    return (
+        ".loushang.zip"
+        if payload.media_type.endswith("session-bundle+zip")
+        else ".jsonl"
+    )
+
+
+def _write_continuity_payload_bytes(descriptor: int, data: bytes) -> None:
+    view = memoryview(data)
+    while view:
+        written = os.write(descriptor, view)
+        if written < 1:
+            raise OSError("Coding continuity temporary write made no progress")
+        view = view[written:]
+    os.fsync(descriptor)
+
+
+def _supports_continuity_directory_handles() -> bool:
+    supports_dir_fd = getattr(os, "supports_dir_fd", ())
+    return (
+        os.name == "posix"
+        and isinstance(getattr(os, "O_DIRECTORY", None), int)
+        and isinstance(getattr(os, "O_NOFOLLOW", None), int)
+        and os.open in supports_dir_fd
+        and os.stat in supports_dir_fd
+        and os.unlink in supports_dir_fd
+    )
+
+
+def _remove_private_continuity_payload(staged: _PrivateContinuityPayload) -> None:
+    try:
+        root_status = os.fstat(staged.root_descriptor)
+        if (root_status.st_dev, root_status.st_ino) != staged.root_identity:
+            raise OSError("Coding continuity temporary root identity changed")
+        try:
+            status = os.stat(
+                staged.path.name,
+                dir_fd=staged.root_descriptor,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            return
+        if (
+            stat.S_ISLNK(status.st_mode)
+            or bool(getattr(status, "st_reparse_tag", 0))
+            or (status.st_dev, status.st_ino) != staged.file_identity
+        ):
+            raise OSError("Coding continuity temporary file identity changed")
+        os.unlink(staged.path.name, dir_fd=staged.root_descriptor)
+    finally:
+        os.close(staged.root_descriptor)
+
+
+async def _remove_private_continuity_payload_atomic(
+    staged: _PrivateContinuityPayload,
+) -> None:
+    task = asyncio.create_task(
+        asyncio.to_thread(_remove_private_continuity_payload, staged)
+    )
+    await _await_owned_task_cancellation_atomic(task)
+
+
+async def _write_private_continuity_payload_atomic(
+    root: Path,
+    payload: ContinuityActivationPayload,
+) -> _PrivateContinuityPayload:
+    task = asyncio.create_task(
+        asyncio.to_thread(_write_private_continuity_payload, root, payload)
+    )
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError as first_cancellation:
+        cancellation = first_cancellation
+        caller = asyncio.current_task()
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError as repeated:
+                if caller is None or caller.cancelling() == 0:
+                    return task.result()
+                cancellation = repeated
+        try:
+            staged = task.result()
+        except BaseException as write_error:
+            cancellation.add_note(
+                "Coding continuity temporary write also failed: "
+                f"{type(write_error).__name__}"
+            )
+            raise cancellation
+        try:
+            await _remove_private_continuity_payload_atomic(staged)
+        except BaseException as cleanup_error:
+            cancellation.add_note(
+                "Coding continuity cancelled-write cleanup also failed: "
+                f"{type(cleanup_error).__name__}"
+            )
+        raise cancellation
+
+
+async def _await_owned_task_cancellation_atomic(
+    task: asyncio.Task[T],
+) -> T:
+    """Join an owned cleanup task before propagating caller cancellation."""
+
+    cancellation: asyncio.CancelledError | None = None
+    caller = asyncio.current_task()
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as exc:
+            if caller is None or caller.cancelling() == 0:
+                return task.result()
+            cancellation = exc
+    result = task.result()
+    if cancellation is not None:
+        raise cancellation
     return result
 
 
@@ -713,6 +1064,7 @@ __all__ = [
     "CODING_CONTINUITY_PROVIDER_ID",
     "CODING_EXPERIENCE_ID",
     "CodingContinuityComposition",
+    "CodingContinuityActivationBridge",
     "CodingContinuityProvider",
     "ConflictedContinuityTargetError",
     "StaleContinuityTargetError",

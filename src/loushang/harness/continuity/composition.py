@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from loushang.harness.continuity.provider import ContinuityProvider
 from loushang.harness.continuity.types import (
     CONTINUITY_PROVIDER_PROFILE_VERSION,
+    ContinuityProviderSourceDescriptor,
     ExperienceDescriptor,
 )
 from loushang.harness.runtime.profile import (
@@ -34,6 +35,10 @@ class ContinuityProviderPack:
 class BoundContinuityProvider:
     provider: ContinuityProvider
     provenance: ResolvedRuntimeSelection
+
+    @property
+    def source(self) -> ContinuityProviderSourceDescriptor:
+        return continuity_provider_source(self)
 
 
 @dataclass(frozen=True)
@@ -113,16 +118,36 @@ def compose_experience_continuity(
                     f"duplicate continuity provider ID: {descriptor.provider_id}"
                 )
             provider_ids.add(descriptor.provider_id)
-            composed.append(
-                BoundContinuityProvider(
-                    provider=provider,
-                    provenance=provenance,
-                )
+            bound = BoundContinuityProvider(
+                provider=provider,
+                provenance=provenance,
             )
+            # Validate finite, redacted source identity before publication.
+            continuity_provider_source(bound)
+            composed.append(bound)
     return ExperienceComposition(
         experience=experience,
         capability_profile=binding.profile,
         continuity_providers=tuple(composed),
+    )
+
+
+def continuity_provider_source(
+    bound: BoundContinuityProvider,
+) -> ContinuityProviderSourceDescriptor:
+    """Project admitted Runtime Profile provenance without live factories."""
+
+    if not isinstance(bound, BoundContinuityProvider):
+        raise TypeError("continuity Provider source requires a bound Provider")
+    provenance = bound.provenance
+    selection = provenance.selection
+    provider_id = bound.provider.descriptor.provider_id
+    return ContinuityProviderSourceDescriptor(
+        provider_id=provider_id,
+        source=provenance.source,
+        source_id=provenance.layer_id,
+        implementation=selection.implementation,
+        implementation_version=selection.implementation_version,
     )
 
 
@@ -132,4 +157,5 @@ __all__ = [
     "ContinuityProviderPack",
     "ExperienceComposition",
     "compose_experience_continuity",
+    "continuity_provider_source",
 ]

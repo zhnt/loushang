@@ -10,11 +10,13 @@ from loushang.tui.keybindings import (
 
 CONTINUITY_PREVIEW_ACTION = "tui.continuity.preview"
 CONTINUITY_DOMAIN_ACTION = "tui.continuity.domain"
+CONTINUITY_PROVIDER_ACTION = "tui.continuity.provider"
 CONTINUITY_SORT_ACTION = "tui.continuity.sort"
 
 CONTINUITY_KEYBINDING_DEFINITIONS = {
     CONTINUITY_PREVIEW_ACTION: ("space",),
     CONTINUITY_DOMAIN_ACTION: ("tab",),
+    CONTINUITY_PROVIDER_ACTION: ("ctrl+p",),
     CONTINUITY_SORT_ACTION: ("ctrl+s",),
 }
 CONTINUITY_KEYBINDING_CATALOG = KeybindingCatalog.from_definitions(
@@ -38,6 +40,7 @@ __all__ = [
     "CONTINUITY_KEYBINDING_CATALOG",
     "CONTINUITY_KEYBINDING_DEFINITIONS",
     "CONTINUITY_PREVIEW_ACTION",
+    "CONTINUITY_PROVIDER_ACTION",
     "CONTINUITY_SORT_ACTION",
     "continuity_keybinding_manager",
 ]

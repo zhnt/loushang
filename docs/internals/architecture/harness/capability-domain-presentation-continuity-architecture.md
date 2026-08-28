@@ -217,8 +217,10 @@ The dependency rules are:
 - Product continuity adapters project Domain data into the fixed common
   summary/preview contract. A Product-specific history UI, if one is later
   needed, is a separate surface rather than a plugin to the common Resume page.
-- Product/OEM continuity providers own authoritative discovery, query
+- Product/OEM continuity providers may own authoritative discovery, query
   translation, redacted preview, target validation, and candidate preparation.
+  Phase 5B freezes a narrower portable import contract for a later admitted
+  Plugin Provider but does not register or execute one.
 - The Product/OEM Host exclusively owns activation policy, serialization,
   commit, runtime switching, and channel rebinding.
 - The OEM/Product composition root is the only place that assembles providers,
@@ -266,9 +268,12 @@ multiple providers must not be smuggled in as duplicate selections with
 different configuration. An Experience composition consumes only the bound
 pack result and cannot name or resolve another provider factory.
 
-V1 permits Product- and OEM-sourced provider packs only. Extension providers
-remain unsupported until history-query, content-preview, and activation
-permissions have separate grants and failure contracts.
+V1 continues to admit Product- and OEM-sourced provider packs only. The
+[Phase 5B foundation](plugin/continuity-provider-phase5b-contract.md) adds
+portable read-only contracts and a Product-owned activation bridge without
+opening this slot to Extension layers. Installed Plugin admission remains a
+later exact-lifecycle phase; arbitrary Extension layers and Plugin mutation are
+unsupported.
 
 Continuity summary and preview declarations are fixed JSON-safe data contracts,
 not executable authority. V1 has no custom list-column, filter, or renderer
@@ -410,8 +415,8 @@ when their Domain-ID sets intersect. Product/OEM policy may mark an aggregate
 provider as visible only in the All view or hide it when its independent
 providers are also visible; Harness does not infer that display policy.
 
-For V1, one Product/OEM provider may implement `query`, `preview`, and
-`prepare`. These operations nevertheless represent distinct authority:
+One Product/OEM provider may implement `query`, `preview`, and `prepare`.
+These operations nevertheless represent distinct authority:
 
 ```text
 continuity.query
@@ -419,13 +424,12 @@ continuity.preview
 continuity.prepare
 ```
 
-These are audit/ownership boundaries, not three separately enforced V1 grants.
-A Product default is declared directly on its `ProductRuntimePlan`; an OEM
-layer is admitted to the whole slot only when its `RuntimeProfileLayerGrant`
-allows `continuity.provider_packs` and carries the single slot permission
-`continuity.provider`. That V1 grant authorizes the pack's three operations
-together. If extension-sourced providers are introduced later, the catalog and
-activation protocols should be split and the operations granted independently.
+These are audit/ownership boundaries, not three separately enforced grants. A
+Product default is declared directly on its `ProductRuntimePlan`; an OEM layer
+is admitted to the whole slot only when its `RuntimeProfileLayerGrant` allows
+`continuity.provider_packs` and carries the single slot permission
+`continuity.provider`. Phase 5B does not issue that grant to a Plugin or an
+Extension. The Product bridge retains canonical Session authority.
 
 ### Federated hub
 

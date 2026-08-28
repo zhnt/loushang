@@ -107,3 +107,14 @@ presentation. Harness continues to own:
 
 Mutation plugins may propose a typed plan in a later phase. They must not
 receive an unrestricted path deletion or transcript-write side door.
+
+Phase 5B implements the portable, read-only owner foundation: bounded
+query/preview records, exact activation bytes, the Product bridge into the
+canonical transcript lifecycle, Provider-aware filtering, and stale-result
+invalidation. It deliberately does not construct or register installed Plugin
+Providers. That later path must consume finalized Plugin selection, owner
+admission, durable activation approval, verified Component Host construction,
+and a revocation-safe authority lease rather than accepting raw callables or
+self-minted trust facts. The normative boundary is
+[Portable Continuity Provider Foundation](plugin/continuity-provider-phase5b-contract.md).
+Plugin execution and all mutation contributions remain outside this phase.
