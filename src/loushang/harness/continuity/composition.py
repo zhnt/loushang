@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TypeAlias
 
 from loushang.harness.capabilities.component_contracts import (
+    _digest_document,
     _require_nonempty,
     _require_sha256,
 )
@@ -50,6 +51,7 @@ class PluginContinuityProviderProvenance:
     instance_revision: int
     source_trust_class: str
     source_trust_policy_revision: str
+    supported_actions: tuple[str, ...]
     candidate_fingerprint: str
     admission_fingerprint: str
     selection_plan_fingerprint: str
@@ -83,6 +85,11 @@ class PluginContinuityProviderProvenance:
             ("owner generation fingerprint", self.generation_fingerprint),
         ):
             _require_sha256(value, name=name)
+        if self.supported_actions not in {
+            ("activate",),
+            ("activate", "delete"),
+        }:
+            raise ValueError("Plugin Continuity admitted actions are invalid")
 
 
 ContinuityProviderProvenance: TypeAlias = (
@@ -233,6 +240,7 @@ def _create_plugin_continuity_provider_provenance(
     instance_revision: int,
     source_trust_class: str,
     source_trust_policy_revision: str,
+    supported_actions: tuple[str, ...],
     candidate_fingerprint: str,
     admission_fingerprint: str,
     selection_plan_fingerprint: str,
@@ -296,6 +304,16 @@ def plugin_continuity_provider_source(
         instance_revision=provenance.instance_revision,
         source_trust_class=provenance.source_trust_class,
         source_trust_policy_revision=provenance.source_trust_policy_revision,
+        owner_binding_fingerprint=_digest_document(
+            "loushang.plugin-continuity-owner-binding/v1",
+            {
+                "admissionFingerprint": provenance.admission_fingerprint,
+                "bindingFingerprint": provenance.binding_fingerprint,
+                "candidateFingerprint": provenance.candidate_fingerprint,
+                "selectionPlanFingerprint": provenance.selection_plan_fingerprint,
+                "supportedActions": list(provenance.supported_actions),
+            },
+        ),
     )
 
 

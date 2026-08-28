@@ -107,9 +107,12 @@ presentation. Harness continues to own:
 
 The [Phase 5D mutation foundation](plugin/continuity-mutation-phase5d-contract.md)
 lets a Provider propose one typed deletion plan for its own exact opaque target
-revision. Product authorization and settlement remain separate, and no Plugin
-receives an unrestricted path deletion or transcript-write side door. Installed
-Plugin mutation remains gated on the Phase 5E lifecycle binding.
+revision. The
+[Phase 5E installed lifecycle](plugin/continuity-mutation-phase5e-contract.md)
+binds that plan to a durable Product journal, the sealed Plugin generation,
+startup recovery, and an explicit Coding authority injection. Product
+authorization and settlement remain separate, and no Plugin receives an
+unrestricted path deletion or transcript-write side door.
 
 Phase 5B implements the portable, read-only owner foundation: bounded
 query/preview records, exact activation bytes, the Product bridge into the

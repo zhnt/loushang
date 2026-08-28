@@ -74,6 +74,9 @@ Neither may silently override a narrower implemented owner contract.
   implements exact deletion proposals, opaque Product authorization evidence,
   cancellation-safe settlement, and the lifecycle handoff required before an
   installed Plugin may expose mutation.
+- [Phase 5E Installed Continuity Mutation Lifecycle](continuity-mutation-phase5e-contract.md)
+  implements the durable Product deletion journal, generation-gated installed
+  Provider adapter, startup recovery barrier, and explicit Coding binding.
 
 These contracts refine the architecture only inside their stated versions and
 implemented slices. An unimplemented Worker, Skill-action, remote-service, or

@@ -24,15 +24,18 @@ from loushang.harness.continuity.import_provider import (
     ContinuityActivationPayload,
     ContinuityImportProvider,
     ContinuityImportProviderPack,
+    ContinuityMutationProvider,
     PreparedContinuityImport,
 )
 from loushang.harness.continuity.mutation import (
+    AcceptedContinuityDeletion,
     AuthorizedContinuityDeletionLease,
     ContinuityDeletionAuthority,
     ContinuityDeletionAuthorization,
     ContinuityDeletionDisposition,
     ContinuityDeletionPlanV1,
     ContinuityDeletionReceiptV1,
+    ContinuityDeletionRecoveryAuthority,
     ContinuityMutationCodecError,
     ContinuityMutationLifecycleError,
     ContinuityMutationPendingCleanup,
@@ -75,6 +78,7 @@ from loushang.harness.continuity.types import (
 )
 
 __all__ = [
+    "AcceptedContinuityDeletion",
     "ActivationDisposition",
     "ContinuityAction",
     "ActivationLeaseStateError",
@@ -95,12 +99,14 @@ __all__ = [
     "ContinuityDeletionDisposition",
     "ContinuityDeletionPlanV1",
     "ContinuityDeletionReceiptV1",
+    "ContinuityDeletionRecoveryAuthority",
     "ContinuityIndexState",
     "ContinuityImportProvider",
     "ContinuityImportProviderPack",
     "ContinuityMutationCodecError",
     "ContinuityMutationLifecycleError",
     "ContinuityMutationPendingCleanup",
+    "ContinuityMutationProvider",
     "ContinuityHub",
     "ContinuityObservationDescriptor",
     "ContinuityPage",

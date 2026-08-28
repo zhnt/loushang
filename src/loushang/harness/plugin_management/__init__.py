@@ -3,6 +3,15 @@
 This package is intentionally absent from the public Plugin authoring surface.
 """
 
+from loushang.harness.plugin_management.continuity_mutation import (
+    PLUGIN_CONTINUITY_DELETION_EVENT_CODEC,
+    PluginContinuityDeletionAuthority,
+    PluginContinuityDeletionEventV1,
+    PluginContinuityDeletionJournal,
+    PluginContinuityDeletionJournalError,
+    PluginContinuityDeletionSnapshotV1,
+    plugin_continuity_deletion_journal_path,
+)
 from loushang.harness.plugin_management.instance_records import (
     PLUGIN_INSTANCE_ACTIVATION_VERSION,
     PLUGIN_INSTANCE_FAMILY_RELEASE_VERSION,
@@ -126,6 +135,7 @@ from loushang.harness.plugin_management.updates import (
 )
 
 __all__ = [
+    "PLUGIN_CONTINUITY_DELETION_EVENT_CODEC",
     "PLUGIN_CLEANUP_ATTEMPT_VERSION",
     "PLUGIN_CLEANUP_REPAIR_DECISION_VERSION",
     "PLUGIN_CLEANUP_TASK_VERSION",
@@ -189,6 +199,12 @@ __all__ = [
     "PluginInstanceRuntimeRecordCodecError",
     "PluginInstanceRuntimeSnapshotV1",
     "PluginLifecycleError",
+    "PluginContinuityDeletionAuthority",
+    "PluginContinuityDeletionEventV1",
+    "PluginContinuityDeletionJournal",
+    "PluginContinuityDeletionJournalError",
+    "PluginContinuityDeletionSnapshotV1",
+    "plugin_continuity_deletion_journal_path",
     "PluginManagementCommandV1",
     "PluginManagementError",
     "PluginManagementOperationEventV1",

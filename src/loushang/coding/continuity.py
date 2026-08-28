@@ -21,6 +21,7 @@ from loushang.harness.continuity import (
     CallbackPreparedActivationLease,
     ContinuityActivationPayload,
     ContinuityArtifactReference,
+    ContinuityDeletionRecoveryAuthority,
     ContinuityDiagnostic,
     ContinuityHub,
     ContinuityPreview,
@@ -48,6 +49,7 @@ from loushang.harness.continuity.plugin_runtime import (
     ResolvedContinuityPluginSelection,
     construct_continuity_plugin_generation,
     publish_continuity_plugin_generation,
+    publish_continuity_plugin_generation_with_mutations,
 )
 from loushang.harness.conversation import IndexedProjection
 from loushang.harness.runtime import (
@@ -710,6 +712,7 @@ async def bind_coding_plugin_continuity(
     activation_decision_ids: Mapping[str, str],
     instance_family_authority: ContinuityPluginInstanceFamilyAuthority,
     runtime_id: str,
+    deletion_authority: ContinuityDeletionRecoveryAuthority | None = None,
     cwd: str | Path | None = None,
     all_sessions: bool = False,
     temporary_root: str | Path | None = None,
@@ -761,15 +764,24 @@ async def bind_coding_plugin_continuity(
             generation_authority=generation_authority,
         )
         reservation.generation = generation
-        publication = publish_continuity_plugin_generation(
-            base,
-            generation,
-            activation_bridge=CodingContinuityActivationBridge(
-                runtime,
-                temporary_root=temporary_root,
-                fallback_cwd=fallback_cwd,
-            ),
+        activation_bridge = CodingContinuityActivationBridge(
+            runtime,
+            temporary_root=temporary_root,
+            fallback_cwd=fallback_cwd,
         )
+        if deletion_authority is None:
+            publication = publish_continuity_plugin_generation(
+                base,
+                generation,
+                activation_bridge=activation_bridge,
+            )
+        else:
+            publication = await publish_continuity_plugin_generation_with_mutations(
+                base,
+                generation,
+                activation_bridge=activation_bridge,
+                deletion_authority=deletion_authority,
+            )
     except BaseException as error:
         if (
             isinstance(error, ContinuityPluginLifecycleError)

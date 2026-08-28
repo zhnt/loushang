@@ -201,6 +201,29 @@ class ContinuityDeletionAuthority(Protocol):
     ) -> None: ...
 
 
+@dataclass(frozen=True, slots=True)
+class AcceptedContinuityDeletion:
+    """Typed accepted-but-unsettled operation returned for recovery."""
+
+    plan: ContinuityDeletionPlanV1
+    source: ContinuityProviderSourceDescriptor
+
+    def __post_init__(self) -> None:
+        if type(self.plan) is not ContinuityDeletionPlanV1:
+            raise TypeError("Continuity deletion recovery requires an exact plan")
+        if type(self.source) is not ContinuityProviderSourceDescriptor:
+            raise TypeError("Continuity deletion recovery requires an exact source")
+        if self.plan.target.provider_id != self.source.provider_id:
+            raise ValueError("Continuity deletion recovery source does not own target")
+
+
+@runtime_checkable
+class ContinuityDeletionRecoveryAuthority(ContinuityDeletionAuthority, Protocol):
+    """Product authority able to enumerate its durable unsettled operations."""
+
+    async def pending_deletions(self) -> tuple[AcceptedContinuityDeletion, ...]: ...
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class ContinuityDeletionAuthorization:
     """Opaque exact-plan evidence issued by one Product authority."""
@@ -209,6 +232,11 @@ class ContinuityDeletionAuthorization:
     plan_fingerprint: str
     source_fingerprint: str
     _authority: object = field(repr=False, compare=False)
+    _settled_receipt: ContinuityDeletionReceiptV1 | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def __init__(self) -> None:
         raise TypeError("Continuity deletion authorization is authority-issued")
@@ -221,6 +249,7 @@ class ContinuityDeletionAuthorization:
         authorization_id: str,
         plan: ContinuityDeletionPlanV1,
         source: ContinuityProviderSourceDescriptor,
+        settled_receipt: ContinuityDeletionReceiptV1 | None = None,
     ) -> ContinuityDeletionAuthorization:
         if not isinstance(authority, ContinuityDeletionAuthority):
             raise TypeError("Continuity deletion authorization requires its authority")
@@ -229,6 +258,12 @@ class ContinuityDeletionAuthorization:
             raise TypeError("Continuity deletion authorization requires its plan")
         if type(source) is not ContinuityProviderSourceDescriptor:
             raise TypeError("Continuity deletion authorization requires its source")
+        if settled_receipt is not None:
+            _validate_receipt(
+                settled_receipt,
+                plan=plan,
+                target=plan.target,
+            )
         evidence = object.__new__(cls)
         object.__setattr__(evidence, "authorization_id", authorization_id)
         object.__setattr__(evidence, "plan_fingerprint", plan.fingerprint)
@@ -238,6 +273,7 @@ class ContinuityDeletionAuthorization:
             _source_fingerprint(source),
         )
         object.__setattr__(evidence, "_authority", authority)
+        object.__setattr__(evidence, "_settled_receipt", settled_receipt)
         return evidence
 
 
@@ -273,7 +309,10 @@ class ContinuityMutationPendingCleanup:
         cleanup._authority = authority
         cleanup._authorization = authorization
         cleanup._cleanup_task = None
-        cleanup._cancelled = False
+        cleanup._cancelled = (
+            authorization is not None
+            and authorization._settled_receipt is not None
+        )
         cleanup._aborted = False
         cleanup._released = False
         cleanup._completed = False
@@ -343,6 +382,7 @@ class AuthorizedContinuityDeletionLease:
     _abort_task: asyncio.Task[None] | None
     _commit_started: bool
     _abort_requested: bool
+    _replay: bool
     _settled: bool
     _cancelled: bool
     _source_aborted: bool
@@ -382,13 +422,15 @@ class AuthorizedContinuityDeletionLease:
         lease._source = source
         lease._authority = authority
         lease._authorization = authorization
-        lease._receipt = None
+        replay_receipt = authorization._settled_receipt
+        lease._receipt = replay_receipt
         lease._commit_task = None
         lease._abort_task = None
         lease._commit_started = False
         lease._abort_requested = False
-        lease._settled = False
-        lease._cancelled = False
+        lease._replay = replay_receipt is not None
+        lease._settled = replay_receipt is not None
+        lease._cancelled = replay_receipt is not None
         lease._source_aborted = False
         lease._released = False
         lease._closed = False
@@ -413,6 +455,12 @@ class AuthorizedContinuityDeletionLease:
     @property
     def consumed(self) -> bool:
         return self._settled
+
+    @property
+    def closed(self) -> bool:
+        """Whether settlement or cancellation and source release finished."""
+
+        return self._closed
 
     async def consume(self) -> ContinuityDeletionReceiptV1:
         if self._closed and self._settled:
@@ -452,6 +500,20 @@ class AuthorizedContinuityDeletionLease:
 
     async def _commit_complete_and_release(self) -> ContinuityDeletionReceiptV1:
         receipt = self._receipt
+        if self._replay:
+            assert receipt is not None
+            if not self._source_aborted:
+                try:
+                    await self._candidate.abort()
+                except BaseException:
+                    raise _lifecycle_error(
+                        "Continuity mutation replay cleanup remains retryable.",
+                        code="continuity_mutation_cleanup_retryable",
+                    ) from None
+                self._source_aborted = True
+            await self._release_candidate()
+            self._closed = True
+            return receipt
         if receipt is None:
             try:
                 receipt = await self._candidate.commit(self._plan)
@@ -887,12 +949,14 @@ def _require_sha256(value: object, *, name: str) -> None:
 
 
 __all__ = [
+    "AcceptedContinuityDeletion",
     "AuthorizedContinuityDeletionLease",
     "ContinuityDeletionAuthorization",
     "ContinuityDeletionAuthority",
     "ContinuityDeletionDisposition",
     "ContinuityDeletionPlanV1",
     "ContinuityDeletionReceiptV1",
+    "ContinuityDeletionRecoveryAuthority",
     "ContinuityMutationLifecycleError",
     "ContinuityMutationCodecError",
     "ContinuityMutationPendingCleanup",

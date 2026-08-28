@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import importlib
 import json
 import os
@@ -65,16 +66,27 @@ class JournalFileError(ValueError):
         self.line_number = line_number
 
 
+class JournalLockUnavailable(BlockingIOError):
+    """A requested non-blocking journal lock is currently held elsewhere."""
+
+    def __init__(self, *, path: Path) -> None:
+        super().__init__(f"Journal lock is unavailable: {path.name}")
+        self.path = path
+
+
 @contextmanager
 def journal_file_lock(
     path: Path,
     mode: LockMode,
     *,
     lock_suffix: str = ".lock",
+    blocking: bool = True,
     is_windows: Callable[[], bool] | None = None,
     load_fcntl: Callable[[], Any] | None = None,
     load_msvcrt: Callable[[], Any] | None = None,
 ) -> Iterator[None]:
+    if type(blocking) is not bool:
+        raise TypeError("Journal lock blocking mode must be a built-in bool")
     lock_path = path.with_name(f"{path.name}{lock_suffix}")
     lock_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     with lock_path.open("a+b") as handle:
@@ -83,7 +95,13 @@ def journal_file_lock(
         windows = (is_windows or _is_windows)()
         if windows:
             msvcrt = (load_msvcrt or _load_msvcrt)()
-            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            operation = msvcrt.LK_LOCK if blocking else msvcrt.LK_NBLCK
+            try:
+                msvcrt.locking(handle.fileno(), operation, 1)
+            except OSError as exc:
+                if not blocking and exc.errno in {errno.EACCES, errno.EAGAIN}:
+                    raise JournalLockUnavailable(path=lock_path) from exc
+                raise
             try:
                 yield
             finally:
@@ -93,7 +111,14 @@ def journal_file_lock(
 
         fcntl = (load_fcntl or _load_fcntl)()
         operation = fcntl.LOCK_EX if mode == "exclusive" else fcntl.LOCK_SH
-        fcntl.flock(handle.fileno(), operation)
+        if not blocking:
+            operation |= fcntl.LOCK_NB
+        try:
+            fcntl.flock(handle.fileno(), operation)
+        except OSError as exc:
+            if not blocking and exc.errno in {errno.EACCES, errno.EAGAIN}:
+                raise JournalLockUnavailable(path=lock_path) from exc
+            raise
         try:
             yield
         finally:
@@ -118,11 +143,14 @@ def append_jsonl_record(
         lock_factory=lock_factory,
     ):
         target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        existed = target.exists()
         with target.open("a", encoding=format_profile.encoding) as handle:
             _fchmod_private(handle.fileno())
             handle.write(line)
             handle.write(format_profile.newline)
             _sync_handle(handle, durability)
+        if not existed:
+            _sync_parent_directory(target, durability)
 
 
 def append_jsonl_records(
@@ -152,10 +180,13 @@ def append_jsonl_records(
         lock_factory=lock_factory,
     ):
         target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        existed = target.exists()
         with target.open("a", encoding=format_profile.encoding) as handle:
             _fchmod_private(handle.fileno())
             handle.write(payload)
             _sync_handle(handle, durability)
+        if not existed:
+            _sync_parent_directory(target, durability)
 
 
 def write_jsonl(
@@ -578,6 +609,7 @@ def _replace_text_unlocked(
             handle.write(data)
             _sync_handle(handle, durability)
         temp_path.replace(target)
+        _sync_parent_directory(target, durability)
     except BaseException:
         with suppress(FileNotFoundError):
             temp_path.unlink()
@@ -605,6 +637,22 @@ def _prepare_lock_byte(handle: Any) -> None:
         handle.flush()
         os.fsync(handle.fileno())
     handle.seek(0)
+
+
+def _sync_parent_directory(
+    target: Path,
+    durability: JournalDurabilityProfile,
+) -> None:
+    """Durably establish a newly created or atomically replaced entry."""
+
+    if not durability.fsync or os.name == "nt":
+        return
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    descriptor = os.open(target.parent, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _is_windows() -> bool:

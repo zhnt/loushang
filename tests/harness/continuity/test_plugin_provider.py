@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,8 +10,11 @@ import pytest
 
 from loushang.harness.continuity import (
     CONTINUITY_JSONL_MEDIA_TYPE,
+    AcceptedContinuityDeletion,
     CallbackPreparedActivationLease,
     ContinuityActivationPayload,
+    ContinuityDeletionPlanV1,
+    ContinuityDeletionReceiptV1,
     ContinuityHub,
     ContinuityPreview,
     ContinuityProviderDescriptor,
@@ -28,13 +32,16 @@ from loushang.harness.continuity.composition import (
     _bind_gated_plugin_continuity_provider,
     _compose_experience_continuity_with_plugins,
     _create_plugin_continuity_provider_provenance,
+    plugin_continuity_provider_source,
 )
 from loushang.harness.continuity.plugin_provider import (
     ContinuityPluginGenerationClosingError,
     ContinuityPluginGenerationGate,
     ContinuityPluginGenerationQuiesceError,
+    ContinuityPluginMutationRecoveryError,
     ContinuityPluginProviderCallError,
     PluginContinuityProvider,
+    recover_continuity_plugin_deletions,
 )
 from loushang.harness.continuity.plugin_runtime import (
     ContinuityPluginGeneration,
@@ -43,10 +50,16 @@ from loushang.harness.continuity.plugin_runtime import (
     ContinuityPluginSecurityRetirementEvidence,
     ResolvedContinuityPluginSelection,
     _create_continuity_plugin_publication,
+    publish_continuity_plugin_generation,
+    publish_continuity_plugin_generation_with_mutations,
 )
 from loushang.harness.plugin_management.continuity_adapter import (
     PluginContinuitySecurityRetirementJournal,
     PluginInstanceLedgerContinuityFamilyAuthority,
+)
+from loushang.harness.plugin_management.continuity_mutation import (
+    PluginContinuityDeletionAuthority,
+    PluginContinuityDeletionJournal,
 )
 from loushang.harness.plugin_management.instance_records import (
     PluginInstanceLeaseFamilyV1,
@@ -76,7 +89,7 @@ def test_generation_gate_linearizes_consume_before_security_close() -> None:
     asyncio.run(_generation_gate_linearizes_consume_before_security_close())
 
 
-def test_installed_plugin_provider_remains_activation_only_in_phase5d() -> None:
+def test_installed_plugin_mutation_requires_product_authority(tmp_path) -> None:
     provider = _Provider()
     wrapped = PluginContinuityProvider(
         provider,
@@ -87,13 +100,994 @@ def test_installed_plugin_provider_remains_activation_only_in_phase5d() -> None:
     assert wrapped.descriptor.supported_actions == ("activate",)
 
     mutation_provider = _Provider(supported_actions=("activate", "delete"))
-    with pytest.raises(ValueError, match="only the activate action"):
+    with pytest.raises(TypeError, match="Product authority"):
+        PluginContinuityProvider(
+            mutation_provider,
+            bridge=_Bridge(),
+            provenance=_mutation_provenance(),
+            gate=ContinuityPluginGenerationGate(),
+        )
+    mutation_wrapped = PluginContinuityProvider(
+        mutation_provider,
+        bridge=_Bridge(),
+        provenance=_mutation_provenance(),
+        gate=ContinuityPluginGenerationGate(),
+        deletion_authority=PluginContinuityDeletionAuthority(
+            PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+        ),
+    )
+    assert mutation_wrapped.descriptor.supported_actions == (
+        "activate",
+        "delete",
+    )
+
+    with pytest.raises(ValueError, match="admitted declaration"):
         PluginContinuityProvider(
             mutation_provider,
             bridge=_Bridge(),
             provenance=_provenance(),
             gate=ContinuityPluginGenerationGate(),
+            deletion_authority=PluginContinuityDeletionAuthority(
+                PluginContinuityDeletionJournal(tmp_path / "mismatch.jsonl")
+            ),
         )
+    with pytest.raises(TypeError, match="lacks prepare_delete"):
+        PluginContinuityProvider(
+            _MissingDeleteProvider(),
+            bridge=_Bridge(),
+            provenance=_mutation_provenance(),
+            gate=ContinuityPluginGenerationGate(),
+            deletion_authority=PluginContinuityDeletionAuthority(
+                PluginContinuityDeletionJournal(tmp_path / "missing.jsonl")
+            ),
+        )
+
+
+def test_installed_plugin_delete_is_durable_and_generation_gated(tmp_path) -> None:
+    asyncio.run(_installed_plugin_delete_is_generation_gated(tmp_path))
+
+
+def test_delete_completion_failure_exposes_exact_settlement_retry(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(_delete_completion_failure_exposes_retry(tmp_path, monkeypatch))
+
+
+async def _delete_completion_failure_exposes_retry(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = ContinuityTarget("plugin.sessions", "one", "revision-1")
+    provider = _Provider(target=target, supported_actions=("activate", "delete"))
+    journal = PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+    authority = PluginContinuityDeletionAuthority(journal)
+    complete = journal.complete
+    attempts = 0
+
+    def fail_once(authorization_id, receipt):  # type: ignore[no-untyped-def]
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("synthetic completion interruption")
+        return complete(authorization_id, receipt)
+
+    monkeypatch.setattr(journal, "complete", fail_once)
+    wrapped = PluginContinuityProvider(
+        provider,
+        bridge=_Bridge(),
+        provenance=_mutation_provenance(),
+        gate=ContinuityPluginGenerationGate(),
+        deletion_authority=authority,
+    )
+
+    with pytest.raises(ContinuityPluginProviderCallError) as caught:
+        await wrapped.delete(target)
+    pending = caught.value.pending_mutation
+    assert pending is not None
+    assert provider.prepared_delete is not None
+    assert provider.prepared_delete.events == ["commit"]
+    assert tuple(item.event_kind for item in journal.records()) == ("accepted",)
+
+    assert await pending.retry() is True
+    assert provider.prepared_delete.events == ["commit", "close"]
+    assert tuple(item.event_kind for item in journal.records()) == (
+        "accepted",
+        "completed",
+    )
+
+
+def test_delete_release_failure_retries_without_recommit(tmp_path) -> None:
+    asyncio.run(_delete_release_failure_retries_without_recommit(tmp_path))
+
+
+async def _delete_release_failure_retries_without_recommit(tmp_path) -> None:
+    target = ContinuityTarget("plugin.sessions", "one", "revision-1")
+    provider = _Provider(
+        target=target,
+        supported_actions=("activate", "delete"),
+        delete_close_failures=1,
+    )
+    journal = PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+    wrapped = PluginContinuityProvider(
+        provider,
+        bridge=_Bridge(),
+        provenance=_mutation_provenance(),
+        gate=ContinuityPluginGenerationGate(),
+        deletion_authority=PluginContinuityDeletionAuthority(journal),
+    )
+
+    with pytest.raises(ContinuityPluginProviderCallError) as caught:
+        await wrapped.delete(target)
+    pending = caught.value.pending_mutation
+    assert pending is not None
+    assert provider.prepared_delete is not None
+    assert provider.prepared_delete.events == ["commit", "close"]
+    assert tuple(item.event_kind for item in journal.records()) == (
+        "accepted",
+        "completed",
+    )
+
+    assert await pending.retry() is True
+    assert provider.prepared_delete.events == ["commit", "close", "close"]
+
+
+def test_graceful_quiesce_cancels_accepted_unstarted_delete(tmp_path) -> None:
+    asyncio.run(_graceful_quiesce_cancels_unstarted_delete(tmp_path))
+
+
+async def _graceful_quiesce_cancels_unstarted_delete(tmp_path) -> None:
+    target = ContinuityTarget("plugin.sessions", "one", "revision-1")
+    provider = _Provider(
+        target=target,
+        supported_actions=("activate", "delete"),
+    )
+    gate = ContinuityPluginGenerationGate()
+    authority = PluginContinuityDeletionAuthority(
+        PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+    )
+    wrapped = PluginContinuityProvider(
+        provider,
+        bridge=_Bridge(),
+        provenance=_mutation_provenance(),
+        gate=gate,
+        deletion_authority=authority,
+    )
+    await wrapped._prepare_delete(target)
+
+    gate.begin_close(security=False)
+    await gate.quiesce(timeout=1.0)
+
+    assert provider.prepared_delete is not None
+    assert provider.prepared_delete.events == ["abort", "close"]
+    assert tuple(item.event_kind for item in authority.journal.records()) == (
+        "accepted",
+        "cancelled",
+    )
+
+
+def test_generation_owns_failed_mutation_prepare_cleanup(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(_generation_owns_failed_mutation_cleanup(tmp_path, monkeypatch))
+
+
+async def _generation_owns_failed_mutation_cleanup(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = ContinuityTarget("plugin.sessions", "one", "revision-1")
+    provider = _Provider(
+        target=target,
+        supported_actions=("activate", "delete"),
+        delete_abort_failures=1,
+    )
+    gate = ContinuityPluginGenerationGate()
+    journal = PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+    authority = PluginContinuityDeletionAuthority(journal)
+    monkeypatch.setattr(
+        journal,
+        "accept",
+        lambda _plan, _source: (_ for _ in ()).throw(
+            RuntimeError("secret at /private/journal")
+        ),
+    )
+    wrapped = PluginContinuityProvider(
+        provider,
+        bridge=_Bridge(),
+        provenance=_mutation_provenance(),
+        gate=gate,
+        deletion_authority=authority,
+    )
+
+    with pytest.raises(ContinuityPluginProviderCallError) as caught:
+        await wrapped._prepare_delete(target)
+    assert caught.value.pending_cleanup is not None
+    assert "/private/journal" not in str(caught.value)
+
+    gate.begin_close(security=False)
+    await gate.quiesce(timeout=1.0)
+    assert provider.prepared_delete is not None
+    assert provider.prepared_delete.events == ["abort", "abort", "close"]
+
+
+def test_delete_close_race_is_owned_by_generation_quiesce(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(_delete_close_race_is_owned_by_quiesce(tmp_path, monkeypatch))
+
+
+async def _delete_close_race_is_owned_by_quiesce(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = ContinuityTarget("plugin.sessions", "one", "revision-1")
+    provider = _Provider(target=target, supported_actions=("activate", "delete"))
+    gate = ContinuityPluginGenerationGate()
+    authority = PluginContinuityDeletionAuthority(
+        PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+    )
+    wrapped = PluginContinuityProvider(
+        provider,
+        bridge=_Bridge(),
+        provenance=_mutation_provenance(),
+        gate=gate,
+        deletion_authority=authority,
+    )
+    lease = await wrapped._prepare_delete(target)
+
+    async def prepare_then_close(_target: ContinuityTarget):  # type: ignore[no-untyped-def]
+        gate.begin_close(security=False)
+        return lease
+
+    monkeypatch.setattr(wrapped, "_prepare_delete", prepare_then_close)
+    with pytest.raises(ContinuityPluginGenerationClosingError):
+        await wrapped.delete(target)
+
+    await gate.quiesce(timeout=1.0)
+    assert provider.prepared_delete is not None
+    assert provider.prepared_delete.events == ["abort", "close"]
+    assert tuple(item.event_kind for item in authority.journal.records()) == (
+        "accepted",
+        "cancelled",
+    )
+
+
+def test_delete_prepare_close_race_retains_failed_abort_for_quiesce(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(_delete_prepare_close_race_retains_abort(tmp_path, monkeypatch))
+
+
+async def _delete_prepare_close_race_retains_abort(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = ContinuityTarget("plugin.sessions", "one", "revision-1")
+    provider = _Provider(
+        target=target,
+        supported_actions=("activate", "delete"),
+        delete_abort_failures=1,
+    )
+    gate = ContinuityPluginGenerationGate()
+    authority = PluginContinuityDeletionAuthority(
+        PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+    )
+    authorize = PluginContinuityDeletionAuthority.authorize_delete
+
+    async def authorize_then_close(self, plan, source):  # type: ignore[no-untyped-def]
+        evidence = await authorize(self, plan, source)
+        gate.begin_close(security=False)
+        return evidence
+
+    monkeypatch.setattr(
+        PluginContinuityDeletionAuthority,
+        "authorize_delete",
+        authorize_then_close,
+    )
+    wrapped = PluginContinuityProvider(
+        provider,
+        bridge=_Bridge(),
+        provenance=_mutation_provenance(),
+        gate=gate,
+        deletion_authority=authority,
+    )
+
+    with pytest.raises(ContinuityPluginGenerationClosingError):
+        await wrapped._prepare_delete(target)
+    assert provider.prepared_delete is not None
+    assert provider.prepared_delete.events == ["abort"]
+
+    await gate.quiesce(timeout=1.0)
+    assert provider.prepared_delete.events == ["abort", "abort", "close"]
+    assert tuple(item.event_kind for item in authority.journal.records()) == (
+        "accepted",
+        "cancelled",
+    )
+
+
+async def _installed_plugin_delete_is_generation_gated(tmp_path) -> None:
+    target = ContinuityTarget("plugin.sessions", "one", "revision-1")
+    commit_started = asyncio.Event()
+    allow_commit = asyncio.Event()
+    provider = _Provider(
+        target=target,
+        supported_actions=("activate", "delete"),
+        delete_commit_started=commit_started,
+        allow_delete_commit=allow_commit,
+    )
+    gate = ContinuityPluginGenerationGate()
+    authority = PluginContinuityDeletionAuthority(
+        PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+    )
+    wrapped = PluginContinuityProvider(
+        provider,
+        bridge=_Bridge(),
+        provenance=_mutation_provenance(),
+        gate=gate,
+        deletion_authority=authority,
+    )
+    base = _product_hub(_HungAbortProductProvider()).composition
+    composition = _compose_experience_continuity_with_plugins(
+        base,
+        (
+            _bind_gated_plugin_continuity_provider(
+                wrapped,
+                _mutation_provenance(),
+            ),
+        ),
+    )
+    hub = ContinuityHub(composition)
+    deleting = asyncio.create_task(hub.delete(target))
+    await commit_started.wait()
+
+    gate.begin_close(security=True)
+    quiescing = asyncio.create_task(gate.quiesce(timeout=1.0))
+    await asyncio.sleep(0)
+    assert not quiescing.done()
+
+    allow_commit.set()
+    assert await deleting is True
+    await quiescing
+    assert provider.prepared_delete is not None
+    assert provider.prepared_delete.events == ["commit", "close"]
+    assert tuple(item.event_kind for item in authority.journal.records()) == (
+        "accepted",
+        "completed",
+    )
+    await hub.close()
+
+
+def test_repeated_hub_delete_replays_durable_result_without_recommit(tmp_path) -> None:
+    asyncio.run(_repeated_hub_delete_replays_result(tmp_path))
+
+
+async def _repeated_hub_delete_replays_result(tmp_path) -> None:
+    target = ContinuityTarget("plugin.sessions", "one", "revision-1")
+    provider = _Provider(
+        target=target,
+        supported_actions=("activate", "delete"),
+        delete_dispositions=["applied", "not_found"],
+    )
+    authority = PluginContinuityDeletionAuthority(
+        PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+    )
+    wrapped = PluginContinuityProvider(
+        provider,
+        bridge=_Bridge(),
+        provenance=_mutation_provenance(),
+        gate=ContinuityPluginGenerationGate(),
+        deletion_authority=authority,
+    )
+    base = _product_hub(_HungAbortProductProvider()).composition
+    hub = ContinuityHub(
+        _compose_experience_continuity_with_plugins(
+            base,
+            (
+                _bind_gated_plugin_continuity_provider(
+                    wrapped,
+                    _mutation_provenance(),
+                ),
+            ),
+        )
+    )
+
+    assert await hub.delete(target) is True
+    assert await hub.delete(target) is True
+
+    assert [candidate.events for candidate in provider.delete_candidates] == [
+        ["commit", "close"],
+        ["abort", "close"],
+    ]
+    assert tuple(item.event_kind for item in authority.journal.records()) == (
+        "accepted",
+        "completed",
+    )
+    await hub.close()
+
+
+def test_concurrent_hub_delete_coalesces_across_execution_lock(tmp_path) -> None:
+    asyncio.run(_concurrent_hub_delete_coalesces(tmp_path))
+
+
+async def _concurrent_hub_delete_coalesces(tmp_path) -> None:
+    target = ContinuityTarget("plugin.sessions", "one", "revision-1")
+    commit_started = asyncio.Event()
+    allow_commit = asyncio.Event()
+    provider = _Provider(
+        target=target,
+        supported_actions=("activate", "delete"),
+        delete_dispositions=["applied", "not_found"],
+        delete_commit_started=commit_started,
+        allow_delete_commit=allow_commit,
+    )
+    authority = PluginContinuityDeletionAuthority(
+        PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+    )
+    wrapped = PluginContinuityProvider(
+        provider,
+        bridge=_Bridge(),
+        provenance=_mutation_provenance(),
+        gate=ContinuityPluginGenerationGate(),
+        deletion_authority=authority,
+    )
+    base = _product_hub(_HungAbortProductProvider()).composition
+    hub = ContinuityHub(
+        _compose_experience_continuity_with_plugins(
+            base,
+            (
+                _bind_gated_plugin_continuity_provider(
+                    wrapped,
+                    _mutation_provenance(),
+                ),
+            ),
+        )
+    )
+    first = asyncio.create_task(hub.delete(target))
+    await commit_started.wait()
+    second = asyncio.create_task(hub.delete(target))
+    while len(provider.delete_candidates) < 2:
+        await asyncio.sleep(0)
+
+    allow_commit.set()
+    assert await asyncio.gather(first, second) == [True, True]
+    assert [candidate.events for candidate in provider.delete_candidates] == [
+        ["commit", "close"],
+        ["abort", "close"],
+    ]
+    assert tuple(item.event_kind for item in authority.journal.records()) == (
+        "accepted",
+        "completed",
+    )
+    await hub.close()
+
+
+def test_duplicate_delete_storm_cannot_starve_product_settlement(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(
+        _duplicate_delete_storm_cannot_starve_settlement(tmp_path, monkeypatch)
+    )
+
+
+async def _duplicate_delete_storm_cannot_starve_settlement(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request_count = 512
+    target = ContinuityTarget("plugin.sessions", "one", "revision-1")
+    commit_started = asyncio.Event()
+    allow_commit = asyncio.Event()
+    provider = _Provider(
+        target=target,
+        supported_actions=("activate", "delete"),
+        delete_dispositions=["applied", *(["not_found"] * (request_count - 1))],
+        delete_commit_started=commit_started,
+        allow_delete_commit=allow_commit,
+    )
+    authority = PluginContinuityDeletionAuthority(
+        PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+    )
+    try_acquire = PluginContinuityDeletionAuthority._try_acquire_execution
+    acquisition_attempts = 0
+
+    def count_acquisition_attempts(self, plan, source):  # type: ignore[no-untyped-def]
+        nonlocal acquisition_attempts
+        acquisition_attempts += 1
+        return try_acquire(self, plan, source)
+
+    monkeypatch.setattr(
+        PluginContinuityDeletionAuthority,
+        "_try_acquire_execution",
+        count_acquisition_attempts,
+    )
+    wrapped = PluginContinuityProvider(
+        provider,
+        bridge=_Bridge(),
+        provenance=_mutation_provenance(),
+        gate=ContinuityPluginGenerationGate(),
+        deletion_authority=authority,
+    )
+    hub = ContinuityHub(
+        _compose_experience_continuity_with_plugins(
+            _product_hub(_HungAbortProductProvider()).composition,
+            (
+                _bind_gated_plugin_continuity_provider(
+                    wrapped,
+                    _mutation_provenance(),
+                ),
+            ),
+        )
+    )
+    first = asyncio.create_task(hub.delete(target))
+    await commit_started.wait()
+    duplicates = tuple(
+        asyncio.create_task(hub.delete(target))
+        for _index in range(request_count - 1)
+    )
+    while len(provider.delete_candidates) < request_count:
+        await asyncio.sleep(0)
+
+    allow_commit.set()
+    results = await asyncio.wait_for(
+        asyncio.gather(first, *duplicates),
+        timeout=10.0,
+    )
+
+    assert results == [True] * request_count
+    assert acquisition_attempts == 1
+    assert sum(
+        candidate.events == ["commit", "close"]
+        for candidate in provider.delete_candidates
+    ) == 1
+    assert sum(
+        candidate.events == ["abort", "close"]
+        for candidate in provider.delete_candidates
+    ) == request_count - 1
+    assert tuple(item.event_kind for item in authority.journal.records()) == (
+        "accepted",
+        "completed",
+    )
+    await hub.close()
+
+
+def test_startup_recovery_settles_before_generation_is_ready(tmp_path) -> None:
+    asyncio.run(_startup_recovery_settles_before_ready(tmp_path))
+
+
+async def _startup_recovery_settles_before_ready(tmp_path) -> None:
+    target = ContinuityTarget("plugin.sessions", "one", "revision-1")
+    authority = PluginContinuityDeletionAuthority(
+        PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+    )
+    plan = ContinuityDeletionPlanV1(target)
+    source = plugin_continuity_provider_source(
+        provider_id=target.provider_id,
+        implementation_version=1,
+        provenance=_mutation_provenance(generation_fingerprint="e" * 64),
+    )
+    authority.journal.accept(plan, source)
+    provider = _Provider(
+        target=target,
+        supported_actions=("activate", "delete"),
+    )
+    wrapped = PluginContinuityProvider(
+        provider,
+        bridge=_Bridge(),
+        provenance=_mutation_provenance(generation_fingerprint="f" * 64),
+        gate=ContinuityPluginGenerationGate(),
+        deletion_authority=authority,
+    )
+
+    await recover_continuity_plugin_deletions((wrapped,), authority=authority)
+
+    assert await authority.pending_deletions() == ()
+    assert provider.prepared_delete is not None
+    assert provider.prepared_delete.plan == plan
+
+
+@pytest.mark.parametrize(
+    "change",
+    (
+        {"source_trust_policy_revision": "trust-2"},
+        {"source_trust_class": "sandboxed-local"},
+        {"plugin_id": "replacement"},
+        {"contribution_id": "replacement-sessions"},
+        {"instance_id": "example@workspace:replacement"},
+        {"instance_revision": 2},
+        {"component_id": "plugin:replacement:sessions"},
+        {"candidate_fingerprint": "1" * 64},
+        {"admission_fingerprint": "2" * 64},
+        {"selection_plan_fingerprint": "3" * 64},
+        {"binding_fingerprint": "4" * 64},
+    ),
+    ids=(
+        "trust-policy",
+        "trust-class",
+        "plugin",
+        "contribution",
+        "instance",
+        "instance-revision",
+        "implementation",
+        "candidate",
+        "admission",
+        "selection",
+        "binding",
+    ),
+)
+def test_startup_recovery_rejects_changed_owner_provenance(
+    tmp_path,
+    change: dict[str, object],
+) -> None:
+    asyncio.run(_startup_recovery_rejects_changed_owner_provenance(tmp_path, change))
+
+
+async def _startup_recovery_rejects_changed_owner_provenance(
+    tmp_path,
+    change: dict[str, object],
+) -> None:
+    target = ContinuityTarget("plugin.sessions", "one", "revision-1")
+    authority = PluginContinuityDeletionAuthority(
+        PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+    )
+    accepted_provenance = _mutation_provenance(generation_fingerprint="e" * 64)
+    authority.journal.accept(
+        ContinuityDeletionPlanV1(target),
+        plugin_continuity_provider_source(
+            provider_id=target.provider_id,
+            implementation_version=1,
+            provenance=accepted_provenance,
+        ),
+    )
+    changed = _mutation_provenance(  # type: ignore[arg-type]
+        generation_fingerprint="f" * 64,
+        **change,
+    )
+    provider = _Provider(target=target, supported_actions=("activate", "delete"))
+    wrapped = PluginContinuityProvider(
+        provider,
+        bridge=_Bridge(),
+        provenance=changed,
+        gate=ContinuityPluginGenerationGate(),
+        deletion_authority=authority,
+    )
+
+    with pytest.raises(ContinuityPluginMutationRecoveryError):
+        await recover_continuity_plugin_deletions((wrapped,), authority=authority)
+
+    assert provider.prepared_delete is None
+    assert len(await authority.pending_deletions()) == 1
+
+
+@pytest.mark.parametrize(
+    ("provider_id", "implementation_version"),
+    (("replacement.sessions", 1), ("plugin.sessions", 2)),
+    ids=("provider", "implementation-version"),
+)
+def test_startup_recovery_rejects_changed_provider_runtime_identity(
+    tmp_path,
+    provider_id: str,
+    implementation_version: int,
+) -> None:
+    asyncio.run(
+        _startup_recovery_rejects_changed_provider_runtime_identity(
+            tmp_path,
+            provider_id=provider_id,
+            implementation_version=implementation_version,
+        )
+    )
+
+
+async def _startup_recovery_rejects_changed_provider_runtime_identity(
+    tmp_path,
+    *,
+    provider_id: str,
+    implementation_version: int,
+) -> None:
+    target = ContinuityTarget("plugin.sessions", "one", "revision-1")
+    authority = PluginContinuityDeletionAuthority(
+        PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+    )
+    accepted_provenance = _mutation_provenance(generation_fingerprint="e" * 64)
+    authority.journal.accept(
+        ContinuityDeletionPlanV1(target),
+        plugin_continuity_provider_source(
+            provider_id=target.provider_id,
+            implementation_version=1,
+            provenance=accepted_provenance,
+        ),
+    )
+    provider = _Provider(
+        target=target,
+        provider_id=provider_id,
+        implementation_version=implementation_version,
+        supported_actions=("activate", "delete"),
+    )
+    wrapped = PluginContinuityProvider(
+        provider,
+        bridge=_Bridge(),
+        provenance=_mutation_provenance(generation_fingerprint="f" * 64),
+        gate=ContinuityPluginGenerationGate(),
+        deletion_authority=authority,
+    )
+
+    with pytest.raises(ContinuityPluginMutationRecoveryError):
+        await recover_continuity_plugin_deletions((wrapped,), authority=authority)
+    assert provider.prepared_delete is None
+    assert len(await authority.pending_deletions()) == 1
+
+
+def test_startup_recovery_rejects_multiple_exact_generation_owners(tmp_path) -> None:
+    asyncio.run(_startup_recovery_rejects_multiple_owners(tmp_path))
+
+
+async def _startup_recovery_rejects_multiple_owners(tmp_path) -> None:
+    target = ContinuityTarget("plugin.sessions", "one", "revision-1")
+    authority = PluginContinuityDeletionAuthority(
+        PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+    )
+    old = _mutation_provenance(generation_fingerprint="e" * 64)
+    authority.journal.accept(
+        ContinuityDeletionPlanV1(target),
+        plugin_continuity_provider_source(
+            provider_id=target.provider_id,
+            implementation_version=1,
+            provenance=old,
+        ),
+    )
+    providers = tuple(
+        _Provider(target=target, supported_actions=("activate", "delete"))
+        for _index in range(2)
+    )
+    wrappers = tuple(
+        PluginContinuityProvider(
+            provider,
+            bridge=_Bridge(),
+            provenance=_mutation_provenance(generation_fingerprint="f" * 64),
+            gate=ContinuityPluginGenerationGate(),
+            deletion_authority=authority,
+        )
+        for provider in providers
+    )
+
+    with pytest.raises(ContinuityPluginMutationRecoveryError):
+        await recover_continuity_plugin_deletions(wrappers, authority=authority)
+    assert all(provider.prepared_delete is None for provider in providers)
+    assert len(await authority.pending_deletions()) == 1
+
+
+def test_startup_recovery_plan_mismatch_preserves_confirmed_intent(tmp_path) -> None:
+    asyncio.run(_startup_recovery_plan_mismatch_preserves_intent(tmp_path))
+
+
+async def _startup_recovery_plan_mismatch_preserves_intent(tmp_path) -> None:
+    target = ContinuityTarget("plugin.sessions", "one", "revision-1")
+    accepted_plan = ContinuityDeletionPlanV1(target)
+    authority = PluginContinuityDeletionAuthority(
+        PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+    )
+    old = _mutation_provenance(generation_fingerprint="e" * 64)
+    authority.journal.accept(
+        accepted_plan,
+        plugin_continuity_provider_source(
+            provider_id=target.provider_id,
+            implementation_version=1,
+            provenance=old,
+        ),
+    )
+    provider = _Provider(
+        target=target,
+        supported_actions=("activate", "delete"),
+        delete_plan=ContinuityDeletionPlanV1(
+            ContinuityTarget(target.provider_id, "different", target.revision)
+        ),
+    )
+    wrapped = PluginContinuityProvider(
+        provider,
+        bridge=_Bridge(),
+        provenance=_mutation_provenance(generation_fingerprint="f" * 64),
+        gate=ContinuityPluginGenerationGate(),
+        deletion_authority=authority,
+    )
+
+    with pytest.raises(ContinuityPluginMutationRecoveryError):
+        await recover_continuity_plugin_deletions((wrapped,), authority=authority)
+
+    assert provider.prepared_delete is not None
+    assert provider.prepared_delete.events == ["abort", "close"]
+    assert await authority.pending_deletions() == (
+        AcceptedContinuityDeletion(
+            plan=accepted_plan,
+            source=plugin_continuity_provider_source(
+                provider_id=target.provider_id,
+                implementation_version=1,
+                provenance=old,
+            ),
+        ),
+    )
+
+
+def test_unpublished_generation_quiesces_mutations_before_releasing_ownership(
+    tmp_path,
+) -> None:
+    asyncio.run(_unpublished_generation_quiesces_before_release(tmp_path))
+
+
+async def _unpublished_generation_quiesces_before_release(tmp_path) -> None:
+    target = ContinuityTarget("plugin.sessions", "one", "revision-1")
+    provider = _Provider(target=target, supported_actions=("activate", "delete"))
+    gate = ContinuityPluginGenerationGate()
+    authority = PluginContinuityDeletionAuthority(
+        PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+    )
+    wrapped = PluginContinuityProvider(
+        provider,
+        bridge=_Bridge(),
+        provenance=_mutation_provenance(),
+        gate=gate,
+        deletion_authority=authority,
+    )
+    await wrapped._prepare_delete(target)
+    lifecycle: list[str] = []
+
+    class Binder:
+        async def dispose(self, _runtime: object) -> tuple[()]:
+            assert await authority.pending_deletions() == ()
+            assert provider.prepared_delete is not None
+            assert provider.prepared_delete.events == ["abort", "close"]
+            lifecycle.append("components")
+            return ()
+
+    class Family:
+        async def close(self) -> None:
+            lifecycle.append("family")
+
+    class Reservation:
+        def release(self) -> None:
+            lifecycle.append("reservation")
+
+    generation = object.__new__(ContinuityPluginGeneration)
+    object.__setattr__(generation, "binder", Binder())
+    object.__setattr__(generation, "runtime", object())
+    object.__setattr__(generation, "instance_families", (Family(),))
+    object.__setattr__(generation, "_reservation", Reservation())
+    object.__setattr__(generation, "gate", gate)
+    object.__setattr__(generation, "_published", False)
+    object.__setattr__(generation, "_publishing", False)
+    object.__setattr__(generation, "_publication_failed", False)
+    object.__setattr__(generation, "_publication_lock", threading.Lock())
+    object.__setattr__(generation, "_security_cleanup_evidence", None)
+    object.__setattr__(generation, "_security_cleanup_prepared", False)
+    object.__setattr__(generation, "_disposed", False)
+
+    await generation.dispose()
+
+    assert lifecycle == ["components", "family", "reservation"]
+    assert generation._disposed is True
+
+
+def test_mutation_publication_recovers_before_exposing_hub(tmp_path) -> None:
+    asyncio.run(_mutation_publication_recovers_before_exposing_hub(tmp_path))
+
+
+async def _mutation_publication_recovers_before_exposing_hub(tmp_path) -> None:
+    target = ContinuityTarget("plugin.sessions", "one", "revision-1")
+    authority = PluginContinuityDeletionAuthority(
+        PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+    )
+    old_provenance = _mutation_provenance(generation_fingerprint="e" * 64)
+    current_provenance = _mutation_provenance(generation_fingerprint="f" * 64)
+    authority.journal.accept(
+        ContinuityDeletionPlanV1(target),
+        plugin_continuity_provider_source(
+            provider_id=target.provider_id,
+            implementation_version=1,
+            provenance=old_provenance,
+        ),
+    )
+    provider = _Provider(
+        target=target,
+        supported_actions=("activate", "delete"),
+    )
+    generation = object.__new__(ContinuityPluginGeneration)
+    object.__setattr__(
+        generation,
+        "providers",
+        ((provider, current_provenance),),
+    )
+    object.__setattr__(generation, "gate", ContinuityPluginGenerationGate())
+    object.__setattr__(generation, "_published", False)
+    object.__setattr__(generation, "_publishing", False)
+    object.__setattr__(generation, "_publication_failed", False)
+    object.__setattr__(generation, "_publication_lock", threading.Lock())
+    object.__setattr__(generation, "_disposed", False)
+    base = _product_hub(_HungAbortProductProvider()).composition
+
+    publication = await publish_continuity_plugin_generation_with_mutations(
+        base,
+        generation,
+        activation_bridge=_Bridge(),
+        deletion_authority=authority,
+    )
+
+    assert generation._published is True
+    assert await authority.pending_deletions() == ()
+    plugin_bound = next(
+        item
+        for item in publication.composition.continuity_providers
+        if item.provider.descriptor.provider_id == "plugin.sessions"
+    )
+    assert plugin_bound.provider.descriptor.supported_actions == (
+        "activate",
+        "delete",
+    )
+    await publication.hub.close()
+
+
+def test_mutation_publication_reserves_generation_before_recovery_await(
+    tmp_path,
+) -> None:
+    asyncio.run(_mutation_publication_reserves_before_await(tmp_path))
+
+
+async def _mutation_publication_reserves_before_await(tmp_path) -> None:
+    delegate = PluginContinuityDeletionAuthority(
+        PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+    )
+    pending_started = asyncio.Event()
+    allow_pending = asyncio.Event()
+
+    class BlockingAuthority:
+        async def authorize_delete(self, plan, source):  # type: ignore[no-untyped-def]
+            return await delegate.authorize_delete(plan, source)
+
+        async def complete_delete(self, authorization, receipt):  # type: ignore[no-untyped-def]
+            await delegate.complete_delete(authorization, receipt)
+
+        async def cancel_delete(self, authorization):  # type: ignore[no-untyped-def]
+            await delegate.cancel_delete(authorization)
+
+        async def pending_deletions(self):  # type: ignore[no-untyped-def]
+            pending_started.set()
+            await allow_pending.wait()
+            return await delegate.pending_deletions()
+
+    provider = _Provider()
+    generation = object.__new__(ContinuityPluginGeneration)
+    object.__setattr__(generation, "providers", ((provider, _provenance()),))
+    object.__setattr__(generation, "gate", ContinuityPluginGenerationGate())
+    object.__setattr__(generation, "_published", False)
+    object.__setattr__(generation, "_publishing", False)
+    object.__setattr__(generation, "_publication_failed", False)
+    object.__setattr__(generation, "_publication_lock", threading.Lock())
+    object.__setattr__(generation, "_disposed", False)
+    base = _product_hub(_HungAbortProductProvider()).composition
+    publishing = asyncio.create_task(
+        publish_continuity_plugin_generation_with_mutations(
+            base,
+            generation,
+            activation_bridge=_Bridge(),
+            deletion_authority=BlockingAuthority(),  # type: ignore[arg-type]
+        )
+    )
+    await pending_started.wait()
+
+    with pytest.raises(ContinuityPluginLifecycleError) as caught:
+        publish_continuity_plugin_generation(
+            base,
+            generation,
+            activation_bridge=_Bridge(),
+        )
+    assert caught.value.code == "continuity_provider_generation_not_publishable"
+
+    allow_pending.set()
+    publication = await publishing
+    assert generation._published is True
+    await publication.hub.close()
 
 
 def test_owner_lifecycle_handles_and_plugin_binding_are_not_caller_constructible() -> (
@@ -884,23 +1878,79 @@ class _PreparedImport:
 
 
 @dataclass(slots=True)
+class _PreparedDelete:
+    plan: ContinuityDeletionPlanV1
+    events: list[str] = field(default_factory=list)
+    commit_started: asyncio.Event | None = None
+    allow_commit: asyncio.Event | None = None
+    abort_failures: int = 0
+    close_failures: int = 0
+    disposition: str = "applied"
+    _receipt: ContinuityDeletionReceiptV1 | None = field(default=None, init=False)
+
+    @property
+    def target(self) -> ContinuityTarget:
+        return self.plan.target
+
+    async def commit(
+        self,
+        plan: ContinuityDeletionPlanV1,
+    ) -> ContinuityDeletionReceiptV1:
+        if self._receipt is None:
+            self.events.append("commit")
+            if self.commit_started is not None:
+                self.commit_started.set()
+            if self.allow_commit is not None:
+                await self.allow_commit.wait()
+            self._receipt = ContinuityDeletionReceiptV1(
+                target=plan.target,
+                plan_fingerprint=plan.fingerprint,
+                disposition=self.disposition,  # type: ignore[arg-type]
+            )
+        return self._receipt
+
+    async def abort(self) -> None:
+        self.events.append("abort")
+        if self.abort_failures:
+            self.abort_failures -= 1
+            raise RuntimeError("secret at /private/delete")
+
+    async def close(self) -> None:
+        self.events.append("close")
+        if self.close_failures:
+            self.close_failures -= 1
+            raise RuntimeError("secret at /private/delete-release")
+
+
+@dataclass(slots=True)
 class _Provider:
     target: ContinuityTarget = field(
         default_factory=lambda: ContinuityTarget("plugin.sessions", "one")
     )
     fail_operation: str | None = None
+    provider_id: str = "plugin.sessions"
+    implementation_version: int = 1
     source_close_failures: int = 0
     prepared: _PreparedImport | None = None
     malformed: str | None = None
     supported_actions: tuple[str, ...] = ("activate",)
+    delete_commit_started: asyncio.Event | None = None
+    allow_delete_commit: asyncio.Event | None = None
+    delete_abort_failures: int = 0
+    delete_close_failures: int = 0
+    delete_plan: ContinuityDeletionPlanV1 | None = None
+    delete_dispositions: list[str] = field(default_factory=list)
+    prepared_delete: _PreparedDelete | None = None
+    delete_candidates: list[_PreparedDelete] = field(default_factory=list)
 
     @property
     def descriptor(self) -> ContinuityProviderDescriptor:
         return ContinuityProviderDescriptor(
-            provider_id="plugin.sessions",
+            provider_id=self.provider_id,
             experience_id="coding",
             domain_ids=("coding",),
             label="Plugin sessions",
+            implementation_version=self.implementation_version,
             supported_actions=self.supported_actions,  # type: ignore[arg-type]
         )
 
@@ -951,6 +2001,48 @@ class _Provider:
         if self.malformed == "source_invalid_payload":
             self.prepared.payload = object()  # type: ignore[assignment]
         return self.prepared
+
+    async def prepare_delete(
+        self,
+        target: ContinuityTarget,
+    ) -> _PreparedDelete:
+        disposition = (
+            self.delete_dispositions.pop(0)
+            if self.delete_dispositions
+            else "applied"
+        )
+        self.prepared_delete = _PreparedDelete(
+            self.delete_plan or ContinuityDeletionPlanV1(target),
+            commit_started=self.delete_commit_started,
+            allow_commit=self.allow_delete_commit,
+            abort_failures=self.delete_abort_failures,
+            close_failures=self.delete_close_failures,
+            disposition=disposition,
+        )
+        self.delete_candidates.append(self.prepared_delete)
+        return self.prepared_delete
+
+
+@dataclass(slots=True)
+class _MissingDeleteProvider:
+    inner: _Provider = field(
+        default_factory=lambda: _Provider(
+            supported_actions=("activate", "delete")
+        )
+    )
+
+    @property
+    def descriptor(self) -> ContinuityProviderDescriptor:
+        return self.inner.descriptor
+
+    async def query(self, request: ProviderQuery) -> ProviderPage:
+        return await self.inner.query(request)
+
+    async def preview(self, target: ContinuityTarget) -> ContinuityPreview:
+        return await self.inner.preview(target)
+
+    async def prepare_import(self, target: ContinuityTarget) -> _PreparedImport:
+        return await self.inner.prepare_import(target)
 
 
 @dataclass(slots=True)
@@ -1177,18 +2269,66 @@ class _SecurityRetirement:
         )
 
 
-def _provenance() -> PluginContinuityProviderProvenance:
+def _provenance(
+    *,
+    component_id: str = "plugin:example:sessions",
+    plugin_id: str = "example",
+    contribution_id: str = "sessions",
+    instance_id: str = "example@workspace:test",
+    instance_revision: int = 1,
+    generation_fingerprint: str = "e" * 64,
+    candidate_fingerprint: str = "a" * 64,
+    admission_fingerprint: str = "b" * 64,
+    selection_plan_fingerprint: str = "c" * 64,
+    binding_fingerprint: str = "d" * 64,
+    source_trust_policy_revision: str = "trust-1",
+    source_trust_class: str = "host-equivalent-local",
+    supported_actions: tuple[str, ...] = ("activate",),
+) -> PluginContinuityProviderProvenance:
     return _create_plugin_continuity_provider_provenance(
-        component_id="plugin:example:sessions",
-        plugin_id="example",
-        contribution_id="sessions",
-        instance_id="example@workspace:test",
-        instance_revision=1,
-        source_trust_class="host-equivalent-local",
-        source_trust_policy_revision="trust-1",
-        candidate_fingerprint="a" * 64,
-        admission_fingerprint="b" * 64,
-        selection_plan_fingerprint="c" * 64,
-        binding_fingerprint="d" * 64,
-        generation_fingerprint="e" * 64,
+        component_id=component_id,
+        plugin_id=plugin_id,
+        contribution_id=contribution_id,
+        instance_id=instance_id,
+        instance_revision=instance_revision,
+        source_trust_class=source_trust_class,
+        source_trust_policy_revision=source_trust_policy_revision,
+        supported_actions=supported_actions,
+        candidate_fingerprint=candidate_fingerprint,
+        admission_fingerprint=admission_fingerprint,
+        selection_plan_fingerprint=selection_plan_fingerprint,
+        binding_fingerprint=binding_fingerprint,
+        generation_fingerprint=generation_fingerprint,
+    )
+
+
+def _mutation_provenance(
+    *,
+    component_id: str = "plugin:example:sessions",
+    plugin_id: str = "example",
+    contribution_id: str = "sessions",
+    instance_id: str = "example@workspace:test",
+    instance_revision: int = 1,
+    generation_fingerprint: str = "e" * 64,
+    candidate_fingerprint: str = "a" * 64,
+    admission_fingerprint: str = "b" * 64,
+    selection_plan_fingerprint: str = "c" * 64,
+    binding_fingerprint: str = "d" * 64,
+    source_trust_policy_revision: str = "trust-1",
+    source_trust_class: str = "host-equivalent-local",
+) -> PluginContinuityProviderProvenance:
+    return _provenance(
+        component_id=component_id,
+        plugin_id=plugin_id,
+        contribution_id=contribution_id,
+        instance_id=instance_id,
+        instance_revision=instance_revision,
+        generation_fingerprint=generation_fingerprint,
+        candidate_fingerprint=candidate_fingerprint,
+        admission_fingerprint=admission_fingerprint,
+        selection_plan_fingerprint=selection_plan_fingerprint,
+        binding_fingerprint=binding_fingerprint,
+        source_trust_policy_revision=source_trust_policy_revision,
+        source_trust_class=source_trust_class,
+        supported_actions=("activate", "delete"),
     )

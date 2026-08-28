@@ -21,7 +21,8 @@ from loushang.harness.continuity.import_provider import (
 from loushang.harness.resources.plugins.continuity_provider import (
     CONTINUITY_PROVIDER_DECLARATION_OWNER,
     CONTINUITY_PROVIDER_PAYLOAD_VERSION,
-    ContinuityProviderDeclarationWirePayloadV1,
+    ContinuityProviderDeclarationWirePayloadV2,
+    decode_continuity_provider_declaration_payload,
 )
 from loushang.harness.resources.plugins.declarations import (
     PluginContributionReservation,
@@ -38,6 +39,7 @@ from loushang.harness.resources.plugins.selection import (
 CONTINUITY_PROVIDER_CONTRIBUTION_KIND = "continuity_provider"
 CONTINUITY_PROVIDER_COMPONENT_KIND = "continuity.provider"
 CONTINUITY_PROVIDER_PAYLOAD_SCHEMA_ID = "loushang.continuity-import-provider-pack"
+CONTINUITY_PLUGIN_DELETE_AUTHORITY = "continuity.delete"
 
 CONTINUITY_PROVIDER_COMPONENT_DEFINITION = CapabilityComponentDefinition(
     capability_id="harness.continuity",
@@ -55,7 +57,7 @@ CONTINUITY_PROVIDER_COMPONENT_DEFINITION = CapabilityComponentDefinition(
 
 
 @dataclass(frozen=True, slots=True)
-class ContinuityProviderDeclarationPayload(ContinuityProviderDeclarationWirePayloadV1):
+class ContinuityProviderDeclarationPayload(ContinuityProviderDeclarationWirePayloadV2):
     """Continuity-owned wire payload plus finalized-selection semantics."""
 
     @classmethod
@@ -73,7 +75,20 @@ class ContinuityProviderDeclarationPayload(ContinuityProviderDeclarationWirePayl
             or declaration.owner != CONTINUITY_PROVIDER_DECLARATION_OWNER
         ):
             raise ValueError("Continuity Provider declaration owner or kind mismatch")
-        payload = cls.from_dict(declaration.to_dict()["payload"])
+        wire_payload = decode_continuity_provider_declaration_payload(
+            declaration.to_dict()["payload"]
+        )
+        payload = cls(
+            factory=wire_payload.factory,
+            disposer=wire_payload.disposer,
+            supported_actions=getattr(
+                wire_payload,
+                "supported_actions",
+                ("activate",),
+            ),
+            binding_inputs=wire_payload.binding_inputs,
+            continuity_profile_version=wire_payload.continuity_profile_version,
+        )
         if payload.to_dict()["bindingInputs"] != _thaw_json(
             configuration.configuration
         ):
@@ -103,6 +118,14 @@ def prepare_continuity_provider_component_candidate(
             selection,
             candidate,
         )
+        if (
+            "delete" in payload.supported_actions
+            and CONTINUITY_PLUGIN_DELETE_AUTHORITY
+            not in contribution.requested_authorities
+        ):
+            raise ValueError(
+                "Continuity delete action requires its declared Plugin authority"
+            )
     except (PluginDeclarationCodecError, TypeError, ValueError) as exc:
         raise CapabilityComponentAdmissionError(
             "Continuity Provider declaration payload is invalid.",
@@ -226,6 +249,7 @@ __all__ = [
     "CONTINUITY_PROVIDER_DECLARATION_OWNER",
     "CONTINUITY_PROVIDER_PAYLOAD_VERSION",
     "ContinuityProviderDeclarationPayload",
+    "CONTINUITY_PLUGIN_DELETE_AUTHORITY",
     "continuity_provider_component_id",
     "prepare_continuity_provider_component_candidate",
     "validate_continuity_provider_component_payload",

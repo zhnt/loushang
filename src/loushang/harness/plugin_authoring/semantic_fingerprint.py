@@ -21,7 +21,7 @@ from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCode
 from loushang.harness.resources.plugins.continuity_provider import (
     CONTINUITY_PROVIDER_DECLARATION_OWNER,
     CONTINUITY_PROVIDER_SEMANTIC_SCHEMA_ID,
-    ContinuityProviderDeclarationWirePayloadV1,
+    decode_continuity_provider_declaration_payload,
 )
 from loushang.harness.resources.plugins.declarations import (
     PluginContributionKind,
@@ -181,7 +181,7 @@ def _project_declaration(declaration: PluginDeclaration) -> _SemanticProjection:
     if declaration.kind == "continuity_provider":
         if declaration.owner != CONTINUITY_PROVIDER_DECLARATION_OWNER:
             raise ValueError("Continuity Provider semantic owner is invalid")
-        continuity_payload = ContinuityProviderDeclarationWirePayloadV1.from_dict(
+        continuity_payload = decode_continuity_provider_declaration_payload(
             declaration.to_dict()["payload"]
         )
         return _SemanticProjection(

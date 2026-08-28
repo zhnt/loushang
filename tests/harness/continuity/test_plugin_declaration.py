@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Iterator
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -62,6 +63,10 @@ from loushang.harness.plugin_management.continuity_adapter import (
     PluginInstanceLedgerContinuityFamilyAuthority,
     PluginInstanceLedgerContinuitySecurityRetirementAuthority,
 )
+from loushang.harness.plugin_management.continuity_mutation import (
+    PluginContinuityDeletionAuthority,
+    PluginContinuityDeletionJournal,
+)
 from loushang.harness.plugin_management.instance_records import (
     PluginInstanceRevocationV1,
 )
@@ -94,6 +99,10 @@ from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.plugins.authority import (
     PluginResolutionAuthority,
     PluginRuntimeResolution,
+)
+from loushang.harness.resources.plugins.continuity_provider import (
+    ContinuityProviderDeclarationWirePayloadV1,
+    decode_continuity_provider_declaration_payload,
 )
 from loushang.harness.resources.plugins.declarations import (
     PluginContributionReservation,
@@ -145,6 +154,60 @@ class _RealPluginLifecycle:
 
 @pytest.fixture
 def continuity_plugin(tmp_path: Path) -> Iterator[_ContinuityPlugin]:
+    with _continuity_plugin_fixture(tmp_path, mutation=False) as plugin:
+        yield plugin
+
+
+@pytest.fixture
+def mutation_continuity_plugin(tmp_path: Path) -> Iterator[_ContinuityPlugin]:
+    with _continuity_plugin_fixture(tmp_path, mutation=True) as plugin:
+        yield plugin
+
+
+@pytest.fixture
+def ungranted_mutation_continuity_plugin(
+    tmp_path: Path,
+) -> Iterator[_ContinuityPlugin]:
+    with _continuity_plugin_fixture(
+        tmp_path,
+        mutation=True,
+        grant_delete=False,
+    ) as plugin:
+        yield plugin
+
+
+@pytest.fixture
+def legacy_continuity_plugin(tmp_path: Path) -> Iterator[_ContinuityPlugin]:
+    with _continuity_plugin_fixture(
+        tmp_path,
+        mutation=False,
+        legacy=True,
+    ) as plugin:
+        yield plugin
+
+
+@pytest.fixture
+def legacy_runtime_mutation_plugin(
+    tmp_path: Path,
+) -> Iterator[_ContinuityPlugin]:
+    with _continuity_plugin_fixture(
+        tmp_path,
+        mutation=False,
+        legacy=True,
+        runtime_mutation=True,
+    ) as plugin:
+        yield plugin
+
+
+@contextmanager
+def _continuity_plugin_fixture(
+    tmp_path: Path,
+    *,
+    mutation: bool,
+    grant_delete: bool = True,
+    legacy: bool = False,
+    runtime_mutation: bool | None = None,
+) -> Iterator[_ContinuityPlugin]:
     root = tmp_path / "source" / "continuity-example"
     declarations = root / "declarations"
     declarations.mkdir(parents=True)
@@ -162,7 +225,11 @@ def continuity_plugin(tmp_path: Path) -> Iterator[_ContinuityPlugin]:
         "id": "remote-sessions",
         "kind": "continuity_provider",
         "owner": "harness.continuity",
-        "requestedAuthorities": ["network.read"],
+        "requestedAuthorities": (
+            ["continuity.delete", "network.read"]
+            if mutation and grant_delete
+            else ["network.read"]
+        ),
         "required": True,
     }
     contribution = PluginContributionReservation.from_dict(item)
@@ -178,6 +245,18 @@ def continuity_plugin(tmp_path: Path) -> Iterator[_ContinuityPlugin]:
             execution_model="in_process",
         ),
         binding_inputs={"endpoint": "https://sessions.invalid"},
+        supported_actions=(
+            ("activate", "delete") if mutation else ("activate",)
+        ),
+    )
+    wire_payload = (
+        ContinuityProviderDeclarationWirePayloadV1(
+            factory=payload.factory,
+            disposer=payload.disposer,
+            binding_inputs=payload.binding_inputs,
+        )
+        if legacy
+        else payload
     )
     declaration = PluginDeclaration(
         plugin_id="continuity-example",
@@ -187,7 +266,7 @@ def continuity_plugin(tmp_path: Path) -> Iterator[_ContinuityPlugin]:
         reservation_fingerprint=contribution.fingerprint,
         source_descriptor_fingerprint=(contribution.source_descriptor_fingerprint),
         source_kind=contribution.declaration_source.kind,
-        payload=payload.to_dict(),
+        payload=wire_payload.to_dict(),
     )
     (declarations / "continuity.json").write_bytes(
         PluginDeclarationDocumentCodec.encode_bytes(
@@ -195,7 +274,9 @@ def continuity_plugin(tmp_path: Path) -> Iterator[_ContinuityPlugin]:
         )
     )
     (root / "provider.py").write_text(
-        _provider_source(),
+        _provider_source(
+            mutation=mutation if runtime_mutation is None else runtime_mutation
+        ),
         encoding="utf-8",
     )
     (root / "plugin.json").write_text(
@@ -249,13 +330,29 @@ def test_continuity_payload_codec_is_strict_and_requires_disposal() -> None:
     assert caught.value.code == "plugin_declaration_field_set_mismatch"
 
     unsupported = deepcopy(payload.to_dict())
-    unsupported["payloadVersion"] = 2
+    unsupported["payloadVersion"] = 3
     with pytest.raises(PluginDeclarationCodecError) as caught:
         ContinuityProviderDeclarationPayload.from_dict(unsupported)
     assert (
         caught.value.code
         == "unsupported_continuity_provider_declaration_payload_version"
     )
+
+    mutation = replace(payload, supported_actions=("activate", "delete"))
+    assert mutation.to_dict()["supportedActions"] == ["activate", "delete"]
+    with pytest.raises(ValueError, match="explicitly ordered"):
+        replace(payload, supported_actions=("delete", "activate"))
+
+    legacy = ContinuityProviderDeclarationWirePayloadV1(
+        factory=payload.factory,
+        disposer=payload.disposer,
+        binding_inputs=payload.binding_inputs,
+    )
+    decoded_legacy = decode_continuity_provider_declaration_payload(
+        legacy.to_dict()
+    )
+    assert isinstance(decoded_legacy, ContinuityProviderDeclarationWirePayloadV1)
+    assert "supportedActions" not in decoded_legacy.to_dict()
 
 
 def test_finalized_selection_compiles_complete_owner_candidate(
@@ -302,8 +399,21 @@ def test_finalized_selection_compiles_complete_owner_candidate(
     assert semantic["kind"] == "continuity_provider"
     assert semantic["payloadSchema"] == {
         "id": "harness.continuity.continuity-provider",
-        "version": 1,
+        "version": 2,
     }
+
+
+def test_mutation_declaration_without_delete_grant_fails_closed(
+    ungranted_mutation_continuity_plugin: _ContinuityPlugin,
+) -> None:
+    selection = _selection(ungranted_mutation_continuity_plugin)
+
+    with pytest.raises(CapabilityComponentAdmissionError) as caught:
+        prepare_continuity_provider_component_candidate(
+            selection,
+            selection.candidates[0],
+        )
+    assert caught.value.code == "invalid_continuity_provider_declaration"
 
 
 def test_compiler_rejects_candidate_outside_selection(
@@ -371,6 +481,48 @@ def test_installed_plugin_traverses_owner_generation_and_product_bridge(
     asyncio.run(
         _installed_plugin_traverses_owner_generation_and_product_bridge(
             continuity_plugin,
+            tmp_path,
+            monkeypatch,
+        )
+    )
+
+
+def test_installed_mutation_plugin_deletes_through_product_authority(
+    mutation_continuity_plugin: _ContinuityPlugin,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(
+        _installed_mutation_plugin_deletes_through_product_authority(
+            mutation_continuity_plugin,
+            tmp_path,
+            monkeypatch,
+        )
+    )
+
+
+def test_legacy_installed_plugin_publishes_activation_only(
+    legacy_continuity_plugin: _ContinuityPlugin,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(
+        _installed_plugin_traverses_owner_generation_and_product_bridge(
+            legacy_continuity_plugin,
+            tmp_path,
+            monkeypatch,
+        )
+    )
+
+
+def test_legacy_declaration_rejects_runtime_delete_escalation(
+    legacy_runtime_mutation_plugin: _ContinuityPlugin,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(
+        _legacy_declaration_rejects_runtime_delete_escalation(
+            legacy_runtime_mutation_plugin,
             tmp_path,
             monkeypatch,
         )
@@ -808,7 +960,99 @@ async def _installed_plugin_traverses_owner_generation_and_product_bridge(
     )
 
 
-def _owner_authority(component_id: str) -> CapabilityComponentOwnerAuthority:
+async def _installed_mutation_plugin_deletes_through_product_authority(
+    plugin: _ContinuityPlugin,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = tmp_path / "mutation-continuity-plugin.log"
+    monkeypatch.setenv("LOUSHANG_CONTINUITY_PLUGIN_MARKER", str(marker))
+    selection = _selection(plugin)
+    component_id = continuity_provider_component_id(
+        "continuity-example",
+        "remote-sessions",
+    )
+    authority_ceiling = tuple(plugin.contribution.requested_authorities)
+    resolved, host, _activation_journal, decisions = _owner_runtime_inputs(
+        selection=selection,
+        authority=_owner_authority(
+            component_id,
+            authority_ceiling=authority_ceiling,
+        ),
+        component_id=component_id,
+        tmp_path=tmp_path / "owner-runtime",
+    )
+    deletion_journal = PluginContinuityDeletionJournal(
+        tmp_path / "plugin-runtime.continuity-deletions.jsonl"
+    )
+    runtime = _CodingRuntime(tmp_path / "sessions")
+    composition = await bind_coding_plugin_continuity(
+        runtime,
+        resolved_plugins=resolved,
+        component_host=host,
+        activation_decision_ids=decisions,
+        instance_family_authority=_FamilyAuthority(),
+        runtime_id="coding-process:mutation",
+        deletion_authority=PluginContinuityDeletionAuthority(deletion_journal),
+        temporary_root=tmp_path / "continuity-temporary",
+    )
+
+    page = await composition.hub.query(
+        ContinuityQuery(provider_ids=("continuity.example",))
+    )
+    [summary] = page.items
+    assert summary.actions == ("activate", "delete")
+    assert await composition.hub.delete(summary.target) is True
+    assert await composition.hub.delete(summary.target) is True
+    records = deletion_journal.records()
+    assert [record.event_kind for record in records] == ["accepted", "completed"]
+    marker_lines = marker.read_text(encoding="utf-8").splitlines()
+    assert marker_lines.count("delete-commit") == 1
+    assert marker_lines.count("delete-abort") == 1
+
+    await shutdown_coding_continuity(runtime)
+    assert marker.read_text(encoding="utf-8").splitlines()[-1] == "dispose"
+
+
+async def _legacy_declaration_rejects_runtime_delete_escalation(
+    plugin: _ContinuityPlugin,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = tmp_path / "legacy-runtime-mutation-plugin.log"
+    monkeypatch.setenv("LOUSHANG_CONTINUITY_PLUGIN_MARKER", str(marker))
+    selection = _selection(plugin)
+    component_id = continuity_provider_component_id(
+        "continuity-example",
+        "remote-sessions",
+    )
+    resolved, host, _activation_journal, decisions = _owner_runtime_inputs(
+        selection=selection,
+        authority=_owner_authority(component_id),
+        component_id=component_id,
+        tmp_path=tmp_path / "owner-runtime",
+    )
+    runtime = _CodingRuntime(tmp_path / "sessions")
+
+    with pytest.raises(ValueError, match="admitted declaration"):
+        await bind_coding_plugin_continuity(
+            runtime,
+            resolved_plugins=resolved,
+            component_host=host,
+            activation_decision_ids=decisions,
+            instance_family_authority=_FamilyAuthority(),
+            runtime_id="coding-process:legacy-runtime-mutation",
+            temporary_root=tmp_path / "continuity-temporary",
+        )
+    assert not hasattr(runtime, "_loushang_coding_continuity")
+    assert marker.read_text(encoding="utf-8").splitlines()[-1] == "dispose"
+
+
+def _owner_authority(
+    component_id: str,
+    *,
+    authority_ceiling: tuple[str, ...] = ("network.read",),
+) -> CapabilityComponentOwnerAuthority:
     return CapabilityComponentOwnerAuthority(
         CONTINUITY_PROVIDER_COMPONENT_DEFINITION,
         CapabilityComponentOwnerPolicy(
@@ -819,7 +1063,7 @@ def _owner_authority(component_id: str) -> CapabilityComponentOwnerAuthority:
             revocation_epoch=0,
             allowed_component_ids=(component_id,),
             allowed_source_trust_classes=("host-equivalent-local",),
-            authority_ceiling=("network.read",),
+            authority_ceiling=authority_ceiling,
         ),
     )
 
@@ -984,6 +1228,9 @@ async def _continue_installed_plugin_scenario(
     )
     [summary] = page.items
     assert summary.title == "Remote session"
+    assert summary.actions == ("activate",)
+    with pytest.raises(RuntimeError, match="cannot be deleted"):
+        await composition.hub.delete(summary.target)
     preview = await composition.hub.preview(summary.target)
     assert isinstance(preview, ContinuityPreview)
     assert preview.heading == "Remote session"
@@ -1130,7 +1377,7 @@ def _selection(
                 ),
             )
         ),
-        allowed_authority_ceiling=("network.read",),
+        allowed_authority_ceiling=tuple(fixture.contribution.requested_authorities),
     )
     selection = PluginDeclarationHost().resolve(
         (fixture.package,),
@@ -1287,8 +1534,8 @@ class _CodingRuntime:
         return _Candidate()
 
 
-def _provider_source() -> str:
-    return """\
+def _provider_source(*, mutation: bool) -> str:
+    source = """\
 import hashlib
 import os
 from pathlib import Path
@@ -1296,6 +1543,8 @@ from pathlib import Path
 from loushang.harness.continuity.import_provider import (
     CONTINUITY_JSONL_MEDIA_TYPE,
     ContinuityActivationPayload,
+    ContinuityDeletionPlanV1,
+    ContinuityDeletionReceiptV1,
     ContinuityImportProviderPack,
 )
 from loushang.harness.continuity.types import (
@@ -1339,6 +1588,8 @@ class Prepared:
                 stream.write("source-close\\n")
             self._closed = True
 
+__PREPARED_DELETE__
+
 class Provider:
     @property
     def descriptor(self):
@@ -1348,7 +1599,7 @@ class Provider:
             domain_ids=("coding",),
             primary_domain_id="coding",
             label="Remote sessions",
-            supported_actions=("activate",),
+            supported_actions=__SUPPORTED_ACTIONS__,
         )
 
     async def query(self, request):
@@ -1360,7 +1611,7 @@ class Provider:
                     primary_domain_id="coding",
                     title="Remote session",
                     updated_at="2026-08-28T10:00:00Z",
-                    actions=("activate",),
+                    actions=__SUPPORTED_ACTIONS__,
                 ),
                 after_cursor="remote-1",
             ),),
@@ -1383,6 +1634,8 @@ class Provider:
             raise ValueError("stale target")
         return Prepared()
 
+__PREPARE_DELETE_METHOD__
+
 def create_provider(context):
     endpoint = context.binding_inputs["endpoint"]
     with MARKER.open("a", encoding="utf-8") as stream:
@@ -1393,3 +1646,60 @@ def dispose_provider(value):
     with MARKER.open("a", encoding="utf-8") as stream:
         stream.write("dispose\\n")
 """
+    supported_actions = ("activate", "delete") if mutation else ("activate",)
+    prepared_delete = """\
+class PreparedDelete:
+    def __init__(self):
+        self._plan = ContinuityDeletionPlanV1(TARGET)
+        self._committed = False
+        self._aborted = False
+        self._closed = False
+
+    @property
+    def target(self):
+        return TARGET
+
+    @property
+    def plan(self):
+        return self._plan
+
+    async def commit(self, plan):
+        if plan != self._plan:
+            raise ValueError("stale deletion plan")
+        if not self._committed:
+            with MARKER.open("a", encoding="utf-8") as stream:
+                stream.write("delete-commit\\n")
+            self._committed = True
+        return ContinuityDeletionReceiptV1(
+            target=TARGET,
+            plan_fingerprint=plan.fingerprint,
+            disposition="applied",
+        )
+
+    async def abort(self):
+        if not self._committed and not self._aborted:
+            with MARKER.open("a", encoding="utf-8") as stream:
+                stream.write("delete-abort\\n")
+            self._aborted = True
+        await self.close()
+
+    async def close(self):
+        if not self._closed:
+            with MARKER.open("a", encoding="utf-8") as stream:
+                stream.write("delete-close\\n")
+            self._closed = True
+"""
+    prepare_delete_method = """\
+    async def prepare_delete(self, target):
+        if target != TARGET:
+            raise ValueError("stale target")
+        return PreparedDelete()
+"""
+    return (
+        source.replace("__SUPPORTED_ACTIONS__", repr(supported_actions))
+        .replace("__PREPARED_DELETE__", prepared_delete if mutation else "")
+        .replace(
+            "__PREPARE_DELETE_METHOD__",
+            prepare_delete_method if mutation else "",
+        )
+    )

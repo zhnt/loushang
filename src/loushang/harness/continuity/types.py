@@ -148,6 +148,7 @@ class ContinuityProviderSourceDescriptor:
     instance_revision: int | None = None
     source_trust_class: str | None = None
     source_trust_policy_revision: str | None = None
+    owner_binding_fingerprint: str | None = None
 
     def __post_init__(self) -> None:
         _nonempty(self.provider_id, name="provider source provider_id")
@@ -168,6 +169,7 @@ class ContinuityProviderSourceDescriptor:
             self.instance_revision,
             self.source_trust_class,
             self.source_trust_policy_revision,
+            self.owner_binding_fingerprint,
         )
         if self.source == "plugin":
             for value, name in (
@@ -181,6 +183,17 @@ class ContinuityProviderSourceDescriptor:
                 ),
             ):
                 _nonempty(value, name=name)
+            if (
+                not isinstance(self.owner_binding_fingerprint, str)
+                or len(self.owner_binding_fingerprint) != 64
+                or any(
+                    character not in "0123456789abcdef"
+                    for character in self.owner_binding_fingerprint
+                )
+            ):
+                raise ValueError(
+                    "provider Plugin owner binding fingerprint is invalid"
+                )
             if (
                 isinstance(self.instance_revision, bool)
                 or not isinstance(self.instance_revision, int)
@@ -203,6 +216,7 @@ class ContinuityProviderSourceDescriptor:
             "instanceRevision": self.instance_revision,
             "sourceTrustClass": self.source_trust_class,
             "sourceTrustPolicyRevision": self.source_trust_policy_revision,
+            "ownerBindingFingerprint": self.owner_binding_fingerprint,
         }
 
 

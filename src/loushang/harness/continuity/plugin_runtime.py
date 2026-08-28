@@ -43,10 +43,16 @@ from loushang.harness.continuity.import_provider import (
     ContinuityImportProvider,
     ContinuityImportProviderPack,
 )
+from loushang.harness.continuity.mutation import (
+    ContinuityDeletionAuthority,
+    ContinuityDeletionRecoveryAuthority,
+)
 from loushang.harness.continuity.plugin_declaration import (
     CONTINUITY_PROVIDER_COMPONENT_DEFINITION,
     CONTINUITY_PROVIDER_COMPONENT_KIND,
     CONTINUITY_PROVIDER_CONTRIBUTION_KIND,
+    ContinuityProviderDeclarationPayload,
+    continuity_provider_component_id,
     prepare_continuity_provider_component_candidate,
     validate_continuity_provider_component_payload,
 )
@@ -54,6 +60,7 @@ from loushang.harness.continuity.plugin_provider import (
     ContinuityPluginGenerationGate,
     ContinuityPluginGenerationQuiesceError,
     PluginContinuityProvider,
+    recover_continuity_plugin_deletions,
 )
 from loushang.harness.resources.plugins.selection import (
     PluginContributionCandidate,
@@ -305,6 +312,12 @@ class ContinuityPluginGeneration:
         repr=False,
     )
     _published: bool = False
+    _publishing: bool = False
+    _publication_failed: bool = False
+    _publication_lock: threading.Lock = field(
+        default_factory=threading.Lock,
+        repr=False,
+    )
     _security_cleanup_evidence: ContinuityPluginSecurityRetirementEvidence | None = (
         field(default=None, repr=False)
     )
@@ -319,11 +332,24 @@ class ContinuityPluginGeneration:
 
         if self._disposed:
             return
-        if self._published and not self.gate.closing:
-            raise ContinuityPluginLifecycleError(
-                "Published Continuity generation must close through its Publication.",
-                code="continuity_provider_publication_close_required",
-            )
+        with self._publication_lock:
+            if self._published and not self.gate.closing:
+                raise ContinuityPluginLifecycleError(
+                    "Published Continuity generation must close through its Publication.",
+                    code="continuity_provider_publication_close_required",
+                )
+            if not self._published:
+                self._publishing = False
+                self._publication_failed = True
+        if not self._published and not self.gate.closing:
+            # Mutation recovery runs under the generation gate before Hub
+            # publication.  A failed recovery can therefore leave an exact
+            # accepted lease or retryable cleanup in its inventory.  Poison
+            # and settle that inventory before releasing component/Instance
+            # ownership.
+            self.gate.begin_close(security=False)
+        if self.gate.closing:
+            await self.gate.quiesce(timeout=None)
         if self.gate.security_closing and self._security_cleanup_evidence is None:
             raise ContinuityPluginLifecycleError(
                 "Security cleanup handoff must precede generation disposal.",
@@ -595,6 +621,9 @@ def _create_continuity_plugin_generation(
     object.__setattr__(generation, "providers", providers)
     object.__setattr__(generation, "gate", ContinuityPluginGenerationGate())
     object.__setattr__(generation, "_published", False)
+    object.__setattr__(generation, "_publishing", False)
+    object.__setattr__(generation, "_publication_failed", False)
+    object.__setattr__(generation, "_publication_lock", threading.Lock())
     object.__setattr__(generation, "_security_cleanup_evidence", None)
     object.__setattr__(generation, "_security_cleanup_prepared", False)
     object.__setattr__(generation, "_disposed", False)
@@ -824,21 +853,151 @@ def publish_continuity_plugin_generation(
 ) -> ContinuityPluginPublication:
     """Validate one final composition before exposing its sole Hub."""
 
+    _reserve_continuity_plugin_publication(generation)
+    try:
+        wrappers = _wrap_generation_providers(
+            generation,
+            activation_bridge=activation_bridge,
+            deletion_authority=None,
+        )
+        return _publish_wrapped_continuity_generation(
+            base,
+            generation,
+            wrappers=wrappers,
+            cursor_secret=cursor_secret,
+            provider_timeout=provider_timeout,
+            activation_timeout=activation_timeout,
+            concurrency_limit=concurrency_limit,
+            cursor_ttl=cursor_ttl,
+        )
+    except BaseException:
+        _fail_continuity_plugin_publication(generation)
+        raise
+
+
+async def publish_continuity_plugin_generation_with_mutations(
+    base: ExperienceComposition,
+    generation: ContinuityPluginGeneration,
+    *,
+    activation_bridge: ContinuityActivationBridge,
+    deletion_authority: ContinuityDeletionRecoveryAuthority,
+    cursor_secret: bytes | None = None,
+    provider_timeout: float = 5.0,
+    activation_timeout: float | None = 120.0,
+    concurrency_limit: int = 8,
+    cursor_ttl: float = 900.0,
+) -> ContinuityPluginPublication:
+    """Recover durable deletes, then publish one mutation-capable generation."""
+
+    if not isinstance(deletion_authority, ContinuityDeletionRecoveryAuthority):
+        raise TypeError("Continuity mutation publication requires recovery authority")
+    _reserve_continuity_plugin_publication(generation)
+    try:
+        wrappers = _wrap_generation_providers(
+            generation,
+            activation_bridge=activation_bridge,
+            deletion_authority=deletion_authority,
+        )
+        await recover_continuity_plugin_deletions(
+            wrappers,
+            authority=deletion_authority,
+        )
+        return _publish_wrapped_continuity_generation(
+            base,
+            generation,
+            wrappers=wrappers,
+            cursor_secret=cursor_secret,
+            provider_timeout=provider_timeout,
+            activation_timeout=activation_timeout,
+            concurrency_limit=concurrency_limit,
+            cursor_ttl=cursor_ttl,
+        )
+    except BaseException:
+        _fail_continuity_plugin_publication(generation)
+        raise
+
+
+def _reserve_continuity_plugin_publication(
+    generation: ContinuityPluginGeneration,
+) -> None:
+    """Synchronously reserve the sole publication path before any await."""
+
     if not isinstance(generation, ContinuityPluginGeneration):
         raise TypeError("Continuity publication requires its owner generation")
-    if generation._published or generation._disposed:
+    with generation._publication_lock:
+        if (
+            generation._published
+            or generation._publishing
+            or generation._publication_failed
+            or generation._disposed
+        ):
+            raise ContinuityPluginLifecycleError(
+                "Continuity owner generation was already reserved or retired.",
+                code="continuity_provider_generation_not_publishable",
+            )
+        generation._publishing = True
+
+
+def _fail_continuity_plugin_publication(
+    generation: ContinuityPluginGeneration,
+) -> None:
+    with generation._publication_lock:
+        if generation._published:
+            return
+        generation._publishing = False
+        generation._publication_failed = True
+
+
+def _wrap_generation_providers(
+    generation: ContinuityPluginGeneration,
+    *,
+    activation_bridge: ContinuityActivationBridge,
+    deletion_authority: ContinuityDeletionAuthority | None,
+) -> tuple[PluginContinuityProvider, ...]:
+    if not isinstance(generation, ContinuityPluginGeneration):
+        raise TypeError("Continuity publication requires its owner generation")
+    if not generation._publishing or generation._disposed:
         raise ContinuityPluginLifecycleError(
             "Continuity owner generation was already published or disposed.",
             code="continuity_provider_generation_not_publishable",
         )
-    bound: list[BoundContinuityProvider] = []
+    wrappers: list[PluginContinuityProvider] = []
     for provider, provenance in generation.providers:
         wrapped = PluginContinuityProvider(
             provider,
             bridge=activation_bridge,
             provenance=provenance,
             gate=generation.gate,
+            deletion_authority=deletion_authority,
         )
+        wrappers.append(wrapped)
+    return tuple(wrappers)
+
+
+def _publish_wrapped_continuity_generation(
+    base: ExperienceComposition,
+    generation: ContinuityPluginGeneration,
+    *,
+    wrappers: tuple[PluginContinuityProvider, ...],
+    cursor_secret: bytes | None,
+    provider_timeout: float,
+    activation_timeout: float | None,
+    concurrency_limit: int,
+    cursor_ttl: float,
+) -> ContinuityPluginPublication:
+    if not generation._publishing or generation._published or generation._disposed:
+        raise ContinuityPluginLifecycleError(
+            "Continuity owner generation was already published or disposed.",
+            code="continuity_provider_generation_not_publishable",
+        )
+    if len(wrappers) != len(generation.providers):
+        raise RuntimeError("Continuity publication Provider inventory changed")
+    bound: list[BoundContinuityProvider] = []
+    for wrapped, (_provider, provenance) in zip(
+        wrappers,
+        generation.providers,
+        strict=True,
+    ):
         bound.append(_bind_gated_plugin_continuity_provider(wrapped, provenance))
     composition = _compose_experience_continuity_with_plugins(base, tuple(bound))
     hub = build_continuity_hub(
@@ -849,7 +1008,19 @@ def publish_continuity_plugin_generation(
         concurrency_limit=concurrency_limit,
         cursor_ttl=cursor_ttl,
     )
-    generation._published = True
+    with generation._publication_lock:
+        if (
+            not generation._publishing
+            or generation._publication_failed
+            or generation._disposed
+            or generation.gate.closing
+        ):
+            raise ContinuityPluginLifecycleError(
+                "Continuity owner generation lost its publication reservation.",
+                code="continuity_provider_generation_not_publishable",
+            )
+        generation._published = True
+        generation._publishing = False
     return _create_continuity_plugin_publication(
         generation=generation,
         composition=composition,
@@ -963,6 +1134,16 @@ async def _capture_generation_providers(
 ) -> tuple[tuple[ContinuityImportProvider, PluginContinuityProviderProvenance], ...]:
     leases = runtime.capture_all(CONTINUITY_PROVIDER_COMPONENT_KIND)
     try:
+        declared_actions_by_component_id = {
+            continuity_provider_component_id(
+                item.package.manifest.name,
+                item.declaration.contribution_id,
+            ): ContinuityProviderDeclarationPayload.from_finalized_candidate(
+                resolved.plugin_selection,
+                item,
+            ).supported_actions
+            for item in resolved.candidates
+        }
         resolved_by_id = {
             item.component_id: item for item in resolved.resolved_set.components
         }
@@ -990,6 +1171,9 @@ async def _capture_generation_providers(
                 instance_revision=instance.revision,
                 source_trust_class=candidate.source_trust_class,
                 source_trust_policy_revision=(candidate.source_trust_policy_revision),
+                supported_actions=declared_actions_by_component_id[
+                    component.component_id
+                ],
                 candidate_fingerprint=candidate.fingerprint,
                 admission_fingerprint=component.admission_fingerprint,
                 selection_plan_fingerprint=(component.selection_plan_fingerprint),
@@ -1059,5 +1243,6 @@ __all__ = [
     "ResolvedContinuityPluginSelection",
     "construct_continuity_plugin_generation",
     "publish_continuity_plugin_generation",
+    "publish_continuity_plugin_generation_with_mutations",
     "resolve_continuity_plugin_selection",
 ]

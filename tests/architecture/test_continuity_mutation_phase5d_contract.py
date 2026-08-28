@@ -10,7 +10,6 @@ CONTRACT_PATH = Path(
 PLUGIN_README_PATH = Path("docs/internals/architecture/harness/plugin/README.md")
 MUTATION_PATH = Path("src/loushang/harness/continuity/mutation.py")
 CONTINUITY_ROOT_PATH = Path("src/loushang/harness/continuity/__init__.py")
-PLUGIN_PROVIDER_PATH = Path("src/loushang/harness/continuity/plugin_provider.py")
 
 
 def test_phase5d_contract_is_indexed_and_implemented() -> None:
@@ -83,9 +82,9 @@ def test_phase5d_freezes_exact_retryable_transaction_order() -> None:
     assert "ContinuityMutationPendingCleanup" in source
 
 
-def test_phase5d_public_surface_is_typed_but_plugin_delete_stays_closed() -> None:
+def test_phase5d_public_surface_is_typed_and_handoff_is_explicit() -> None:
     root = CONTINUITY_ROOT_PATH.read_text(encoding="utf-8")
-    plugin_provider = PLUGIN_PROVIDER_PATH.read_text(encoding="utf-8")
+    contract = CONTRACT_PATH.read_text(encoding="utf-8")
 
     for public_name in (
         "AuthorizedContinuityDeletionLease",
@@ -96,24 +95,7 @@ def test_phase5d_public_surface_is_typed_but_plugin_delete_stays_closed() -> Non
         "prepare_authorized_continuity_deletion",
     ):
         assert public_name in root
-    plugin_tree = ast.parse(plugin_provider)
-    plugin_imports = {
-        node.module
-        for node in ast.walk(plugin_tree)
-        if isinstance(node, ast.ImportFrom) and node.module is not None
-    }
-    provider_class = next(
-        node
-        for node in plugin_tree.body
-        if isinstance(node, ast.ClassDef) and node.name == "PluginContinuityProvider"
-    )
-    provider_methods = {
-        node.name
-        for node in provider_class.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    }
-    assert "loushang.harness.continuity.mutation" not in plugin_imports
-    assert {"delete", "prepare_delete"}.isdisjoint(provider_methods)
+    assert "Until Phase 5E binds an admitted Provider" in contract
 
 
 def test_phase5d_handoff_requires_concrete_phase5e_recovery_binding() -> None:

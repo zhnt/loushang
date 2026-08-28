@@ -138,7 +138,7 @@ def test_phase5c_keeps_owner_lifecycle_private_and_dependencies_one_way() -> Non
         source = path.read_text(encoding="utf-8")
         assert "from loushang.harness.continuity" not in source
     semantic = PLUGIN_AUTHORING_PATHS[1].read_text(encoding="utf-8")
-    assert "ContinuityProviderDeclarationWirePayloadV1.from_dict" in semantic
+    assert "decode_continuity_provider_declaration_payload" in semantic
     assert "`CapabilityComponentCandidate` v2" in contract
     assert "existing first-party and legacy plugin candidates remain v1" in (
         contract.lower()
