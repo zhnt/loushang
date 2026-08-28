@@ -1,3 +1,5 @@
+"""Coding adapter tests for portable Continuity imports."""
+
 from __future__ import annotations
 
 import asyncio
@@ -9,28 +11,14 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.continuity import (
-    CodingContinuityActivationBridge,
-    bind_coding_continuity,
-)
+from loushang.coding.continuity import CodingContinuityActivationBridge
 from loushang.harness.continuity import (
     CONTINUITY_BUNDLE_MEDIA_TYPE,
     CONTINUITY_JSONL_MEDIA_TYPE,
     CallbackPreparedActivationLease,
     ContinuityActivationPayload,
-    ContinuityPluginProviderContribution,
-    ContinuityPluginProviderPack,
-    ContinuityPreview,
-    ContinuityProviderDescriptor,
     ContinuityProviderSourceDescriptor,
     ContinuityTarget,
-    ProviderPage,
-    ProviderQuery,
-)
-from loushang.harness.resources.plugins.selection import (
-    PluginContributionRef,
-    PluginInstanceRevisionRef,
-    PluginSourceTrustSnapshotV1,
 )
 
 
@@ -69,16 +57,10 @@ class _Runtime:
 def _source() -> ContinuityProviderSourceDescriptor:
     return ContinuityProviderSourceDescriptor(
         provider_id="cloud.sessions",
-        source="plugin",
-        source_id="plugin:cloud:r1:sessions",
-        implementation="plugin:cloud:continuity:sessions",
+        source="oem",
+        source_id="oem:cloud",
+        implementation="cloud.continuity.sessions",
         implementation_version=1,
-        plugin_id="cloud",
-        contribution_id="sessions",
-        instance_id="cloud-installed",
-        instance_revision=1,
-        source_trust_class="installed",
-        source_trust_policy_revision="trust-1",
     )
 
 
@@ -89,7 +71,7 @@ def _source() -> ContinuityProviderSourceDescriptor:
         (CONTINUITY_BUNDLE_MEDIA_TYPE, ".loushang.zip"),
     ),
 )
-def test_coding_plugin_activation_bridge_uses_private_bounded_temporary_copy(
+def test_coding_portable_activation_bridge_uses_private_bounded_temporary_copy(
     tmp_path: Path,
     media_type: str,
     suffix: str,
@@ -98,13 +80,14 @@ def test_coding_plugin_activation_bridge_uses_private_bounded_temporary_copy(
     bridge = CodingContinuityActivationBridge(
         runtime,  # type: ignore[arg-type]
         temporary_root=tmp_path / "continuity",
+        fallback_cwd="/workspace",
     )
     payload_bytes = b'{"type":"conversation"}\n'
     payload = ContinuityActivationPayload(
         media_type=media_type,
         data=payload_bytes,
         digest=hashlib.sha256(payload_bytes).hexdigest(),
-        cwd_override="/workspace",
+        cwd_override="/source-suggested-workspace",
     )
     target = ContinuityTarget(
         provider_id="cloud.sessions",
@@ -116,14 +99,16 @@ def test_coding_plugin_activation_bridge_uses_private_bounded_temporary_copy(
     assert runtime.observed_path is not None
     assert runtime.observed_path.name.endswith(suffix)
     assert runtime.observed_bytes == payload_bytes
-    assert runtime.observed_mode == 0o600
+    if os.name == "posix":
+        assert runtime.observed_mode == 0o600
+        assert stat.S_IMODE((tmp_path / "continuity").stat().st_mode) == 0o700
     assert runtime.fallback_cwd == "/workspace"
     assert runtime.missing_cwd == "fallback"
     assert not runtime.observed_path.exists()
     assert asyncio.run(prepared.consume()) == "canonical-session"
 
 
-def test_coding_plugin_activation_bridge_rejects_product_budget_before_write(
+def test_coding_portable_activation_bridge_rejects_product_budget_before_write(
     tmp_path: Path,
 ) -> None:
     runtime = _Runtime()
@@ -148,7 +133,37 @@ def test_coding_plugin_activation_bridge_rejects_product_budget_before_write(
     assert not (tmp_path / "continuity").exists()
 
 
-def test_coding_plugin_activation_bridge_rejects_linked_temporary_root(
+def test_coding_portable_activation_bridge_does_not_trust_source_cwd(
+    tmp_path: Path,
+) -> None:
+    runtime = _Runtime()
+    bridge = CodingContinuityActivationBridge(
+        runtime,  # type: ignore[arg-type]
+        temporary_root=tmp_path / "continuity",
+    )
+    payload = ContinuityActivationPayload.from_bytes(
+        b"{}\n",
+        media_type=CONTINUITY_JSONL_MEDIA_TYPE,
+        cwd_override="/source-controlled",
+    )
+
+    prepared = asyncio.run(
+        bridge.prepare(
+            ContinuityTarget(
+                provider_id="cloud.sessions",
+                opaque_id="remote-1",
+            ),
+            payload,
+            _source(),
+        )
+    )
+
+    assert runtime.fallback_cwd is None
+    assert runtime.missing_cwd == "error"
+    asyncio.run(prepared.abort())
+
+
+def test_coding_portable_activation_bridge_rejects_linked_temporary_root(
     tmp_path: Path,
 ) -> None:
     target_root = tmp_path / "target"
@@ -178,7 +193,7 @@ def test_coding_plugin_activation_bridge_rejects_linked_temporary_root(
     assert os.listdir(target_root) == []
 
 
-def test_coding_plugin_activation_bridge_cleans_up_when_product_prepare_fails(
+def test_coding_portable_activation_bridge_cleans_up_when_product_prepare_fails(
     tmp_path: Path,
 ) -> None:
     class _FailingRuntime(_Runtime):
@@ -212,79 +227,3 @@ def test_coding_plugin_activation_bridge_cleans_up_when_product_prepare_fails(
 
     assert runtime.observed_path is not None
     assert not runtime.observed_path.exists()
-
-
-class _RemoteProvider:
-    @property
-    def descriptor(self) -> ContinuityProviderDescriptor:
-        return ContinuityProviderDescriptor(
-            provider_id="cloud.sessions",
-            experience_id="coding",
-            domain_ids=("coding",),
-            label="Cloud sessions",
-            implementation_version=1,
-        )
-
-    async def query(self, _request: ProviderQuery) -> ProviderPage:
-        raise NotImplementedError
-
-    async def preview(self, _target: ContinuityTarget) -> ContinuityPreview:
-        raise NotImplementedError
-
-    async def prepare_import(self, _target: ContinuityTarget) -> object:
-        raise NotImplementedError
-
-
-def test_bind_coding_continuity_composes_admitted_plugin_provenance(
-    tmp_path: Path,
-) -> None:
-    runtime = _Runtime()
-    instance = PluginInstanceRevisionRef(
-        instance_id="cloud-installed",
-        plugin_id="cloud",
-        revision=2,
-    )
-    trust = PluginSourceTrustSnapshotV1(
-        plugin_id="cloud",
-        package_source_identity="installed:cloud",
-        source_trust_class="installed",
-        source_trust_policy_revision="trust-2",
-        trusted=True,
-    )
-    contribution = ContinuityPluginProviderContribution(
-        product_id="coding",
-        experience_id="coding",
-        contribution_ref=PluginContributionRef("cloud", "sessions"),
-        instance_revision_ref=instance,
-        trust_snapshot=trust,
-        implementation_version=1,
-        create=lambda _context: ContinuityPluginProviderPack(
-            providers=(_RemoteProvider(),)
-        ),
-        current_instance_reader=lambda _plugin_id: instance,
-        current_trust_reader=lambda _plugin_id, _source: trust,
-    )
-
-    composition = bind_coding_continuity(
-        runtime,  # type: ignore[arg-type]
-        plugin_contributions=(contribution,),
-        temporary_root=tmp_path / "continuity",
-    )
-    observation = composition.hub.reference().observation
-
-    assert [provider.provider_id for provider in observation.providers] == [
-        "coding.sessions",
-        "cloud.sessions",
-    ]
-    assert [source.source for source in observation.provider_sources] == [
-        "product",
-        "plugin",
-    ]
-    assert observation.provider_sources[1].plugin_id == "cloud"
-    with pytest.raises(RuntimeError, match="already sealed"):
-        bind_coding_continuity(
-            runtime,  # type: ignore[arg-type]
-            plugin_contributions=(contribution,),
-        )
-
-    asyncio.run(composition.shutdown())

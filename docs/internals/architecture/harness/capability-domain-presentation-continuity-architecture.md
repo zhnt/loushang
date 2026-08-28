@@ -219,8 +219,8 @@ The dependency rules are:
   needed, is a separate surface rather than a plugin to the common Resume page.
 - Product/OEM continuity providers may own authoritative discovery, query
   translation, redacted preview, target validation, and candidate preparation.
-  An admitted Plugin Provider receives only the Phase 5B read-only query,
-  preview, and portable candidate-preparation surface.
+  Phase 5B freezes a narrower portable import contract for a later admitted
+  Plugin Provider but does not register or execute one.
 - The Product/OEM Host exclusively owns activation policy, serialization,
   commit, runtime switching, and channel rebinding.
 - The OEM/Product composition root is the only place that assembles providers,
@@ -268,11 +268,12 @@ multiple providers must not be smuggled in as duplicate selections with
 different configuration. An Experience composition consumes only the bound
 pack result and cannot name or resolve another provider factory.
 
-The original V1 admitted Product- and OEM-sourced provider packs only. The
-[Phase 5B Plugin contract](plugin/continuity-provider-phase5b-contract.md) now
-admits exact-instance, trust-revalidated Extension layers through a narrower
-read-only adapter and Product-owned activation bridge. Arbitrary Extension
-layers and Plugin mutation remain unsupported.
+V1 continues to admit Product- and OEM-sourced provider packs only. The
+[Phase 5B foundation](plugin/continuity-provider-phase5b-contract.md) adds
+portable read-only contracts and a Product-owned activation bridge without
+opening this slot to Extension layers. Installed Plugin admission remains a
+later exact-lifecycle phase; arbitrary Extension layers and Plugin mutation are
+unsupported.
 
 Continuity summary and preview declarations are fixed JSON-safe data contracts,
 not executable authority. V1 has no custom list-column, filter, or renderer
@@ -427,9 +428,8 @@ These are audit/ownership boundaries, not three separately enforced grants. A
 Product default is declared directly on its `ProductRuntimePlan`; an OEM layer
 is admitted to the whole slot only when its `RuntimeProfileLayerGrant` allows
 `continuity.provider_packs` and carries the single slot permission
-`continuity.provider`. Phase 5B reuses that slot permission for exact Plugin
-contributions, but its admission adapter exposes only read-only discovery and
-portable activation. The Product bridge retains canonical Session authority.
+`continuity.provider`. Phase 5B does not issue that grant to a Plugin or an
+Extension. The Product bridge retains canonical Session authority.
 
 ### Federated hub
 

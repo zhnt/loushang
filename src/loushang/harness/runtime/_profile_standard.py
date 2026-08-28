@@ -85,7 +85,7 @@ CONTINUITY_PROVIDER_PACKS_SLOT = RuntimeCapabilitySlot(
     variation_semantic="aggregate_contribution",
     scope="process",
     refresh_boundary="sealed",
-    allowed_sources=frozenset({"product", "oem", "extension"}),
+    allowed_sources=frozenset({"product", "oem"}),
     required=False,
 )
 

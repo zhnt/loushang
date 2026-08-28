@@ -403,6 +403,7 @@ def test_common_resume_distinguishes_empty_and_partial_responsive_views() -> Non
     asyncio.run(partial_view.content.start())
     wide = partial_view.render(RenderConstraints(width=120, max_height=24))
     assert any("Partial results:" in line.text for line in wide.lines)
+    assert any("design.canvases:" in line.text for line in wide.lines)
     assert all(visible_width(line.text) <= 120 for line in wide.lines)
 
 
@@ -492,25 +493,101 @@ def test_common_resume_filters_by_provider_without_widening_domain() -> None:
         )
         await surface.start()
 
+        surface.handle_input(InputEvent(kind="key", key="tab"))
+        assert surface.query.domain_ids == ("coding",)
         intent = surface.handle_input(InputEvent(kind="key", key="ctrl+p"))
         assert intent == InputIntent(
             kind="consumed",
             note="continuity_provider",
         )
         assert surface.query.provider_ids == ("coding.sessions",)
-        assert surface.query.domain_ids == ()
+        assert surface.query.domain_ids == ("coding",)
         assert surface._query_task is not None
         await surface._query_task
         assert hub.queries[-1].provider_ids == ("coding.sessions",)
 
-        surface.handle_input(InputEvent(kind="key", key="tab"))
-        assert surface.query.domain_ids == ("coding",)
         surface.handle_input(InputEvent(kind="key", key="ctrl+p"))
         assert surface.query.provider_ids == ("design.canvases",)
         assert surface.query.domain_ids == ()
         surface.close()
 
     asyncio.run(scenario())
+
+
+def test_provider_switch_invalidates_old_target_until_new_query_publishes() -> None:
+    class _SlowHub(_Hub):
+        def __init__(self) -> None:
+            super().__init__()
+            self.release = asyncio.Event()
+
+        async def query(self, request: ContinuityQuery) -> ContinuityPage:
+            if self.queries:
+                await self.release.wait()
+            return await super().query(request)
+
+    async def scenario() -> None:
+        hub = _SlowHub()
+        design = ContinuityProviderDescriptor(
+            provider_id="design.canvases",
+            experience_id="studio",
+            domain_ids=("design",),
+            label="Design",
+            supported_sorts=("updated", "created"),
+        )
+        hub.composition = SimpleNamespace(
+            experience=hub.composition.experience,
+            continuity_providers=(
+                *hub.composition.continuity_providers,
+                SimpleNamespace(provider=_Provider(design)),
+            ),
+        )
+        surface = ContinuitySurface(
+            reference=_reference(hub),
+            request_render=lambda _kind: None,
+        )
+        await surface.start()
+        assert surface.selected_target == hub.summary.target
+
+        surface.handle_input(InputEvent(kind="key", key="ctrl+p"))
+
+        assert surface.loading is True
+        assert surface.selected_target is None
+        assert surface.begin_activation() is False
+        surface.handle_input(InputEvent(kind="key", key="space"))
+        await asyncio.sleep(0)
+        assert hub.previewed == []
+        hub.release.set()
+        assert surface._query_task is not None
+        await surface._query_task
+        surface.close()
+
+    asyncio.run(scenario())
+
+
+def test_delete_surface_hides_activate_only_provider_filter() -> None:
+    hub = _Hub()
+    imported = ContinuityProviderDescriptor(
+        provider_id="cloud.sessions",
+        experience_id="studio",
+        domain_ids=("coding",),
+        label="Cloud",
+        supported_actions=("activate",),
+    )
+    hub.composition = SimpleNamespace(
+        experience=hub.composition.experience,
+        continuity_providers=(
+            *hub.composition.continuity_providers,
+            SimpleNamespace(provider=_Provider(imported)),
+        ),
+    )
+    surface = ContinuitySurface(
+        reference=_reference(hub),
+        request_render=lambda _kind: None,
+        selection_action="delete",
+    )
+
+    assert surface._provider_options == (None,)
+    assert "provider" not in surface.footer_help.lower()
 
 
 def test_common_resume_loads_next_page_without_wrapping_to_first_item() -> None:
@@ -753,7 +830,8 @@ def test_common_resume_surface_searches_provider_and_routes_typed_target() -> No
     async def scenario() -> None:
         await surface.start()
         surface.handle_input(InputEvent(kind="text", text="parser"))
-        assert surface.selected_target == hub.summary.target
+        assert surface.selected_target is None
+        assert surface.begin_activation() is False
         await asyncio.sleep(0.2)
 
         assert hub.queries[-1].text == "parser"

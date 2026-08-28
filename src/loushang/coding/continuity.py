@@ -20,7 +20,6 @@ from loushang.harness.continuity import (
     ContinuityArtifactReference,
     ContinuityDiagnostic,
     ContinuityHub,
-    ContinuityPluginProviderContribution,
     ContinuityPreview,
     ContinuityPreviewSection,
     ContinuityProviderDescriptor,
@@ -114,13 +113,14 @@ class CodingPreparedSessionOperation(Protocol):
 
 
 class CodingContinuityActivationBridge:
-    """Import Plugin-prepared bytes through Coding's canonical lifecycle."""
+    """Import portable bytes through Coding's canonical Session lifecycle."""
 
     def __init__(
         self,
         runtime: CodingContinuityRuntimePort,
         *,
         temporary_root: str | Path | None = None,
+        fallback_cwd: str | Path | None = None,
         max_bytes: int = _MAX_CODING_CONTINUITY_IMPORT_BYTES,
     ) -> None:
         if isinstance(max_bytes, bool) or not isinstance(max_bytes, int):
@@ -135,6 +135,11 @@ class CodingContinuityActivationBridge:
         ).expanduser()
         absolute = Path(os.path.abspath(temporary_path))
         self._temporary_root = absolute.parent.resolve(strict=False) / absolute.name
+        self._fallback_cwd = (
+            None
+            if fallback_cwd is None
+            else str(Path(fallback_cwd).expanduser().resolve(strict=False))
+        )
         self._max_bytes = max_bytes
 
     async def prepare(
@@ -161,10 +166,8 @@ class CodingContinuityActivationBridge:
         try:
             prepared = await self._runtime.prepare_restore_session_operation(
                 path,
-                fallback_cwd=payload.cwd_override,
-                missing_cwd=(
-                    "fallback" if payload.cwd_override is not None else "error"
-                ),
+                fallback_cwd=self._fallback_cwd,
+                missing_cwd="fallback" if self._fallback_cwd is not None else "error",
             )
         except BaseException as operation_error:
             try:
@@ -605,51 +608,19 @@ def bind_coding_continuity(
     layers: Iterable[RuntimeProfileLayer] = (),
     grants: Iterable[RuntimeProfileLayerGrant] = (),
     implementations: Iterable[RuntimeCapabilityImplementation] = (),
-    plugin_contributions: Iterable[ContinuityPluginProviderContribution] = (),
-    temporary_root: str | Path | None = None,
 ) -> CodingContinuityComposition:
-    """Bind Product/OEM and admitted least-authority Plugin packs once."""
+    """Bind Product/OEM continuity packs once for one Coding runtime."""
 
     layer_values = tuple(layers)
     grant_values = tuple(grants)
     implementation_values = tuple(implementations)
-    plugin_values = tuple(
-        sorted(plugin_contributions, key=lambda item: item.layer_id)
-    )
-    if any(
-        not isinstance(item, ContinuityPluginProviderContribution)
-        for item in plugin_values
-    ):
-        raise TypeError("Coding continuity Plugin contributions are invalid")
-    identities = tuple(item.layer_id for item in plugin_values)
-    if len(identities) != len(set(identities)):
-        raise ValueError("Coding continuity Plugin contributions must be unique")
-    if any(
-        item.product_id != CODING_EXPERIENCE_ID
-        or item.experience_id != CODING_EXPERIENCE_ID
-        for item in plugin_values
-    ):
-        raise ValueError("Coding continuity Plugin contribution belongs elsewhere")
     if any(layer.source == "extension" for layer in layer_values):
         raise ValueError(
-            "Coding continuity extension layers must use plugin_contributions"
+            "Coding continuity does not admit direct extension layers"
         )
-    bridge = CodingContinuityActivationBridge(
-        runtime,
-        temporary_root=temporary_root,
-    )
-    plugin_runtime = tuple(
-        item.runtime_contribution(bridge) for item in plugin_values
-    )
-    layer_values = (*layer_values, *(item.layer for item in plugin_runtime))
-    grant_values = (*grant_values, *(item.grant for item in plugin_runtime))
-    implementation_values = (
-        *implementation_values,
-        *(item.implementation for item in plugin_runtime),
-    )
     cached = getattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, None)
     if isinstance(cached, CodingContinuityComposition):
-        if layer_values or grant_values or implementation_values or plugin_values:
+        if layer_values or grant_values or implementation_values:
             raise RuntimeError(
                 "Coding continuity is already sealed for this Product runtime"
             )
@@ -726,8 +697,19 @@ def _write_private_continuity_payload(
 ) -> tuple[Path, tuple[int, int]]:
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     root_status = root.lstat()
-    if not stat.S_ISDIR(root_status.st_mode) or stat.S_ISLNK(root_status.st_mode):
+    if (
+        not stat.S_ISDIR(root_status.st_mode)
+        or stat.S_ISLNK(root_status.st_mode)
+        or bool(getattr(root_status, "st_reparse_tag", 0))
+    ):
         raise OSError("Coding continuity temporary root is unsafe")
+    getuid = getattr(os, "getuid", None)
+    if os.name == "posix" and callable(getuid):
+        if root_status.st_uid != getuid():
+            raise PermissionError(
+                "Coding continuity temporary root belongs to another user"
+            )
+        root.chmod(0o700)
     suffix = (
         ".loushang.zip"
         if payload.media_type.endswith("session-bundle+zip")
@@ -740,7 +722,9 @@ def _write_private_continuity_payload(
     )
     path = Path(raw_path)
     try:
-        os.fchmod(descriptor, 0o600)
+        fchmod = getattr(os, "fchmod", None)
+        if callable(fchmod):
+            fchmod(descriptor, 0o600)
         view = memoryview(payload.data)
         while view:
             written = os.write(descriptor, view)
@@ -766,7 +750,11 @@ def _remove_private_continuity_payload(
         status = path.lstat()
     except FileNotFoundError:
         return
-    if stat.S_ISLNK(status.st_mode) or (status.st_dev, status.st_ino) != expected_identity:
+    if (
+        stat.S_ISLNK(status.st_mode)
+        or bool(getattr(status, "st_reparse_tag", 0))
+        or (status.st_dev, status.st_ino) != expected_identity
+    ):
         raise OSError("Coding continuity temporary file identity changed")
     path.unlink()
 

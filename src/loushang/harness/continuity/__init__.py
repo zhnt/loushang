@@ -16,18 +16,13 @@ from loushang.harness.continuity.hub import (
     ContinuityProviderTimeoutError,
     InvalidContinuityCursor,
 )
-from loushang.harness.continuity.plugin_provider import (
+from loushang.harness.continuity.import_provider import (
     CONTINUITY_BUNDLE_MEDIA_TYPE,
     CONTINUITY_JSONL_MEDIA_TYPE,
-    CONTINUITY_PLUGIN_PERMISSION,
     ContinuityActivationBridge,
     ContinuityActivationPayload,
     ContinuityImportProvider,
-    ContinuityPluginAdmissionError,
-    ContinuityPluginProviderContext,
-    ContinuityPluginProviderContribution,
-    ContinuityPluginProviderPack,
-    ContinuityPluginRuntimeContribution,
+    ContinuityImportProviderPack,
     PreparedContinuityImport,
 )
 from loushang.harness.continuity.provider import (
@@ -72,7 +67,6 @@ __all__ = [
     "CallbackPreparedActivationLease",
     "CONTINUITY_BUNDLE_MEDIA_TYPE",
     "CONTINUITY_JSONL_MEDIA_TYPE",
-    "CONTINUITY_PLUGIN_PERMISSION",
     "CONTINUITY_PROVIDER_PROFILE_VERSION",
     "ContinuityArtifactReference",
     "ContinuityActivationBridge",
@@ -82,6 +76,7 @@ __all__ = [
     "ContinuityDeletionProvider",
     "ContinuityIndexState",
     "ContinuityImportProvider",
+    "ContinuityImportProviderPack",
     "ContinuityHub",
     "ContinuityObservationDescriptor",
     "ContinuityPage",
@@ -97,11 +92,6 @@ __all__ = [
     "ContinuitySort",
     "ContinuitySummary",
     "ContinuityTarget",
-    "ContinuityPluginAdmissionError",
-    "ContinuityPluginProviderContext",
-    "ContinuityPluginProviderContribution",
-    "ContinuityPluginProviderPack",
-    "ContinuityPluginRuntimeContribution",
     "ExperienceComposition",
     "ExperienceDescriptor",
     "InvalidContinuityCursor",

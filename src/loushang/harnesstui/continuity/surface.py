@@ -101,6 +101,7 @@ class ContinuitySurface:
         requested_action: ContinuityAction = (
             "delete" if selection_action == "delete" else "activate"
         )
+        self._requested_action = requested_action
         product_filter = include_summary or (lambda _summary: True)
         self._include_summary = lambda summary: (
             requested_action in summary.actions and product_filter(summary)
@@ -128,15 +129,16 @@ class ContinuitySurface:
         self._preview_task: asyncio.Task[None] | None = None
         self._index_requery_task: asyncio.Task[None] | None = None
         observation = reference.observation
-        self._domain_options = (
-            (None, *observation.experience.domain_ids)
-            if len(observation.providers) > 1
-            else (None,)
+        self._available_providers = tuple(
+            provider
+            for provider in observation.providers
+            if requested_action in provider.supported_actions
         )
+        self._domain_options = self._domain_options_for(None)
         self._domain_index = 0
         self._provider_options = (
-            (None, *(provider.provider_id for provider in observation.providers))
-            if len(observation.providers) > 1
+            (None, *(provider.provider_id for provider in self._available_providers))
+            if len(self._available_providers) > 1
             else (None,)
         )
         self._provider_index = 0
@@ -173,7 +175,7 @@ class ContinuitySurface:
     def begin_activation(self) -> bool:
         """Mark the selected target as activating and reject duplicate submits."""
 
-        if self._activating or self.selected_target is None:
+        if self._loading or self._activating or self.selected_target is None:
             return False
         self._activating = True
         self._error = None
@@ -445,6 +447,8 @@ class ContinuitySurface:
         if self._query_task is not None and not self._query_task.done():
             self._query_task.cancel()
         self._loading = True
+        if reset:
+            self._invalidate_query_projection()
         self._request_render("product")
 
         async def run() -> None:
@@ -456,6 +460,15 @@ class ContinuitySurface:
             )
 
         self._query_task = asyncio.create_task(run())
+
+    def _invalidate_query_projection(self) -> None:
+        self._summaries.clear()
+        self._page = None
+        self._preview = None
+        self._preview_target = None
+        if self._preview_task is not None and not self._preview_task.done():
+            self._preview_task.cancel()
+        self._rebuild_selection(selected=None)
 
     def _page_selection_for(
         self,
@@ -552,16 +565,20 @@ class ContinuitySurface:
             self._provider_options
         )
         provider_id = self._provider_options[self._provider_index]
+        self._domain_options = self._domain_options_for(provider_id)
         domain_ids = self._query.domain_ids
         if provider_id is not None and domain_ids:
             descriptor = next(
                 provider
-                for provider in self._reference.observation.providers
+                for provider in self._available_providers
                 if provider.provider_id == provider_id
             )
             if not set(domain_ids).intersection(descriptor.domain_ids):
                 domain_ids = ()
                 self._domain_index = 0
+        elif domain_ids and domain_ids[0] not in self._domain_options:
+            domain_ids = ()
+            self._domain_index = 0
         self._query = replace(
             self._query,
             provider_ids=() if provider_id is None else (provider_id,),
@@ -666,7 +683,7 @@ class ContinuitySurface:
         if len(self._provider_options) > 1:
             labels = {
                 provider.provider_id: provider.label
-                for provider in self._reference.observation.providers
+                for provider in self._available_providers
             }
             controls.append(
                 self._toolbar_control(
@@ -742,7 +759,7 @@ class ContinuitySurface:
         selected = self._query.provider_ids
         providers = tuple(
             provider
-            for provider in self._reference.observation.providers
+            for provider in self._available_providers
             if not selected or provider.provider_id in selected
         )
         if not providers:
@@ -752,6 +769,20 @@ class ContinuitySurface:
             if all("created" in descriptor.supported_sorts for descriptor in providers)
             else ("updated",)
         )
+
+    def _domain_options_for(self, provider_id: str | None) -> tuple[str | None, ...]:
+        domain_ids = {
+            domain_id
+            for provider in self._available_providers
+            if provider_id is None or provider.provider_id == provider_id
+            for domain_id in provider.domain_ids
+        }
+        ordered = tuple(
+            domain_id
+            for domain_id in self._reference.observation.experience.domain_ids
+            if domain_id in domain_ids
+        )
+        return (None, *ordered) if len(ordered) > 1 else (None,)
 
     def _resolve_keybinding(self, event: InputEvent) -> InputEvent:
         if event.kind != "key":
@@ -834,11 +865,27 @@ class ContinuitySurface:
             ]
         lines: list[RenderLine] = []
         if self._page is not None and self._page.partial:
-            detail = (
-                self._page.provider_diagnostics[0].message
-                if self._page.provider_diagnostics
-                else "one or more providers are unavailable"
-            )
+            diagnostics = self._page.provider_diagnostics
+            if diagnostics:
+                first = diagnostics[0]
+                labels = {
+                    provider.provider_id: provider.label
+                    for provider in self._available_providers
+                }
+                provider_label = (
+                    labels.get(first.provider_id, first.provider_id)
+                    if first.provider_id is not None
+                    else None
+                )
+                prefix = f"{provider_label}: " if provider_label else ""
+                suffix = (
+                    f" (+{len(diagnostics) - 1} more)"
+                    if len(diagnostics) > 1
+                    else ""
+                )
+                detail = f"{prefix}{first.message}{suffix}"
+            else:
+                detail = "one or more providers are unavailable"
             lines.extend(
                 (
                     RenderLine(""),

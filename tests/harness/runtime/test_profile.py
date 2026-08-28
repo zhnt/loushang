@@ -1666,7 +1666,7 @@ def test_capability_composition_slots_have_deliberate_source_boundaries() -> Non
     assert slots["continuity.provider_packs"].scope == "process"
     assert slots["continuity.provider_packs"].refresh_boundary == "sealed"
     assert slots["continuity.provider_packs"].allowed_sources == frozenset(
-        {"product", "oem", "extension"}
+        {"product", "oem"}
     )
     assert slots["prompt.sections"].shape == "single"
     assert slots["tool.packs"].shape == "single"

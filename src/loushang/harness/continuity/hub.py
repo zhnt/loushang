@@ -508,6 +508,8 @@ class ContinuityHub:
     ) -> None:
         if not isinstance(page, ProviderPage):
             raise TypeError("continuity providers must return ProviderPage values")
+        if len(page.items) > request.limit:
+            raise ValueError("provider returned more items than the requested limit")
         descriptor = provider.descriptor
         provider_domains = set(descriptor.domain_ids)
         for item in page.items:
