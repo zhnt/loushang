@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import stat
+import tempfile
 from collections import OrderedDict
 from collections.abc import Iterable
 from contextlib import suppress
@@ -10,15 +13,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from loushang.foundation.platform_paths import resolve_platform_paths
 from loushang.harness.continuity import (
     CallbackPreparedActivationLease,
+    ContinuityActivationPayload,
     ContinuityArtifactReference,
     ContinuityDiagnostic,
     ContinuityHub,
+    ContinuityPluginProviderContribution,
     ContinuityPreview,
     ContinuityPreviewSection,
     ContinuityProviderDescriptor,
     ContinuityProviderPack,
+    ContinuityProviderSourceDescriptor,
     ContinuitySummary,
     ContinuityTarget,
     ExperienceDescriptor,
@@ -59,6 +66,7 @@ CODING_CONTINUITY_IMPLEMENTATION_VERSION = 1
 CODING_EXPERIENCE_ID = "coding"
 
 _MAX_PREVIEW_CACHE = 256
+_MAX_CODING_CONTINUITY_IMPORT_BYTES = 64 * 1024 * 1024
 _RUNTIME_BINDING_ATTRIBUTE = "_loushang_coding_continuity"
 
 
@@ -99,6 +107,70 @@ class CodingPreparedSessionOperation(Protocol):
     async def consume(self) -> object: ...
 
     async def abort(self) -> None: ...
+
+    async def close(self) -> None: ...
+
+
+class CodingContinuityActivationBridge:
+    """Import Plugin-prepared bytes through Coding's canonical lifecycle."""
+
+    def __init__(
+        self,
+        runtime: CodingContinuityRuntimePort,
+        *,
+        temporary_root: str | Path | None = None,
+        max_bytes: int = _MAX_CODING_CONTINUITY_IMPORT_BYTES,
+    ) -> None:
+        if isinstance(max_bytes, bool) or not isinstance(max_bytes, int):
+            raise TypeError("Coding continuity import limit must be an integer")
+        if not 1 <= max_bytes <= _MAX_CODING_CONTINUITY_IMPORT_BYTES:
+            raise ValueError("Coding continuity import limit is invalid")
+        self._runtime = runtime
+        temporary_path = Path(
+            temporary_root
+            if temporary_root is not None
+            else resolve_platform_paths().temporary / "continuity-import"
+        ).expanduser()
+        absolute = Path(os.path.abspath(temporary_path))
+        self._temporary_root = absolute.parent.resolve(strict=False) / absolute.name
+        self._max_bytes = max_bytes
+
+    async def prepare(
+        self,
+        target: ContinuityTarget,
+        payload: ContinuityActivationPayload,
+        source: ContinuityProviderSourceDescriptor,
+    ) -> CodingPreparedSessionOperation:
+        if not isinstance(target, ContinuityTarget):
+            raise TypeError("Coding continuity activation target is invalid")
+        if not isinstance(payload, ContinuityActivationPayload):
+            raise TypeError("Coding continuity activation payload is invalid")
+        if not isinstance(source, ContinuityProviderSourceDescriptor):
+            raise TypeError("Coding continuity activation source is invalid")
+        if source.provider_id != target.provider_id:
+            raise ValueError("Coding continuity activation source does not own target")
+        if payload.byte_size > self._max_bytes:
+            raise ValueError("Coding continuity activation exceeds Product limit")
+        path, identity = await asyncio.to_thread(
+            _write_private_continuity_payload,
+            self._temporary_root,
+            payload,
+        )
+        try:
+            prepared = await self._runtime.prepare_restore_session_operation(
+                path,
+                fallback_cwd=payload.cwd_override,
+                missing_cwd=(
+                    "fallback" if payload.cwd_override is not None else "error"
+                ),
+            )
+        finally:
+            await asyncio.to_thread(
+                _remove_private_continuity_payload,
+                path,
+                identity,
+            )
+        return prepared
 
 
 class StaleContinuityTargetError(RuntimeError):
@@ -516,15 +588,51 @@ def bind_coding_continuity(
     layers: Iterable[RuntimeProfileLayer] = (),
     grants: Iterable[RuntimeProfileLayerGrant] = (),
     implementations: Iterable[RuntimeCapabilityImplementation] = (),
+    plugin_contributions: Iterable[ContinuityPluginProviderContribution] = (),
+    temporary_root: str | Path | None = None,
 ) -> CodingContinuityComposition:
-    """Bind process-scoped Product/OEM packs once, then compose Coding."""
+    """Bind Product/OEM and admitted least-authority Plugin packs once."""
 
     layer_values = tuple(layers)
     grant_values = tuple(grants)
     implementation_values = tuple(implementations)
+    plugin_values = tuple(
+        sorted(plugin_contributions, key=lambda item: item.layer_id)
+    )
+    if any(
+        not isinstance(item, ContinuityPluginProviderContribution)
+        for item in plugin_values
+    ):
+        raise TypeError("Coding continuity Plugin contributions are invalid")
+    identities = tuple(item.layer_id for item in plugin_values)
+    if len(identities) != len(set(identities)):
+        raise ValueError("Coding continuity Plugin contributions must be unique")
+    if any(
+        item.product_id != CODING_EXPERIENCE_ID
+        or item.experience_id != CODING_EXPERIENCE_ID
+        for item in plugin_values
+    ):
+        raise ValueError("Coding continuity Plugin contribution belongs elsewhere")
+    if any(layer.source == "extension" for layer in layer_values):
+        raise ValueError(
+            "Coding continuity extension layers must use plugin_contributions"
+        )
+    bridge = CodingContinuityActivationBridge(
+        runtime,
+        temporary_root=temporary_root,
+    )
+    plugin_runtime = tuple(
+        item.runtime_contribution(bridge) for item in plugin_values
+    )
+    layer_values = (*layer_values, *(item.layer for item in plugin_runtime))
+    grant_values = (*grant_values, *(item.grant for item in plugin_runtime))
+    implementation_values = (
+        *implementation_values,
+        *(item.implementation for item in plugin_runtime),
+    )
     cached = getattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, None)
     if isinstance(cached, CodingContinuityComposition):
-        if layer_values or grant_values or implementation_values:
+        if layer_values or grant_values or implementation_values or plugin_values:
             raise RuntimeError(
                 "Coding continuity is already sealed for this Product runtime"
             )
@@ -593,6 +701,57 @@ def bind_coding_continuity(
     else:
         result.runtime_owned = True
     return result
+
+
+def _write_private_continuity_payload(
+    root: Path,
+    payload: ContinuityActivationPayload,
+) -> tuple[Path, tuple[int, int]]:
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    root_status = root.lstat()
+    if not stat.S_ISDIR(root_status.st_mode) or stat.S_ISLNK(root_status.st_mode):
+        raise OSError("Coding continuity temporary root is unsafe")
+    suffix = (
+        ".loushang.zip"
+        if payload.media_type.endswith("session-bundle+zip")
+        else ".jsonl"
+    )
+    descriptor, raw_path = tempfile.mkstemp(
+        prefix="continuity-",
+        suffix=suffix,
+        dir=root,
+    )
+    path = Path(raw_path)
+    try:
+        os.fchmod(descriptor, 0o600)
+        view = memoryview(payload.data)
+        while view:
+            written = os.write(descriptor, view)
+            if written < 1:
+                raise OSError("Coding continuity temporary write made no progress")
+            view = view[written:]
+        os.fsync(descriptor)
+        status = os.fstat(descriptor)
+        identity = (status.st_dev, status.st_ino)
+    except BaseException:
+        os.close(descriptor)
+        path.unlink(missing_ok=True)
+        raise
+    os.close(descriptor)
+    return path, identity
+
+
+def _remove_private_continuity_payload(
+    path: Path,
+    expected_identity: tuple[int, int],
+) -> None:
+    try:
+        status = path.lstat()
+    except FileNotFoundError:
+        return
+    if stat.S_ISLNK(status.st_mode) or (status.st_dev, status.st_ino) != expected_identity:
+        raise OSError("Coding continuity temporary file identity changed")
+    path.unlink()
 
 
 async def shutdown_coding_continuity(runtime: object) -> None:
@@ -713,6 +872,7 @@ __all__ = [
     "CODING_CONTINUITY_PROVIDER_ID",
     "CODING_EXPERIENCE_ID",
     "CodingContinuityComposition",
+    "CodingContinuityActivationBridge",
     "CodingContinuityProvider",
     "ConflictedContinuityTargetError",
     "StaleContinuityTargetError",
