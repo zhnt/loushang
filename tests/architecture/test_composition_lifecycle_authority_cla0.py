@@ -61,7 +61,7 @@ EXPECTED_CONSTRUCTION_SITES = {
     "RuntimeProfileBinder": {
         (
             Path("src/loushang/coding/continuity.py"),
-            "bind_coding_continuity",
+            "_compose_coding_continuity_base",
         ),
         (
             Path("src/loushang/harness/capabilities/composition_runtime.py"),
@@ -739,8 +739,8 @@ def test_cla7d_continuity_has_one_process_authority_and_typed_reference() -> Non
     assert _construction_sites("ContinuityHub") == Counter(
         {
             (
-                Path("src/loushang/coding/continuity.py"),
-                "bind_coding_continuity",
+                Path("src/loushang/harness/continuity/hub.py"),
+                "build_continuity_hub",
             ): 1
         }
     )

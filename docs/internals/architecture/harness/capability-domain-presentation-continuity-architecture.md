@@ -268,12 +268,13 @@ multiple providers must not be smuggled in as duplicate selections with
 different configuration. An Experience composition consumes only the bound
 pack result and cannot name or resolve another provider factory.
 
-V1 continues to admit Product- and OEM-sourced provider packs only. The
-[Phase 5B foundation](plugin/continuity-provider-phase5b-contract.md) adds
-portable read-only contracts and a Product-owned activation bridge without
-opening this slot to Extension layers. Installed Plugin admission remains a
-later exact-lifecycle phase; arbitrary Extension layers and Plugin mutation are
-unsupported.
+The Runtime Profile slot continues to admit Product- and OEM-sourced provider
+packs only. The [Phase 5B foundation](plugin/continuity-provider-phase5b-contract.md)
+adds portable read-only contracts and a Product-owned activation bridge. The
+[Phase 5C lifecycle](plugin/continuity-provider-phase5c-contract.md) composes
+separately owner-admitted installed Plugin providers through that bridge without
+granting Plugins or Extensions the Profile slot itself. Arbitrary Extension
+layers and Plugin mutation remain unsupported.
 
 Continuity summary and preview declarations are fixed JSON-safe data contracts,
 not executable authority. V1 has no custom list-column, filter, or renderer

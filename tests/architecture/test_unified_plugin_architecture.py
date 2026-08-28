@@ -1825,6 +1825,7 @@ def test_plc1b_contract_freezes_attempt_claim_and_forbidden_peer_semantics() -> 
     assert diagnostics == {
         "unsupported_plugin_contribution_index_version",
         "unsupported_capability_provider_declaration_payload_version",
+        "unsupported_continuity_provider_declaration_payload_version",
         "unsupported_command_pack_declaration_payload_version",
         "unsupported_resource_item_declaration_payload_version",
         "unsupported_tool_pack_declaration_payload_version",
@@ -2192,6 +2193,7 @@ def test_tool_and_command_packs_share_one_inert_catalog_consumer_primitive() -> 
     assert set(get_args(PluginContributionKind)) == {
         "capability_provider",
         "command_pack",
+        "continuity_provider",
         "resource_item",
         "tool_pack",
     }

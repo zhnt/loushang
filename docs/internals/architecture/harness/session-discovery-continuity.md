@@ -117,7 +117,8 @@ admission, durable activation approval, verified Component Host construction,
 and a revocation-safe authority lease rather than accepting raw callables or
 self-minted trust facts. The normative boundary is
 [Portable Continuity Provider Foundation](plugin/continuity-provider-phase5b-contract.md).
-The installed-Plugin path is now specified, but not yet implemented, by the
-[Phase 5C lifecycle baseline](plugin/continuity-provider-phase5c-contract.md).
-Plugin execution through that path and all mutation contributions remain
-outside Phase 5B.
+The installed read-only Plugin path is implemented by the
+[Phase 5C lifecycle baseline](plugin/continuity-provider-phase5c-contract.md),
+including exact owner admission, verified construction, sealed process
+publication, security revocation recovery, and Package cleanup handoff. All
+mutation contributions remain outside Phases 5B and 5C.

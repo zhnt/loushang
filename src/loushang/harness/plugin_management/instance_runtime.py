@@ -51,6 +51,19 @@ _ROOT_ACQUISITION_KINDS = frozenset(
 )
 
 
+def plugin_instance_security_acceptance_journal_path(
+    runtime_path: str | Path,
+) -> Path:
+    """Derive the one canonical security-acceptance journal for a runtime."""
+
+    canonical = Path(runtime_path).resolve()
+    if canonical.suffix:
+        name = f"{canonical.stem}.security-acceptances{canonical.suffix}"
+    else:
+        name = f"{canonical.name}.security-acceptances.jsonl"
+    return canonical.with_name(name)
+
+
 class PluginInstanceDesiredStateSourcePort(Protocol):
     @property
     def path(self) -> Path: ...
@@ -72,6 +85,15 @@ class PluginInstanceRetirementSetSourcePort(Protocol):
     def path(self) -> Path: ...
 
     def snapshot(self) -> PluginRetirementSetInventorySnapshotV1: ...
+
+
+class PluginInstanceSecurityAcceptanceSourcePort(Protocol):
+    """Durable security acceptances that bar new runtime acquisition."""
+
+    @property
+    def path(self) -> Path: ...
+
+    def accepted_revocations(self) -> tuple[PluginInstanceRevocationV1, ...]: ...
 
 
 class PluginInstanceRuntimeError(RuntimeError):
@@ -105,7 +127,9 @@ class PluginInstanceRuntimeSnapshotV1:
         if self.open_family_ids != tuple(sorted(self.open_family_ids)) or len(
             self.open_family_ids
         ) != len(set(self.open_family_ids)):
-            raise ValueError("Plugin Instance open family ids must be sorted and unique")
+            raise ValueError(
+                "Plugin Instance open family ids must be sorted and unique"
+            )
         if self.state == "ACTIVE":
             if any(
                 item is not None
@@ -129,12 +153,8 @@ class PluginInstanceRuntimeSnapshotV1:
         elif self.state == "RETIRED":
             if self.completion is None or self.open_family_ids:
                 raise ValueError("RETIRED Plugin Instance evidence is incomplete")
-            if (
-                self.completion.completion_kind == "graceful"
-                and (
-                    self.retirement_intent is None
-                    or self.revocation is not None
-                )
+            if self.completion.completion_kind == "graceful" and (
+                self.retirement_intent is None or self.revocation is not None
             ):
                 raise ValueError(
                     "Graceful retirement requires an intent without revocation"
@@ -182,9 +202,9 @@ class PluginInstanceRuntimeInventorySnapshotV1:
         expected_membership: dict[PluginInstanceRevisionRef, set[str]] = {}
         for family in self.open_families:
             for member in family.members:
-                expected_membership.setdefault(
-                    member.instance_revision_ref, set()
-                ).add(family.family_id)
+                expected_membership.setdefault(member.instance_revision_ref, set()).add(
+                    family.family_id
+                )
         for instance in self.instances:
             if instance.open_family_ids != tuple(
                 sorted(expected_membership.get(instance.instance_revision_ref, set()))
@@ -256,20 +276,26 @@ class PluginInstanceRuntimeLedger:
         desired_state: PluginInstanceDesiredStateSourcePort,
         retirement_intents: PluginInstanceRetirementIntentSourcePort,
         retirement_sets: PluginInstanceRetirementSetSourcePort,
+        security_acceptances: PluginInstanceSecurityAcceptanceSourcePort,
     ) -> None:
-        self._path = Path(path)
-        self._operation_path = Path(management_operation_journal_path)
+        # Lock sidecars are derived from these stored paths, so normalize once
+        # before any equality check or cross-process operation gate is used.
+        self._path = Path(path).resolve()
+        self._operation_path = Path(management_operation_journal_path).resolve()
         self._desired_state = desired_state
         self._retirement_intents = retirement_intents
         self._retirement_sets = retirement_sets
+        self._validate_security_acceptance_source(security_acceptances)
+        self._security_acceptances = security_acceptances
         journal_paths = {
             self._path.resolve(),
             self._operation_path.resolve(),
             desired_state.path.resolve(),
             retirement_intents.path.resolve(),
             retirement_sets.path.resolve(),
+            security_acceptances.path.resolve(),
         }
-        if len(journal_paths) != 5:
+        if len(journal_paths) != 6:
             raise ValueError("Plugin Instance runtime journals must be distinct")
         self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
         self._load_policy = JournalLoadPolicy(partial_tail="repair")
@@ -281,6 +307,37 @@ class PluginInstanceRuntimeLedger:
     @property
     def management_operation_journal_path(self) -> Path:
         return self._operation_path
+
+    @property
+    def security_acceptance_journal_path(self) -> Path:
+        return plugin_instance_security_acceptance_journal_path(self._path)
+
+    def bind_security_acceptance_source(
+        self,
+        source: PluginInstanceSecurityAcceptanceSourcePort,
+    ) -> None:
+        """Seal the one write-ahead security barrier before runtime service."""
+
+        self._validate_security_acceptance_source(source)
+        existing = self._security_acceptances
+        if existing is source or existing.path == source.path:
+            return
+        raise RuntimeError("Plugin Instance security acceptance source is sealed")
+
+    def _validate_security_acceptance_source(
+        self,
+        source: PluginInstanceSecurityAcceptanceSourcePort,
+    ) -> None:
+        path = getattr(source, "path", None)
+        if not isinstance(path, Path) or not callable(
+            getattr(source, "accepted_revocations", None)
+        ):
+            raise TypeError("Plugin Instance security acceptance source is invalid")
+        expected = plugin_instance_security_acceptance_journal_path(self._path)
+        if path != path.resolve() or path != expected:
+            raise ValueError(
+                "Plugin Instance security acceptance source must use its canonical path"
+            )
 
     def activate_current(
         self,
@@ -325,6 +382,9 @@ class PluginInstanceRuntimeLedger:
                             self._path,
                             "Plugin Instance activation identity was reused",
                         )
+                    self._require_not_security_accepted(
+                        (activation.instance_revision_ref,)
+                    )
                     return _snapshot_instance(
                         replayed.instances[activation.instance_revision_ref]
                     )
@@ -339,6 +399,7 @@ class PluginInstanceRuntimeLedger:
                         self._path,
                         "Plugin Installation has no current enabled Instance",
                     )
+                self._require_not_security_accepted((selection.instance_revision_ref,))
                 if selection.instance_revision_ref in replayed.instances:
                     raise _transition_error(
                         self._path,
@@ -415,9 +476,7 @@ class PluginInstanceRuntimeLedger:
                         family is None
                         or family.lease_kind != lease_kind
                         or family.holder_reference != holder_reference
-                        or tuple(
-                            member.installation_key for member in family.members
-                        )
+                        or tuple(member.installation_key for member in family.members)
                         != keys
                         or family.parent_family_id is not None
                     ):
@@ -430,6 +489,9 @@ class PluginInstanceRuntimeLedger:
                             self._path,
                             "Plugin Instance acquisition was already released",
                         )
+                    self._require_not_security_accepted(
+                        tuple(member.instance_revision_ref for member in family.members)
+                    )
                     return family
                 subjects = tuple(
                     self._current_active_subject(
@@ -510,6 +572,9 @@ class PluginInstanceRuntimeLedger:
                             self._path,
                             "Plugin Instance derivation was already released",
                         )
+                    self._require_not_security_accepted(
+                        tuple(member.instance_revision_ref for member in family.members)
+                    )
                     return family
                 parent = replayed.families.get(parent_family_id)
                 if (
@@ -522,6 +587,11 @@ class PluginInstanceRuntimeLedger:
                         self._path,
                         "Agent membership requires an open membership parent",
                     )
+                self._require_not_security_accepted(
+                    tuple(
+                        member.instance_revision_ref for member in parent.family.members
+                    )
+                )
                 subjects = tuple(
                     (
                         member.installation_key,
@@ -531,8 +601,7 @@ class PluginInstanceRuntimeLedger:
                     for member in parent.family.members
                 )
                 if any(
-                    replayed.instances[instance_ref].state
-                    not in {"ACTIVE", "DRAINING"}
+                    replayed.instances[instance_ref].state not in {"ACTIVE", "DRAINING"}
                     for _, instance_ref, _ in subjects
                 ):
                     raise _transition_error(
@@ -572,9 +641,7 @@ class PluginInstanceRuntimeLedger:
             lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
         ):
             sources = self._load_sources()
-            source_intent = _intent_by_id(sources).get(
-                retirement_intent.retirement_id
-            )
+            source_intent = _intent_by_id(sources).get(retirement_intent.retirement_id)
             retirement_set = sources.retirement_sets.retirement_set(
                 retirement_intent.retirement_id
             )
@@ -622,6 +689,34 @@ class PluginInstanceRuntimeLedger:
                 return _snapshot_instance(current)
 
     def begin_revoke(
+        self,
+        revocation: PluginInstanceRevocationV1,
+    ) -> PluginInstanceRuntimeSnapshotV1:
+        """Enter REVOKING through the ordinary Product-host authority."""
+
+        return self._begin_security_revocation(revocation)
+
+    def apply_accepted_security_revocations(
+        self,
+        revocations: tuple[PluginInstanceRevocationV1, ...],
+    ) -> tuple[PluginInstanceRuntimeSnapshotV1, ...]:
+        """Recover exact write-ahead security acceptances through this host."""
+
+        if not revocations or any(
+            not isinstance(item, PluginInstanceRevocationV1) for item in revocations
+        ):
+            raise TypeError("Accepted Plugin Instance revocations are required")
+        if len(revocations) != len(set(revocations)):
+            raise ValueError("Accepted Plugin Instance revocations must be unique")
+        accepted = set(self._security_acceptances.accepted_revocations())
+        if any(item not in accepted for item in revocations):
+            raise _unavailable(
+                self._path,
+                "Plugin Instance security revocation was not durably accepted",
+            )
+        return tuple(self._begin_security_revocation(item) for item in revocations)
+
+    def _begin_security_revocation(
         self,
         revocation: PluginInstanceRevocationV1,
     ) -> PluginInstanceRuntimeSnapshotV1:
@@ -881,6 +976,7 @@ class PluginInstanceRuntimeLedger:
                 "Plugin Installation has no current enabled Instance",
             )
         current = replayed.instances.get(instance_ref)
+        self._require_not_security_accepted((instance_ref,))
         if current is None or current.state != "ACTIVE":
             raise _unavailable(
                 self._path,
@@ -892,6 +988,20 @@ class PluginInstanceRuntimeLedger:
                 "Current Plugin Instance Package Revision is inconsistent",
             )
         return installation_key, instance_ref, package_revision
+
+    def _require_not_security_accepted(
+        self,
+        instance_revision_refs: tuple[PluginInstanceRevisionRef, ...],
+    ) -> None:
+        source = self._security_acceptances
+        accepted = {
+            item.instance_revision_ref for item in source.accepted_revocations()
+        }
+        if accepted.intersection(instance_revision_refs):
+            raise _unavailable(
+                self._path,
+                "Plugin Instance has a durable security acceptance",
+            )
 
     def _existing_operation(
         self,
@@ -1142,8 +1252,7 @@ def _apply_event(
                 or parent.release is not None
                 or parent.family.lease_kind
                 not in {"session_membership", "agent_membership"}
-                or _family_subjects(parent.family)
-                != _family_subjects(acquired_family)
+                or _family_subjects(parent.family) != _family_subjects(acquired_family)
             ):
                 raise _corrupt(path, "Agent membership parent is invalid")
             allowed_states = {"ACTIVE", "DRAINING"}
@@ -1239,8 +1348,7 @@ def _apply_event(
             if (
                 current.state != "DRAINING"
                 or current.retirement_intent is None
-                or current.retirement_intent.retirement_id
-                != completion.coordination_id
+                or current.retirement_intent.retirement_id != completion.coordination_id
             ):
                 raise _corrupt(path, "Graceful Plugin Instance completion is invalid")
         elif (
@@ -1283,7 +1391,10 @@ def _snapshot_inventory(
         journal_revision=len(replayed.events),
         instances=tuple(
             sorted(
-                (_snapshot_instance(current) for current in replayed.instances.values()),
+                (
+                    _snapshot_instance(current)
+                    for current in replayed.instances.values()
+                ),
                 key=_instance_snapshot_sort_key,
             )
         ),
@@ -1386,8 +1497,7 @@ def _intent_by_id(
     sources: _SourceEvidence,
 ) -> dict[str, PluginRetirementIntentV1]:
     return {
-        intent.retirement_id: intent
-        for intent in sources.retirement_intents.intents
+        intent.retirement_id: intent for intent in sources.retirement_intents.intents
     }
 
 
@@ -1397,8 +1507,10 @@ def _require_nonempty(value: str, *, name: str) -> None:
 
 
 def _require_sha256(value: str, *, name: str) -> None:
-    if not isinstance(value, str) or len(value) != 64 or any(
-        character not in "0123456789abcdef" for character in value
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
     ):
         raise ValueError(f"{name} must be a lowercase SHA-256 digest")
 
@@ -1439,8 +1551,10 @@ __all__ = [
     "PluginInstanceDesiredStateSourcePort",
     "PluginInstanceRetirementIntentSourcePort",
     "PluginInstanceRetirementSetSourcePort",
+    "PluginInstanceSecurityAcceptanceSourcePort",
     "PluginInstanceRuntimeError",
     "PluginInstanceRuntimeInventorySnapshotV1",
     "PluginInstanceRuntimeLedger",
     "PluginInstanceRuntimeSnapshotV1",
+    "plugin_instance_security_acceptance_journal_path",
 ]

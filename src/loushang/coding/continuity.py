@@ -7,13 +7,16 @@ import os
 import secrets
 import stat
 from collections import OrderedDict
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, TypeVar
 
 from loushang.foundation.platform_paths import resolve_platform_paths
+from loushang.harness.capabilities.owner_component_host import (
+    CapabilityOwnerComponentHost,
+)
 from loushang.harness.continuity import (
     CallbackPreparedActivationLease,
     ContinuityActivationPayload,
@@ -27,11 +30,24 @@ from loushang.harness.continuity import (
     ContinuityProviderSourceDescriptor,
     ContinuitySummary,
     ContinuityTarget,
+    ExperienceComposition,
     ExperienceDescriptor,
     ProviderPage,
     ProviderPageItem,
     ProviderQuery,
+    build_continuity_hub,
     compose_experience_continuity,
+)
+from loushang.harness.continuity.plugin_runtime import (
+    ContinuityPluginGeneration,
+    ContinuityPluginGenerationAuthority,
+    ContinuityPluginInstanceFamilyAuthority,
+    ContinuityPluginLifecycleError,
+    ContinuityPluginPendingCleanup,
+    ContinuityPluginPublication,
+    ResolvedContinuityPluginSelection,
+    construct_continuity_plugin_generation,
+    publish_continuity_plugin_generation,
 )
 from loushang.harness.conversation import IndexedProjection
 from loushang.harness.runtime import (
@@ -273,9 +289,7 @@ class CodingContinuityProvider:
         diagnostics = [
             ContinuityDiagnostic(
                 code=f"coding_session_discovery_{issue.code}",
-                message=(
-                    f"Ignored Session source {issue.source_id}: {issue.detail}."
-                ),
+                message=(f"Ignored Session source {issue.source_id}: {issue.detail}."),
                 provider_id=CODING_CONTINUITY_PROVIDER_ID,
             )
             for issue in page.discovery_issues
@@ -579,6 +593,7 @@ class CodingContinuityComposition:
     binding: RuntimeProfileBinding
     binder: RuntimeProfileBinder
     hub: ContinuityHub
+    plugin_publication: ContinuityPluginPublication | None = None
     runtime_owned: bool = False
     _shutdown: bool = False
 
@@ -599,9 +614,49 @@ class CodingContinuityComposition:
 
         if self._shutdown:
             return
-        await self.hub.close()
+        if self.plugin_publication is None:
+            await self.hub.close()
+        else:
+            await self.plugin_publication.shutdown()
         await self.binder.dispose(self.binding)
         self._shutdown = True
+
+
+@dataclass
+class _CodingContinuityBindingReservation:
+    binder: RuntimeProfileBinder | None = None
+    binding: RuntimeProfileBinding | None = None
+    generation: ContinuityPluginGeneration | None = None
+    construction_cleanup: ContinuityPluginPendingCleanup | None = None
+    generation_authority: ContinuityPluginGenerationAuthority | None = None
+
+    async def retry_cleanup(self) -> tuple[str, ...]:
+        codes: list[str] = []
+        construction_cleanup = self.construction_cleanup
+        if construction_cleanup is not None:
+            try:
+                await construction_cleanup.retry()
+            except BaseException:
+                codes.append("continuity_provider_construction_cleanup_retryable")
+            else:
+                self.construction_cleanup = None
+        generation = self.generation
+        if generation is not None:
+            try:
+                await generation.dispose()
+            except BaseException:
+                codes.append("continuity_provider_generation_cleanup_retryable")
+            else:
+                self.generation = None
+        if self.binder is not None and self.binding is not None:
+            try:
+                await self.binder.dispose(self.binding)
+            except BaseException:
+                codes.append("coding_continuity_base_cleanup_retryable")
+            else:
+                self.binder = None
+                self.binding = None
+        return tuple(codes)
 
 
 def bind_coding_continuity(
@@ -619,9 +674,7 @@ def bind_coding_continuity(
     grant_values = tuple(grants)
     implementation_values = tuple(implementations)
     if any(layer.source == "extension" for layer in layer_values):
-        raise ValueError(
-            "Coding continuity does not admit direct extension layers"
-        )
+        raise ValueError("Coding continuity does not admit direct extension layers")
     cached = getattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, None)
     if isinstance(cached, CodingContinuityComposition):
         if layer_values or grant_values or implementation_values:
@@ -629,7 +682,134 @@ def bind_coding_continuity(
                 "Coding continuity is already sealed for this Product runtime"
             )
         return cached
+    if cached is not None:
+        raise RuntimeError("Coding continuity binding or cleanup is already pending")
 
+    binder, binding, composition = _compose_coding_continuity_base(
+        runtime,
+        cwd=cwd,
+        all_sessions=all_sessions,
+        layers=layer_values,
+        grants=grant_values,
+        implementations=implementation_values,
+    )
+    result = CodingContinuityComposition(
+        binding=binding,
+        binder=binder,
+        hub=build_continuity_hub(composition),
+    )
+    _retain_coding_continuity(runtime, result)
+    return result
+
+
+async def bind_coding_plugin_continuity(
+    runtime: CodingContinuityRuntimePort,
+    *,
+    resolved_plugins: ResolvedContinuityPluginSelection,
+    component_host: CapabilityOwnerComponentHost,
+    activation_decision_ids: Mapping[str, str],
+    instance_family_authority: ContinuityPluginInstanceFamilyAuthority,
+    runtime_id: str,
+    cwd: str | Path | None = None,
+    all_sessions: bool = False,
+    temporary_root: str | Path | None = None,
+    fallback_cwd: str | Path | None = None,
+    layers: Iterable[RuntimeProfileLayer] = (),
+    grants: Iterable[RuntimeProfileLayerGrant] = (),
+    implementations: Iterable[RuntimeCapabilityImplementation] = (),
+) -> CodingContinuityComposition:
+    """Bind Coding's canonical Provider with one approved Plugin generation."""
+
+    existing = getattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, None)
+    if existing is not None:
+        raise RuntimeError(
+            "Coding continuity is already sealed for this Product runtime"
+        )
+    layer_values = tuple(layers)
+    if any(layer.source == "extension" for layer in layer_values):
+        raise ValueError("Coding continuity does not admit direct extension layers")
+    generation_authority = ContinuityPluginGenerationAuthority(
+        product_id=CODING_EXPERIENCE_ID,
+        runtime_id=runtime_id,
+    )
+    reservation = _CodingContinuityBindingReservation(
+        generation_authority=generation_authority,
+    )
+    try:
+        setattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, reservation)
+    except (AttributeError, TypeError) as exc:
+        raise RuntimeError(
+            "Plugin continuity runtime must retain its sealed binding"
+        ) from exc
+    generation = None
+    try:
+        binder, binding, base = _compose_coding_continuity_base(
+            runtime,
+            cwd=cwd,
+            all_sessions=all_sessions,
+            layers=layer_values,
+            grants=tuple(grants),
+            implementations=tuple(implementations),
+        )
+        reservation.binder = binder
+        reservation.binding = binding
+        generation = await construct_continuity_plugin_generation(
+            resolved_plugins,
+            component_host=component_host,
+            activation_decision_ids=activation_decision_ids,
+            instance_family_authority=instance_family_authority,
+            generation_authority=generation_authority,
+        )
+        reservation.generation = generation
+        publication = publish_continuity_plugin_generation(
+            base,
+            generation,
+            activation_bridge=CodingContinuityActivationBridge(
+                runtime,
+                temporary_root=temporary_root,
+                fallback_cwd=fallback_cwd,
+            ),
+        )
+    except BaseException as error:
+        if (
+            isinstance(error, ContinuityPluginLifecycleError)
+            and error.pending_cleanup is not None
+        ):
+            reservation.construction_cleanup = error.pending_cleanup
+        cleanup_task = asyncio.create_task(reservation.retry_cleanup())
+        cleanup_codes = await _await_owned_task_cancellation_atomic(cleanup_task)
+        if cleanup_codes:
+            cleanup_error = ContinuityPluginLifecycleError(
+                "Coding continuity binding cleanup remains retryable.",
+                code="coding_continuity_binding_cleanup_retryable",
+            )
+            for code in cleanup_codes:
+                cleanup_error.add_note(code)
+            raise cleanup_error from error
+        _delete_runtime_binding_if(runtime, reservation)
+        raise
+    result = CodingContinuityComposition(
+        binding=binding,
+        binder=binder,
+        hub=publication.hub,
+        plugin_publication=publication,
+    )
+    if getattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, None) is not reservation:
+        raise RuntimeError("Coding continuity binding reservation was replaced")
+    setattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, result)
+    result.runtime_owned = True
+    return result
+
+
+def _compose_coding_continuity_base(
+    runtime: CodingContinuityRuntimePort,
+    *,
+    cwd: str | Path | None,
+    all_sessions: bool,
+    layers: tuple[RuntimeProfileLayer, ...],
+    grants: tuple[RuntimeProfileLayerGrant, ...],
+    implementations: tuple[RuntimeCapabilityImplementation, ...],
+) -> tuple[RuntimeProfileBinder, RuntimeProfileBinding, ExperienceComposition]:
     plan = ProductRuntimePlan(
         product_id=CODING_EXPERIENCE_ID,
         slots=(CONTINUITY_PROVIDER_PACKS_SLOT,),
@@ -642,11 +822,11 @@ def bind_coding_continuity(
         ),
     )
     admitted = RuntimeProfileAdmissionPolicy(
-        grants=grant_values,
+        grants=grants,
         slot_permissions={
             CONTINUITY_PROVIDER_PACKS_SLOT.key: frozenset({"continuity.provider"})
         },
-    ).admit(plan, layer_values)
+    ).admit(plan, layers)
     profile = RuntimeProfileResolver().resolve(
         plan,
         layers=admitted.require_valid(),
@@ -667,7 +847,7 @@ def bind_coding_continuity(
                     )
                 ),
             ),
-            *implementation_values,
+            *implementations,
         )
     )
     binder = RuntimeProfileBinder(registry)
@@ -681,18 +861,19 @@ def bind_coding_continuity(
         ),
         binding=binding,
     )
-    result = CodingContinuityComposition(
-        binding=binding,
-        binder=binder,
-        hub=ContinuityHub(composition),
-    )
+    return binder, binding, composition
+
+
+def _retain_coding_continuity(
+    runtime: CodingContinuityRuntimePort,
+    result: CodingContinuityComposition,
+) -> None:
     try:
         setattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, result)
     except (AttributeError, TypeError):
         pass
     else:
         result.runtime_owned = True
-    return result
 
 
 async def _consume_coding_prepared_operation(
@@ -948,11 +1129,29 @@ async def _await_owned_task_cancellation_atomic(
 
 async def shutdown_coding_continuity(runtime: object) -> None:
     composition = getattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, None)
+    if isinstance(composition, _CodingContinuityBindingReservation):
+        codes = await composition.retry_cleanup()
+        if codes:
+            error = ContinuityPluginLifecycleError(
+                "Coding continuity binding cleanup remains retryable.",
+                code="coding_continuity_binding_cleanup_retryable",
+            )
+            for code in codes:
+                error.add_note(code)
+            raise error
+        _delete_runtime_binding_if(runtime, composition)
+        return
     if not isinstance(composition, CodingContinuityComposition):
+        return
+    await composition.shutdown()
+    _delete_runtime_binding_if(runtime, composition)
+
+
+def _delete_runtime_binding_if(runtime: object, expected: object) -> None:
+    if getattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, None) is not expected:
         return
     with suppress(AttributeError):
         delattr(runtime, _RUNTIME_BINDING_ATTRIBUTE)
-    await composition.shutdown()
 
 
 def _require_runtime(value: object | None) -> CodingContinuityRuntimePort:
@@ -1069,5 +1268,6 @@ __all__ = [
     "ConflictedContinuityTargetError",
     "StaleContinuityTargetError",
     "bind_coding_continuity",
+    "bind_coding_plugin_continuity",
     "shutdown_coding_continuity",
 ]

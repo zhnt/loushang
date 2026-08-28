@@ -167,7 +167,7 @@ policy may constrain valid combinations, but no axis is inferred from another:
 | --- | --- | --- |
 | Artifact | How are immutable bytes distributed? | embedded bytes, verified directory, wheel, pinned registry or Git artifact |
 | Plugin identity | What is independently installed, selected, updated, or revoked? | `harness.stats.default` |
-| Contribution | What is offered to an owner? | `resource_item`, `tool_pack`, `command_pack`, `capability_provider` |
+| Contribution | What is offered to an owner? | `resource_item`, `tool_pack`, `command_pack`, `capability_provider`, `continuity_provider` |
 | Capability | Which stable Product contract is implemented? | `harness.stats`, `coding.lsp` |
 | Execution topology | Where does implementation run? | none, in-process, one-shot local process, long-lived local Worker, remote service |
 | Trust and authority | What may this exact use do? | host-equivalent, workspace read, restricted network, external mutation |
@@ -343,9 +343,12 @@ Catalog cutover must make that distinction explicit.
 
 Every contribution has one discriminated kind, schema version, exact owner,
 execution model, configuration reference, and source evidence. The currently
-implemented kinds are `resource_item`, `tool_pack`, `command_pack`, and
-`capability_provider`; the currently implemented execution models are
-`data_only` and verified `in_process`.
+implemented kinds are `resource_item`, `tool_pack`, `command_pack`,
+`capability_provider`, and the owner-scoped `continuity_provider`; the
+currently implemented execution models are `data_only` and verified
+`in_process`. `continuity_provider` is not a generic component SDK: its owner
+is exactly `harness.continuity`, and it enters the private process Continuity
+generation rather than a Runtime Profile slot or Session Graph.
 
 New contribution or execution-topology kinds require versioned codecs, explicit
 compatibility diagnostics, owner admission, lifecycle tests, and rollback or

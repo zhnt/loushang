@@ -15,6 +15,7 @@ from loushang.harness.continuity.hub import (
     ContinuityHub,
     ContinuityProviderTimeoutError,
     InvalidContinuityCursor,
+    build_continuity_hub,
 )
 from loushang.harness.continuity.import_provider import (
     CONTINUITY_BUNDLE_MEDIA_TYPE,
@@ -103,6 +104,7 @@ __all__ = [
     "ProviderQuery",
     "StableContinuityReference",
     "StaleContinuityReferenceError",
+    "build_continuity_hub",
     "compose_experience_continuity",
     "continuity_provider_source",
     "consume_prepared_activation",

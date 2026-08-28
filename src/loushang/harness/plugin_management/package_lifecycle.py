@@ -386,6 +386,12 @@ class PluginPackageLifecycleLedger:
     def startup_id(self) -> str:
         return self._startup_id
 
+    @property
+    def instance_runtime_journal_path(self) -> Path:
+        """Durable Instance authority backing every package cleanup handoff."""
+
+        return self._instance_runtime.path
+
     def acquire_pin(
         self,
         package_revision: PluginPackageRevisionRefV1,
