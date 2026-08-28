@@ -105,8 +105,11 @@ presentation. Harness continues to own:
 - copy-first commit, cancellation, and recovery;
 - deletion tombstones and positive reclamation evidence.
 
-Mutation plugins may propose a typed plan in a later phase. They must not
-receive an unrestricted path deletion or transcript-write side door.
+The [Phase 5D mutation foundation](plugin/continuity-mutation-phase5d-contract.md)
+lets a Provider propose one typed deletion plan for its own exact opaque target
+revision. Product authorization and settlement remain separate, and no Plugin
+receives an unrestricted path deletion or transcript-write side door. Installed
+Plugin mutation remains gated on the Phase 5E lifecycle binding.
 
 Phase 5B implements the portable, read-only owner foundation: bounded
 query/preview records, exact activation bytes, the Product bridge into the

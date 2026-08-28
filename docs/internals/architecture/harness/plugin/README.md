@@ -70,6 +70,10 @@ Neither may silently override a narrower implemented owner contract.
   implements the installed-Plugin declaration, exact owner-component
   lifecycle, sealed process composition, revocation linearization, durable
   recovery barrier, and Package cleanup handoff.
+- [Phase 5D Continuity Mutation Foundation](continuity-mutation-phase5d-contract.md)
+  implements exact deletion proposals, opaque Product authorization evidence,
+  cancellation-safe settlement, and the lifecycle handoff required before an
+  installed Plugin may expose mutation.
 
 These contracts refine the architecture only inside their stated versions and
 implemented slices. An unimplemented Worker, Skill-action, remote-service, or

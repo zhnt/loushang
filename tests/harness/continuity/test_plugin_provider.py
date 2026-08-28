@@ -76,6 +76,26 @@ def test_generation_gate_linearizes_consume_before_security_close() -> None:
     asyncio.run(_generation_gate_linearizes_consume_before_security_close())
 
 
+def test_installed_plugin_provider_remains_activation_only_in_phase5d() -> None:
+    provider = _Provider()
+    wrapped = PluginContinuityProvider(
+        provider,
+        bridge=_Bridge(),
+        provenance=_provenance(),
+        gate=ContinuityPluginGenerationGate(),
+    )
+    assert wrapped.descriptor.supported_actions == ("activate",)
+
+    mutation_provider = _Provider(supported_actions=("activate", "delete"))
+    with pytest.raises(ValueError, match="only the activate action"):
+        PluginContinuityProvider(
+            mutation_provider,
+            bridge=_Bridge(),
+            provenance=_provenance(),
+            gate=ContinuityPluginGenerationGate(),
+        )
+
+
 def test_owner_lifecycle_handles_and_plugin_binding_are_not_caller_constructible() -> (
     None
 ):
@@ -872,6 +892,7 @@ class _Provider:
     source_close_failures: int = 0
     prepared: _PreparedImport | None = None
     malformed: str | None = None
+    supported_actions: tuple[str, ...] = ("activate",)
 
     @property
     def descriptor(self) -> ContinuityProviderDescriptor:
@@ -880,7 +901,7 @@ class _Provider:
             experience_id="coding",
             domain_ids=("coding",),
             label="Plugin sessions",
-            supported_actions=("activate",),
+            supported_actions=self.supported_actions,  # type: ignore[arg-type]
         )
 
     async def query(self, _request: ProviderQuery) -> ProviderPage:
