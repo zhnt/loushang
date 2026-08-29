@@ -12,6 +12,7 @@ from loushang.ai.api_registry import (
     get_default_api_registry,
 )
 from loushang.ai.model import ModelSelection
+from loushang.ai.types import ImagePart
 from loushang.foundation.json import JSONValue
 from loushang.foundation.platform_paths import resolve_platform_paths
 from loushang.harness.approval import InteractiveApprovalResolver
@@ -139,6 +140,7 @@ from loushang.harness.session.capability_composition_inputs import (
     validate_session_capability_owner_generation_bindings,
 )
 from loushang.harness.session.command_controller import (
+    SessionCommandGenerationRegistry,
     StandardSessionCommandController,
 )
 from loushang.harness.session.commands.execution import StandardSessionCommandPorts
@@ -250,6 +252,38 @@ class AgentProductSession(AgentSessionAdapterMixin):
 
     resource_bundle: ResourceBundle | None
 
+    async def prompt(
+        self,
+        user_input: str,
+        images: list[ImagePart] | None = None,
+        *,
+        streaming_behavior: str | None = None,
+        source: str | None = None,
+        preflight_result: Callable[[bool], None] | None = None,
+    ) -> None:
+        """Publish the Session composition before command/model visibility."""
+
+        await self.prepare_model_call_runtime()
+        await super().prompt(
+            user_input,
+            images=images,
+            streaming_behavior=streaming_behavior,
+            source=source,
+            preflight_result=preflight_result,
+        )
+
+    async def continue_run(self) -> None:
+        await self.prepare_model_call_runtime()
+        await super().continue_run()
+
+    async def execute_command_async(
+        self,
+        invocation_name: str,
+        args: str,
+    ) -> object | None:
+        await self.prepare_model_call_runtime()
+        return await super().execute_command_async(invocation_name, args)
+
     def __init__(
         self,
         *,
@@ -286,12 +320,12 @@ class AgentProductSession(AgentSessionAdapterMixin):
         tool_policy_evaluator: PolicyEvaluator | None = None,
         workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
         extension_declaration_preflight: ExtensionDeclarationPreflight | None = None,
-        capability_composition_inputs: SessionCapabilityCompositionInputs
-        | None = None,
+        capability_composition_inputs: SessionCapabilityCompositionInputs | None = None,
         capability_component_host: CapabilityComponentHost | None = None,
         capability_owner_generation_bindings: tuple[
             SessionCapabilityOwnerGenerationBinding, ...
         ] = (),
+        command_generation_registry: SessionCommandGenerationRegistry | None = None,
         initial_resource_catalog_bootstrap: (
             InitialSessionResourceCatalogBootstrap | None
         ) = None,
@@ -420,19 +454,23 @@ class AgentProductSession(AgentSessionAdapterMixin):
             raise ValueError("Session plugin composition belongs to another Product")
         if (
             capability_composition_inputs is not None
+            and capability_composition_inputs.component_requests
             and capability_component_host is None
         ):
             raise ValueError("Session plugin composition requires a Component Host")
-        if (
-            capability_composition_inputs is None
-            and (
-                capability_component_host is not None
-                or capability_owner_generation_bindings
-            )
+        if capability_composition_inputs is None and (
+            capability_component_host is not None
+            or capability_owner_generation_bindings
         ):
             raise ValueError("Session Component Host/owners require composition inputs")
         self._capability_composition_inputs = capability_composition_inputs
         self._capability_component_host = capability_component_host
+        if command_generation_registry is not None and not isinstance(
+            command_generation_registry,
+            SessionCommandGenerationRegistry,
+        ):
+            raise TypeError("Session Command generation registry is invalid")
+        self._command_generation_registry = command_generation_registry
         self._capability_owner_generation_bindings = tuple(
             capability_owner_generation_bindings
         )
@@ -574,7 +612,10 @@ class AgentProductSession(AgentSessionAdapterMixin):
             requirements = (
                 capability_composition_inputs.product_composition.consumer_requirements
             )
-            if MODEL_INPUT_CAPABILITY_DEFINITION.capability_id not in requirements.roots:
+            if (
+                MODEL_INPUT_CAPABILITY_DEFINITION.capability_id
+                not in requirements.roots
+            ):
                 raise ValueError("Session composition must retain model-input root")
             validate_session_capability_composition_closure(
                 capability_composition_inputs.product_composition,
@@ -670,9 +711,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             get_diagnostics_service=lambda: self.diagnostics_service,
             refresh_resources=self._refresh_resources_for_extension_runtime,
             selected_plugin_packages=self._selected_plugin_packages,
-            refresh_resource_transaction=(
-                self._refresh_package_resource_transaction
-            ),
+            refresh_resource_transaction=(self._refresh_package_resource_transaction),
             summary_provider=package_summary_provider,
             supports_synchronous_refresh=(
                 lambda: (
@@ -859,6 +898,19 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 else ()
             )
         ]
+        command_generations = getattr(
+            self,
+            "_command_generation_registry",
+            None,
+        )
+        raw.extend(
+            (*item, "effective")
+            for item in (
+                command_generations.registration_inventory
+                if command_generations is not None
+                else ()
+            )
+        )
         raw.extend(
             (*item, "effective")
             for item in getattr(
@@ -950,6 +1002,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     get_default_active_tool_names=self._default_active_tool_names,
                     get_extensions=self.list_extensions,
                 ),
+                command_generations=self._command_generation_registry,
                 pack_composer=cast(
                     Any,
                     self._resource_capability_ports.commands,
@@ -1317,17 +1370,17 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 )
             binding = self._model_call_capability_binding
             prepared_components: list[PreparedCapabilityComponent] = []
-            owner_generations: tuple[
-                StagedSessionCapabilityOwnerGeneration, ...
-            ] = ()
+            owner_generations: tuple[StagedSessionCapabilityOwnerGeneration, ...] = ()
             resource_consumer_installed = False
             skill_catalog_consumer_installed = False
             try:
                 composition_inputs = self._capability_composition_inputs
                 component_host = self._capability_component_host
                 if composition_inputs is not None:
-                    assert component_host is not None
+                    if composition_inputs.component_requests:
+                        assert component_host is not None
                     for request in composition_inputs.component_requests:
+                        assert component_host is not None
                         prepared_components.append(
                             component_host.prepare_component(
                                 request.resolved,
@@ -1686,9 +1739,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
 
         consumer = self._skill_catalog_consumer
         if consumer is None:
-            raise RuntimeError(
-                "Session Skill Catalog v4 capture is not available"
-            )
+            raise RuntimeError("Session Skill Catalog v4 capture is not available")
         return consumer.list_skill_statuses()
 
     def _effective_skill_summaries(
@@ -1750,7 +1801,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
         next_generation = current_generation + 1
         bootstrap = factory(next_generation)
         if not isinstance(bootstrap, InitialSessionResourceCatalogBootstrap):
-            raise TypeError("Resource Catalog refresh factory returned an invalid value")
+            raise TypeError(
+                "Resource Catalog refresh factory returned an invalid value"
+            )
         if (
             bootstrap.product_id != self._capability_graph_runtime.product_id
             or bootstrap.scope_id != self._capability_graph_runtime.runtime_id
@@ -1771,9 +1824,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 extension_host=cast(InitialExtensionGenerationHost, extension_host),
                 staged_resource_candidate=successor,
                 bindings=self._extension_runtime_binding_factory.build(),
-                extension_declaration_preflight=(
-                    self._extension_declaration_preflight
-                ),
+                extension_declaration_preflight=(self._extension_declaration_preflight),
             )
             successor._claim_refresh_successor()
 
@@ -1867,8 +1918,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 await _await_cancellation_atomic(cleanup_task)
             except BaseException as cleanup_error:
                 publication_error.add_note(
-                    "Resource Catalog refresh rollback also failed: "
-                    f"{cleanup_error!r}"
+                    f"Resource Catalog refresh rollback also failed: {cleanup_error!r}"
                 )
             raise
 

@@ -18,10 +18,17 @@ from loushang.harness.resources.types import (
     ResourceBundle,
     SkillDescriptor,
 )
+from loushang.harness.runtime.registration import RegistrationOwner
 from loushang.harness.session import (
     StandardSessionCommandController as CommandController,
 )
 from loushang.harness.session import StandardSessionCommandPorts
+from loushang.harness.session.command_controller import (
+    SessionCommandGenerationRegistry,
+)
+from loushang.harness.session.commands.catalog import (
+    list_standard_session_command_descriptors,
+)
 from loushang.tui.clipboard import ClipboardCopyResult
 
 
@@ -158,6 +165,49 @@ def test_command_controller_lists_builtin_commands_before_extension_and_resource
     assert commands[0].source_info.source == "builtin"
 
 
+def test_command_controller_publishes_and_retires_one_exact_owner_generation(
+    tmp_path,
+) -> None:
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    generations = SessionCommandGenerationRegistry()
+    controller = CommandController(
+        session_manager=manager,
+        get_extension_runner=lambda: None,
+        get_resource_bundle=lambda: None,
+        get_diagnostics_service=lambda: None,
+        standard_ports=StandardSessionCommandPorts(),
+        command_generations=generations,
+    )
+    owner = RegistrationOwner(
+        owner_kind="product",
+        owner_id="commands.session",
+        runtime_id="session:test:coding.base:coding.standard",
+        generation=1,
+    )
+    lease = generations.stage_pack(
+        list_standard_session_command_descriptors(),
+        owner=owner,
+        pack_id="harness.session.standard",
+    )
+
+    assert controller.list_commands() == []
+    assert asyncio.run(controller.execute_command_async("session", "")) is None
+    assert generations.registration_inventory == ()
+
+    lease.activate()
+    assert "session" in {item.name for item in controller.list_commands()}
+    assert asyncio.run(controller.execute_command_async("session", "")) is not None
+    assert generations.registration_inventory == ((owner, lease.identity, "active"),)
+
+    result = asyncio.run(lease.dispose())
+    assert result.state == "removed"
+    assert controller.list_commands() == []
+    assert asyncio.run(controller.execute_command_async("session", "")) is None
+    assert generations.registration_inventory == ()
+
+
 def test_command_controller_exposes_prompt_argument_hint_from_frontmatter(
     tmp_path,
 ) -> None:
@@ -258,9 +308,7 @@ def test_command_controller_dispatches_extension_before_builtin_and_resource(
             LoadedExtension(
                 name="rename-ext",
                 source_path=Path("/tmp/project/extensions/rename.py"),
-                commands={
-                    "rename": RegisteredCommand(name="rename", handler=_handler)
-                },
+                commands={"rename": RegisteredCommand(name="rename", handler=_handler)},
             )
         ]
     )
@@ -279,12 +327,12 @@ def test_command_controller_dispatches_extension_before_builtin_and_resource(
         get_extension_runner=lambda: runner,
         get_resource_bundle=lambda: bundle,
         get_diagnostics_service=lambda: None,
-        standard_ports=StandardSessionCommandPorts(set_session_name=builtin_names.append),
+        standard_ports=StandardSessionCommandPorts(
+            set_session_name=builtin_names.append
+        ),
     )
 
-    result = asyncio.run(
-        controller.execute_command_async("/rename", "Project Alpha")
-    )
+    result = asyncio.run(controller.execute_command_async("/rename", "Project Alpha"))
 
     assert result is not None
     assert result.invocation_name == "rename"
@@ -355,9 +403,7 @@ def test_catalog_skill_namespace_precedes_extension_command(
         skill_body_authority="catalog_required",
     )
 
-    direct = asyncio.run(
-        controller.execute_command_async("/skill:review", "direct")
-    )
+    direct = asyncio.run(controller.execute_command_async("/skill:review", "direct"))
     preflight = asyncio.run(
         controller.preflight_user_input_async("/skill:review interactive")
     )
@@ -1131,9 +1177,7 @@ def test_command_controller_preflight_async_consumes_builtin_command(tmp_path) -
         standard_ports=StandardSessionCommandPorts(set_session_name=names.append),
     )
 
-    result = asyncio.run(
-        controller.preflight_user_input_async("/rename Project Alpha")
-    )
+    result = asyncio.run(controller.preflight_user_input_async("/rename Project Alpha"))
 
     assert result.consumed is True
     assert result.text == "/rename Project Alpha"
