@@ -149,8 +149,8 @@ def test_resource_command_source_projects_results_and_reports_failures() -> None
     assert review is not None
     assert unknown is not None
 
-    outcome = asyncio.run(runtime.dispatch(review))
-    unresolved = asyncio.run(runtime.dispatch(unknown))
+    outcome = runtime.dispatch(review)
+    unresolved = runtime.dispatch(unknown)
 
     assert [descriptor.name for descriptor in runtime.list_descriptors()] == ["review"]
     assert outcome.handled is True
@@ -167,7 +167,9 @@ def test_resource_command_source_projects_results_and_reports_failures() -> None
 def test_catalog_resource_command_loads_without_a_compatibility_bundle() -> None:
     @dataclass(frozen=True)
     class Summary:
+        id: str
         name: str
+        canonical_name: str
         source_path: Path
 
     @dataclass(frozen=True)
@@ -177,7 +179,9 @@ def test_catalog_resource_command_loads_without_a_compatibility_bundle() -> None
 
     loaded = Loaded(
         summary=Summary(
+            id="review",
             name="review",
+            canonical_name="review",
             source_path=Path("/catalog/skills/review/SKILL.md"),
         ),
         content="Exact Catalog body.",
@@ -214,6 +218,11 @@ def test_catalog_resource_command_loads_without_a_compatibility_bundle() -> None
     }
     with pytest.raises(SkillBodyLoadRequiresAsyncError):
         runtime.execute("skill:review", "")
+    invocation = parse_slash_command("/skill:review")
+    assert invocation is not None
+    with pytest.raises(SkillBodyLoadRequiresAsyncError):
+        runtime.dispatch(invocation)
+    assert asyncio.run(runtime.dispatch_async(invocation)).handled is True
 
 
 def test_command_source_runtimes_have_no_coding_import() -> None:

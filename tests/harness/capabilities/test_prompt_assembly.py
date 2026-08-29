@@ -158,7 +158,9 @@ def test_standard_async_preflight_can_delegate_a_command() -> None:
 def test_async_skill_preflight_uses_exact_loaded_body_and_retains_evidence() -> None:
     @dataclass(frozen=True)
     class Summary:
+        id: str
         name: str
+        canonical_name: str
         source_path: Path
 
     @dataclass(frozen=True)
@@ -168,7 +170,9 @@ def test_async_skill_preflight_uses_exact_loaded_body_and_retains_evidence() -> 
 
     loaded = Loaded(
         summary=Summary(
+            id='review"source',
             name='review"source',
+            canonical_name='review"source',
             source_path=Path('/catalog/skills/review"source/SKILL.md'),
         ),
         content="---\nname: review-source\n---\n\nExact Catalog body.",
@@ -236,7 +240,9 @@ def test_async_skill_preflight_does_not_load_an_unresolved_body_twice() -> None:
 def test_async_skill_preflight_rejects_a_body_for_another_skill() -> None:
     @dataclass(frozen=True)
     class Summary:
+        id: str
         name: str
+        canonical_name: str
         source_path: Path
 
     @dataclass(frozen=True)
@@ -247,7 +253,9 @@ def test_async_skill_preflight_rejects_a_body_for_another_skill() -> None:
     async def load_skill_body(_name: str) -> Loaded:
         return Loaded(
             summary=Summary(
+                id="another/SKILL.md",
                 name="another",
+                canonical_name="another/SKILL.md",
                 source_path=Path("/catalog/skills/another/SKILL.md"),
             ),
             content="Another body.",
@@ -260,3 +268,144 @@ def test_async_skill_preflight_rejects_a_body_for_another_skill() -> None:
                 load_skill_body=load_skill_body,
             )
         )
+
+
+def test_async_skill_preflight_accepts_stable_aliases_and_skips_empty_load() -> None:
+    @dataclass(frozen=True)
+    class Summary:
+        id: str
+        name: str
+        canonical_name: str
+        source_path: Path
+
+    @dataclass(frozen=True)
+    class Loaded:
+        summary: Summary
+        content: str
+
+    loaded = Loaded(
+        summary=Summary(
+            id="review-id",
+            name="review",
+            canonical_name="review/SKILL.md",
+            source_path=Path("/catalog/skills/review/SKILL.md"),
+        ),
+        content="Exact alias body.",
+    )
+    calls: list[str] = []
+
+    async def load_skill_body(selector: str) -> Loaded:
+        calls.append(selector)
+        return loaded
+
+    for selector in (
+        "review-id",
+        "review/SKILL.md",
+        "/catalog/skills/review/SKILL.md",
+    ):
+        result = asyncio.run(
+            preflight_user_input_async(
+                f"/skill:{selector}",
+                load_skill_body=load_skill_body,
+            )
+        )
+        assert "Exact alias body." in result.text
+        assert result.loaded_skills == (loaded,)
+
+    empty = asyncio.run(
+        preflight_user_input_async(
+            "/skill:",
+            load_skill_body=load_skill_body,
+        )
+    )
+    assert calls == [
+        "review-id",
+        "review/SKILL.md",
+        "/catalog/skills/review/SKILL.md",
+    ]
+    assert empty.text == "/skill:"
+    assert [item.code for item in empty.diagnostics] == [
+        "unresolved_skill_reference"
+    ]
+
+
+def test_catalog_skill_preflight_precedes_a_generic_command_executor() -> None:
+    @dataclass(frozen=True)
+    class Summary:
+        id: str
+        name: str
+        canonical_name: str
+        source_path: Path
+
+    @dataclass(frozen=True)
+    class Loaded:
+        summary: Summary
+        content: str
+
+    loaded = Loaded(
+        summary=Summary(
+            id="review",
+            name="review",
+            canonical_name="review",
+            source_path=Path("/catalog/skills/review/SKILL.md"),
+        ),
+        content="Exact Catalog body.",
+    )
+    loaded_names: list[str] = []
+    executed: list[tuple[str, str]] = []
+
+    async def load_skill_body(name: str) -> Loaded:
+        loaded_names.append(name)
+        return loaded
+
+    async def execute_command(name: str, args: str) -> None:
+        executed.append((name, args))
+
+    result = asyncio.run(
+        preflight_user_input_async(
+            "/skill:review focus",
+            load_skill_body=load_skill_body,
+            execute_command=execute_command,
+        )
+    )
+
+    assert "Exact Catalog body." in result.text
+    assert result.consumed is False
+    assert loaded_names == ["review"]
+    assert executed == []
+
+
+@pytest.mark.parametrize("cancelled", [False, True])
+def test_catalog_skill_preflight_propagates_load_failure_without_fallback(
+    cancelled: bool,
+) -> None:
+    calls: list[str] = []
+
+    async def load_skill_body(name: str):  # type: ignore[no-untyped-def]
+        calls.append(name)
+        if cancelled:
+            raise asyncio.CancelledError
+        raise RuntimeError("exact load failed")
+
+    bundle = ResourceBundle(
+        cwd=Path("/legacy"),
+        skills=[
+            SkillDescriptor(
+                name="review",
+                source_path=Path("/legacy/review/SKILL.md"),
+                content="Forged compatibility body.",
+            )
+        ],
+    )
+    expected = asyncio.CancelledError if cancelled else RuntimeError
+
+    with pytest.raises(expected):
+        asyncio.run(
+            preflight_user_input_async(
+                "/skill:review",
+                resource_bundle=bundle,
+                load_skill_body=load_skill_body,
+            )
+        )
+
+    assert calls == ["review"]

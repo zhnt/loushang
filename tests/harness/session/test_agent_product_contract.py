@@ -694,6 +694,14 @@ def test_product_input_adapter_carries_native_and_embedded_skills_through_sessio
             "---\nname: native\ndescription: Native skill\n---\nUse native.\n",
             encoding="utf-8",
         )
+        user_root = tmp_path / f"{product_id}-user"
+        user_skill_root = user_root / "skills" / "global"
+        user_skill_root.mkdir(parents=True)
+        (user_skill_root / "SKILL.md").write_text(
+            "---\nname: global\ndescription: User-global skill\n"
+            "---\nUse global.\n",
+            encoding="utf-8",
+        )
         transcript = await _new_transcript(tmp_path, product_id=product_id)
         capability_runtime = _capability_runtime(product_id)
         base_bundle = ResourceBundle(cwd=workspace)
@@ -706,6 +714,12 @@ def test_product_input_adapter_carries_native_and_embedded_skills_through_sessio
                         handle_id="project-resources",
                         root=workspace,
                         source_class="project_local",
+                        root_kind="standard",
+                    ),
+                    ProductNativeResourceRootSpec(
+                        handle_id="user-resources",
+                        root=user_root,
+                        source_class="user_global",
                         root_kind="standard",
                     ),
                 ),
@@ -746,8 +760,27 @@ def test_product_input_adapter_carries_native_and_embedded_skills_through_sessio
         assert session.resource_bundle is not None
         assert {skill.name for skill in session.resource_bundle.skills} == {
             "embedded",
+            "global",
             "native",
         }
+        session.resource_bundle.skills[:] = [
+            replace(skill, content="Forged compatibility body.")
+            for skill in session.resource_bundle.skills
+        ]
+        for skill_name, exact_body in (
+            ("native", "Use native."),
+            ("global", "Use global."),
+            ("embedded", "Use embedded."),
+        ):
+            preflight = await session._preflight_user_input_async(
+                f"/skill:{skill_name}"
+            )
+            assert exact_body in preflight.text
+            assert "Forged compatibility body." not in preflight.text
+            loaded = preflight.loaded_skills[0]
+            assert loaded.receipt.content_digest == (
+                loaded.summary.expected_content_digest
+            )
         assert capability_runtime.ownership_state == "graph_owned"
 
         await session.dispose()

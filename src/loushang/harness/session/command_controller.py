@@ -19,6 +19,7 @@ from loushang.harness.commands import (
     CommandDispatchOutcome,
     ParsedSlashCommand,
     SessionCommandDescriptor,
+    normalize_command_name,
     split_slash_command,
 )
 from loushang.harness.commands.resources import SkillCommandSummary
@@ -173,7 +174,7 @@ class SessionCommandController(Generic[ResultT]):
                     handler_priority=100,
                     list_descriptors=self._resource_source.list_descriptors,
                     handler_name="resource",
-                    handler=self._resource_source.dispatch,
+                    handler=self._resource_source.dispatch_async,
                 ),
             ),
             pack_composer=self.pack_composer,
@@ -185,6 +186,12 @@ class SessionCommandController(Generic[ResultT]):
     async def execute_command_async(
         self, invocation_name: str, args: str
     ) -> ResultT | None:
+        normalized_name = normalize_command_name(invocation_name)
+        if (
+            normalized_name.startswith("skill:")
+            and self._resource_source.has_skill_body_loader()
+        ):
+            return await self._resource_source.execute_async(normalized_name, args)
         return await self._runtime.execute(invocation_name, args)
 
     async def _dispatch_builtin_command(
@@ -255,6 +262,13 @@ class SessionCommandController(Generic[ResultT]):
     async def preflight_user_input_async(
         self, user_input: str, *, allow_extension_commands: bool = True
     ) -> PromptPreflightResult:
+        resource_command = split_slash_command(user_input)
+        if (
+            resource_command is not None
+            and resource_command[0].startswith("skill:")
+            and self._resource_source.has_skill_body_loader()
+        ):
+            return await self._resource_source.preflight_user_input_async(user_input)
         if allow_extension_commands:
             for command in (
                 self.extract_extension_command_invocation(user_input),

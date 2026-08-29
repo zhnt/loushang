@@ -251,15 +251,27 @@ The Catalog path is asynchronous because source loading and generation drain
 are asynchronous. Product-neutral prompt preflight receives a narrow body-load
 port and does not import a source, Catalog engine, Session, or Product. A
 missing effective Skill produces the existing finite unresolved diagnostic.
+The selector retains the Consumer's established `name`, stable id,
+`canonical_name`, and source-path forms; an empty selector is unresolved and
+does not call the loader. The loaded summary must bind to that selector, but
+its display name need not equal a stable id or canonical path.
 An owner load, receipt, digest, encoding, or disposed-generation failure is not
 translated into an unresolved reference and never retries through the
 compatibility Bundle.
 
+In a Catalog Session, `skill:` is a Resource-owned command namespace. Exact
+Skill preflight precedes a generic command executor, Extension command, or
+builtin command with the same name. This reservation applies only while the
+Catalog body-load port is present; it does not change legacy command priority.
+
 Synchronous Resource command/preflight APIs cannot borrow eager body authority
 for a Catalog Session. They fail with a finite asynchronous-load-required
 error for `/skill:*`; callers use the existing asynchronous prompt/command
-path. `legacy_explicit` Sessions retain their synchronous compatibility path
-until RCP5.3C, and prompt-template bodies remain unchanged in this slice.
+path. Existing synchronous command-source dispatch shape remains compatible
+for prompts and `legacy_explicit`; only Catalog Skill execution requires its
+new asynchronous counterpart. `legacy_explicit` Sessions retain their
+synchronous compatibility path until RCP5.3C, and prompt-template bodies
+remain unchanged in this slice.
 
 RCP5.3A exits when tests prove exact lazy loading for project, user, package,
 embedded, and Extension-backed effective Skills already covered by Catalog
@@ -270,11 +282,13 @@ operations remain body-free; and explicit legacy mode remains isolated.
 RCP5.3A is implemented. Catalog-backed Product Sessions now use the captured
 exact-v4 Consumer for asynchronous Skill command/preflight body loads, carry
 the validated immutable loaded value on the preflight result, and fail finite
-sync callers instead of consulting the compatibility Bundle. Existing Catalog
-source/Consumer conformance plus Product preflight tests cover the admitted
-source classes, receipt binding, unresolved and disabled names, compatibility
-Bundle divergence, lifecycle closure, and explicit legacy isolation. Durable
-request evidence and final eager-body sink deletion remain RCP5.3B and RCP5.3C.
+sync callers instead of consulting the compatibility Bundle. Exact preflight
+tests exercise project-local, user-global, admitted package, embedded, and
+Extension-backed Skill sources, in addition to selector binding, receipt
+binding, unresolved and disabled names, compatibility Bundle divergence,
+lifecycle closure, load failure/cancellation, streaming queue preparation, and
+explicit legacy isolation. Durable request evidence and final eager-body sink
+deletion remain RCP5.3B and RCP5.3C.
 
 #### RCP5.3B — request-bound durable evidence
 

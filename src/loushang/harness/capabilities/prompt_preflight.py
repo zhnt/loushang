@@ -28,7 +28,13 @@ class SkillBodyLoadRequiresAsyncError(RuntimeError):
 
 class SkillPreflightSummary(Protocol):
     @property
+    def id(self) -> str: ...
+
+    @property
     def name(self) -> str: ...
+
+    @property
+    def canonical_name(self) -> str: ...
 
     @property
     def source_path(self) -> Path: ...
@@ -88,10 +94,6 @@ async def preflight_user_input_async(
         return PromptPreflightResult(text=text)
 
     command_name, args = parsed
-    if execute_command is not None:
-        await execute_command(command_name, args)
-        return PromptPreflightResult(text=text, consumed=True)
-
     if command_name.startswith("skill:") and load_skill_body is not None:
         return await _preflight_catalog_skill_input(
             text,
@@ -99,6 +101,10 @@ async def preflight_user_input_async(
             args,
             load_skill_body=load_skill_body,
         )
+
+    if execute_command is not None:
+        await execute_command(command_name, args)
+        return PromptPreflightResult(text=text, consumed=True)
 
     return _preflight_resource_input(
         text,
@@ -170,21 +176,34 @@ async def _preflight_catalog_skill_input(
     *,
     load_skill_body: SkillBodyLoader,
 ) -> PromptPreflightResult:
+    if not skill_name:
+        return _unresolved_skill(original_text, skill_name)
     loaded = await load_skill_body(skill_name)
     if loaded is None:
         return _unresolved_skill(original_text, skill_name)
     summary = loaded.summary
+    skill_id = summary.id
     name = summary.name
+    canonical_name = summary.canonical_name
     source_path = summary.source_path
     content = loaded.content
+    if not isinstance(skill_id, str) or not skill_id:
+        raise TypeError("Loaded Skill summary id is invalid")
     if not isinstance(name, str) or not name:
         raise TypeError("Loaded Skill summary name is invalid")
-    if name != skill_name:
-        raise ValueError("Loaded Skill summary does not match the requested Skill")
+    if not isinstance(canonical_name, str) or not canonical_name:
+        raise TypeError("Loaded Skill summary canonical name is invalid")
     if not isinstance(source_path, Path):
         raise TypeError("Loaded Skill summary path is invalid")
     if not isinstance(content, str):
         raise TypeError("Loaded Skill content is invalid")
+    if skill_name not in {
+        skill_id,
+        name,
+        canonical_name,
+        str(source_path),
+    }:
+        raise ValueError("Loaded Skill summary does not match the requested Skill")
     body = strip_frontmatter(content).strip()
     source_path_text = source_path.as_posix()
     base_dir = source_path.parent.as_posix()

@@ -130,7 +130,15 @@ class ResourceCommandSourceRuntime(Generic[ResultT]):
             ),
         )
 
-    async def dispatch(
+    def dispatch(
+        self, invocation: ParsedSlashCommand
+    ) -> CommandDispatchOutcome[ResultT]:
+        result = self.execute(invocation.name, invocation.args)
+        if result is None:
+            return CommandDispatchOutcome.unhandled()
+        return CommandDispatchOutcome.handled_result(result)
+
+    async def dispatch_async(
         self, invocation: ParsedSlashCommand
     ) -> CommandDispatchOutcome[ResultT]:
         result = await self.execute_async(invocation.name, invocation.args)
@@ -218,6 +226,9 @@ class ResourceCommandSourceRuntime(Generic[ResultT]):
     def _skill_body_loader(self) -> SkillBodyLoader | None:
         provider = self.get_skill_body_loader
         return provider() if provider is not None else None
+
+    def has_skill_body_loader(self) -> bool:
+        return self._skill_body_loader() is not None
 
 
 __all__ = [

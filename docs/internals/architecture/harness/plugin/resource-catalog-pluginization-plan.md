@@ -1515,10 +1515,15 @@ onto the captured exact-v4 Consumer. The Product-neutral preflight boundary
 accepts only a narrow asynchronous body-load port; its result retains the
 validated immutable loaded value, while Catalog sync callers fail with a
 finite asynchronous-load-required error and never consult the compatibility
-Bundle. `legacy_explicit` retains its isolated synchronous path. Source,
-Consumer, Product, command, architecture, and lifecycle regression tests cover
-the cutover. Request-bound durable Model Input evidence remains RCP5.3B,
-eager-body sink deletion remains RCP5.3C, and refresh remains RCP5.4.
+Bundle. The Resource source retains its synchronous dispatch surface for
+compatible callers and adds a separate async dispatch path; Catalog Sessions
+reserve `skill:` ahead of generic, Extension, and builtin command handlers.
+Stable id/canonical/path selectors remain valid, while empty selectors are
+finite unresolved references. `legacy_explicit` retains its isolated
+synchronous path. Source, Consumer, Product, command, queue, architecture, and
+lifecycle regression tests cover the cutover. Request-bound durable Model
+Input evidence remains RCP5.3B, eager-body sink deletion remains RCP5.3C, and
+refresh remains RCP5.4.
 
 Exit: one Catalog path serves every Skill operation; native Skills need no
 Plugin; same-name selection is source-explainable; current-request immutability

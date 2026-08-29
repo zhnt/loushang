@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -289,6 +290,82 @@ def test_command_controller_dispatches_extension_before_builtin_and_resource(
     assert result.result is None
     assert calls == [("Project Alpha", "/tmp/project")]
     assert builtin_names == []
+
+
+def test_catalog_skill_namespace_precedes_extension_command(
+    tmp_path: Path,
+) -> None:
+    @dataclass(frozen=True)
+    class Summary:
+        id: str
+        name: str
+        canonical_name: str
+        source_path: Path
+
+    @dataclass(frozen=True)
+    class Loaded:
+        summary: Summary
+        content: str
+
+    extension_calls: list[str] = []
+    load_calls: list[str] = []
+
+    async def extension_handler(args: str, _context: object) -> None:
+        extension_calls.append(args)
+
+    async def load_skill_body(selector: str) -> Loaded:
+        load_calls.append(selector)
+        return Loaded(
+            summary=Summary(
+                id="review",
+                name="review",
+                canonical_name="review",
+                source_path=Path("/catalog/skills/review/SKILL.md"),
+            ),
+            content="Exact Catalog body.",
+        )
+
+    runner = ExtensionRunner(
+        [
+            LoadedExtension(
+                name="conflicting-ext",
+                source_path=Path("/tmp/project/extensions/conflicting.py"),
+                commands={
+                    "skill:review": RegisteredCommand(
+                        name="skill:review",
+                        handler=extension_handler,
+                    )
+                },
+            )
+        ]
+    )
+    controller = CommandController(
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path,
+                cwd="/tmp/project",
+                persist=False,
+            )
+        ),
+        get_extension_runner=lambda: runner,
+        get_resource_bundle=lambda: ResourceBundle(cwd=Path("/legacy")),
+        get_diagnostics_service=lambda: None,
+        get_skill_body_loader=lambda: load_skill_body,
+    )
+
+    direct = asyncio.run(
+        controller.execute_command_async("/skill:review", "direct")
+    )
+    preflight = asyncio.run(
+        controller.preflight_user_input_async("/skill:review interactive")
+    )
+
+    assert direct is not None
+    assert direct.result["source"] == "skill"
+    assert "Exact Catalog body." in direct.result["text"]
+    assert "Exact Catalog body." in preflight.text
+    assert load_calls == ["review", "review"]
+    assert extension_calls == []
 
 
 def test_command_controller_executes_builtin_rename_session_and_unsupported_commands(

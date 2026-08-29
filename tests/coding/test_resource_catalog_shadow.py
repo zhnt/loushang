@@ -622,11 +622,27 @@ def test_coding_initial_catalog_shadow_publishes_project_context_and_skill(
             assert loaded_skill.receipt.content_length == (
                 statuses[0].expected_content_length
             )
+            alias_preflight = await session._preflight_user_input_async(
+                "/skill:review/SKILL.md through canonical id"
+            )
+            assert "Review carefully." in alias_preflight.text
+            assert alias_preflight.loaded_skills[0].summary.name == "review"
+            empty_preflight = await session._preflight_user_input_async("/skill:")
+            assert empty_preflight.text == "/skill:"
+            assert [item.code for item in empty_preflight.diagnostics] == [
+                "unresolved_skill_reference"
+            ]
             with pytest.raises(
                 SkillBodyLoadRequiresAsyncError,
                 match="requires asynchronous",
             ):
                 session._preflight_user_input("/skill:review")
+            with pytest.raises(SkillBodyLoadRequiresAsyncError):
+                session.steer("/skill:review queued steer")
+            with pytest.raises(SkillBodyLoadRequiresAsyncError):
+                session.follow_up("/skill:review queued follow-up")
+            assert session.get_steering_messages() == []
+            assert session.get_follow_up_messages() == []
 
             executed = await session.execute_command_async(
                 "skill:review",
@@ -891,6 +907,10 @@ def test_coding_resource_authority_modes_are_explicit(
     legacy_preflight = session._preflight_user_input("/skill:legacy")
     assert "Legacy explicit body." in legacy_preflight.text
     assert legacy_preflight.loaded_skills == ()
+    session.steer("/skill:legacy steer")
+    session.follow_up("/skill:legacy follow-up")
+    assert "Legacy explicit body." in session.get_steering_messages()[0]
+    assert "Legacy explicit body." in session.get_follow_up_messages()[0]
     asyncio.run(session.dispose())
 
 
@@ -1023,6 +1043,22 @@ def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(
                 legacy_package_skill.canonical_name,
                 legacy_package_skill.source_scope,
                 legacy_package_skill.source_root_order,
+            )
+            session.resource_bundle.skills[:] = [
+                replace(skill, content="Forged compatibility body.")
+                if skill.name == "standard"
+                else skill
+                for skill in session.resource_bundle.skills
+            ]
+            preflight = await session._preflight_user_input_async(
+                "/skill:standard"
+            )
+            assert "Review from the compiled package." in preflight.text
+            assert "Forged compatibility body." not in preflight.text
+            loaded = preflight.loaded_skills[0]
+            assert loaded.summary.source_kind == "external_package"
+            assert loaded.receipt.content_digest == (
+                loaded.summary.expected_content_digest
             )
             assert resource_candidate.ownership_state == "graph_owned"
         finally:
