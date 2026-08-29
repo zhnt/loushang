@@ -31,6 +31,7 @@ from loushang.harness.session.command_sources import (
     ExtensionCommandProvider,
     ExtensionCommandSourceRuntime,
     ResourceCommandSourceRuntime,
+    ResourceSkillBodyAuthority,
 )
 from loushang.harness.session.commands.catalog import (
     is_standard_session_command,
@@ -99,6 +100,7 @@ class SessionCommandController(Generic[ResultT]):
         Callable[[], Sequence[SkillCommandSummary] | None] | None
     ) = None
     get_skill_body_loader: Callable[[], SkillBodyLoader | None] | None = None
+    skill_body_authority: ResourceSkillBodyAuthority = "legacy_explicit"
     _runtime: SessionCommandRuntime[SessionCommandDescriptor, ResultT] = field(
         init=False,
         repr=False,
@@ -146,6 +148,7 @@ class SessionCommandController(Generic[ResultT]):
             ),
             get_effective_skills=self.get_effective_skills,
             get_skill_body_loader=self.get_skill_body_loader,
+            skill_body_authority=self.skill_body_authority,
         )
         self._runtime = SessionCommandRuntime(
             sources=(
@@ -320,6 +323,7 @@ class StandardSessionCommandController(
             Callable[[], Sequence[SkillCommandSummary] | None] | None
         ) = None,
         get_skill_body_loader: Callable[[], SkillBodyLoader | None] | None = None,
+        skill_body_authority: ResourceSkillBodyAuthority = "legacy_explicit",
     ) -> None:
         super().__init__(
             session_manager=session_manager,
@@ -355,6 +359,7 @@ class StandardSessionCommandController(
             pack_composer=pack_composer or CapabilityPackComposer(),
             get_effective_skills=get_effective_skills,
             get_skill_body_loader=get_skill_body_loader,
+            skill_body_authority=skill_body_authority,
         )
 
 

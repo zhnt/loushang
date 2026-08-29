@@ -164,12 +164,20 @@ pipeline/discovery field reads and unrelated configuration/source-filter/port
 field reads; those candidates must be classified rather than silently filtered
 out by an import-name heuristic.
 
-Three production sites directly read an eager Skill body:
-`capabilities.prompt_preflight._preflight_resource_input` and
-`commands.resources.command_description_from_skill` read `SkillDescriptor`,
-while `method.skill_adapter.method_from_skill` reads the compatible
-`SkillResourceLike` projection. RCP5 moves all three to an exact Catalog load
-receipt; summaries and Method projection must not silently read a changed body.
+RCP5.3C removes eager reads from neutral prompt preflight and command
+projection. The remaining reads are exact, named boundaries: the
+`legacy_explicit` command adapter, the `legacy_skill_adapter` used only when a
+Method caller selects legacy authority, and the Extension owner normalization
+that freezes exact bytes before handing a body-free descriptor to the Catalog
+source. The Catalog Extension source may only validate that the descriptor is
+body-free; it loads from the generation-owned byte sidecar. The executable AST
+inventory freezes those sites so a new neutral sink cannot appear silently.
+
+`MethodLoader` now defaults to `skill_authority="none"`; ordinary `methods/`
+resources remain available, while independent Skill discovery requires the
+caller-selected `legacy_explicit` compatibility boundary. Catalog-default
+Coding therefore does not create a second Skill body authority merely to
+preserve skill-backed Method compatibility.
 
 ### Package mounts, refresh mutation, and Extension ingress
 

@@ -53,7 +53,7 @@ class ResourceCatalogProjectionError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class ResourceProjectionDescriptorBinding:
-    """Source-produced descriptor sidecar with no effective-selection authority."""
+    """Body-free descriptor sidecar with no effective-selection authority."""
 
     candidate_fingerprint: str
     resource_kind: str
@@ -335,8 +335,28 @@ def _freeze_descriptor(
         PromptFragmentDescriptor | SkillDescriptor | ExtensionDescriptor | ThemeDescriptor,
     ):
         raise TypeError("Resource projection descriptor is unsupported")
-    metadata = _freeze_mapping(descriptor.metadata)
+    metadata_source: Mapping[str, object] = descriptor.metadata
+    if isinstance(descriptor, SkillDescriptor):
+        # Parser compatibility metadata historically duplicated the parsed
+        # body.  Keeping it would merely hide a second eager body authority
+        # after clearing SkillDescriptor.content.
+        metadata_source = {
+            key: value
+            for key, value in descriptor.metadata.items()
+            if key != "body"
+        }
+    metadata = _freeze_mapping(metadata_source)
     diagnostics = tuple(_freeze_diagnostic(item) for item in descriptor.diagnostics)
+    if isinstance(descriptor, SkillDescriptor):
+        # A Catalog projection is a metadata compatibility view, not a second
+        # Skill body store.  The source generation retains the exact bytes and
+        # serves them only through an owner-minted load handle and receipt.
+        return replace(
+            descriptor,
+            content=None,
+            metadata=metadata,
+            diagnostics=diagnostics,
+        )
     return replace(descriptor, metadata=metadata, diagnostics=diagnostics)
 
 
@@ -458,7 +478,6 @@ def _descriptor_fingerprint(
         }
     elif isinstance(descriptor, SkillDescriptor):
         payload["typeFacts"] = {
-            "content": descriptor.content,
             "disableModelInvocation": descriptor.disable_model_invocation,
         }
     elif isinstance(descriptor, ExtensionDescriptor):
@@ -472,7 +491,7 @@ def _descriptor_fingerprint(
     else:
         payload["typeFacts"] = {"content": descriptor.content}
     return fingerprint_catalog_value(
-        "loushang.resource-catalog-projection-descriptor/v1",
+        "loushang.resource-catalog-projection-descriptor/v2",
         payload,
     )
 

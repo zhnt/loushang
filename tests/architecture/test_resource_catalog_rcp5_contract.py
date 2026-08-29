@@ -31,6 +31,23 @@ PROMPT_PREFLIGHT_PATH = Path(
     "src/loushang/harness/capabilities/prompt_preflight.py"
 )
 COMMAND_SOURCE_PATH = Path("src/loushang/harness/session/command_sources.py")
+REQUEST_EVIDENCE_PATH = Path(
+    "src/loushang/harness/session/request_evidence.py"
+)
+CATALOG_PROJECTION_PATH = Path(
+    "src/loushang/harness/resources/_catalog_projection.py"
+)
+EXTENSION_CATALOG_SOURCE_PATH = Path(
+    "src/loushang/harness/resources/_catalog_extension_source.py"
+)
+EXTENSION_RESOURCE_OWNER_PATH = Path(
+    "src/loushang/harness/extensions/resources.py"
+)
+LEGACY_SKILL_BODY_PATH = Path(
+    "src/loushang/harness/resources/_legacy_skill_body.py"
+)
+METHOD_LOADER_PATH = Path("src/loushang/method/loader.py")
+CODING_CLI_PATH = Path("src/loushang/coding/cli/__main__.py")
 PUBLIC_SURFACES = (
     Path("src/loushang/harness/resources/__init__.py"),
     Path("src/loushang/harness/__init__.py"),
@@ -133,6 +150,7 @@ def test_rcp5_consumer_stays_private_and_product_uses_only_exact_v4() -> None:
         CAPABILITY_PROVIDER_PATH,
         CAPABILITY_CONSUMER_PATH,
         AGENT_PRODUCT_PATH,
+        REQUEST_EVIDENCE_PATH,
     }
     for path in PUBLIC_SURFACES:
         source = path.read_text(encoding="utf-8")
@@ -228,3 +246,40 @@ def test_rcp53a_catalog_body_preflight_uses_only_the_typed_async_loader() -> Non
     assert "await consumer.load" in loader_source
     assert "resource_bundle" not in loader_source
     assert "source_path" not in loader_source
+
+
+def test_rcp53c_catalog_projection_and_consumers_are_body_free() -> None:
+    prompt_source = PROMPT_PREFLIGHT_PATH.read_text(encoding="utf-8")
+    command_source = COMMAND_SOURCE_PATH.read_text(encoding="utf-8")
+    projection_source = CATALOG_PROJECTION_PATH.read_text(encoding="utf-8")
+    extension_source = EXTENSION_CATALOG_SOURCE_PATH.read_text(encoding="utf-8")
+    extension_owner = EXTENSION_RESOURCE_OWNER_PATH.read_text(encoding="utf-8")
+    method_loader = METHOD_LOADER_PATH.read_text(encoding="utf-8")
+    coding_cli = CODING_CLI_PATH.read_text(encoding="utf-8")
+
+    assert "skill.content" not in prompt_source
+    assert 'getattr(skill, "content"' not in command_source
+    assert "allow_legacy_skill_body" in prompt_source
+    assert "skill_body_authority" in command_source
+    assert "loushang.resource-catalog-projection-descriptor/v2" in projection_source
+    assert "content=None" in projection_source
+    assert 'if key != "body"' in projection_source
+    assert "skill_bodies" in extension_source
+    assert "body = route.skill_bodies[index]" in extension_source
+    assert "skill.content.encode" in extension_owner
+    assert 'skill_authority: Literal["none", "legacy_explicit"] = "none"' in (
+        method_loader
+    )
+    assert "_coding_method_loader(args)" in coding_cli
+
+    legacy_target = "loushang.harness.resources._legacy_skill_body"
+    legacy_importers = {
+        path
+        for path in SOURCE_ROOT.rglob("*.py")
+        if path != LEGACY_SKILL_BODY_PATH
+        and legacy_target in path.read_text(encoding="utf-8")
+    }
+    assert legacy_importers == {
+        PROMPT_PREFLIGHT_PATH,
+        Path("src/loushang/harness/commands/resources.py"),
+    }

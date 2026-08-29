@@ -8,8 +8,10 @@ RCP5.1 implements an internal, exact-generation typed Skill projection and
 lazy body-load path. RCP5.2A implements the owner-native body-free candidate
 status substrate. RCP5.2B now mounts exact-v4 for the default admitted Coding
 Resource Catalog and routes read-only Skill consumers to one captured
-generation. It does not yet authorize refresh, explicit body use, or
-compatibility-loader deletion.
+generation. RCP5.3A/B/C move explicit body loading to the exact asynchronous
+Consumer, persist request-bound evidence, and remove eager body sinks from the
+Catalog projection and neutral consumers. Refresh and compatibility-loader
+deletion remain RCP5.4 and RCP5.5.
 
 Production cutover starts only after the RCP5.1 contract and implementation
 receive a fresh source-backed review. Stable public Resource authoring remains
@@ -372,6 +374,24 @@ authority.
 No RCP5.3 slice may introduce a detached body cache, reconstruct a handle from
 a path, hash a fresh path read as substitute evidence, silently select legacy
 authority, or keep a load handle beyond the captured generation's lifecycle.
+
+RCP5.3C is implemented. A Catalog projection now validates source-owned bytes
+and then freezes a body-free Skill compatibility descriptor: both
+`SkillDescriptor.content` and the parser's duplicated `metadata.body` are
+absent, and the private descriptor fingerprint uses the v2 body-free domain.
+Command/preflight selection carries an explicit `catalog_required` or
+`legacy_explicit` body authority; neutral preflight no longer infers eager body
+authority from a Bundle. The only legacy command description and expansion
+reads live in the named `legacy_explicit` adapter.
+
+The Extension owner freezes exact Skill bytes beside a body-free descriptor
+before Catalog ingress. The Extension Resource source consumes that immutable
+sidecar and never reconstructs bytes from the projected descriptor. Method
+discovery likewise defaults to no peer Skill authority; caller-selected
+`legacy_explicit` may retain the compatibility Skill-to-Method adapter, while
+ordinary `methods/` resources remain independent. Catalog synchronous Skill
+preflight, including direct queue APIs, continues to fail finitely with the
+asynchronous-load-required contract rather than manufacturing an empty body.
 
 ## Ordered cutover
 

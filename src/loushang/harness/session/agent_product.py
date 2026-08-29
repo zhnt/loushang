@@ -856,6 +856,11 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 get_resource_bundle=lambda: self.resource_bundle,
                 get_effective_skills=self._effective_skill_summaries,
                 get_skill_body_loader=self._skill_body_loader,
+                skill_body_authority=(
+                    "catalog_required"
+                    if self._initial_resource_catalog_bootstrap is not None
+                    else "legacy_explicit"
+                ),
                 get_diagnostics_service=lambda: self.diagnostics_service,
                 diagnostics_runtime=diagnostics_runtime,
                 standard_ports=StandardSessionCommandPorts(

@@ -42,7 +42,10 @@ def test_resource_command_descriptors_project_enabled_prompts_and_skills() -> No
         ],
     )
 
-    commands = list_resource_command_descriptors(bundle)
+    commands = list_resource_command_descriptors(
+        bundle,
+        allow_legacy_skill_body=True,
+    )
 
     assert [
         (command.name, command.description, command.source) for command in commands

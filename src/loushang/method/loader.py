@@ -1,16 +1,21 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from collections.abc import Mapping as MappingABC
 from pathlib import Path
+from typing import Literal
 
 from loushang.harness.resources.frontmatter import (
     FrontmatterParseError,
     parse_frontmatter,
 )
 from loushang.method.applicability import applicability_from_frontmatter, primary_domain
-from loushang.method.resources import SkillResourceLoader, discover_skill_resources
-from loushang.method.skill_adapter import method_from_skill
+from loushang.method.legacy_skill_adapter import method_from_skill
+from loushang.method.resources import (
+    SkillResourceLike,
+    SkillResourceLoader,
+    discover_skill_resources,
+)
 from loushang.method.types import MethodDescriptor
 
 _METHOD_ELEMENT_TYPES = frozenset({"phase", "activity", "task", "role", "guidance", "workproduct"})
@@ -21,19 +26,33 @@ class MethodLoader:
         self,
         resource_loader: SkillResourceLoader | None = None,
         package_roots: tuple[str | Path, ...] = (),
+        skill_authority: Literal["none", "legacy_explicit"] = "none",
     ) -> None:
+        if skill_authority not in {"none", "legacy_explicit"}:
+            raise ValueError("Method Skill authority is invalid")
+        if resource_loader is not None and skill_authority != "legacy_explicit":
+            raise ValueError(
+                "Method ResourceLoader requires explicit legacy Skill authority"
+            )
         self._package_roots = tuple(Path(root) for root in package_roots)
         self._resource_loader = resource_loader
+        self._skill_authority = skill_authority
         self._methods: tuple[MethodDescriptor, ...] = ()
         self._cwd: Path | None = None
 
     def discover_methods(self, cwd: str | Path) -> list[MethodDescriptor]:
         root = Path(cwd)
-        if self._resource_loader is None:
-            skills = discover_skill_resources(root, package_roots=self._package_roots)
-        else:
-            skills = self._resource_loader.discover_resources(root).skills
-        skill_methods = [method_from_skill(skill) for skill in skills]
+        skill_methods: list[MethodDescriptor] = []
+        if self._skill_authority == "legacy_explicit":
+            skills: Sequence[SkillResourceLike]
+            if self._resource_loader is None:
+                skills = discover_skill_resources(
+                    root,
+                    package_roots=self._package_roots,
+                )
+            else:
+                skills = self._resource_loader.discover_resources(root).skills
+            skill_methods = [method_from_skill(skill) for skill in skills]
         package_method_resources: list[MethodDescriptor] = []
         for index, package_root in enumerate(self._package_roots):
             package_method_resources.extend(

@@ -29,6 +29,7 @@ from loushang.harness.resources._catalog_records import (
 from loushang.harness.resources.types import (
     ExtensionDescriptor,
     PromptFragmentDescriptor,
+    SkillDescriptor,
 )
 
 
@@ -174,6 +175,85 @@ def _extension_candidate(
         expected_content_digest=None,
         expected_content_length=None,
     )
+
+
+def _skill_candidate(
+    descriptor: SkillDescriptor,
+    *,
+    source_ref: ResourceSourceGenerationRef,
+):  # type: ignore[no-untyped-def]
+    body = (descriptor.content or "").encode("utf-8")
+    return build_candidate_summary(
+        identity=ResourceIdentity(
+            resource_kind="skill",
+            schema_id="loushang.resource.skill",
+            schema_version=1,
+            public_id=descriptor.id or descriptor.name,
+        ),
+        canonical_name=descriptor.canonical_name or descriptor.name,
+        description=descriptor.description,
+        media_type="text/markdown",
+        invocation_policy=ResourceInvocationPolicy(
+            enabled=descriptor.enabled,
+            model_invocable=not descriptor.disable_model_invocation,
+            reason="projection-test",
+        ),
+        source_generation_ref=source_ref,
+        source_class=descriptor.source_kind,
+        scope_id=descriptor.source_scope,
+        source_root_order=descriptor.source_root_order,
+        content_origin=NativeHostOrigin(
+            host_root_handle_id=f"root:{source_ref.source_id}",
+            root_policy_fingerprint=_digest(f"root:{source_ref.source_id}"),
+            workspace_or_user_scope="workspace",
+        ),
+        opaque_locator=f"{source_ref.source_id}/{descriptor.name}",
+        discovery_fingerprint=_digest(
+            f"discovery:{source_ref.source_id}:{descriptor.name}"
+        ),
+        expected_content_digest=hashlib.sha256(body).hexdigest(),
+        expected_content_length=len(body),
+    )
+
+
+def test_projection_never_retains_or_reprojects_eager_skill_body(
+    tmp_path: Path,
+) -> None:
+    descriptor = SkillDescriptor(
+        name="review",
+        source_path=tmp_path / "skills" / "review" / "SKILL.md",
+        source_root=tmp_path,
+        content="Exact source-owned body.",
+        description="Review changes.",
+        metadata={
+            "frontmatter": {"name": "review"},
+            "body": "Exact source-owned body.",
+        },
+    )
+    source_ref = _source_ref("project-skill", "project_local")
+    candidate = _skill_candidate(descriptor, source_ref=source_ref)
+    catalog = _catalog((source_ref, candidate))
+
+    projection = project_resource_catalog(
+        catalog_snapshot=catalog,
+        cwd=tmp_path,
+        descriptor_bindings=(
+            build_resource_projection_binding(
+                candidate=candidate,
+                descriptor=descriptor,
+                body=b"Exact source-owned body.",
+            ),
+        ),
+    )
+
+    projected = projection.selected_bindings[0].descriptor
+    assert isinstance(projected, SkillDescriptor)
+    assert projected.content is None
+    assert projected.metadata == {"frontmatter": {"name": "review"}}
+    bundle = projection.to_compatibility_bundle()
+    assert [skill.name for skill in bundle.skills] == ["review"]
+    assert bundle.skills[0].content is None
+    assert "body" not in bundle.skills[0].metadata
 
 
 def test_projection_is_catalog_selected_bound_and_defensively_copied(

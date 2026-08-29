@@ -242,7 +242,8 @@ async def _three_source_precedence_and_exact_unload(tmp_path: Path) -> None:
     compatibility = shadow.catalog_projection.to_compatibility_bundle()
     assert len(compatibility.skills) == 1
     assert compatibility.skills[0].source_kind == "project_local"
-    assert compatibility.skills[0].content.endswith("Native body")
+    assert compatibility.skills[0].content is None
+    assert "body" not in compatibility.skills[0].metadata
     assert [theme.content for theme in compatibility.themes] == [
         '{"background": "black"}\n'
     ]
