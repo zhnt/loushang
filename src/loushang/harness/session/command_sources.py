@@ -124,10 +124,11 @@ class ResourceCommandSourceRuntime(Generic[ResultT]):
         Callable[[], Sequence[SkillCommandSummary] | None] | None
     ) = None
     get_skill_body_loader: SkillBodyLoaderProvider | None = None
-    skill_body_authority: ResourceSkillBodyAuthority = "legacy_explicit"
+    skill_body_authority: ResourceSkillBodyAuthority | None = None
 
     def __post_init__(self) -> None:
         if self.skill_body_authority not in {
+            None,
             "catalog_required",
             "legacy_explicit",
         }:
@@ -254,6 +255,10 @@ class ResourceCommandSourceRuntime(Generic[ResultT]):
     def _skill_body_loader(self) -> SkillBodyLoader | None:
         provider = self.get_skill_body_loader
         loader = provider() if provider is not None else None
+        if self.skill_body_authority is None and loader is not None:
+            raise ResourceSkillBodyAuthorityError(
+                "Skill body loader requires an explicit body authority"
+            )
         if self.skill_body_authority == "catalog_required" and loader is None:
             raise ResourceSkillBodyAuthorityError(
                 "Catalog-required Skill body loader is unavailable"

@@ -60,3 +60,23 @@ def test_resource_command_descriptors_project_enabled_prompts_and_skills() -> No
 
 def test_resource_command_descriptors_accept_absent_resources() -> None:
     assert list_resource_command_descriptors(None) == []
+
+
+def test_effective_skill_summary_never_uses_descriptor_body_as_description() -> None:
+    skill = SkillDescriptor(
+        name="review",
+        source_path=Path("/catalog/skills/review/SKILL.md"),
+        content="FORGED EAGER BODY",
+        description=None,
+    )
+
+    for allow_legacy_skill_body in (False, True):
+        commands = list_resource_command_descriptors(
+            None,
+            effective_skills=(skill,),
+            allow_legacy_skill_body=allow_legacy_skill_body,
+        )
+
+        assert [(command.name, command.description) for command in commands] == [
+            ("skill:review", None)
+        ]

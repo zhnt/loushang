@@ -100,7 +100,7 @@ class SessionCommandController(Generic[ResultT]):
         Callable[[], Sequence[SkillCommandSummary] | None] | None
     ) = None
     get_skill_body_loader: Callable[[], SkillBodyLoader | None] | None = None
-    skill_body_authority: ResourceSkillBodyAuthority = "legacy_explicit"
+    skill_body_authority: ResourceSkillBodyAuthority | None = None
     _runtime: SessionCommandRuntime[SessionCommandDescriptor, ResultT] = field(
         init=False,
         repr=False,
@@ -323,7 +323,7 @@ class StandardSessionCommandController(
             Callable[[], Sequence[SkillCommandSummary] | None] | None
         ) = None,
         get_skill_body_loader: Callable[[], SkillBodyLoader | None] | None = None,
-        skill_body_authority: ResourceSkillBodyAuthority = "legacy_explicit",
+        skill_body_authority: ResourceSkillBodyAuthority | None = None,
     ) -> None:
         super().__init__(
             session_manager=session_manager,

@@ -270,6 +270,12 @@ def test_rcp53c_catalog_projection_and_consumers_are_body_free() -> None:
     assert 'skill_authority: Literal["none", "legacy_explicit"] = "none"' in (
         method_loader
     )
+    assert "skill_body_authority: ResourceSkillBodyAuthority | None = None" in (
+        command_source
+    )
+    assert 'ResourceSkillBodyAuthority = Literal["catalog_required", "legacy_explicit"]' in (
+        command_source
+    )
     assert "_coding_method_loader(args)" in coding_cli
 
     legacy_target = "loushang.harness.resources._legacy_skill_body"

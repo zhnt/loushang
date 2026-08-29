@@ -62,9 +62,14 @@ def list_resource_command_descriptors(
         )
         for prompt in prompts
     ]
+    use_legacy_bundle_skills = (
+        allow_legacy_skill_body
+        and effective_skills is None
+        and resource_bundle is not None
+    )
     legacy_skills = (
         tuple(skill for skill in resource_bundle.skills if skill.enabled)
-        if allow_legacy_skill_body and resource_bundle is not None
+        if use_legacy_bundle_skills and resource_bundle is not None
         else ()
     )
     skills: Sequence[SkillCommandSummary] = (
@@ -75,7 +80,7 @@ def list_resource_command_descriptors(
             name=f"skill:{skill.name}",
             description=(
                 legacy_skill_description(skill)
-                if isinstance(skill, SkillDescriptor)
+                if use_legacy_bundle_skills and isinstance(skill, SkillDescriptor)
                 else command_description_from_skill(skill)
             ),
             source="skill",

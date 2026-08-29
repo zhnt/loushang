@@ -78,6 +78,7 @@ def test_command_controller_lists_extension_prompt_and_enabled_skill_commands(
         get_extension_runner=lambda: runner,
         get_resource_bundle=lambda: bundle,
         get_diagnostics_service=lambda: None,
+        skill_body_authority="legacy_explicit",
     )
 
     commands = controller.list_commands()
@@ -351,6 +352,7 @@ def test_catalog_skill_namespace_precedes_extension_command(
         get_resource_bundle=lambda: ResourceBundle(cwd=Path("/legacy")),
         get_diagnostics_service=lambda: None,
         get_skill_body_loader=lambda: load_skill_body,
+        skill_body_authority="catalog_required",
     )
 
     direct = asyncio.run(

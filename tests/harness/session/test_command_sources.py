@@ -247,6 +247,13 @@ def test_resource_command_source_fails_closed_on_body_authority_mismatch() -> No
         record_command_not_found=lambda _name, _args: None,
         result_factory=lambda _name, _source, text: text,
     )
+    neutral_runtime = ResourceCommandSourceRuntime(
+        get_resource_bundle=lambda: ResourceBundle(cwd=Path("/tmp/project")),
+        get_skill_body_loader=lambda: load_skill_body,
+        record_diagnostics=lambda _values: None,
+        record_command_not_found=lambda _name, _args: None,
+        result_factory=lambda _name, _source, text: text,
+    )
 
     with pytest.raises(
         ResourceSkillBodyAuthorityError,
@@ -258,6 +265,11 @@ def test_resource_command_source_fails_closed_on_body_authority_mismatch() -> No
         match="Legacy-explicit Skill commands cannot adopt Catalog body authority",
     ):
         asyncio.run(legacy_runtime.preflight_user_input_async("/skill:review"))
+    with pytest.raises(
+        ResourceSkillBodyAuthorityError,
+        match="requires an explicit body authority",
+    ):
+        asyncio.run(neutral_runtime.preflight_user_input_async("/skill:review"))
 
 
 def test_command_source_runtimes_have_no_coding_import() -> None:

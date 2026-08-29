@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from loushang.harness.resources._catalog_engine import (
 )
 from loushang.harness.resources._catalog_projection import (
     ResourceCatalogProjectionError,
+    ResourceProjectionDescriptorBinding,
     build_resource_projection_binding,
     project_resource_catalog,
 )
@@ -254,6 +256,35 @@ def test_projection_never_retains_or_reprojects_eager_skill_body(
     assert [skill.name for skill in bundle.skills] == ["review"]
     assert bundle.skills[0].content is None
     assert "body" not in bundle.skills[0].metadata
+
+
+def test_projection_binding_rejects_forged_skill_body_fields(tmp_path: Path) -> None:
+    descriptor = SkillDescriptor(
+        name="review",
+        source_path=tmp_path / "skills" / "review" / "SKILL.md",
+        source_root=tmp_path,
+        content="Exact source-owned body.",
+        description="Review changes.",
+    )
+    source_ref = _source_ref("project-skill", "project_local")
+    candidate = _skill_candidate(descriptor, source_ref=source_ref)
+    binding = build_resource_projection_binding(
+        candidate=candidate,
+        descriptor=descriptor,
+        body=b"Exact source-owned body.",
+    )
+
+    for forged in (
+        replace(binding.descriptor, content="FORGED"),
+        replace(binding.descriptor, metadata={"body": "FORGED"}),
+    ):
+        with pytest.raises(ValueError, match="must be body-free"):
+            ResourceProjectionDescriptorBinding(
+                candidate_fingerprint=binding.candidate_fingerprint,
+                resource_kind=binding.resource_kind,
+                descriptor=forged,
+                descriptor_fingerprint=binding.descriptor_fingerprint,
+            )
 
 
 def test_projection_is_catalog_selected_bound_and_defensively_copied(

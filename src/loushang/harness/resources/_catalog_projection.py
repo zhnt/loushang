@@ -66,10 +66,16 @@ class ResourceProjectionDescriptorBinding:
         if self.resource_kind not in _PROJECTED_RESOURCE_KINDS:
             raise ValueError("Projection descriptor kind is unsupported")
         _require_descriptor_type(self.resource_kind, self.descriptor)
+        if isinstance(self.descriptor, SkillDescriptor) and (
+            self.descriptor.content is not None or "body" in self.descriptor.metadata
+        ):
+            raise ValueError("Projection Skill descriptor must be body-free")
+        frozen = _freeze_descriptor(self.descriptor)
+        object.__setattr__(self, "descriptor", frozen)
         expected = _descriptor_fingerprint(
             candidate_fingerprint=self.candidate_fingerprint,
             resource_kind=self.resource_kind,
-            descriptor=self.descriptor,
+            descriptor=frozen,
         )
         if self.descriptor_fingerprint != expected:
             raise ValueError("Projection descriptor fingerprint is invalid")

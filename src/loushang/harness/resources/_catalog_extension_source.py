@@ -130,6 +130,10 @@ class ExtensionResourceRouteContribution:
             raise ValueError(
                 "Extension Resource Catalog Skill descriptors must be body-free"
             )
+        if any("body" in skill.metadata for skill in self.skills):
+            raise ValueError(
+                "Extension Resource Catalog Skill metadata must be body-free"
+            )
 
 
 ExtensionResourceDescriptorBinding: TypeAlias = ResourceProjectionDescriptorBinding

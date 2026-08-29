@@ -127,6 +127,16 @@ def _route(
     )
 
 
+def test_extension_route_rejects_duplicate_skill_body_metadata(tmp_path: Path) -> None:
+    skill = replace(
+        _skill(tmp_path / "SKILL.md", content="Exact body"),
+        metadata={"body": "HIDDEN DUPLICATE"},
+    )
+
+    with pytest.raises(ValueError, match="metadata must be body-free"):
+        _route(skills=(skill,))
+
+
 def test_extension_generation_freezes_exact_provenance_and_body_bytes(
     tmp_path: Path,
 ) -> None:
