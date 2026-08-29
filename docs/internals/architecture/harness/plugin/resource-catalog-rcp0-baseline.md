@@ -37,6 +37,16 @@
   replacement parity green in the same change. Moving a call without removing
   the old authority does not satisfy a disposition.
 
+RCP5.4 disposition note: the frozen chain below remains executable only for
+caller-selected `legacy_explicit`. Catalog-backed Sessions now use one async
+next-generation transaction: settings/package-root preparation, one fresh
+loader receipt, exact Product input minting, joint Extension/Resource prepare,
+and atomic owner-generation publication. Watcher, package, ordinary refresh,
+and Extension reload converge on that route. Disabled names compile into the
+new Catalog activation policy and are not applied by the legacy commit overlay.
+The remaining `ResourceLoader.reload_resources` call at the Coding ingress is
+receipt production, not effective selection or publication authority.
+
 The parent plan remains normative for target records, ownership, lifecycle,
 security, and sequencing. This companion answers four narrower questions:
 
@@ -116,6 +126,7 @@ longer appear in this effective-discovery caller table.
 
 | Qualified caller | Disposition |
 | --- | --- |
+| `coding.bootstrap._create_agent_session._create_session.prepare_resource_catalog_refresh` | RCP5.4 produces one source-complete receipt and transfers it to the exact next Catalog bootstrap; it does not commit the loader snapshot. |
 | `resources.skills.SkillLoader.reload_skills` | RCP5 remove private reload. |
 | `session.resource_refresh.SessionResourceRefreshRuntime._load_resource_bundle` | RCP4 stage/classify/publish a next Catalog generation. |
 
@@ -139,7 +150,12 @@ The current calls are:
 - `ResourceCommandSourceRuntime.execute`, `list_descriptors`, and
   `preflight_user_input`;
 - `SessionResourceRefreshRuntime.__post_init__`, `_commit_resource_bundle`,
-  `get_prompt_templates`, and `reload_extension_generation`; and
+  `get_prompt_templates`, `_refresh_with_outcome`, `_refresh_catalog_locked`,
+  `refresh_transaction_with_outcome`, and `reload_extension_generation`;
+  the refresh paths read only the previous compatibility projection identity
+  while holding the Catalog lock to return an invocation-local publication
+  receipt and distinguish committed publication from rollback on cancellation
+  or cleanup failure; and
 - `create_tool_prompt_rebuilder.rebuild`.
 
 RCP4 changes these to a read-only captured-generation projection or focused
@@ -211,6 +227,14 @@ and load leases drain. The initial bootstrap call to
 `configure_resource_loader_roots` remains a distinct legacy pre-publication
 path until RCP4 replaces it with source-input preparation and joint
 publication.
+
+For a Catalog-backed Session, RCP5.4 replaces the final legacy reload/commit
+half of this chain. Root configuration still prepares Product-owned loader
+inputs, but the resulting reload is consumed exactly once as a source-complete
+receipt. The new Catalog generation, not the loader snapshot or
+`SkillActivationRuntime`, selects and publishes the effective view. The old
+chain remains only behind `legacy_explicit` until RCP5.5 deletes its peer
+authority.
 
 Direct Extension Resource merges are currently limited to
 `ExtensionResourceRuntime._finish` and `_merge_contribution`. These are

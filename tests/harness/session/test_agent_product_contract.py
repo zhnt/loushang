@@ -1111,6 +1111,64 @@ def test_failed_graph_bind_rolls_back_initial_catalog_and_extension_candidates(
     asyncio.run(scenario())
 
 
+def test_failed_extension_catalog_freeze_keeps_preflight_rollback_custody(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        product_id = "catalog-freeze-failure"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        capability_runtime = _capability_runtime(product_id)
+        bootstrap, base_bundle = _initial_catalog_bootstrap(
+            tmp_path,
+            product_id=product_id,
+        )
+        extension_runner = ExtensionRunner([])
+        original_prepare = extension_runner.prepare_generation
+        candidates: list[object] = []
+
+        def prepare_failing_generation(extensions):  # type: ignore[no-untyped-def]
+            candidate = original_prepare(extensions)
+            candidates.append(candidate)
+
+            async def fail_catalog_freeze(
+                _bundle: ResourceBundle,
+                *,
+                product_id: str,
+            ) -> object:
+                del product_id
+                raise RuntimeError("Extension Catalog freeze failed")
+
+            candidate.prepare_resource_catalog_generation = fail_catalog_freeze  # type: ignore[method-assign]
+            return candidate
+
+        extension_runner.prepare_generation = prepare_failing_generation  # type: ignore[method-assign]
+        session = _ContractProductSession(
+            product_id=product_id,
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+            resource_bundle=base_bundle,
+            extension_runner=extension_runner,
+            initial_resource_catalog_bootstrap=bootstrap,
+        )
+
+        with pytest.raises(RuntimeError, match="Extension Catalog freeze failed"):
+            await session.prepare_model_call_runtime()
+
+        assert len(candidates) == 1
+        assert candidates[0].lifecycle_state == "rolled_back"  # type: ignore[attr-defined]
+        assert bootstrap.state == "disposed"
+        assert capability_runtime.ownership_state == "disposed"
+
+        await session.dispose()
+        assert disposed_transcripts == [f"{product_id}-session"]
+
+    asyncio.run(scenario())
+
+
 def test_failed_initial_catalog_publication_restores_session_view_and_rolls_back(
     tmp_path: Path,
 ) -> None:

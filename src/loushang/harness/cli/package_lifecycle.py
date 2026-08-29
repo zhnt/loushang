@@ -127,7 +127,13 @@ async def _invoke_source_operation(
     outputs: Sequence[dict[str, object]],
 ) -> object:
     try:
-        method = _require_method(session, command)
+        method = _require_method(
+            session,
+            "uninstall_package_async"
+            if command == "uninstall_package"
+            else command,
+            fallback=command if command == "uninstall_package" else None,
+        )
         result = method(source, scope=scope) if scope is not None else method(source)
         if inspect.isawaitable(result):
             return await result
@@ -158,10 +164,18 @@ async def _invoke_operation(
     return result
 
 
-def _require_method(session: object, command: str) -> Callable[..., object]:
+def _require_method(
+    session: object,
+    command: str,
+    *,
+    fallback: str | None = None,
+) -> Callable[..., object]:
     method = getattr(session, command, None)
+    if not callable(method) and fallback is not None:
+        method = getattr(session, fallback, None)
     if not callable(method):
-        raise PackageLifecycleError(f"{command} is not available.")
+        exposed_name = fallback or command
+        raise PackageLifecycleError(f"{exposed_name} is not available.")
     return method
 
 

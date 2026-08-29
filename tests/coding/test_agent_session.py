@@ -5187,9 +5187,7 @@ def test_agent_session_records_reload_failures_as_diagnostics(tmp_path) -> None:
     assert records[0].type == "error"
 
 
-def test_agent_session_records_candidate_bind_failures_as_diagnostics(tmp_path) -> (
-    None
-):
+def test_agent_session_records_candidate_bind_failures_as_diagnostics(tmp_path) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent

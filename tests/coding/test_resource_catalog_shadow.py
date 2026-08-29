@@ -6,12 +6,14 @@ import shutil
 import subprocess
 import time
 from dataclasses import replace
+from io import StringIO
 from pathlib import Path
 
 import pytest
 
 from loushang.ai.model import Capabilities, Model
 from loushang.coding._resource_catalog_shadow import (
+    CodingResourceCatalogAdmissionError,
     CodingResourceCatalogShadowAdmissionError,
     build_coding_initial_resource_catalog_shadow_adapter,
 )
@@ -37,13 +39,20 @@ from loushang.harness.capabilities.model_input_contracts import (
 from loushang.harness.capabilities.prompt_preflight import (
     SkillBodyLoadRequiresAsyncError,
 )
+from loushang.harness.capabilities.resources_consumers import (
+    ResourceSkillStatusCatalogCapabilityConsumer,
+)
 from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_CAPABILITY_DEFINITION,
 )
+from loushang.harness.cli import PackageLifecycleRequest, run_package_lifecycle
+from loushang.harness.host.rpc.commands import RpcPackageCommands
+from loushang.harness.host.rpc.output import RpcOutput
 from loushang.harness.plugin_authoring.host import PluginDeclarationHost
 from loushang.harness.resources._catalog_input_receipt import (
     ResourceCatalogInputReceipt,
 )
+from loushang.harness.resources._catalog_records import ResourceIdentity
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.packages.mounts import PackageResourceMount
@@ -96,9 +105,7 @@ def _copy_resource_only_plugin(target: Path) -> None:
     declarations_path = target / "declarations" / "plugin.json"
     declarations = json.loads(declarations_path.read_text(encoding="utf-8"))
     declarations["declarations"] = [
-        item
-        for item in declarations["declarations"]
-        if item["kind"] == "resource_item"
+        item for item in declarations["declarations"] if item["kind"] == "resource_item"
     ]
     declarations_path.write_text(
         json.dumps(declarations, sort_keys=True, separators=(",", ":")),
@@ -124,6 +131,37 @@ def _model() -> Model:
             context_window=128_000,
             max_tokens=4096,
         ),
+    )
+
+
+def _write_dynamic_prompt_extension(path: Path, *, text: str) -> None:
+    path.write_text(
+        "\n".join(
+            (
+                "from pathlib import Path",
+                "",
+                "from loushang.harness.extensions.agent import ExtensionResourceContribution",
+                "from loushang.harness.resources.types import PromptFragmentDescriptor",
+                "",
+                "",
+                "def register(api):",
+                "    def discover(bundle, ctx):",
+                "        del bundle, ctx",
+                "        return ExtensionResourceContribution(",
+                "            prompt_descriptors=[",
+                "                PromptFragmentDescriptor(",
+                "                    name='dynamic-review',",
+                "                    source_path=Path(__file__).resolve(),",
+                f"                    text={text!r},",
+                "                )",
+                "            ]",
+                "        )",
+                "",
+                "    api.on('resources_discover', discover)",
+                "",
+            )
+        ),
+        encoding="utf-8",
     )
 
 
@@ -704,6 +742,10 @@ def test_coding_initial_catalog_applies_disabled_skill_in_owner_status(
             model=_model(),
         )
         try:
+            assert (
+                session._composition.resource_refresh_runtime._catalog_refresh_lock
+                is services.resource_catalog_refresh_lock
+            )
             await session.prepare_model_call_runtime()
 
             statuses = session.list_skill_statuses()
@@ -723,15 +765,587 @@ def test_coding_initial_catalog_applies_disabled_skill_in_owner_status(
             disabled_preflight = await session._preflight_user_input_async(
                 "/skill:review must remain unresolved"
             )
-            assert disabled_preflight.text == (
-                "/skill:review must remain unresolved"
-            )
+            assert disabled_preflight.text == ("/skill:review must remain unresolved")
             assert [item.code for item in disabled_preflight.diagnostics] == [
                 "unresolved_skill_reference"
             ]
             assert disabled_preflight.loaded_skills == ()
         finally:
             await session.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_coding_catalog_refresh_publishes_one_exact_next_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        project_root = tmp_path / "project-refresh"
+        skill_file = project_root / "skills" / "review" / "SKILL.md"
+        skill_file.parent.mkdir(parents=True)
+        skill_file.write_text(
+            "---\nname: review\ndescription: Review v1\n---\nReview v1 body.\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=tmp_path / "project-settings.json",
+            )
+        )
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project_root),
+            persist=False,
+        )
+        session = _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
+        try:
+            await session.prepare_model_call_runtime()
+            old_consumer = session._skill_catalog_consumer
+            mounted = session._mounted_resource_candidate
+            assert old_consumer is not None
+            assert mounted is not None
+            assert old_consumer.catalog_generation == 1
+            graph_generation = session._capability_graph_runtime.generation
+
+            skill_file.write_text(
+                "---\nname: review\ndescription: Review v2\n---\nReview v2 body.\n",
+                encoding="utf-8",
+            )
+            await session._composition.resource_refresh_runtime.refresh_async(
+                reason="test"
+            )
+
+            new_consumer = session._skill_catalog_consumer
+            assert new_consumer is not None
+            assert new_consumer is not old_consumer
+            assert new_consumer.catalog_generation == 2
+            assert [
+                item.description for item in old_consumer.list_effective_skills()
+            ] == ["Review v1"]
+            assert [
+                item.description for item in new_consumer.list_effective_skills()
+            ] == ["Review v2"]
+            assert session._capability_graph_runtime.generation == graph_generation
+            assert session._composition.resource_refresh_runtime.resource_revision == 2
+            assert mounted.ownership_state == "graph_owned"
+            assert await mounted.retire_replaced_owner_generations() == ()
+            loaded = await session._preflight_user_input_async(
+                "/skill:review refreshed"
+            )
+            assert "Review v2 body." in loaded.text
+            assert "Review v1 body." not in loaded.text
+            with pytest.raises(RuntimeError, match="not graph-owned"):
+                old_consumer.load_handle(old_consumer.list_effective_skills()[0])
+        finally:
+            await session.dispose()
+            services.resource_loader.close()
+
+    asyncio.run(scenario())
+
+
+def test_coding_catalog_extension_refresh_pins_real_load_and_serves_g2_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        project_root = tmp_path / "project-extension-refresh"
+        extension_file = project_root / "extensions" / "dynamic_review.py"
+        extension_file.parent.mkdir(parents=True)
+        _write_dynamic_prompt_extension(extension_file, text="extension body v1")
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=tmp_path / "project-settings.json",
+            )
+        )
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions-extension-refresh",
+            cwd=str(project_root),
+            persist=False,
+        )
+        session = _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
+        identity = ResourceIdentity(
+            resource_kind="prompt",
+            schema_id="loushang.resource.prompt",
+            schema_version=1,
+            public_id="dynamic-review",
+        )
+        release_load: asyncio.Event | None = None
+        inflight: asyncio.Task[object] | None = None
+        refresh: asyncio.Task[None] | None = None
+        try:
+            await session.prepare_model_call_runtime()
+            facets = session._resource_skill_catalog_facets
+            assert facets is not None
+            generation_one = ResourceSkillStatusCatalogCapabilityConsumer(facets)
+            assert generation_one.snapshot.catalog_generation == 1
+            handle_one = generation_one.load_handle(identity)
+
+            mounted = session._mounted_resource_candidate
+            assert mounted is not None
+            old_owner = mounted._require_prepared_owner_generation()
+            old_source_lease = old_owner._shadow._extension_source_lease  # type: ignore[attr-defined]
+            assert old_source_lease is not None
+            old_source_generation = old_source_lease._owner  # type: ignore[attr-defined]
+            original_load = old_source_lease.load
+            load_started = asyncio.Event()
+            release_load = asyncio.Event()
+
+            async def blocked_load(handle):  # type: ignore[no-untyped-def]
+                load_started.set()
+                await release_load.wait()
+                return original_load(handle)
+
+            old_source_lease.load = blocked_load  # type: ignore[method-assign]
+            inflight = asyncio.create_task(generation_one.load(handle_one))
+            await load_started.wait()
+
+            _write_dynamic_prompt_extension(
+                extension_file,
+                text="extension body from generation two",
+            )
+            refresh = asyncio.create_task(
+                session._composition.resource_refresh_runtime.refresh_async(
+                    reason="extension-g2"
+                )
+            )
+
+            async def wait_for_publication() -> None:
+                while (
+                    getattr(
+                        session._resource_catalog_snapshot,
+                        "catalog_generation",
+                        0,
+                    )
+                    < 2
+                ):
+                    await asyncio.sleep(0)
+
+            await asyncio.wait_for(wait_for_publication(), timeout=5)
+            assert refresh.done() is False
+            assert old_source_generation.is_disposed is False
+
+            generation_two = ResourceSkillStatusCatalogCapabilityConsumer(facets)
+            assert generation_two.snapshot.catalog_generation == 2
+            loaded_two = await generation_two.load(generation_two.load_handle(identity))
+            assert loaded_two.body == b"extension body from generation two"
+
+            release_load.set()
+            assert (await inflight).body == b"extension body v1"
+            await refresh
+            assert old_source_generation.is_disposed is True
+        finally:
+            if release_load is not None:
+                release_load.set()
+            tasks = tuple(
+                task
+                for task in (inflight, refresh)
+                if task is not None and not task.done()
+            )
+            for task in tasks:
+                task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            await session.dispose()
+            services.resource_loader.close()
+
+    asyncio.run(scenario())
+
+
+def test_coding_catalog_refresh_cancellation_rolls_back_prepared_successor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        project_root = tmp_path / "project-refresh-cancel"
+        skill_file = project_root / "skills" / "review" / "SKILL.md"
+        skill_file.parent.mkdir(parents=True)
+        skill_file.write_text(
+            "---\nname: review\ndescription: Review v1\n---\nReview v1.\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=tmp_path / "project-settings.json",
+            )
+        )
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions-cancel",
+            cwd=str(project_root),
+            persist=False,
+        )
+        session = _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
+        try:
+            await session.prepare_model_call_runtime()
+            initial_catalog = session._resource_catalog_snapshot
+            mounted = session._mounted_resource_candidate
+            factory = session._resource_catalog_refresh_bootstrap_factory
+            assert mounted is not None
+            assert factory is not None
+            prepared = asyncio.Event()
+            successors: list[object] = []
+            bootstraps: list[object] = []
+            original_stage = mounted.stage_refresh_successor
+
+            def capture_successor():  # type: ignore[no-untyped-def]
+                successor = original_stage()
+                successors.append(successor)
+                return successor
+
+            def blocking_factory(generation: int):  # type: ignore[no-untyped-def]
+                bootstrap = factory(generation)
+                bootstraps.append(bootstrap)
+                original_prepare = bootstrap.prepare
+
+                async def prepare_then_block(**kwargs):  # type: ignore[no-untyped-def]
+                    await original_prepare(**kwargs)
+                    prepared.set()
+                    await asyncio.Event().wait()
+
+                bootstrap.prepare = prepare_then_block  # type: ignore[method-assign]
+                return bootstrap
+
+            mounted.stage_refresh_successor = capture_successor  # type: ignore[method-assign]
+            session._resource_catalog_refresh_bootstrap_factory = blocking_factory
+            task = asyncio.create_task(session.refresh_resources())
+            await prepared.wait()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+            assert len(successors) == 1
+            assert successors[0].ownership_state == "disposed"  # type: ignore[attr-defined]
+            assert len(bootstraps) == 1
+            assert bootstraps[0].state == "disposed"  # type: ignore[attr-defined]
+            assert session._resource_catalog_snapshot is initial_catalog
+            assert session._skill_catalog_consumer is not None
+            assert session._skill_catalog_consumer.catalog_generation == 1
+            assert session._composition.resource_refresh_runtime.resource_revision == 1
+        finally:
+            await session.dispose()
+            services.resource_loader.close()
+
+    asyncio.run(scenario())
+
+
+def test_coding_catalog_package_mutations_publish_before_return(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        project_root = tmp_path / "project-package-refresh"
+        project_root.mkdir()
+        package_root = tmp_path / "review-package"
+        _copy_resource_only_plugin(package_root)
+        project_settings_path = tmp_path / "project-settings.json"
+        project_settings_path.write_text(
+            json.dumps({"plugin_sources": [str(package_root)]}),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        settings = SettingsManager(
+            global_settings_path=tmp_path / "global-settings.json",
+            project_settings_path=project_settings_path,
+        )
+        services = create_services(settings_manager=settings)
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project_root),
+            persist=False,
+        )
+        session = _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
+        try:
+            await session.prepare_model_call_runtime()
+            initial = session._skill_catalog_consumer
+            assert initial is not None
+            assert initial.catalog_generation == 1
+            assert [item.name for item in initial.list_effective_skills()] == [
+                "standard"
+            ]
+
+            (package_root / "skills" / "standard" / "SKILL.md").write_text(
+                "---\nname: standard\n"
+                "description: Updated admitted package Skill.\n---\n"
+                "Use the updated admitted package Skill.\n",
+                encoding="utf-8",
+            )
+            updated = await session.update_package(str(package_root))
+            after_update = session._skill_catalog_consumer
+            assert updated["lifecycle"] == "installed"
+            assert after_update is not None
+            assert after_update.catalog_generation == 2
+            assert [item.name for item in after_update.list_effective_skills()] == [
+                "standard"
+            ]
+            loaded = await session._preflight_user_input_async(
+                "/skill:standard package generation"
+            )
+            assert "Use the updated admitted package Skill." in loaded.text
+
+            # A package source that is not backed by a verified Plugin
+            # admission must fail at the awaited boundary and roll back its
+            # settings registration rather than returning false success.
+            unsupported_root = tmp_path / "unsupported-package"
+            unsupported_root.mkdir()
+            with pytest.raises(
+                CodingResourceCatalogAdmissionError,
+                match="unverified_package_sources",
+            ):
+                await session.install_package(
+                    str(unsupported_root),
+                    scope="session",
+                )
+            assert settings.get_package_sources() == []
+            assert session._skill_catalog_consumer is after_update
+
+            # Catalog uninstall awaits its own next publication.
+            settings.add_package_source(str(unsupported_root), scope="session")
+            lifecycle = await run_package_lifecycle(
+                session,
+                PackageLifecycleRequest(
+                    uninstall=(str(unsupported_root),),
+                    scope="session",
+                ),
+            )
+            uninstalled = lifecycle.outputs[0]["record"]
+            after_uninstall = session._skill_catalog_consumer
+            assert isinstance(uninstalled, dict)
+            assert uninstalled["lifecycle"] == "remote_registered"
+            assert after_uninstall is not None
+            assert after_uninstall.catalog_generation == 3
+            assert [item.name for item in after_uninstall.list_effective_skills()] == [
+                "standard"
+            ]
+            assert settings.get_package_sources() == []
+
+            # The RPC command keeps its stable wire name while resolving the
+            # same async Catalog mutation entrypoint.
+            settings.add_package_source(str(unsupported_root), scope="project")
+            stdout = StringIO()
+            rpc = RpcPackageCommands(
+                runtime=session,
+                get_session=lambda: session,
+                output=RpcOutput(stdout),
+            )
+            handler = dict(rpc.bindings())["uninstall_package"]
+            await handler("catalog-uninstall", {"source": str(unsupported_root)})
+            response = json.loads(stdout.getvalue())
+            assert response["success"] is True
+            assert response["data"]["record"]["lifecycle"] == "remote_registered"
+            assert session._skill_catalog_consumer is not None
+            assert session._skill_catalog_consumer.catalog_generation == 4
+            assert settings.get_package_sources() == []
+        finally:
+            await session.dispose()
+            services.resource_loader.close()
+
+    asyncio.run(scenario())
+
+
+def test_coding_catalog_refresh_reloads_disabled_skill_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        project_root = tmp_path / "project-disabled-refresh"
+        skill_file = project_root / "skills" / "review" / "SKILL.md"
+        skill_file.parent.mkdir(parents=True)
+        skill_file.write_text(
+            "---\nname: review\ndescription: Review\n---\nReview body.\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        settings = SettingsManager(
+            global_settings_path=tmp_path / "global-settings.json",
+            project_settings_path=tmp_path / "project-settings.json",
+        )
+        services = create_services(settings_manager=settings)
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions-disabled",
+            cwd=str(project_root),
+            persist=False,
+        )
+        session = _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
+        try:
+            await session.prepare_model_call_runtime()
+            initial = session._skill_catalog_consumer
+            assert initial is not None
+            assert [item.name for item in initial.list_effective_skills()] == ["review"]
+
+            settings.update_settings(
+                scope="project",
+                disabled_skills=("review",),
+            )
+            await session.refresh_resources()
+
+            consumer = session._skill_catalog_consumer
+            assert consumer is not None
+            assert consumer.catalog_generation == 2
+            assert consumer.list_effective_skills() == ()
+            status = session.list_skill_statuses()[0]
+            assert (status.status, status.status_reason) == (
+                "inactive_activation",
+                "activation_disabled",
+            )
+        finally:
+            await session.dispose()
+            services.resource_loader.close()
+
+    asyncio.run(scenario())
+
+
+def test_coding_catalog_refresh_restores_owner_and_product_view_on_publish_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        project_root = tmp_path / "project-refresh-rollback"
+        skill_file = project_root / "skills" / "review" / "SKILL.md"
+        skill_file.parent.mkdir(parents=True)
+        skill_file.write_text(
+            "---\nname: review\ndescription: Review v1\n---\nReview v1 body.\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=tmp_path / "project-settings.json",
+            )
+        )
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project_root),
+            persist=False,
+        )
+        session = _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
+        try:
+            await session.prepare_model_call_runtime()
+            previous_catalog = session._resource_catalog_snapshot
+            previous_projection = session._resource_catalog_projection
+            previous_bundle = session.resource_bundle
+            previous_consumer = session._skill_catalog_consumer
+            mounted = session._mounted_resource_candidate
+            assert mounted is not None
+
+            skill_file.write_text(
+                "---\nname: review\ndescription: Review v2\n---\nReview v2 body.\n",
+                encoding="utf-8",
+            )
+            rebuild = session._rebuild_prompt_and_tools_view
+
+            def reject_publication() -> None:
+                raise RuntimeError("reject refreshed Product view")
+
+            session._rebuild_prompt_and_tools_view = reject_publication  # type: ignore[method-assign]
+            with pytest.raises(RuntimeError, match="reject refreshed Product view"):
+                await session._composition.resource_refresh_runtime.refresh_async(
+                    reason="test-failure"
+                )
+            session._rebuild_prompt_and_tools_view = rebuild  # type: ignore[method-assign]
+
+            assert session._resource_catalog_snapshot is previous_catalog
+            assert session._resource_catalog_projection is previous_projection
+            assert session.resource_bundle is previous_bundle
+            assert session._skill_catalog_consumer is previous_consumer
+            assert mounted.resource_catalog_snapshot is previous_catalog
+            assert mounted.ownership_state == "graph_owned"
+            assert await mounted.retire_replaced_owner_generations() == ()
+            assert session._composition.resource_refresh_runtime.resource_revision == 1
+        finally:
+            await session.dispose()
+            services.resource_loader.close()
+
+    asyncio.run(scenario())
+
+
+def test_coding_catalog_refresh_preflight_rejection_releases_candidate_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        project_root = tmp_path / "project-refresh-preflight"
+        skill_file = project_root / "skills" / "review" / "SKILL.md"
+        skill_file.parent.mkdir(parents=True)
+        skill_file.write_text(
+            "---\nname: review\ndescription: Review v1\n---\nReview v1 body.\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=tmp_path / "project-settings.json",
+            )
+        )
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project_root),
+            persist=False,
+        )
+        session = _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
+        try:
+            await session.prepare_model_call_runtime()
+            previous_catalog = session._resource_catalog_snapshot
+            preflight = session._extension_declaration_preflight
+
+            def reject_declarations(_snapshot: object) -> None:
+                raise RuntimeError("Extension graph restart required")
+
+            session._extension_declaration_preflight = reject_declarations  # type: ignore[assignment]
+            with pytest.raises(RuntimeError, match="restart required"):
+                await session._composition.resource_refresh_runtime.refresh_async(
+                    reason="preflight-rejection"
+                )
+            assert session._resource_catalog_snapshot is previous_catalog
+
+            session._extension_declaration_preflight = preflight
+            skill_file.write_text(
+                "---\nname: review\ndescription: Review v2\n---\nReview v2 body.\n",
+                encoding="utf-8",
+            )
+            await session._composition.resource_refresh_runtime.refresh_async(
+                reason="preflight-retry"
+            )
+            assert session._skill_catalog_consumer is not None
+            assert session._skill_catalog_consumer.catalog_generation == 2
+        finally:
+            await session.dispose()
+            services.resource_loader.close()
 
     asyncio.run(scenario())
 
@@ -773,7 +1387,9 @@ def test_coding_initial_catalog_compiles_configured_plugin_resource_admissions(
             assert [
                 (item.name, item.status) for item in session.list_skill_statuses()
             ] == [("standard", "effective")]
-            assert "Automatically admitted package Skill." in session.agent.system_prompt
+            assert (
+                "Automatically admitted package Skill." in session.agent.system_prompt
+            )
             assert "skill:standard" in {
                 command.name for command in session.list_commands()
             }
@@ -904,6 +1520,7 @@ def test_coding_resource_authority_modes_are_explicit(
         resource_authority_mode="legacy_explicit",
     )
     assert session._initial_resource_catalog_bootstrap is None
+    assert session._composition.resource_refresh_runtime.refresh_catalog is None
     legacy_preflight = session._preflight_user_input("/skill:legacy")
     assert "Legacy explicit body." in legacy_preflight.text
     assert legacy_preflight.loaded_skills == ()
@@ -1050,9 +1667,7 @@ def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(
                 else skill
                 for skill in session.resource_bundle.skills
             ]
-            preflight = await session._preflight_user_input_async(
-                "/skill:standard"
-            )
+            preflight = await session._preflight_user_input_async("/skill:standard")
             assert "Review from the compiled package." in preflight.text
             assert "Forged compatibility body." not in preflight.text
             loaded = preflight.loaded_skills[0]

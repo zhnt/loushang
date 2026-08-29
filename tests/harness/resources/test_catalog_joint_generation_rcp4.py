@@ -70,21 +70,26 @@ def _bindings(tmp_path: Path) -> ExtensionRuntimeBindings:
     )
 
 
-def _extension(tmp_path: Path) -> LoadedExtension:
+def _extension(
+    tmp_path: Path,
+    *,
+    text: str = "joint extension prompt",
+    source_name: str = "extension.py",
+) -> LoadedExtension:
     def discover(_bundle, _context):  # type: ignore[no-untyped-def]
         return ExtensionResourceContribution(
             prompt_descriptors=[
                 PromptFragmentDescriptor(
                     name="review",
                     source_path=tmp_path / "review.md",
-                    text="joint extension prompt",
+                    text=text,
                 )
             ]
         )
 
     return LoadedExtension(
         name="example.review",
-        source_path=tmp_path / "extension.py",
+        source_path=tmp_path / source_name,
         source_root=tmp_path,
         source_root_order=4,
         hooks={"resources_discover": [discover]},
@@ -266,7 +271,9 @@ async def _joint_projection_uses_catalog_selection(tmp_path: Path) -> None:
     ) = await _prepare_root_joint(tmp_path, disable_extension_prompt=True)
     hook_pass = extension_candidate.resource_catalog_preparation
     assert hook_pass is not None
-    producer = hook_pass.source_generation.source_snapshot.source_generation_ref.producer
+    producer = (
+        hook_pass.source_generation.source_snapshot.source_generation_ref.producer
+    )
     assert isinstance(producer, ExtensionOwnerProducer)
     assert (
         producer.extension_set_fingerprint
@@ -477,6 +484,139 @@ async def _joint_generation_publishes_once(tmp_path: Path) -> None:
     )
     assert await binder.dispose(graph) == ()
     assert joint.extension_source_generation.is_disposed is True
+
+
+def test_joint_refresh_waits_for_real_consumer_load_before_extension_retirement(
+    tmp_path: Path,
+) -> None:
+    asyncio.run(_joint_refresh_waits_for_consumer_load(tmp_path))
+
+
+async def _joint_refresh_waits_for_consumer_load(tmp_path: Path) -> None:
+    (
+        extension_runtime,
+        _extension_candidate,
+        resource_candidate,
+        first_joint,
+        graph,
+        binder,
+    ) = await _prepare_joint(tmp_path)
+    visible: dict[str, object] = {}
+    first_retirement = first_joint.publish(
+        JointResourcePublication(
+            capture=lambda: None,
+            commit=lambda catalog, projection: visible.update(
+                catalog=catalog,
+                projection=projection,
+            ),
+            restore=lambda _previous: visible.clear(),
+        )
+    )
+    await first_retirement.retire()
+
+    facets = graph.capture(RESOURCES_CATALOG_LOAD_REQUIREMENT)
+    generation_one = ResourceCatalogCapabilityConsumer(facets)
+    identity = ResourceIdentity(
+        resource_kind="prompt",
+        schema_id="loushang.resource.prompt",
+        schema_version=1,
+        public_id="review",
+    )
+    handle_one = generation_one.load_handle(identity)
+    old_owner = resource_candidate._require_prepared_owner_generation()
+    old_source_lease = old_owner._shadow._extension_source_lease  # type: ignore[attr-defined]
+    assert old_source_lease is not None
+    original_load = old_source_lease.load
+    load_started = asyncio.Event()
+    release_load = asyncio.Event()
+
+    async def blocked_load(handle):  # type: ignore[no-untyped-def]
+        load_started.set()
+        await release_load.wait()
+        return original_load(handle)
+
+    old_source_lease.load = blocked_load  # type: ignore[method-assign]
+    inflight_load = asyncio.create_task(generation_one.load(handle_one))
+    await load_started.wait()
+
+    successor = resource_candidate.stage_refresh_successor()
+    extension_candidate = extension_runtime.prepare_generation(
+        [
+            _extension(
+                tmp_path,
+                text="joint extension prompt v2",
+                source_name="extension-v2.py",
+            )
+        ]
+    )
+
+    async def prepare_resource(source_lease):  # type: ignore[no-untyped-def]
+        await prepare_first_party_resource_owner_generation(
+            staged_candidate=successor,
+            product_id="coding",
+            scope_id="session:joint",
+            runtime_id="resource-owner:joint:g2",
+            product_policy_revision="resource-policy-v1",
+            catalog_generation=2,
+            root_handles=(),
+            issued_at=1,
+            expires_at=10,
+            now=2,
+            extension_source_lease=source_lease,
+            projection_cwd=tmp_path,
+        )
+
+    second_joint = await prepare_extension_resource_joint_generation(
+        extension_candidate=extension_candidate,
+        staged_resource_candidate=successor,
+        base_resource_bundle=ResourceBundle(cwd=tmp_path),
+        bindings=_bindings(tmp_path),
+        product_id="coding",
+        prepare_resource_generation=prepare_resource,
+    )
+    successor._claim_refresh_successor()
+    replacement = None
+
+    def publish_second(catalog: object, projection: ResourceCatalogProjection) -> None:
+        nonlocal replacement
+        replacement = resource_candidate.begin_owner_generation_replacement(successor)
+        visible.update(catalog=catalog, projection=projection)
+
+    extension_retirement = second_joint.publish(
+        JointResourcePublication(
+            capture=lambda: dict(visible),
+            commit=publish_second,
+            restore=lambda previous: visible.update(previous),  # type: ignore[arg-type]
+        )
+    )
+    assert replacement is not None
+    replacement.commit()
+
+    generation_two = ResourceCatalogCapabilityConsumer(facets)
+    assert generation_two.snapshot.catalog_generation == 2
+    assert (await generation_two.load(generation_two.load_handle(identity))).body == (
+        b"joint extension prompt v2"
+    )
+
+    resource_retirement = asyncio.create_task(
+        resource_candidate.retire_replaced_owner_generations()
+    )
+    await asyncio.sleep(0)
+    assert resource_retirement.done() is False
+    assert first_joint.extension_source_generation.is_disposed is False
+
+    release_load.set()
+    assert (await inflight_load).body == b"joint extension prompt"
+    assert await resource_retirement == ()
+    assert first_joint.extension_source_generation.is_disposed is False
+
+    reports = await extension_retirement.retire()
+    assert not any(report.has_failures for report in reports)
+    assert first_joint.extension_source_generation.is_disposed is True
+
+    assert await binder.dispose(graph) == ()
+    await extension_runtime.dispose_runtime_generation()
+    assert second_joint.extension_source_generation.is_disposed is True
 
 
 def test_joint_publication_failure_restores_projection_and_rolls_back_both_owners(

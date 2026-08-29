@@ -420,6 +420,41 @@ def _create_agent_session(
                     admission_now=composition_evaluated_at,
                 )
             )
+
+        def prepare_resource_catalog_refresh(
+            catalog_generation: int,
+        ) -> Any:
+            if resource_authority_mode != "catalog_required":
+                raise RuntimeError(
+                    "Resource Catalog refresh requires catalog_required authority"
+                )
+            evaluated_at = int(time.time())
+            refreshed_bundle = services.resource_loader.reload_resources(
+                session_manager.get_cwd()
+            )
+            product_composition = (
+                assemble_product_composition(
+                    initial_resource_catalog_product_composition_assembly,
+                    evaluated_at=evaluated_at,
+                )
+                if initial_resource_catalog_product_composition_assembly is not None
+                else None
+            )
+            adapter = prepare_coding_initial_resource_catalog_adapter(
+                services.resource_loader,
+                product_scope_id=session_id,
+                disabled_skills=(
+                    services.settings_manager.get_settings().disabled_skills
+                ),
+                product_composition=product_composition,
+                admission_now=evaluated_at,
+            )
+            return adapter.prepare_session_bootstrap(
+                product_id=CODING_PRODUCT_ID,
+                session_id=session_id,
+                base_resource_bundle=refreshed_bundle,
+                catalog_generation=catalog_generation,
+            )
         base_exec_service = services.exec_service or ExecService()
         workspace_root_path = Path(session_manager.get_cwd()).resolve()
         workspace_execution_profile = (
@@ -583,6 +618,14 @@ def _create_agent_session(
                 delegated_execution_profile=delegated_execution_profile,
                 workspace_capability_binding=workspace_binding,
                 initial_resource_catalog_bootstrap=(initial_resource_catalog_bootstrap),
+                resource_catalog_refresh_bootstrap_factory=(
+                    prepare_resource_catalog_refresh
+                    if resource_authority_mode == "catalog_required"
+                    else None
+                ),
+                resource_catalog_refresh_lock=(
+                    services.resource_catalog_refresh_lock
+                ),
             )
 
         try:

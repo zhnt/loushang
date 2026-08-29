@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from threading import RLock
@@ -18,6 +18,7 @@ T = TypeVar("T")
 ConfigOperation = Literal["reload", "update", "replace"]
 ConfigChangeListener = Callable[["ConfigChange[T]"], None]
 ConfigValueListener = Callable[[T], None]
+ConfigPatchTransform = Callable[[dict[str, object]], Mapping[str, object]]
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,26 @@ class ConfigScope(Generic[T]):
     ) -> ConfigChange[T]:
         return self._runtime.replace(self.name, patch, persist=persist)
 
+    def transform(
+        self,
+        transform: ConfigPatchTransform,
+        *,
+        persist: bool | None = None,
+    ) -> ConfigChange[T]:
+        """Atomically transform this layer's current patch under one lock."""
+
+        return self._runtime.transform(self.name, transform, persist=persist)
+
+    def matches(
+        self,
+        expected: Mapping[str, object],
+        *,
+        keys: Iterable[str],
+    ) -> bool:
+        """Atomically compare selected keys with an expected layer patch."""
+
+        return self._runtime.scope_matches(self.name, expected, keys=keys)
+
 
 class ScopedConfigRuntime(Generic[T]):
     """Expose typed config scopes and revisioned changes over LayeredConfig."""
@@ -82,6 +103,7 @@ class ScopedConfigRuntime(Generic[T]):
         self._value_listeners: list[ConfigValueListener[T]] = []
         self._pending_changes: deque[ConfigChange[T]] = deque()
         self._publishing = False
+        self._patch_transforming = False
         self._lock = RLock()
 
     @property
@@ -112,6 +134,7 @@ class ScopedConfigRuntime(Generic[T]):
 
     def reload(self) -> ConfigChange[T]:
         with self._lock:
+            self._require_non_reentrant_write()
             previous = self._config.value
             self._config.reload()
             change, should_publish = self._enqueue_change(
@@ -131,6 +154,7 @@ class ScopedConfigRuntime(Generic[T]):
         persist: bool | None = None,
     ) -> ConfigChange[T]:
         with self._lock:
+            self._require_non_reentrant_write()
             self.scope(layer)
             previous = self._config.value
             self._config.update(layer, patch, persist=persist)
@@ -151,6 +175,7 @@ class ScopedConfigRuntime(Generic[T]):
         persist: bool | None = None,
     ) -> ConfigChange[T]:
         with self._lock:
+            self._require_non_reentrant_write()
             self.scope(layer)
             previous = self._config.value
             self._config.replace(layer, patch, persist=persist)
@@ -162,6 +187,59 @@ class ScopedConfigRuntime(Generic[T]):
         if should_publish:
             self._drain_publications()
         return change
+
+    def transform(
+        self,
+        layer: str,
+        transform: ConfigPatchTransform,
+        *,
+        persist: bool | None = None,
+    ) -> ConfigChange[T]:
+        """Read, transform, replace, and enqueue one layer atomically."""
+
+        if not callable(transform):
+            raise TypeError("Config patch transform must be callable")
+        with self._lock:
+            self._require_non_reentrant_write()
+            self.scope(layer)
+            previous = self._config.value
+            self._patch_transforming = True
+            try:
+                replacement = transform(self._config.patch(layer))
+            finally:
+                self._patch_transforming = False
+            if not isinstance(replacement, Mapping):
+                raise TypeError("Config patch transform must return a mapping")
+            self._config.replace(layer, replacement, persist=persist)
+            change, should_publish = self._enqueue_change(
+                operation="replace",
+                layer=layer,
+                previous=previous,
+            )
+        if should_publish:
+            self._drain_publications()
+        return change
+
+    def scope_matches(
+        self,
+        layer: str,
+        expected: Mapping[str, object],
+        *,
+        keys: Iterable[str],
+    ) -> bool:
+        """Compare selected layer keys under the config runtime lock."""
+
+        selected_keys = tuple(keys)
+        if any(not isinstance(key, str) for key in selected_keys):
+            raise TypeError("Config patch comparison keys must be strings")
+        with self._lock:
+            self.scope(layer)
+            current = self._config.patch(layer)
+            return all(
+                (key in current) == (key in expected)
+                and (key not in current or current[key] == expected[key])
+                for key in selected_keys
+            )
 
     def apply_overrides(
         self,
@@ -229,6 +307,12 @@ class ScopedConfigRuntime(Generic[T]):
         self._publishing = True
         return change, True
 
+    def _require_non_reentrant_write(self) -> None:
+        if self._patch_transforming:
+            raise RuntimeError(
+                "Config patch transforms cannot perform re-entrant writes"
+            )
+
     def _drain_publications(self) -> None:
         first_error: Exception | None = None
         try:
@@ -264,6 +348,7 @@ class ScopedConfigRuntime(Generic[T]):
 __all__ = [
     "ConfigChange",
     "ConfigOperation",
+    "ConfigPatchTransform",
     "ConfigScope",
     "ScopedConfigRuntime",
 ]

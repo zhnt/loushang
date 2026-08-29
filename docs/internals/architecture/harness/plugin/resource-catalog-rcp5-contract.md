@@ -10,8 +10,8 @@ status substrate. RCP5.2B now mounts exact-v4 for the default admitted Coding
 Resource Catalog and routes read-only Skill consumers to one captured
 generation. RCP5.3A/B/C move explicit body loading to the exact asynchronous
 Consumer, persist request-bound evidence, and remove eager body sinks from the
-Catalog projection and neutral consumers. Refresh and compatibility-loader
-deletion remain RCP5.4 and RCP5.5.
+Catalog projection and neutral consumers. RCP5.4 now moves live refresh to
+monotonic Catalog generations. Compatibility-loader deletion remains RCP5.5.
 
 Production cutover starts only after the RCP5.1 contract and implementation
 receive a fresh source-backed review. Stable public Resource authoring remains
@@ -393,6 +393,86 @@ ordinary `methods/` resources remain independent. Catalog synchronous Skill
 preflight, including direct queue APIs, continues to fail finitely with the
 asynchronous-load-required contract rather than manufacturing an empty body.
 
+### RCP5.4 — refresh authority
+
+RCP5.4 is implemented as an internal owner-generation replacement, not a
+Session Capability Graph replacement. The mounted `harness.resources`
+Capability remains stable because its mechanisms and dependent sealed Session
+nodes have not changed. Its private Resource owner atomically replaces
+generation `n` with an already prepared generation `n + 1`; any skipped,
+repeated, foreign-Profile, or non-graph-owned successor fails before
+publication.
+
+Coding prepares every successor from one fresh `ResourceLoader` discovery
+receipt after settings reload and package-root reconfiguration. The Product
+adapter recompiles exact Resource admissions, activation identities, native
+roots, embedded inputs, and verified package revision leases for that receipt.
+The legacy Bundle is an output projection of the new Catalog, never a refresh
+input that selects winners. Disabled-Skill settings enter only the new
+generation's activation policy; the Catalog path never calls the legacy
+`SkillActivationRuntime.apply()` commit overlay.
+
+One asynchronous joint transaction prepares the next Extension source and
+Resource owner generation. Extension Capability declarations receive the same
+synchronous restart-required preflight as the established reload path. At the
+no-await linearization point it publishes the Extension generation, swaps the
+Resource owner, captures a new exact-v4 Skill Consumer from the stable facet
+set, and replaces the Product Catalog/projection/Bundle view. A failed commit
+restores both owner custody and the previous Product view before asynchronous
+candidate cleanup. The graph generation does not change.
+
+Ordinary refresh, watcher refresh, package-triggered refresh, and Extension
+reload all enter this same asynchronous authority. Synchronous Catalog refresh
+fails finitely. Best-effort calls made before the owned task starts coalesce;
+calls that arrive during an active pass set a dirty latch, and the owned task
+drains one or more successor passes until no accepted request remains. Package
+install/update/uninstall operations await this authority before returning;
+unsupported unverified package inputs fail at that boundary and installation
+rolls back its settings registration rather than reporting false success. Each
+explicit invocation receives its own publication outcome while holding the
+Catalog refresh lock. Sessions that share Product resource inputs receive that
+lock from the same `BootstrapServices` owner, so root, child, watcher, and
+package refreshes cannot observe one another's tentative input state. A Package
+transaction never infers its result from a Session-global revision change
+caused by another caller. Package-source settings
+begin, Product preparation, Catalog publication, and receipt settlement all run
+inside that same lock, so another refresh cannot observe or publish tentative
+package settings. The scoped receipt restores exact prior order through one
+atomic compare/transform/persist operation without overwriting unrelated
+concurrent settings. Listener failure after persistence triggers exact-key
+compensation, while commit validates that no same-key listener drift occurred.
+Commit watches the package operation key even when the mutation itself is a
+no-op. A remote checkout is removed only after that uninstall has both published
+and settled its settings receipt; post-publication retirement failure does not
+revoke an otherwise successful settlement. The
+synchronous `uninstall_package()` compatibility entry point
+remains available to `legacy_explicit`; Catalog callers fail before mutation and
+the async CLI resolves `uninstall_package_async()` first; RPC preserves runtime
+owner precedence while each owner may expose either async-compatible name. The
+legacy coordinator, direct loader reload, and independent disabled-name overlay
+remain reachable only when the caller explicitly selected `legacy_explicit`.
+
+The shared gate owns an event-loop epoch rather than a permanently bound bare
+`asyncio.Lock`. Root and child holders/waiters in one active epoch serialize;
+concurrent entry from another loop fails explicitly. Once the gate has no
+holder or waiter, a later runtime invocation may rotate it to a new event loop,
+which keeps reusable `BootstrapServices` compatible with sequential SDK
+lifecycles built by separate `asyncio.run()` calls.
+
+After publication, the replaced Resource generation retires first. Every real
+Consumer load pins the Resource owner generation across the complete body read,
+including an awaited read through a borrowed Extension source; source-component
+leases remain an additional implementation-level pin. Cleanup therefore waits
+until active loads drain and never releases the Extension borrow mid-read or
+rolls back the already visible successor. Only then does the previous Extension
+generation retire. Session shutdown first closes refresh admission, joins or
+cancels the complete owned drain loop, and also joins any explicit Catalog
+refresh that already entered the publication lock. It then retries retained
+retirement debt and finally disposes the current mounted generation through the
+existing graph owner. Old typed Consumers retain immutable metadata for their
+captured generation, but cannot initiate a new load after that generation
+retires.
+
 ## Ordered cutover
 
 RCP5 proceeds in independently reviewable steps:
@@ -410,7 +490,8 @@ RCP5 proceeds in independently reviewable steps:
    immutability during refresh and uninstall.
 4. **RCP5.4 — refresh authority:** route Resource refresh through next Catalog
    generation publication; remove duplicate Skill/Resource watcher refresh and
-   independent disabled-name state.
+   independent disabled-name state. Implemented with a stable Mount and an
+   atomic internal owner-generation replacement.
 5. **RCP5.5 — peer deletion:** make `SkillLoader` and `ResourceLoader`
    forwarding-only while compatibility callers remain, then remove the
    adapters and production effective-selection imports when inventory reaches

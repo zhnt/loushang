@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Generic, TypeVar
 
@@ -16,6 +16,9 @@ from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticRecord
 from loushang.harness.model_catalog import ModelCatalog
 from loushang.harness.session.bootstrap_configuration import ExtensionFlagValues
+from loushang.harness.session.resource_refresh_gate import (
+    ResourceCatalogRefreshGate,
+)
 from loushang.harness.workspace.exec import ExecService
 
 SettingsT = TypeVar("SettingsT")
@@ -45,6 +48,11 @@ class BootstrapServices(
     resource_loader: ResourceLoaderT
     diagnostics_service: DiagnosticsT
     exec_service: ExecServiceT | None = None
+    resource_catalog_refresh_lock: ResourceCatalogRefreshGate = field(
+        default_factory=ResourceCatalogRefreshGate,
+        repr=False,
+        compare=False,
+    )
 
 
 def create_standard_agent_bootstrap_services(

@@ -48,6 +48,9 @@ LEGACY_SKILL_BODY_PATH = Path(
 )
 METHOD_LOADER_PATH = Path("src/loushang/method/loader.py")
 CODING_CLI_PATH = Path("src/loushang/coding/cli/__main__.py")
+CODING_BOOTSTRAP_PATH = Path("src/loushang/coding/bootstrap.py")
+RESOURCE_REFRESH_PATH = Path("src/loushang/harness/session/resource_refresh.py")
+AGENT_ADAPTER_PATH = Path("src/loushang/harness/session/agent_adapter.py")
 PUBLIC_SURFACES = (
     Path("src/loushang/harness/resources/__init__.py"),
     Path("src/loushang/harness/__init__.py"),
@@ -89,6 +92,10 @@ def test_rcp5_contract_freezes_conservative_order_and_authority() -> None:
     assert "RCP5.3A — exact asynchronous body preflight" in contract
     assert "RCP5.3B — request-bound durable evidence" in contract
     assert "RCP5.3C — eager-body sink deletion" in contract
+    assert "RCP5.4 — refresh authority" in contract
+    assert "internal owner-generation replacement" in contract
+    assert "The graph generation does not change" in contract
+    assert "same asynchronous authority" in contract
     assert "`catalog_required` is the public default" in contract
     assert "`legacy_explicit` is a caller-selected compatibility boundary" in contract
     assert "input-sensitive or exception-driven `auto` mode" in contract
@@ -289,3 +296,31 @@ def test_rcp53c_catalog_projection_and_consumers_are_body_free() -> None:
         PROMPT_PREFLIGHT_PATH,
         Path("src/loushang/harness/commands/resources.py"),
     }
+
+
+def test_rcp54_refresh_has_one_async_catalog_publication_authority() -> None:
+    product_source = AGENT_PRODUCT_PATH.read_text(encoding="utf-8")
+    product_tree = ast.parse(product_source, filename=str(AGENT_PRODUCT_PATH))
+    refresh = next(
+        node
+        for node in ast.walk(product_tree)
+        if isinstance(node, ast.AsyncFunctionDef)
+        and node.name == "_refresh_resource_catalog"
+    )
+    refresh_source = ast.unparse(refresh)
+    runtime_source = RESOURCE_REFRESH_PATH.read_text(encoding="utf-8")
+    adapter_source = AGENT_ADAPTER_PATH.read_text(encoding="utf-8")
+    coding_source = CODING_BOOTSTRAP_PATH.read_text(encoding="utf-8")
+
+    assert "begin_owner_generation_replacement" in refresh_source
+    assert "ResourceSkillStatusCatalogCapabilityConsumer" in refresh_source
+    assert "InitialSessionResourcePublication" in refresh_source
+    assert "reload_resources" not in refresh_source
+    assert "SkillActivationRuntime" not in refresh_source
+    assert "refresh_catalog" in runtime_source
+    assert "CatalogRefreshRequiresAsyncError" in runtime_source
+    assert "await self.refresh_async(reason=reason)" in runtime_source
+    assert "request_resource_refresh()" in adapter_source
+    assert "prepare_resource_catalog_refresh" in coding_source
+    assert "prepare_coding_initial_resource_catalog_adapter" in coding_source
+    assert "catalog_generation=catalog_generation" in coding_source

@@ -7,8 +7,8 @@
   and Model Input boundaries. It does not amend those boundaries implicitly.
 - Design status: RCP0 contract frozen; final narrow freeze re-review passed.
 - Implementation status: RCP0 through RCP4 are complete on the Harness lane;
-  RCP5.1, RCP5.2A/B, and RCP5.3A/B/C are implemented on the Harness lane.
-  Refresh authority and peer deletion remain RCP5.4 and RCP5.5.
+  RCP5.1, RCP5.2A/B, RCP5.3A/B/C, and RCP5.4 are implemented on the Harness
+  lane. Peer deletion remains RCP5.5.
   RCP2's first unpublished foundation slice implements the generic
   `CapabilityComponentDefinition`, exact candidate/admission/selection/binding
   records, atomic owner generations, cancellation-safe reverse rollback,
@@ -1537,7 +1537,26 @@ the Extension owner supplies exact frozen bytes through a generation-owned
 sidecar; and command/preflight callers select `catalog_required` or
 `legacy_explicit` explicitly. Default Method discovery no longer creates an
 independent Skill source; only caller-selected legacy mode retains that
-compatibility adaptation. Refresh remains RCP5.4.
+compatibility adaptation. Its former refresh debt is closed by the RCP5.4
+transaction below.
+
+RCP5.4 now gives every Catalog-backed live refresh one authority. Coding
+reloads settings and package roots, consumes a fresh loader receipt, and mints
+the exact next Catalog bootstrap. Harness prepares the next joint
+Extension/Resource generation and swaps only the mounted Resources
+Capability's private owner generation; the sealed Session graph and its Mount
+generation stay stable. The synchronous publication also replaces the exact-v4
+Skill capture and compatibility view, with synchronous rollback on failure.
+Watcher, package, ordinary, and Extension reload requests all use this async
+path, while `legacy_explicit` alone retains the old Bundle coordinator and
+disabled-name overlay. Replaced Resource generations drain exact load leases
+before old Extension generations retire. Package mutations consume an
+invocation-local publication outcome and a scoped settings receipt rather than
+inferring ownership from the Session revision clock; Catalog uninstall removes
+remote materialization only after publication and uses the explicit async API.
+The Resource owner also pins every awaited Consumer load, including borrowed
+Extension body reads, across retirement. Peer loader/discovery deletion is now
+the sole RCP5.5 debt.
 
 Exit: one Catalog path serves every Skill operation; native Skills need no
 Plugin; same-name selection is source-explainable; current-request immutability

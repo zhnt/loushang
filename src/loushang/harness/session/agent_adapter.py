@@ -41,7 +41,14 @@ from loushang.harness.resources.packages.materializer import (
     PackageMaterializer,
     PackageProgressEvent,
 )
+from loushang.harness.resources.packages.operations import (
+    PackageResourceRefreshOutcome,
+    PackageResourceRefreshTransaction,
+)
 from loushang.harness.resources.packages.session import SessionPackageController
+from loushang.harness.resources.packages.settings_mutation import (
+    PackageSourceSettingsMutation,
+)
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime.registration import (
     RegistrationLease,
@@ -77,6 +84,7 @@ from loushang.harness.session.operations_runtime import (
     SessionOperations,
     SessionOperationsPorts,
 )
+from loushang.harness.session.resource_refresh import SessionResourceRefreshOutcome
 from loushang.harness.session.settings import SessionSettingsBinding
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.protocol import (
@@ -541,8 +549,99 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
     def _set_resource_bundle(self, resource_bundle: ResourceBundle | None) -> None:
         self.resource_bundle = resource_bundle
 
-    def _refresh_resources_for_extension_runtime(self) -> None:
-        self._composition.resource_refresh_runtime.refresh()
+    def _refresh_resources_for_extension_runtime(
+        self,
+    ) -> PackageResourceRefreshOutcome | Awaitable[PackageResourceRefreshOutcome]:
+        runtime = self._composition.resource_refresh_runtime
+        if runtime.refresh_catalog is None:
+            try:
+                runtime.refresh()
+            except BaseException as error:
+                return PackageResourceRefreshOutcome(
+                    published=False,
+                    error=error,
+                )
+            return PackageResourceRefreshOutcome(published=True)
+        return self._refresh_catalog_resources_for_extension_runtime()
+
+    async def _refresh_catalog_resources_for_extension_runtime(
+        self,
+    ) -> PackageResourceRefreshOutcome:
+        outcome = await (
+            self._composition.resource_refresh_runtime.refresh_with_outcome()
+        )
+        return PackageResourceRefreshOutcome(
+            published=outcome.published,
+            error=outcome.error,
+            settled=outcome.settled,
+        )
+
+    def _refresh_package_resource_transaction(
+        self,
+        transaction: PackageResourceRefreshTransaction,
+    ) -> PackageResourceRefreshOutcome | Awaitable[PackageResourceRefreshOutcome]:
+        """Keep a package settings mutation inside the Catalog refresh lock."""
+
+        runtime = self._composition.resource_refresh_runtime
+        if runtime.refresh_catalog is not None:
+            return self._refresh_catalog_package_resource_transaction(transaction)
+
+        mutation = transaction.begin()
+        try:
+            runtime.refresh()
+        except BaseException as error:
+            outcome = PackageResourceRefreshOutcome(
+                published=False,
+                error=error,
+            )
+        else:
+            outcome = PackageResourceRefreshOutcome(published=True)
+        try:
+            transaction.settle(mutation, outcome)
+        except BaseException as settlement_error:
+            if outcome.error is not None:
+                outcome.error.add_note(
+                    "Package Resource transaction settlement also failed: "
+                    f"{settlement_error!r}"
+                )
+                final_error = outcome.error
+            else:
+                final_error = settlement_error
+            outcome = PackageResourceRefreshOutcome(
+                published=outcome.published,
+                error=final_error,
+                settled=False,
+            )
+        return outcome
+
+    async def _refresh_catalog_package_resource_transaction(
+        self,
+        transaction: PackageResourceRefreshTransaction,
+    ) -> PackageResourceRefreshOutcome:
+        def settle(
+            mutation: PackageSourceSettingsMutation,
+            outcome: SessionResourceRefreshOutcome,
+        ) -> None:
+            transaction.settle(
+                mutation,
+                PackageResourceRefreshOutcome(
+                    published=outcome.published,
+                    error=outcome.error,
+                    settled=outcome.settled,
+                ),
+            )
+
+        outcome = await (
+            self._composition.resource_refresh_runtime.refresh_transaction_with_outcome(
+                begin=transaction.begin,
+                settle=settle,
+            )
+        )
+        return PackageResourceRefreshOutcome(
+            published=outcome.published,
+            error=outcome.error,
+            settled=outcome.settled,
+        )
 
     def _resource_watch_paths(self) -> list[Path]:
         cwd = Path(self.session_manager.get_cwd())

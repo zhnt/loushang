@@ -30,6 +30,9 @@ from loushang.harness.capabilities.resources_contracts import (
 from loushang.harness.capabilities.resources_provider import (
     resources_capability_provider_binding,
 )
+from loushang.harness.resource_catalog.components import (
+    RESOURCE_SOURCE_COMPONENT_KIND,
+)
 from loushang.harness.resource_catalog.generation import (
     prepare_first_party_resource_owner_generation,
 )
@@ -75,13 +78,20 @@ def _fixture(tmp_path: Path) -> tuple[Path, tuple[object, ...], bytes]:
     return workspace, handles, skill_body
 
 
-async def _prepare(candidate, handles, *, runtime_id: str) -> None:  # type: ignore[no-untyped-def]
+async def _prepare(  # type: ignore[no-untyped-def]
+    candidate,
+    handles,
+    *,
+    runtime_id: str,
+    catalog_generation: int = 1,
+) -> None:
     await prepare_first_party_resource_owner_generation(
         staged_candidate=candidate,
         product_id="coding",
         scope_id="workspace:test",
         runtime_id=runtime_id,
         product_policy_revision="coding-resource-catalog-v2",
+        catalog_generation=catalog_generation,
         root_handles=handles,
         issued_at=10,
         expires_at=100,
@@ -178,6 +188,150 @@ def test_prepared_generation_is_one_candidate_child_and_root_cleanup_is_async(
         assert candidate.prepared_owner_generation_state == "disposed"
         with pytest.raises(RuntimeError, match="no longer root-owned"):
             _ = bootstrap_handles.resource_catalog_snapshot
+
+    asyncio.run(scenario())
+
+
+def test_mounted_catalog_generation_replacement_is_exact_and_rollback_capable(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        workspace, handles, _skill_body = _fixture(tmp_path)
+        resource_root = workspace / ".loushang"
+        profile = _profile()
+        candidate = stage_resource_composition_candidate(profile)
+        await _prepare(candidate, handles, runtime_id="resource-owner:g1")
+        binding = resources_capability_provider_binding(
+            profile=profile,
+            scope_instance_id="session:coding",
+            staged_candidate=candidate,
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="coding",
+            runtime_id="coding-session",
+            profile_fingerprint=_sha("profile"),
+        )
+        binder = RuntimeCapabilityGraphBinder()
+        await binder.bind(runtime, _plan(binding), (binding,))
+        facets = runtime.capture(RESOURCES_CATALOG_LOAD_REQUIREMENT)
+        generation_one = ResourceCatalogCapabilityConsumer(facets)
+
+        def successor(runtime_id: str):  # type: ignore[no-untyped-def]
+            staged = candidate.stage_refresh_successor()
+            root_handle = mint_native_resource_root_handle(
+                handle_id=runtime_id,
+                root=resource_root,
+                source_class="project_local",
+                root_kind="standard",
+                source_root_order=0,
+            )
+            return staged, (root_handle,)
+
+        rolled_back, rolled_back_handles = successor("resource-owner:g2:rollback")
+        await _prepare(
+            rolled_back,
+            rolled_back_handles,
+            runtime_id="resource-owner:g2:rollback",
+            catalog_generation=2,
+        )
+        successor_binding = resources_capability_provider_binding(
+            profile=profile,
+            scope_instance_id="session:coding",
+            staged_candidate=rolled_back,
+        )
+        assert successor_binding.binding_input_fingerprint == (
+            binding.binding_input_fingerprint
+        )
+        rolled_back._claim_refresh_successor()
+        replacement = candidate.begin_owner_generation_replacement(rolled_back)
+        generation_two_rolled_back = ResourceCatalogCapabilityConsumer(facets)
+        assert generation_one.snapshot.catalog_generation == 1
+        assert generation_two_rolled_back.snapshot.catalog_generation == 2
+        replacement.rollback()
+        assert ResourceCatalogCapabilityConsumer(facets).snapshot.catalog_generation == 1
+        assert await candidate.retire_replaced_owner_generations() == ()
+        with pytest.raises(RuntimeError, match="not graph-owned"):
+            generation_two_rolled_back.load_handle(
+                generation_two_rolled_back.snapshot.effective_entries[0].identity
+            )
+
+        committed, committed_handles = successor("resource-owner:g2:commit")
+        await _prepare(
+            committed,
+            committed_handles,
+            runtime_id="resource-owner:g2:commit",
+            catalog_generation=2,
+        )
+        committed._claim_refresh_successor()
+        replacement = candidate.begin_owner_generation_replacement(committed)
+        generation_two = ResourceCatalogCapabilityConsumer(facets)
+        replacement.commit()
+        assert generation_two.snapshot.catalog_generation == 2
+        assert generation_one.snapshot.catalog_generation == 1
+        assert await candidate.retire_replaced_owner_generations() == ()
+        with pytest.raises(RuntimeError, match="not graph-owned"):
+            generation_one.load_handle(
+                generation_one.snapshot.effective_entries[0].identity
+            )
+
+        assert await binder.dispose(runtime) == ()
+
+    asyncio.run(scenario())
+
+
+def test_replaced_catalog_generation_waits_for_inflight_source_lease(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        workspace, handles, _skill_body = _fixture(tmp_path)
+        resource_root = workspace / ".loushang"
+        profile = _profile()
+        candidate = stage_resource_composition_candidate(profile)
+        await _prepare(candidate, handles, runtime_id="resource-owner:g1")
+        binding = resources_capability_provider_binding(
+            profile=profile,
+            scope_instance_id="session:coding",
+            staged_candidate=candidate,
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="coding",
+            runtime_id="coding-session",
+            profile_fingerprint=_sha("profile"),
+        )
+        binder = RuntimeCapabilityGraphBinder()
+        await binder.bind(runtime, _plan(binding), (binding,))
+
+        old_generation = candidate._require_prepared_owner_generation()
+        [inflight] = old_generation._shadow._runtime.capture_all(  # type: ignore[attr-defined]
+            RESOURCE_SOURCE_COMPONENT_KIND
+        )
+        successor = candidate.stage_refresh_successor()
+        successor_handle = mint_native_resource_root_handle(
+            handle_id="resource-owner:g2",
+            root=resource_root,
+            source_class="project_local",
+            root_kind="standard",
+            source_root_order=0,
+        )
+        await _prepare(
+            successor,
+            (successor_handle,),
+            runtime_id="resource-owner:g2",
+            catalog_generation=2,
+        )
+        successor._claim_refresh_successor()
+        replacement = candidate.begin_owner_generation_replacement(successor)
+        replacement.commit()
+
+        assert await candidate.retire_replaced_owner_generations() == (
+            "resource_owner_generation_retirement_pending",
+        )
+        assert old_generation.ownership_state == "retiring"
+
+        await inflight.aclose()
+        assert await candidate.retire_replaced_owner_generations() == ()
+        assert old_generation.ownership_state == "disposed"
+        assert await binder.dispose(runtime) == ()
 
     asyncio.run(scenario())
 

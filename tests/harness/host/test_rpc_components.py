@@ -329,3 +329,35 @@ def test_rpc_package_commands_resolve_the_current_rebound_session() -> None:
     assert json.loads(stdout.getvalue())["data"] == {
         "packages": [{"name": "after"}]
     }
+
+
+def test_rpc_package_uninstall_prefers_runtime_owner_before_session_async_name() -> (
+    None
+):
+    class _Runtime:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        async def uninstall_package(self, source: str) -> dict[str, object]:
+            self.calls.append(source)
+            return {"lifecycle": "uninstalled", "source": source}
+
+    class _Session:
+        async def uninstall_package_async(self, source: str) -> object:
+            raise AssertionError(f"session authority used for {source}")
+
+    runtime = _Runtime()
+    stdout = StringIO()
+    commands = RpcPackageCommands(
+        runtime=runtime,
+        get_session=_Session,
+        output=RpcOutput(stdout),
+    )
+    handlers = dict(commands.bindings())
+
+    asyncio.run(handlers["uninstall_package"]("uninstall", {"source": "pack"}))
+
+    assert runtime.calls == ["pack"]
+    assert json.loads(stdout.getvalue())["data"] == {
+        "record": {"lifecycle": "uninstalled", "source": "pack"}
+    }

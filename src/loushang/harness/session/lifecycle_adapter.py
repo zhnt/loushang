@@ -441,11 +441,16 @@ class SessionLifecycleOperationAdapter(
         *,
         scope: str = "project",
     ) -> dict[str, object]:
+        operation = (
+            "uninstall_package_async"
+            if callable(getattr(self.session, "uninstall_package_async", None))
+            else "uninstall_package"
+        )
         return cast(
             dict[str, object],
             await _call_session_operation(
                 self.session,
-                "uninstall_package",
+                operation,
                 source,
                 scope=scope,
                 unavailable="Package uninstallation is not available.",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -86,6 +87,21 @@ class UnpublishedResourceCatalogShadowGeneration:
         repr=False,
     )
     _disposed: bool = field(default=False, init=False, repr=False)
+    _retiring: bool = field(default=False, init=False, repr=False)
+    _active_loads: int = field(default=0, init=False, repr=False)
+    _loads_drained: asyncio.Event = field(
+        default_factory=asyncio.Event,
+        init=False,
+        repr=False,
+    )
+    _dispose_lock: asyncio.Lock = field(
+        default_factory=asyncio.Lock,
+        init=False,
+        repr=False,
+    )
+
+    def __post_init__(self) -> None:
+        self._loads_drained.set()
 
     @property
     def owner_generation(self) -> int:
@@ -101,7 +117,7 @@ class UnpublishedResourceCatalogShadowGeneration:
     def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle:
         """Mint a narrow load handle for one effective, body-bearing candidate."""
 
-        if self._disposed or self._runtime.is_closed:
+        if self._retiring or self._disposed or self._runtime.is_closed:
             raise RuntimeError(
                 "Unpublished Resource shadow generation is retiring or disposed"
             )
@@ -132,7 +148,14 @@ class UnpublishedResourceCatalogShadowGeneration:
     async def load(self, handle: ResourceLoadHandle) -> LoadedResource:
         """Pin the owner generation, call its exact source, then validate a receipt."""
 
-        if self._disposed or self._runtime.is_closed:
+        self._begin_load()
+        try:
+            return await self._load_active(handle)
+        finally:
+            self._finish_load()
+
+    async def _load_active(self, handle: ResourceLoadHandle) -> LoadedResource:
+        if self._retiring or self._disposed or self._runtime.is_closed:
             raise RuntimeError(
                 "Unpublished Resource shadow generation is retiring or disposed"
             )
@@ -198,16 +221,35 @@ class UnpublishedResourceCatalogShadowGeneration:
             for lease in reversed(leases):
                 await lease.aclose()
 
+    def _begin_load(self) -> None:
+        if self._retiring or self._disposed or self._runtime.is_closed:
+            raise RuntimeError(
+                "Unpublished Resource shadow generation is retiring or disposed"
+            )
+        self._active_loads += 1
+        if self._active_loads == 1:
+            self._loads_drained.clear()
+
+    def _finish_load(self) -> None:
+        if self._active_loads < 1:
+            raise RuntimeError("Resource shadow load accounting is corrupt")
+        self._active_loads -= 1
+        if self._active_loads == 0:
+            self._loads_drained.set()
+
     async def dispose(self) -> tuple[str, ...]:
-        if self._disposed:
-            return ()
-        codes = await self._binder.dispose(self._runtime)
-        self._disposed = not self._runtime.has_pending_retirements
-        if self._disposed:
-            if self._extension_source_lease is not None:
-                self._extension_source_lease.release()
-            self._extension_source_lease = None
-        return codes
+        async with self._dispose_lock:
+            if self._disposed:
+                return ()
+            self._retiring = True
+            await self._loads_drained.wait()
+            codes = await self._binder.dispose(self._runtime)
+            self._disposed = not self._runtime.has_pending_retirements
+            if self._disposed:
+                if self._extension_source_lease is not None:
+                    self._extension_source_lease.release()
+                self._extension_source_lease = None
+            return codes
 
 
 async def run_first_party_resource_catalog_shadow(
@@ -216,6 +258,7 @@ async def run_first_party_resource_catalog_shadow(
     scope_id: str,
     runtime_id: str,
     product_policy_revision: str,
+    catalog_generation: int = 1,
     root_handles: tuple[NativeResourceRootHandle, ...],
     package_resources: tuple[AdmittedPackageResource, ...] = (),
     embedded_collections: tuple[EmbeddedResourceCollectionHandle, ...] = (),
@@ -235,6 +278,12 @@ async def run_first_party_resource_catalog_shadow(
 ) -> UnpublishedResourceCatalogShadowGeneration:
     """Bind, discover, compose, validate, and retain one unpublished generation."""
 
+    if (
+        isinstance(catalog_generation, bool)
+        or not isinstance(catalog_generation, int)
+        or catalog_generation < 1
+    ):
+        raise ValueError("Resource Catalog generation must be positive")
     if extension_source_lease is not None and not isinstance(
         extension_source_lease,
         BorrowedResourceSourceGenerationLease,
@@ -292,7 +341,7 @@ async def run_first_party_resource_catalog_shadow(
     if extension_source_lease is not None:
         extension_source_lease.claim()
     try:
-        bind_result = await binder.bind(
+        await binder.bind(
             runtime,
             resolution.resolved_set,
             resolution.bindings,
@@ -376,14 +425,14 @@ async def run_first_party_resource_catalog_shadow(
         )
         proposal = engine.compose(
             source_snapshots,
-            catalog_generation=bind_result.snapshot.generation,
+            catalog_generation=catalog_generation,
             merge_policy=effective_merge_policy,
             activation_policy=effective_activation_policy,
         )
         validate_resource_catalog_proposal(
             proposal,
             source_snapshots=source_snapshots,
-            catalog_generation=bind_result.snapshot.generation,
+            catalog_generation=catalog_generation,
             engine_binding_fingerprint=engine.binding_fingerprint,
             merge_policy=effective_merge_policy,
             activation_policy=effective_activation_policy,

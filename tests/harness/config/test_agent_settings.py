@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import fields
+from threading import Event, Thread
 
 import pytest
 
@@ -605,6 +606,241 @@ def test_settings_manager_package_source_add_remove_uses_package_identity(
         is True
     )
     assert manager.get_package_sources() == []
+
+
+def test_package_source_mutation_rollback_restores_exact_scoped_patches(
+    tmp_path,
+) -> None:
+    from loushang.harness.config.agent import SettingsManager
+
+    existing = "git:https://example.test/existing.git"
+    other = "git:https://example.test/other.git"
+    absent = "git:https://example.test/absent.git"
+    manager = SettingsManager(
+        global_settings_path=tmp_path / "global.json",
+        project_settings_path=tmp_path / "project.json",
+    )
+    manager.set_package_sources((existing, other), scope="global")
+    manager.set_package_sources((other, existing), scope="project")
+    manager.set_resource_roots(("session-root",), scope="session")
+    before = (
+        manager.get_global_settings(),
+        manager.get_project_settings(),
+        manager.get_session_settings(),
+    )
+
+    add_existing = manager.begin_package_source_mutation(
+        existing,
+        scope="project",
+        present=True,
+    )
+    add_existing.rollback()
+    remove_absent = manager.begin_package_source_mutation(
+        absent,
+        scope="session",
+        present=False,
+    )
+    remove_absent.rollback()
+
+    assert (
+        manager.get_global_settings(),
+        manager.get_project_settings(),
+        manager.get_session_settings(),
+    ) == before
+    assert [source.source for source in manager.get_package_sources()] == [
+        other,
+        existing,
+    ]
+
+
+def test_package_source_mutation_rollback_preserves_concurrent_unrelated_settings(
+    tmp_path,
+) -> None:
+    from loushang.harness.config.agent import SettingsManager
+
+    source = "git:https://example.test/review.git"
+    manager = SettingsManager(project_settings_path=tmp_path / "project.json")
+    mutation = manager.begin_package_source_mutation(
+        source,
+        scope="project",
+        present=True,
+    )
+    manager.set_theme("concurrent-theme", scope="project")
+
+    mutation.rollback()
+
+    assert manager.get_package_sources() == []
+    assert manager.get_settings().theme == "concurrent-theme"
+    assert manager.get_project_settings() == {"theme": "concurrent-theme"}
+
+
+def test_package_source_mutation_rollback_compare_and_replace_is_atomic(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harness.config.agent import SettingsManager
+
+    source = "git:https://example.test/review.git"
+    manager = SettingsManager(project_settings_path=tmp_path / "project.json")
+    mutation = manager.begin_package_source_mutation(
+        source,
+        scope="project",
+        present=True,
+    )
+    runtime = manager._config._runtime  # type: ignore[attr-defined]
+    original_transform = runtime.transform
+    transform_ready = Event()
+    release_transform = Event()
+    concurrent_started = Event()
+    errors: list[BaseException] = []
+
+    def blocking_transform(layer, transform, *, persist=None):  # type: ignore[no-untyped-def]
+        def blocked(current_patch):  # type: ignore[no-untyped-def]
+            replacement = transform(current_patch)
+            transform_ready.set()
+            release_transform.wait(timeout=5)
+            return replacement
+
+        return original_transform(layer, blocked, persist=persist)
+
+    monkeypatch.setattr(runtime, "transform", blocking_transform)
+
+    def rollback() -> None:
+        try:
+            mutation.rollback()
+        except BaseException as error:
+            errors.append(error)
+
+    def update_theme() -> None:
+        concurrent_started.set()
+        try:
+            manager.set_theme("concurrent-theme", scope="project")
+        except BaseException as error:
+            errors.append(error)
+
+    rollback_thread = Thread(target=rollback)
+    rollback_thread.start()
+    assert transform_ready.wait(timeout=5)
+    update_thread = Thread(target=update_theme)
+    update_thread.start()
+    assert concurrent_started.wait(timeout=5)
+    release_transform.set()
+    rollback_thread.join(timeout=5)
+    update_thread.join(timeout=5)
+
+    assert rollback_thread.is_alive() is False
+    assert update_thread.is_alive() is False
+    assert errors == []
+    assert manager.get_package_sources() == []
+    assert manager.get_project_settings() == {"theme": "concurrent-theme"}
+
+
+def test_package_source_mutation_rollback_rejects_same_key_concurrent_write(
+    tmp_path,
+) -> None:
+    from loushang.harness.config.agent import SettingsManager
+
+    first = "git:https://example.test/first.git"
+    second = "git:https://example.test/second.git"
+    manager = SettingsManager(project_settings_path=tmp_path / "project.json")
+    mutation = manager.begin_package_source_mutation(
+        first,
+        scope="project",
+        present=True,
+    )
+    manager.add_package_source(second, scope="project")
+
+    with pytest.raises(RuntimeError, match="changed concurrently: packages"):
+        mutation.rollback()
+
+    assert [source.source for source in manager.get_package_sources()] == [
+        first,
+        second,
+    ]
+
+
+def test_package_source_mutation_compensates_post_commit_listener_failure(
+    tmp_path,
+) -> None:
+    from loushang.harness.config.agent import SettingsManager
+
+    source = "git:https://example.test/review.git"
+    manager = SettingsManager(project_settings_path=tmp_path / "project.json")
+
+    def fail(_settings) -> None:  # type: ignore[no-untyped-def]
+        raise RuntimeError("listener failed")
+
+    manager.subscribe(fail)
+
+    with pytest.raises(RuntimeError, match="listener failed"):
+        manager.begin_package_source_mutation(
+            source,
+            scope="project",
+            present=True,
+        )
+
+    assert manager.get_package_sources() == []
+    assert manager.get_project_settings() == {}
+    assert json.loads((tmp_path / "project.json").read_text(encoding="utf-8")) == {}
+
+
+def test_package_source_mutation_commit_rejects_listener_same_key_drift(
+    tmp_path,
+) -> None:
+    from loushang.harness.config.agent import SettingsManager
+
+    source = "git:https://example.test/review.git"
+    manager = SettingsManager(project_settings_path=tmp_path / "project.json")
+    unsubscribe_callbacks = [lambda: None]
+
+    def remove_again(_settings) -> None:  # type: ignore[no-untyped-def]
+        unsubscribe_callbacks[0]()
+        manager.remove_package_source(source, scope="project")
+
+    unsubscribe_callbacks[0] = manager.subscribe(remove_again)
+    mutation = manager.begin_package_source_mutation(
+        source,
+        scope="project",
+        present=True,
+    )
+
+    assert manager.get_package_sources() == []
+    with pytest.raises(RuntimeError, match="changed concurrently: packages"):
+        mutation.commit()
+    assert mutation.state == "active"
+
+    with pytest.raises(RuntimeError, match="changed concurrently: packages"):
+        mutation.rollback()
+    assert mutation.state == "active"
+    assert manager.get_project_settings() == {"packages": []}
+
+
+def test_noop_package_source_mutation_still_validates_operation_key(
+    tmp_path,
+) -> None:
+    from loushang.harness.config.agent import SettingsManager
+
+    source = "git:https://example.test/review.git"
+    manager = SettingsManager(project_settings_path=tmp_path / "project.json")
+    manager.set_package_sources((), scope="project")
+    unsubscribe_callbacks = [lambda: None]
+
+    def add_during_publication(_settings) -> None:  # type: ignore[no-untyped-def]
+        unsubscribe_callbacks[0]()
+        manager.add_package_source(source, scope="project")
+
+    unsubscribe_callbacks[0] = manager.subscribe(add_during_publication)
+    mutation = manager.begin_package_source_mutation(
+        source,
+        scope="project",
+        present=False,
+    )
+
+    assert mutation.changed is False
+    assert [item.source for item in manager.get_package_sources()] == [source]
+    with pytest.raises(RuntimeError, match="changed concurrently: packages"):
+        mutation.commit()
+    assert mutation.state == "active"
 
 
 def test_settings_manager_exposes_standard_control_getters_and_setters(
