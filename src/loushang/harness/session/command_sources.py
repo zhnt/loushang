@@ -8,7 +8,9 @@ from typing import Generic, Literal, Protocol, TypeVar
 
 from loushang.harness.capabilities.prompt_preflight import (
     PromptPreflightResult,
+    SkillBodyLoader,
     preflight_user_input,
+    preflight_user_input_async,
 )
 from loushang.harness.commands import (
     CommandDispatchOutcome,
@@ -99,6 +101,7 @@ class ExtensionCommandSourceRuntime(Generic[ResultT]):
 
 
 ResourceCommandBundleProvider = Callable[[], ResourceBundle | None]
+SkillBodyLoaderProvider = Callable[[], SkillBodyLoader | None]
 DiagnosticDraftRecorder = Callable[[tuple[DiagnosticDraft, ...]], None]
 ResourceCommandNotFoundRecorder = Callable[[str, str], None]
 ResourceCommandResultFactory = Callable[[str, ResourceCommandKind, str], ResultT]
@@ -115,6 +118,7 @@ class ResourceCommandSourceRuntime(Generic[ResultT]):
     get_effective_skills: (
         Callable[[], Sequence[SkillCommandSummary] | None] | None
     ) = None
+    get_skill_body_loader: SkillBodyLoaderProvider | None = None
 
     def list_descriptors(self) -> list[SessionCommandDescriptor]:
         return list_resource_command_descriptors(
@@ -134,13 +138,59 @@ class ResourceCommandSourceRuntime(Generic[ResultT]):
             return CommandDispatchOutcome.unhandled()
         return CommandDispatchOutcome.handled_result(result)
 
+    async def dispatch_async(
+        self, invocation: ParsedSlashCommand
+    ) -> CommandDispatchOutcome[ResultT]:
+        result = await self.execute_async(invocation.name, invocation.args)
+        if result is None:
+            return CommandDispatchOutcome.unhandled()
+        return CommandDispatchOutcome.handled_result(result)
+
     def execute(self, invocation_name: str, args: str) -> ResultT | None:
         resource_bundle = self.get_resource_bundle()
-        if resource_bundle is None:
+        skill_body_loader = self._skill_body_loader()
+        if resource_bundle is None and skill_body_loader is None:
             self.record_command_not_found(invocation_name, args)
             return None
         command_text = f"/{invocation_name}{f' {args}' if args else ''}"
-        result = preflight_user_input(command_text, resource_bundle=resource_bundle)
+        result = preflight_user_input(
+            command_text,
+            resource_bundle=resource_bundle,
+            load_skill_body=skill_body_loader,
+        )
+        return self._project_execution_result(
+            invocation_name,
+            args,
+            command_text,
+            result,
+        )
+
+    async def execute_async(self, invocation_name: str, args: str) -> ResultT | None:
+        resource_bundle = self.get_resource_bundle()
+        skill_body_loader = self._skill_body_loader()
+        if resource_bundle is None and skill_body_loader is None:
+            self.record_command_not_found(invocation_name, args)
+            return None
+        command_text = f"/{invocation_name}{f' {args}' if args else ''}"
+        result = await preflight_user_input_async(
+            command_text,
+            resource_bundle=resource_bundle,
+            load_skill_body=skill_body_loader,
+        )
+        return self._project_execution_result(
+            invocation_name,
+            args,
+            command_text,
+            result,
+        )
+
+    def _project_execution_result(
+        self,
+        invocation_name: str,
+        args: str,
+        command_text: str,
+        result: PromptPreflightResult,
+    ) -> ResultT | None:
         self.record_diagnostics(result.diagnostics)
         if result.diagnostics:
             return None
@@ -156,9 +206,29 @@ class ResourceCommandSourceRuntime(Generic[ResultT]):
         result = preflight_user_input(
             user_input,
             resource_bundle=self.get_resource_bundle(),
+            load_skill_body=self._skill_body_loader(),
         )
         self.record_diagnostics(result.diagnostics)
         return result
+
+    async def preflight_user_input_async(
+        self,
+        user_input: str,
+    ) -> PromptPreflightResult:
+        result = await preflight_user_input_async(
+            user_input,
+            resource_bundle=self.get_resource_bundle(),
+            load_skill_body=self._skill_body_loader(),
+        )
+        self.record_diagnostics(result.diagnostics)
+        return result
+
+    def _skill_body_loader(self) -> SkillBodyLoader | None:
+        provider = self.get_skill_body_loader
+        return provider() if provider is not None else None
+
+    def has_skill_body_loader(self) -> bool:
+        return self._skill_body_loader() is not None
 
 
 __all__ = [

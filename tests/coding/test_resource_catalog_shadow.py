@@ -34,6 +34,9 @@ from loushang.harness.capabilities.contribution_admission import (
 from loushang.harness.capabilities.model_input_contracts import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
 )
+from loushang.harness.capabilities.prompt_preflight import (
+    SkillBodyLoadRequiresAsyncError,
+)
 from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_CAPABILITY_DEFINITION,
 )
@@ -602,14 +605,66 @@ def test_coding_initial_catalog_shadow_publishes_project_context_and_skill(
                 command.name for command in session.list_commands()
             }
 
-            # Enumeration is pinned to the exact Catalog Consumer, not the
-            # eager compatibility Bundle retained for RCP5.3 body execution.
+            session.resource_bundle.skills[0] = replace(
+                session.resource_bundle.skills[0],
+                content="Forged compatibility body.",
+            )
+            preflight = await session._preflight_user_input_async(
+                "/skill:review inspect this change"
+            )
+            assert "Review carefully." in preflight.text
+            assert "Forged compatibility body." not in preflight.text
+            assert len(preflight.loaded_skills) == 1
+            loaded_skill = preflight.loaded_skills[0]
+            assert loaded_skill.receipt.content_digest == (
+                statuses[0].expected_content_digest
+            )
+            assert loaded_skill.receipt.content_length == (
+                statuses[0].expected_content_length
+            )
+            alias_preflight = await session._preflight_user_input_async(
+                "/skill:review/SKILL.md through canonical id"
+            )
+            assert "Review carefully." in alias_preflight.text
+            assert alias_preflight.loaded_skills[0].summary.name == "review"
+            empty_preflight = await session._preflight_user_input_async("/skill:")
+            assert empty_preflight.text == "/skill:"
+            assert [item.code for item in empty_preflight.diagnostics] == [
+                "unresolved_skill_reference"
+            ]
+            with pytest.raises(
+                SkillBodyLoadRequiresAsyncError,
+                match="requires asynchronous",
+            ):
+                session._preflight_user_input("/skill:review")
+            with pytest.raises(SkillBodyLoadRequiresAsyncError):
+                session.steer("/skill:review queued steer")
+            with pytest.raises(SkillBodyLoadRequiresAsyncError):
+                session.follow_up("/skill:review queued follow-up")
+            assert session.get_steering_messages() == []
+            assert session.get_follow_up_messages() == []
+
+            executed = await session.execute_command_async(
+                "skill:review",
+                "through command dispatch",
+            )
+            assert executed is not None
+            assert executed.result["source"] == "skill"
+            assert "Review carefully." in executed.result["text"]
+            assert "Forged compatibility body." not in executed.result["text"]
+
+            # Enumeration and exact body loads are pinned to the captured
+            # Catalog Consumer, not the eager compatibility Bundle.
             session.resource_bundle.skills.clear()
             session._rebuild_prompt_and_tools_view()
             assert "Review code" in session.agent.system_prompt
             assert "skill:review" in {
                 command.name for command in session.list_commands()
             }
+            after_clear = await session._preflight_user_input_async(
+                "/skill:review after compatibility clear"
+            )
+            assert "Review carefully." in after_clear.text
         finally:
             await session.dispose()
         assert resource_candidate.ownership_state == "disposed"
@@ -665,6 +720,16 @@ def test_coding_initial_catalog_applies_disabled_skill_in_owner_status(
             assert "skill:review" not in {
                 command.name for command in session.list_commands()
             }
+            disabled_preflight = await session._preflight_user_input_async(
+                "/skill:review must remain unresolved"
+            )
+            assert disabled_preflight.text == (
+                "/skill:review must remain unresolved"
+            )
+            assert [item.code for item in disabled_preflight.diagnostics] == [
+                "unresolved_skill_reference"
+            ]
+            assert disabled_preflight.loaded_skills == ()
         finally:
             await session.dispose()
 
@@ -803,7 +868,12 @@ def test_coding_resource_authority_modes_are_explicit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     project_root = tmp_path / "project"
-    project_root.mkdir()
+    skill_root = project_root / "skills" / "legacy"
+    skill_root.mkdir(parents=True)
+    (skill_root / "SKILL.md").write_text(
+        "---\nname: legacy\n---\nLegacy explicit body.\n",
+        encoding="utf-8",
+    )
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
     services = create_services(
         settings_manager=SettingsManager(
@@ -834,6 +904,13 @@ def test_coding_resource_authority_modes_are_explicit(
         resource_authority_mode="legacy_explicit",
     )
     assert session._initial_resource_catalog_bootstrap is None
+    legacy_preflight = session._preflight_user_input("/skill:legacy")
+    assert "Legacy explicit body." in legacy_preflight.text
+    assert legacy_preflight.loaded_skills == ()
+    session.steer("/skill:legacy steer")
+    session.follow_up("/skill:legacy follow-up")
+    assert "Legacy explicit body." in session.get_steering_messages()[0]
+    assert "Legacy explicit body." in session.get_follow_up_messages()[0]
     asyncio.run(session.dispose())
 
 
@@ -966,6 +1043,22 @@ def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(
                 legacy_package_skill.canonical_name,
                 legacy_package_skill.source_scope,
                 legacy_package_skill.source_root_order,
+            )
+            session.resource_bundle.skills[:] = [
+                replace(skill, content="Forged compatibility body.")
+                if skill.name == "standard"
+                else skill
+                for skill in session.resource_bundle.skills
+            ]
+            preflight = await session._preflight_user_input_async(
+                "/skill:standard"
+            )
+            assert "Review from the compiled package." in preflight.text
+            assert "Forged compatibility body." not in preflight.text
+            loaded = preflight.loaded_skills[0]
+            assert loaded.summary.source_kind == "external_package"
+            assert loaded.receipt.content_digest == (
+                loaded.summary.expected_content_digest
             )
             assert resource_candidate.ownership_state == "graph_owned"
         finally:

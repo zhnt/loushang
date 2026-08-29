@@ -15,12 +15,16 @@ from loushang.harness.capabilities import (
     stage_resource_composition_candidate,
     standard_capability_composition_plan,
 )
+from loushang.harness.capabilities.prompt_preflight import preflight_user_input_async
 from loushang.harness.capabilities.resources_consumers import (
     ResourceCatalogCapabilityConsumer,
+    ResourceSkillCatalogCapabilityConsumer,
 )
 from loushang.harness.capabilities.resources_contracts import (
     RESOURCES_CAPABILITY_DEFINITION_V2,
+    RESOURCES_CAPABILITY_DEFINITION_V3,
     RESOURCES_CATALOG_LOAD_REQUIREMENT,
+    RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT,
 )
 from loushang.harness.capabilities.resources_provider import (
     resources_capability_provider_binding,
@@ -49,6 +53,7 @@ from loushang.harness.resources._catalog_records import (
     ResourceIdentity,
     ResourceLoadHandle,
 )
+from loushang.harness.resources._skill_catalog_consumer import SkillCatalogConsumer
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
@@ -310,7 +315,11 @@ async def _graph_owned_catalog_loads_extension_body(tmp_path: Path) -> None:
         extension_generation=1,
         extension_set_fingerprint=_digest("extension-set-graph"),
         route_contributions=(
-            _route(prompts=(_prompt(tmp_path / "review.md", text="graph body"),)),
+            _route(
+                skills=(
+                    _skill(tmp_path / "audit" / "SKILL.md", content="graph body"),
+                )
+            ),
         ),
     )
     profile = _profile()
@@ -326,17 +335,19 @@ async def _graph_owned_catalog_loads_extension_body(tmp_path: Path) -> None:
         expires_at=10,
         now=2,
         extension_source_lease=extension_generation.borrow(),
+        projection_cwd=tmp_path,
     )
     binding = resources_capability_provider_binding(
         profile=profile,
         scope_instance_id="session:test",
         staged_candidate=candidate,
+        enable_skill_catalog_v3=True,
     )
     plan = RuntimeCapabilityGraphPlanner().plan(
         CapabilityGraphPlanRequest(
             product_id="coding",
-            roots=(RESOURCES_CAPABILITY_DEFINITION_V2.capability_id,),
-            definitions=(RESOURCES_CAPABILITY_DEFINITION_V2,),
+            roots=(RESOURCES_CAPABILITY_DEFINITION_V3.capability_id,),
+            definitions=(RESOURCES_CAPABILITY_DEFINITION_V3,),
             providers=(binding.provider,),
         )
     )
@@ -347,18 +358,38 @@ async def _graph_owned_catalog_loads_extension_body(tmp_path: Path) -> None:
     )
     binder = RuntimeCapabilityGraphBinder()
     await binder.bind(runtime, plan, (binding,))
-    consumer = ResourceCatalogCapabilityConsumer(
-        runtime.capture(RESOURCES_CATALOG_LOAD_REQUIREMENT)
-    )
-    identity = ResourceIdentity(
-        resource_kind="prompt",
-        schema_id="loushang.resource.prompt",
-        schema_version=1,
-        public_id="review",
+    consumer = SkillCatalogConsumer(
+        ResourceSkillCatalogCapabilityConsumer(
+            runtime.capture(RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT)
+        )
     )
 
-    loaded = await consumer.load(consumer.load_handle(identity))
+    async def load_skill_body(selector: str):  # type: ignore[no-untyped-def]
+        summary = consumer.get_effective_skill(selector)
+        if summary is None:
+            return None
+        return await consumer.load(consumer.load_handle(summary))
+
+    preflight = await preflight_user_input_async(
+        "/skill:audit",
+        resource_bundle=ResourceBundle(
+            cwd=tmp_path,
+            skills=(
+                _skill(
+                    tmp_path / "forged" / "SKILL.md",
+                    content="forged compatibility body",
+                ),
+            ),
+        ),
+        load_skill_body=load_skill_body,
+    )
+    loaded = preflight.loaded_skills[0]
     assert loaded.body == b"graph body"
+    assert "graph body" in preflight.text
+    assert "forged compatibility body" not in preflight.text
+    assert loaded.receipt.source_generation_ref == (
+        extension_generation.source_generation_ref
+    )
     assert candidate.ownership_state == "graph_owned"
     assert extension_generation.is_disposed is False
 
