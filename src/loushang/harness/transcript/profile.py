@@ -28,6 +28,7 @@ from loushang.harness.conversation.replay import (
     ConversationCheckpoint,
     ConversationReplayFolder,
     ConversationReplayPorts,
+    ConversationReplayProjection,
 )
 from loushang.harness.conversation.types import (
     CommandExecutionRecord,
@@ -216,11 +217,22 @@ class AgentTranscriptProfile:
         self,
         records: Sequence[AgentTranscriptRecord],
     ) -> AgentTranscriptContext:
-        projection = ConversationReplayFolder(self.replay_ports()).replay(records)
+        projection = self.replay_projection(records)
         return AgentTranscriptContext(
             messages=projection.items,
             state=projection.state,
         )
+
+    def replay_projection(
+        self,
+        records: Sequence[AgentTranscriptRecord],
+    ) -> ConversationReplayProjection[
+        AgentMessage,
+        AgentTranscriptState,
+    ]:
+        """Project context items together with their exact source record ids."""
+
+        return ConversationReplayFolder(self.replay_ports()).replay(records)
 
     def record_to_context_item(
         self,

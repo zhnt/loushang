@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 
 from loushang.agent import AbortSignal, AgentEvent
 from loushang.ai.types import AssistantMessage
+from loushang.foundation.json import JSONValue
+from loushang.harness.session.request_evidence import RequestEvidenceRuntimePort
 from loushang.harness.transcript import AutoRetryOutcome, CompactionResult
 
-AppendMessage = Callable[[object], Awaitable[str]]
+AppendMessage = Callable[..., Awaitable[str]]
 EventDispatcher = Callable[..., Awaitable[None]]
 ExtensionEventEmitter = Callable[[AgentEvent], Awaitable[None]]
 ToolExecutionErrorRecorder = Callable[[AgentEvent], None]
@@ -18,6 +20,8 @@ AutoCompactionChecker = Callable[
     [AssistantMessage], Awaitable[CompactionResult | None]
 ]
 QueuedMessageConsumer = Callable[[object], bool]
+QueuedMessageCompleter = Callable[[object], None]
+InFlightMessageDiscarder = Callable[[], None]
 ContinueRun = Callable[[], Awaitable[None]]
 
 
@@ -56,6 +60,9 @@ class AgentEventRouter:
     check_auto_compaction: AutoCompactionChecker
     schedule_continue_run: ContinueRun
     consume_queued_message: QueuedMessageConsumer | None = None
+    request_evidence: RequestEvidenceRuntimePort | None = None
+    complete_queued_message: QueuedMessageCompleter | None = None
+    discard_in_flight_messages: InFlightMessageDiscarder | None = None
     _committed_messages: dict[int, tuple[object, str]] = field(
         default_factory=dict,
         init=False,
@@ -75,6 +82,13 @@ class AgentEventRouter:
         if event["type"] == "message_end":
             committed_message = event["message"]
             source_record_id = await self._append_message_once(committed_message)
+            if self.request_evidence is not None:
+                self.request_evidence.commit_message(
+                    committed_message,
+                    source_record_id,
+                )
+            if self.complete_queued_message is not None:
+                self.complete_queued_message(committed_message)
         if event["type"] == "tool_execution_end" and event.get("is_error"):
             self.record_tool_execution_error(event)
         await self.dispatch_event(event, source_record_id=source_record_id)
@@ -87,6 +101,8 @@ class AgentEventRouter:
             if assistant_message.stop_reason != "error":
                 self.compaction_controller.clear_overflow_recovery_attempted()
         if event["type"] == "agent_end":
+            if self.discard_in_flight_messages is not None:
+                self.discard_in_flight_messages()
             self.sync_extension_diagnostics(phase="runtime")
             last_assistant_message = _last_assistant_message(event["messages"])
             if last_assistant_message is None:
@@ -110,7 +126,13 @@ class AgentEventRouter:
         existing = self._committed_messages.get(identity)
         if existing is not None and existing[0] is message:
             return existing[1]
-        record_id = await self.append_message(message)
+        metadata: Mapping[str, JSONValue] | None = None
+        if self.request_evidence is not None:
+            metadata = self.request_evidence.prepare_message_commit(message)
+        if metadata is None:
+            record_id = await self.append_message(message)
+        else:
+            record_id = await self.append_message(message, metadata=metadata)
         self._committed_messages[identity] = (message, record_id)
         return record_id
 

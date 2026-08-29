@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Mapping
+from copy import deepcopy
 from dataclasses import replace
 from typing import cast
 
@@ -50,6 +51,13 @@ from loushang.harness.session.model_call import (
     SessionModelCallRuntime,
     build_session_model_call_capability_binding,
 )
+from loushang.harness.session.request_evidence import (
+    RESOURCE_EVIDENCE_COMPONENT,
+    RESOURCE_EVIDENCE_SCHEMA_ID,
+    PreparedResourceEvidence,
+    RequestEvidenceIntegrityError,
+    SessionRequestEvidenceRuntime,
+)
 from loushang.harness.session.turn_performance import TurnStartPerformanceRuntime
 from loushang.harness.transcript import (
     CONTEXT_BRANCH_SUMMARY_KIND,
@@ -87,6 +95,44 @@ def _model(*, api: str, context_window: int = 8_192) -> Model:
     )
 
 
+def _skill_evidence_payload() -> dict[str, JSONValue]:
+    digest = "a" * 64
+    return {
+        "activationPolicyFingerprint": "b" * 64,
+        "candidateFingerprint": "c" * 64,
+        "catalogGeneration": 3,
+        "catalogSnapshotFingerprint": "d" * 64,
+        "expectedContentDigest": digest,
+        "expectedContentLength": 12,
+        "mediaType": "text/markdown",
+        "observedContentDigest": digest,
+        "observedContentLength": 12,
+        "resourceIdentity": {
+            "publicId": "review",
+            "resourceKind": "skill",
+            "schemaId": "loushang.skill",
+            "schemaVersion": 1,
+        },
+        "schemaId": "loushang.skill",
+        "schemaVersion": 1,
+        "sourceGeneration": {
+            "generation": "generation-3",
+            "producer": {
+                "bindingFingerprint": "f" * 64,
+                "componentAdmissionFingerprint": "1" * 64,
+                "componentCandidateFingerprint": "2" * 64,
+                "componentContributionId": "project-skill-component",
+                "packageContentDigest": "3" * 64,
+                "pluginInstanceRevisionRef": "project-revision-3",
+                "type": "resource_component",
+            },
+            "productId": "coding",
+            "sourceId": "project-skills",
+            "sourcePolicyFingerprint": "e" * 64,
+        },
+    }
+
+
 async def _transcript_session() -> AgentTranscriptSession:
     transcript = await AgentTranscriptUnitOfWork.create(
         MemoryConversationStore(record_id=lambda record: record.record_id),
@@ -112,6 +158,9 @@ class _ModelCallTestRoot:
         is_current: Callable[[], bool],
         registrations: tuple[RegistrationInventoryEntry, ...],
         turn_performance: TurnStartPerformanceRuntime | None = None,
+        request_evidence_provider: (
+            Callable[[ModelCallPreparation], Mapping[str, object] | None] | None
+        ) = None,
     ) -> None:
         self._profile = RuntimeProfileResolver().resolve(
             standard_capability_composition_plan(product_id="coding")
@@ -136,6 +185,7 @@ class _ModelCallTestRoot:
             registration_entries_provider=lambda: registrations,
             profile_fingerprint_provider=lambda: self.current_profile_fingerprint,
             turn_performance=turn_performance,
+            request_evidence_provider=request_evidence_provider,
         )
         self._plan = RuntimeCapabilityGraphPlanner().plan(
             CapabilityGraphPlanRequest(
@@ -191,12 +241,16 @@ def _model_call_runtime(
     is_current: Callable[[], bool],
     registrations: tuple[RegistrationInventoryEntry, ...] = (),
     turn_performance: TurnStartPerformanceRuntime | None = None,
+    request_evidence_provider: (
+        Callable[[ModelCallPreparation], Mapping[str, object] | None] | None
+    ) = None,
 ) -> _ModelCallTestRoot:
     return _ModelCallTestRoot(
         session,
         is_current=is_current,
         registrations=registrations,
         turn_performance=turn_performance,
+        request_evidence_provider=request_evidence_provider,
     )
 
 
@@ -421,6 +475,210 @@ def test_current_session_prepares_and_rebuilds_main_model_call() -> None:
         assert "durable system prompt" not in repr(projected)
         await runtime.dispose()
         assert runtime.graph_runtime.is_closed
+
+    asyncio.run(scenario())
+
+
+def test_resource_evidence_is_request_bound_durable_and_resumable() -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        message_record_id, transcript_message = (
+            session.get_context_message_bindings()[0]
+        )
+        evidence = PreparedResourceEvidence(
+            model_visible_text="hello",
+            skills=(_skill_evidence_payload(),),
+        )
+        evidence_runtime = SessionRequestEvidenceRuntime(
+            get_context_message_bindings=session.get_context_message_bindings,
+            get_active_records=session.get_active_entries,
+            rebuild_model_input=session.rebuild_model_input,
+        )
+        owner = object()
+        evidence_runtime.bind(transcript_message, evidence, owner=owner)
+        assert (
+            evidence_runtime.commit_message(transcript_message, message_record_id)
+            is True
+        )
+
+        runtime = _model_call_runtime(
+            session,
+            is_current=lambda: True,
+            request_evidence_provider=evidence_runtime.project_model_input,
+        )
+        adapter = _PreparedAdapter()
+        registry = get_default_api_registry()
+        source_id = "session-model-call-resource-evidence"
+        registry.register_api_adapter(adapter, source_id=source_id)
+        agent = Agent(
+            initial_state={
+                "system_prompt": "durable system prompt",
+                "model": _model(api=adapter.api),
+                "thinking_level": "off",
+            },
+            prepare_model_call=runtime.prepare,
+        )
+        try:
+            await agent.prompt("hello")
+        finally:
+            registry.unregister_api_adapters(source_id)
+
+        snapshot_id = next(
+            entry.payload.snapshot_id
+            for entry in session.get_active_entries()
+            if entry.kind == "model.input.prepared"
+        )
+        rebuilt = session.rebuild_model_input(snapshot_id)
+        component = rebuilt.logical_input[RESOURCE_EVIDENCE_COMPONENT]
+        assert component["schemaId"] == RESOURCE_EVIDENCE_SCHEMA_ID
+        assert component["schemaVersion"] == 1
+        assert component["contextComplete"] is True
+        assert component["messages"] == [
+            {
+                "messageIndex": 0,
+                "messageRecordId": message_record_id,
+                "messageTextDigest": evidence.message_text_digest,
+                "modelVisibleText": "hello",
+                "skills": [_skill_evidence_payload()],
+            }
+        ]
+
+        resumed = SessionRequestEvidenceRuntime(
+            get_context_message_bindings=session.get_context_message_bindings,
+            get_active_records=session.get_active_entries,
+            rebuild_model_input=session.rebuild_model_input,
+        )
+        recovered = resumed.project_model_input(
+            ModelCallPreparation(
+                purpose="continuation",
+                sequence=2,
+                model=_model(api=adapter.api),
+                context=Context(
+                    system_prompt="durable system prompt",
+                    messages=[
+                        UserMessage(role="user", content="hello", timestamp=1.0)
+                    ],
+                ),
+                options=CallOptions(),
+            )
+        )
+        assert recovered == component
+        assert (
+            resumed.project_model_input(
+                ModelCallPreparation(
+                    purpose="tool-loop",
+                    sequence=3,
+                    model=_model(api=adapter.api),
+                    context=Context(
+                        system_prompt="durable system prompt",
+                        messages=[
+                            UserMessage(role="user", content="hello", timestamp=1.0)
+                        ],
+                    ),
+                    options=CallOptions(),
+                )
+            )
+            == component
+        )
+
+        compacted = SessionRequestEvidenceRuntime(
+            get_context_message_bindings=lambda records=None: (
+                ()
+                if records is None
+                else session.get_context_message_bindings(records)
+            ),
+            get_active_records=session.get_active_entries,
+            rebuild_model_input=session.rebuild_model_input,
+        )
+        assert (
+            compacted.project_model_input(
+                ModelCallPreparation(
+                    purpose="post-compaction",
+                    sequence=4,
+                    model=_model(api=adapter.api),
+                    context=Context(
+                        system_prompt="durable system prompt",
+                        messages=[],
+                    ),
+                    options=CallOptions(),
+                )
+            )
+            is None
+        )
+
+        compacted.close()
+        resumed.close()
+        evidence_runtime.close()
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_resource_evidence_recovery_is_strict_and_transactional() -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        message_record_id, transcript_message = (
+            session.get_context_message_bindings()[0]
+        )
+        evidence = PreparedResourceEvidence(
+            model_visible_text="hello",
+            skills=(_skill_evidence_payload(),),
+        )
+        first_message = evidence.to_message_payload(
+            message_record_id=message_record_id,
+            message_index=0,
+        )
+        duplicate_message = deepcopy(first_message)
+        component: dict[str, object] = {
+            "contextComplete": True,
+            "schemaId": RESOURCE_EVIDENCE_SCHEMA_ID,
+            "schemaVersion": 1,
+            "messages": [first_message, duplicate_message],
+        }
+        runtime = _model_call_runtime(
+            session,
+            is_current=lambda: True,
+            request_evidence_provider=lambda _preparation: component,
+        )
+        adapter = _PreparedAdapter()
+        registry = get_default_api_registry()
+        source_id = "session-model-call-invalid-resource-evidence"
+        registry.register_api_adapter(adapter, source_id=source_id)
+        agent = Agent(
+            initial_state={
+                "system_prompt": "durable system prompt",
+                "model": _model(api=adapter.api),
+                "thinking_level": "off",
+            },
+            prepare_model_call=runtime.prepare,
+        )
+        try:
+            await agent.prompt("hello")
+        finally:
+            registry.unregister_api_adapters(source_id)
+
+        resumed = SessionRequestEvidenceRuntime(
+            get_context_message_bindings=session.get_context_message_bindings,
+            get_active_records=session.get_active_entries,
+            rebuild_model_input=session.rebuild_model_input,
+        )
+        preparation = ModelCallPreparation(
+            purpose="continuation",
+            sequence=2,
+            model=_model(api=adapter.api),
+            context=Context(
+                system_prompt="durable system prompt",
+                messages=[transcript_message],
+            ),
+            options=CallOptions(),
+        )
+        with pytest.raises(RequestEvidenceIntegrityError, match="repeats a message index"):
+            resumed.project_model_input(preparation)
+
+        session.branch(message_record_id)
+        assert resumed.project_model_input(preparation) is None
+        resumed.close()
+        await runtime.dispose()
 
     asyncio.run(scenario())
 

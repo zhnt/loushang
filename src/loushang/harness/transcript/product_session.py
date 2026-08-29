@@ -10,13 +10,14 @@ and the binding input to reuse for a fork.
 from __future__ import annotations
 
 import builtins
+from collections.abc import Mapping
 from contextlib import suppress
 from pathlib import Path
 from typing import Generic, Self, TypeVar, cast
 
 from loushang.agent.types import AgentMessage
 from loushang.ai.types import AssistantMessage, ToolResultMessage, UserMessage
-from loushang.foundation.json import require_json_value
+from loushang.foundation.json import JSONValue, require_json_value
 from loushang.harness.artifacts import (
     SessionBlobStore,
     resolve_session_blob_data_root,
@@ -116,19 +117,27 @@ class ProductTranscriptSession(
             ),
         )
 
-    async def append_message(self, message: object) -> str:
+    async def append_message(
+        self,
+        message: object,
+        *,
+        metadata: Mapping[str, JSONValue] | None = None,
+    ) -> str:
         """Externalize durable image bytes before committing an Agent message."""
 
         if not self.persist or not isinstance(
             message, UserMessage | AssistantMessage | ToolResultMessage
         ):
-            return await super().append_message(message)
+            return await super().append_message(message, metadata=metadata)
         externalized = externalize_session_message_images(
             message,
             self._session_blob_store(),
         )
         try:
-            return await super().append_message(externalized.message)
+            return await super().append_message(
+                externalized.message,
+                metadata=metadata,
+            )
         except BaseException as error:
             rollback_externalized_session_images(externalized, error)
             raise

@@ -164,6 +164,9 @@ from loushang.harness.session.operations_runtime import SessionOperationsPorts
 from loushang.harness.session.output_artifacts import (
     persist_session_command_outputs,
 )
+from loushang.harness.session.request_evidence import (
+    SessionRequestEvidenceRuntime,
+)
 from loushang.harness.session.resource_capability_ports import (
     SessionResourceCapabilityPorts,
 )
@@ -357,6 +360,13 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self._turn_start_performance = TurnStartPerformanceRuntime(
             session_id=str(self.session_manager.get_session_record().session_id)
         )
+        self._request_evidence_runtime = SessionRequestEvidenceRuntime(
+            get_context_message_bindings=(
+                self.session_manager.get_context_message_bindings
+            ),
+            get_active_records=self.session_manager.get_active_entries,
+            rebuild_model_input=self.session_manager.rebuild_model_input,
+        )
         if (
             capability_composition_inputs is not None
             and capability_composition_inputs.product_id != initial_profile.product_id
@@ -455,6 +465,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     else None
                 ),
                 turn_performance=self._turn_start_performance,
+                request_evidence_provider=(
+                    self._request_evidence_runtime.project_model_input
+                ),
             )
         )
         self._side_question_consumer: SessionSideQuestionCapabilityConsumer | None = (
@@ -925,6 +938,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     self._record_extension_runtime_diagnostic
                 ),
                 extension_declaration_preflight=(self._extension_declaration_preflight),
+                request_evidence=self._request_evidence_runtime,
             ),
             maintenance=SessionMaintenanceInputs(
                 execute_compaction=self._execute_product_compaction,

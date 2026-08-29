@@ -308,6 +308,57 @@ never queues/starts a turn publishes no evidence. A refresh or uninstall may
 retire the source only under the existing generation drain, while already
 committed request evidence remains immutable.
 
+RCP5.3B uses a Session-owned association runtime rather than extending the AI
+message schema. Preflight projects each loaded value into an immutable
+request-local value. The runtime binds that value to the delivered user
+message, and the Agent event boundary replaces the temporary binding with the
+exact transcript record id after the message commit. Duplicate message text is
+resolved by delivered-message identity for queues; the one immediate
+canonicalization handoff may use an exact role/text match only when it is
+unique. An ambiguous match fails closed. Clearing a queue or abandoning a turn
+removes only its uncommitted binding.
+
+The message commit also carries a JSON-safe evidence anchor in transcript
+record metadata under `loushang.request.resource_evidence`. This metadata is
+part of the same atomic record append as the user message and contains the
+schema version, exact model-visible text and digest, and immutable loaded-Skill
+facts; the enclosing record supplies the durable message identity. It closes
+the crash window before the first Model Input is prepared without extending the
+AI message schema or adding a second journal authority. Model Input remains the
+request-level projection and records the logical-message index.
+
+The optional Model Input `resource_evidence` component has schema id
+`loushang.model-input.resource-evidence` and schema version `1`. Each message
+entry records its exact logical-message index, transcript record id, exact
+model-visible text and domain-separated text digest. Each loaded-Skill entry
+records the Resource identity, Catalog generation and snapshot fingerprint,
+activation-policy and candidate fingerprints, source-generation reference,
+schema/media facts, and both expected and observed digest/length. The
+component also states whether the final logical context was the complete
+transcript context, allowing resume to stop at the newest cumulative snapshot
+or continue through partial side requests. The projection is JSON-safe and
+contains no live handle, `Path`, source object, or opaque locator.
+
+Before creating a transport committer, the association runtime maps retained
+evidence to the final logical context by exact role/text occurrence. A message
+absent from a compaction, branch-summary, or side-question request contributes
+no evidence to that request. If only an ambiguous subset of duplicate exact
+messages remains, association fails closed instead of guessing a record id.
+Model Input reconstruction returns the committed component as ordinary logical
+data. A resumed Session may recover retained evidence only from verified Model
+Input snapshots on its selected transcript path; it never reopens a Resource
+source. Compaction and branch selection naturally exclude evidence whose
+message record is no longer in the projected context.
+
+Recovery treats both message anchors and Model Input components as untrusted
+typed input. It validates exact field sets, SHA-256 facts, Resource and
+source-generation shapes, schema agreement, snapshot ancestry, logical-message
+indices, duplicate occurrences, and transcript text. A component is parsed
+fully into a local value and published to Session recovery state only after all
+entries succeed. Queue bindings use one owner per delivered message: consumption
+moves that owner from clearable queue state to in-flight state, `message_end`
+completes it, and `agent_end` discards an incomplete delivery.
+
 #### RCP5.3C — eager-body sink deletion
 
 After durable evidence review, command execution, description fallback, Method

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -27,6 +28,8 @@ from loushang.harness.resources.types import (
     SkillDescriptor,
 )
 
+_SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
+
 
 class SkillCatalogConsumerError(RuntimeError):
     """Fail-closed typed Skill projection or load failure."""
@@ -50,6 +53,7 @@ class SkillCatalogSummary:
 
     catalog_generation: int
     catalog_snapshot_fingerprint: str
+    activation_policy_fingerprint: str
     candidate_fingerprint: str
     identity: ResourceIdentity
     name: str
@@ -73,6 +77,13 @@ class SkillCatalogSummary:
     def __post_init__(self) -> None:
         if self.catalog_generation < 1:
             raise ValueError("Skill summary Catalog generation must be positive")
+        if (
+            not isinstance(self.activation_policy_fingerprint, str)
+            or _SHA256_RE.fullmatch(self.activation_policy_fingerprint) is None
+        ):
+            raise ValueError(
+                "Skill summary activation-policy fingerprint must be a digest"
+            )
         if self.identity.resource_kind != "skill":
             raise ValueError("Skill summary identity must name a Skill")
         if self.identity.public_id == "":
@@ -398,6 +409,7 @@ def build_effective_skill_catalog_projection(
             SkillCatalogSummary(
                 catalog_generation=snapshot.catalog_generation,
                 catalog_snapshot_fingerprint=snapshot.snapshot_fingerprint,
+                activation_policy_fingerprint=(snapshot.activation_policy_fingerprint),
                 candidate_fingerprint=candidate.candidate_fingerprint,
                 identity=candidate.identity,
                 name=descriptor.name,

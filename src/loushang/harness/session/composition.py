@@ -84,6 +84,7 @@ from loushang.harness.session.extension_composition import (
     compose_agent_session_extensions,
 )
 from loushang.harness.session.inspection import AgentSessionInspector
+from loushang.harness.session.request_evidence import RequestEvidenceRuntimePort
 from loushang.harness.session.resource_refresh import (
     ExtensionDeclarationPreflight,
     ResourceLoaderPort,
@@ -236,6 +237,7 @@ class SessionFoundationInputs:
     get_effective_skills: (
         Callable[[], Sequence[SkillPromptSummary] | None] | None
     ) = None
+    request_evidence: RequestEvidenceRuntimePort | None = None
 
 
 @dataclass(frozen=True)
@@ -430,6 +432,7 @@ def _legacy_composition_inputs(
             None,
         ),
         get_effective_skills=remaining.pop("get_effective_skills", None),
+        request_evidence=remaining.pop("request_evidence", None),
     )
     maintenance = SessionMaintenanceInputs(
         execute_compaction=take("execute_compaction"),
@@ -668,6 +671,7 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
             ),
             check_auto_compaction=check_auto_compaction,
         ),
+        request_evidence=ports.foundation.request_evidence,
     )
     bindings = _build_product_bindings(
         ports,
