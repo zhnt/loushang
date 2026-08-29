@@ -491,9 +491,6 @@ def resources_capability_provider_binding(
             provider_id=provider_id,
             contract_version=definition.contract_version,
             provider_version=provider_version,
-            owner_generation_binding_fingerprint=(
-                prepared_generation_fingerprint if has_prepared_generation else None
-            ),
         ),
         create=create,
         dispose=dispose,
@@ -507,7 +504,6 @@ def _binding_input_fingerprint(
     provider_id: str,
     contract_version: int,
     provider_version: int,
-    owner_generation_binding_fingerprint: str | None,
 ) -> str:
     if contract_version == 1:
         payload_value: dict[str, object] = {
@@ -520,10 +516,6 @@ def _binding_input_fingerprint(
             "profile": profile.snapshot().to_json(),
         }
     else:
-        if owner_generation_binding_fingerprint is None:
-            raise ValueError(
-                "Resources Catalog fingerprint requires an owner generation binding"
-            )
         payload_value = {
             "schemaVersion": 2,
             "capabilityId": RESOURCES_CAPABILITY_DEFINITION_V2.capability_id,
@@ -532,7 +524,6 @@ def _binding_input_fingerprint(
             "providerVersion": provider_version,
             "scopeInstanceId": scope_instance_id,
             "profile": profile.snapshot().to_json(),
-            "ownerGenerationBindingFingerprint": (owner_generation_binding_fingerprint),
         }
     payload = dump_json_value(
         payload_value,

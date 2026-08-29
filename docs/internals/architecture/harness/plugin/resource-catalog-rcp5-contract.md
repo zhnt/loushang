@@ -423,18 +423,25 @@ candidate cleanup. The graph generation does not change.
 
 Ordinary refresh, watcher refresh, package-triggered refresh, and Extension
 reload all enter this same asynchronous authority. Synchronous Catalog refresh
-fails finitely; best-effort callers schedule and coalesce one owned task. The
+fails finitely. Best-effort calls made before the owned task starts coalesce;
+calls that arrive during an active pass set a dirty latch, and the owned task
+drains one or more successor passes until no accepted request remains. Package
+install/update/uninstall operations await this authority before returning;
+unsupported unverified package inputs fail at that boundary and installation
+rolls back its settings registration rather than reporting false success. The
 legacy coordinator, direct loader reload, and independent disabled-name overlay
 remain reachable only when the caller explicitly selected `legacy_explicit`.
 
 After publication, the replaced Resource generation retires first. An in-flight
 load pins its exact source-component leases, so cleanup debt remains retryable
 until those leases drain; it never rolls back the already visible successor.
-Only then does the previous Extension generation retire. Session shutdown joins
-or cancels the owned best-effort request, retries retained retirement debt, and
-finally disposes the current mounted generation through the existing graph
-owner. Old typed Consumers retain immutable metadata for their captured
-generation, but cannot initiate a new load after that generation retires.
+Only then does the previous Extension generation retire. Session shutdown first
+closes refresh admission, joins or cancels the complete owned drain loop, and
+also joins any explicit Catalog refresh that already entered the publication
+lock. It then retries retained retirement debt and finally disposes the current
+mounted generation through the existing graph owner. Old typed Consumers retain
+immutable metadata for their captured generation, but cannot initiate a new
+load after that generation retires.
 
 ## Ordered cutover
 

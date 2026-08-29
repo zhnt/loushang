@@ -17,6 +17,7 @@ from loushang.harness.resources.types import (
 )
 from loushang.harness.session.resource_refresh import (
     CatalogRefreshRequiresAsyncError,
+    ResourceRefreshRuntimeClosedError,
     SessionResourceRefreshRuntime,
 )
 
@@ -374,6 +375,110 @@ def test_catalog_refresh_request_coalesces_and_reports_one_success() -> None:
 
     asyncio.run(scenario())
     assert events == ["catalog:refresh", "resource_loading"]
+
+
+def test_catalog_refresh_request_during_active_refresh_drains_one_successor() -> None:
+    events: list[str] = []
+
+    async def scenario() -> None:
+        first_started = asyncio.Event()
+        release_first = asyncio.Event()
+        call_count = 0
+
+        async def refresh_catalog(reason: str) -> ResourceBundle:
+            nonlocal call_count
+            call_count += 1
+            events.append(f"catalog:{call_count}:{reason}")
+            if call_count == 1:
+                first_started.set()
+                await release_first.wait()
+            return ResourceBundle(cwd=Path("/tmp/project"))
+
+        runtime = _runtime(
+            loader=None,
+            catalog_refresh=refresh_catalog,
+            syncs=events,
+        )
+        runtime.request_refresh()
+        await first_started.wait()
+        runtime.request_refresh()
+        runtime.request_refresh()
+        release_first.set()
+        await runtime.close()
+
+        assert runtime.resource_revision == 2
+
+    asyncio.run(scenario())
+    assert events == [
+        "catalog:1:refresh",
+        "resource_loading",
+        "catalog:2:refresh",
+        "resource_loading",
+    ]
+
+
+def test_catalog_refresh_close_is_admission_and_explicit_refresh_join_barrier() -> (
+    None
+):
+    async def scenario() -> None:
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def refresh_catalog(_reason: str) -> ResourceBundle:
+            started.set()
+            await release.wait()
+            return ResourceBundle(cwd=Path("/tmp/project"))
+
+        runtime = _runtime(loader=None, catalog_refresh=refresh_catalog)
+        explicit = asyncio.create_task(runtime.refresh_async())
+        await started.wait()
+        closing = asyncio.create_task(runtime.close(cancel=True))
+        await asyncio.sleep(0)
+
+        assert closing.done() is False
+        runtime.request_refresh()
+        assert runtime._requested_refresh_task is None
+
+        release.set()
+        await explicit
+        await closing
+        with pytest.raises(ResourceRefreshRuntimeClosedError):
+            await runtime.refresh_async()
+        runtime.request_refresh()
+        assert runtime._requested_refresh_task is None
+
+    asyncio.run(scenario())
+
+
+def test_catalog_refresh_close_finishes_barrier_before_propagating_cancellation() -> (
+    None
+):
+    async def scenario() -> None:
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def refresh_catalog(_reason: str) -> ResourceBundle:
+            started.set()
+            await release.wait()
+            return ResourceBundle(cwd=Path("/tmp/project"))
+
+        runtime = _runtime(loader=None, catalog_refresh=refresh_catalog)
+        explicit = asyncio.create_task(runtime.refresh_async())
+        await started.wait()
+        closing = asyncio.create_task(runtime.close())
+        await asyncio.sleep(0)
+        closing.cancel()
+        await asyncio.sleep(0)
+
+        assert closing.done() is False
+        release.set()
+        await explicit
+        with pytest.raises(asyncio.CancelledError):
+            await closing
+        with pytest.raises(ResourceRefreshRuntimeClosedError):
+            await runtime.refresh_async()
+
+    asyncio.run(scenario())
 
 
 def test_catalog_extension_reload_delegates_to_the_same_refresh_authority() -> None:

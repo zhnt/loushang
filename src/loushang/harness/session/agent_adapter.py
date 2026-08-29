@@ -541,8 +541,8 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
     def _set_resource_bundle(self, resource_bundle: ResourceBundle | None) -> None:
         self.resource_bundle = resource_bundle
 
-    def _refresh_resources_for_extension_runtime(self) -> None:
-        self._composition.resource_refresh_runtime.request_resource_refresh()
+    async def _refresh_resources_for_extension_runtime(self) -> None:
+        await self._composition.resource_refresh_runtime.refresh_resources()
 
     def _resource_watch_paths(self) -> list[Path]:
         cwd = Path(self.session_manager.get_cwd())

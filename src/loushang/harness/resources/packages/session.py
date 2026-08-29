@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import inspect
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Protocol, cast
@@ -52,7 +53,7 @@ SettingsManagerProvider = Callable[[], SessionPackageSettingsManager | None]
 PackageMaterializerProvider = Callable[[], PackageMaterializer | None]
 ResourceLoaderProvider = Callable[[], ResourceLoader | None]
 DiagnosticsServiceProvider = Callable[[], DiagnosticsService | None]
-ResourceRefresh = Callable[[], None]
+ResourceRefresh = Callable[[], object | Awaitable[object]]
 
 
 @dataclass
@@ -67,6 +68,7 @@ class SessionPackageController:
     get_diagnostics_service: DiagnosticsServiceProvider
     refresh_resources: ResourceRefresh
     summary_provider: PackageSummaryProvider | None = None
+    get_resource_revision: Callable[[], int] | None = None
     _operations: PackageOperationsRuntime = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -76,6 +78,7 @@ class SessionPackageController:
             remove_source=self._remove_package_source,
             refresh_resources=self.refresh_package_resources,
             prepare_updates=self.prepare_configured_remote_package_records,
+            get_resource_revision=self.get_resource_revision,
         )
 
     @property
@@ -141,11 +144,11 @@ class SessionPackageController:
     def remove_package(self, source: str) -> dict[str, object]:
         return serialize_package_materialization_record(self._operations.remove(source))
 
-    def uninstall_package(
+    async def uninstall_package(
         self, source: str, *, scope: str = "project"
     ) -> dict[str, object]:
         return serialize_package_materialization_record(
-            self._operations.uninstall(source, scope=scope)
+            await self._operations.uninstall(source, scope=scope)
         )
 
     def _add_package_source(self, source: str, scope: str) -> None:
@@ -170,11 +173,13 @@ class SessionPackageController:
         except ValueError:
             settings_manager.remove_package_source(source, scope="session")
 
-    def refresh_package_resources(self) -> None:
+    async def refresh_package_resources(self) -> None:
         if self.get_resource_loader() is None:
             return
         self.configure_package_resource_roots()
-        self.refresh_resources()
+        refreshed = self.refresh_resources()
+        if inspect.isawaitable(refreshed):
+            await refreshed
 
     async def prepare_configured_remote_package_records(self) -> None:
         settings_manager = self.get_settings_manager()

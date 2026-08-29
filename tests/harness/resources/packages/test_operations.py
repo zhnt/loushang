@@ -131,12 +131,65 @@ def test_operations_uninstall_forgets_remote_source_and_refreshes(tmp_path) -> N
     runtime = _runtime(materializer, calls=calls)
     source = "https://example.test/pack.git"
 
-    record = runtime.uninstall(source, scope="session")
+    record = asyncio.run(runtime.uninstall(source, scope="session"))
 
     assert record.lifecycle == "remote_registered"
     assert materializer.removed == [source]
     assert materializer.forgotten == [source]
     assert calls == [f"remove:session:{source}", "refresh"]
+
+
+def test_operations_rolls_back_registration_when_refresh_fails(tmp_path) -> None:
+    calls: list[str] = []
+    materializer = _Materializer(tmp_path)
+
+    def fail_refresh() -> None:
+        calls.append("refresh")
+        raise RuntimeError("Catalog admission failed")
+
+    runtime = PackageOperationsRuntime(
+        get_materializer=lambda: materializer,
+        add_source=lambda source, scope: calls.append(f"add:{scope}:{source}"),
+        remove_source=lambda source, scope: calls.append(f"remove:{scope}:{source}"),
+        refresh_resources=fail_refresh,
+    )
+    source = "https://example.test/pack.git"
+
+    with pytest.raises(RuntimeError, match="Catalog admission failed"):
+        asyncio.run(runtime.install(source, scope="project"))
+
+    assert calls == [
+        f"add:project:{source}",
+        "refresh",
+        f"remove:project:{source}",
+    ]
+
+
+def test_operations_keeps_registration_when_refresh_published_before_failure(
+    tmp_path,
+) -> None:
+    calls: list[str] = []
+    materializer = _Materializer(tmp_path)
+    revision = [1]
+
+    def fail_after_publication() -> None:
+        calls.append("refresh")
+        revision[0] += 1
+        raise RuntimeError("retirement remains pending")
+
+    runtime = PackageOperationsRuntime(
+        get_materializer=lambda: materializer,
+        add_source=lambda source, scope: calls.append(f"add:{scope}:{source}"),
+        remove_source=lambda source, scope: calls.append(f"remove:{scope}:{source}"),
+        refresh_resources=fail_after_publication,
+        get_resource_revision=lambda: revision[0],
+    )
+    source = "https://example.test/pack.git"
+
+    with pytest.raises(RuntimeError, match="retirement remains pending"):
+        asyncio.run(runtime.install(source, scope="project"))
+
+    assert calls == [f"add:project:{source}", "refresh"]
 
 
 def test_operations_requires_materializer_for_remote_source(tmp_path) -> None:

@@ -408,7 +408,11 @@ Its `binding_input_fingerprint` must cover:
 It excludes credentials, callbacks, arbitrary objects, and environment values.
 For `harness.resources`, it also excludes resource-bundle content,
 Extension/resource content generation, disabled-skill call data, and current
-registrations: those change derived content, not the selected mechanism. If a
+registrations.  In particular, the stable Mount fingerprint never includes an
+owner-generation binding fingerprint: exact generation provenance belongs to
+the Catalog capture/evidence while the Mount identity describes only its
+mechanism, Profile, scope, and slot.  Those excluded values change derived
+content, not the selected mechanism. If a
 Provider cannot fingerprint every input that can change the constructed live
 mechanism, it is not reusable. The Binder cannot infer completeness from a
 hash, so tests vary each declared construction input and prove that the

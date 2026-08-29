@@ -7,6 +7,7 @@ loading, settings, runtime discovery, diagnostics, and prompt/tool rebuilding.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
@@ -51,6 +52,10 @@ class CatalogRefreshRequiresAsyncError(RuntimeError):
     """A Catalog-owned refresh cannot be linearized synchronously."""
 
 
+class ResourceRefreshRuntimeClosedError(RuntimeError):
+    """The Session refresh authority has started its shutdown barrier."""
+
+
 @dataclass
 class SessionResourceRefreshRuntime:
     """Refresh a bound Product resource bundle without Product imports."""
@@ -74,10 +79,15 @@ class SessionResourceRefreshRuntime:
     _discovery: RuntimeResourceDiscovery[ResourceBundle] = field(init=False)
     _resource_revision: int = field(init=False, default=0)
     _catalog_refresh_lock: asyncio.Lock = field(init=False)
+    _closing: bool = field(init=False, default=False)
+    _closed: bool = field(init=False, default=False)
+    _close_task: asyncio.Task[None] | None = field(init=False, default=None)
     _requested_refresh_task: asyncio.Task[None] | None = field(
         init=False,
         default=None,
     )
+    _requested_refresh_running: bool = field(init=False, default=False)
+    _requested_refresh_pending: bool = field(init=False, default=False)
 
     def __post_init__(self) -> None:
         self._resource_revision = 1 if self.get_resource_bundle() is not None else 0
@@ -104,6 +114,7 @@ class SessionResourceRefreshRuntime:
         return []
 
     def refresh(self, *, reason: str = "refresh") -> None:
+        self._require_open()
         if self.refresh_catalog is not None:
             raise CatalogRefreshRequiresAsyncError(
                 "Catalog-owned Resource refresh requires refresh_async()"
@@ -111,9 +122,27 @@ class SessionResourceRefreshRuntime:
         self._coordinator.refresh(reason=reason)
 
     async def refresh_async(self, *, reason: str = "refresh") -> None:
+        await self._refresh_async(reason=reason, admitted=False)
+
+    async def _refresh_async(self, *, reason: str, admitted: bool) -> None:
+        if not admitted:
+            self._require_open()
+        elif self._closed:
+            raise ResourceRefreshRuntimeClosedError(
+                "Session Resource refresh runtime is closed"
+            )
         catalog_refresh = self.refresh_catalog
         if catalog_refresh is not None:
             async with self._catalog_refresh_lock:
+                # close() may win the lock after the first check.  A refresh
+                # that had already entered the lock is allowed to finish;
+                # queued callers fail without starting a new generation.
+                if not admitted:
+                    self._require_open()
+                elif self._closed:
+                    raise ResourceRefreshRuntimeClosedError(
+                        "Session Resource refresh runtime is closed"
+                    )
                 if self.prepare_resource_refresh is not None:
                     prepared = self.prepare_resource_refresh()
                     if inspect.isawaitable(prepared):
@@ -131,9 +160,13 @@ class SessionResourceRefreshRuntime:
         await self._coordinator.refresh_async(reason=reason)
 
     def request_refresh(self) -> None:
+        if self._closing or self._closed:
+            return
         if self.refresh_catalog is not None:
             task = self._requested_refresh_task
             if task is not None and not task.done():
+                if self._requested_refresh_running:
+                    self._requested_refresh_pending = True
                 return
             try:
                 loop = asyncio.get_running_loop()
@@ -263,30 +296,59 @@ class SessionResourceRefreshRuntime:
         self.request_refresh()
 
     async def close(self, *, cancel: bool = False) -> None:
-        """Join a best-effort Catalog refresh before Session-owned disposal."""
+        """Close refresh admission and join every entered Catalog refresh."""
 
-        task = self._requested_refresh_task
-        if task is None:
+        if self._closed:
             return
-        if cancel and not task.done():
-            task.cancel()
+        task = self._close_task
+        if task is None:
+            self._closing = True
+            task = asyncio.create_task(self._close_once(cancel=cancel))
+            self._close_task = task
+        await _join_close(task)
+
+    async def _close_once(self, *, cancel: bool) -> None:
         try:
-            await task
-        except asyncio.CancelledError:
-            pass
+            task = self._requested_refresh_task
+            if task is not None:
+                if cancel and not task.done():
+                    task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+            # Explicit refresh_async() callers are not owned tasks and must
+            # not be cancelled.  Taking the lock after closing admission is
+            # the join barrier for any one that already entered publication.
+            if self.refresh_catalog is not None:
+                async with self._catalog_refresh_lock:
+                    pass
         finally:
-            if self._requested_refresh_task is task:
-                self._requested_refresh_task = None
+            self._requested_refresh_task = None
+            self._requested_refresh_pending = False
+            self._closed = True
 
     async def _run_requested_catalog_refresh(self) -> None:
+        self._requested_refresh_running = True
         try:
-            await self.refresh_async()
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            self.record_refresh_failure(exc)
-        else:
-            self.sync_extension_diagnostics()
+            while True:
+                self._requested_refresh_pending = False
+                try:
+                    await self._refresh_async(reason="refresh", admitted=True)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    self.record_refresh_failure(exc)
+                else:
+                    self.sync_extension_diagnostics()
+                if not self._requested_refresh_pending:
+                    return
+        finally:
+            self._requested_refresh_running = False
+
+    def _require_open(self) -> None:
+        if self._closing or self._closed:
+            raise ResourceRefreshRuntimeClosedError(
+                "Session Resource refresh runtime is closed"
+            )
 
     def _load_resource_bundle(self) -> ResourceBundle | None:
         resource_loader = self.get_resource_loader()
@@ -336,8 +398,26 @@ class SessionResourceRefreshRuntime:
         self._commit_resource_bundle(resource_bundle)
 
 
+async def _join_close(task: asyncio.Task[None]) -> None:
+    """Finish the Session-owned close barrier before propagating cancellation."""
+
+    cancellation: asyncio.CancelledError | None = None
+    caller = asyncio.current_task()
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as exc:
+            if caller is None or caller.cancelling() == 0:
+                return task.result()
+            cancellation = exc
+    task.result()
+    if cancellation is not None:
+        raise cancellation
+
+
 __all__ = [
     "CatalogRefreshRequiresAsyncError",
+    "ResourceRefreshRuntimeClosedError",
     "RefreshFailureRecorder",
     "ResourceBundleProvider",
     "ResourceCatalogRefresh",

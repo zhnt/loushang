@@ -232,8 +232,6 @@ class InitialSessionResourceCatalogBootstrap:
                     raise TypeError(
                         "Extension declaration preflight must return None"
                     )
-            self._preflight_candidate = None
-
             async def prepare_resource(
                 source_lease: BorrowedResourceSourceGenerationLease,
             ) -> None:
@@ -273,6 +271,10 @@ class InitialSessionResourceCatalogBootstrap:
                 product_id=self._inputs.product_id,
                 prepare_resource_generation=prepare_resource,
             )
+            # The joint now owns rollback custody.  Keep the preflight handle
+            # until every await needed to create that joint has succeeded so a
+            # failed Extension Resource freeze remains retryable by abort().
+            self._preflight_candidate = None
         except BaseException as preparation_error:
             preflight_candidate = self._preflight_candidate
             if preflight_candidate is not None:

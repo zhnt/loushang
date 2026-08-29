@@ -38,8 +38,9 @@ class PackageMaterializerPort(Protocol):
 
 PackageMaterializerProvider = Callable[[], PackageMaterializerPort | None]
 PackageSourceRegistration = Callable[[str, str], None]
-PackageResourceRefresh = Callable[[], None]
+PackageResourceRefresh = Callable[[], object | Awaitable[object]]
 PackageUpdatePreparation = Callable[[], object | Awaitable[object]]
+PackageResourceRevisionProvider = Callable[[], int]
 
 
 @dataclass
@@ -51,6 +52,7 @@ class PackageOperationsRuntime:
     remove_source: PackageSourceRegistration
     refresh_resources: PackageResourceRefresh
     prepare_updates: PackageUpdatePreparation | None = None
+    get_resource_revision: PackageResourceRevisionProvider | None = None
 
     async def materialize(self, source: str) -> PackageMaterializationRecord:
         if is_remote_package_source(source):
@@ -77,15 +79,22 @@ class PackageOperationsRuntime:
         if record.lifecycle != "installed":
             return record
         self.add_source(source, scope)
-        self.refresh_resources()
+        previous_revision = self._resource_revision()
+        try:
+            await _resolve(self.refresh_resources())
+        except BaseException:
+            if not self._refresh_published_since(previous_revision):
+                self.remove_source(source, scope)
+            raise
         return record
 
     async def update(self, source: str) -> PackageMaterializationRecord:
         if not is_remote_package_source(source):
-            return await self.materialize(source)
-        materializer = self._require_materializer()
-        record = await materializer.update_remote_source(source)
-        self.refresh_resources()
+            record = await self.materialize(source)
+        else:
+            materializer = self._require_materializer()
+            record = await materializer.update_remote_source(source)
+        await _resolve(self.refresh_resources())
         return record
 
     async def update_all(self) -> list[PackageMaterializationRecord]:
@@ -93,7 +102,7 @@ class PackageOperationsRuntime:
             await _resolve(self.prepare_updates())
         materializer = self._require_materializer()
         records = await materializer.update_all_remote_sources()
-        self.refresh_resources()
+        await _resolve(self.refresh_resources())
         return records
 
     def remove(self, source: str) -> PackageMaterializationRecord:
@@ -107,7 +116,7 @@ class PackageOperationsRuntime:
             )
         return self._require_materializer().remove_remote_source(source)
 
-    def uninstall(
+    async def uninstall(
         self,
         source: str,
         *,
@@ -115,11 +124,34 @@ class PackageOperationsRuntime:
     ) -> PackageMaterializationRecord:
         record = self.remove(source)
         self.remove_source(source, scope)
+        previous_revision = self._resource_revision()
+        try:
+            await _resolve(self.refresh_resources())
+        except BaseException:
+            if not self._refresh_published_since(previous_revision):
+                self.add_source(source, scope)
+            else:
+                self._forget_remote_source(source)
+            raise
+        self._forget_remote_source(source)
+        return record
+
+    def _resource_revision(self) -> int | None:
+        provider = self.get_resource_revision
+        return None if provider is None else provider()
+
+    def _refresh_published_since(self, previous_revision: int | None) -> bool:
+        provider = self.get_resource_revision
+        return (
+            previous_revision is not None
+            and provider is not None
+            and provider() != previous_revision
+        )
+
+    def _forget_remote_source(self, source: str) -> None:
         materializer = self.get_materializer()
         if materializer is not None:
             materializer.forget_remote_source(source)
-        self.refresh_resources()
-        return record
 
     def _require_materializer(self) -> PackageMaterializerPort:
         materializer = self.get_materializer()
@@ -139,6 +171,7 @@ __all__ = [
     "PackageMaterializerProvider",
     "PackageOperationsRuntime",
     "PackageResourceRefresh",
+    "PackageResourceRevisionProvider",
     "PackageSourceRegistration",
     "PackageUpdatePreparation",
 ]

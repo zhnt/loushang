@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from functools import partial
@@ -203,7 +204,7 @@ def _build_binding_factory(
         set_active_tools=lambda names: _set_active_tools(
             tool_controller,
             names,
-            ports.resource_refresh_runtime.refresh,
+            ports.resource_refresh_runtime.refresh_resources,
         ),
         set_model=ports.set_model,
         register_tool=partial(_register_extension_tool, tool_controller),
@@ -272,10 +273,12 @@ async def _set_extension_label(
 async def _set_active_tools(
     controller: SessionToolController,
     names: list[str],
-    refresh: Callable[[], None],
+    refresh: Callable[[], object | Awaitable[object]],
 ) -> None:
     controller.apply_active_tools(names)
-    refresh()
+    refreshed = refresh()
+    if inspect.isawaitable(refreshed):
+        await refreshed
 
 
 def _abort_session(session_runtime: SessionRuntime) -> None:
