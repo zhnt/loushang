@@ -1,5 +1,5 @@
 ---
-name: coding-standard
+name: standard
 description: Apply the standard Coding workspace workflow with explicit inspection, scoped edits, and proportionate validation.
 disable-model-invocation: true
 ---

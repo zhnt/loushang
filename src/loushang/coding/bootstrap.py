@@ -13,6 +13,10 @@ from typing import Any, Literal, cast
 from loushang.agent import Agent, StreamFn, ThinkingLevel
 from loushang.ai.model import Model, ModelSelection
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
+from loushang.coding._base_plugin import (
+    CodingBasePluginAssembly,
+    prepare_coding_base_plugin_assembly,
+)
 from loushang.coding._resource_catalog_shadow import (
     CodingResourceCatalogAdmissionError,
     build_coding_initial_resource_catalog_adapter,
@@ -21,6 +25,7 @@ from loushang.coding.capabilities import (
     CODING_LSP_CAPABILITY,
     coding_capability_mount_mode,
 )
+from loushang.coding.composition_sets import resolve_coding_composition_set
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
@@ -39,7 +44,10 @@ from loushang.coding.lsp.discovery import (
 from loushang.coding.lsp.model import LspServerDefinition
 from loushang.coding.lsp.ports import WorkspaceTextReader
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE, CODING_PRODUCT_ID
-from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
+from loushang.coding.prompt.defaults import (
+    CODING_KERNEL_SYSTEM_PROMPT,
+    DEFAULT_CODING_SYSTEM_PROMPT,
+)
 from loushang.coding.resource_authority import (
     RESOURCE_AUTHORITY_MODES,
     ResourceAuthorityMode,
@@ -92,10 +100,15 @@ from loushang.harness.resource_catalog.product_inputs import (
 from loushang.harness.resources._catalog_input_receipt import (
     ResourceCatalogInputReceipt,
 )
+from loushang.harness.resources.loader import ResourceLoader
+from loushang.harness.resources.packages.catalog_diagnostics import (
+    record_package_lockfile_diagnostics,
+)
 from loushang.harness.resources.packages.materializer import (
     GitPackageMaterializerBackend,
     resolve_session_package_install_root,
 )
+from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.session import (
     AgentProductConstructionBinding,
@@ -162,12 +175,13 @@ def create_services(
 
 
 def _prepare_coding_catalog_projection(
-    resource_loader: DefaultResourceLoader,
+    resource_loader: ResourceLoader,
     *,
     cwd: Path,
     session_id: str,
     disabled_skills: tuple[str, ...] | list[str] = (),
     product_composition: object | None = None,
+    product_selection: object | None = None,
     admission_now: int | None = None,
 ) -> tuple[InitialResourceCatalogProductAdapter, ResourceBundle]:
     """Prepare one Catalog adapter and its disposable bootstrap projection."""
@@ -188,6 +202,7 @@ def _prepare_coding_catalog_projection(
         product_scope_id=session_id,
         disabled_skills=disabled_skills,
         product_composition=cast(Any, product_composition),
+        product_selection=cast(Any, product_selection),
         package_admission_now=evaluated_at,
     )
     bundle = adapter.prepare_bootstrap_projection(
@@ -452,12 +467,44 @@ def _create_agent_session(
         package_materializer or _default_package_materializer(session_manager)
     )
     session_id = session_manager.get_header().conversation_id
+    # PLC6 prepares Product-selected package evidence before the standard
+    # activation graph reaches its startup-check step. Preserve the existing
+    # diagnostic-before-failure contract when a corrupt binding lock prevents
+    # that preparation from completing.
+    record_package_lockfile_diagnostics(
+        resolved_package_materializer.get_lockfile_diagnostics(),
+        diagnostics_service=services.diagnostics_service,
+        session_id=session_id,
+    )
+    coding_base_plugin_assembly: CodingBasePluginAssembly | None = None
+    if (
+        resource_authority_mode == "catalog_required"
+        and initial_resource_catalog_product_composition_assembly is None
+    ):
+        coding_base_plugin_assembly = prepare_coding_base_plugin_assembly(
+            resolve_coding_composition_set("coding-standard"),
+            session_id=session_id,
+            package_materializer=resolved_package_materializer,
+        )
+    catalog_product_composition_assembly = (
+        initial_resource_catalog_product_composition_assembly
+    )
+    selected_plugin_packages = (
+        (
+            SelectedPluginPackageInput(
+                package=coding_base_plugin_assembly.package,
+                binding=coding_base_plugin_assembly.binding,
+            ),
+        )
+        if coding_base_plugin_assembly is not None
+        else ()
+    )
     prepared_resource_catalog_adapters: list[
         InitialResourceCatalogProductAdapter
     ] = []
 
     def prepare_initial_resource_catalog_projection(
-        loader: DefaultResourceLoader,
+        loader: ResourceLoader,
         resolved_cwd: Path,
     ) -> ResourceBundle:
         if prepared_resource_catalog_adapters:
@@ -467,10 +514,10 @@ def _create_agent_session(
         evaluated_at = int(time.time())
         product_composition = (
             assemble_product_composition(
-                initial_resource_catalog_product_composition_assembly,
+                catalog_product_composition_assembly,
                 evaluated_at=evaluated_at,
             )
-            if initial_resource_catalog_product_composition_assembly is not None
+            if catalog_product_composition_assembly is not None
             else None
         )
         adapter, projection = _prepare_coding_catalog_projection(
@@ -481,6 +528,11 @@ def _create_agent_session(
                 services.settings_manager.get_settings().disabled_skills
             ),
             product_composition=product_composition,
+            product_selection=(
+                coding_base_plugin_assembly.selection
+                if coding_base_plugin_assembly is not None
+                else None
+            ),
             admission_now=evaluated_at,
         )
         prepared_resource_catalog_adapters.append(adapter)
@@ -515,10 +567,10 @@ def _create_agent_session(
             evaluated_at = int(time.time())
             product_composition = (
                 assemble_product_composition(
-                    initial_resource_catalog_product_composition_assembly,
+                    catalog_product_composition_assembly,
                     evaluated_at=evaluated_at,
                 )
-                if initial_resource_catalog_product_composition_assembly is not None
+                if catalog_product_composition_assembly is not None
                 else None
             )
             adapter, refreshed_bundle = _prepare_coding_catalog_projection(
@@ -527,6 +579,11 @@ def _create_agent_session(
                 session_id=session_id,
                 disabled_skills=services.settings_manager.get_settings().disabled_skills,
                 product_composition=product_composition,
+                product_selection=(
+                    coding_base_plugin_assembly.selection
+                    if coding_base_plugin_assembly is not None
+                    else None
+                ),
                 admission_now=evaluated_at,
             )
             return adapter.prepare_session_bootstrap(
@@ -695,6 +752,7 @@ def _create_agent_session(
                 side_question_binding=side_question_binding,
                 sandbox_runtime=sandbox_runtime,
                 coding_lsp_plugin_assembly=lsp_plugin_assembly,
+                coding_base_plugin_assembly=coding_base_plugin_assembly,
                 delegated_execution_profile=delegated_execution_profile,
                 workspace_capability_binding=workspace_binding,
                 initial_resource_catalog_bootstrap=(initial_resource_catalog_bootstrap),
@@ -725,51 +783,65 @@ def _create_agent_session(
         process_session = child_session
         return child_session
 
-    result = _CODING_AGENT_PRODUCT_CONSTRUCTION.construct(
-        services=services,
-        package_materializer=resolved_package_materializer,
-        session_id=session_id,
-        cwd=session_manager.get_cwd(),
-        extension_flag_values=extension_flag_values,
-        catalog_authoritative=(resource_authority_mode == "catalog_required"),
-        prepare_catalog_bootstrap_projection=(
-            prepare_initial_resource_catalog_projection
-            if resource_authority_mode == "catalog_required"
-            else None
-        ),
-        explicit_system_prompt=system_prompt,
-        append_system_prompt=resolved_append_system_prompt,
-        model=model,
-        thinking_level=thinking_level,
-        tools=construction_tools,
-        tool_registry=session_tool_registry,
-        allowed_tool_names=allowed_tool_names,
-        active_tool_names=active_tool_names,
-        no_tools=no_tools,
-        stream_fn=stream_fn,
-        convert_to_llm=lambda messages: context_items_to_model_messages(
-            messages,
-            image_placeholder=(
-                "Image reading is disabled."
-                if services.settings_manager.get_block_images()
+    construction_binding = (
+        replace(
+            _CODING_AGENT_PRODUCT_CONSTRUCTION,
+            default_system_prompt=CODING_KERNEL_SYSTEM_PROMPT,
+        )
+        if coding_base_plugin_assembly is not None
+        else _CODING_AGENT_PRODUCT_CONSTRUCTION
+    )
+    try:
+        result = construction_binding.construct(
+            services=services,
+            package_materializer=resolved_package_materializer,
+            session_id=session_id,
+            cwd=session_manager.get_cwd(),
+            extension_flag_values=extension_flag_values,
+            catalog_authoritative=(resource_authority_mode == "catalog_required"),
+            prepare_catalog_bootstrap_projection=(
+                prepare_initial_resource_catalog_projection
+                if resource_authority_mode == "catalog_required"
                 else None
             ),
-        ),
-        agent_factory=agent_factory,
-        session_factory=_create_session,
-        on_default_model_unavailable=lambda selection, error, reason: (
-            record_default_model_unavailable(
-                selection,
-                error=error,
-                reason=reason,
-                diagnostics_service=services.diagnostics_service,
-                session_id=session_id,
-            )
-        ),
-        set_scoped_models=lambda session, scoped_models: session.set_scoped_models(
-            cast(list[dict[str, object]], scoped_models)
-        ),
-    )
+            selected_plugin_packages=selected_plugin_packages,
+            explicit_system_prompt=system_prompt,
+            append_system_prompt=resolved_append_system_prompt,
+            model=model,
+            thinking_level=thinking_level,
+            tools=construction_tools,
+            tool_registry=session_tool_registry,
+            allowed_tool_names=allowed_tool_names,
+            active_tool_names=active_tool_names,
+            no_tools=no_tools,
+            stream_fn=stream_fn,
+            convert_to_llm=lambda messages: context_items_to_model_messages(
+                messages,
+                image_placeholder=(
+                    "Image reading is disabled."
+                    if services.settings_manager.get_block_images()
+                    else None
+                ),
+            ),
+            agent_factory=agent_factory,
+            session_factory=_create_session,
+            on_default_model_unavailable=lambda selection, error, reason: (
+                record_default_model_unavailable(
+                    selection,
+                    error=error,
+                    reason=reason,
+                    diagnostics_service=services.diagnostics_service,
+                    session_id=session_id,
+                )
+            ),
+            set_scoped_models=lambda session, scoped_models: session.set_scoped_models(
+                cast(list[dict[str, object]], scoped_models)
+            ),
+        )
+    except BaseException:
+        if coding_base_plugin_assembly is not None:
+            coding_base_plugin_assembly.close()
+        raise
     result.session.cwd_bound_services_audit = (
         result.configuration.cwd_bound_services_audit
     )

@@ -13,6 +13,18 @@ PLC6 does not publish the general Plugin SDK, implement `coding.arch.default`,
 or move Product identity, safety, workspace ceilings, Session correctness, or
 Model Input commit out of the Coding Kernel.
 
+Implementation checkpoint (2026-08-29): PLC6A and PLC6B are implemented. The
+checked-in data-only package is selected by the default `coding-standard`
+request and enters Resource discovery through an independent verified lease,
+without a hidden settings source. The Catalog-owned production path now uses
+the Kernel Prompt and publishes the standard Prompt and Skill from the exact
+package generation. A combined Product selection preserves configured
+Resource Plugin compatibility while retaining the Composition Set policy and
+trust provenance for `coding.base`. Tool and Command admissions are present as
+inert composition evidence only; their owner publication, management-state
+binding, legacy cleanup, and final production review remain PLC6C through
+PLC6E.
+
 ## First principles
 
 1. The Coding Kernel boots without an optional Plugin and makes no claim about
@@ -67,10 +79,13 @@ selected Tool definitions. The Kernel must remain truthful under
 `coding-minimal`, explicit `--no-tools`, disabled `coding.base`, owner admission
 failure, and rollback.
 
-PLC6A exposes this split only as a shadow target while preserving the current
-default prompt byte-for-byte. The production cutover atomically changes the
-default base to the Kernel and supplies the standard fragment through the
-Catalog generation; there is no interval in which both fragments publish.
+PLC6A originally exposed this split as a shadow target while preserving the
+compatibility prompt byte-for-byte. PLC6B atomically changed the Catalog-owned
+production default to the Kernel and supplies the standard fragment through
+the Catalog generation; there is no interval in which both fragments publish.
+The explicit legacy Resource-authority mode retains the byte-stable
+compatibility prompt as an isolated rollback surface and is not active in the
+Catalog-owned Session.
 
 ## Owner cutover order
 

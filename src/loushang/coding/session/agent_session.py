@@ -6,6 +6,7 @@ from typing import Any
 from loushang.agent import Agent, PrepareModelCallFn
 from loushang.ai import PreparedRequestLimits
 from loushang.ai.api_registry import APIRegistry
+from loushang.coding._base_plugin import CodingBasePluginAssembly
 from loushang.coding.compaction.adapter import (
     execute_coding_branch_summary,
 )
@@ -52,6 +53,7 @@ from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 from loushang.harness.multiagent import DelegatedExecutionProfile
 from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.resources.loader import ResourceLoader
+from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.sandbox import SandboxExecutionRuntime, SandboxStatus
 from loushang.harness.session import AgentProductSession
@@ -161,6 +163,7 @@ class AgentSession(AgentProductSession):
         side_question_binding: LegacySideQuestionBinding | None = None,
         sandbox_runtime: SandboxExecutionRuntime | None = None,
         coding_lsp_plugin_assembly: CodingLspPluginOptInAssembly | None = None,
+        coding_base_plugin_assembly: CodingBasePluginAssembly | None = None,
         delegated_execution_profile: DelegatedExecutionProfile | None = None,
         workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
         initial_resource_catalog_bootstrap: Any | None = None,
@@ -172,9 +175,15 @@ class AgentSession(AgentProductSession):
             CodingLspPluginOptInAssembly,
         ):
             raise TypeError("Coding LSP Plugin assembly is invalid")
+        if coding_base_plugin_assembly is not None and not isinstance(
+            coding_base_plugin_assembly,
+            CodingBasePluginAssembly,
+        ):
+            raise TypeError("Coding base Plugin assembly is invalid")
         self._sandbox_runtime = sandbox_runtime
         self._lsp_access: CodingLspSessionAccess | None = None
         self._coding_lsp_plugin_assembly = coding_lsp_plugin_assembly
+        self._coding_base_plugin_assembly = coding_base_plugin_assembly
         self._coding_lsp_plugin_capture: CapabilityFacetSet | None = None
         self.delegated_execution_profile = delegated_execution_profile
         self.cwd_bound_services_audit: CwdBoundServicesAudit | None = None
@@ -241,6 +250,16 @@ class AgentSession(AgentProductSession):
                 base_prompt=base_prompt,
                 diagnostics_service=diagnostics_service,
                 package_materializer=package_materializer,
+                selected_plugin_packages=(
+                    (
+                        SelectedPluginPackageInput(
+                            package=coding_base_plugin_assembly.package,
+                            binding=coding_base_plugin_assembly.binding,
+                        ),
+                    )
+                    if coding_base_plugin_assembly is not None
+                    else ()
+                ),
                 session_start_event=session_start_event,
                 api_registry=api_registry,
                 exec_service=exec_service,
@@ -285,6 +304,8 @@ class AgentSession(AgentProductSession):
         except BaseException as error:
             if coding_lsp_plugin_assembly is not None:
                 coding_lsp_plugin_assembly.close()
+            if coding_base_plugin_assembly is not None:
+                coding_base_plugin_assembly.close()
             if locally_created_side_question_binding is not None:
                 try:
                     locally_created_side_question_binding.dispose()
@@ -391,6 +412,18 @@ class AgentSession(AgentProductSession):
                     )
             self._coding_lsp_plugin_capture = None
             self._lsp_access = None
+        base_plugin_assembly = getattr(self, "_coding_base_plugin_assembly", None)
+        if base_plugin_assembly is not None:
+            try:
+                base_plugin_assembly.close()
+            except BaseException as cleanup_error:
+                if primary_error is None:
+                    primary_error = cleanup_error
+                else:
+                    primary_error.add_note(
+                        "Coding base Plugin evidence cleanup also failed: "
+                        f"{cleanup_error}"
+                    )
         if self._sandbox_runtime is not None:
             try:
                 await self._sandbox_runtime.close()

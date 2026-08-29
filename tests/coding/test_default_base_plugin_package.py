@@ -103,6 +103,9 @@ def test_checked_in_base_package_is_data_only_and_matches_product_catalogs(
             "skill",
             "skills/standard/SKILL.md",
         )
+        assert (
+            coding_base_plugin_root() / skill.locator
+        ).read_text(encoding="utf-8").startswith("---\nname: standard\n")
     finally:
         assembly.close()
 

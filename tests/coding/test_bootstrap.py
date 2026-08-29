@@ -1182,6 +1182,7 @@ def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.prompt import CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT
     from loushang.coding.session_manager import SessionManager
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
@@ -1219,7 +1220,8 @@ def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
         "Use repo conventions."
     )
     assert session.agent.system_prompt == (
-        f"Base system prompt.\n\n{expected_context}\n\nAvailable tools:\n"
+        f"Base system prompt.\n\n{expected_context}\n\n"
+        f"{CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT.rstrip()}\n\nAvailable tools:\n"
         "- bash: Execute shell commands. Prefer a single command string; use cwd for the working directory.\n"
         "- Use bash for shell pipelines, redirects, and commands that are easier to express through the user's shell.\n"
         "- Prefer read, grep, find, ls, write, and edit for file operations when those tools are more precise.\n\n"
@@ -1945,15 +1947,19 @@ def test_create_agent_session_marks_disabled_skills(tmp_path) -> None:
         model=_model(),
     )
 
-    assert [skill.name for skill in session.resource_bundle.skills] == ["debug"]
-    assert session.resource_bundle.skills[0].enabled is False
+    skills = {skill.name: skill for skill in session.resource_bundle.skills}
+    assert set(skills) == {"debug", "standard"}
+    assert skills["debug"].enabled is False
+    assert skills["standard"].enabled is True
     asyncio.run(session.prepare_model_call_runtime())
-    [status] = session.list_skill_statuses()
+    statuses = {status.name: status for status in session.list_skill_statuses()}
+    status = statuses["debug"]
     assert (status.name, status.status, status.status_reason) == (
         "debug",
         "inactive_activation",
         "activation_disabled",
     )
+    assert statuses["standard"].status == "effective"
 
 
 def test_create_agent_session_includes_tool_prompt_from_registry(tmp_path) -> None:

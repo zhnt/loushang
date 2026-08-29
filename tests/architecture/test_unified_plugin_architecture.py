@@ -3544,12 +3544,20 @@ def test_pap55_review_corrections_freeze_single_catalog_ingress_and_custody() ->
     assert "delete direct post-Catalog bundle merge authority" in plan
 
 
-def test_plc6a_freezes_inert_sets_kernel_truth_and_exact_owner_cutovers() -> None:
+def test_plc6ab_freezes_sets_and_proves_resource_owner_cutover() -> None:
     lifecycle_plan = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
     contract = PLC6_CONTRACT_PATH.read_text(encoding="utf-8")
 
-    assert "PLC6A implementation status (2026-08-29)" in lifecycle_plan
-    assert "PLC6B through PLC6E remain\nunimplemented" in lifecycle_plan
+    assert "PLC6A/PLC6B implementation status (2026-08-29)" in lifecycle_plan
+    assert "PLC6C through PLC6E remain unimplemented" in lifecycle_plan
+    assert "without mutating settings or rediscovering a source" in lifecycle_plan
+    assert "publishes its Prompt and Skill through the sole Resource Catalog" in (
+        lifecycle_plan
+    )
+    assert "PLC6A and PLC6B are implemented" in contract
+    assert "Tool and Command admissions are present as\ninert composition evidence" in (
+        contract
+    )
     for required in (
         "A Composition Set is an inert Product policy request",
         "`PluginManagementService` remains the only durable desired-state command",

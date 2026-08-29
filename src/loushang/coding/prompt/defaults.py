@@ -22,8 +22,9 @@ Guidelines:
 - Always read files completely before editing
 """
 
-# Compatibility default remains byte-for-byte stable until the PLC6 production
-# Resource cutover atomically replaces it with Kernel + admitted prompt section.
+# Compatibility default remains byte-for-byte stable for the explicit legacy
+# Resource authority path. Catalog-owned standard Sessions use Kernel plus the
+# admitted ``coding.base`` prompt section.
 DEFAULT_CODING_SYSTEM_PROMPT = """\
 You are an expert coding assistant operating inside loushang, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
 

@@ -50,8 +50,8 @@ def test_plc6_kernel_prompt_has_no_unmounted_standard_tool_claims() -> None:
         assert tool_claim not in CODING_KERNEL_SYSTEM_PROMPT
         assert tool_claim in CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT
 
-    # PLC6A is a shadow boundary: the supported default remains unchanged until
-    # coding.base is admitted and published by its production owners.
+    # The byte-stable compatibility string remains the explicit legacy-authority
+    # default; Catalog-owned standard Sessions select Kernel + coding.base.
     assert DEFAULT_CODING_SYSTEM_PROMPT.startswith(
         "You are an expert coding assistant operating inside loushang"
     )

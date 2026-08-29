@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import time
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Protocol
 
@@ -12,13 +13,18 @@ from loushang.harness.capabilities.consumer_requirements import (
     ProductCompositionCompilation,
 )
 from loushang.harness.capabilities.contribution_admission import (
+    CatalogConsumerContributionSpec,
     OwnerContributionAdmissionRecord,
     OwnerContributionAuthority,
+    OwnerContributionKind,
     OwnerContributionPolicy,
     ResourceContributionSpec,
 )
 from loushang.harness.capabilities.model_input_contracts import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
+)
+from loushang.harness.capabilities.workspace_contracts import (
+    WORKSPACE_CAPABILITY_DEFINITION,
 )
 from loushang.harness.plugin_authoring.contribution_admission import (
     prepare_owner_contribution_candidate,
@@ -89,6 +95,7 @@ def prepare_coding_initial_resource_catalog_adapter(
     product_scope_id: str | None = None,
     disabled_skills: Sequence[str] = (),
     product_composition: ProductCompositionCompilation | None = None,
+    product_selection: PluginSelection | None = None,
     admission_now: int | None = None,
 ) -> InitialResourceCatalogProductAdapter:
     """Consume exactly one owner-issued receipt for a Catalog-owned Session."""
@@ -103,6 +110,7 @@ def prepare_coding_initial_resource_catalog_adapter(
         receipt,
         disabled_skills=disabled_skills,
         product_composition=product_composition,
+        product_selection=product_selection,
         product_scope_id=product_scope_id,
         package_admission_now=(
             int(time.time()) if admission_now is None else admission_now
@@ -116,6 +124,7 @@ def build_coding_initial_resource_catalog_adapter(
     product_scope_id: str | None = None,
     disabled_skills: Sequence[str] = (),
     product_composition: ProductCompositionCompilation | None = None,
+    product_selection: PluginSelection | None = None,
     package_admission_now: int | None = None,
 ) -> InitialResourceCatalogProductAdapter:
     """Map one exact loader receipt without reparsing its selected Bundle."""
@@ -136,11 +145,21 @@ def build_coding_initial_resource_catalog_adapter(
         ProductCompositionCompilation,
     ):
         raise TypeError("Coding Resource Catalog Product composition is invalid")
+    if product_selection is not None and not isinstance(
+        product_selection,
+        PluginSelection,
+    ):
+        raise TypeError("Coding Resource Catalog Product selection is invalid")
+    if product_composition is not None and product_selection is not None:
+        raise ValueError(
+            "Coding Resource Catalog cannot receive both a composition and selection"
+        )
     if product_composition is None:
         product_composition = _compile_coding_package_product_composition(
             receipt,
             product_scope_id=product_scope_id,
             evaluated_at=resolved_admission_now,
+            product_selection=product_selection,
         )
     admissions = (
         tuple(product_composition.resource_admissions)
@@ -370,6 +389,7 @@ def _compile_coding_package_product_composition(
     *,
     product_scope_id: str | None,
     evaluated_at: int,
+    product_selection: PluginSelection | None = None,
 ) -> ProductCompositionCompilation | None:
     package_inputs = receipt.catalog_plugin_package_inputs
     if not package_inputs:
@@ -392,14 +412,94 @@ def _compile_coding_package_product_composition(
     )
     if not selected_inputs:
         return None
-    scope_id = product_scope_id.strip() if product_scope_id else f"session:{receipt.cwd}"
-    plan = PluginSelectionPlanV2(
-        context=PluginPreflightContextV1(
+    selected_input_by_id = {
+        item.package.manifest.name: item for item in selected_inputs
+    }
+    seed_plugin_ids = (
+        tuple(product_selection.plan.selected_plugin_ids)
+        if product_selection is not None
+        else ()
+    )
+    seed_selected_contributions = (
+        {
+            (item.plugin_id, item.contribution_id)
+            for item in product_selection.plan.selected_contributions
+        }
+        if product_selection is not None
+        else set()
+    )
+
+    def selected_reservation(plugin_id: str, contribution_id: str, kind: str) -> bool:
+        if plugin_id in seed_plugin_ids:
+            return (plugin_id, contribution_id) in seed_selected_contributions
+        return kind == "resource_item"
+
+    missing_seed_plugins = sorted(set(seed_plugin_ids) - set(selected_input_by_id))
+    if missing_seed_plugins:
+        raise CodingResourceCatalogAdmissionError(
+            ("product_selected_package_missing",)
+        )
+    if product_selection is not None:
+        selected_seed_digests = {
+            candidate.package.manifest.name: candidate.package.content_digest
+            for candidate in product_selection.candidates
+        }
+        if any(
+            selected_input_by_id[plugin_id].package.content_digest
+            != selected_seed_digests.get(plugin_id)
+            for plugin_id in seed_plugin_ids
+        ):
+            raise CodingResourceCatalogAdmissionError(
+                ("product_selected_package_revision_mismatch",)
+            )
+    scope_id = (
+        product_selection.plan.context.scope_id
+        if product_selection is not None
+        else (
+            product_scope_id.strip()
+            if product_scope_id
+            else f"session:{receipt.cwd}"
+        )
+    )
+    seed_instance_refs = (
+        {
+            item.plugin_id: item
+            for item in product_selection.plan.context.instance_revision_refs
+        }
+        if product_selection is not None
+        else {}
+    )
+    seed_trust = (
+        {
+            item.plugin_id: item
+            for item in product_selection.plan.source_trust_snapshots
+        }
+        if product_selection is not None
+        else {}
+    )
+    context = (
+        product_selection.plan.context
+        if product_selection is not None
+        else PluginPreflightContextV1(
             product_id="coding",
             scope_id=scope_id,
             policy_revision=_CODING_RESOURCE_CATALOG_POLICY_REVISION,
             instance_revision_refs=tuple(
                 PluginInstanceRevisionRef(
+                    instance_id=f"{item.package.manifest.name}@{scope_id}",
+                    plugin_id=item.package.manifest.name,
+                    revision=1,
+                )
+                for item in selected_inputs
+            ),
+        )
+    )
+    plan = PluginSelectionPlanV2(
+        context=replace(
+            context,
+            instance_revision_refs=tuple(
+                seed_instance_refs.get(item.package.manifest.name)
+                or PluginInstanceRevisionRef(
                     instance_id=f"{item.package.manifest.name}@{scope_id}",
                     plugin_id=item.package.manifest.name,
                     revision=1,
@@ -417,16 +517,19 @@ def _compile_coding_package_product_composition(
             )
             for item in selected_inputs
             for reservation in item.package.contribution_index.items
-            if reservation.kind == "resource_item"
+            if selected_reservation(
+                item.package.manifest.name,
+                reservation.contribution_id,
+                reservation.kind,
+            )
         ),
         source_trust_snapshots=tuple(
-            PluginSourceTrustSnapshotV1(
+            seed_trust.get(item.package.manifest.name)
+            or PluginSourceTrustSnapshotV1(
                 plugin_id=item.package.manifest.name,
                 package_source_identity=item.binding.source_identity,
                 source_trust_class=_CODING_PACKAGE_TRUST_CLASS,
-                source_trust_policy_revision=(
-                    _CODING_PACKAGE_TRUST_POLICY_REVISION
-                ),
+                source_trust_policy_revision=_CODING_PACKAGE_TRUST_POLICY_REVISION,
                 trusted=True,
             )
             for item in selected_inputs
@@ -440,10 +543,18 @@ def _compile_coding_package_product_composition(
                 )
                 for item in selected_inputs
                 for reservation in item.package.contribution_index.items
-                if reservation.kind == "resource_item"
+                if selected_reservation(
+                    item.package.manifest.name,
+                    reservation.contribution_id,
+                    reservation.kind,
+                )
             )
         ),
-        allowed_authority_ceiling=(),
+        allowed_authority_ceiling=(
+            product_selection.plan.allowed_authority_ceiling
+            if product_selection is not None
+            else ()
+        ),
     )
     selection = PluginDeclarationHost().resolve(
         tuple(item.package for item in selected_inputs),
@@ -460,15 +571,23 @@ def _compile_coding_package_product_composition(
         prepare_owner_contribution_candidate(selection, item)
         for item in selection.candidates
     )
-    owner_collections: dict[str, set[str]] = {}
+    owner_collections: dict[tuple[str, OwnerContributionKind], set[str]] = {}
+    owner_trust_classes: dict[tuple[str, OwnerContributionKind], set[str]] = {}
     for candidate in candidates:
         contribution = candidate.contribution
-        if not isinstance(contribution, ResourceContributionSpec):
+        if not isinstance(
+            contribution,
+            ResourceContributionSpec | CatalogConsumerContributionSpec,
+        ):
             raise CodingResourceCatalogAdmissionError(
                 ("invalid_package_resource_declaration",)
             )
-        owner_collections.setdefault(candidate.owner_id, set()).add(
+        owner_key = (candidate.owner_id, candidate.contribution_kind)
+        owner_collections.setdefault(owner_key, set()).add(
             contribution.collection_id
+        )
+        owner_trust_classes.setdefault(owner_key, set()).add(
+            candidate.source_trust_class
         )
     request = ProductCompositionAssemblyRequest(
         selection=selection,
@@ -476,13 +595,15 @@ def _compile_coding_package_product_composition(
             ProductContributionOwnerBinding(
                 authority=OwnerContributionAuthority(
                     OwnerContributionPolicy(
-                        owner_id=owner_id,
-                        contribution_kind="resource_item",
+                        owner_id=owner_key[0],
+                        contribution_kind=owner_key[1],
                         product_id="coding",
-                        policy_revision=f"{owner_id}-coding-ingress-v1",
+                        policy_revision=(
+                            f"{owner_key[0]}-{owner_key[1]}-coding-ingress-v1"
+                        ),
                         revocation_epoch=0,
-                        allowed_source_trust_classes=(
-                            _CODING_PACKAGE_TRUST_CLASS,
+                        allowed_source_trust_classes=tuple(
+                            sorted(owner_trust_classes[owner_key])
                         ),
                         allowed_collection_ids=tuple(sorted(collection_ids)),
                         allowed_requirement_bindings=("direct",),
@@ -491,10 +612,13 @@ def _compile_coding_package_product_composition(
                     )
                 )
             )
-            for owner_id, collection_ids in sorted(owner_collections.items())
+            for owner_key, collection_ids in sorted(owner_collections.items())
         ),
         mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-        definitions=(MODEL_INPUT_CAPABILITY_DEFINITION,),
+        definitions=(
+            MODEL_INPUT_CAPABILITY_DEFINITION,
+            WORKSPACE_CAPABILITY_DEFINITION,
+        ),
     )
     return assemble_product_composition(request, evaluated_at=evaluated_at)
 

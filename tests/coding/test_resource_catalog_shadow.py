@@ -19,6 +19,10 @@ from loushang.coding._resource_catalog_shadow import (
 )
 from loushang.coding.bootstrap import _create_agent_session, create_services
 from loushang.coding.control import SettingsManager
+from loushang.coding.prompt import (
+    CODING_KERNEL_SYSTEM_PROMPT,
+    CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT,
+)
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.capabilities.consumer_requirements import (
     ProductCompositionAuthorityContext,
@@ -94,8 +98,10 @@ _CODING_BASE_SHADOW_ROOT = (
 
 def _copy_resource_only_plugin(target: Path) -> None:
     shutil.copytree(_CODING_BASE_SHADOW_ROOT, target)
+    plugin_id = "coding.test.resources"
     manifest_path = target / "plugin.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["name"] = plugin_id
     manifest["contributionIndex"]["items"] = [
         item
         for item in manifest["contributionIndex"]["items"]
@@ -110,12 +116,25 @@ def _copy_resource_only_plugin(target: Path) -> None:
     declarations["declarations"] = [
         item for item in declarations["declarations"] if item["kind"] == "resource_item"
     ]
+    for declaration in declarations["declarations"]:
+        declaration["pluginId"] = plugin_id
+        if declaration["contributionId"] == "prompt-standard":
+            declaration["payload"]["locator"] = "prompts/package-standard.md"
+        if declaration["contributionId"] == "skill-standard":
+            declaration["payload"]["locator"] = (
+                "skills/package-standard/SKILL.md"
+            )
     declarations_path.write_text(
         json.dumps(declarations, sort_keys=True, separators=(",", ":")),
         encoding="utf-8",
     )
-    (target / "skills" / "standard" / "SKILL.md").write_text(
-        "---\nname: standard\n"
+    (target / "prompts" / "standard.md").rename(
+        target / "prompts" / "package-standard.md"
+    )
+    skill_root = target / "skills" / "package-standard"
+    (target / "skills" / "standard").rename(skill_root)
+    (skill_root / "SKILL.md").write_text(
+        "---\nname: package-standard\n"
         "description: Automatically admitted package Skill.\n---\n"
         "Use the admitted package Skill.\n",
         encoding="utf-8",
@@ -630,16 +649,21 @@ def test_coding_initial_catalog_shadow_publishes_project_context_and_skill(
             assert session._resource_catalog_snapshot is not None
             statuses = session.list_skill_statuses()
             assert [(status.name, status.status) for status in statuses] == [
-                ("review", "effective")
+                ("review", "effective"),
+                ("standard", "effective"),
             ]
             assert session.resource_bundle is not None
             assert [skill.name for skill in session.resource_bundle.skills] == [
-                "review"
+                "review",
+                "standard",
             ]
             assert [
                 descriptor.text
                 for descriptor in session.resource_bundle.prompt_descriptors
-            ] == ["Project guidance"]
+            ] == [
+                "Project guidance",
+                CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT.rstrip(),
+            ]
             assert "Review code" in session.agent.system_prompt
             assert "Review carefully." not in session.agent.system_prompt
             assert "skill:review" in {
@@ -930,8 +954,8 @@ def test_coding_initial_catalog_applies_disabled_skill_in_owner_status(
             await session.prepare_model_call_runtime()
 
             statuses = session.list_skill_statuses()
-            assert len(statuses) == 1
-            status = statuses[0]
+            assert {item.name for item in statuses} == {"review", "standard"}
+            status = next(item for item in statuses if item.name == "review")
             assert (status.name, status.status, status.status_reason) == (
                 "review",
                 "inactive_activation",
@@ -939,6 +963,10 @@ def test_coding_initial_catalog_applies_disabled_skill_in_owner_status(
             )
             assert status.declared_enabled is True
             assert status.effective is False
+            standard_status = next(
+                item for item in statuses if item.name == "standard"
+            )
+            assert standard_status.status == "effective"
             assert "Review code" not in session.agent.system_prompt
             assert "skill:review" not in {
                 command.name for command in session.list_commands()
@@ -1007,12 +1035,14 @@ def test_coding_catalog_refresh_publishes_one_exact_next_generation(
             assert new_consumer is not None
             assert new_consumer is not old_consumer
             assert new_consumer.catalog_generation == 2
-            assert [
-                item.description for item in old_consumer.list_effective_skills()
-            ] == ["Review v1"]
-            assert [
-                item.description for item in new_consumer.list_effective_skills()
-            ] == ["Review v2"]
+            assert {
+                item.name: item.description
+                for item in old_consumer.list_effective_skills()
+            }["review"] == "Review v1"
+            assert {
+                item.name: item.description
+                for item in new_consumer.list_effective_skills()
+            }["review"] == "Review v2"
             assert session._capability_graph_runtime.generation == graph_generation
             assert session._composition.resource_refresh_runtime.resource_revision == 2
             assert mounted.ownership_state == "graph_owned"
@@ -1263,11 +1293,14 @@ def test_coding_catalog_package_mutations_publish_before_return(
             assert initial is not None
             assert initial.catalog_generation == 1
             assert [item.name for item in initial.list_effective_skills()] == [
-                "standard"
+                "package-standard",
+                "standard",
             ]
 
-            (package_root / "skills" / "standard" / "SKILL.md").write_text(
-                "---\nname: standard\n"
+            (
+                package_root / "skills" / "package-standard" / "SKILL.md"
+            ).write_text(
+                "---\nname: package-standard\n"
                 "description: Updated admitted package Skill.\n---\n"
                 "Use the updated admitted package Skill.\n",
                 encoding="utf-8",
@@ -1278,10 +1311,11 @@ def test_coding_catalog_package_mutations_publish_before_return(
             assert after_update is not None
             assert after_update.catalog_generation == 2
             assert [item.name for item in after_update.list_effective_skills()] == [
-                "standard"
+                "package-standard",
+                "standard",
             ]
             loaded = await session._preflight_user_input_async(
-                "/skill:standard package generation"
+                "/skill:package-standard package generation"
             )
             assert "Use the updated admitted package Skill." in loaded.text
 
@@ -1317,7 +1351,8 @@ def test_coding_catalog_package_mutations_publish_before_return(
             assert after_uninstall is not None
             assert after_uninstall.catalog_generation == 3
             assert [item.name for item in after_uninstall.list_effective_skills()] == [
-                "standard"
+                "package-standard",
+                "standard",
             ]
             assert settings.get_package_sources() == []
 
@@ -1377,7 +1412,10 @@ def test_coding_catalog_refresh_reloads_disabled_skill_policy(
             await session.prepare_model_call_runtime()
             initial = session._skill_catalog_consumer
             assert initial is not None
-            assert [item.name for item in initial.list_effective_skills()] == ["review"]
+            assert [item.name for item in initial.list_effective_skills()] == [
+                "review",
+                "standard",
+            ]
 
             settings.update_settings(
                 scope="project",
@@ -1388,8 +1426,14 @@ def test_coding_catalog_refresh_reloads_disabled_skill_policy(
             consumer = session._skill_catalog_consumer
             assert consumer is not None
             assert consumer.catalog_generation == 2
-            assert consumer.list_effective_skills() == ()
-            status = session.list_skill_statuses()[0]
+            assert [item.name for item in consumer.list_effective_skills()] == [
+                "standard"
+            ]
+            status = next(
+                item
+                for item in session.list_skill_statuses()
+                if item.name == "review"
+            )
             assert (status.status, status.status_reason) == (
                 "inactive_activation",
                 "activation_disabled",
@@ -1567,11 +1611,14 @@ def test_coding_initial_catalog_compiles_configured_plugin_resource_admissions(
 
             assert [
                 (item.name, item.status) for item in session.list_skill_statuses()
-            ] == [("standard", "effective")]
+            ] == [
+                ("package-standard", "effective"),
+                ("standard", "effective"),
+            ]
             assert (
                 "Automatically admitted package Skill." in session.agent.system_prompt
             )
-            assert "skill:standard" in {
+            assert "skill:package-standard" in {
                 command.name for command in session.list_commands()
             }
         finally:
@@ -1652,10 +1699,80 @@ def test_coding_initial_catalog_admits_materialized_remote_plugin_resources(
             await session.prepare_model_call_runtime()
             assert [
                 (item.name, item.status) for item in session.list_skill_statuses()
-            ] == [("standard", "effective")]
+            ] == [
+                ("package-standard", "effective"),
+                ("standard", "effective"),
+            ]
         finally:
             await session.dispose()
             services.resource_loader.close()
+
+    asyncio.run(scenario())
+
+
+def test_default_coding_standard_publishes_base_without_hidden_settings_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=tmp_path / "project-settings.json",
+            )
+        )
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project_root),
+            persist=False,
+        )
+
+        session = _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
+        assembly = session._coding_base_plugin_assembly
+        assert assembly is not None
+        owner_handle = assembly.package.revision_handle
+        [loader_mount] = services.resource_loader._package_mounts
+        loader_handle = loader_mount.revision_handle
+        assert loader_handle is not None
+        assert loader_handle is not owner_handle
+        assert services.settings_manager.get_settings().plugin_sources == ()
+        assert assembly.scope_id == f"session:{manager.get_header().conversation_id}"
+        assert session.agent.system_prompt.startswith(
+            CODING_KERNEL_SYSTEM_PROMPT.rstrip()
+        )
+        assert (
+            session.agent.system_prompt.count(
+                CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT.rstrip()
+            )
+            == 1
+        )
+        assert "You help users by reading files" not in session.agent.system_prompt
+        assert owner_handle.closed is False
+
+        try:
+            await session.prepare_model_call_runtime()
+            assert [
+                (item.name, item.status) for item in session.list_skill_statuses()
+            ] == [("standard", "effective")]
+            assert session.resource_bundle is not None
+            [base_skill] = session.resource_bundle.skills
+            assert base_skill.name == "standard"
+            assert base_skill.source_kind == "external_package"
+            assert owner_handle.closed is False
+        finally:
+            await session.dispose()
+
+        assert owner_handle.closed is True
+        assert loader_handle.closed is False
+        services.resource_loader.close()
+        assert loader_handle.closed is True
 
     asyncio.run(scenario())
 

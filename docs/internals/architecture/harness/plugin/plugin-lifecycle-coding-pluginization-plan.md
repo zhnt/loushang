@@ -1300,17 +1300,24 @@ This remains the first production Graph proof.
 
 ### PLC6: `coding.base` Production Resource Plugin
 
-PLC6A implementation status (2026-08-29): the conservative production boundary
-is frozen in the
+PLC6A/PLC6B implementation status (2026-08-29): the conservative production
+boundary is frozen in the
 [PLC6 contract](plugin-lifecycle-plc6-contract.md). Coding now exposes one
 canonical, fingerprinted and side-effect-free expansion for
 `coding-minimal`, `coding-standard`, and `coding-architecture`. The records are
 Product requests only: they do not mutate management desired state or perform
-Plugin selection, admission, publication, refresh, or retirement. The target
-Kernel Prompt is separately characterized and contains no standard Tool claim,
-while the currently supported default prompt remains byte-for-byte unchanged
-until the Resource-owner production cutover. PLC6B through PLC6E remain
-unimplemented.
+Plugin selection, admission, publication, refresh, or retirement. PLC6B adds a
+generic Product-selected package ingress that takes an independent verified
+revision lease without mutating settings or rediscovering a source. The
+default Catalog-owned `coding-standard` Session now mounts the checked-in
+`coding.base`, seeds one combined Product selection with configured Resource
+Plugins, publishes its Prompt and Skill through the sole Resource Catalog, and
+assembles Kernel plus the admitted standard fragment exactly once. Refresh
+reacquires the loader lease while the sealed Session retains its Product-owned
+package evidence until disposal. Tool and Command admissions are compiled but
+remain unpublished by their Plugin owners; the direct Tool/Command paths and
+the explicitly selected legacy Resource authority remain until PLC6C and the
+final cleanup. PLC6C through PLC6E remain unimplemented.
 
 Scope:
 
