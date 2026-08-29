@@ -38,6 +38,10 @@ def test_rcp5_contract_freezes_conservative_order_and_authority() -> None:
 
     assert "A Skill is a Resource, not a Plugin" in contract
     assert "RCP5.1 \u2014 typed read path" in contract
+    assert "RCP5.2A \u2014 owner-native status substrate" in contract
+    assert "RCP5.2B \u2014 exact-v4 read-only cutover" in contract
+    assert "exact-v2 and exact-v3 Graph contracts remain unchanged" in contract
+    assert "never a legacy fallback" in contract
     assert "RCP5.5 \u2014 peer deletion" in contract
     assert "Production cutover starts only after" in contract
     assert "Only then is PLC6" in contract

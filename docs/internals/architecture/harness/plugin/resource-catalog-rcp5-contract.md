@@ -88,17 +88,88 @@ for the body.
 RCP5.1 remains internal and opt-in. Its rollback is removal of the new Consumer
 and private v3 contract; v2, persisted state, and Product defaults are unchanged.
 
+## RCP5.2 admission and status contract
+
+RCP5.2 is admitted only after the RCP5.1 source-backed architecture,
+correctness/security, and Product/test reviews approve the implementation and
+the full Harness gate passes. It is delivered as two ordered, separately
+reviewable commits; the first commit does not authorize Product cutover.
+
+### RCP5.2A — owner-native status substrate
+
+The owner generation builds one immutable, body-free Skill status projection
+before publication. Its only inputs are the exact Catalog snapshot and the
+complete set of source-validated descriptor bindings already admitted into
+that generation. It does not derive inactive state from the effective-only
+compatibility projection.
+
+The projection contains one record per valid Skill candidate, including
+inactive, shadowed, and conflict-rejected candidates. Every record is pinned to
+the Catalog generation and snapshot fingerprint and contains:
+
+- Resource identity and candidate fingerprint;
+- explicit, typed naming, description, provenance, source path, diagnostics,
+  media type, and expected body digest/length fields;
+- declared-enabled, effective, primary, and model-invocable facts; and
+- one finite status plus the Catalog merge-decision reason.
+
+The finite candidate statuses are `effective`, `inactive_activation`,
+`inactive_declaration`, `shadowed`, and `rejected_conflict`. The projection
+maps these statuses exclusively from the Catalog candidate, effective entry,
+and merge decision. It preserves the decision's candidate order and never
+re-runs source precedence, activation matching, conflict resolution, or merge
+policy in a Consumer. A candidate must have exactly one matching descriptor
+binding; missing, duplicate, foreign, or fact-inconsistent bindings fail owner
+generation construction.
+
+No status record contains body content, prompt text, an opaque locator, or a
+generic metadata bag. A status record does not grant load authority. Existing
+exact-v2 and exact-v3 Graph contracts remain unchanged during RCP5.2A, and the
+default Product continues to use v2.
+
+### RCP5.2B — exact-v4 read-only cutover
+
+Status publication uses a new private exact-v4 `harness.resources` contract.
+It is not added to exact-v3: exact contracts are immutable even when private.
+The v4 Catalog facet exposes the effective projection and status projection
+from the same captured owner generation; `resource.load` remains unchanged.
+
+Only after RCP5.2A receives fresh source-backed review may the default Product
+mount v4 and capture one typed Skill Consumer. In the same cutover slice:
+
+- CLI all-Skills listing reads status records and deletes the
+  `resource_bundle.skills -> resource_loader.get_skills()` fallback;
+- activation display reads declared/effective/status facts without consulting
+  settings or a second disabled-name store;
+- prompt Skill summaries and command enumeration read only effective summaries
+  and declared descriptions; and
+- missing or incompatible v4 capture fails with a finite construction error,
+  never a legacy fallback.
+
+Command execution and explicit Skill body use remain on their current
+compatibility path until RCP5.3; RCP5.2 moves enumeration and summaries, not
+body authority. Refresh remains RCP5.4 debt. This prevents a read-only cutover
+from silently expanding into body or generation-replacement semantics.
+
+RCP5.2 exits only when tests prove deterministic status classification for
+activation-disabled, declaration-disabled, shadowed, and same-precedence
+conflict cases; exact-v2/v3/v4 negotiation isolation; no metadata operation
+loads a body; Product construction captures one generation; CLI and command
+enumeration use no legacy Skill fallback; and rollback can remove v4 wiring
+without changing persisted settings or v2/v3 behavior.
+
 ## Ordered cutover
 
 RCP5 proceeds in independently reviewable steps:
 
 1. **RCP5.1 — typed read path:** add the exact-generation Skill Consumer and
    lazy body-load proof without changing Product callers.
-2. **RCP5.2 — read-only projections:** add a Catalog-owned inactive/status
-   projection, then move CLI listing, activation status, prompt summaries, and
-   command enumeration to the Consumer. Delete the
+2. **RCP5.2 — read-only projections:** first add a Catalog-owned
+   inactive/status substrate (RCP5.2A), then use a new exact-v4 contract for
+   the Product read-only cutover (RCP5.2B). Move CLI listing, activation
+   status, prompt summaries, and command enumeration to the Consumer. Delete the
    `resource_bundle.skills -> resource_loader.get_skills()` fallback in the
-   same slice.
+   RCP5.2B cutover slice.
 3. **RCP5.3 — body and evidence:** move explicit Skill load and Model Input
    evidence to the receipt-bearing lazy path. Preserve current-request
    immutability during refresh and uninstall.
