@@ -184,6 +184,54 @@ those inputs are admitted or receive an explicit unsupported-state contract,
 the default Coding Product enables the ingress, fresh source-backed review
 approves the result, and the full gate passes.
 
+### RCP5.2B default ingress authority
+
+Coding construction has exactly two explicit Resource authority modes. There
+is no input-sensitive or exception-driven `auto` mode:
+
+- `catalog_required` is the public default. The default Coding ResourceLoader
+  must transfer one unclaimed, source-complete discovery receipt, and Product
+  construction must mount exact-v4 from that receipt. A missing receipt,
+  unverified source, missing admission, or incompatible composition fails with
+  one finite construction error; it never produces a legacy-only Session.
+- `legacy_explicit` is a caller-selected compatibility boundary for custom
+  ResourceLoader implementations and legacy package inputs that have not yet
+  migrated to verified Product admission. It does not attempt Catalog
+  construction, does not capture exact-v4, and cannot be combined with Catalog
+  composition inputs. Its name is deliberately visible at the construction
+  boundary so compatibility debt cannot masquerade as the Product default.
+
+The mode is Product policy, not a ResourceLoader type test. The Product does
+not infer it from `isinstance`, receipt-method presence, discovery output,
+package diagnostics, or a caught Catalog exception. A custom loader used with
+`catalog_required` implements the same one-shot receipt protocol as the
+default loader; otherwise its caller selects `legacy_explicit` before
+discovery.
+
+Verified Plugin sources enter the Catalog only through the exact published
+revision, finalized declaration selection, Product owner admissions, and the
+receipt candidates for that same revision. Coding compiles those admissions at
+its ingress boundary. Missing, invalid, or disabled configured Plugin sources
+remain diagnostics and contribute no Catalog candidate; they do not switch the
+Session to another authority. Package-owned extension candidates remain with
+the Extension authority and do not themselves block Catalog ownership of
+separately admitted Resource declarations.
+
+Raw `package_roots` and non-Plugin `package_sources` have neither a verified
+revision nor Product admission. RCP5.2B does not bless mutable paths by
+re-reading or hashing them after discovery. Callers using those compatibility
+inputs must select `legacy_explicit` until a later source-ingress migration
+publishes a verified revision and exact admission. Likewise, temporary
+Resource paths and per-kind discovery switches remain finite
+`catalog_required` errors rather than implicit fallback signals.
+
+Default-ingress exit requires tests for default cwd and user-global native
+roots, admitted local and materialized remote Plugin Resources, disabled and
+invalid Plugin sources, an admission mismatch, a custom receipt-capable loader,
+an explicitly legacy custom loader, and a real CLI all-Skills listing. Tests
+must also prove `catalog_required` cannot construct a legacy-only Session and
+`legacy_explicit` cannot consume Catalog composition inputs.
+
 ## Ordered cutover
 
 RCP5 proceeds in independently reviewable steps:

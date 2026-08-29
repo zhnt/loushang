@@ -64,6 +64,12 @@ def test_rcp5_contract_freezes_conservative_order_and_authority() -> None:
     assert "admitted initial Resource Catalog" in contract
     assert "not production-complete" in contract
     assert "forbidden silent legacy fallback" in contract
+    assert "RCP5.2B default ingress authority" in contract
+    assert "`catalog_required` is the public default" in contract
+    assert "`legacy_explicit` is a caller-selected compatibility boundary" in contract
+    assert "input-sensitive or exception-driven `auto` mode" in contract
+    assert "The mode is Product policy, not a ResourceLoader type test" in contract
+    assert "Raw `package_roots` and non-Plugin `package_sources`" in contract
     assert "RCP5.5 \u2014 peer deletion" in contract
     assert "Production cutover starts only after" in contract
     assert "Only then is PLC6" in contract

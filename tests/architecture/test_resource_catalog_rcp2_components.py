@@ -264,7 +264,10 @@ def test_rcp4_product_input_adapter_is_explicit_private_and_source_narrow() -> N
     coding_source = CODING_SHADOW_ADAPTER_PATH.read_text(encoding="utf-8")
     assert "prepare_coding_initial_resource_catalog_shadow_adapter" in coding_source
     bootstrap_source = CODING_BOOTSTRAP_PATH.read_text(encoding="utf-8")
-    assert "enable_initial_resource_catalog_shadow: bool = False" in bootstrap_source
+    assert "resource_authority_mode: ResourceAuthorityMode" in bootstrap_source
+    assert '"catalog_required"' in bootstrap_source
+    assert '"legacy_explicit"' in bootstrap_source
+    assert "enable_initial_resource_catalog_shadow" not in bootstrap_source
     assert "initial_resource_catalog_product_composition_assembly" in bootstrap_source
     assert "initial_resource_catalog_product_composition:" not in bootstrap_source
     assert "initial_resource_catalog_package_admissions" not in bootstrap_source
