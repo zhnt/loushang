@@ -1485,12 +1485,13 @@ unchanged. The ordered production cutover and peer deletion remain RCP5.2
 through RCP5.5 and require fresh source-backed review before default wiring
 changes.
 
-RCP5.2 is split conservatively. RCP5.2A makes the Resource owner generation
+RCP5.2 is split conservatively. RCP5.2A now makes the Resource owner generation
 produce a complete body-free Skill candidate-status projection from its exact
 Catalog snapshot and all admitted descriptor bindings. Status is finite and
 Catalog-derived (`effective`, activation/declaration inactive, shadowed, or
 conflict-rejected); Consumers do not re-run precedence or activation policy.
-RCP5.2A changes neither Graph contracts nor Product wiring.
+The projection shares Catalog generation custody, is inaccessible after owner
+retirement, and changes neither Graph contracts nor Product wiring.
 
 After source-backed review, RCP5.2B adds a private exact-v4 Resources contract
 instead of mutating exact-v3, mounts it in the default Product, and moves CLI

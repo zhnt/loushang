@@ -64,6 +64,10 @@ from loushang.harness.resources._catalog_source_contracts import (
 from loushang.harness.resources._discovery_conventions import (
     DEFAULT_CONTEXT_FILE_NAMES,
 )
+from loushang.harness.resources._skill_catalog_status import (
+    SkillCatalogStatusProjection,
+    build_skill_catalog_status_projection,
+)
 
 
 @dataclass(slots=True)
@@ -74,6 +78,7 @@ class UnpublishedResourceCatalogShadowGeneration:
     catalog_snapshot: ResourceCatalogSnapshot
     source_snapshots: tuple[ResourceSourceSnapshot, ...]
     catalog_projection: ResourceCatalogProjection | None
+    skill_status_projection: SkillCatalogStatusProjection
     _runtime: CapabilityOwnerComponentRuntime = field(repr=False)
     _binder: CapabilityOwnerComponentBinder = field(repr=False)
     _extension_source_lease: BorrowedResourceSourceGenerationLease | None = field(
@@ -392,6 +397,10 @@ async def run_first_party_resource_catalog_shadow(
             if projection_cwd is not None
             else None
         )
+        skill_status_projection = build_skill_catalog_status_projection(
+            snapshot=proposal,
+            descriptor_bindings=tuple(descriptor_bindings),
+        )
     except BaseException:
         try:
             await engine_lease.aclose()
@@ -410,6 +419,7 @@ async def run_first_party_resource_catalog_shadow(
         catalog_snapshot=proposal,
         source_snapshots=tuple(source_snapshots),
         catalog_projection=catalog_projection,
+        skill_status_projection=skill_status_projection,
         _runtime=runtime,
         _binder=binder,
         _extension_source_lease=extension_source_lease,

@@ -3,10 +3,11 @@
 ## Status and scope
 
 This is the implementation contract for the conservative RCP5 migration. It
-refines the Resource Catalog pluginization plan only for Skill consumers. The
-RCP5.1 slice introduces an internal, exact-generation typed Skill projection
-and lazy body-load path. It does not change the default Coding bootstrap, CLI,
-Session publication, refresh, activation, or compatibility loader behavior.
+refines the Resource Catalog pluginization plan only for Skill consumers.
+RCP5.1 implements an internal, exact-generation typed Skill projection and
+lazy body-load path. RCP5.2A implements the owner-native body-free candidate
+status substrate. Neither changes the default Coding bootstrap, CLI, Session
+publication, refresh, activation, or compatibility loader behavior.
 
 Production cutover starts only after the RCP5.1 contract and implementation
 receive a fresh source-backed review. Stable public Resource authoring remains
@@ -157,6 +158,12 @@ conflict cases; exact-v2/v3/v4 negotiation isolation; no metadata operation
 loads a body; Product construction captures one generation; CLI and command
 enumeration use no legacy Skill fallback; and rollback can remove v4 wiring
 without changing persisted settings or v2/v3 behavior.
+
+RCP5.2A is implemented owner-private in
+`loushang.harness.resources._skill_catalog_status`. The prepared Resource owner
+generation retains the projection under the same custody as its Catalog
+snapshot and drops access when that generation retires. RCP5.2B remains
+unauthorized until this implementation receives fresh source-backed review.
 
 ## Ordered cutover
 
