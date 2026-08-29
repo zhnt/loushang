@@ -521,12 +521,20 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
         self._composition.tool_controller.rebuild_prompt_and_tools_view()
 
     def _before_agent_start_system_prompt_options(self) -> dict[str, object]:
+        effective_provider = getattr(self, "_effective_skill_summaries", None)
+        effective_skills = (
+            effective_provider() if callable(effective_provider) else None
+        )
         return {
             "cwd": self.session_manager.get_cwd(),
             "selected_tools": list(self.get_active_tool_names()),
-            "skills": list(self.resource_bundle.skills)
-            if self.resource_bundle is not None
-            else [],
+            "skills": (
+                list(effective_skills)
+                if effective_skills is not None
+                else list(self.resource_bundle.skills)
+                if self.resource_bundle is not None
+                else []
+            ),
             "context_files": [],
         }
 

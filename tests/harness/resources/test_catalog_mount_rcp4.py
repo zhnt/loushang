@@ -23,6 +23,7 @@ from loushang.harness.capabilities.resources_contracts import (
     RESOURCES_CAPABILITY_DEFINITION,
     RESOURCES_CAPABILITY_DEFINITION_V2,
     RESOURCES_CAPABILITY_DEFINITION_V3,
+    RESOURCES_CAPABILITY_DEFINITION_V4,
     RESOURCES_CATALOG_LOAD_REQUIREMENT,
     RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT,
 )
@@ -127,7 +128,7 @@ def _replace_resource_runtime(profile, implementation: str):  # type: ignore[no-
     return replace(profile, capabilities=tuple(capabilities))
 
 
-def test_v2_and_v3_resource_contract_shapes_remain_frozen() -> None:
+def test_v2_and_v3_resource_contract_shapes_remain_frozen_beside_v4() -> None:
     expected_facets = (
         "resource.runtime",
         "prompt.sections",
@@ -142,6 +143,8 @@ def test_v2_and_v3_resource_contract_shapes_remain_frozen() -> None:
     assert RESOURCES_CAPABILITY_DEFINITION_V2.facets == expected_facets
     assert RESOURCES_CAPABILITY_DEFINITION_V3.contract_version == 3
     assert RESOURCES_CAPABILITY_DEFINITION_V3.facets == expected_facets
+    assert RESOURCES_CAPABILITY_DEFINITION_V4.contract_version == 4
+    assert RESOURCES_CAPABILITY_DEFINITION_V4.facets == expected_facets
 
 
 def test_prepared_generation_is_one_candidate_child_and_root_cleanup_is_async(

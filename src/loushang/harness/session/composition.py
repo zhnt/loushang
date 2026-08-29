@@ -26,6 +26,7 @@ from loushang.ai.utils import is_context_overflow
 from loushang.ai.utils.capabilities import validate_image_input_compatibility
 from loushang.harness.approval import ApprovalResolver
 from loushang.harness.capabilities import StagedResourceCompositionCandidate
+from loushang.harness.capabilities.prompt_assembly import SkillPromptSummary
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.events import (
@@ -232,6 +233,9 @@ class SessionFoundationInputs:
     set_resource_bundle: Callable[[ResourceBundle | None], None]
     record_extension_runtime_diagnostic: Callable[[DiagnosticDraft], None]
     extension_declaration_preflight: ExtensionDeclarationPreflight | None = None
+    get_effective_skills: (
+        Callable[[], Sequence[SkillPromptSummary] | None] | None
+    ) = None
 
 
 @dataclass(frozen=True)
@@ -425,6 +429,7 @@ def _legacy_composition_inputs(
             "extension_declaration_preflight",
             None,
         ),
+        get_effective_skills=remaining.pop("get_effective_skills", None),
     )
     maintenance = SessionMaintenanceInputs(
         execute_compaction=take("execute_compaction"),
@@ -1029,6 +1034,7 @@ def _build_tool_controller(
         show_empty_tool_prompt=inputs.show_empty_tool_prompt,
         base_prompt=inputs.base_prompt,
         get_resource_bundle=inputs.get_resource_bundle,
+        get_effective_skills=inputs.get_effective_skills,
         get_diagnostics_service=lambda: inputs.diagnostics_service,
         get_exec_service=(
             (lambda: inputs.tool_exec_service)

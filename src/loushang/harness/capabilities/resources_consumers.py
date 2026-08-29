@@ -23,6 +23,7 @@ from loushang.harness.capabilities.resources_contracts import (
     RESOURCES_COMMAND_PACK_REQUIREMENT,
     RESOURCES_PROMPT_REQUIREMENT,
     RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT,
+    RESOURCES_SKILL_STATUS_CATALOG_LOAD_REQUIREMENT,
     RESOURCES_TOOL_PACK_REQUIREMENT,
     SKILL_ACTIVATION_FACET,
     TOOL_PACKS_FACET,
@@ -35,6 +36,9 @@ from loushang.harness.resources._catalog_records import (
 )
 from loushang.harness.resources._skill_catalog_consumer import (
     EffectiveSkillCatalogProjection,
+)
+from loushang.harness.resources._skill_catalog_status import (
+    SkillCatalogStatusProjection,
 )
 from loushang.harness.resources.activation import ResourceActivation
 from loushang.harness.resources.types import ResourceBundle
@@ -73,6 +77,11 @@ class _ResourceCatalogFacet(Protocol):
 class _ResourceSkillCatalogFacet(_ResourceCatalogFacet, Protocol):
     @property
     def skill_projection(self) -> EffectiveSkillCatalogProjection: ...
+
+
+class _ResourceSkillStatusCatalogFacet(_ResourceSkillCatalogFacet, Protocol):
+    @property
+    def skill_status_projection(self) -> SkillCatalogStatusProjection: ...
 
 
 class _ResourceLoadFacet(Protocol):
@@ -227,11 +236,65 @@ class ResourceSkillCatalogCapabilityConsumer:
         ).load(handle)
 
 
+@dataclass(frozen=True)
+class ResourceSkillStatusCatalogCapabilityConsumer:
+    """Exact-generation body-free effective/status Skill and load view."""
+
+    facets: CapabilityFacetSet
+
+    def __post_init__(self) -> None:
+        if (
+            self.facets.requirement
+            != RESOURCES_SKILL_STATUS_CATALOG_LOAD_REQUIREMENT
+        ):
+            raise ValueError("Skill status Catalog Consumer received the wrong view")
+
+    @property
+    def snapshot(self) -> ResourceCatalogSnapshot:
+        return cast(
+            _ResourceSkillStatusCatalogFacet,
+            self.facets.require(RESOURCE_CATALOG_FACET),
+        ).snapshot
+
+    @property
+    def skill_projection(self) -> EffectiveSkillCatalogProjection:
+        value = cast(
+            _ResourceSkillStatusCatalogFacet,
+            self.facets.require(RESOURCE_CATALOG_FACET),
+        ).skill_projection
+        if not isinstance(value, EffectiveSkillCatalogProjection):
+            raise RuntimeError("body-free Skill Catalog projection is not available")
+        return value
+
+    @property
+    def skill_status_projection(self) -> SkillCatalogStatusProjection:
+        value = cast(
+            _ResourceSkillStatusCatalogFacet,
+            self.facets.require(RESOURCE_CATALOG_FACET),
+        ).skill_status_projection
+        if not isinstance(value, SkillCatalogStatusProjection):
+            raise RuntimeError("body-free Skill status projection is not available")
+        return value
+
+    def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle:
+        return cast(
+            _ResourceLoadFacet,
+            self.facets.require(RESOURCE_LOAD_FACET),
+        ).load_handle(identity)
+
+    async def load(self, handle: ResourceLoadHandle) -> LoadedResource:
+        return await cast(
+            _ResourceLoadFacet,
+            self.facets.require(RESOURCE_LOAD_FACET),
+        ).load(handle)
+
+
 __all__ = [
     "ResourceActivationCapabilityConsumer",
     "ResourceCatalogCapabilityConsumer",
     "ResourceCommandPackCapabilityConsumer",
     "ResourcePromptCapabilityConsumer",
     "ResourceSkillCatalogCapabilityConsumer",
+    "ResourceSkillStatusCatalogCapabilityConsumer",
     "ResourceToolPackCapabilityConsumer",
 ]

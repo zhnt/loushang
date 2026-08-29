@@ -7,8 +7,29 @@ from pathlib import Path
 
 import pytest
 
+from loushang.harness.capabilities import (
+    CapabilityGraphPlanRequest,
+    RuntimeCapabilityGraphBinder,
+    RuntimeCapabilityGraphPlanner,
+    RuntimeCapabilityGraphRuntime,
+    stage_resource_composition_candidate,
+    standard_capability_composition_plan,
+)
+from loushang.harness.capabilities.resources_consumers import (
+    ResourceSkillStatusCatalogCapabilityConsumer,
+)
+from loushang.harness.capabilities.resources_contracts import (
+    RESOURCES_CAPABILITY_DEFINITION_V4,
+    RESOURCES_CATALOG_LOAD_REQUIREMENT,
+    RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT,
+    RESOURCES_SKILL_STATUS_CATALOG_LOAD_REQUIREMENT,
+)
+from loushang.harness.capabilities.resources_provider import (
+    resources_capability_provider_binding,
+)
 from loushang.harness.resource_catalog.generation import (
     PreparedResourceOwnerGeneration,
+    prepare_first_party_resource_owner_generation,
 )
 from loushang.harness.resource_catalog.shadow import (
     run_first_party_resource_catalog_shadow,
@@ -37,6 +58,9 @@ from loushang.harness.resources._catalog_records import (
     build_source_snapshot,
     fingerprint_catalog_value,
 )
+from loushang.harness.resources._skill_catalog_consumer import (
+    SkillCatalogConsumer,
+)
 from loushang.harness.resources._skill_catalog_status import (
     SkillCatalogStatusProjection,
     SkillCatalogStatusProjectionError,
@@ -48,6 +72,7 @@ from loushang.harness.resources.types import (
     ResourceSourceScope,
     SkillDescriptor,
 )
+from loushang.harness.runtime import RuntimeProfileResolver
 
 
 def _digest(value: str) -> str:
@@ -550,5 +575,89 @@ def test_prepared_owner_generation_retains_status_until_disposal(
             await generation.dispose_root_owned()
         with pytest.raises(RuntimeError, match="retiring or disposed"):
             _ = generation._skill_status_projection
+
+    asyncio.run(scenario())
+
+
+def test_exact_v4_captures_effective_and_status_from_one_owner_generation(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        workspace = tmp_path / "workspace-v4"
+        resource_root = workspace / ".loushang"
+        skill_root = resource_root / "skills" / "review"
+        skill_root.mkdir(parents=True)
+        (skill_root / "SKILL.md").write_text(
+            "---\nname: review\ndescription: Review changes\n---\nReview carefully.\n",
+            encoding="utf-8",
+        )
+        root_handle = mint_native_resource_root_handle(
+            handle_id="workspace-v4-resources",
+            root=resource_root,
+            source_class="project_local",
+            root_kind="standard",
+            source_root_order=0,
+        )
+        profile = RuntimeProfileResolver().resolve(
+            standard_capability_composition_plan(product_id="coding")
+        )
+        candidate = stage_resource_composition_candidate(profile)
+        await prepare_first_party_resource_owner_generation(
+            staged_candidate=candidate,
+            product_id="coding",
+            scope_id="workspace:v4",
+            runtime_id="resource-owner:skill-status-v4",
+            product_policy_revision="coding-resource-catalog-v4",
+            root_handles=(root_handle,),
+            issued_at=10,
+            expires_at=100,
+            now=20,
+            projection_cwd=workspace,
+        )
+        binding = resources_capability_provider_binding(
+            profile=profile,
+            scope_instance_id="session:coding-v4",
+            staged_candidate=candidate,
+            enable_skill_catalog_v4=True,
+        )
+        assert binding.provider.implementation_version == 4
+        plan = RuntimeCapabilityGraphPlanner().plan(
+            CapabilityGraphPlanRequest(
+                product_id="coding",
+                roots=(RESOURCES_CAPABILITY_DEFINITION_V4.capability_id,),
+                definitions=(RESOURCES_CAPABILITY_DEFINITION_V4,),
+                providers=(binding.provider,),
+            )
+        )
+        runtime = RuntimeCapabilityGraphRuntime(
+            product_id="coding",
+            runtime_id="coding-session-v4",
+            profile_fingerprint=_digest("profile-v4"),
+        )
+        binder = RuntimeCapabilityGraphBinder()
+        await binder.bind(runtime, plan, (binding,))
+
+        catalog = ResourceSkillStatusCatalogCapabilityConsumer(
+            runtime.capture(RESOURCES_SKILL_STATUS_CATALOG_LOAD_REQUIREMENT)
+        )
+        consumer = SkillCatalogConsumer(catalog)
+        statuses = consumer.list_skill_statuses()
+        effective = consumer.list_effective_skills()
+        assert [status.status for status in statuses] == ["effective"]
+        assert [status.candidate_fingerprint for status in statuses] == [
+            effective[0].candidate_fingerprint
+        ]
+        assert (
+            catalog.skill_status_projection.catalog_snapshot_fingerprint
+            == catalog.skill_projection.catalog_snapshot_fingerprint
+            == catalog.snapshot.snapshot_fingerprint
+        )
+        with pytest.raises(RuntimeError, match="contract is incompatible"):
+            runtime.capture(RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT)
+        with pytest.raises(RuntimeError, match="contract is incompatible"):
+            runtime.capture(RESOURCES_CATALOG_LOAD_REQUIREMENT)
+        assert not hasattr(candidate, "resource_skill_status_projection")
+
+        assert await binder.dispose(runtime) == ()
 
     asyncio.run(scenario())

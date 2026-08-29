@@ -597,6 +597,7 @@ def test_generated_catalog_distinguishes_source_complete_from_mounted() -> None:
         ("harness.resources", 1): "production-mounted",
         ("harness.resources", 2): "source-complete",
         ("harness.resources", 3): "source-complete",
+        ("harness.resources", 4): "source-complete",
         ("harness.session", 4): "production-mounted",
         ("harness.workspace", 1): "production-mounted",
     }

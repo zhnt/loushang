@@ -23,6 +23,7 @@ CAPABILITY_CONSUMER_PATH = Path(
 CAPABILITY_CONTRACT_PATH = Path(
     "src/loushang/harness/capabilities/resources_contracts.py"
 )
+AGENT_PRODUCT_PATH = Path("src/loushang/harness/session/agent_product.py")
 COMPOSITION_RUNTIME_PATH = Path(
     "src/loushang/harness/capabilities/composition_runtime.py"
 )
@@ -34,8 +35,11 @@ PUBLIC_SURFACES = (
 PRIVATE_SKILL_SYMBOLS = (
     "EffectiveSkillCatalogProjection",
     "RESOURCES_CAPABILITY_DEFINITION_V3",
+    "RESOURCES_CAPABILITY_DEFINITION_V4",
     "RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT",
+    "RESOURCES_SKILL_STATUS_CATALOG_LOAD_REQUIREMENT",
     "ResourceSkillCatalogCapabilityConsumer",
+    "ResourceSkillStatusCatalogCapabilityConsumer",
     "SkillCandidateStatus",
     "SkillCatalogConsumer",
     "SkillCatalogStatusProjectionError",
@@ -56,7 +60,10 @@ def test_rcp5_contract_freezes_conservative_order_and_authority() -> None:
     assert "RCP5.2B \u2014 exact-v4 read-only cutover" in contract
     assert "exact-v2 and exact-v3 Graph contracts remain unchanged" in contract
     assert "never a legacy fallback" in contract
-    assert "RCP5.2B remains\nunauthorized" in contract
+    assert "RCP5.2B implementation candidate" in contract
+    assert "admitted initial Resource Catalog" in contract
+    assert "not production-complete" in contract
+    assert "forbidden silent legacy fallback" in contract
     assert "RCP5.5 \u2014 peer deletion" in contract
     assert "Production cutover starts only after" in contract
     assert "Only then is PLC6" in contract
@@ -89,7 +96,7 @@ def test_rcp5_typed_consumer_has_no_legacy_or_product_dependency() -> None:
     assert "SkillLoader" not in source
 
 
-def test_rcp5_consumer_stays_private_and_default_product_does_not_opt_in() -> None:
+def test_rcp5_consumer_stays_private_and_product_uses_only_exact_v4() -> None:
     target = "loushang.harness.resources._skill_catalog_consumer"
     importers: set[Path] = set()
     for path in SOURCE_ROOT.rglob("*.py"):
@@ -109,7 +116,11 @@ def test_rcp5_consumer_stays_private_and_default_product_does_not_opt_in() -> No
         if target in imported:
             importers.add(path)
 
-    assert importers == {CAPABILITY_PROVIDER_PATH, CAPABILITY_CONSUMER_PATH}
+    assert importers == {
+        CAPABILITY_PROVIDER_PATH,
+        CAPABILITY_CONSUMER_PATH,
+        AGENT_PRODUCT_PATH,
+    }
     for path in PUBLIC_SURFACES:
         source = path.read_text(encoding="utf-8")
         for symbol in PRIVATE_SKILL_SYMBOLS:
@@ -124,6 +135,16 @@ def test_rcp5_consumer_stays_private_and_default_product_does_not_opt_in() -> No
     assert v3_opt_in_mentions == {CAPABILITY_PROVIDER_PATH}
     provider_source = CAPABILITY_PROVIDER_PATH.read_text(encoding="utf-8")
     assert "enable_skill_catalog_v3: bool = False" in provider_source
+    v4_opt_in_mentions = {
+        path
+        for path in SOURCE_ROOT.rglob("*.py")
+        if "enable_skill_catalog_v4"
+        in path.read_text(encoding="utf-8")
+    }
+    assert v4_opt_in_mentions == {CAPABILITY_PROVIDER_PATH, AGENT_PRODUCT_PATH}
+    product_source = AGENT_PRODUCT_PATH.read_text(encoding="utf-8")
+    assert "RESOURCES_SKILL_STATUS_CATALOG_LOAD_REQUIREMENT" in product_source
+    assert "RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT" not in product_source
 
 
 def test_rcp52_status_projection_stays_with_the_resource_owner() -> None:
@@ -147,8 +168,12 @@ def test_rcp52_status_projection_stays_with_the_resource_owner() -> None:
             importers.add(path)
 
     assert importers == {
+        Path("src/loushang/harness/capabilities/resources_consumers.py"),
+        Path("src/loushang/harness/capabilities/resources_provider.py"),
         Path("src/loushang/harness/resource_catalog/generation.py"),
         Path("src/loushang/harness/resource_catalog/shadow.py"),
+        Path("src/loushang/harness/resources/_skill_catalog_consumer.py"),
+        AGENT_PRODUCT_PATH,
     }
     source = STATUS_PROJECTION_PATH.read_text(encoding="utf-8")
     assert ".content" not in source
@@ -159,7 +184,9 @@ def test_rcp52_status_projection_stays_with_the_resource_owner() -> None:
     provider = CAPABILITY_PROVIDER_PATH.read_text(encoding="utf-8")
     consumer = CAPABILITY_CONSUMER_PATH.read_text(encoding="utf-8")
     composition = COMPOSITION_RUNTIME_PATH.read_text(encoding="utf-8")
-    assert "RESOURCES_CAPABILITY_DEFINITION_V4" not in contracts
-    assert "skill_status_projection" not in provider
-    assert "skill_status_projection" not in consumer
-    assert "resource_skill_status_projection" not in composition
+    assert "RESOURCES_CAPABILITY_DEFINITION_V4" in contracts
+    assert "RESOURCES_SKILL_STATUS_CATALOG_LOAD_REQUIREMENT" in contracts
+    assert "skill_status_projection" in provider
+    assert "skill_status_projection" in consumer
+    assert "def _resource_skill_status_projection" in composition
+    assert "def resource_skill_status_projection" not in composition

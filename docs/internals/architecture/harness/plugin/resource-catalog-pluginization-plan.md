@@ -1499,6 +1499,16 @@ listing, activation display, prompt summaries, and command enumeration to one
 captured typed Consumer. The CLI legacy Skill fallback is deleted in that same
 cutover. Explicit body use remains RCP5.3 debt and refresh remains RCP5.4 debt.
 
+The current RCP5.2B implementation candidate completes that exact-v4 read path
+for every admitted initial Resource Catalog: Product capture, all-candidate CLI
+status, effective prompt summaries, and effective command enumeration share one
+generation, and the CLI has no legacy loader fallback. It is not yet the
+default Coding ingress. Unverified package inputs and custom ResourceLoader
+implementations still lack source-complete Catalog admission; global enablement
+must not hide those cases behind a legacy fallback. Default activation, fresh
+three-view review, and the full Harness gate therefore remain RCP5.2B exit
+work.
+
 Exit: one Catalog path serves every Skill operation; native Skills need no
 Plugin; same-name selection is source-explainable; current-request immutability
 and exact body receipts are proven.

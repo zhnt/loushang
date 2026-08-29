@@ -6,8 +6,10 @@ This is the implementation contract for the conservative RCP5 migration. It
 refines the Resource Catalog pluginization plan only for Skill consumers.
 RCP5.1 implements an internal, exact-generation typed Skill projection and
 lazy body-load path. RCP5.2A implements the owner-native body-free candidate
-status substrate. Neither changes the default Coding bootstrap, CLI, Session
-publication, refresh, activation, or compatibility loader behavior.
+status substrate. An RCP5.2B implementation candidate now mounts exact-v4 for
+an admitted initial Resource Catalog and routes read-only Skill consumers to
+one captured generation. It does not yet authorize the default Coding ingress,
+refresh, explicit body use, or compatibility-loader deletion.
 
 Production cutover starts only after the RCP5.1 contract and implementation
 receive a fresh source-backed review. Stable public Resource authoring remains
@@ -164,8 +166,23 @@ RCP5.2A is implemented owner-private in
 generation retains the projection under the same custody as its Catalog
 snapshot and drops access when that generation retires. RCP5.2A adds no public
 staged-candidate accessor or Graph facet; publication remains exclusively an
-RCP5.2B exact-v4 concern. RCP5.2B remains
-unauthorized until this implementation receives fresh source-backed review.
+RCP5.2B exact-v4 concern.
+
+The RCP5.2B implementation candidate is wired for every admitted initial
+Resource Catalog. Such a Product Session mounts exact-v4, captures one typed
+Consumer, and uses it for CLI status listing, prompt Skill summaries, and
+command enumeration. The CLI has no bundle-or-loader fallback. Missing,
+incompatible, or malformed v4 state fails with a finite error. Explicit command
+and body execution remain on the compatibility bundle, as frozen for RCP5.3.
+
+This candidate is not production-complete. Coding's initial Catalog ingress is
+still gated while unverified package sources and custom ResourceLoader inputs
+cannot produce the required source-complete admission receipt. Turning that
+gate on globally currently either rejects supported compatibility inputs or
+would require a forbidden silent legacy fallback. RCP5.2B exits only after
+those inputs are admitted or receive an explicit unsupported-state contract,
+the default Coding Product enables the ingress, fresh source-backed review
+approves the result, and the full gate passes.
 
 ## Ordered cutover
 

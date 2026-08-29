@@ -381,35 +381,28 @@ def test_coding_shadow_preserves_disabled_context_as_standard_roots(
 
 
 @pytest.mark.parametrize(
-    ("change", "disabled_skills", "reason"),
+    ("change", "reason"),
     (
         (
             {"package_mounts": (PackageResourceMount(root=Path("/package")),)},
-            (),
             "unverified_package_sources",
         ),
         (
             {"additional_skill_paths": (Path("skill"),)},
-            (),
             "temporary_sources",
         ),
-        ({"no_skills": True}, (), "resource_kind_switches"),
-        ({}, ("review",), "disabled_skills"),
+        ({"no_skills": True}, "resource_kind_switches"),
     ),
 )
 def test_coding_shadow_rejects_inputs_not_covered_by_the_thin_slice(
     tmp_path: Path,
     change: dict[str, object],
-    disabled_skills: tuple[str, ...],
     reason: str,
 ) -> None:
     receipt = replace(_receipt(tmp_path), **change)
 
     with pytest.raises(CodingResourceCatalogShadowAdmissionError) as captured:
-        build_coding_initial_resource_catalog_shadow_adapter(
-            receipt,
-            disabled_skills=disabled_skills,
-        )
+        build_coding_initial_resource_catalog_shadow_adapter(receipt)
 
     assert reason in captured.value.reasons
 
@@ -547,11 +540,22 @@ def test_coding_initial_catalog_shadow_publishes_project_context_and_skill(
         resource_candidate = session._staged_resource_candidate
         assert resource_candidate is not None
         try:
+            with pytest.raises(RuntimeError, match="v4 capture is not available"):
+                session.list_skill_statuses()
+            assert "Review code" not in session.agent.system_prompt
+            assert "skill:review" not in {
+                command.name for command in session.list_commands()
+            }
+
             await session.prepare_model_call_runtime()
 
             assert bootstrap.state == "published"
             assert resource_candidate.ownership_state == "graph_owned"
             assert session._resource_catalog_snapshot is not None
+            statuses = session.list_skill_statuses()
+            assert [(status.name, status.status) for status in statuses] == [
+                ("review", "effective")
+            ]
             assert session.resource_bundle is not None
             assert [skill.name for skill in session.resource_bundle.skills] == [
                 "review"
@@ -560,11 +564,78 @@ def test_coding_initial_catalog_shadow_publishes_project_context_and_skill(
                 descriptor.text
                 for descriptor in session.resource_bundle.prompt_descriptors
             ] == ["Project guidance"]
+            assert "Review code" in session.agent.system_prompt
+            assert "Review carefully." not in session.agent.system_prompt
+            assert "skill:review" in {
+                command.name for command in session.list_commands()
+            }
+
+            # Enumeration is pinned to the exact Catalog Consumer, not the
+            # eager compatibility Bundle retained for RCP5.3 body execution.
+            session.resource_bundle.skills.clear()
+            session._rebuild_prompt_and_tools_view()
+            assert "Review code" in session.agent.system_prompt
+            assert "skill:review" in {
+                command.name for command in session.list_commands()
+            }
         finally:
             await session.dispose()
         assert resource_candidate.ownership_state == "disposed"
         assert session._capability_graph_runtime.is_closed is True
         assert session._capability_graph_runtime.has_pending_retirements is False
+
+    asyncio.run(scenario())
+
+
+def test_coding_initial_catalog_applies_disabled_skill_in_owner_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        project_root = tmp_path / "project"
+        skill_root = project_root / "skills" / "review"
+        skill_root.mkdir(parents=True)
+        (skill_root / "SKILL.md").write_text(
+            "---\nname: review\ndescription: Review code\n---\nReview carefully.\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        settings = SettingsManager(
+            global_settings_path=tmp_path / "global-settings.json",
+            project_settings_path=tmp_path / "project-settings.json",
+        )
+        settings.update_settings(scope="project", disabled_skills=("review",))
+        services = create_services(settings_manager=settings)
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project_root),
+            persist=False,
+        )
+        session = _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+            enable_initial_resource_catalog_shadow=True,
+        )
+        try:
+            await session.prepare_model_call_runtime()
+
+            statuses = session.list_skill_statuses()
+            assert len(statuses) == 1
+            status = statuses[0]
+            assert (status.name, status.status, status.status_reason) == (
+                "review",
+                "inactive_activation",
+                "activation_disabled",
+            )
+            assert status.declared_enabled is True
+            assert status.effective is False
+            assert "Review code" not in session.agent.system_prompt
+            assert "skill:review" not in {
+                command.name for command in session.list_commands()
+            }
+        finally:
+            await session.dispose()
 
     asyncio.run(scenario())
 

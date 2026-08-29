@@ -16,6 +16,10 @@ from loushang.harness.resources._catalog_records import (
     ResourceLoadHandle,
     ResourceLoadReceipt,
 )
+from loushang.harness.resources._skill_catalog_status import (
+    SkillCatalogStatusProjection,
+    SkillCatalogStatusSummary,
+)
 from loushang.harness.resources.types import (
     ResourceSourceKind,
     ResourceSourceScope,
@@ -198,6 +202,19 @@ class SkillCatalogConsumer:
             snapshot=snapshot,
             projection=projection,
         )
+        status_projection = getattr(catalog, "skill_status_projection", None)
+        if status_projection is None:
+            self._skill_statuses: tuple[SkillCatalogStatusSummary, ...] | None = None
+        else:
+            if not isinstance(status_projection, SkillCatalogStatusProjection):
+                raise TypeError(
+                    "Skill Consumer requires a body-free Skill status projection"
+                )
+            self._skill_statuses = _bind_status_projection_to_snapshot(
+                snapshot=snapshot,
+                effective_projection=projection,
+                status_projection=status_projection,
+            )
 
     @property
     def catalog_generation(self) -> int:
@@ -211,6 +228,16 @@ class SkillCatalogConsumer:
         """Return only Catalog-effective Skills from this first read slice."""
 
         return self._skills
+
+    def list_skill_statuses(self) -> tuple[SkillCatalogStatusSummary, ...]:
+        """Return every Catalog Skill candidate from an exact-v4 capture."""
+
+        statuses = self._skill_statuses
+        if statuses is None:
+            raise SkillCatalogConsumerError(
+                "Skill status projection is not available from this Catalog capture"
+            )
+        return statuses
 
     def get_effective_skill(self, name: str) -> SkillCatalogSummary | None:
         if not isinstance(name, str) or not name:
@@ -472,6 +499,100 @@ def _bind_projection_to_snapshot(
             "Skill projection does not cover the effective Catalog Skills"
         )
     return candidates
+
+
+def _bind_status_projection_to_snapshot(
+    *,
+    snapshot: ResourceCatalogSnapshot,
+    effective_projection: EffectiveSkillCatalogProjection,
+    status_projection: SkillCatalogStatusProjection,
+) -> tuple[SkillCatalogStatusSummary, ...]:
+    if (
+        status_projection.catalog_generation != snapshot.catalog_generation
+        or status_projection.catalog_snapshot_fingerprint
+        != snapshot.snapshot_fingerprint
+    ):
+        raise SkillCatalogConsumerError(
+            "Skill status projection belongs to another Catalog generation"
+        )
+    skill_candidates = {
+        candidate.candidate_fingerprint: candidate
+        for candidate in snapshot.candidate_summaries
+        if candidate.identity.resource_kind == "skill"
+    }
+    decisions_by_candidate = {
+        fingerprint: decision
+        for decision in snapshot.merge_decisions
+        if decision.identity.resource_kind == "skill"
+        for fingerprint in decision.candidate_fingerprints
+    }
+    effective_by_identity = {
+        entry.identity: entry
+        for entry in snapshot.effective_entries
+        if entry.identity.resource_kind == "skill"
+    }
+    seen: set[str] = set()
+    for status in status_projection.skills:
+        candidate = skill_candidates.get(status.candidate_fingerprint)
+        decision = decisions_by_candidate.get(status.candidate_fingerprint)
+        if candidate is None or decision is None:
+            raise SkillCatalogConsumerError(
+                "Skill status projection names a foreign Catalog candidate"
+            )
+        effective = effective_by_identity.get(candidate.identity)
+        expected_effective = (
+            status.candidate_fingerprint
+            in decision.effective_candidate_fingerprints
+        )
+        expected_primary = (
+            status.candidate_fingerprint == decision.winner_candidate_fingerprint
+        )
+        expected_model_invocable = bool(
+            expected_effective
+            and effective is not None
+            and effective.model_invocable
+        )
+        if (
+            status.identity != candidate.identity
+            or status.canonical_name != candidate.canonical_name
+            or status.description != candidate.description
+            or status.declared_enabled != candidate.invocation_policy.enabled
+            or status.declared_model_invocable
+            != candidate.invocation_policy.model_invocable
+            or status.effective != expected_effective
+            or status.primary != expected_primary
+            or status.model_invocable != expected_model_invocable
+            or status.status_reason != decision.reason
+            or status.media_type != candidate.media_type
+            or status.expected_content_digest
+            != candidate.expected_content_digest
+            or status.expected_content_length
+            != candidate.expected_content_length
+            or status.source_kind != candidate.source_class
+            or status.source_scope != candidate.scope_id
+            or status.source_root_order != candidate.source_root_order
+            or status.diagnostics != candidate.diagnostics
+        ):
+            raise SkillCatalogConsumerError(
+                "Skill status facts do not match the captured Catalog"
+            )
+        seen.add(status.candidate_fingerprint)
+    if seen != set(skill_candidates):
+        raise SkillCatalogConsumerError(
+            "Skill status projection does not cover the Catalog candidates"
+        )
+    effective_candidates = {
+        status.candidate_fingerprint
+        for status in status_projection.skills
+        if status.effective and status.primary
+    }
+    if effective_candidates != {
+        summary.candidate_fingerprint for summary in effective_projection.skills
+    }:
+        raise SkillCatalogConsumerError(
+            "Skill status and effective projections do not select the same Skills"
+        )
+    return status_projection.skills
 
 
 def _validate_loaded_resource(

@@ -120,8 +120,6 @@ def build_coding_initial_resource_catalog_shadow_adapter(
         rejection_reasons.append("temporary_sources")
     if receipt.has_resource_kind_switches:
         rejection_reasons.append("resource_kind_switches")
-    if any(item for item in disabled_skills):
-        rejection_reasons.append("disabled_skills")
     package_resources = _prepare_package_resources(
         receipt,
         admissions=admissions,
@@ -191,6 +189,9 @@ def build_coding_initial_resource_catalog_shadow_adapter(
             package_resources=package_resources,
             embedded_collections=embedded,
             context_file_names=receipt.context_file_names,
+            disabled_skill_selectors=tuple(
+                item for item in disabled_skills if item
+            ),
         )
     )
 

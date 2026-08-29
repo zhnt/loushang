@@ -60,6 +60,16 @@ RESOURCES_CAPABILITY_DEFINITION_V3 = CapabilityDefinition(
     phase="bootstrap",
 )
 
+RESOURCES_CAPABILITY_DEFINITION_V4 = CapabilityDefinition(
+    capability_id="harness.resources",
+    owner_id="harness",
+    contract_version=4,
+    facets=RESOURCES_CAPABILITY_DEFINITION_V2.facets,
+    scope="session",
+    refresh_boundary="sealed",
+    phase="bootstrap",
+)
+
 RESOURCES_ACTIVATION_REQUIREMENT = CapabilityRequirement(
     capability="harness.resources",
     facets=(RESOURCE_RUNTIME_FACET, SKILL_ACTIVATION_FACET),
@@ -89,7 +99,7 @@ RESOURCES_SESSION_COMPOSITION_REQUIREMENT = CapabilityRequirement(
         TOOL_PACKS_FACET,
         COMMAND_PACKS_FACET,
     ),
-    compatible_contract=CapabilityContractRange(minimum=1, maximum=2),
+    compatible_contract=CapabilityContractRange(minimum=1, maximum=4),
 )
 RESOURCES_CATALOG_REQUIREMENT = CapabilityRequirement(
     capability="harness.resources",
@@ -111,6 +121,11 @@ RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT = CapabilityRequirement(
     facets=(RESOURCE_CATALOG_FACET, RESOURCE_LOAD_FACET),
     compatible_contract=CapabilityContractRange.exact(3),
 )
+RESOURCES_SKILL_STATUS_CATALOG_LOAD_REQUIREMENT = CapabilityRequirement(
+    capability="harness.resources",
+    facets=(RESOURCE_CATALOG_FACET, RESOURCE_LOAD_FACET),
+    compatible_contract=CapabilityContractRange.exact(4),
+)
 
 __all__ = [
     "COMMAND_PACKS_FACET",
@@ -121,12 +136,14 @@ __all__ = [
     "RESOURCES_CAPABILITY_DEFINITION",
     "RESOURCES_CAPABILITY_DEFINITION_V2",
     "RESOURCES_CAPABILITY_DEFINITION_V3",
+    "RESOURCES_CAPABILITY_DEFINITION_V4",
     "RESOURCES_CATALOG_LOAD_REQUIREMENT",
     "RESOURCES_CATALOG_REQUIREMENT",
     "RESOURCES_COMMAND_PACK_REQUIREMENT",
     "RESOURCES_LOAD_REQUIREMENT",
     "RESOURCES_PROMPT_REQUIREMENT",
     "RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT",
+    "RESOURCES_SKILL_STATUS_CATALOG_LOAD_REQUIREMENT",
     "RESOURCES_SESSION_COMPOSITION_REQUIREMENT",
     "RESOURCES_TOOL_PACK_REQUIREMENT",
     "RESOURCE_RUNTIME_FACET",

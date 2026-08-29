@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Generic, Protocol, TypeVar
 
@@ -18,6 +18,7 @@ from loushang.harness.commands import (
     SessionCommandDescriptor,
     split_slash_command,
 )
+from loushang.harness.commands.resources import SkillCommandSummary
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.types import ResolvedCommand
@@ -90,6 +91,9 @@ class SessionCommandController(Generic[ResultT]):
     pack_composer: CapabilityPackComposer = field(
         default_factory=CapabilityPackComposer
     )
+    get_effective_skills: (
+        Callable[[], Sequence[SkillCommandSummary] | None] | None
+    ) = None
     _runtime: SessionCommandRuntime[SessionCommandDescriptor, ResultT] = field(
         init=False,
         repr=False,
@@ -135,6 +139,7 @@ class SessionCommandController(Generic[ResultT]):
                 invocation_name,
                 {"source": source, "text": text},
             ),
+            get_effective_skills=self.get_effective_skills,
         )
         self._runtime = SessionCommandRuntime(
             sources=(
@@ -292,6 +297,9 @@ class StandardSessionCommandController(
         standard_ports: StandardSessionCommandPorts | None = None,
         diagnostics_runtime: SessionDiagnosticsRuntime | None = None,
         pack_composer: CapabilityPackComposer | None = None,
+        get_effective_skills: (
+            Callable[[], Sequence[SkillCommandSummary] | None] | None
+        ) = None,
     ) -> None:
         super().__init__(
             session_manager=session_manager,
@@ -325,6 +333,7 @@ class StandardSessionCommandController(
             builtin_matcher=is_standard_session_command,
             diagnostics_runtime=diagnostics_runtime,
             pack_composer=pack_composer or CapabilityPackComposer(),
+            get_effective_skills=get_effective_skills,
         )
 
 
