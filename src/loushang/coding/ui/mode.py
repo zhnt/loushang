@@ -7,6 +7,7 @@ from typing import Any, TextIO
 
 from loushang.coding.continuity_bootstrap import (
     bind_coding_configured_continuity,
+    get_coding_configured_continuity_composition,
 )
 from loushang.coding.presentation.tui.plain import (
     PlainCodingUiRenderer,
@@ -102,17 +103,19 @@ async def _run_screen_interactive_tui(
 ) -> int:
     current = current_agent_runtime_session(runtime, session)
     snapshot = await load_coding_tui_startup_view(runtime=runtime, session=session)
-    composition = await bind_coding_configured_continuity(
-        runtime,
-        settings_manager=getattr(current, "settings_manager", None),
-        session_dir=getattr(
+    composition = get_coding_configured_continuity_composition(runtime)
+    if composition is None:
+        composition = await bind_coding_configured_continuity(
             runtime,
-            "session_dir",
-            resolve_platform_paths().data / "sessions",
-        ),
-        cwd=snapshot.cwd,
-        diagnostics_service=getattr(current, "diagnostics_service", None),
-    )
+            settings_manager=getattr(current, "settings_manager", None),
+            session_dir=getattr(
+                runtime,
+                "session_dir",
+                resolve_platform_paths().data / "sessions",
+            ),
+            cwd=snapshot.cwd,
+            diagnostics_service=getattr(current, "diagnostics_service", None),
+        )
     continuity_reference = composition.hub.reference()
     try:
         return await _run_bound_screen_interactive_tui(

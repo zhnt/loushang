@@ -6327,6 +6327,52 @@ def test_run_cli_bare_resume_awaits_configured_continuity_composition(
     assert isinstance(bindings[0]["session_dir"], Path)
 
 
+def test_run_cli_bare_resume_retries_partial_continuity_cleanup_on_bind_failure(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.coding.cli import __main__ as cli_main
+    from loushang.coding.continuity_bootstrap import (
+        CodingContinuityBootstrapError,
+    )
+
+    runtime = FakeRuntime(FakeSession("placeholder"))
+    cleanup_calls: list[object] = []
+
+    async def fail_after_partial_bind(_runtime, **_kwargs):
+        raise CodingContinuityBootstrapError(
+            code="coding_continuity_binding_cleanup_retryable"
+        )
+
+    async def retry_cleanup(bound_runtime):
+        cleanup_calls.append(bound_runtime)
+
+    monkeypatch.setattr(
+        cli_main,
+        "bind_coding_configured_continuity",
+        fail_after_partial_bind,
+    )
+    monkeypatch.setattr(cli_main, "shutdown_coding_continuity", retry_cleanup)
+    stderr = StringIO()
+
+    exit_code = asyncio.run(
+        cli_main.run_cli(
+            ["--resume"],
+            stdin=TtyStringIO(),
+            stdout=TtyStringIO(),
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            tui_runner=FakeRunner(),
+        )
+    )
+
+    assert exit_code == 1
+    assert cleanup_calls == [runtime]
+    assert runtime.restore_session_calls == []
+
+
 def test_run_cli_bare_resume_activates_selection_before_starting_main_tui(
     tmp_path,
     monkeypatch,

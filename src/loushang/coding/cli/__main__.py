@@ -515,18 +515,28 @@ async def _run_coding_pre_session_bootstrap(
         )
 
     settings_manager = context.state.settings_manager
-    composition = await bind_coding_configured_continuity(
-        context.runtime,
-        settings_manager=settings_manager,
-        session_dir=context.state.session_dir,
-        cwd=context.bootstrap.project_root,
-        all_sessions=args.all_sessions,
-        diagnostics_service=getattr(
-            context.state.services,
-            "diagnostics_service",
-            None,
-        ),
-    )
+    try:
+        composition = await bind_coding_configured_continuity(
+            context.runtime,
+            settings_manager=settings_manager,
+            session_dir=context.state.session_dir,
+            cwd=context.bootstrap.project_root,
+            all_sessions=args.all_sessions,
+            diagnostics_service=getattr(
+                context.state.services,
+                "diagnostics_service",
+                None,
+            ),
+        )
+    except BaseException as bootstrap_error:
+        try:
+            await shutdown_coding_continuity(context.runtime)
+        except BaseException as cleanup_error:
+            bootstrap_error.add_note(
+                "Coding Continuity bootstrap cleanup also failed: "
+                f"{type(cleanup_error).__name__}"
+            )
+        raise
     continuity_reference = composition.hub.reference()
     activated = False
     try:

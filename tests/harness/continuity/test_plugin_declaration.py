@@ -811,6 +811,56 @@ async def _failed_publication_cleanup_stays_runtime_owned_for_retry(
     assert not hasattr(runtime, "_loushang_coding_continuity")
 
 
+def test_cancelled_coding_plugin_bind_removes_cleaned_reservation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(
+        _cancelled_coding_plugin_bind_removes_cleaned_reservation(
+            tmp_path,
+            monkeypatch,
+        )
+    )
+
+
+async def _cancelled_coding_plugin_bind_removes_cleaned_reservation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _CodingRuntime(tmp_path / "sessions")
+    resolved_plugins = SimpleNamespace(
+        resolved_set=SimpleNamespace(product_id="coding")
+    )
+    entered = asyncio.Event()
+
+    async def block_construction(*_args: object, **_kwargs: object) -> object:
+        entered.set()
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    monkeypatch.setattr(
+        coding_continuity_module,
+        "construct_continuity_plugin_generation",
+        block_construction,
+    )
+    task = asyncio.create_task(
+        bind_coding_plugin_continuity(
+            runtime,
+            resolved_plugins=resolved_plugins,  # type: ignore[arg-type]
+            component_host=object(),  # type: ignore[arg-type]
+            activation_decision_ids={},
+            instance_family_authority=object(),  # type: ignore[arg-type]
+            runtime_id="coding-process:cancelled-bind",
+        )
+    )
+    await entered.wait()
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert not hasattr(runtime, "_loushang_coding_continuity")
+
+
 def test_shutdown_helper_retains_failed_plugin_composition() -> None:
     asyncio.run(_shutdown_helper_retains_failed_plugin_composition())
 

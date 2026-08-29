@@ -599,6 +599,9 @@ class CodingContinuityComposition:
     plugin_publication: ContinuityPluginPublication | None = None
     owned_cleanup: Callable[[], None] | None = None
     runtime_owned: bool = False
+    binding_cwd: str | None = None
+    all_sessions: bool = False
+    configured_request_fingerprint: str | None = None
     _core_shutdown: bool = False
     _owned_cleanup_complete: bool = False
     _shutdown: bool = False
@@ -709,6 +712,8 @@ def bind_coding_continuity(
         binding=binding,
         binder=binder,
         hub=build_continuity_hub(composition),
+        binding_cwd=_canonical_continuity_cwd(cwd),
+        all_sessions=all_sessions,
     )
     _retain_coding_continuity(runtime, result)
     return result
@@ -799,8 +804,10 @@ async def bind_coding_plugin_continuity(
             and error.pending_cleanup is not None
         ):
             reservation.construction_cleanup = error.pending_cleanup
-        cleanup_task = asyncio.create_task(reservation.retry_cleanup())
-        cleanup_codes = await _await_owned_task_cancellation_atomic(cleanup_task)
+        cleanup_codes = await _retry_coding_continuity_reservation_atomic(
+            runtime,
+            reservation,
+        )
         if cleanup_codes:
             cleanup_error = ContinuityPluginLifecycleError(
                 "Coding continuity binding cleanup remains retryable.",
@@ -817,6 +824,8 @@ async def bind_coding_plugin_continuity(
         hub=publication.hub,
         plugin_publication=publication,
         owned_cleanup=owned_cleanup,
+        binding_cwd=_canonical_continuity_cwd(cwd),
+        all_sessions=all_sessions,
     )
     if getattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, None) is not reservation:
         raise RuntimeError("Coding continuity binding reservation was replaced")
@@ -898,6 +907,14 @@ def _retain_coding_continuity(
         pass
     else:
         result.runtime_owned = True
+
+
+def _canonical_continuity_cwd(cwd: str | Path | None) -> str | None:
+    return (
+        str(Path(cwd).expanduser().resolve(strict=False))
+        if cwd is not None
+        else None
+    )
 
 
 @dataclass(slots=True)
@@ -1169,10 +1186,32 @@ async def _await_owned_task_cancellation_atomic(
     return result
 
 
+async def _retry_coding_continuity_reservation_atomic(
+    runtime: object,
+    reservation: _CodingContinuityBindingReservation,
+) -> tuple[str, ...]:
+    cleanup_task = asyncio.create_task(reservation.retry_cleanup())
+    try:
+        return await _await_owned_task_cancellation_atomic(cleanup_task)
+    except asyncio.CancelledError:
+        if cleanup_task.done() and not cleanup_task.cancelled():
+            try:
+                codes = cleanup_task.result()
+            except BaseException:
+                pass
+            else:
+                if not codes:
+                    _delete_runtime_binding_if(runtime, reservation)
+        raise
+
+
 async def shutdown_coding_continuity(runtime: object) -> None:
     composition = getattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, None)
     if isinstance(composition, _CodingContinuityBindingReservation):
-        codes = await composition.retry_cleanup()
+        codes = await _retry_coding_continuity_reservation_atomic(
+            runtime,
+            composition,
+        )
         if codes:
             error = ContinuityPluginLifecycleError(
                 "Coding continuity binding cleanup remains retryable.",
@@ -1185,8 +1224,38 @@ async def shutdown_coding_continuity(runtime: object) -> None:
         return
     if not isinstance(composition, CodingContinuityComposition):
         return
-    await composition.shutdown()
+    shutdown_task = asyncio.create_task(composition.shutdown())
+    try:
+        await _await_owned_task_cancellation_atomic(shutdown_task)
+    except asyncio.CancelledError:
+        if shutdown_task.done() and not shutdown_task.cancelled():
+            try:
+                shutdown_task.result()
+            except BaseException:
+                pass
+            else:
+                _delete_runtime_binding_if(runtime, composition)
+        raise
     _delete_runtime_binding_if(runtime, composition)
+
+
+def get_coding_continuity_composition(
+    runtime: object,
+) -> CodingContinuityComposition | None:
+    """Return the process-sealed composition without recomposing another scope."""
+
+    composition = getattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, None)
+    return (
+        composition
+        if isinstance(composition, CodingContinuityComposition)
+        else None
+    )
+
+
+def supports_coding_continuity_secure_staging() -> bool:
+    """Report whether portable Plugin payloads can be staged safely."""
+
+    return _supports_continuity_directory_handles()
 
 
 def _delete_runtime_binding_if(runtime: object, expected: object) -> None:
@@ -1311,5 +1380,7 @@ __all__ = [
     "StaleContinuityTargetError",
     "bind_coding_continuity",
     "bind_coding_plugin_continuity",
+    "get_coding_continuity_composition",
     "shutdown_coding_continuity",
+    "supports_coding_continuity_secure_staging",
 ]

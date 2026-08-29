@@ -26,6 +26,8 @@ from loushang.coding.continuity import (
     CodingContinuityRuntimePort,
     bind_coding_continuity,
     bind_coding_plugin_continuity,
+    get_coding_continuity_composition,
+    supports_coding_continuity_secure_staging,
 )
 from loushang.coding.plugin_dependency_grants import (
     coding_plugin_distribution_evidence_resolver,
@@ -165,6 +167,7 @@ class CodingContinuityStateLayout:
     """Canonical durable Product paths for one workspace continuity scope."""
 
     root: Path
+    private_state_base: Path
     scope_id: str
     runtime_root: Path
     temporary_base: Path
@@ -204,8 +207,14 @@ def resolve_coding_continuity_state_layout(
     state_root = (
         paths.state / "plugins" / "coding" / "continuity" / "workspaces" / digest
     )
+    private_state_base = (
+        paths.home
+        if paths.state == paths.home or paths.home in paths.state.parents
+        else paths.state
+    )
     return CodingContinuityStateLayout(
         root=state_root,
+        private_state_base=private_state_base,
         scope_id=f"workspace:{digest}",
         runtime_root=paths.runtime,
         temporary_base=paths.temporary,
@@ -230,6 +239,20 @@ def get_coding_continuity_bootstrap_status(
         if isinstance(status, CodingContinuityBootstrapStatus)
         else (CodingContinuityBootstrapStatus())
     )
+
+
+def get_coding_configured_continuity_composition(
+    runtime: object,
+) -> CodingContinuityComposition | None:
+    """Return only a composition sealed by the configured Product bootstrap."""
+
+    composition = get_coding_continuity_composition(runtime)
+    if (
+        composition is None
+        or composition.configured_request_fingerprint is None
+    ):
+        return None
+    return composition
 
 
 async def bind_coding_configured_continuity(
@@ -274,14 +297,28 @@ async def bind_coding_configured_continuity(
         )
         if isinstance(error, CodingContinuityBootstrapError):
             raise
-        raise CodingContinuityBootstrapError(code=stable_code) from error
+        raise CodingContinuityBootstrapError(code=stable_code) from None
+
+    request_fingerprint = _bootstrap_request_fingerprint(
+        sources,
+        disabled_plugins=disabled_plugins,
+        cwd=cwd,
+        all_sessions=all_sessions,
+    )
 
     existing = getattr(runtime, "_loushang_coding_continuity", None)
     if isinstance(existing, CodingContinuityComposition):
-        status = get_coding_continuity_bootstrap_status(runtime)
-        if status.state == "ready" and status.configured_source_count == len(sources):
+        if existing.configured_request_fingerprint == request_fingerprint:
             return existing
-        if not sources and existing.plugin_publication is None:
+        if (
+            not sources
+            and existing.plugin_publication is None
+            and existing.configured_request_fingerprint is None
+            and existing.binding_cwd
+            == str(Path(cwd).expanduser().resolve(strict=False))
+            and existing.all_sessions == all_sessions
+        ):
+            existing.configured_request_fingerprint = request_fingerprint
             _record_ready_status(
                 runtime,
                 diagnostics_service,
@@ -295,13 +332,6 @@ async def bind_coding_configured_continuity(
             code="coding_continuity_composition_already_bound",
             retryable=False,
         )
-        _record_failed_status(
-            runtime,
-            diagnostics_service,
-            code=composition_error.code,
-            configured_source_count=len(sources),
-            retryable=composition_error.retryable,
-        )
         raise composition_error
 
     if not sources:
@@ -310,6 +340,7 @@ async def bind_coding_configured_continuity(
             cwd=cwd,
             all_sessions=all_sessions,
         )
+        result.configured_request_fingerprint = request_fingerprint
         _record_ready_status(
             runtime,
             diagnostics_service,
@@ -329,7 +360,7 @@ async def bind_coding_configured_continuity(
             session_dir=session_dir,
             cwd=cwd,
         )
-        _prepare_private_state_root(layout.root)
+        _prepare_private_state_layout(layout)
         _prepare_private_runtime_roots(layout)
         inspections = _continuity_inspections(
             sources,
@@ -342,6 +373,7 @@ async def bind_coding_configured_continuity(
                 cwd=cwd,
                 all_sessions=all_sessions,
             )
+            result.configured_request_fingerprint = request_fingerprint
             _record_ready_status(
                 runtime,
                 diagnostics_service,
@@ -351,6 +383,12 @@ async def bind_coding_configured_continuity(
                 recovered_deletion_count=0,
             )
             return result
+
+        if not supports_coding_continuity_secure_staging():
+            raise CodingContinuityBootstrapError(
+                code="coding_continuity_secure_staging_unsupported",
+                retryable=False,
+            )
 
         resolution_authority = PluginResolutionAuthority(
             disabled_plugins=tuple(disabled_plugins)
@@ -406,6 +444,7 @@ async def bind_coding_configured_continuity(
             temporary_root=layout.temporary_root,
             fallback_cwd=cwd,
         )
+        result.configured_request_fingerprint = request_fingerprint
         runtime_resolution = None  # ownership transferred to the composition
         _record_ready_status(
             runtime,
@@ -442,7 +481,7 @@ async def bind_coding_configured_continuity(
         )
         if isinstance(error, CodingContinuityBootstrapError):
             raise
-        raise CodingContinuityBootstrapError(code=stable_code) from error
+        raise CodingContinuityBootstrapError(code=stable_code) from None
 
 
 async def retry_coding_continuity_bootstrap(
@@ -490,6 +529,38 @@ def _configured_sources(
         )
     )
     return sources, frozenset(item.strip() for item in raw_disabled)
+
+
+def _bootstrap_request_fingerprint(
+    sources: tuple[str, ...],
+    *,
+    disabled_plugins: frozenset[str],
+    cwd: str | Path,
+    all_sessions: bool,
+) -> str:
+    workspace = Path(cwd).expanduser().resolve(strict=False)
+    digest = hashlib.sha256()
+    digest.update(b"loushang.coding-continuity-bootstrap-request/v2\0")
+
+    def update_value(label: str, value: str) -> None:
+        label_bytes = label.encode("ascii")
+        encoded = value.encode("utf-8", errors="surrogatepass")
+        digest.update(len(label_bytes).to_bytes(4, "big"))
+        digest.update(label_bytes)
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+
+    update_value("policyRevision", _PRODUCT_POLICY_REVISION)
+    update_value("workspace", str(workspace))
+    update_value("listingScope", "all" if all_sessions else "workspace")
+    update_value("sourceCount", str(len(sources)))
+    for source in sources:
+        update_value("source", source)
+    ordered_disabled = tuple(sorted(disabled_plugins))
+    update_value("disabledPluginCount", str(len(ordered_disabled)))
+    for plugin_id in ordered_disabled:
+        update_value("disabledPlugin", plugin_id)
+    return digest.hexdigest()
 
 
 def _normalize_configured_source(
@@ -684,7 +755,8 @@ def _reconcile_enabled_instances(
         current_package = state.selection.package_revision
         if current_package != package_revision:
             raise CodingContinuityBootstrapError(
-                code="coding_continuity_plugin_update_requires_management"
+                code="coding_continuity_plugin_revision_not_selected",
+                retryable=False,
             )
         if state.selection.desired_state == "installed_disabled":
             _submit_management(
@@ -770,6 +842,7 @@ def _finalize_selection(
                 (package, item)
                 for package in packages
                 for item in package.contribution_index.items
+                if item.kind == CONTINUITY_PROVIDER_CONTRIBUTION_KIND
             ),
             key=lambda pair: (pair[0].manifest.name, pair[1].contribution_id),
         )
@@ -855,7 +928,7 @@ def _finalize_selection(
             if isinstance(outcome, PluginPreflightDeniedOutcome)
             else f"coding_continuity_definition_{outcome.disposition}"
         )
-        raise CodingContinuityBootstrapError(code=code)
+        raise CodingContinuityBootstrapError(code=code, retryable=False)
     return outcome
 
 
@@ -1061,8 +1134,8 @@ def _prepare_private_directory(root: Path, *, code: str) -> None:
         after = root.lstat()
         if not os.path.samestat(before, after):
             raise OSError("private root identity changed")
-    except OSError as error:
-        raise CodingContinuityBootstrapError(code=code) from error
+    except OSError:
+        raise CodingContinuityBootstrapError(code=code) from None
 
 
 def _prepare_private_state_root(root: Path) -> None:
@@ -1070,6 +1143,25 @@ def _prepare_private_state_root(root: Path) -> None:
         root,
         code="coding_continuity_state_permissions_failed",
     )
+
+
+def _prepare_private_state_layout(layout: CodingContinuityStateLayout) -> None:
+    # Keep the lexical path so every existing component is checked with lstat;
+    # resolve() would follow an attacker-replaced intermediate symlink first.
+    base = layout.private_state_base.expanduser().absolute()
+    root = layout.root.expanduser().absolute()
+    try:
+        relative = root.relative_to(base)
+    except ValueError:
+        raise CodingContinuityBootstrapError(
+            code="coding_continuity_state_permissions_failed",
+            retryable=False,
+        ) from None
+    _prepare_private_state_root(base)
+    current = base
+    for part in relative.parts:
+        current /= part
+        _prepare_private_state_root(current)
 
 
 def _prepare_private_runtime_roots(layout: CodingContinuityStateLayout) -> None:
@@ -1106,14 +1198,15 @@ def _record_ready_status(
         setattr(runtime, _BOOTSTRAP_STATUS_ATTRIBUTE, status)
     capture = getattr(diagnostics, "capture_failure", None)
     if callable(capture):
-        capture(
-            code=status.code,
-            error="Coding Continuity composition is ready.",
-            phase="startup",
-            source="bootstrap",
-            level="info",
-            details=status.to_dict(),
-        )
+        with suppress(Exception):
+            capture(
+                code=status.code,
+                error="Coding Continuity composition is ready.",
+                phase="startup",
+                source="bootstrap",
+                level="info",
+                details=status.to_dict(),
+            )
 
 
 def _record_failed_status(
@@ -1134,13 +1227,14 @@ def _record_failed_status(
         setattr(runtime, _BOOTSTRAP_STATUS_ATTRIBUTE, status)
     capture = getattr(diagnostics, "capture_failure", None)
     if callable(capture):
-        capture(
-            code=code,
-            error=f"Coding Continuity bootstrap failed ({code}).",
-            phase="startup",
-            source="bootstrap",
-            details=status.to_dict(),
-        )
+        with suppress(Exception):
+            capture(
+                code=code,
+                error=f"Coding Continuity bootstrap failed ({code}).",
+                phase="startup",
+                source="bootstrap",
+                details=status.to_dict(),
+            )
 
 
 def _stable_error_code(error: BaseException) -> str:
@@ -1177,6 +1271,7 @@ __all__ = [
     "CodingContinuityBootstrapStatus",
     "CodingContinuityStateLayout",
     "bind_coding_configured_continuity",
+    "get_coding_configured_continuity_composition",
     "get_coding_continuity_bootstrap_status",
     "resolve_coding_continuity_state_layout",
     "retry_coding_continuity_bootstrap",

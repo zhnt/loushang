@@ -1069,3 +1069,33 @@ def test_coding_continuity_failed_close_leaves_composition_retryable(
     asyncio.run(shutdown_coding_continuity(runtime))
     assert composition._shutdown
     assert len(disposed) == 1
+
+
+def test_coding_continuity_shutdown_joins_cleanup_before_propagating_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        runtime = _Runtime(tmp_path)
+        composition = bind_coding_continuity(runtime)
+        original_shutdown = composition.shutdown
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def delayed_shutdown() -> None:
+            entered.set()
+            await release.wait()
+            await original_shutdown()
+
+        monkeypatch.setattr(composition, "shutdown", delayed_shutdown)
+        task = asyncio.create_task(shutdown_coding_continuity(runtime))
+        await entered.wait()
+        task.cancel()
+        release.set()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert composition._shutdown
+        assert not hasattr(runtime, "_loushang_coding_continuity")
+
+    asyncio.run(scenario())
