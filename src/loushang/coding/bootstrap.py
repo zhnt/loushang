@@ -14,7 +14,7 @@ from loushang.agent import Agent, StreamFn, ThinkingLevel
 from loushang.ai.model import Model, ModelSelection
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.coding._resource_catalog_shadow import (
-    prepare_coding_initial_resource_catalog_shadow_adapter,
+    prepare_coding_initial_resource_catalog_adapter,
 )
 from loushang.coding.capabilities import (
     CODING_LSP_CAPABILITY,
@@ -39,6 +39,10 @@ from loushang.coding.lsp.model import LspServerDefinition
 from loushang.coding.lsp.ports import WorkspaceTextReader
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE, CODING_PRODUCT_ID
 from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
+from loushang.coding.resource_authority import (
+    RESOURCE_AUTHORITY_MODES,
+    ResourceAuthorityMode,
+)
 from loushang.coding.resource_runtime import (
     CodingPackageMaterializer as PackageMaterializer,
 )
@@ -254,13 +258,16 @@ def _create_agent_session(
     lsp_definitions: Iterable[LspServerDefinition] = (),
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
-    enable_initial_resource_catalog_shadow: bool = False,
+    resource_authority_mode: ResourceAuthorityMode = "catalog_required",
     initial_resource_catalog_product_composition_assembly: (
         ProductCompositionAssemblyRequest | None
     ) = None,
 ) -> AgentSession:
-    if not isinstance(enable_initial_resource_catalog_shadow, bool):
-        raise TypeError("initial Resource Catalog shadow flag must be a bool")
+    if (
+        not isinstance(resource_authority_mode, str)
+        or resource_authority_mode not in RESOURCE_AUTHORITY_MODES
+    ):
+        raise ValueError("Coding Resource authority mode is invalid")
     if (
         initial_resource_catalog_product_composition_assembly is not None
         and not isinstance(
@@ -273,10 +280,11 @@ def _create_agent_session(
         )
     if (
         initial_resource_catalog_product_composition_assembly is not None
-        and not enable_initial_resource_catalog_shadow
+        and resource_authority_mode != "catalog_required"
     ):
         raise ValueError(
-            "initial Resource Catalog Product composition assembly requires the shadow"
+            "initial Resource Catalog Product composition assembly requires "
+            "catalog_required authority"
         )
     enable_multiagent_tools = (
         enable_multiagent
@@ -390,8 +398,8 @@ def _create_agent_session(
         session_base_prompt: str,
         session_no_tools_mode: NoToolsMode | None,
     ) -> AgentSession:
-        resource_catalog_shadow_adapter = None
-        if enable_initial_resource_catalog_shadow:
+        resource_catalog_adapter = None
+        if resource_authority_mode == "catalog_required":
             composition_evaluated_at = int(time.time())
             product_composition = (
                 assemble_product_composition(
@@ -401,9 +409,10 @@ def _create_agent_session(
                 if initial_resource_catalog_product_composition_assembly is not None
                 else None
             )
-            resource_catalog_shadow_adapter = (
-                prepare_coding_initial_resource_catalog_shadow_adapter(
+            resource_catalog_adapter = (
+                prepare_coding_initial_resource_catalog_adapter(
                     services.resource_loader,
+                    product_scope_id=session_id,
                     disabled_skills=(
                         services.settings_manager.get_settings().disabled_skills
                     ),
@@ -577,8 +586,8 @@ def _create_agent_session(
             )
 
         try:
-            if resource_catalog_shadow_adapter is not None:
-                child_session = resource_catalog_shadow_adapter.construct_session(
+            if resource_catalog_adapter is not None:
+                child_session = resource_catalog_adapter.construct_session(
                     product_id=CODING_PRODUCT_ID,
                     session_id=session_id,
                     base_resource_bundle=bundle,
@@ -661,6 +670,7 @@ def _create_agent_session(
                     stream_fn=stream_fn,
                     agent_factory=agent_factory,
                     tool_policy_evaluator=tool_policy_evaluator,
+                    resource_authority_mode=resource_authority_mode,
                 ),
             ),
             agent_types=multiagent_types,
@@ -690,6 +700,7 @@ def create_agent_session(
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: PolicyEvaluator | None = None,
     enable_multiagent: bool = False,
+    resource_authority_mode: ResourceAuthorityMode = "catalog_required",
     lsp_definitions: Iterable[LspServerDefinition] = (),
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
@@ -714,6 +725,7 @@ def create_agent_session(
         approval_resolver=approval_resolver,
         tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=enable_multiagent,
+        resource_authority_mode=resource_authority_mode,
         sandbox_workspace_writable=True,
         lsp_definitions=lsp_definitions,
         lsp_baseline_environment=lsp_baseline_environment,
@@ -741,6 +753,7 @@ def create_agent_session_from_services(
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: PolicyEvaluator | None = None,
     enable_multiagent: bool = False,
+    resource_authority_mode: ResourceAuthorityMode = "catalog_required",
     lsp_definitions: Iterable[LspServerDefinition] = (),
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
@@ -770,6 +783,7 @@ def create_agent_session_from_services(
         approval_resolver=approval_resolver,
         tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=enable_multiagent,
+        resource_authority_mode=resource_authority_mode,
         lsp_definitions=lsp_definitions,
         lsp_baseline_environment=lsp_baseline_environment,
         lsp_read_text=lsp_read_text,
@@ -797,6 +811,7 @@ def create_agent_session_result(
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: PolicyEvaluator | None = None,
     enable_multiagent: bool = False,
+    resource_authority_mode: ResourceAuthorityMode = "catalog_required",
     lsp_definitions: Iterable[LspServerDefinition] = (),
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
@@ -822,6 +837,7 @@ def create_agent_session_result(
         approval_resolver=approval_resolver,
         tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=enable_multiagent,
+        resource_authority_mode=resource_authority_mode,
         lsp_definitions=lsp_definitions,
         lsp_baseline_environment=lsp_baseline_environment,
         lsp_read_text=lsp_read_text,
@@ -917,6 +933,7 @@ def _create_agent_session_runtime(
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: PolicyEvaluator | None = None,
     enable_multiagent: bool = False,
+    resource_authority_mode: ResourceAuthorityMode = "catalog_required",
     sandbox_workspace_writable: bool = True,
     delegated_execution_profile: DelegatedExecutionProfile | None = None,
     lsp_definitions: Iterable[LspServerDefinition] = (),
@@ -951,6 +968,7 @@ def _create_agent_session_runtime(
                 approval_resolver=approval_resolver,
                 tool_policy_evaluator=tool_policy_evaluator,
                 enable_multiagent=enable_multiagent,
+                resource_authority_mode=resource_authority_mode,
                 sandbox_workspace_writable=sandbox_workspace_writable,
                 delegated_execution_profile=delegated_execution_profile,
                 lsp_definitions=fixed_lsp_definitions,
@@ -990,6 +1008,7 @@ def create_agent_session_runtime(
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: PolicyEvaluator | None = None,
     enable_multiagent: bool = False,
+    resource_authority_mode: ResourceAuthorityMode = "catalog_required",
     lsp_definitions: Iterable[LspServerDefinition] = (),
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
@@ -1013,6 +1032,7 @@ def create_agent_session_runtime(
         approval_resolver=approval_resolver,
         tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=enable_multiagent,
+        resource_authority_mode=resource_authority_mode,
         sandbox_workspace_writable=True,
         lsp_definitions=lsp_definitions,
         lsp_baseline_environment=lsp_baseline_environment,

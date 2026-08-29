@@ -730,6 +730,7 @@ def test_create_agent_session_result_returns_sdk_creation_snapshot(tmp_path) -> 
         session_manager=manager,
         services=services,
         model=_model(),
+        resource_authority_mode="legacy_explicit",
     )
 
     assert isinstance(result, CreateAgentSessionResult)
@@ -1279,6 +1280,7 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
         model=_model(),
         tool_registry=registry,
         no_tools="builtin",
+        resource_authority_mode="legacy_explicit",
     )
 
     asyncio.run(session.start_extension_runtime())
@@ -1372,6 +1374,7 @@ def test_create_agent_session_no_tools_all_hides_dynamic_extension_tools_and_pro
         model=_model(),
         tool_registry=registry,
         no_tools="all",
+        resource_authority_mode="legacy_explicit",
     )
 
     asyncio.run(session.start_extension_runtime())
@@ -1457,6 +1460,7 @@ def test_create_agent_session_uses_settings_package_roots_for_external_package_p
         session_manager=manager,
         services=services,
         model=_model(),
+        resource_authority_mode="legacy_explicit",
     )
 
     assert "Base system prompt." in session.agent.system_prompt
@@ -1510,7 +1514,9 @@ def test_reload_extension_runtime_reloads_settings_resource_roots(tmp_path) -> N
         )
     )
     session = create_agent_session(
-        session_manager=manager, services=services, model=_model()
+        session_manager=manager,
+        services=services,
+        model=_model(),
     )
 
     assert "Old global prompt" in session.agent.system_prompt
@@ -1582,7 +1588,10 @@ def test_create_agent_session_uses_settings_package_sources_with_filters(
     )
 
     session = create_agent_session(
-        session_manager=manager, services=services, model=_model()
+        session_manager=manager,
+        services=services,
+        model=_model(),
+        resource_authority_mode="legacy_explicit",
     )
 
     bundle = services.resource_loader.get_resource_bundle()
@@ -1651,6 +1660,7 @@ def test_create_agent_session_uses_settings_plugin_sources_for_external_package_
         session_manager=manager,
         services=services,
         model=_model(),
+        resource_authority_mode="legacy_explicit",
     )
 
     bundle = services.resource_loader.get_resource_bundle()
@@ -1764,7 +1774,10 @@ def test_create_agent_session_auto_materializes_configured_remote_package_source
     )
 
     session = create_agent_session(
-        session_manager=manager, services=services, model=_model()
+        session_manager=manager,
+        services=services,
+        model=_model(),
+        resource_authority_mode="legacy_explicit",
     )
 
     assert "Remote package prompt" in session.agent.system_prompt
@@ -2583,6 +2596,7 @@ def test_create_agent_session_merges_extension_resources_and_tools(tmp_path) -> 
         session_manager=manager,
         services=services,
         model=_model(),
+        resource_authority_mode="legacy_explicit",
     )
 
     assert (
@@ -2736,6 +2750,7 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
         model=_model(),
         stream_fn=stream_fn,
         tools=[base_tool],
+        resource_authority_mode="legacy_explicit",
     )
 
     async def scenario() -> None:
@@ -2857,6 +2872,7 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
         services=services,
         model=_model(),
         tools=[base_tool],
+        resource_authority_mode="legacy_explicit",
     )
 
     assert session.resource_bundle.extensions
@@ -3255,6 +3271,7 @@ def test_create_agent_session_records_resource_loading_diagnostics(tmp_path) -> 
         session_manager=manager,
         services=services,
         model=_model(),
+        resource_authority_mode="legacy_explicit",
     )
 
     diagnostics = services.diagnostics_service.get_diagnostics(
@@ -3295,6 +3312,7 @@ def test_create_agent_session_records_startup_package_root_diagnostics(
         session_manager=manager,
         services=services,
         model=_model(),
+        resource_authority_mode="legacy_explicit",
     )
 
     diagnostics = services.diagnostics_service.get_diagnostics(
@@ -3402,17 +3420,14 @@ def test_create_agent_session_records_invalid_plugin_source_and_continues(
 
     project_root = tmp_path / "project"
     invalid_plugin = tmp_path / "invalid-plugin"
-    valid_package = tmp_path / "valid-package"
-    prompts_dir = valid_package / "prompts"
-    project_root.mkdir()
+    prompts_dir = project_root / "prompts"
     prompts_dir.mkdir(parents=True)
-    (prompts_dir / "valid.md").write_text("Valid package prompt", encoding="utf-8")
+    (prompts_dir / "valid.md").write_text("Valid project prompt", encoding="utf-8")
 
     settings_path = tmp_path / "settings.json"
     settings_path.write_text(
         (
             "{"
-            f'"package_roots": ["{valid_package}"],'
             f'"plugin_sources": ["{invalid_plugin}"]'
             "}"
         ),
@@ -3441,7 +3456,7 @@ def test_create_agent_session_records_invalid_plugin_source_and_continues(
         if record.code == "plugin_source_unresolved"
     ]
 
-    assert "Valid package prompt" in session.agent.system_prompt
+    assert "Valid project prompt" in session.agent.system_prompt
     assert len(diagnostics) == 1
     assert diagnostics[0].type == "warning"
     assert diagnostics[0].source_path == invalid_plugin

@@ -7,6 +7,9 @@ from typing import Protocol
 
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
+from loushang.harness.resources._catalog_input_receipt import (
+    CatalogPluginPackageInput,
+)
 from loushang.harness.resources.layout import resolve_user_resource_roots
 from loushang.harness.resources.packages.manifest import (
     project_plugin_diagnostics,
@@ -65,6 +68,8 @@ class ResourceRootLoader(Protocol):
     def set_package_mounts(
         self,
         mounts: Sequence[PackageResourceMount],
+        *,
+        catalog_plugin_package_inputs: Sequence[CatalogPluginPackageInput] = (),
     ) -> None: ...
 
     def set_user_resource_roots(
@@ -78,6 +83,7 @@ class ResourceRootLoader(Protocol):
 @dataclass(frozen=True)
 class ResolvedPackageResourceRoots:
     mounts: tuple[PackageResourceMount, ...] = ()
+    catalog_plugin_package_inputs: tuple[CatalogPluginPackageInput, ...] = ()
 
     @property
     def roots(self) -> tuple[str, ...]:
@@ -128,7 +134,10 @@ def configure_resource_loader_roots(
         session_id=session_id,
     )
     try:
-        resource_loader.set_package_mounts(resolved.mounts)
+        resource_loader.set_package_mounts(
+            resolved.mounts,
+            catalog_plugin_package_inputs=resolved.catalog_plugin_package_inputs,
+        )
     except Exception:
         _close_mounts(resolved.mounts)
         raise
@@ -274,7 +283,34 @@ def resolve_package_resource_roots(
     except Exception:
         runtime_resolution.close()
         raise
-    return ResolvedPackageResourceRoots(mounts=tuple(mounts))
+    catalog_plugin_package_inputs: list[CatalogPluginPackageInput] = []
+    for package, plugin, binding in zip(
+        runtime_resolution.packages,
+        runtime_resolution.plugins,
+        runtime_resolution.bindings,
+        strict=True,
+    ):
+        if not plugin.enabled:
+            continue
+        matching_orders = [
+            index
+            for index, mount in enumerate(mounts)
+            if mount.enabled and mount.revision_handle is package.revision_handle
+        ]
+        if len(matching_orders) != 1:
+            runtime_resolution.close()
+            raise ValueError("Published Plugin does not have one discovery mount")
+        catalog_plugin_package_inputs.append(
+            CatalogPluginPackageInput(
+                package=package,
+                binding=binding,
+                source_root_order=matching_orders[0],
+            )
+        )
+    return ResolvedPackageResourceRoots(
+        mounts=tuple(mounts),
+        catalog_plugin_package_inputs=tuple(catalog_plugin_package_inputs),
+    )
 
 
 def _upsert_package_mount(

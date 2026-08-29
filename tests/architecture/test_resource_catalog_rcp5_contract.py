@@ -52,6 +52,7 @@ PRIVATE_SKILL_SYMBOLS = (
 
 def test_rcp5_contract_freezes_conservative_order_and_authority() -> None:
     contract = CONTRACT_PATH.read_text(encoding="utf-8")
+    normalized_contract = " ".join(contract.split())
     readme = README_PATH.read_text(encoding="utf-8")
 
     assert "A Skill is a Resource, not a Plugin" in contract
@@ -60,9 +61,8 @@ def test_rcp5_contract_freezes_conservative_order_and_authority() -> None:
     assert "RCP5.2B \u2014 exact-v4 read-only cutover" in contract
     assert "exact-v2 and exact-v3 Graph contracts remain unchanged" in contract
     assert "never a legacy fallback" in contract
-    assert "RCP5.2B implementation candidate" in contract
-    assert "admitted initial Resource Catalog" in contract
-    assert "not production-complete" in contract
+    assert "RCP5.2B default ingress is complete" in contract
+    assert "admitted initial Resource Catalog" in normalized_contract
     assert "forbidden silent legacy fallback" in contract
     assert "RCP5.2B default ingress authority" in contract
     assert "`catalog_required` is the public default" in contract

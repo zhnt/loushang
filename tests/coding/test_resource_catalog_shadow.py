@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+import subprocess
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -74,6 +75,38 @@ _CODING_BASE_SHADOW_ROOT = (
     / "fixtures"
     / "coding_base_shadow"
 )
+
+
+def _copy_resource_only_plugin(target: Path) -> None:
+    shutil.copytree(_CODING_BASE_SHADOW_ROOT, target)
+    manifest_path = target / "plugin.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["contributionIndex"]["items"] = [
+        item
+        for item in manifest["contributionIndex"]["items"]
+        if item["kind"] == "resource_item"
+    ]
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    declarations_path = target / "declarations" / "plugin.json"
+    declarations = json.loads(declarations_path.read_text(encoding="utf-8"))
+    declarations["declarations"] = [
+        item
+        for item in declarations["declarations"]
+        if item["kind"] == "resource_item"
+    ]
+    declarations_path.write_text(
+        json.dumps(declarations, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    (target / "skills" / "standard" / "SKILL.md").write_text(
+        "---\nname: standard\n"
+        "description: Automatically admitted package Skill.\n---\n"
+        "Use the admitted package Skill.\n",
+        encoding="utf-8",
+    )
 
 
 def _model() -> Model:
@@ -333,7 +366,7 @@ def test_coding_shadow_maps_one_receipt_without_bundle_inference(
     adapter = build_coding_initial_resource_catalog_shadow_adapter(_receipt(tmp_path))
 
     selection = adapter.selection
-    assert selection.product_policy_revision == "coding-resource-catalog-shadow-v2"
+    assert selection.product_policy_revision == "coding-resource-catalog-v3"
     assert [item.handle_id for item in selection.native_roots] == [
         "coding-user-0",
         "coding-project-context-0",
@@ -533,7 +566,6 @@ def test_coding_initial_catalog_shadow_publishes_project_context_and_skill(
             session_manager=manager,
             services=services,
             model=_model(),
-            enable_initial_resource_catalog_shadow=True,
         )
         bootstrap = session._initial_resource_catalog_bootstrap
         assert bootstrap is not None
@@ -615,7 +647,6 @@ def test_coding_initial_catalog_applies_disabled_skill_in_owner_status(
             session_manager=manager,
             services=services,
             model=_model(),
-            enable_initial_resource_catalog_shadow=True,
         )
         try:
             await session.prepare_model_call_runtime()
@@ -638,6 +669,223 @@ def test_coding_initial_catalog_applies_disabled_skill_in_owner_status(
             await session.dispose()
 
     asyncio.run(scenario())
+
+
+def test_coding_initial_catalog_compiles_configured_plugin_resource_admissions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        project_root = tmp_path / "project"
+        plugin_root = tmp_path / "plugin"
+        project_root.mkdir()
+        _copy_resource_only_plugin(plugin_root)
+        project_settings_path = tmp_path / "project-settings.json"
+        project_settings_path.write_text(
+            json.dumps({"plugin_sources": [str(plugin_root)]}),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=project_settings_path,
+            )
+        )
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project_root),
+            persist=False,
+        )
+        session = _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
+        try:
+            await session.prepare_model_call_runtime()
+
+            assert [
+                (item.name, item.status) for item in session.list_skill_statuses()
+            ] == [("standard", "effective")]
+            assert "Automatically admitted package Skill." in session.agent.system_prompt
+            assert "skill:standard" in {
+                command.name for command in session.list_commands()
+            }
+        finally:
+            await session.dispose()
+            services.resource_loader.close()
+
+    asyncio.run(scenario())
+
+
+def test_coding_initial_catalog_admits_materialized_remote_plugin_resources(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.resource_runtime import CodingPackageMaterializer
+    from loushang.harness.resources.packages.materializer import (
+        GitPackageMaterializerBackend,
+    )
+
+    async def scenario() -> None:
+        project_root = tmp_path / "project"
+        source_root = tmp_path / "source"
+        project_root.mkdir()
+        _copy_resource_only_plugin(source_root)
+        for args in (
+            ("init",),
+            ("config", "user.email", "test@example.invalid"),
+            ("config", "user.name", "Test User"),
+            ("add", "."),
+            ("commit", "-m", "initial"),
+        ):
+            subprocess.run(
+                ("git", *args),
+                cwd=source_root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        remote_root = tmp_path / "resource-plugin.git"
+        subprocess.run(
+            ("git", "clone", "--bare", str(source_root), str(remote_root)),
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        source = remote_root.as_uri()
+        materializer = CodingPackageMaterializer(
+            install_root=tmp_path / "installed",
+            plugin_revision_root=tmp_path / "plugin-revisions",
+            backend=GitPackageMaterializerBackend(),
+        )
+        record = materializer.materialize_remote_source_sync(source)
+        assert record.lifecycle == "installed"
+        project_settings_path = tmp_path / "project-settings.json"
+        project_settings_path.write_text(
+            json.dumps({"plugin_sources": [source]}),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=project_settings_path,
+            )
+        )
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project_root),
+            persist=False,
+        )
+        session = _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+            package_materializer=materializer,
+        )
+        try:
+            await session.prepare_model_call_runtime()
+            assert [
+                (item.name, item.status) for item in session.list_skill_statuses()
+            ] == [("standard", "effective")]
+        finally:
+            await session.dispose()
+            services.resource_loader.close()
+
+    asyncio.run(scenario())
+
+
+def test_coding_resource_authority_modes_are_explicit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+    services = create_services(
+        settings_manager=SettingsManager(
+            global_settings_path=tmp_path / "global-settings.json",
+            project_settings_path=tmp_path / "project-settings.json",
+        )
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project_root),
+            persist=False,
+        )
+    )
+
+    with pytest.raises(ValueError, match="authority mode is invalid"):
+        _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+            resource_authority_mode="auto",  # type: ignore[arg-type]
+        )
+
+    session = _create_agent_session(
+        session_manager=manager,
+        services=services,
+        model=_model(),
+        resource_authority_mode="legacy_explicit",
+    )
+    assert session._initial_resource_catalog_bootstrap is None
+    asyncio.run(session.dispose())
+
+
+def test_coding_catalog_required_reports_missing_custom_loader_receipt(
+    tmp_path: Path,
+) -> None:
+    from loushang.harness.resources.types import ResourceBundle
+
+    class _Loader(ResourceLoader):
+        def discover_resources(self, cwd: str | Path) -> ResourceBundle:
+            return ResourceBundle(cwd=Path(cwd))
+
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(tmp_path),
+            persist=False,
+        )
+    )
+
+    with pytest.raises(CodingResourceCatalogShadowAdmissionError) as captured:
+        _create_agent_session(
+            session_manager=manager,
+            services=create_services(resource_loader=_Loader()),
+            model=_model(),
+        )
+
+    assert captured.value.reasons == ("catalog_receipt_unavailable",)
+
+
+def test_coding_legacy_authority_rejects_catalog_composition_inputs(
+    tmp_path: Path,
+) -> None:
+    assembly, plugin_runtime = _coding_base_composition_assembly(tmp_path)
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(tmp_path),
+            persist=False,
+        )
+    )
+    try:
+        with pytest.raises(ValueError, match="requires catalog_required authority"):
+            _create_agent_session(
+                session_manager=manager,
+                services=create_services(),
+                model=_model(),
+                resource_authority_mode="legacy_explicit",
+                initial_resource_catalog_product_composition_assembly=assembly,
+            )
+    finally:
+        plugin_runtime.close()
 
 
 def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(
@@ -680,7 +928,6 @@ def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(
             session_manager=manager,
             services=services,
             model=_model(),
-            enable_initial_resource_catalog_shadow=True,
             initial_resource_catalog_product_composition_assembly=(
                 composition_assembly
             ),

@@ -287,6 +287,11 @@ def default_runtime_builder(
         approval_resolver=approval_resolver,
         tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=True,
+        resource_authority_mode=getattr(
+            args,
+            "resource_authority_mode",
+            "catalog_required",
+        ),
     )
     resource_layout = resolve_machine_resource_layout(cwd=cwd)
     platform_sessions = resource_layout.sessions

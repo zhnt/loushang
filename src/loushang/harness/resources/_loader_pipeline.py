@@ -8,6 +8,7 @@ from pathlib import Path
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources._catalog_input_receipt import (
+    CatalogPluginPackageInput,
     LegacyPackageResourceCandidateFact,
     LegacyPackageResourceKind,
     ResourceCatalogInputReceipt,
@@ -66,6 +67,7 @@ class _ResourceDiscoveryRequest:
     built_in_resource_packages: tuple[str, ...] = ()
     context_file_names: tuple[str, ...] = DEFAULT_CONTEXT_FILE_NAMES
     project_resource_root: Path | None = None
+    catalog_plugin_package_inputs: tuple[CatalogPluginPackageInput, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -77,6 +79,11 @@ class _ResourceDiscoveryRequest:
             self,
             "explicit_user_roots",
             frozenset(self.explicit_user_roots),
+        )
+        object.__setattr__(
+            self,
+            "catalog_plugin_package_inputs",
+            tuple(self.catalog_plugin_package_inputs),
         )
 
     @property
@@ -309,6 +316,7 @@ def _discover_snapshot(request: _ResourceDiscoveryRequest) -> _ResourceDiscovery
             no_context_files=request.no_context_files,
             built_in_resource_packages=request.built_in_resource_packages,
             context_file_names=request.context_file_names,
+            catalog_plugin_package_inputs=request.catalog_plugin_package_inputs,
         ),
     )
 

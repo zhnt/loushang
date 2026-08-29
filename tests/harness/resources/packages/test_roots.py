@@ -7,6 +7,9 @@ from pathlib import Path
 import pytest
 
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.resources._catalog_input_receipt import (
+    CatalogPluginPackageInput,
+)
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.materializer import (
     PackageMaterializationRecord,
@@ -64,7 +67,10 @@ class _Loader:
     def set_package_mounts(
         self,
         mounts: tuple[PackageResourceMount, ...],
+        *,
+        catalog_plugin_package_inputs: tuple[CatalogPluginPackageInput, ...] = (),
     ) -> None:
+        del catalog_plugin_package_inputs
         self.mounts = mounts
         self.package_roots = tuple(str(mount.root) for mount in mounts if mount.enabled)
 
@@ -232,8 +238,12 @@ def test_configured_plugin_mount_uses_leased_content_addressed_snapshot(
     assert mount.verified is True
     assert Path(mounted_root).parent.name == "sha256"
     assert len(resolved.revision_handles) == 1
+    [catalog_input] = resolved.catalog_plugin_package_inputs
+    assert catalog_input.source_root_order == 0
+    assert catalog_input.package.revision_handle is mount.revision_handle
     binding = materializer.get_plugin_binding(root)
     assert binding is not None
+    assert catalog_input.binding == binding
     assert binding.content_digest == resolved.revision_handles[0].content_digest
     assert binding.revision_kind == "content_sha256"
     prompt.write_text("review v2", encoding="utf-8")
@@ -255,6 +265,8 @@ def test_configured_plugin_mount_uses_leased_content_addressed_snapshot(
 
     monkeypatch.setattr(Path, "read_text", reject_path_reopen)
     bundle = loader.discover_resources(tmp_path)
+    receipt = loader._take_initial_resource_catalog_input_receipt()
+    assert receipt.catalog_plugin_package_inputs == (catalog_input,)
     assert [descriptor.text for descriptor in bundle.prompts] == ["review v1"]
     assert bundle.prompts[0].revision_ref is not None
     assert bundle.prompts[0].revision_ref.content_digest == mount.content_digest

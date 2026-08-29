@@ -913,6 +913,8 @@ def test_cli_help_explains_runtime_provenance_flags() -> None:
     )
     assert "show executable, import, Git, and bundled component provenance" in output
     assert "with --version, show runtime provenance" in output
+    assert "--resource-authority-mode" in output
+    assert "Select Catalog authority (default)" in output
 
 
 def test_parse_args_supports_resume_session_reference() -> None:
@@ -1340,6 +1342,7 @@ def test_default_runtime_builder_applies_resource_and_prompt_options(tmp_path) -
             no_context_files=True,
             system_prompt=str(system_file),
             append_system_prompt=(str(append_file), "Inline append"),
+            resource_authority_mode="legacy_explicit",
         ),
         cwd=project_root,
         session_dir=tmp_path / "sessions",
@@ -1691,6 +1694,8 @@ def test_parse_args_supports_command_dispatch_flags() -> None:
     args = parse_args(
         [
             "--source-info",
+            "--resource-authority-mode",
+            "legacy_explicit",
             "--source-info-format",
             "json",
             "--list-commands",
@@ -1735,6 +1740,7 @@ def test_parse_args_supports_command_dispatch_flags() -> None:
     )
 
     assert args.source_info is True
+    assert args.resource_authority_mode == "legacy_explicit"
     assert args.source_info_format == "json"
     assert args.list_commands is True
     assert args.list_commands_format == "json"
@@ -1758,6 +1764,14 @@ def test_parse_args_supports_command_dispatch_flags() -> None:
     assert args.command_args == "now"
     assert args.command_result_format == "json"
     assert args.messages == ("hello",)
+
+
+def test_parse_args_defaults_to_catalog_resource_authority() -> None:
+    from loushang.coding.cli.args import parse_args
+
+    args = parse_args([])
+
+    assert args.resource_authority_mode == "catalog_required"
 
 
 def test_parse_args_maps_pi_style_package_subcommands_to_package_manager_commands() -> (
@@ -7747,6 +7761,86 @@ def test_run_cli_lists_project_skill_provenance_as_json(tmp_path) -> None:
             "diagnostics": [],
         }
     ]
+    assert stderr.getvalue() == ""
+
+
+def test_run_cli_lists_skills_from_real_catalog_session(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.ai.model import Endpoint, Model, ModelSelection, Provider
+    from loushang.ai.model.registry import ModelRegistry
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.control import ControlConfig, SettingsManager
+
+    skill_dir = tmp_path / "skills" / "review"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: review\ndescription: Review through the real Catalog.\n---\n"
+        "Review body.\n",
+        encoding="utf-8",
+    )
+    endpoint = Endpoint(
+        id="test-endpoint",
+        provider="faux",
+        api="test",
+        models={
+            "beta": Model(
+                id="beta",
+                provider="faux",
+                endpoint="test-endpoint",
+            )
+        },
+    )
+    services = create_services(
+        ai_model_registry=ModelRegistry.from_providers(
+            {
+                "faux": Provider(
+                    id="faux",
+                    endpoints={endpoint.id: endpoint},
+                )
+            }
+        ),
+        settings_manager=SettingsManager(
+            ControlConfig(
+                default_model=ModelSelection(
+                    provider="faux",
+                    endpoint_id="test-endpoint",
+                    model_id="beta",
+                )
+            )
+        ),
+    )
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            [
+                "--no-session",
+                "--list-skills",
+                "--list-skills-format",
+                "json",
+            ],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=services,
+        )
+        assert exit_code == 0, stderr.getvalue()
+
+    asyncio.run(scenario())
+
+    [skill] = json.loads(stdout.getvalue())
+    assert (skill["name"], skill["status"], skill["effective"]) == (
+        "review",
+        "effective",
+        True,
+    )
+    assert skill["description"] == "Review through the real Catalog."
     assert stderr.getvalue() == ""
 
 

@@ -7,8 +7,41 @@ from pathlib import Path
 from typing import Literal
 
 from loushang.harness.resources.packages.mounts import PackageResourceMount
+from loushang.harness.resources.plugins.types import (
+    PluginSourceBinding,
+    PublishedPluginPackage,
+)
 
 LegacyPackageResourceKind = Literal["extension", "prompt", "skill", "theme"]
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogPluginPackageInput:
+    """Published Plugin evidence bound to one discovery mount."""
+
+    package: PublishedPluginPackage
+    binding: PluginSourceBinding
+    source_root_order: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.package, PublishedPluginPackage):
+            raise TypeError("Catalog Plugin package input requires a published package")
+        if not isinstance(self.binding, PluginSourceBinding):
+            raise TypeError("Catalog Plugin package input requires a source binding")
+        if self.binding.plugin_id != self.package.manifest.name:
+            raise ValueError("Catalog Plugin package binding does not match its package")
+        if (
+            self.binding.content_digest != self.package.content_digest
+            or self.binding.manifest_digest != self.package.manifest_digest
+            or self.binding.dependency_lock != self.package.dependency_lock
+        ):
+            raise ValueError("Catalog Plugin package binding lineage is invalid")
+        if (
+            isinstance(self.source_root_order, bool)
+            or not isinstance(self.source_root_order, int)
+            or self.source_root_order < 0
+        ):
+            raise ValueError("Catalog Plugin package root order is invalid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +101,7 @@ class ResourceCatalogInputReceipt:
     no_context_files: bool
     built_in_resource_packages: tuple[str, ...]
     context_file_names: tuple[str, ...]
+    catalog_plugin_package_inputs: tuple[CatalogPluginPackageInput, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.cwd, Path) or not isinstance(
@@ -113,6 +147,26 @@ class ResourceCatalogInputReceipt:
             "explicit_user_resource_roots",
             frozenset(self.explicit_user_resource_roots),
         )
+        plugin_inputs = tuple(self.catalog_plugin_package_inputs)
+        if any(not isinstance(item, CatalogPluginPackageInput) for item in plugin_inputs):
+            raise TypeError("Resource Catalog Plugin package inputs are invalid")
+        if len({item.binding.plugin_id for item in plugin_inputs}) != len(plugin_inputs):
+            raise ValueError("Resource Catalog Plugin package inputs must be unique")
+        for item in plugin_inputs:
+            if item.source_root_order >= len(package_mounts):
+                raise ValueError("Resource Catalog Plugin package mount is missing")
+            mount = package_mounts[item.source_root_order]
+            package = item.package
+            if (
+                not mount.enabled
+                or mount.revision_handle is not package.revision_handle
+                or mount.content_digest != package.content_digest
+                or mount.root != package.package_root
+            ):
+                raise ValueError(
+                    "Resource Catalog Plugin package input does not match its mount"
+                )
+        object.__setattr__(self, "catalog_plugin_package_inputs", plugin_inputs)
         if any(
             not isinstance(item, Path) for item in self.explicit_user_resource_roots
         ):
@@ -203,6 +257,7 @@ class ResourceCatalogInputReceipt:
 
 
 __all__ = [
+    "CatalogPluginPackageInput",
     "LegacyPackageResourceCandidateFact",
     "LegacyPackageResourceKind",
     "ResourceCatalogInputReceipt",

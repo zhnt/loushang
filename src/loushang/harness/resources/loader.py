@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources._catalog_input_receipt import (
+    CatalogPluginPackageInput,
     ResourceCatalogInputReceipt,
 )
 from loushang.harness.resources._loader_package_policy import (
@@ -152,6 +153,7 @@ class ResourceLoader:
         self._initial_resource_catalog_input_receipt: (
             ResourceCatalogInputReceipt | None
         ) = None
+        self._catalog_plugin_package_inputs: tuple[CatalogPluginPackageInput, ...] = ()
         self._package_mounts = _package_mounts_from_legacy_roots(
             package_roots,
             package_source_filters,
@@ -216,12 +218,21 @@ class ResourceLoader:
     def set_package_mounts(
         self,
         mounts: Sequence[PackageResourceMount],
+        *,
+        catalog_plugin_package_inputs: Sequence[CatalogPluginPackageInput] = (),
     ) -> None:
         self._initial_resource_catalog_input_receipt = None
         next_mounts = tuple(mounts)
         _verify_package_mounts(next_mounts)
+        next_plugin_inputs = tuple(catalog_plugin_package_inputs)
+        if any(
+            not isinstance(item, CatalogPluginPackageInput)
+            for item in next_plugin_inputs
+        ):
+            raise TypeError("Catalog Plugin package inputs are invalid")
         previous_mounts = self._package_mounts
         self._package_mounts = next_mounts
+        self._catalog_plugin_package_inputs = next_plugin_inputs
         retained = {
             id(mount.revision_handle)
             for mount in next_mounts
@@ -330,6 +341,7 @@ class ResourceLoader:
             built_in_resource_packages=self._built_in_resource_packages,
             context_file_names=self._context_file_names,
             project_resource_root=project_resource_root,
+            catalog_plugin_package_inputs=self._catalog_plugin_package_inputs,
         )
         discovery = _discover_snapshot(request)
         _verify_package_mounts(self._package_mounts)
