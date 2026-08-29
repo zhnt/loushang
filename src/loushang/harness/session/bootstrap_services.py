@@ -143,6 +143,9 @@ def prepare_agent_session_services(
     configure_resource_loader: (
         Callable[[ResourceLoaderT, Mapping[str, object]], None] | None
     ) = None,
+    prepare_catalog_projection: (
+        Callable[[ResourceLoaderT, Path], BundleT] | None
+    ) = None,
     extension_flag_values: ExtensionFlagValues | None = None,
 ) -> AgentSessionServices[ServicesT, BundleT, ExtensionT, DiagnosticRecordT]:
     """Prepare cwd-bound session services with the existing resource runtime."""
@@ -170,6 +173,7 @@ def prepare_agent_session_services(
         loader=loader,
         cwd=resolved_cwd,
         extension_flags=extension_flag_values,
+        discover_resources=prepare_catalog_projection,
     )
     return AgentSessionServices(
         cwd=str(resolved_cwd),

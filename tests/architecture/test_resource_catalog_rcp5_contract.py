@@ -51,6 +51,15 @@ CODING_CLI_PATH = Path("src/loushang/coding/cli/__main__.py")
 CODING_BOOTSTRAP_PATH = Path("src/loushang/coding/bootstrap.py")
 RESOURCE_REFRESH_PATH = Path("src/loushang/harness/session/resource_refresh.py")
 AGENT_ADAPTER_PATH = Path("src/loushang/harness/session/agent_adapter.py")
+RESOURCE_LOADER_PATH = Path("src/loushang/harness/resources/loader.py")
+RESOURCE_SKILL_PROJECTION_PATH = Path("src/loushang/harness/resources/skills.py")
+CATALOG_INPUT_PREPARATION_PATH = Path(
+    "src/loushang/harness/resources/_catalog_input_preparation.py"
+)
+CATALOG_BOOTSTRAP_PROJECTION_PATH = Path(
+    "src/loushang/harness/resource_catalog/bootstrap_projection.py"
+)
+CODING_RESOURCE_RUNTIME_PATH = Path("src/loushang/coding/resource_runtime.py")
 PUBLIC_SURFACES = (
     Path("src/loushang/harness/resources/__init__.py"),
     Path("src/loushang/harness/__init__.py"),
@@ -309,7 +318,6 @@ def test_rcp54_refresh_has_one_async_catalog_publication_authority() -> None:
     )
     refresh_source = ast.unparse(refresh)
     runtime_source = RESOURCE_REFRESH_PATH.read_text(encoding="utf-8")
-    adapter_source = AGENT_ADAPTER_PATH.read_text(encoding="utf-8")
     coding_source = CODING_BOOTSTRAP_PATH.read_text(encoding="utf-8")
 
     assert "begin_owner_generation_replacement" in refresh_source
@@ -320,7 +328,41 @@ def test_rcp54_refresh_has_one_async_catalog_publication_authority() -> None:
     assert "refresh_catalog" in runtime_source
     assert "CatalogRefreshRequiresAsyncError" in runtime_source
     assert "await self.refresh_async(reason=reason)" in runtime_source
-    assert "request_resource_refresh()" in adapter_source
+    assert "request_resource_refresh=self.request_resource_refresh" in product_source
     assert "prepare_resource_catalog_refresh" in coding_source
-    assert "prepare_coding_initial_resource_catalog_adapter" in coding_source
+    assert "build_coding_initial_resource_catalog_adapter" in coding_source
+    assert "prepare_catalog_input_receipt" in coding_source
     assert "catalog_generation=catalog_generation" in coding_source
+
+
+def test_rcp55_default_path_has_no_peer_loader_or_skill_authority() -> None:
+    loader_source = RESOURCE_LOADER_PATH.read_text(encoding="utf-8")
+    loader_tree = ast.parse(loader_source, filename=str(RESOURCE_LOADER_PATH))
+    skill_source = RESOURCE_SKILL_PROJECTION_PATH.read_text(encoding="utf-8")
+    coding_runtime = CODING_RESOURCE_RUNTIME_PATH.read_text(encoding="utf-8")
+    coding_init = Path("src/loushang/coding/__init__.py").read_text(encoding="utf-8")
+    coding_source = CODING_BOOTSTRAP_PATH.read_text(encoding="utf-8")
+    input_source = CATALOG_INPUT_PREPARATION_PATH.read_text(encoding="utf-8")
+    bootstrap_source = CATALOG_BOOTSTRAP_PROJECTION_PATH.read_text(encoding="utf-8")
+
+    top_level_imports = {
+        node.module
+        for node in loader_tree.body
+        if isinstance(node, ast.ImportFrom) and node.module is not None
+    }
+    assert not top_level_imports & {
+        "loushang.harness.resources._loader_pipeline",
+        "loushang.harness.resources._loader_precedence",
+        "loushang.harness.resources._loader_resolution",
+    }
+    assert "class SkillLoader" not in skill_source
+    assert "CodingSkillLoader" not in coding_runtime
+    assert '"SkillLoader"' not in coding_init
+    assert "prepare_catalog_input_receipt" in coding_source
+    assert "prepare_bootstrap_projection" in coding_source
+    assert "reload_resources(" not in coding_source
+    assert "_discover_snapshot" not in input_source
+    assert "_loader_precedence" not in input_source
+    assert "_loader_resolution" not in input_source
+    assert "compose_resource_catalog" in bootstrap_source
+    assert "project_resource_catalog" in bootstrap_source

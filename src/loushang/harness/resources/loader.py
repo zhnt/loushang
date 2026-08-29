@@ -9,22 +9,15 @@ from pathlib import Path
 from typing import Any, Literal
 
 from loushang.harness.diagnostics.types import DiagnosticDraft
+from loushang.harness.resources._catalog_input_preparation import (
+    prepare_resource_catalog_input_receipt,
+)
 from loushang.harness.resources._catalog_input_receipt import (
     CatalogPluginPackageInput,
     ResourceCatalogInputReceipt,
 )
-from loushang.harness.resources._loader_package_policy import (
-    _count_package_descriptors,
-    _count_package_diagnostics,
-    _normalize_package_roots,
-    _normalize_package_source_filters,
-)
-from loushang.harness.resources._loader_pipeline import (
-    _discover_snapshot,
-    _ResourceDiscoveryRequest,
-    _source_kinds_for,
-)
-from loushang.harness.resources._loader_types import (
+from loushang.harness.resources._catalog_projection import ResourceCatalogProjection
+from loushang.harness.resources._discovery_conventions import (
     DEFAULT_CONTEXT_FILE_NAMES,
 )
 from loushang.harness.resources.builtin import BuiltInResourceRegistry
@@ -38,12 +31,21 @@ from loushang.harness.resources.types import (
     ExtensionDescriptor,
     PackageResourceSummary,
     ResourceBundle,
-    ResourceSnapshot,
     ResourceSourceKind,
     SkillDescriptor,
 )
 
 SystemPromptAssembler = Callable[[str | None, ResourceBundle], str | None]
+
+
+class ResourceLoaderCompatibilityError(RuntimeError):
+    """A legacy loader projection is unavailable from the selected authority."""
+
+    code = "resource_loader_compatibility_unavailable"
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(f"{self.code}: {reason}")
 
 
 def _normalize_user_resource_roots(
@@ -52,6 +54,25 @@ def _normalize_user_resource_roots(
     if not user_resource_roots:
         return ()
     return tuple(Path(root).expanduser().resolve() for root in user_resource_roots)
+
+
+def _normalize_package_roots(
+    package_roots: Sequence[str | Path] | None,
+) -> tuple[Path, ...]:
+    if not package_roots:
+        return ()
+    return tuple(Path(root).expanduser().resolve() for root in package_roots)
+
+
+def _normalize_package_source_filters(
+    package_source_filters: Mapping[str | Path, PackageSourceConfig] | None,
+) -> dict[Path, PackageSourceConfig]:
+    if not package_source_filters:
+        return {}
+    return {
+        Path(root).expanduser().resolve(): config
+        for root, config in package_source_filters.items()
+    }
 
 
 def _normalize_runtime_paths(
@@ -149,7 +170,11 @@ class ResourceLoader:
         workspace_root: str | Path | None = None,
         project_resource_mode: Literal["standard", "legacy"] = "standard",
     ) -> None:
-        self._snapshot: ResourceSnapshot | None = None
+        self._snapshot: Any | None = None
+        self._catalog_projection: ResourceCatalogProjection | None = None
+        self._catalog_inputs_pending = False
+        self._catalog_authority_selected = False
+        self._legacy_authority_selected = False
         self._initial_resource_catalog_input_receipt: (
             ResourceCatalogInputReceipt | None
         ) = None
@@ -315,6 +340,80 @@ class ResourceLoader:
         self._append_system_prompt_sources = tuple(append_system_prompt or ())
 
     def discover_resources(self, cwd: str | Path) -> ResourceBundle:
+        """Run the explicit legacy discovery and publish its compatibility view."""
+
+        if self._catalog_authority_selected:
+            raise ResourceLoaderCompatibilityError(
+                "catalog_loader_cannot_enter_legacy_authority"
+            )
+        self._legacy_authority_selected = True
+        return self._discover_resources(cwd)
+
+    def prepare_catalog_input_receipt(
+        self,
+        cwd: str | Path,
+    ) -> ResourceCatalogInputReceipt:
+        """Return normalized source facts without running effective selection."""
+
+        if self._legacy_authority_selected:
+            raise ResourceLoaderCompatibilityError(
+                "legacy_loader_cannot_prepare_catalog_inputs"
+            )
+        # Authority selection is monotonic even if preparation fails.  A
+        # Catalog-required caller must never fall back to legacy discovery by
+        # handling a preparation error and reusing this loader.
+        self._catalog_authority_selected = True
+        self._initial_resource_catalog_input_receipt = None
+        _verify_package_mounts(self._package_mounts)
+        target = Path(cwd)
+        project_resource_root = (
+            resolve_workspace_resource_root(self._workspace_root or target)
+            if self._project_resource_mode == "standard"
+            else None
+        )
+        receipt = prepare_resource_catalog_input_receipt(
+            cwd=target,
+            project_resource_root=project_resource_root,
+            package_mounts=self._package_mounts,
+            catalog_plugin_package_inputs=self._catalog_plugin_package_inputs,
+            user_resource_roots=self._user_resource_roots,
+            explicit_user_resource_roots=self._explicit_user_resource_roots,
+            additional_extension_paths=self._additional_extension_paths,
+            additional_skill_paths=self._additional_skill_paths,
+            additional_prompt_template_paths=(
+                self._additional_prompt_template_paths
+            ),
+            additional_theme_paths=self._additional_theme_paths,
+            no_extensions=self._no_extensions,
+            no_skills=self._no_skills,
+            no_prompt_templates=self._no_prompt_templates,
+            no_themes=self._no_themes,
+            no_context_files=self._no_context_files,
+            built_in_resource_packages=self._built_in_resource_packages,
+            context_file_names=self._context_file_names,
+        )
+        _verify_package_mounts(self._package_mounts)
+        self._resolved_system_prompt = _resolve_prompt_input(
+            self._system_prompt_source,
+            cwd=target,
+        )
+        self._resolved_append_system_prompt = tuple(
+            resolved
+            for source in self._append_system_prompt_sources
+            if (resolved := _resolve_prompt_input(source, cwd=target)) is not None
+        )
+        self._catalog_inputs_pending = True
+        return receipt
+
+    def _discover_resources(
+        self,
+        cwd: str | Path,
+    ) -> ResourceBundle:
+        from loushang.harness.resources._loader_pipeline import (
+            _discover_snapshot,
+            _ResourceDiscoveryRequest,
+        )
+
         self._initial_resource_catalog_input_receipt = None
         _verify_package_mounts(self._package_mounts)
         target = Path(cwd)
@@ -347,6 +446,8 @@ class ResourceLoader:
         _verify_package_mounts(self._package_mounts)
         snapshot = discovery.snapshot
         self._snapshot = snapshot
+        self._catalog_projection = None
+        self._catalog_inputs_pending = False
         self._initial_resource_catalog_input_receipt = discovery.catalog_input_receipt
         self._resolved_system_prompt = _resolve_prompt_input(
             self._system_prompt_source, cwd=Path(cwd)
@@ -357,6 +458,36 @@ class ResourceLoader:
             if (resolved := _resolve_prompt_input(source, cwd=Path(cwd))) is not None
         )
         return snapshot.to_bundle()
+
+    def adopt_catalog_projection(self, projection: ResourceCatalogProjection) -> None:
+        """Forward compatibility reads to one exact captured Catalog projection."""
+
+        if not isinstance(projection, ResourceCatalogProjection):
+            raise TypeError("Resource loader requires a Catalog projection")
+        if self._legacy_authority_selected:
+            raise ResourceLoaderCompatibilityError(
+                "legacy_loader_cannot_adopt_catalog_projection"
+            )
+        self._catalog_authority_selected = True
+        self._catalog_projection = projection
+        self._snapshot = None
+        self._catalog_inputs_pending = False
+
+    def restore_catalog_projection(
+        self,
+        projection: ResourceCatalogProjection | None,
+    ) -> None:
+        """Restore a previously captured Catalog projection during rollback."""
+
+        if projection is not None and not isinstance(
+            projection,
+            ResourceCatalogProjection,
+        ):
+            raise TypeError("Resource loader requires a Catalog projection")
+        self._catalog_authority_selected = True
+        self._catalog_projection = projection
+        self._snapshot = None
+        self._catalog_inputs_pending = projection is None
 
     def close(self) -> None:
         self._initial_resource_catalog_input_receipt = None
@@ -379,10 +510,24 @@ class ResourceLoader:
         return self.discover_resources(self._snapshot.cwd)
 
     def get_resource_bundle(self) -> ResourceBundle:
+        projection = self._catalog_projection
+        if projection is not None:
+            return projection.to_compatibility_bundle()
         return self.get_resource_snapshot().to_bundle()
 
-    def get_resource_snapshot(self) -> ResourceSnapshot:
+    def get_resource_snapshot(self) -> Any:
+        if self._catalog_projection is not None:
+            raise ResourceLoaderCompatibilityError(
+                "catalog_projection_has_no_legacy_candidate_snapshot"
+            )
+        if self._catalog_inputs_pending:
+            raise ResourceLoaderCompatibilityError(
+                "catalog_projection_not_published"
+            )
         if self._snapshot is None:
+            from loushang.harness.resources._loader_pipeline import _source_kinds_for
+            from loushang.harness.resources.types import ResourceSnapshot
+
             return ResourceSnapshot(
                 cwd=Path.cwd(),
                 source_kinds=_source_kinds_for(
@@ -419,6 +564,8 @@ class ResourceLoader:
         return tuple(mount.root for mount in self._package_mounts if mount.enabled)
 
     def get_diagnostics(self) -> list[DiagnosticDraft]:
+        if self._catalog_projection is not None:
+            return list(self.get_resource_bundle().diagnostics)
         return list(self.get_resource_snapshot().diagnostics)
 
     def get_resource_diagnostics(
@@ -428,7 +575,7 @@ class ResourceLoader:
         resource_type: str | None = None,
         code: str | None = None,
     ) -> list[DiagnosticDraft]:
-        diagnostics = list(self.get_resource_snapshot().diagnostics)
+        diagnostics = self.get_diagnostics()
         if source_kind is not None:
             diagnostics = [
                 diagnostic
@@ -448,7 +595,16 @@ class ResourceLoader:
         return diagnostics
 
     def get_package_resource_summaries(self) -> list[PackageResourceSummary]:
+        if self._catalog_projection is not None:
+            raise ResourceLoaderCompatibilityError(
+                "catalog_projection_has_no_legacy_package_summary"
+            )
         snapshot = self.get_resource_snapshot()
+        from loushang.harness.resources._loader_package_policy import (
+            _count_package_descriptors,
+            _count_package_diagnostics,
+        )
+
         summaries: list[PackageResourceSummary] = []
         for root in self._package_roots:
             summaries.append(
@@ -474,7 +630,7 @@ class ResourceLoader:
         return summaries
 
     def get_skills(self) -> list[SkillDescriptor]:
-        return list(self.get_resource_snapshot().active_skill_descriptors)
+        return list(self.get_resource_bundle().skills)
 
     def get_prompts(self) -> dict[str, object]:
         bundle = self.get_resource_bundle()
@@ -509,7 +665,7 @@ class ResourceLoader:
         return list(self._resolved_append_system_prompt)
 
     def get_extensions(self) -> list[ExtensionDescriptor]:
-        return list(self.get_resource_snapshot().active_extension_descriptors)
+        return list(self.get_resource_bundle().extensions)
 
 
 class ProfiledResourceLoader(ResourceLoader):
@@ -537,3 +693,12 @@ class ProfiledResourceLoader(ResourceLoader):
         if assembler is None:
             return base_prompt
         return assembler(base_prompt, self.get_resource_bundle())
+
+
+__all__ = [
+    "DEFAULT_CONTEXT_FILE_NAMES",
+    "ProfiledResourceLoader",
+    "ResourceLoader",
+    "ResourceLoaderCompatibilityError",
+    "ResourceLoaderProfile",
+]

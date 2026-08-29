@@ -295,10 +295,7 @@ python run.py run legacy-007
 - `24_git_checkpoint.py`: git stash checkpoint as an AgentTool with offline mock + optional live path
 - `25_render_tool_events_contract.py`: offline JSONL example for renderedToolCall/renderedToolResult
 - `26_compaction_summary_evaluation.py`: offline summary quality evaluation for compaction output, with optional `--real` model run
-- `skill_01_discovery.py`: skill discovery, filtering, and replacement with source ordering
 - `skill_02_advanced.py`: disable-model-invocation filtering and system prompt `<available_skills>` XML injection
-- `skill_03_precedence.py`: source precedence (project_local > external_package) and same-precedence collision handling
-- `skill_04_reload.py`: hot reload skills at runtime without process restart
 - `config_01_resource_layers.py`: flat resource architecture four-layer precedence (project > user > external > built-in)
 
 `06_nl_with_builtin_bash.py`, `08_online_resume_repo_session.py`, `09_print_mode_text.py`, and `10_print_mode_json.py` require an explicit `request` argument. Running them without a request prints usage and exits.

@@ -716,7 +716,12 @@ def _collection_items(
             items.append(
                 _EmbeddedItem("theme", path, path, path.stem, "application/json")
             )
-        elif len(parts) == 2 and parts[0] == "extensions" and path.suffix == ".py":
+        elif (
+            len(parts) == 2
+            and parts[0] == "extensions"
+            and path.suffix == ".py"
+            and path.name != "__init__.py"
+        ):
             items.append(
                 _EmbeddedItem("extension", path, None, path.stem, NO_BODY_MEDIA_TYPE)
             )

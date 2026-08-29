@@ -143,11 +143,13 @@ class ResourceBootstrapRuntime(
         cwd: str | Path,
         extension_flags: FlagValues = None,
         transform_bundle: BundleTransform[BundleT] | None = None,
+        discover_resources: Callable[[LoaderT, Path], BundleT] | None = None,
     ) -> ResourceBootstrapResult[BundleT, ExtensionT, DiagnosticOutputT]:
         discovery = self.discover(
             loader=loader,
             cwd=cwd,
             transform_bundle=transform_bundle,
+            discover_resources=discover_resources,
         )
         activation = self.activate_extensions(
             resource_bundle=discovery.resource_bundle,
@@ -170,11 +172,13 @@ class ResourceBootstrapRuntime(
         loader: LoaderT,
         cwd: str | Path,
         transform_bundle: BundleTransform[BundleT] | None = None,
+        discover_resources: Callable[[LoaderT, Path], BundleT] | None = None,
     ) -> ResourceDiscoveryResult[BundleT, DiagnosticOutputT]:
         """Discover Product resources without activating extensions."""
 
         resolved_cwd = Path(cwd).expanduser().resolve(strict=False)
-        bundle = self._ports.discover_resources(loader, resolved_cwd)
+        discover = discover_resources or self._ports.discover_resources
+        bundle = discover(loader, resolved_cwd)
         loader_diagnostics = tuple(self._ports.bundle_diagnostics(bundle))
         if transform_bundle is not None:
             bundle = transform_bundle(bundle)

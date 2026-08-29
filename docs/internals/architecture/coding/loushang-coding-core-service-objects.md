@@ -251,16 +251,17 @@
 - 注册 Coding 内置资源内容
 - 选择标准/兼容 conventions、附加 roots 与 settings filters
 - 注入 Coding trust、权限和默认激活策略
-- 将 Harness resource snapshot 聚合为 Coding 运行时投影
+- 将配置规范化为一次性 Catalog input receipt
+- 在发布后转发 exact Catalog compatibility projection
 
 对齐情况：
 
-- 查询语义对齐 `DefaultResourceLoader`；扫描、provenance、merge 与 package
-  materialization 的实现 owner 是 `loushang.harness.resources`
+- 默认查询语义来自 captured Resource Catalog generation；扫描、provenance、
+  merge 与 package materialization 的实现 owner 是 `loushang.harness.resources`
 
 备注：
 
-- `ExtensionLoader` / `SkillLoader` 等可保留为产品投影子边界
+- `ExtensionLoader` 可保留为产品执行投影子边界；独立 `SkillLoader` 已删除
 - `DefaultResourceLoader` 应成为小型 facade，不保留第二套通用资源引擎
 
 ### `ExtensionRunner`
@@ -307,33 +308,32 @@
 - 在整体结构上，它更适合作为 `DefaultResourceLoader` 下的显式子服务边界
 - 不必被误读为独立于 resource hub 的另一套中心对象
 
-### `SkillLoader`
+### `SkillCatalogConsumer`
 
 归属组件：
 
 - `skill`
-- `loader`
+- Session Resource Capability
 
 角色：
 
-- skill 发现与解析服务
+- exact-generation Skill 查询与正文加载服务
 
 主要职责：
 
-- skill 扫描
-- frontmatter 解析
-- skill 文本加载
+- body-free effective/status projection
+- owner-minted load handle
+- UTF-8 body 与 exact Resource receipt 验证
 
 对齐情况：
 
-- 不直接对齐 `reference coding agent` 的单一显式中心对象
+- 不作为 Coding 公共 loader；由 Session 内部 captured Consumer 提供
 
 理由：
 
-- `reference coding agent` 把 skills 更强地收束在 resource loader 体系中
-- 当前保留 `SkillLoader`，是为了让 Python 设计中 skill 边界更清楚
-- 后续如果过重，可并回 `DefaultResourceLoader`
-- 它更适合作为 resource loader 体系内的显式子边界，而不是并列资源中心
+- Skill 是 Resource；独立 discovery/cache/activation facade 会形成第二权威
+- RCP5.5 删除 `SkillLoader`，配置变化通过 settings + Catalog refresh 生成
+  新 generation，旧 Consumer 保持不可变
 
 ### `CodingDomainApp`
 
@@ -636,8 +636,8 @@
 - `ModeAdapter`
   - `reference CLI` 有 mode 实现，但没有统一抽象名
 
-- `SkillLoader`
-  - `reference CLI` 更倾向并入 resource loader 体系
+- `SkillCatalogConsumer`
+  - 它是 captured Resource Capability Consumer，不是独立 loader 中心对象
 
 - `MethodRegistry`
   - `method` 是当前 `loushang` 特有的显式边界

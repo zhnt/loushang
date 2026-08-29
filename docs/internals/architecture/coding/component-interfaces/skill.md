@@ -2,33 +2,31 @@
 
 ## Role
 
-- coding skill 发现、解析与注入边界
+- Catalog-backed Skill 查询、状态与正文加载边界
 
 ## Owns
 
-- `SkillLoader`
-- skill 元数据解析
-- skill prompt 片段收集
-- skill 可见性与启用策略
+- exact-generation Skill Consumer capture
+- body-free Skill metadata/status projection
+- receipt-bearing asynchronous body load
+- settings mutation followed by Catalog refresh
 
 ## Depends On
 
-- `loader`
+- Resource Catalog
+- Session Resource Capability
 - `utils`
 
 ## Commands
 
-- `discover_skills(...)`
-- `load_skill(...)`
-- `reload_skills(...)`
-- `enable_skill(...)`
-- `disable_skill(...)`
+- `load(handle)`
+- settings `enable_skill(...)` / `disable_skill(...)` followed by refresh
 
 ## Queries
 
-- `get_skill(...)`
-- `list_skills()`
-- `list_enabled_skills()`
+- `get_effective_skill(...)`
+- `list_effective_skills()`
+- `list_skill_statuses()`
 
 ## Events
 
@@ -37,7 +35,9 @@
 ## Key Data
 
 - `SkillDescriptor`
-- `ResourceBundle`
+- `SkillCatalogSummary`
+- `SkillCatalogStatusSummary`
+- `ResourceLoadReceipt`
 - `SKILL.md` frontmatter:
   - `name`
   - `description`
@@ -52,8 +52,9 @@
 ## Reference Implementation Alignment
 
 - 语义上吸收 `reference CLI` 的 customization / resource discovery 经验
-- 在 Python 设计里显式保留 `SkillLoader`，让 skill 解析边界更清楚
-- 但它更适合作为 resource loader 体系内的显式子边界，而不是另一套并列资源中心
+- RCP5.5 已删除独立 `SkillLoader`；Skill 不再拥有私有 discovery、body cache
+  或 disabled-name overlay
+- Session 只从一个 captured Catalog generation 暴露 Skill 查询与正文加载
 - `description` 用于 `/skill:name` command 描述与 system prompt 中的 available skills 摘要。
 - `disable-model-invocation: true` 让 skill 仍可显式 `/skill:name` 调用，但不会进入模型可自动发现的 skill 摘要。
 - skill discovery 递归扫描 `skills/**/SKILL.md`；一旦某目录本身包含 `SKILL.md`，该目录即为 skill root，不再继续向下递归。

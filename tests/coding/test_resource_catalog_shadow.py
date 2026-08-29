@@ -53,7 +53,10 @@ from loushang.harness.resources._catalog_input_receipt import (
     ResourceCatalogInputReceipt,
 )
 from loushang.harness.resources._catalog_records import ResourceIdentity
-from loushang.harness.resources.loader import ResourceLoader
+from loushang.harness.resources.loader import (
+    ResourceLoader,
+    ResourceLoaderCompatibilityError,
+)
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.packages.mounts import PackageResourceMount
 from loushang.harness.resources.plugins.authority import (
@@ -708,6 +711,96 @@ def test_coding_initial_catalog_shadow_publishes_project_context_and_skill(
         assert resource_candidate.ownership_state == "disposed"
         assert session._capability_graph_runtime.is_closed is True
         assert session._capability_graph_runtime.has_pending_retirements is False
+
+    asyncio.run(scenario())
+
+
+def test_coding_catalog_bootstrap_fails_closed_when_extension_source_drifts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        project_root = tmp_path / "project-extension-drift"
+        project_root.mkdir()
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=tmp_path / "project-settings.json",
+            )
+        )
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project_root),
+            persist=False,
+        )
+        session = _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
+        extension = project_root / "extensions" / "late.py"
+        extension.parent.mkdir()
+        extension.write_text("def register(api):\n    del api\n", encoding="utf-8")
+        try:
+            with pytest.raises(
+                RuntimeError,
+                match="Extension bootstrap projection changed before Catalog",
+            ):
+                await session.prepare_model_call_runtime()
+            assert session._skill_catalog_consumer is None
+            assert session._resource_catalog_snapshot is None
+        finally:
+            await session.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_coding_failed_initial_publication_leaves_loader_unpublished(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        project_root = tmp_path / "project-publication-failure"
+        project_root.mkdir()
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=tmp_path / "project-settings.json",
+            )
+        )
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project_root),
+            persist=False,
+        )
+        session = _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
+        original_commit = session._commit_initial_resource_publication
+
+        def fail_after_commit(
+            catalog: object,
+            projection: object,
+            bundle: object,
+        ) -> None:
+            original_commit(catalog, projection, bundle)  # type: ignore[arg-type]
+            raise RuntimeError("injected initial publication failure")
+
+        session._commit_initial_resource_publication = fail_after_commit  # type: ignore[method-assign]
+        try:
+            with pytest.raises(RuntimeError, match="injected initial publication"):
+                await session.prepare_model_call_runtime()
+            with pytest.raises(
+                ResourceLoaderCompatibilityError,
+                match="catalog_projection_not_published",
+            ):
+                services.resource_loader.get_resource_bundle()
+        finally:
+            await session.dispose()
 
     asyncio.run(scenario())
 
@@ -1537,7 +1630,7 @@ def test_coding_catalog_required_reports_missing_custom_loader_receipt(
     from loushang.harness.resources.types import ResourceBundle
 
     class _Loader(ResourceLoader):
-        def discover_resources(self, cwd: str | Path) -> ResourceBundle:
+        def prepare_catalog_input_receipt(self, cwd: str | Path) -> ResourceBundle:
             return ResourceBundle(cwd=Path(cwd))
 
     manager = asyncio.run(
@@ -1629,7 +1722,7 @@ def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(
         resource_candidate = session._staged_resource_candidate
         assert resource_candidate is not None
         assert session.resource_bundle is not None
-        legacy_package_skill = next(
+        bootstrap_package_skill = next(
             skill
             for skill in session.resource_bundle.skills
             if skill.name == "standard"
@@ -1644,7 +1737,7 @@ def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(
                 if skill.name == "standard"
             )
             assert package_skill.source_kind == "external_package"
-            assert legacy_package_skill.content is not None
+            assert bootstrap_package_skill.content is None
             assert package_skill.content is None
             assert (
                 package_skill.name,
@@ -1654,12 +1747,12 @@ def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(
                 package_skill.source_scope,
                 package_skill.source_root_order,
             ) == (
-                legacy_package_skill.name,
-                legacy_package_skill.description,
-                legacy_package_skill.disable_model_invocation,
-                legacy_package_skill.canonical_name,
-                legacy_package_skill.source_scope,
-                legacy_package_skill.source_root_order,
+                bootstrap_package_skill.name,
+                bootstrap_package_skill.description,
+                bootstrap_package_skill.disable_model_invocation,
+                bootstrap_package_skill.canonical_name,
+                bootstrap_package_skill.source_scope,
+                bootstrap_package_skill.source_root_order,
             )
             session.resource_bundle.skills[:] = [
                 replace(skill, content="Forged compatibility body.")

@@ -26,7 +26,6 @@ from loushang.coding.resource_authority import ResourceAuthorityMode
 from loushang.coding.resource_runtime import (
     CodingResourceLoader as DefaultResourceLoader,
 )
-from loushang.coding.resource_runtime import CodingSkillLoader as SkillLoader
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.sdk_surface import (
     SdkSurfaceCompatibilityReport,
@@ -95,7 +94,6 @@ __all__ = [
     "SettingsManager",
     "SessionStats",
     "TokenUsageTotals",
-    "SkillLoader",
     "assemble_system_prompt",
     "create_agent_session",
     "create_agent_session_from_services",

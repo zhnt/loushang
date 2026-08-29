@@ -1159,6 +1159,15 @@ def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
         f"{_runtime_footer(str(nested))}"
     )
     assert session.get_active_tool_names() == ["bash"]
+    from loushang.harness.resources.loader import ResourceLoaderCompatibilityError
+
+    with pytest.raises(
+        ResourceLoaderCompatibilityError,
+        match="catalog_projection_not_published",
+    ):
+        services.resource_loader.get_resource_bundle()
+
+    asyncio.run(session.prepare_model_call_runtime())
     assert (
         services.resource_loader.get_resource_bundle().agents_md
         == "Use repo conventions."
@@ -1866,6 +1875,13 @@ def test_create_agent_session_marks_disabled_skills(tmp_path) -> None:
 
     assert [skill.name for skill in session.resource_bundle.skills] == ["debug"]
     assert session.resource_bundle.skills[0].enabled is False
+    asyncio.run(session.prepare_model_call_runtime())
+    [status] = session.list_skill_statuses()
+    assert (status.name, status.status, status.status_reason) == (
+        "debug",
+        "inactive_activation",
+        "activation_disabled",
+    )
 
 
 def test_create_agent_session_includes_tool_prompt_from_registry(tmp_path) -> None:
@@ -2330,9 +2346,9 @@ def test_create_agent_session_passes_resource_loader_into_agent_session(
             super().__init__()
             self.discover_calls: list[str] = []
 
-        def discover_resources(self, cwd):
+        def prepare_catalog_input_receipt(self, cwd):
             self.discover_calls.append(str(cwd))
-            return super().discover_resources(cwd)
+            return super().prepare_catalog_input_receipt(cwd)
 
     loader = _RecordingLoader()
     services = create_services(resource_loader=loader)

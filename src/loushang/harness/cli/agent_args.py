@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from argparse import Namespace
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, TextIO, TypeVar
@@ -419,6 +419,7 @@ def cwd_bound_services_factory(
     resource_loader_options: dict[str, object],
     *,
     create_services: Callable[..., object],
+    create_services_options: Mapping[str, object] | None = None,
 ) -> Callable[[str], object] | None:
     """Build cwd-specific services when project-scoped settings are active."""
 
@@ -434,6 +435,7 @@ def cwd_bound_services_factory(
         result = create_services(
             cwd=cwd,
             resource_loader_options=resource_loader_options,
+            **dict(create_services_options or {}),
         )
         return getattr(result, "services", result)
 

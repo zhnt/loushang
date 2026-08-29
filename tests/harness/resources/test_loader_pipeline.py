@@ -15,7 +15,10 @@ from loushang.harness.resources._loader_pipeline import (
     _ResourceDiscoveryResult,
 )
 from loushang.harness.resources._loader_types import _SourceDiscovery
-from loushang.harness.resources.loader import ResourceLoader
+from loushang.harness.resources.loader import (
+    ResourceLoader,
+    ResourceLoaderCompatibilityError,
+)
 from loushang.harness.resources.packages.mounts import PackageResourceMount
 from loushang.harness.resources.packages.source import PackageSourceConfig
 from loushang.harness.resources.plugins.manifest import PluginManifestParser
@@ -148,7 +151,7 @@ def test_resource_loader_passes_one_immutable_discovery_request(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    import loushang.harness.resources.loader as loader_module
+    import loushang.harness.resources._loader_pipeline as loader_pipeline
 
     package_root = tmp_path / "package"
     user_root = tmp_path / "user"
@@ -163,7 +166,7 @@ def test_resource_loader_passes_one_immutable_discovery_request(
         captured.append(request)
         return _discovery_result(request)
 
-    monkeypatch.setattr(loader_module, "_discover_snapshot", discover)
+    monkeypatch.setattr(loader_pipeline, "_discover_snapshot", discover)
     loader = ResourceLoader(
         package_roots=(package_root,),
         package_source_filters={package_root: package_filter},
@@ -212,7 +215,7 @@ def test_resource_loader_does_not_commit_snapshot_when_revision_changes_during_d
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    import loushang.harness.resources.loader as loader_module
+    import loushang.harness.resources._loader_pipeline as loader_pipeline
 
     class RevisionHandle:
         def __init__(self, root: Path) -> None:
@@ -248,7 +251,7 @@ def test_resource_loader_does_not_commit_snapshot_when_revision_changes_during_d
             catalog_input_receipt=result.catalog_input_receipt,
         )
 
-    monkeypatch.setattr(loader_module, "_discover_snapshot", discover)
+    monkeypatch.setattr(loader_pipeline, "_discover_snapshot", discover)
 
     with pytest.raises(RuntimeError, match="revision changed"):
         loader.discover_resources(tmp_path)
@@ -290,10 +293,58 @@ def test_resource_loader_transfers_one_exact_catalog_input_receipt(
     with pytest.raises(RuntimeError, match="No unclaimed"):
         loader._take_initial_resource_catalog_input_receipt()
 
-    loader.discover_resources(nested)
+
+def test_catalog_input_preparation_does_not_publish_a_legacy_snapshot(
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "project"
+    nested = project_root / "src"
+    nested.mkdir(parents=True)
+    (project_root / "AGENTS.md").write_text("Project", encoding="utf-8")
+    loader = ResourceLoader(
+        user_resource_roots=(),
+        context_file_names=("AGENTS.md",),
+        project_resource_mode="legacy",
+    )
+
+    receipt = loader.prepare_catalog_input_receipt(nested)
+
+    assert receipt.project_resource_root == project_root
+    assert loader._snapshot is None
+    with pytest.raises(
+        ResourceLoaderCompatibilityError,
+        match="catalog_projection_not_published",
+    ):
+        loader.get_resource_bundle()
+    with pytest.raises(RuntimeError, match="No unclaimed"):
+        loader._take_initial_resource_catalog_input_receipt()
+
+    with pytest.raises(
+        ResourceLoaderCompatibilityError,
+        match="catalog_loader_cannot_enter_legacy_authority",
+    ):
+        loader.discover_resources(nested)
     loader.set_workspace_root(project_root)
     with pytest.raises(RuntimeError, match="No unclaimed"):
         loader._take_initial_resource_catalog_input_receipt()
+
+
+def test_resource_loader_authority_selection_is_monotonic(tmp_path: Path) -> None:
+    legacy = ResourceLoader(user_resource_roots=())
+    legacy.discover_resources(tmp_path)
+    with pytest.raises(
+        ResourceLoaderCompatibilityError,
+        match="legacy_loader_cannot_prepare_catalog_inputs",
+    ):
+        legacy.prepare_catalog_input_receipt(tmp_path)
+
+    catalog = ResourceLoader(user_resource_roots=())
+    catalog.prepare_catalog_input_receipt(tmp_path)
+    with pytest.raises(
+        ResourceLoaderCompatibilityError,
+        match="catalog_loader_cannot_enter_legacy_authority",
+    ):
+        catalog.reload_resources(tmp_path)
 
 
 def test_resource_loader_receipt_carries_verified_package_candidate_facts(
@@ -324,8 +375,7 @@ def test_resource_loader_receipt_carries_verified_package_candidate_facts(
     loader = ResourceLoader()
     loader.set_package_mounts((mount,))
     try:
-        loader.discover_resources(project)
-        receipt = loader._take_initial_resource_catalog_input_receipt()
+        receipt = loader.prepare_catalog_input_receipt(project)
 
         assert receipt.package_mounts == (mount,)
         assert receipt.package_roots == (handle.root,)
