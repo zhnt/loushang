@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import fields
+from threading import Event, Thread
 
 import pytest
 
@@ -670,6 +671,67 @@ def test_package_source_mutation_rollback_preserves_concurrent_unrelated_setting
 
     assert manager.get_package_sources() == []
     assert manager.get_settings().theme == "concurrent-theme"
+    assert manager.get_project_settings() == {"theme": "concurrent-theme"}
+
+
+def test_package_source_mutation_rollback_compare_and_replace_is_atomic(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harness.config.agent import SettingsManager
+
+    source = "git:https://example.test/review.git"
+    manager = SettingsManager(project_settings_path=tmp_path / "project.json")
+    mutation = manager.begin_package_source_mutation(
+        source,
+        scope="project",
+        present=True,
+    )
+    runtime = manager._config._runtime  # type: ignore[attr-defined]
+    original_transform = runtime.transform
+    transform_ready = Event()
+    release_transform = Event()
+    concurrent_started = Event()
+    errors: list[BaseException] = []
+
+    def blocking_transform(layer, transform, *, persist=None):  # type: ignore[no-untyped-def]
+        def blocked(current_patch):  # type: ignore[no-untyped-def]
+            replacement = transform(current_patch)
+            transform_ready.set()
+            release_transform.wait(timeout=5)
+            return replacement
+
+        return original_transform(layer, blocked, persist=persist)
+
+    monkeypatch.setattr(runtime, "transform", blocking_transform)
+
+    def rollback() -> None:
+        try:
+            mutation.rollback()
+        except BaseException as error:
+            errors.append(error)
+
+    def update_theme() -> None:
+        concurrent_started.set()
+        try:
+            manager.set_theme("concurrent-theme", scope="project")
+        except BaseException as error:
+            errors.append(error)
+
+    rollback_thread = Thread(target=rollback)
+    rollback_thread.start()
+    assert transform_ready.wait(timeout=5)
+    update_thread = Thread(target=update_theme)
+    update_thread.start()
+    assert concurrent_started.wait(timeout=5)
+    release_transform.set()
+    rollback_thread.join(timeout=5)
+    update_thread.join(timeout=5)
+
+    assert rollback_thread.is_alive() is False
+    assert update_thread.is_alive() is False
+    assert errors == []
+    assert manager.get_package_sources() == []
     assert manager.get_project_settings() == {"theme": "concurrent-theme"}
 
 

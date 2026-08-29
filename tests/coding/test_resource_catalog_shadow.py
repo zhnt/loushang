@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import time
 from dataclasses import replace
+from io import StringIO
 from pathlib import Path
 
 import pytest
@@ -44,6 +45,9 @@ from loushang.harness.capabilities.resources_consumers import (
 from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_CAPABILITY_DEFINITION,
 )
+from loushang.harness.cli import PackageLifecycleRequest, run_package_lifecycle
+from loushang.harness.host.rpc.commands import RpcPackageCommands
+from loushang.harness.host.rpc.output import RpcOutput
 from loushang.harness.plugin_authoring.host import PluginDeclarationHost
 from loushang.harness.resources._catalog_input_receipt import (
     ResourceCatalogInputReceipt,
@@ -874,6 +878,9 @@ def test_coding_catalog_extension_refresh_pins_real_load_and_serves_g2_bytes(
             schema_version=1,
             public_id="dynamic-review",
         )
+        release_load: asyncio.Event | None = None
+        inflight: asyncio.Task[object] | None = None
+        refresh: asyncio.Task[None] | None = None
         try:
             await session.prepare_model_call_runtime()
             facets = session._resource_skill_catalog_facets
@@ -936,6 +943,17 @@ def test_coding_catalog_extension_refresh_pins_real_load_and_serves_g2_bytes(
             await refresh
             assert old_source_generation.is_disposed is True
         finally:
+            if release_load is not None:
+                release_load.set()
+            tasks = tuple(
+                task
+                for task in (inflight, refresh)
+                if task is not None and not task.done()
+            )
+            for task in tasks:
+                task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
             await session.dispose()
             services.resource_loader.close()
 
@@ -1100,17 +1118,40 @@ def test_coding_catalog_package_mutations_publish_before_return(
 
             # Catalog uninstall awaits its own next publication.
             settings.add_package_source(str(unsupported_root), scope="session")
-            uninstalled = await session.uninstall_package_async(
-                str(unsupported_root),
-                scope="session",
+            lifecycle = await run_package_lifecycle(
+                session,
+                PackageLifecycleRequest(
+                    uninstall=(str(unsupported_root),),
+                    scope="session",
+                ),
             )
+            uninstalled = lifecycle.outputs[0]["record"]
             after_uninstall = session._skill_catalog_consumer
+            assert isinstance(uninstalled, dict)
             assert uninstalled["lifecycle"] == "remote_registered"
             assert after_uninstall is not None
             assert after_uninstall.catalog_generation == 3
             assert [item.name for item in after_uninstall.list_effective_skills()] == [
                 "standard"
             ]
+            assert settings.get_package_sources() == []
+
+            # The RPC command keeps its stable wire name while resolving the
+            # same async Catalog mutation entrypoint.
+            settings.add_package_source(str(unsupported_root), scope="project")
+            stdout = StringIO()
+            rpc = RpcPackageCommands(
+                runtime=session,
+                get_session=lambda: session,
+                output=RpcOutput(stdout),
+            )
+            handler = dict(rpc.bindings())["uninstall_package"]
+            await handler("catalog-uninstall", {"source": str(unsupported_root)})
+            response = json.loads(stdout.getvalue())
+            assert response["success"] is True
+            assert response["data"]["record"]["lifecycle"] == "remote_registered"
+            assert session._skill_catalog_consumer is not None
+            assert session._skill_catalog_consumer.catalog_generation == 4
             assert settings.get_package_sources() == []
         finally:
             await session.dispose()

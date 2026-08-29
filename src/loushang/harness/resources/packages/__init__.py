@@ -56,6 +56,8 @@ if TYPE_CHECKING:
         PackageOperationsRuntime,
         PackageResourceRefresh,
         PackageResourceRefreshOutcome,
+        PackageResourceRefreshTransaction,
+        PackageResourceRefreshTransactionRunner,
         PackageSourceRegistration,
         PackageUpdatePreparation,
     )
@@ -128,6 +130,8 @@ _EXPORT_MODULES = {
     "PackageSourcePolicy": "loushang.harness.resources.packages.materializer",
     "PackageResourceRefresh": "loushang.harness.resources.packages.operations",
     "PackageResourceRefreshOutcome": "loushang.harness.resources.packages.operations",
+    "PackageResourceRefreshTransaction": "loushang.harness.resources.packages.operations",
+    "PackageResourceRefreshTransactionRunner": "loushang.harness.resources.packages.operations",
     "PackageSecurityPolicy": "loushang.harness.resources.packages.security",
     "PackageSourceSecurityReport": "loushang.harness.resources.packages.security",
     "PackageSourceRegistration": "loushang.harness.resources.packages.operations",

@@ -142,6 +142,14 @@ EXPECTED_CALL_SITES = {
             "SessionResourceRefreshRuntime._refresh_with_outcome",
         ),
         (
+            Path("src/loushang/harness/session/resource_refresh.py"),
+            "SessionResourceRefreshRuntime._refresh_catalog_locked",
+        ),
+        (
+            Path("src/loushang/harness/session/resource_refresh.py"),
+            "SessionResourceRefreshRuntime.refresh_transaction_with_outcome",
+        ),
+        (
             Path("src/loushang/harness/session/tool_controller.py"),
             "create_tool_prompt_rebuilder.rebuild",
         ),

@@ -150,11 +150,12 @@ The current calls are:
 - `ResourceCommandSourceRuntime.execute`, `list_descriptors`, and
   `preflight_user_input`;
 - `SessionResourceRefreshRuntime.__post_init__`, `_commit_resource_bundle`,
-  `get_prompt_templates`, `_refresh_with_outcome`, and
-  `reload_extension_generation`; `_refresh_with_outcome` reads only the
-  previous compatibility projection identity while holding the Catalog lock to
-  return an invocation-local publication receipt and distinguish committed
-  publication from rollback on cancellation or cleanup failure; and
+  `get_prompt_templates`, `_refresh_with_outcome`, `_refresh_catalog_locked`,
+  `refresh_transaction_with_outcome`, and `reload_extension_generation`;
+  the refresh paths read only the previous compatibility projection identity
+  while holding the Catalog lock to return an invocation-local publication
+  receipt and distinguish committed publication from rollback on cancellation
+  or cleanup failure; and
 - `create_tool_prompt_rebuilder.rebuild`.
 
 RCP4 changes these to a read-only captured-generation projection or focused

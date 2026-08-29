@@ -62,6 +62,38 @@ def test_package_lifecycle_preserves_standard_order_and_scope() -> None:
     ]
 
 
+def test_package_lifecycle_prefers_async_catalog_uninstall_entrypoint() -> None:
+    class CatalogSession:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def uninstall_package(self, source: str, *, scope: str) -> object:
+            raise AssertionError(f"sync uninstall used for {source} in {scope}")
+
+        async def uninstall_package_async(
+            self,
+            source: str,
+            *,
+            scope: str,
+        ) -> dict[str, object]:
+            self.calls.append(f"async:{scope}:{source}")
+            return {"lifecycle": "uninstalled", "source": source}
+
+    session = CatalogSession()
+    result = asyncio.run(
+        run_package_lifecycle(
+            session,
+            PackageLifecycleRequest(uninstall=("review-pack",), scope="project"),
+        )
+    )
+
+    assert session.calls == ["async:project:review-pack"]
+    assert result.outputs[0]["record"] == {
+        "lifecycle": "uninstalled",
+        "source": "review-pack",
+    }
+
+
 def test_package_lifecycle_injects_policy_and_keeps_prior_outputs() -> None:
     session = _Session()
     with pytest.raises(PackageLifecycleError) as raised:

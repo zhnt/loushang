@@ -48,6 +48,7 @@ from loushang.harness.config.agent.types import (
     TreeFilterMode,
     WarningSettings,
 )
+from loushang.harness.config.engine import merge_config_patch
 from loushang.harness.permissions import (
     PermissionProfileCeiling,
     PermissionProfileId,
@@ -660,12 +661,28 @@ class SettingsManager:
         """Apply one scoped mutation while retaining its exact prior patch."""
 
         layer = self._config.scope(scope)
-        previous_patch = layer.patch
-        if present:
-            self.add_package_source(source, scope=scope)
-        else:
-            self.remove_package_source(source, scope=scope)
-        applied_patch = layer.patch
+        previous_patch: dict[str, object] = {}
+        applied_patch: dict[str, object] = {}
+
+        def apply(current_patch: dict[str, object]) -> dict[str, object]:
+            nonlocal previous_patch, applied_patch
+            previous_patch = deepcopy(current_patch)
+            current_sources = self._settings.package_sources
+            next_sources = (
+                _with_package_source(
+                    current_sources,
+                    decode_package_source(source),
+                )
+                if present
+                else _without_package_source(current_sources, source)
+            )
+            update_patch = build_settings_patch(
+                AgentSettingsUpdate(package_sources=next_sources)
+            )
+            applied_patch = merge_config_patch(current_patch, update_patch)
+            return applied_patch
+
+        layer.transform(apply)
         changed_keys = {
             key
             for key in previous_patch.keys() | applied_patch.keys()
@@ -673,27 +690,31 @@ class SettingsManager:
         }
 
         def restore() -> None:
-            current_patch = layer.patch
-            conflicts = tuple(
-                sorted(
-                    key
-                    for key in changed_keys
-                    if current_patch.get(key, UNSET)
-                    != applied_patch.get(key, UNSET)
+            def restore_changed_keys(
+                current_patch: dict[str, object],
+            ) -> dict[str, object]:
+                conflicts = tuple(
+                    sorted(
+                        key
+                        for key in changed_keys
+                        if current_patch.get(key, UNSET)
+                        != applied_patch.get(key, UNSET)
+                    )
                 )
-            )
-            if conflicts:
-                raise RuntimeError(
-                    "Package source settings changed concurrently: "
-                    + ", ".join(conflicts)
-                )
-            restored_patch = deepcopy(current_patch)
-            for key in changed_keys:
-                if key in previous_patch:
-                    restored_patch[key] = deepcopy(previous_patch[key])
-                else:
-                    restored_patch.pop(key, None)
-            layer.replace(restored_patch)
+                if conflicts:
+                    raise RuntimeError(
+                        "Package source settings changed concurrently: "
+                        + ", ".join(conflicts)
+                    )
+                restored_patch = deepcopy(current_patch)
+                for key in changed_keys:
+                    if key in previous_patch:
+                        restored_patch[key] = deepcopy(previous_patch[key])
+                    else:
+                        restored_patch.pop(key, None)
+                return restored_patch
+
+            layer.transform(restore_changed_keys)
 
         return PackageSourceSettingsMutation(
             source=source,

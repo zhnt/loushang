@@ -21,6 +21,7 @@ from loushang.harness.resources.packages.operations import (
     PackageMutationRequiresAsyncError,
     PackageOperationsRuntime,
     PackageResourceRefreshOutcome,
+    PackageResourceRefreshTransactionRunner,
 )
 from loushang.harness.resources.packages.projection import (
     project_package_entries,
@@ -77,6 +78,7 @@ class SessionPackageController:
     get_resource_loader: ResourceLoaderProvider
     get_diagnostics_service: DiagnosticsServiceProvider
     refresh_resources: ResourceRefresh
+    refresh_resource_transaction: PackageResourceRefreshTransactionRunner | None = None
     summary_provider: PackageSummaryProvider | None = None
     supports_synchronous_refresh: Callable[[], bool] = lambda: True
     _operations: PackageOperationsRuntime = field(init=False, repr=False)
@@ -88,6 +90,7 @@ class SessionPackageController:
             remove_source=self._remove_package_source,
             refresh_resources=self.refresh_package_resources,
             prepare_updates=self.prepare_configured_remote_package_records,
+            refresh_transaction=self.refresh_resource_transaction,
         )
 
     @property

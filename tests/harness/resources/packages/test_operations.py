@@ -11,6 +11,7 @@ from loushang.harness.resources.packages.materializer import (
 from loushang.harness.resources.packages.operations import (
     PackageOperationsRuntime,
     PackageResourceRefreshOutcome,
+    PackageResourceRefreshTransaction,
 )
 from loushang.harness.resources.packages.settings_mutation import (
     PackageSourceSettingsMutation,
@@ -302,6 +303,59 @@ def test_operations_does_not_attribute_unrelated_publication_to_failed_refresh(
         "refresh-after-unrelated-publication",
         f"remove:project:{source}",
     ]
+
+
+def test_operations_delegates_mutation_and_failed_uninstall_to_refresh_transaction(
+    tmp_path,
+) -> None:
+    calls: list[str] = []
+    materializer = _Materializer(tmp_path)
+    source = "https://example.test/pack.git"
+
+    async def run_transaction(
+        transaction: PackageResourceRefreshTransaction,
+    ) -> PackageResourceRefreshOutcome:
+        calls.append("transaction-entered")
+        mutation = transaction.begin()
+        calls.append("refresh-failed-before-publication")
+        outcome = PackageResourceRefreshOutcome(
+            published=False,
+            error=RuntimeError("candidate rejected"),
+        )
+        transaction.settle(mutation, outcome)
+        return outcome
+
+    runtime = PackageOperationsRuntime(
+        get_materializer=lambda: materializer,
+        add_source=lambda source, scope: _settings_mutation(
+            calls,
+            action=f"add:{scope}:{source}",
+            rollback=f"remove:{scope}:{source}",
+            source=source,
+            scope=scope,
+        ),
+        remove_source=lambda source, scope: _settings_mutation(
+            calls,
+            action=f"remove:{scope}:{source}",
+            rollback=f"add:{scope}:{source}",
+            source=source,
+            scope=scope,
+        ),
+        refresh_resources=lambda: pytest.fail("transaction port was bypassed"),
+        refresh_transaction=run_transaction,
+    )
+
+    with pytest.raises(RuntimeError, match="candidate rejected"):
+        asyncio.run(runtime.uninstall(source, scope="project"))
+
+    assert calls == [
+        "transaction-entered",
+        f"remove:project:{source}",
+        "refresh-failed-before-publication",
+        f"add:project:{source}",
+    ]
+    assert materializer.removed == []
+    assert materializer.forgotten == []
 
 
 def test_operations_requires_materializer_for_remote_source(tmp_path) -> None:

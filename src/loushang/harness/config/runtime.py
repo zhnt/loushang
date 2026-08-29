@@ -18,6 +18,7 @@ T = TypeVar("T")
 ConfigOperation = Literal["reload", "update", "replace"]
 ConfigChangeListener = Callable[["ConfigChange[T]"], None]
 ConfigValueListener = Callable[[T], None]
+ConfigPatchTransform = Callable[[dict[str, object]], Mapping[str, object]]
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,16 @@ class ConfigScope(Generic[T]):
         persist: bool | None = None,
     ) -> ConfigChange[T]:
         return self._runtime.replace(self.name, patch, persist=persist)
+
+    def transform(
+        self,
+        transform: ConfigPatchTransform,
+        *,
+        persist: bool | None = None,
+    ) -> ConfigChange[T]:
+        """Atomically transform this layer's current patch under one lock."""
+
+        return self._runtime.transform(self.name, transform, persist=persist)
 
 
 class ScopedConfigRuntime(Generic[T]):
@@ -154,6 +165,33 @@ class ScopedConfigRuntime(Generic[T]):
             self.scope(layer)
             previous = self._config.value
             self._config.replace(layer, patch, persist=persist)
+            change, should_publish = self._enqueue_change(
+                operation="replace",
+                layer=layer,
+                previous=previous,
+            )
+        if should_publish:
+            self._drain_publications()
+        return change
+
+    def transform(
+        self,
+        layer: str,
+        transform: ConfigPatchTransform,
+        *,
+        persist: bool | None = None,
+    ) -> ConfigChange[T]:
+        """Read, transform, replace, and enqueue one layer atomically."""
+
+        if not callable(transform):
+            raise TypeError("Config patch transform must be callable")
+        with self._lock:
+            self.scope(layer)
+            previous = self._config.value
+            replacement = transform(self._config.patch(layer))
+            if not isinstance(replacement, Mapping):
+                raise TypeError("Config patch transform must return a mapping")
+            self._config.replace(layer, replacement, persist=persist)
             change, should_publish = self._enqueue_change(
                 operation="replace",
                 layer=layer,
@@ -264,6 +302,7 @@ class ScopedConfigRuntime(Generic[T]):
 __all__ = [
     "ConfigChange",
     "ConfigOperation",
+    "ConfigPatchTransform",
     "ConfigScope",
     "ScopedConfigRuntime",
 ]

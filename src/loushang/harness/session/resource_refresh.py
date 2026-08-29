@@ -12,7 +12,7 @@ import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, TypeVar
 
 from loushang.harness.extensions.declarations import (
     ExtensionCapabilityDeclarationSnapshot,
@@ -46,6 +46,7 @@ ResourceSettingsProvider = Callable[[], ResourceSettingsPort | None]
 RefreshFailureRecorder = Callable[[Exception], None]
 ExtensionDeclarationPreflight = Callable[[ExtensionCapabilityDeclarationSnapshot], None]
 ResourceCatalogRefresh = Callable[[str], Awaitable[ResourceBundle | None]]
+RefreshTransactionReceipt = TypeVar("RefreshTransactionReceipt")
 
 
 class CatalogRefreshRequiresAsyncError(RuntimeError):
@@ -155,6 +156,55 @@ class SessionResourceRefreshRuntime:
 
         return await self._refresh_with_outcome(reason=reason, admitted=False)
 
+    async def refresh_transaction_with_outcome(
+        self,
+        *,
+        begin: Callable[[], RefreshTransactionReceipt],
+        settle: Callable[
+            [RefreshTransactionReceipt, SessionResourceRefreshOutcome], object
+        ],
+        reason: str = "refresh",
+    ) -> SessionResourceRefreshOutcome:
+        """Run one synchronous mutation and its refresh as one Catalog transaction."""
+
+        self._require_open()
+        if self.refresh_catalog is None:
+            raise CatalogRefreshRequiresAsyncError(
+                "Resource refresh transactions require Catalog ownership"
+            )
+        async with self._catalog_refresh_lock:
+            self._require_open()
+            previous = self.get_resource_bundle()
+            receipt = begin()
+            _require_synchronous_result(
+                receipt,
+                operation="Resource refresh transaction begin",
+                allow_value=True,
+            )
+            outcome = await self._refresh_catalog_locked(
+                reason=reason,
+                previous=previous,
+            )
+            try:
+                settled = settle(receipt, outcome)
+                _require_synchronous_result(
+                    settled,
+                    operation="Resource refresh transaction settlement",
+                    allow_value=False,
+                )
+            except BaseException as settlement_error:
+                if outcome.error is not None:
+                    outcome.error.add_note(
+                        "Resource refresh transaction settlement also failed: "
+                        f"{settlement_error!r}"
+                    )
+                else:
+                    outcome = SessionResourceRefreshOutcome(
+                        published=outcome.published,
+                        error=settlement_error,
+                    )
+            return outcome
+
     async def _refresh_with_outcome(
         self,
         *,
@@ -179,24 +229,11 @@ class SessionResourceRefreshRuntime:
                     raise ResourceRefreshRuntimeClosedError(
                         "Session Resource refresh runtime is closed"
                     )
-                if self.prepare_resource_refresh is not None:
-                    prepared = self.prepare_resource_refresh()
-                    if inspect.isawaitable(prepared):
-                        await prepared
                 previous = self.get_resource_bundle()
-                try:
-                    await catalog_refresh(reason)
-                except BaseException as error:
-                    published = self.get_resource_bundle() is not previous
-                    if published:
-                        self._resource_revision += 1
-                    return SessionResourceRefreshOutcome(
-                        published=published,
-                        error=error,
-                    )
-                else:
-                    self._resource_revision += 1
-                    return SessionResourceRefreshOutcome(published=True)
+                return await self._refresh_catalog_locked(
+                    reason=reason,
+                    previous=previous,
+                )
         previous_revision = self._resource_revision
         try:
             await self._coordinator.refresh_async(reason=reason)
@@ -208,6 +245,32 @@ class SessionResourceRefreshRuntime:
         return SessionResourceRefreshOutcome(
             published=self._resource_revision != previous_revision,
         )
+
+    async def _refresh_catalog_locked(
+        self,
+        *,
+        reason: str,
+        previous: ResourceBundle | None,
+    ) -> SessionResourceRefreshOutcome:
+        catalog_refresh = self.refresh_catalog
+        if catalog_refresh is None:
+            raise RuntimeError("Resource Catalog refresh is not configured")
+        try:
+            if self.prepare_resource_refresh is not None:
+                prepared = self.prepare_resource_refresh()
+                if inspect.isawaitable(prepared):
+                    await prepared
+            await catalog_refresh(reason)
+        except BaseException as error:
+            published = self.get_resource_bundle() is not previous
+            if published:
+                self._resource_revision += 1
+            return SessionResourceRefreshOutcome(
+                published=published,
+                error=error,
+            )
+        self._resource_revision += 1
+        return SessionResourceRefreshOutcome(published=True)
 
     def request_refresh(self) -> None:
         if self._closing or self._closed:
@@ -468,6 +531,20 @@ async def _join_close(task: asyncio.Task[None]) -> None:
 def _raise_refresh_outcome(outcome: SessionResourceRefreshOutcome) -> None:
     if outcome.error is not None:
         raise outcome.error
+
+
+def _require_synchronous_result(
+    result: object,
+    *,
+    operation: str,
+    allow_value: bool,
+) -> None:
+    if inspect.isawaitable(result):
+        if inspect.iscoroutine(result):
+            result.close()
+        raise TypeError(f"{operation} must be synchronous")
+    if not allow_value and result is not None:
+        raise TypeError(f"{operation} must return None")
 
 
 __all__ = [

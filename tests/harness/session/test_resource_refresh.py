@@ -18,6 +18,7 @@ from loushang.harness.resources.types import (
 from loushang.harness.session.resource_refresh import (
     CatalogRefreshRequiresAsyncError,
     ResourceRefreshRuntimeClosedError,
+    SessionResourceRefreshOutcome,
     SessionResourceRefreshRuntime,
 )
 
@@ -393,6 +394,82 @@ def test_catalog_refresh_outcome_belongs_to_its_exact_lock_held_invocation() -> 
         assert isinstance(outcome_b.error, RuntimeError)
         assert str(outcome_b.error) == "refresh B failed before publication"
         assert runtime.resource_revision == 2
+        await runtime.close()
+
+    asyncio.run(scenario())
+
+
+def test_catalog_refresh_transaction_hides_tentative_mutation_from_other_refreshes() -> (
+    None
+):
+    async def scenario() -> None:
+        current = [ResourceBundle(cwd=Path("/tmp/original"))]
+        package_enabled = [False]
+        published_settings: list[bool] = []
+        first_started = asyncio.Event()
+        release_first = asyncio.Event()
+
+        async def refresh_catalog(reason: str) -> ResourceBundle:
+            if reason == "A":
+                first_started.set()
+                await release_first.wait()
+            if reason == "package":
+                raise RuntimeError("package refresh failed before publication")
+            published_settings.append(package_enabled[0])
+            bundle = ResourceBundle(cwd=Path(f"/tmp/package-{package_enabled[0]}"))
+            current[0] = bundle
+            return bundle
+
+        runtime = SessionResourceRefreshRuntime(
+            get_resource_loader=lambda: None,
+            get_resource_bundle=lambda: current[0],
+            get_cwd=lambda: "/tmp/project",
+            get_extension_runtime=lambda: None,
+            get_settings=lambda: None,
+            set_resource_bundle=lambda bundle: current.__setitem__(0, bundle),
+            rebuild_prompt_and_tools_view=lambda: None,
+            record_refresh_failure=lambda _error: None,
+            sync_extension_diagnostics=lambda: None,
+            refresh_catalog=refresh_catalog,
+        )
+
+        refresh_a = asyncio.create_task(runtime.refresh_with_outcome(reason="A"))
+        await first_started.wait()
+
+        def begin() -> bool:
+            previous = package_enabled[0]
+            package_enabled[0] = True
+            return previous
+
+        def settle(
+            previous: bool,
+            outcome: SessionResourceRefreshOutcome,
+        ) -> None:
+            if not outcome.published:
+                package_enabled[0] = previous
+
+        package_refresh = asyncio.create_task(
+            runtime.refresh_transaction_with_outcome(
+                begin=begin,
+                settle=settle,
+                reason="package",
+            )
+        )
+        await asyncio.sleep(0)
+
+        # The queued package transaction has not exposed its mutation while A
+        # owns the Catalog publication lock.
+        assert package_enabled == [False]
+        release_first.set()
+
+        outcome_a = await refresh_a
+        package_outcome = await package_refresh
+        assert outcome_a.published is True
+        assert package_outcome.published is False
+        assert isinstance(package_outcome.error, RuntimeError)
+        assert published_settings == [False]
+        assert package_enabled == [False]
+        assert current[0].cwd == Path("/tmp/package-False")
         await runtime.close()
 
     asyncio.run(scenario())

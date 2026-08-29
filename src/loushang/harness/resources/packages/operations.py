@@ -60,6 +60,25 @@ class PackageResourceRefreshOutcome:
             raise TypeError("Package Resource refresh error is invalid")
 
 
+@dataclass(frozen=True, slots=True)
+class PackageResourceRefreshTransaction:
+    """Package-owned mutation hooks executed by the Catalog transaction port."""
+
+    begin: Callable[[], PackageSourceSettingsMutation]
+    settle: Callable[
+        [PackageSourceSettingsMutation, PackageResourceRefreshOutcome], None
+    ]
+
+    def __post_init__(self) -> None:
+        if not callable(self.begin) or not callable(self.settle):
+            raise TypeError("Package Resource refresh transaction hooks are invalid")
+
+
+PackageResourceRefreshTransactionRunner = Callable[
+    [PackageResourceRefreshTransaction], object | Awaitable[object]
+]
+
+
 class PackageMutationRequiresAsyncError(RuntimeError):
     """A Catalog-backed package mutation cannot publish synchronously."""
 
@@ -73,6 +92,7 @@ class PackageOperationsRuntime:
     remove_source: PackageSourceRegistration
     refresh_resources: PackageResourceRefresh
     prepare_updates: PackageUpdatePreparation | None = None
+    refresh_transaction: PackageResourceRefreshTransactionRunner | None = None
     _settings_transaction_lock: asyncio.Lock = field(
         init=False,
         default_factory=asyncio.Lock,
@@ -104,9 +124,9 @@ class PackageOperationsRuntime:
         if record.lifecycle != "installed":
             return record
         async with self._settings_transaction_lock:
-            mutation = self.add_source(source, scope)
-            outcome = await self._refresh_outcome()
-            self._finish_settings_mutation(mutation, outcome=outcome)
+            outcome = await self._refresh_settings_mutation(
+                lambda: self.add_source(source, scope)
+            )
             _raise_refresh_error(outcome)
         return record
 
@@ -145,9 +165,9 @@ class PackageOperationsRuntime:
         scope: str,
     ) -> PackageMaterializationRecord:
         async with self._settings_transaction_lock:
-            mutation = self.remove_source(source, scope)
-            outcome = await self._refresh_outcome()
-            self._finish_settings_mutation(mutation, outcome=outcome)
+            outcome = await self._refresh_settings_mutation(
+                lambda: self.remove_source(source, scope)
+            )
             if outcome.published:
                 record = self._remove_materialized_source(source, outcome=outcome)
             else:
@@ -163,22 +183,9 @@ class PackageOperationsRuntime:
     ) -> PackageMaterializationRecord:
         """Preserve the legacy synchronous contract behind an explicit gate."""
 
-        mutation = self.remove_source(source, scope)
-        try:
-            refreshed = self.refresh_resources()
-        except BaseException as error:
-            outcome = PackageResourceRefreshOutcome(published=False, error=error)
-        else:
-            if inspect.isawaitable(refreshed):
-                if inspect.iscoroutine(refreshed):
-                    refreshed.close()
-                mutation.rollback()
-                raise PackageMutationRequiresAsyncError(
-                    "Catalog-backed package uninstall requires "
-                    "uninstall_package_async()"
-                )
-            outcome = _coerce_refresh_outcome(refreshed)
-        self._finish_settings_mutation(mutation, outcome=outcome)
+        outcome = self._refresh_settings_mutation_sync(
+            lambda: self.remove_source(source, scope)
+        )
         if outcome.published:
             record = self._remove_materialized_source(source, outcome=outcome)
         else:
@@ -191,6 +198,76 @@ class PackageOperationsRuntime:
             refreshed = await _resolve(self.refresh_resources())
         except BaseException as error:
             return PackageResourceRefreshOutcome(published=False, error=error)
+        return _coerce_refresh_outcome(refreshed)
+
+    async def _refresh_settings_mutation(
+        self,
+        begin: Callable[[], PackageSourceSettingsMutation],
+    ) -> PackageResourceRefreshOutcome:
+        transaction_runner = self.refresh_transaction
+        if transaction_runner is None:
+            mutation = begin()
+            outcome = await self._refresh_outcome()
+            self._finish_settings_mutation(mutation, outcome=outcome)
+            return outcome
+        transaction = PackageResourceRefreshTransaction(
+            begin=begin,
+            settle=lambda mutation, outcome: self._finish_settings_mutation(
+                mutation,
+                outcome=outcome,
+            ),
+        )
+        try:
+            refreshed = await _resolve(transaction_runner(transaction))
+        except BaseException as error:
+            return PackageResourceRefreshOutcome(published=False, error=error)
+        return _coerce_refresh_outcome(refreshed)
+
+    def _refresh_settings_mutation_sync(
+        self,
+        begin: Callable[[], PackageSourceSettingsMutation],
+    ) -> PackageResourceRefreshOutcome:
+        transaction_runner = self.refresh_transaction
+        if transaction_runner is None:
+            mutation = begin()
+            try:
+                refreshed = self.refresh_resources()
+            except BaseException as error:
+                outcome = PackageResourceRefreshOutcome(
+                    published=False,
+                    error=error,
+                )
+            else:
+                if inspect.isawaitable(refreshed):
+                    if inspect.iscoroutine(refreshed):
+                        refreshed.close()
+                    mutation.rollback()
+                    raise PackageMutationRequiresAsyncError(
+                        "Catalog-backed package uninstall requires "
+                        "uninstall_package_async()"
+                    )
+                outcome = _coerce_refresh_outcome(refreshed)
+            self._finish_settings_mutation(mutation, outcome=outcome)
+            return outcome
+
+        transaction = PackageResourceRefreshTransaction(
+            begin=begin,
+            settle=lambda mutation, outcome: self._finish_settings_mutation(
+                mutation,
+                outcome=outcome,
+            ),
+        )
+        try:
+            refreshed = transaction_runner(transaction)
+        except BaseException as error:
+            return PackageResourceRefreshOutcome(published=False, error=error)
+        if inspect.isawaitable(refreshed):
+            if inspect.iscoroutine(refreshed):
+                refreshed.close()
+            raise PackageMutationRequiresAsyncError(
+                "Catalog-backed package uninstall requires "
+                "uninstall_package_async()"
+            )
         return _coerce_refresh_outcome(refreshed)
 
     @staticmethod
@@ -299,6 +376,8 @@ __all__ = [
     "PackageMutationRequiresAsyncError",
     "PackageResourceRefresh",
     "PackageResourceRefreshOutcome",
+    "PackageResourceRefreshTransaction",
+    "PackageResourceRefreshTransactionRunner",
     "PackageSourceRegistration",
     "PackageUpdatePreparation",
 ]

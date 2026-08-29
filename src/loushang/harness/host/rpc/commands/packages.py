@@ -61,7 +61,10 @@ class _DynamicPackageCapabilities:
         return self._invoke("remove_package", source)
 
     def uninstall_package(self, source: str) -> object:
-        return self._invoke("uninstall_package", source)
+        return self._invoke_first(
+            ("uninstall_package_async", "uninstall_package"),
+            source,
+        )
 
     def update_packages(self) -> object:
         return self._invoke("update_packages")
@@ -70,12 +73,22 @@ class _DynamicPackageCapabilities:
         return self._invoke("check_package_updates")
 
     def _invoke(self, name: str, *args: object, **kwargs: object) -> object:
-        method = getattr(self._runtime, name, None)
-        if not callable(method):
-            method = getattr(self._get_session(), name, None)
-        if not callable(method):
-            raise _PackageCapabilityUnavailable
-        return method(*args, **kwargs)
+        return self._invoke_first((name,), *args, **kwargs)
+
+    def _invoke_first(
+        self,
+        names: tuple[str, ...],
+        *args: object,
+        **kwargs: object,
+    ) -> object:
+        session = self._get_session()
+        for name in names:
+            method = getattr(self._runtime, name, None)
+            if not callable(method):
+                method = getattr(session, name, None)
+            if callable(method):
+                return method(*args, **kwargs)
+        raise _PackageCapabilityUnavailable
 
 
 @dataclass(frozen=True)

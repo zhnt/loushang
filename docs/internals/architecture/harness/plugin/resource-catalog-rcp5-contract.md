@@ -432,13 +432,16 @@ rolls back its settings registration rather than reporting false success. Each
 explicit invocation receives its own publication outcome while holding the
 Catalog refresh lock; a Package transaction never infers its result from a
 Session-global revision change caused by another caller. Package-source settings
-use one scoped mutation receipt, restoring exact prior order without overwriting
-unrelated concurrent settings, and a remote checkout is removed only after that
-uninstall has published. The synchronous `uninstall_package()` compatibility
-entry point remains available to `legacy_explicit`; Catalog callers fail before
-mutation and use `uninstall_package_async()`. The legacy coordinator, direct
-loader reload, and independent disabled-name overlay remain reachable only when
-the caller explicitly selected `legacy_explicit`.
+begin, Product preparation, Catalog publication, and receipt settlement all run
+inside that same lock, so another refresh cannot observe or publish tentative
+package settings. The scoped receipt restores exact prior order through one
+atomic compare/transform/persist operation without overwriting unrelated
+concurrent settings, and a remote checkout is removed only after that uninstall
+has published. The synchronous `uninstall_package()` compatibility entry point
+remains available to `legacy_explicit`; Catalog callers fail before mutation and
+the async CLI/RPC orchestration resolves `uninstall_package_async()` first. The
+legacy coordinator, direct loader reload, and independent disabled-name overlay
+remain reachable only when the caller explicitly selected `legacy_explicit`.
 
 After publication, the replaced Resource generation retires first. Every real
 Consumer load pins the Resource owner generation across the complete body read,

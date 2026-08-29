@@ -650,6 +650,9 @@ class AgentProductSession(AgentSessionAdapterMixin):
             get_resource_loader=lambda: self._resource_loader,
             get_diagnostics_service=lambda: self.diagnostics_service,
             refresh_resources=self._refresh_resources_for_extension_runtime,
+            refresh_resource_transaction=(
+                self._refresh_package_resource_transaction
+            ),
             summary_provider=package_summary_provider,
             supports_synchronous_refresh=(
                 lambda: (
