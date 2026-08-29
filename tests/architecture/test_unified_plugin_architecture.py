@@ -15,7 +15,9 @@ import loushang.harness.resources.plugins as public_plugins
 import loushang.harness.runtime as public_runtime
 from loushang.harness.runtime import RuntimeCapabilityScope
 
-ARCHITECTURE_PATH = Path("docs/internals/architecture/harness/plugin/architecture.md")
+ARCHITECTURE_PATH = Path(
+    "docs/internals/architecture/harness/plugin/architecture.md"
+)
 AUTHORING_PLAN_PATH = Path(
     "docs/internals/architecture/harness/plugin/plugin-authoring-primitives-delivery-plan.md"
 )
@@ -157,146 +159,34 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
     ): "package-resource-mount",
 }
 EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS = {
-    (
-        Path("src/loushang/harness/resources/plugins/python_symbols.py"),
-        "load_verified_plugin_python_module",
-        "verified_open_file:revision_handle",
-    ): 1,
-    (
-        Path("src/loushang/harness/plugin_authoring/coordinator.py"),
-        "PluginDeclarationCoordinator._read_and_decode_document",
-        "verified_open_file:handle",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/packages/catalog.py"),
-        "load_package_catalog",
-        "json_decode",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/packages/catalog.py"),
-        "load_package_catalog",
-        "path_read",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/packages/inventory.py"),
-        "_prompt_inventory",
-        "path_read",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/packages/inventory.py"),
-        "_read_skill_ignore_patterns",
-        "path_read",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/packages/inventory.py"),
-        "_skill_directory_inventory",
-        "path_read",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/packages/inventory.py"),
-        "_theme_inventory",
-        "json_decode",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/packages/inventory.py"),
-        "_theme_inventory",
-        "path_read",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/packages/manifest.py"),
-        "resolve_package_manifest",
-        "json_decode",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/packages/manifest.py"),
-        "resolve_package_manifest",
-        "path_read",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/packages/materializer.py"),
-        "PackageMaterializer._load_lockfile",
-        "json_decode",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/packages/materializer.py"),
-        "PackageMaterializer._load_lockfile",
-        "path_read",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/packages/materializer.py"),
-        "PackageMaterializer.load_trusted_sources",
-        "json_decode",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/packages/materializer.py"),
-        "PackageMaterializer.load_trusted_sources",
-        "path_read",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/packages/materializer.py"),
-        "_pypi_latest_version_result",
-        "json_decode",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/packages/mounts.py"),
-        "PackageResourceMount.read_text",
-        "path_read",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/packages/mounts.py"),
-        "PackageResourceMount.read_text",
-        "verified_open_file:handle",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/plugins/manifest.py"),
-        "PluginManifestParser.parse",
-        "path_read",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/plugins/manifest.py"),
-        "PluginManifestParser.revalidate",
-        "path_read",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/plugins/_strict_json.py"),
-        "StrictPluginJsonCodec.decode_bytes",
-        "json_decode",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/plugins/distribution_evidence.py"),
-        "_editable_project_root",
-        "json_decode",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/plugins/distribution_evidence.py"),
-        "_editable_project_root",
-        "path_read",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/plugins/revisions.py"),
-        "_digest_file",
-        "path_read",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/plugins/revisions.py"),
-        "_digest_file_portable",
-        "path_read",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/plugins/revisions.py"),
-        "_open_directory",
-        "path_read",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/plugins/revisions.py"),
-        "_open_regular_file",
-        "path_read",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/plugins/revisions.py"),
-        "_open_regular_file_portable",
-        "path_read",
-    ): 1,
+    (Path("src/loushang/harness/resources/plugins/python_symbols.py"), "load_verified_plugin_python_module", "verified_open_file:revision_handle"): 1,
+    (Path("src/loushang/harness/plugin_authoring/coordinator.py"), "PluginDeclarationCoordinator._read_and_decode_document", "verified_open_file:handle"): 1,
+    (Path("src/loushang/harness/resources/packages/catalog.py"), "load_package_catalog", "json_decode"): 1,
+    (Path("src/loushang/harness/resources/packages/catalog.py"), "load_package_catalog", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/inventory.py"), "_prompt_inventory", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/inventory.py"), "_read_skill_ignore_patterns", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/inventory.py"), "_skill_directory_inventory", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/inventory.py"), "_theme_inventory", "json_decode"): 1,
+    (Path("src/loushang/harness/resources/packages/inventory.py"), "_theme_inventory", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/manifest.py"), "resolve_package_manifest", "json_decode"): 1,
+    (Path("src/loushang/harness/resources/packages/manifest.py"), "resolve_package_manifest", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/materializer.py"), "PackageMaterializer._load_lockfile", "json_decode"): 1,
+    (Path("src/loushang/harness/resources/packages/materializer.py"), "PackageMaterializer._load_lockfile", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/materializer.py"), "PackageMaterializer.load_trusted_sources", "json_decode"): 1,
+    (Path("src/loushang/harness/resources/packages/materializer.py"), "PackageMaterializer.load_trusted_sources", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/materializer.py"), "_pypi_latest_version_result", "json_decode"): 1,
+    (Path("src/loushang/harness/resources/packages/mounts.py"), "PackageResourceMount.read_text", "path_read"): 1,
+    (Path("src/loushang/harness/resources/packages/mounts.py"), "PackageResourceMount.read_text", "verified_open_file:handle"): 1,
+    (Path("src/loushang/harness/resources/plugins/manifest.py"), "PluginManifestParser.parse", "path_read"): 1,
+    (Path("src/loushang/harness/resources/plugins/manifest.py"), "PluginManifestParser.revalidate", "path_read"): 1,
+    (Path("src/loushang/harness/resources/plugins/_strict_json.py"), "StrictPluginJsonCodec.decode_bytes", "json_decode"): 1,
+    (Path("src/loushang/harness/resources/plugins/distribution_evidence.py"), "_editable_project_root", "json_decode"): 1,
+    (Path("src/loushang/harness/resources/plugins/distribution_evidence.py"), "_editable_project_root", "path_read"): 1,
+    (Path("src/loushang/harness/resources/plugins/revisions.py"), "_digest_file", "path_read"): 1,
+    (Path("src/loushang/harness/resources/plugins/revisions.py"), "_digest_file_portable", "path_read"): 1,
+    (Path("src/loushang/harness/resources/plugins/revisions.py"), "_open_directory", "path_read"): 1,
+    (Path("src/loushang/harness/resources/plugins/revisions.py"), "_open_regular_file", "path_read"): 1,
+    (Path("src/loushang/harness/resources/plugins/revisions.py"), "_open_regular_file_portable", "path_read"): 1,
 }
 
 
@@ -575,7 +465,8 @@ INERT_PLUGIN_SOURCE_ROOTS = (
 @cache
 def _source_texts() -> dict[Path, str]:
     return {
-        path: path.read_text(encoding="utf-8") for path in SOURCE_ROOT.rglob("*.py")
+        path: path.read_text(encoding="utf-8")
+        for path in SOURCE_ROOT.rglob("*.py")
     }
 
 
@@ -634,7 +525,9 @@ def _static_string_sites(sources: Mapping[Path, str], value: str) -> set[Path]:
 class _QualifiedFunctionVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         self.scope: list[str] = []
-        self.functions: list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]] = []
+        self.functions: list[
+            tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]
+        ] = []
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         self.scope.append(node.name)
@@ -707,7 +600,8 @@ def _import_aliases(tree: ast.Module) -> tuple[set[str], set[str]]:
                 if alias.name in RAW_JSON_DECODER_MODULES:
                     json_modules.add(alias.asname or alias.name)
         elif (
-            isinstance(node, ast.ImportFrom) and node.module in RAW_JSON_DECODER_MODULES
+            isinstance(node, ast.ImportFrom)
+            and node.module in RAW_JSON_DECODER_MODULES
         ):
             for alias in node.names:
                 if alias.name in RAW_JSON_DECODER_FUNCTIONS:
@@ -765,7 +659,10 @@ def _is_plugin_package_boundary_sink(
             and call.func.value.id in json_modules
             and call.func.attr in RAW_JSON_DECODER_FUNCTIONS
         )
-        or (isinstance(call.func, ast.Name) and call.func.id in json_decoders)
+        or (
+            isinstance(call.func, ast.Name)
+            and call.func.id in json_decoders
+        )
         for call in calls
     )
     return reads_file or parses_json
@@ -822,7 +719,8 @@ def _json_decoder_instance_aliases(
             continue
         constructor = value.func
         is_decoder = (
-            isinstance(constructor, ast.Name) and constructor.id in json_decoder_classes
+            isinstance(constructor, ast.Name)
+            and constructor.id in json_decoder_classes
         ) or (
             isinstance(constructor, ast.Attribute)
             and constructor.attr == "JSONDecoder"
@@ -971,16 +869,23 @@ def _document_ingress_boundary_violations(source: str) -> tuple[str, ...]:
                 for alias in node.names
             )
     for module, symbol in sorted(required_imports):
-        matches = tuple(binding for binding in import_bindings if binding[0] == symbol)
+        matches = tuple(
+            binding
+            for binding in import_bindings
+            if binding[0] == symbol
+        )
         if len(matches) != 1 or matches[0] != (symbol, module, symbol, None):
-            violations.append(f"one unshadowed {module}.{symbol} import is required")
+            violations.append(
+                f"one unshadowed {module}.{symbol} import is required"
+            )
     if any(
         (
             isinstance(node, ast.Import)
             and any(alias.name in RAW_JSON_DECODER_MODULES for alias in node.names)
         )
         or (
-            isinstance(node, ast.ImportFrom) and node.module in RAW_JSON_DECODER_MODULES
+            isinstance(node, ast.ImportFrom)
+            and node.module in RAW_JSON_DECODER_MODULES
         )
         for node in ast.walk(tree)
     ):
@@ -988,15 +893,10 @@ def _document_ingress_boundary_violations(source: str) -> tuple[str, ...]:
 
     protected_symbols = {symbol for _, symbol in required_imports}
     if any(
-        (
-            isinstance(node, ast.Name)
-            and isinstance(node.ctx, ast.Store)
-            and node.id in protected_symbols
-        )
-        or (
-            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-            and node.name in protected_symbols
-        )
+        (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+         and node.id in protected_symbols)
+        or (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            and node.name in protected_symbols)
         or (isinstance(node, ast.arg) and node.arg in protected_symbols)
         for node in ast.walk(tree)
     ):
@@ -1010,7 +910,8 @@ def _document_ingress_boundary_violations(source: str) -> tuple[str, ...]:
     functions = tuple(
         function
         for qualified, function in qualified_functions
-        if qualified == "PluginDeclarationCoordinator._read_and_decode_document"
+        if qualified
+        == "PluginDeclarationCoordinator._read_and_decode_document"
     )
     if len(functions) != 1:
         violations.append("expected exactly one private document byte-ingress method")
@@ -1033,14 +934,17 @@ def _document_ingress_boundary_violations(source: str) -> tuple[str, ...]:
         violations.append("reader/decoder callbacks are forbidden")
     statements = tuple(ast.unparse(statement) for statement in function.body)
     if statements != (
-        "with handle.open_file(locator) as stream:\n    verified_bytes = stream.read()",
+        "with handle.open_file(locator) as stream:\n"
+        "    verified_bytes = stream.read()",
         "return PluginDeclarationDocumentCodec.decode_bytes(verified_bytes)",
     ):
         violations.append("document byte ingress must preserve the exact byte flow")
 
     operations: list[str] = []
     for call in (
-        node for node in _code_unit_nodes(function.body) if isinstance(node, ast.Call)
+        node
+        for node in _code_unit_nodes(function.body)
+        if isinstance(node, ast.Call)
     ):
         if (
             isinstance(call.func, ast.Attribute)
@@ -1082,7 +986,8 @@ def _document_ingress_boundary_violations(source: str) -> tuple[str, ...]:
         "PluginDeclarationDocumentCodec.decode_bytes": 1,
     }
     actual = {
-        operation: operations.count(operation) for operation in sorted(set(operations))
+        operation: operations.count(operation)
+        for operation in sorted(set(operations))
     }
     if actual != expected:
         violations.append(f"unexpected document byte-ingress calls: {actual!r}")
@@ -1102,7 +1007,9 @@ def _receiver_looks_like_graph_state(
                 return True
             if allow_self and lowered == "self":
                 return True
-            if lowered != "self" and ("graph" in lowered or "runtime" in lowered):
+            if lowered != "self" and (
+                "graph" in lowered or "runtime" in lowered
+            ):
                 return True
         elif isinstance(child, ast.Attribute):
             lowered = child.attr.lower()
@@ -1231,9 +1138,7 @@ def _contains_sensitive_mutation_target(
         for child in children
     ) or (
         not isinstance(node, ast.Name)
-        and any(
-            isinstance(child, ast.Name) and child.id in aliases for child in children
-        )
+        and any(isinstance(child, ast.Name) and child.id in aliases for child in children)
     )
 
 
@@ -1296,15 +1201,16 @@ def _function_mutates_private_graph_state(
                     receiver_aliases=receiver_aliases,
                 )
                 and any(
-                    isinstance(argument, ast.Constant) and argument.value in attributes
+                    isinstance(argument, ast.Constant)
+                    and argument.value in attributes
                     for argument in node.args[1:]
                 )
             ):
                 return True
-        if isinstance(node.func, ast.Attribute) and node.func.attr in {
-            "__setattr__",
-            "__delattr__",
-        }:
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"__setattr__", "__delattr__"}
+        ):
             receiver = (
                 node.args[0]
                 if isinstance(node.func.value, ast.Name)
@@ -1342,7 +1248,8 @@ def _function_mutates_private_graph_state(
                         receiver_aliases=receiver_aliases,
                     )
                     and any(
-                        isinstance(child, ast.Constant) and child.value in attributes
+                        isinstance(child, ast.Constant)
+                        and child.value in attributes
                         for child in ast.walk(node)
                     )
                 )
@@ -1461,7 +1368,9 @@ def _live_binding_sink_inventory(
     return inventory
 
 
-def _class_sites(sources: Mapping[Path, str], class_name: str) -> tuple[Path, ...]:
+def _class_sites(
+    sources: Mapping[Path, str], class_name: str
+) -> tuple[Path, ...]:
     return tuple(
         path
         for path, source in sources.items()
@@ -1644,14 +1553,15 @@ def test_plc1b_declaration_plan_and_pap_crosswalk_are_explicit() -> None:
         lifecycle_plan
     )
     assert "aggregate abort and zero finalization;" in lifecycle_plan
-    assert (
-        "successful mixed evaluation/join/single-finalization is a PLC3 exit gate"
-        in (lifecycle_plan)
+    assert "successful mixed evaluation/join/single-finalization is a PLC3 exit gate" in (
+        lifecycle_plan
     )
     assert "candidate `decision_id` with strict source-group/evidence provenance" in (
         lifecycle_plan
     )
-    assert "`ACTIVE_OPEN -> FINALIZED|CLOSING_ABORT|CLOSING_EXPIRE`" in (lifecycle_plan)
+    assert "`ACTIVE_OPEN -> FINALIZED|CLOSING_ABORT|CLOSING_EXPIRE`" in (
+        lifecycle_plan
+    )
     assert "Transitive cycles are deferred to the existing Graph\n  Planner" in (
         lifecycle_plan
     )
@@ -1688,12 +1598,12 @@ def test_plc1b_versioned_bytes_and_delivery_order_are_frozen() -> None:
     assert "mutable-root `resolve(strict=True)` remains only a pre-publication" in (
         lifecycle_plan
     )
-    assert lifecycle_plan.index(
-        "### PLC5: `coding.lsp.default` Production Provider"
-    ) < lifecycle_plan.index("### PLC6: `coding.base` Production Resource Plugin")
-    assert lifecycle_plan.index(
+    assert lifecycle_plan.index("### PLC5: `coding.lsp.default` Production Provider") < lifecycle_plan.index(
         "### PLC6: `coding.base` Production Resource Plugin"
-    ) < lifecycle_plan.index("### PLC7: `coding.arch.default` Second Provider")
+    )
+    assert lifecycle_plan.index("### PLC6: `coding.base` Production Resource Plugin") < lifecycle_plan.index(
+        "### PLC7: `coding.arch.default` Second Provider"
+    )
 
 
 def test_plc5_default_lsp_mount_keeps_product_and_graph_ownership() -> None:
@@ -1716,27 +1626,6 @@ def test_plc5_default_lsp_mount_keeps_product_and_graph_ownership() -> None:
         "No per-workspace package generation",
     ):
         assert required in lifecycle_plan_text
-
-
-def test_plc6a_freezes_inert_sets_kernel_truth_and_exact_owner_cutovers() -> None:
-    lifecycle_plan = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
-    contract = PLC6_CONTRACT_PATH.read_text(encoding="utf-8")
-
-    assert "PLC6A implementation status (2026-08-29)" in lifecycle_plan
-    assert "PLC6B through PLC6E remain\nunimplemented" in lifecycle_plan
-    for required in (
-        "A Composition Set is an inert Product policy request",
-        "`PluginManagementService` remains the only durable desired-state command",
-        "cannot override an explicit disable or removal",
-        "`coding-minimal`",
-        "`coding-standard`",
-        "`coding-architecture`",
-        "not persisted as management state",
-        "The Kernel must remain truthful",
-        "No slice may retain two effective writers",
-        "source scans prove no old caller can independently publish",
-    ):
-        assert required in contract
 
 
 def test_plc5_co_distributed_dependency_evidence_keeps_one_lock_authority() -> None:
@@ -1767,15 +1656,12 @@ def test_plc5_co_distributed_dependency_evidence_keeps_one_lock_authority() -> N
 def test_plc1b_contract_freezes_no_self_reference_and_exact_v2_records() -> None:
     contract = PLC1B_CONTRACT_PATH.read_text(encoding="utf-8")
 
-    assert (
-        "The descriptor fingerprint never includes package content digest" in contract
-    )
+    assert "The descriptor fingerprint never includes package content digest" in contract
     assert "prevents a declaration document from needing\nto contain a hash" in contract
     assert "verified package revision. It is the sole source-group key" not in contract
     assert "`PluginSymbolReference` v2" in contract
-    assert (
-        "Neither the payload nor either symbol\nreference contains `packageDigest`"
-        in (contract)
+    assert "Neither the payload nor either symbol\nreference contains `packageDigest`" in (
+        contract
     )
     assert "V2 removes the redundant v1 `configurationFingerprint`" in contract
     assert "required key; exact SymbolReference v2 object or JSON `null`" in contract
@@ -1885,10 +1771,10 @@ def test_plc1b_contract_freezes_no_self_reference_and_exact_v2_records() -> None
     for golden_digest in golden_digests:
         assert golden_digest in contract
     json_blocks = _contract_json_blocks(contract)
-    assert (
-        tuple(sha256(block.encode("utf-8")).hexdigest() for block in json_blocks)
-        == golden_digests
-    )
+    assert tuple(
+        sha256(block.encode("utf-8")).hexdigest()
+        for block in json_blocks
+    ) == golden_digests
     records = tuple(json.loads(block) for block in json_blocks)
     executable_source = records[2]["source"]
     subject = records[3]["subject"]
@@ -2006,13 +1892,12 @@ def test_plc1b_contract_freezes_attempt_claim_and_forbidden_peer_semantics() -> 
         assert condition_code_example in contract
     assert (
         "specialized kind,\nexecution-model, ordering, duplicate, closure, "
-        "Evidence-attempt, and effective-\nconfiguration rows override" in contract
+        "Evidence-attempt, and effective-\nconfiguration rows override"
+        in contract
     )
 
 
-def test_plugin_preflight_reads_decisions_only_through_the_approval_owner_port() -> (
-    None
-):
+def test_plugin_preflight_reads_decisions_only_through_the_approval_owner_port() -> None:
     signature = inspect.signature(public_plugins.PluginSelectionResolver.preflight)
     parameters = signature.parameters
 
@@ -2034,9 +1919,9 @@ def test_plugin_preflight_reads_decisions_only_through_the_approval_owner_port()
         "record_decision",
     )
     selection_tree = ast.parse(
-        Path("src/loushang/harness/resources/plugins/selection.py").read_text(
-            encoding="utf-8"
-        )
+        Path(
+            "src/loushang/harness/resources/plugins/selection.py"
+        ).read_text(encoding="utf-8")
     )
     resolver_class = next(
         node
@@ -2051,9 +1936,7 @@ def test_plugin_preflight_reads_decisions_only_through_the_approval_owner_port()
     assert not any(isinstance(node, ast.Raise) for node in ast.walk(preflight_method))
 
 
-def test_plugin_preflight_builds_a_resumeless_source_proposal_before_acceptance() -> (
-    None
-):
+def test_plugin_preflight_builds_a_resumeless_source_proposal_before_acceptance() -> None:
     assert tuple(public_plugins.PluginPreflightProposal.__dataclass_fields__) == (
         "plan",
         "source_proposals",
@@ -2102,7 +1985,9 @@ def test_accepted_preflight_moves_gate_and_context_ownership_to_source_group() -
         "source_groups",
         "_terminal_handle",
     )
-    assert tuple(public_plugins.PluginDeclarationReservation.__dataclass_fields__) == (
+    assert tuple(
+        public_plugins.PluginDeclarationReservation.__dataclass_fields__
+    ) == (
         "package",
         "contribution",
         "source_group_id",
@@ -2113,13 +1998,17 @@ def test_accepted_preflight_moves_gate_and_context_ownership_to_source_group() -
         public_plugins.PluginDeclarationExecutionPreflightGate,
     }
     assert not hasattr(public_plugins, "PluginPreflight")
-    builder_parameters = inspect.signature(PluginDeclarationBuilder.__init__).parameters
+    builder_parameters = inspect.signature(
+        PluginDeclarationBuilder.__init__
+    ).parameters
     assert tuple(builder_parameters) == ("self", "source_group")
     assert "reservations" not in builder_parameters
 
 
 def test_coordinator_exclusively_owns_evidenced_terminal_finalization() -> None:
-    assert tuple(public_plugins.PluginDocumentDecodedEvidence.__dataclass_fields__) == (
+    assert tuple(
+        public_plugins.PluginDocumentDecodedEvidence.__dataclass_fields__
+    ) == (
         "declaration_set_fingerprint",
         "document_bytes_digest",
         "document_schema_version",
@@ -2291,7 +2180,7 @@ def test_resource_item_is_one_inert_kind_with_six_owner_subtypes() -> None:
     contract = PLC1B_CONTRACT_PATH.read_text(encoding="utf-8")
     assert "### `resource_item` payload v1" in contract
     assert "no Resource subtype is a Plugin type" in contract
-    assert '`contributionExecutionModel: "data_only"`' in contract
+    assert "`contributionExecutionModel: \"data_only\"`" in contract
     assert "## PLC1B-2 Regression Gate" in contract
 
 
@@ -2385,7 +2274,9 @@ def test_semantic_fingerprint_is_one_inert_compiler_owned_diagnostic() -> None:
         field.name for field in fields(PluginContributionSemanticFingerprint)
     ) == ("digest", "canonical_bytes", "_record")
     assert tuple(
-        inspect.signature(compile_plugin_contribution_semantic_fingerprint).parameters
+        inspect.signature(
+            compile_plugin_contribution_semantic_fingerprint
+        ).parameters
     ) == ("declaration",)
     assert not hasattr(public_plugins, "PluginContributionSemanticFingerprint")
     assert not hasattr(
@@ -2398,10 +2289,9 @@ def test_semantic_fingerprint_is_one_inert_compiler_owned_diagnostic() -> None:
         "src/loushang/harness/plugin_authoring/semantic_fingerprint.py"
     )
     semantic_source = source_texts[semantic_path]
-    assert (
-        semantic_source.count("def compile_plugin_contribution_semantic_fingerprint(")
-        == 1
-    )
+    assert semantic_source.count(
+        "def compile_plugin_contribution_semantic_fingerprint("
+    ) == 1
     assert "StrictPluginJsonCodec.encode(record)" in semantic_source
     assert "sha256(canonical_bytes).hexdigest()" in semantic_source
     assert "unicodedata" not in semantic_source
@@ -2423,7 +2313,9 @@ def test_semantic_fingerprint_is_one_inert_compiler_owned_diagnostic() -> None:
     ):
         assert "semantic_fingerprint" not in source_texts[runtime_path]
 
-    fixture_root = Path("tests/harness/resources/plugins/fixtures/coding_base_shadow")
+    fixture_root = Path(
+        "tests/harness/resources/plugins/fixtures/coding_base_shadow"
+    )
     assert {
         path.relative_to(fixture_root).as_posix()
         for path in fixture_root.rglob("*")
@@ -2494,14 +2386,8 @@ def test_top_level_capability_provider_selection_is_not_a_profile_slot() -> None
 
     assert "ProductCapabilityProviderResolver" in architecture
     assert "ProductCapabilityConsumerRequirementSet" in architecture
-    assert (
-        "one sorted Definition/Provider/binding/admission/\nchoice entry"
-        in architecture
-    )
-    assert (
-        "ProductCompositionCompiler` preserves every admitted Consumer requirement"
-        in architecture
-    )
+    assert "one sorted Definition/Provider/binding/admission/\nchoice entry" in architecture
+    assert "ProductCompositionCompiler` preserves every admitted Consumer requirement" in architecture
     assert "same-Capability requirements retain deterministic ordering" in architecture
     assert "optional-only" in architecture
     assert "`satisfied` adds the root, `unsatisfied` adds no root/view" in architecture
@@ -2513,10 +2399,7 @@ def test_top_level_capability_provider_selection_is_not_a_profile_slot() -> None
     assert "resulting transitive closure" in architecture
     assert "ProductCompositionCompiler" in architecture
     assert "Runtime Profile candidate for coding.lsp" not in architecture
-    assert (
-        "no Runtime Profile slot is created for a top-level Capability ID"
-        in architecture
-    )
+    assert "no Runtime Profile slot is created for a top-level Capability ID" in architecture
     assert "Product selector over already\n  owner-admitted candidates" in architecture
 
 
@@ -2545,7 +2428,9 @@ def test_pap4_core_keeps_owner_admission_and_product_selection_inert() -> None:
         "ResolvedCapabilityProviderSet",
     }
     assert private_symbols.isdisjoint(set(public_capabilities.__all__))
-    assert all(not hasattr(public_capabilities, symbol) for symbol in private_symbols)
+    assert all(
+        not hasattr(public_capabilities, symbol) for symbol in private_symbols
+    )
     assert all(
         value.__dataclass_params__.frozen
         for value in (
@@ -2558,12 +2443,9 @@ def test_pap4_core_keeps_owner_admission_and_product_selection_inert() -> None:
             ResolvedCapabilityProviderSet,
         )
     )
-    assert (
-        inspect.signature(ProductCapabilityProviderResolver.resolve)
-        .parameters["evaluated_at"]
-        .default
-        is inspect.Parameter.empty
-    )
+    assert inspect.signature(ProductCapabilityProviderResolver.resolve).parameters[
+        "evaluated_at"
+    ].default is inspect.Parameter.empty
 
     admission_source = Path(
         "src/loushang/harness/capabilities/provider_admission.py"
@@ -2577,13 +2459,12 @@ def test_pap4_core_keeps_owner_admission_and_product_selection_inert() -> None:
     provider_codec_source = Path(
         "src/loushang/harness/plugin_authoring/capability_provider.py"
     ).read_text(encoding="utf-8")
-    assert (
-        admission_source.count("CapabilityProviderDeclarationPayload.from_dict(") == 0
-    )
-    assert (
-        provider_codec_source.count("CapabilityProviderDeclarationPayload.from_dict(")
-        == 1
-    )
+    assert admission_source.count(
+        "CapabilityProviderDeclarationPayload.from_dict("
+    ) == 0
+    assert provider_codec_source.count(
+        "CapabilityProviderDeclarationPayload.from_dict("
+    ) == 1
     assert "_capability_provider_payload_from_finalized_candidate" not in (
         admission_source
     )
@@ -2640,9 +2521,7 @@ def test_owner_admission_agent_event_and_disable_contracts_are_explicit() -> Non
     assert "A new contribution kind needs an\nowner contract" in architecture
     assert "The Plugin manager cannot invent\nmerge, precedence" in architecture
     assert "cannot manufacture, renew, widen, or revoke owner records" in admission
-    assert (
-        "The agent loop specifically remains owned by `loushang.agent`" in architecture
-    )
+    assert "The agent loop specifically remains owned by `loushang.agent`" in architecture
     assert "`restart_required`" in architecture
 
 
@@ -2658,10 +2537,7 @@ def test_revision_retention_and_python_import_realm_are_closed_for_v1() -> None:
     assert "The only Instance execution states are" in architecture
     assert "ACTIVE --graceful--> DRAINING --> RETIRED" in architecture
     assert "ACTIVE --security--> REVOKING --> RETIRED" in architecture
-    assert (
-        "There is no `INSTALLED`, `ENABLED`, `STARTING`, `FAILED`, `REMOVED`"
-        in architecture
-    )
+    assert "There is no `INSTALLED`, `ENABLED`, `STARTING`, `FAILED`, `REMOVED`" in architecture
     assert "Package Revision" in architecture
     assert "Materialized Package Revision cache state" in architecture
     assert "write-ahead cleanup journal" in architecture
@@ -2694,9 +2570,8 @@ def test_master_lifecycle_families_match_the_frozen_plc2_contract() -> None:
     assert "The desired states are exactly `absent`, `installed_disabled`, and" in (
         contract
     )
-    assert (
-        "`update_staged` persists the complete target while leaving desired selection\nunchanged"
-        in (contract)
+    assert "`update_staged` persists the complete target while leaving desired selection\nunchanged" in (
+        contract
     )
     assert "desired:     absent -> installed_disabled -> enabled" not in architecture
 
@@ -2716,10 +2591,7 @@ def test_unified_plugin_architecture_preserves_existing_runtime_authorities() ->
 def test_current_plugin_manifest_name_sites_are_a_baseline_inventory() -> None:
     sources = _source_texts()
 
-    assert (
-        _static_string_sites(sources, "plugin.json")
-        == EXPECTED_PLUGIN_JSON_STATIC_SITES
-    )
+    assert _static_string_sites(sources, "plugin.json") == EXPECTED_PLUGIN_JSON_STATIC_SITES
     synthetic = {
         Path("third_parser.py"): (
             'PREFIX = "plugin."\n'
@@ -2727,7 +2599,9 @@ def test_current_plugin_manifest_name_sites_are_a_baseline_inventory() -> None:
             "payload = (root / MANIFEST).read_text()\n"
         )
     }
-    assert _static_string_sites(synthetic, "plugin.json") == {Path("third_parser.py")}
+    assert _static_string_sites(synthetic, "plugin.json") == {
+        Path("third_parser.py")
+    }
 
 
 def test_plugin_manifest_has_one_parser_and_one_resolved_descriptor_authority() -> None:
@@ -2748,8 +2622,9 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
         _plugin_package_boundary_sink_call_counts(sources)
         == EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS
     )
-    assert _plugin_package_boundary_sink_sites(sources) == set(
-        EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS
+    assert (
+        _plugin_package_boundary_sink_sites(sources)
+        == set(EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS)
     )
     assert set(EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS.values()) == {
         "package-catalog",
@@ -2790,10 +2665,13 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
             "        return decode(stream)\n"
         ),
         Path("src/loushang/harness/resources/packages/module_parse.py"): (
-            "import json as codec\npayload = codec.loads(path.read_text())\n"
+            "import json as codec\n"
+            "payload = codec.loads(path.read_text())\n"
         ),
         Path("src/loushang/harness/plugin_authoring/second_decoder.py"): (
-            "import json\ndef decode(path):\n    return json.loads(path.read_bytes())\n"
+            "import json\n"
+            "def decode(path):\n"
+            "    return json.loads(path.read_bytes())\n"
         ),
     }
     assert _plugin_package_boundary_sink_sites(synthetic) == {
@@ -2956,7 +2834,8 @@ def test_document_byte_ingress_freezes_verified_handle_and_exact_call_edges() ->
 
     wildcard_import_shadow = compliant.replace(
         "class PluginDeclarationCoordinator:\n",
-        "from evil import *\nclass PluginDeclarationCoordinator:\n",
+        "from evil import *\n"
+        "class PluginDeclarationCoordinator:\n",
     )
     assert _document_ingress_boundary_violations(wildcard_import_shadow) == (
         "wildcard imports are forbidden at document byte ingress",
@@ -2974,9 +2853,7 @@ def test_coordinator_source_uses_the_frozen_boundary_when_present() -> None:
 def test_current_graph_private_mutations_use_qualified_owner_allowlist() -> None:
     sources = _source_texts()
 
-    assert (
-        _graph_private_mutation_sites(sources) == EXPECTED_GRAPH_PRIVATE_MUTATION_SITES
-    )
+    assert _graph_private_mutation_sites(sources) == EXPECTED_GRAPH_PRIVATE_MUTATION_SITES
     synthetic = {
         Path("src/loushang/harness/capabilities/graph_alias.py"): (
             "def alias_write(graph, candidate):\n"
@@ -3004,7 +2881,7 @@ def test_current_graph_private_mutations_use_qualified_owner_allowlist() -> None
         ),
         Path("src/loushang/harness/rogue_graph_module.py"): (
             "graph_runtime._snapshot = candidate\n"
-        ),
+        )
     }
     assert _graph_private_mutation_sites(synthetic) == {
         (
@@ -3054,14 +2931,14 @@ def test_current_extension_declaration_and_live_binding_inventory_is_frozen() ->
     sources = _source_texts()
     api_path = Path("src/loushang/harness/extensions/api.py")
 
+    assert _class_method_names(
+        sources[api_path],
+        "ExtensionContributionAPI",
+    ) == EXPECTED_EXTENSION_DECLARATION_METHODS
     assert (
-        _class_method_names(
-            sources[api_path],
-            "ExtensionContributionAPI",
-        )
-        == EXPECTED_EXTENSION_DECLARATION_METHODS
+        _live_binding_sink_inventory(sources)
+        == EXPECTED_LIVE_BINDING_SINK_INVENTORY
     )
-    assert _live_binding_sink_inventory(sources) == EXPECTED_LIVE_BINDING_SINK_INVENTORY
     synthetic = {
         Path("src/loushang/harness/extensions/late.py"): (
             "def direct(bindings, tool):\n"
@@ -3075,9 +2952,12 @@ def test_current_extension_declaration_and_live_binding_inventory_is_frozen() ->
             "    bindings.bind_policy(policy)\n"
         ),
         Path("src/loushang/harness/outside_extension.py"): (
-            "def outside(bindings, policy):\n    bindings.bind_policy(policy)\n"
+            "def outside(bindings, policy):\n"
+            "    bindings.bind_policy(policy)\n"
         ),
-        Path("src/loushang/harness/module_binding.py"): ("bindings.bind_tool(tool)\n"),
+        Path("src/loushang/harness/module_binding.py"): (
+            "bindings.bind_tool(tool)\n"
+        ),
     }
     assert _live_binding_sink_inventory(synthetic) == {
         (
@@ -3203,10 +3083,7 @@ def test_unified_plugin_architecture_keeps_product_kernel_outside_plugins() -> N
 
     assert "the Product Kernel" in architecture
     assert "`coding.base` Plugin" in architecture
-    assert (
-        "base Product remains useful with every optional Plugin disabled"
-        in architecture
-    )
+    assert "base Product remains useful with every optional Plugin disabled" in architecture
     assert "minimum mandatory\nsystem prompt" in architecture
 
 
@@ -3238,7 +3115,10 @@ def test_plc2_contract_freezes_inert_desired_state_before_management_service() -
 
 def test_plc2_desired_state_layer_has_no_owner_binding_or_product_imports() -> None:
     root = Path("src/loushang/harness/plugin_management")
-    sources = {path: path.read_text(encoding="utf-8") for path in root.rglob("*.py")}
+    sources = {
+        path: path.read_text(encoding="utf-8")
+        for path in root.rglob("*.py")
+    }
     imported = {
         module
         for path, source in sources.items()
@@ -3281,7 +3161,10 @@ def test_plc2_management_contract_freezes_one_durable_command_authority() -> Non
 
 def test_plc2_management_service_is_the_only_desired_state_mutation_caller() -> None:
     root = Path("src/loushang/harness/plugin_management")
-    sources = {path: path.read_text(encoding="utf-8") for path in root.rglob("*.py")}
+    sources = {
+        path: path.read_text(encoding="utf-8")
+        for path in root.rglob("*.py")
+    }
 
     assert _call_sites(sources, "commit") == {
         (
@@ -3305,9 +3188,9 @@ def test_plc2_management_service_is_the_only_desired_state_mutation_caller() -> 
 
 def test_plc2_staged_update_contract_is_versioned_inert_and_conservative() -> None:
     contract = PLC2_CONTRACT_PATH.read_text(encoding="utf-8")
-    operations = Path("src/loushang/harness/plugin_management/operations.py").read_text(
-        encoding="utf-8"
-    )
+    operations = Path(
+        "src/loushang/harness/plugin_management/operations.py"
+    ).read_text(encoding="utf-8")
 
     assert "## PLC2-3 Staged Update Contract" in contract
     assert "`PluginManagementCommandV1` remains exact" in contract
@@ -3316,26 +3199,22 @@ def test_plc2_staged_update_contract_is_versioned_inert_and_conservative() -> No
     assert "must never be translated into\nschema compatibility" in contract
     assert "`enabled_package_revision_changed`" in contract
     assert "not evidence that a host\nor Session restarted" in contract
-    assert (
-        'PluginManagementAction = Literal["install", "enable", "disable", "remove"]'
-        in (operations)
+    assert 'PluginManagementAction = Literal["install", "enable", "disable", "remove"]' in (
+        operations
     )
 
 
 def test_plc2_retirement_intent_is_handoff_not_effective_state() -> None:
     contract = PLC2_CONTRACT_PATH.read_text(encoding="utf-8")
-    retirement = Path("src/loushang/harness/plugin_management/retirement.py").read_text(
-        encoding="utf-8"
-    )
+    retirement = Path(
+        "src/loushang/harness/plugin_management/retirement.py"
+    ).read_text(encoding="utf-8")
 
     assert "## PLC2-4A Durable Retirement Intent" in contract
     assert "do not\nprove that an Instance was ever `ACTIVE`" in contract
     assert "mode `graceful` only" in contract
     assert "Owner retirement and\ncleanup have not begun in PLC2-4A" in contract
-    assert (
-        "management operation journal\n  -> desired-state journal\n  -> retirement-intent journal"
-        in contract
-    )
+    assert "management operation journal\n  -> desired-state journal\n  -> retirement-intent journal" in contract
     for forbidden_call in (
         ".dispose(",
         ".deactivate(",
@@ -3354,7 +3233,8 @@ def test_plc2_retirement_set_is_exact_inert_and_opened_by_one_authority() -> Non
     retirement_sets = retirement_sets_path.read_text(encoding="utf-8")
     management_root = Path("src/loushang/harness/plugin_management")
     management_sources = {
-        path: path.read_text(encoding="utf-8") for path in management_root.rglob("*.py")
+        path: path.read_text(encoding="utf-8")
+        for path in management_root.rglob("*.py")
     }
 
     assert "## PLC2-4B Exact-Owner Retirement Aggregation" in contract
@@ -3386,7 +3266,8 @@ def test_plc2_instance_runtime_is_host_gated_and_not_package_cleanup() -> None:
     contract = PLC2_CONTRACT_PATH.read_text(encoding="utf-8")
     management_root = Path("src/loushang/harness/plugin_management")
     management_sources = {
-        path: path.read_text(encoding="utf-8") for path in management_root.rglob("*.py")
+        path: path.read_text(encoding="utf-8")
+        for path in management_root.rglob("*.py")
     }
     instance_runtime = Path(
         "src/loushang/harness/plugin_management/instance_runtime.py"
@@ -3409,7 +3290,9 @@ def test_plc2_instance_runtime_is_host_gated_and_not_package_cleanup() -> None:
         expected_callers = (
             {
                 (
-                    Path("src/loushang/harness/plugin_management/package_lifecycle.py"),
+                    Path(
+                        "src/loushang/harness/plugin_management/package_lifecycle.py"
+                    ),
                     "PluginPackageLifecycleLedger.handoff_cleanup_and_release",
                 )
             }
@@ -3433,7 +3316,8 @@ def test_plc2_package_cleanup_is_write_ahead_inert_and_gc_rechecked() -> None:
     contract = PLC2_CONTRACT_PATH.read_text(encoding="utf-8")
     management_root = Path("src/loushang/harness/plugin_management")
     management_sources = {
-        path: path.read_text(encoding="utf-8") for path in management_root.rglob("*.py")
+        path: path.read_text(encoding="utf-8")
+        for path in management_root.rglob("*.py")
     }
     package_lifecycle = Path(
         "src/loushang/harness/plugin_management/package_lifecycle.py"
@@ -3468,20 +3352,26 @@ def test_plc2_package_cleanup_is_write_ahead_inert_and_gc_rechecked() -> None:
 
 def test_plc3_verified_evaluation_is_internal_and_host_injection_is_narrow() -> None:
     contract = PLC3_CONTRACT_PATH.read_text(encoding="utf-8")
-    approval_execution_path = Path("src/loushang/harness/approval/plugin_execution.py")
+    approval_execution_path = Path(
+        "src/loushang/harness/approval/plugin_execution.py"
+    )
     approval_execution = approval_execution_path.read_text(encoding="utf-8")
-    selection = Path("src/loushang/harness/resources/plugins/selection.py").read_text(
-        encoding="utf-8"
-    )
-    approval_exports = Path("src/loushang/harness/approval/__init__.py").read_text(
-        encoding="utf-8"
-    )
+    selection = Path(
+        "src/loushang/harness/resources/plugins/selection.py"
+    ).read_text(encoding="utf-8")
+    approval_exports = Path(
+        "src/loushang/harness/approval/__init__.py"
+    ).read_text(encoding="utf-8")
     coordinator = PLUGIN_DECLARATION_COORDINATOR_PATH.read_text(encoding="utf-8")
-    evaluator_path = Path("src/loushang/harness/plugin_authoring/evaluator.py")
+    evaluator_path = Path(
+        "src/loushang/harness/plugin_authoring/evaluator.py"
+    )
     compatibility_import_realm_path = Path(
         "src/loushang/harness/plugin_authoring/import_realm.py"
     )
-    import_realm_path = Path("src/loushang/harness/resources/plugins/import_realm.py")
+    import_realm_path = Path(
+        "src/loushang/harness/resources/plugins/import_realm.py"
+    )
     evaluator = evaluator_path.read_text(encoding="utf-8")
     import_realm = import_realm_path.read_text(encoding="utf-8")
     compatibility_import_realm = compatibility_import_realm_path.read_text(
@@ -3490,9 +3380,9 @@ def test_plc3_verified_evaluation_is_internal_and_host_injection_is_narrow() -> 
     authoring_exports = Path(
         "src/loushang/harness/plugin_authoring/__init__.py"
     ).read_text(encoding="utf-8")
-    declaration_host = Path("src/loushang/harness/plugin_authoring/host.py").read_text(
-        encoding="utf-8"
-    )
+    declaration_host = Path(
+        "src/loushang/harness/plugin_authoring/host.py"
+    ).read_text(encoding="utf-8")
 
     assert "Status: PLC3-3 verified Definition evaluation and mixed-source join" in (
         contract
@@ -3500,16 +3390,14 @@ def test_plc3_verified_evaluation_is_internal_and_host_injection_is_narrow() -> 
     assert "A durable approved decision remains necessary but not sufficient" in (
         contract
     )
-    assert (
-        "private `coding.lsp.default` Product\ncomposer the first production caller"
-        in (contract)
+    assert "private `coding.lsp.default` Product\ncomposer the first production caller" in (
+        contract
     )
     assert "generic Host\ndoes not construct either implicitly" in contract
     assert "the executable path still has no production\ncaller" not in contract
     assert "The production\nHost constructs neither" not in contract
-    assert (
-        "Consumption and reservation creation are therefore one replay transition"
-        in (contract)
+    assert "Consumption and reservation creation are therefore one replay transition" in (
+        contract
     )
     assert "one-event multi-use recovery" in contract
     assert "claim group\n-> issue aggregate start permit" in contract
@@ -3542,7 +3430,7 @@ def test_plc3_verified_evaluation_is_internal_and_host_injection_is_narrow() -> 
     assert "_ExecutionUsesRecoveredV1" in approval_execution
     assert "PluginExecutionConsumptionReceiptV1" in approval_execution
     assert "PluginExecutionUseReservationV1" in approval_execution
-    assert 'consumption_state="CONSUMED"' in approval_execution
+    assert "consumption_state=\"CONSUMED\"" in approval_execution
     assert selection.count("def _issue_execution_start_permit(") == 1
     assert "plugin_execution_start_permit_consumed" in selection
     assert "plugin_execution_start_not_applicable" in selection
@@ -3572,12 +3460,12 @@ def test_plc3_verified_evaluation_is_internal_and_host_injection_is_narrow() -> 
 
 
 def test_pap5_session_root_is_the_only_graph_planning_site() -> None:
-    model_call = Path("src/loushang/harness/session/model_call.py").read_text(
-        encoding="utf-8"
-    )
-    agent_product = Path("src/loushang/harness/session/agent_product.py").read_text(
-        encoding="utf-8"
-    )
+    model_call = Path(
+        "src/loushang/harness/session/model_call.py"
+    ).read_text(encoding="utf-8")
+    agent_product = Path(
+        "src/loushang/harness/session/agent_product.py"
+    ).read_text(encoding="utf-8")
 
     assert "RuntimeCapabilityGraphPlanner" not in model_call
     # Initial v1 planning and the opt-in pre-publication v2 Resource replan both
@@ -3654,3 +3542,24 @@ def test_pap55_review_corrections_freeze_single_catalog_ingress_and_custody() ->
     assert "PLC4.5 adds only the two internal Resource-owner" in lifecycle
     assert "return bundle.merge(" in extension_resources
     assert "delete direct post-Catalog bundle merge authority" in plan
+
+
+def test_plc6a_freezes_inert_sets_kernel_truth_and_exact_owner_cutovers() -> None:
+    lifecycle_plan = LIFECYCLE_PLAN_PATH.read_text(encoding="utf-8")
+    contract = PLC6_CONTRACT_PATH.read_text(encoding="utf-8")
+
+    assert "PLC6A implementation status (2026-08-29)" in lifecycle_plan
+    assert "PLC6B through PLC6E remain\nunimplemented" in lifecycle_plan
+    for required in (
+        "A Composition Set is an inert Product policy request",
+        "`PluginManagementService` remains the only durable desired-state command",
+        "cannot override an explicit disable or removal",
+        "`coding-minimal`",
+        "`coding-standard`",
+        "`coding-architecture`",
+        "not persisted as management state",
+        "The Kernel must remain truthful",
+        "No slice may retain two effective writers",
+        "source scans prove no old caller can independently publish",
+    ):
+        assert required in contract
