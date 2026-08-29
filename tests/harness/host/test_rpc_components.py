@@ -331,23 +331,26 @@ def test_rpc_package_commands_resolve_the_current_rebound_session() -> None:
     }
 
 
-def test_rpc_package_uninstall_prefers_async_catalog_entrypoint() -> None:
+def test_rpc_package_uninstall_prefers_runtime_owner_before_session_async_name() -> (
+    None
+):
     class _Runtime:
         def __init__(self) -> None:
             self.calls: list[str] = []
 
-        def uninstall_package(self, source: str) -> object:
-            raise AssertionError(f"sync uninstall used for {source}")
-
-        async def uninstall_package_async(self, source: str) -> dict[str, object]:
+        async def uninstall_package(self, source: str) -> dict[str, object]:
             self.calls.append(source)
             return {"lifecycle": "uninstalled", "source": source}
+
+    class _Session:
+        async def uninstall_package_async(self, source: str) -> object:
+            raise AssertionError(f"session authority used for {source}")
 
     runtime = _Runtime()
     stdout = StringIO()
     commands = RpcPackageCommands(
         runtime=runtime,
-        get_session=object,
+        get_session=_Session,
         output=RpcOutput(stdout),
     )
     handlers = dict(commands.bindings())

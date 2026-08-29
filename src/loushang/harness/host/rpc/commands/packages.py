@@ -82,12 +82,11 @@ class _DynamicPackageCapabilities:
         **kwargs: object,
     ) -> object:
         session = self._get_session()
-        for name in names:
-            method = getattr(self._runtime, name, None)
-            if not callable(method):
-                method = getattr(session, name, None)
-            if callable(method):
-                return method(*args, **kwargs)
+        for owner in (self._runtime, session):
+            for name in names:
+                method = getattr(owner, name, None)
+                if callable(method):
+                    return method(*args, **kwargs)
         raise _PackageCapabilityUnavailable
 
 

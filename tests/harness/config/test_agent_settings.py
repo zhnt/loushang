@@ -759,6 +759,62 @@ def test_package_source_mutation_rollback_rejects_same_key_concurrent_write(
     ]
 
 
+def test_package_source_mutation_compensates_post_commit_listener_failure(
+    tmp_path,
+) -> None:
+    from loushang.harness.config.agent import SettingsManager
+
+    source = "git:https://example.test/review.git"
+    manager = SettingsManager(project_settings_path=tmp_path / "project.json")
+
+    def fail(_settings) -> None:  # type: ignore[no-untyped-def]
+        raise RuntimeError("listener failed")
+
+    manager.subscribe(fail)
+
+    with pytest.raises(RuntimeError, match="listener failed"):
+        manager.begin_package_source_mutation(
+            source,
+            scope="project",
+            present=True,
+        )
+
+    assert manager.get_package_sources() == []
+    assert manager.get_project_settings() == {}
+    assert json.loads((tmp_path / "project.json").read_text(encoding="utf-8")) == {}
+
+
+def test_package_source_mutation_commit_rejects_listener_same_key_drift(
+    tmp_path,
+) -> None:
+    from loushang.harness.config.agent import SettingsManager
+
+    source = "git:https://example.test/review.git"
+    manager = SettingsManager(project_settings_path=tmp_path / "project.json")
+    unsubscribe_callbacks = [lambda: None]
+
+    def remove_again(_settings) -> None:  # type: ignore[no-untyped-def]
+        unsubscribe_callbacks[0]()
+        manager.remove_package_source(source, scope="project")
+
+    unsubscribe_callbacks[0] = manager.subscribe(remove_again)
+    mutation = manager.begin_package_source_mutation(
+        source,
+        scope="project",
+        present=True,
+    )
+
+    assert manager.get_package_sources() == []
+    with pytest.raises(RuntimeError, match="changed concurrently: packages"):
+        mutation.commit()
+    assert mutation.state == "active"
+
+    with pytest.raises(RuntimeError, match="changed concurrently: packages"):
+        mutation.rollback()
+    assert mutation.state == "active"
+    assert manager.get_project_settings() == {"packages": []}
+
+
 def test_settings_manager_exposes_standard_control_getters_and_setters(
     tmp_path,
 ) -> None:

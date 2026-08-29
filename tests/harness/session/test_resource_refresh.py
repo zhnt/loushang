@@ -475,6 +475,93 @@ def test_catalog_refresh_transaction_hides_tentative_mutation_from_other_refresh
     asyncio.run(scenario())
 
 
+def test_shared_catalog_lock_hides_root_mutation_from_child_session_refresh() -> None:
+    async def scenario() -> None:
+        shared_lock = asyncio.Lock()
+        package_enabled = [False]
+        root_current = [ResourceBundle(cwd=Path("/tmp/root-original"))]
+        child_current = [ResourceBundle(cwd=Path("/tmp/child-original"))]
+        root_started = asyncio.Event()
+        release_root = asyncio.Event()
+        child_started = asyncio.Event()
+        child_published_settings: list[bool] = []
+
+        async def root_refresh(_reason: str) -> ResourceBundle:
+            root_started.set()
+            await release_root.wait()
+            raise RuntimeError("root package candidate rejected")
+
+        async def child_refresh(_reason: str) -> ResourceBundle:
+            child_started.set()
+            child_published_settings.append(package_enabled[0])
+            bundle = ResourceBundle(
+                cwd=Path(f"/tmp/child-package-{package_enabled[0]}")
+            )
+            child_current[0] = bundle
+            return bundle
+
+        def make_runtime(
+            current: list[ResourceBundle | None],
+            refresh_catalog,
+        ) -> SessionResourceRefreshRuntime:
+            return SessionResourceRefreshRuntime(
+                get_resource_loader=lambda: None,
+                get_resource_bundle=lambda: current[0],
+                get_cwd=lambda: "/tmp/project",
+                get_extension_runtime=lambda: None,
+                get_settings=lambda: None,
+                set_resource_bundle=lambda bundle: current.__setitem__(0, bundle),
+                rebuild_prompt_and_tools_view=lambda: None,
+                record_refresh_failure=lambda _error: None,
+                sync_extension_diagnostics=lambda: None,
+                refresh_catalog=refresh_catalog,
+                catalog_refresh_lock=shared_lock,
+            )
+
+        root = make_runtime(root_current, root_refresh)
+        child = make_runtime(child_current, child_refresh)
+
+        def begin() -> bool:
+            previous = package_enabled[0]
+            package_enabled[0] = True
+            return previous
+
+        def settle(
+            previous: bool,
+            outcome: SessionResourceRefreshOutcome,
+        ) -> None:
+            if not outcome.published:
+                package_enabled[0] = previous
+
+        root_task = asyncio.create_task(
+            root.refresh_transaction_with_outcome(
+                begin=begin,
+                settle=settle,
+                reason="root-package",
+            )
+        )
+        await root_started.wait()
+        child_task = asyncio.create_task(child.refresh_with_outcome(reason="child"))
+        await asyncio.sleep(0)
+
+        assert package_enabled == [True]
+        assert child_started.is_set() is False
+        release_root.set()
+
+        root_outcome = await root_task
+        child_outcome = await child_task
+        assert root_outcome.published is False
+        assert isinstance(root_outcome.error, RuntimeError)
+        assert child_outcome.published is True
+        assert child_published_settings == [False]
+        assert package_enabled == [False]
+        assert child_current[0].cwd == Path("/tmp/child-package-False")
+        await root.close()
+        await child.close()
+
+    asyncio.run(scenario())
+
+
 def test_catalog_refresh_request_coalesces_and_reports_one_success() -> None:
     events: list[str] = []
 

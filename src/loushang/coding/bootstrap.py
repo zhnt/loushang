@@ -623,6 +623,9 @@ def _create_agent_session(
                     if resource_authority_mode == "catalog_required"
                     else None
                 ),
+                resource_catalog_refresh_lock=(
+                    services.resource_catalog_refresh_lock
+                ),
             )
 
         try:

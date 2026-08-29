@@ -10,6 +10,7 @@ from loushang.agent import ThinkingLevel
 from loushang.ai.model import ModelSelection
 from loushang.harness.config import (
     ConfigLayer,
+    ConfigScope,
     LayeredConfig,
     ScopedConfigRuntime,
     SettingsRuntime,
@@ -663,9 +664,10 @@ class SettingsManager:
         layer = self._config.scope(scope)
         previous_patch: dict[str, object] = {}
         applied_patch: dict[str, object] = {}
+        applied_ready = False
 
         def apply(current_patch: dict[str, object]) -> dict[str, object]:
-            nonlocal previous_patch, applied_patch
+            nonlocal previous_patch, applied_patch, applied_ready
             previous_patch = deepcopy(current_patch)
             current_sources = self._settings.package_sources
             next_sources = (
@@ -680,48 +682,95 @@ class SettingsManager:
                 AgentSettingsUpdate(package_sources=next_sources)
             )
             applied_patch = merge_config_patch(current_patch, update_patch)
+            applied_ready = True
             return applied_patch
 
-        layer.transform(apply)
-        changed_keys = {
-            key
-            for key in previous_patch.keys() | applied_patch.keys()
-            if previous_patch.get(key, UNSET) != applied_patch.get(key, UNSET)
-        }
+        def mutation_keys() -> set[str]:
+            return {
+                key
+                for key in previous_patch.keys() | applied_patch.keys()
+                if previous_patch.get(key, UNSET)
+                != applied_patch.get(key, UNSET)
+            }
+
+        try:
+            layer.transform(apply)
+        except BaseException as error:
+            if applied_ready:
+                try:
+                    self._restore_package_source_patch(
+                        layer=layer,
+                        previous_patch=previous_patch,
+                        applied_patch=applied_patch,
+                        changed_keys=mutation_keys(),
+                    )
+                except BaseException as rollback_error:
+                    error.add_note(
+                        "Package source settings compensation also failed: "
+                        f"{rollback_error!r}"
+                    )
+            raise
+        changed_keys = mutation_keys()
+
+        def validate() -> None:
+            if not layer.matches(applied_patch, keys=changed_keys):
+                raise RuntimeError(
+                    "Package source settings changed concurrently: "
+                    + ", ".join(sorted(changed_keys))
+                )
 
         def restore() -> None:
-            def restore_changed_keys(
-                current_patch: dict[str, object],
-            ) -> dict[str, object]:
-                conflicts = tuple(
-                    sorted(
-                        key
-                        for key in changed_keys
-                        if current_patch.get(key, UNSET)
-                        != applied_patch.get(key, UNSET)
-                    )
-                )
-                if conflicts:
-                    raise RuntimeError(
-                        "Package source settings changed concurrently: "
-                        + ", ".join(conflicts)
-                    )
-                restored_patch = deepcopy(current_patch)
-                for key in changed_keys:
-                    if key in previous_patch:
-                        restored_patch[key] = deepcopy(previous_patch[key])
-                    else:
-                        restored_patch.pop(key, None)
-                return restored_patch
-
-            layer.transform(restore_changed_keys)
+            self._restore_package_source_patch(
+                layer=layer,
+                previous_patch=previous_patch,
+                applied_patch=applied_patch,
+                changed_keys=changed_keys,
+            )
 
         return PackageSourceSettingsMutation(
             source=source,
             scope=scope,
             changed=bool(changed_keys),
             restore=restore,
+            validate=validate,
         )
+
+    @staticmethod
+    def _restore_package_source_patch(
+        *,
+        layer: ConfigScope[ControlConfig],
+        previous_patch: Mapping[str, object],
+        applied_patch: Mapping[str, object],
+        changed_keys: set[str],
+    ) -> None:
+        if not changed_keys or layer.matches(previous_patch, keys=changed_keys):
+            return
+
+        def restore_changed_keys(
+            current_patch: dict[str, object],
+        ) -> dict[str, object]:
+            conflicts = tuple(
+                sorted(
+                    key
+                    for key in changed_keys
+                    if current_patch.get(key, UNSET)
+                    != applied_patch.get(key, UNSET)
+                )
+            )
+            if conflicts:
+                raise RuntimeError(
+                    "Package source settings changed concurrently: "
+                    + ", ".join(conflicts)
+                )
+            restored_patch = deepcopy(current_patch)
+            for key in changed_keys:
+                if key in previous_patch:
+                    restored_patch[key] = deepcopy(previous_patch[key])
+                else:
+                    restored_patch.pop(key, None)
+            return restored_patch
+
+        layer.transform(restore_changed_keys)
 
     def get_plugin_sources(self) -> list[str]:
         return list(self._settings.plugin_sources)

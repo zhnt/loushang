@@ -18,6 +18,7 @@ class PackageSourceSettingsMutation:
         scope: str,
         changed: bool,
         restore: Callable[[], None],
+        validate: Callable[[], None] | None = None,
     ) -> None:
         if not source:
             raise ValueError("Package source mutation requires a source")
@@ -27,10 +28,13 @@ class PackageSourceSettingsMutation:
             raise TypeError("Package source mutation changed flag must be a bool")
         if not callable(restore):
             raise TypeError("Package source mutation restore callback is invalid")
+        if validate is not None and not callable(validate):
+            raise TypeError("Package source mutation validation callback is invalid")
         self.source = source
         self.scope = scope
         self.changed = changed
         self._restore = restore
+        self._validate = validate or (lambda: None)
         self._state: PackageSourceMutationState = "active"
 
     @property
@@ -40,6 +44,8 @@ class PackageSourceSettingsMutation:
     def commit(self) -> None:
         if self._state != "active":
             raise RuntimeError("Package source mutation is already finalized")
+        if self.changed:
+            self._validate()
         self._state = "committed"
 
     def rollback(self) -> None:

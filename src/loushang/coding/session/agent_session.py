@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any
 
@@ -164,6 +165,7 @@ class AgentSession(AgentProductSession):
         workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
         initial_resource_catalog_bootstrap: Any | None = None,
         resource_catalog_refresh_bootstrap_factory: Any | None = None,
+        resource_catalog_refresh_lock: asyncio.Lock | None = None,
     ) -> None:
         if coding_lsp_plugin_assembly is not None and not isinstance(
             coding_lsp_plugin_assembly,
@@ -269,6 +271,7 @@ class AgentSession(AgentProductSession):
                 resource_catalog_refresh_bootstrap_factory=(
                     resource_catalog_refresh_bootstrap_factory
                 ),
+                resource_catalog_refresh_lock=resource_catalog_refresh_lock,
                 extension_declaration_preflight=(
                     CodingExtensionDeclarationPreflight(
                         baseline_profile=resolved_capability_runtime.profile

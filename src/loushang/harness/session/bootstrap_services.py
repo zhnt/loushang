@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Generic, TypeVar
 
@@ -45,6 +46,11 @@ class BootstrapServices(
     resource_loader: ResourceLoaderT
     diagnostics_service: DiagnosticsT
     exec_service: ExecServiceT | None = None
+    resource_catalog_refresh_lock: asyncio.Lock = field(
+        default_factory=asyncio.Lock,
+        repr=False,
+        compare=False,
+    )
 
 
 def create_standard_agent_bootstrap_services(

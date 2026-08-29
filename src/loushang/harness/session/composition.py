@@ -240,6 +240,7 @@ class SessionFoundationInputs:
     ) = None
     request_evidence: RequestEvidenceRuntimePort | None = None
     refresh_catalog: ResourceCatalogRefresh | None = None
+    resource_catalog_refresh_lock: asyncio.Lock | None = None
 
 
 @dataclass(frozen=True)
@@ -436,6 +437,10 @@ def _legacy_composition_inputs(
         get_effective_skills=remaining.pop("get_effective_skills", None),
         request_evidence=remaining.pop("request_evidence", None),
         refresh_catalog=remaining.pop("refresh_catalog", None),
+        resource_catalog_refresh_lock=remaining.pop(
+            "resource_catalog_refresh_lock",
+            None,
+        ),
     )
     maintenance = SessionMaintenanceInputs(
         execute_compaction=take("execute_compaction"),
@@ -739,6 +744,7 @@ def _build_foundation_runtimes(
         skill_activation_runtime=cast(Any, ports.resources.skill_activation),
         extension_declaration_preflight=inputs.extension_declaration_preflight,
         refresh_catalog=inputs.refresh_catalog,
+        catalog_refresh_lock=inputs.resource_catalog_refresh_lock,
     )
     resource_watch_controller = ResourceChangeWatcher(
         get_paths=inputs.get_resource_watch_paths,

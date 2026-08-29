@@ -90,6 +90,7 @@ class SessionResourceRefreshRuntime:
     )
     extension_declaration_preflight: ExtensionDeclarationPreflight | None = None
     refresh_catalog: ResourceCatalogRefresh | None = None
+    catalog_refresh_lock: asyncio.Lock | None = field(default=None, repr=False)
     _coordinator: ResourceRefreshCoordinator[ResourceBundle] = field(init=False)
     _discovery: RuntimeResourceDiscovery[ResourceBundle] = field(init=False)
     _resource_revision: int = field(init=False, default=0)
@@ -106,7 +107,7 @@ class SessionResourceRefreshRuntime:
 
     def __post_init__(self) -> None:
         self._resource_revision = 1 if self.get_resource_bundle() is not None else 0
-        self._catalog_refresh_lock = asyncio.Lock()
+        self._catalog_refresh_lock = self.catalog_refresh_lock or asyncio.Lock()
         self._discovery = RuntimeResourceDiscovery(self.get_extension_runtime)
         self._coordinator = ResourceRefreshCoordinator(
             load_resource=self._load_resource_bundle,

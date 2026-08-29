@@ -292,6 +292,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         resource_catalog_refresh_bootstrap_factory: (
             ResourceCatalogRefreshBootstrapFactory | None
         ) = None,
+        resource_catalog_refresh_lock: asyncio.Lock | None = None,
     ) -> None:
         self.agent = agent
         self._session_default_model = agent.model
@@ -315,6 +316,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self._resource_catalog_refresh_bootstrap_factory = (
             resource_catalog_refresh_bootstrap_factory
         )
+        self._resource_catalog_refresh_lock = resource_catalog_refresh_lock
         self._resource_catalog_snapshot: object | None = None
         self._resource_catalog_projection: object | None = None
         self._skill_catalog_consumer: SkillCatalogConsumer | None = None
@@ -990,6 +992,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     if self._resource_catalog_refresh_bootstrap_factory is not None
                     else None
                 ),
+                resource_catalog_refresh_lock=self._resource_catalog_refresh_lock,
             ),
             maintenance=SessionMaintenanceInputs(
                 execute_compaction=self._execute_product_compaction,

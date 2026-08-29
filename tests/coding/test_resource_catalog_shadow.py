@@ -742,6 +742,10 @@ def test_coding_initial_catalog_applies_disabled_skill_in_owner_status(
             model=_model(),
         )
         try:
+            assert (
+                session._composition.resource_refresh_runtime._catalog_refresh_lock
+                is services.resource_catalog_refresh_lock
+            )
             await session.prepare_model_call_runtime()
 
             statuses = session.list_skill_statuses()
