@@ -100,6 +100,7 @@ from loushang.harness.resources._skill_catalog_status import (
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.catalog import PackageSummaryProvider
 from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.packages.session import (
     SessionPackageController,
     SessionPackageSettingsManager,
@@ -276,6 +277,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         base_prompt: str | None = None,
         diagnostics_service: DiagnosticsService | None = None,
         package_materializer: PackageMaterializer | None = None,
+        selected_plugin_packages: tuple[SelectedPluginPackageInput, ...] = (),
         session_start_event: SessionStartEvent | None = None,
         api_registry: APIRegistry | None = None,
         exec_service: ExecService | None = None,
@@ -606,6 +608,12 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self._tool_registry = tool_registry
         self.diagnostics_service = diagnostics_service
         self._package_materializer = package_materializer
+        self._selected_plugin_packages = tuple(selected_plugin_packages)
+        if any(
+            not isinstance(item, SelectedPluginPackageInput)
+            for item in self._selected_plugin_packages
+        ):
+            raise TypeError("Selected Plugin package inputs are invalid")
         base_exec_service = exec_service or ExecService()
         session_temporary_root = resolve_platform_paths().temporary
         self._exec_service = persist_session_command_outputs(
@@ -661,6 +669,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             get_resource_loader=lambda: self._resource_loader,
             get_diagnostics_service=lambda: self.diagnostics_service,
             refresh_resources=self._refresh_resources_for_extension_runtime,
+            selected_plugin_packages=self._selected_plugin_packages,
             refresh_resource_transaction=(
                 self._refresh_package_resource_transaction
             ),

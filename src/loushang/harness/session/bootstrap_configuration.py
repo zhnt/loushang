@@ -25,6 +25,7 @@ from loushang.harness.resources.packages.catalog_diagnostics import (
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.packages.roots import (
+    SelectedPluginPackageInput,
     configure_resource_loader_roots,
 )
 from loushang.harness.resources.packages.source_resolver import (
@@ -69,8 +70,20 @@ class StandardAgentSessionConfigurationRequest(Generic[StandardExtensionT]):
     prepare_catalog_bootstrap_projection: (
         CatalogBootstrapProjectionPreparer | None
     ) = None
+    selected_plugin_packages: tuple[SelectedPluginPackageInput, ...] = ()
 
     def __post_init__(self) -> None:
+        selected_plugin_packages = tuple(self.selected_plugin_packages)
+        if any(
+            not isinstance(item, SelectedPluginPackageInput)
+            for item in selected_plugin_packages
+        ):
+            raise TypeError("Selected Plugin package inputs are invalid")
+        object.__setattr__(
+            self,
+            "selected_plugin_packages",
+            selected_plugin_packages,
+        )
         if not isinstance(self.catalog_authoritative, bool):
             raise TypeError("Catalog authority selection must be a bool")
         if self.catalog_authoritative and not callable(
@@ -188,6 +201,7 @@ class StandardAgentSessionConfigurationRuntime(Generic[StandardExtensionT]):
             materializer=request.package_materializer,
             diagnostics_service=request.diagnostics_service,
             session_id=request.session_id,
+            selected_plugin_packages=request.selected_plugin_packages,
         )
 
     def _resources(

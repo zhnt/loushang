@@ -69,6 +69,7 @@ if TYPE_CHECKING:
     )
     from loushang.harness.resources.packages.roots import (
         ResolvedPackageResourceRoots,
+        SelectedPluginPackageInput,
         configure_resource_loader_roots,
         resolve_package_resource_roots,
     )
@@ -141,6 +142,7 @@ _EXPORT_MODULES = {
     "PackageUpdatePreparation": "loushang.harness.resources.packages.operations",
     "PythonPackageInstallerBackend": "loushang.harness.resources.packages.materializer",
     "ResolvedPackageResourceRoots": "loushang.harness.resources.packages.roots",
+    "SelectedPluginPackageInput": "loushang.harness.resources.packages.roots",
     "clone_source_and_ref": "loushang.harness.resources.packages.source",
     "collect_package_catalog": "loushang.harness.resources.packages.catalog",
     "collect_projected_package_entries": "loushang.harness.resources.packages.projection",
