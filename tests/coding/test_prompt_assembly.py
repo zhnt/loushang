@@ -444,7 +444,9 @@ def test_preflight_user_input_expands_prompt_templates_and_skill_references() ->
         "/plan focus on retries", resource_bundle=resource_bundle
     )
     skill_result = preflight_user_input(
-        "/skill:debugging inspect the failing branch", resource_bundle=resource_bundle
+        "/skill:debugging inspect the failing branch",
+        resource_bundle=resource_bundle,
+        allow_legacy_skill_body=True,
     )
 
     assert (
@@ -585,10 +587,14 @@ def test_preflight_user_input_rejects_disabled_skills_but_allows_explicit_only_s
     )
 
     disabled_result = preflight_user_input(
-        "/skill:debugging inspect", resource_bundle=resource_bundle
+        "/skill:debugging inspect",
+        resource_bundle=resource_bundle,
+        allow_legacy_skill_body=True,
     )
     explicit_result = preflight_user_input(
-        "/skill:deploy ship", resource_bundle=resource_bundle
+        "/skill:deploy ship",
+        resource_bundle=resource_bundle,
+        allow_legacy_skill_body=True,
     )
     assembly = assemble_prompt(base_prompt="Base", resource_bundle=resource_bundle)
 

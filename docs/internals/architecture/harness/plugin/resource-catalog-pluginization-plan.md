@@ -6,9 +6,9 @@
   Plugin lifecycle, exact-owner admission, Session Graph, Resource generation,
   and Model Input boundaries. It does not amend those boundaries implicitly.
 - Design status: RCP0 contract frozen; final narrow freeze re-review passed.
-- Implementation status: RCP0 through RCP3 are complete on the Harness lane;
-  RCP4 has ten unpublished foundation slices and RCP5 has started with one
-  conservative, unpublished typed-Consumer slice.
+- Implementation status: RCP0 through RCP4 are complete on the Harness lane;
+  RCP5.1, RCP5.2A/B, and RCP5.3A/B/C are implemented on the Harness lane.
+  Refresh authority and peer deletion remain RCP5.4 and RCP5.5.
   RCP2's first unpublished foundation slice implements the generic
   `CapabilityComponentDefinition`, exact candidate/admission/selection/binding
   records, atomic owner generations, cancellation-safe reverse rollback,
@@ -1524,6 +1524,20 @@ synchronous path. Source, Consumer, Product, command, queue, architecture, and
 lifecycle regression tests cover the cutover. Request-bound durable Model
 Input evidence remains RCP5.3B, eager-body sink deletion remains RCP5.3C, and
 refresh remains RCP5.4.
+
+RCP5.3B now commits request-bound Resource evidence atomically with the exact
+user-message record, projects it into durable Model Input, and recovers it
+transactionally without reopening a source. Queue, immediate, tool-loop,
+resume, compaction, and branch association use exact message ownership and
+fail closed on ambiguous or malformed evidence.
+
+RCP5.3C now removes eager body authority from the Catalog compatibility
+projection. Skill descriptors and their compatibility metadata are body-free;
+the Extension owner supplies exact frozen bytes through a generation-owned
+sidecar; and command/preflight callers select `catalog_required` or
+`legacy_explicit` explicitly. Default Method discovery no longer creates an
+independent Skill source; only caller-selected legacy mode retains that
+compatibility adaptation. Refresh remains RCP5.4.
 
 Exit: one Catalog path serves every Skill operation; native Skills need no
 Plugin; same-name selection is source-explainable; current-request immutability

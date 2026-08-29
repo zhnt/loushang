@@ -15,19 +15,37 @@ _EMPTY_METADATA: Mapping[str, object] = MappingProxyType({})
 
 
 class SkillResourceLike(Protocol):
-    name: str
-    source_path: Path
-    content: str | None
-    description: str | None
-    metadata: Mapping[str, object]
-    id: str | None
-    source_kind: str
-    source_scope: str
-    resource_type: str
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def source_path(self) -> Path: ...
+
+    @property
+    def content(self) -> str | None: ...
+
+    @property
+    def description(self) -> str | None: ...
+
+    @property
+    def metadata(self) -> Mapping[str, object]: ...
+
+    @property
+    def id(self) -> str | None: ...
+
+    @property
+    def source_kind(self) -> str: ...
+
+    @property
+    def source_scope(self) -> str: ...
+
+    @property
+    def resource_type(self) -> str: ...
 
 
 class SkillResourceBundleLike(Protocol):
-    skills: Sequence[SkillResourceLike]
+    @property
+    def skills(self) -> Sequence[SkillResourceLike]: ...
 
 
 class SkillResourceLoader(Protocol):

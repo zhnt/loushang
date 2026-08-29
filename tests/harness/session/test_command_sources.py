@@ -18,6 +18,7 @@ from loushang.harness.resources.types import (
 from loushang.harness.session.command_sources import (
     ExtensionCommandSourceRuntime,
     ResourceCommandSourceRuntime,
+    ResourceSkillBodyAuthorityError,
 )
 
 
@@ -193,6 +194,7 @@ def test_catalog_resource_command_loads_without_a_compatibility_bundle() -> None
     runtime = ResourceCommandSourceRuntime(
         get_resource_bundle=lambda: None,
         get_skill_body_loader=lambda: load_skill_body,
+        skill_body_authority="catalog_required",
         record_diagnostics=lambda _values: None,
         record_command_not_found=lambda _name, _args: None,
         result_factory=lambda name, source, text: {
@@ -223,6 +225,51 @@ def test_catalog_resource_command_loads_without_a_compatibility_bundle() -> None
     with pytest.raises(SkillBodyLoadRequiresAsyncError):
         runtime.dispatch(invocation)
     assert asyncio.run(runtime.dispatch_async(invocation)).handled is True
+
+
+def test_resource_command_source_fails_closed_on_body_authority_mismatch() -> None:
+    async def load_skill_body(_name: str):
+        return None
+
+    catalog_runtime = ResourceCommandSourceRuntime(
+        get_resource_bundle=lambda: ResourceBundle(cwd=Path("/tmp/project")),
+        get_skill_body_loader=lambda: None,
+        skill_body_authority="catalog_required",
+        record_diagnostics=lambda _values: None,
+        record_command_not_found=lambda _name, _args: None,
+        result_factory=lambda _name, _source, text: text,
+    )
+    legacy_runtime = ResourceCommandSourceRuntime(
+        get_resource_bundle=lambda: ResourceBundle(cwd=Path("/tmp/project")),
+        get_skill_body_loader=lambda: load_skill_body,
+        skill_body_authority="legacy_explicit",
+        record_diagnostics=lambda _values: None,
+        record_command_not_found=lambda _name, _args: None,
+        result_factory=lambda _name, _source, text: text,
+    )
+    neutral_runtime = ResourceCommandSourceRuntime(
+        get_resource_bundle=lambda: ResourceBundle(cwd=Path("/tmp/project")),
+        get_skill_body_loader=lambda: load_skill_body,
+        record_diagnostics=lambda _values: None,
+        record_command_not_found=lambda _name, _args: None,
+        result_factory=lambda _name, _source, text: text,
+    )
+
+    with pytest.raises(
+        ResourceSkillBodyAuthorityError,
+        match="Catalog-required Skill body loader is unavailable",
+    ):
+        catalog_runtime.preflight_user_input("/skill:review")
+    with pytest.raises(
+        ResourceSkillBodyAuthorityError,
+        match="Legacy-explicit Skill commands cannot adopt Catalog body authority",
+    ):
+        asyncio.run(legacy_runtime.preflight_user_input_async("/skill:review"))
+    with pytest.raises(
+        ResourceSkillBodyAuthorityError,
+        match="requires an explicit body authority",
+    ):
+        asyncio.run(neutral_runtime.preflight_user_input_async("/skill:review"))
 
 
 def test_command_source_runtimes_have_no_coding_import() -> None:

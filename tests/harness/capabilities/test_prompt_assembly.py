@@ -13,6 +13,7 @@ from loushang.harness.capabilities.prompt_assembly import (
     assemble_prompt,
 )
 from loushang.harness.capabilities.prompt_preflight import (
+    SkillBodyAuthorityUnavailableError,
     SkillBodyLoadRequiresAsyncError,
     preflight_user_input,
     preflight_user_input_async,
@@ -33,6 +34,25 @@ def _runtime_footer(cwd: str) -> str:
 
 def test_standard_assembly_uses_harness_default_and_allows_an_empty_base() -> None:
     assert assemble_prompt().system_prompt == DEFAULT_HARNESS_SYSTEM_PROMPT.strip()
+
+
+def test_neutral_preflight_never_infers_eager_skill_body_authority() -> None:
+    bundle = ResourceBundle(
+        cwd=Path("/project"),
+        skills=[
+            SkillDescriptor(
+                name="review",
+                source_path=Path("/project/skills/review/SKILL.md"),
+                content="Unselected eager body.",
+            )
+        ],
+    )
+
+    with pytest.raises(
+        SkillBodyAuthorityUnavailableError,
+        match="explicit legacy authority",
+    ):
+        preflight_user_input("/skill:review", resource_bundle=bundle)
     assert assemble_prompt(base_prompt="").system_prompt == ""
 
 
@@ -126,6 +146,7 @@ def test_standard_preflight_expands_prompt_and_escapes_skill_attributes() -> Non
     skill_result = preflight_user_input(
         '/skill:review"source focus',
         resource_bundle=bundle,
+        allow_legacy_skill_body=True,
     )
 
     assert prompt_result.text == "Compare option-a with option-b option-c."

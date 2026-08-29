@@ -1027,9 +1027,10 @@ def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(
                 if skill.name == "standard"
             )
             assert package_skill.source_kind == "external_package"
+            assert legacy_package_skill.content is not None
+            assert package_skill.content is None
             assert (
                 package_skill.name,
-                package_skill.content,
                 package_skill.description,
                 package_skill.disable_model_invocation,
                 package_skill.canonical_name,
@@ -1037,7 +1038,6 @@ def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(
                 package_skill.source_root_order,
             ) == (
                 legacy_package_skill.name,
-                legacy_package_skill.content,
                 legacy_package_skill.description,
                 legacy_package_skill.disable_model_invocation,
                 legacy_package_skill.canonical_name,

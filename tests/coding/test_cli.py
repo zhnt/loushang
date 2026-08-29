@@ -8029,7 +8029,13 @@ def test_run_cli_shows_method_as_text(tmp_path) -> None:
 
     async def scenario() -> None:
         exit_code = await run_cli(
-            ["method", "show", "debug"],
+            [
+                "method",
+                "show",
+                "debug",
+                "--resource-authority-mode",
+                "legacy_explicit",
+            ],
             stdin=StringIO(""),
             stdout=stdout,
             stderr=stderr,

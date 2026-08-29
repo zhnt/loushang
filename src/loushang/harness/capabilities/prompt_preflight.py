@@ -16,6 +16,7 @@ from loushang.harness.capabilities.prompt import (
 )
 from loushang.harness.commands import split_slash_command
 from loushang.harness.diagnostics.types import DiagnosticDraft
+from loushang.harness.resources._legacy_skill_body import expand_legacy_skill_input
 from loushang.harness.resources.activation import ResourceActivation
 from loushang.harness.resources.diagnostics import resource_diagnostic
 from loushang.harness.resources.frontmatter import strip_frontmatter
@@ -24,6 +25,10 @@ from loushang.harness.resources.types import ResourceBundle
 
 class SkillBodyLoadRequiresAsyncError(RuntimeError):
     """A captured Catalog Skill body cannot be loaded synchronously."""
+
+
+class SkillBodyAuthorityUnavailableError(RuntimeError):
+    """No explicit Skill body authority was selected for this preflight."""
 
 
 class SkillPreflightSummary(Protocol):
@@ -67,6 +72,7 @@ def preflight_user_input(
     *,
     resource_bundle: ResourceBundle | None = None,
     load_skill_body: SkillBodyLoader | None = None,
+    allow_legacy_skill_body: bool = False,
     template_expander: PromptTemplateExpander = DEFAULT_PROMPT_TEMPLATE_EXPANDER,
 ) -> PromptPreflightResult:
     parsed = split_slash_command(text)
@@ -77,6 +83,7 @@ def preflight_user_input(
         parsed,
         resource_bundle=resource_bundle,
         load_skill_body=load_skill_body,
+        allow_legacy_skill_body=allow_legacy_skill_body,
         template_expander=template_expander,
     )
 
@@ -87,6 +94,7 @@ async def preflight_user_input_async(
     resource_bundle: ResourceBundle | None = None,
     execute_command: Callable[[str, str], Awaitable[object | None]] | None = None,
     load_skill_body: SkillBodyLoader | None = None,
+    allow_legacy_skill_body: bool = False,
     template_expander: PromptTemplateExpander = DEFAULT_PROMPT_TEMPLATE_EXPANDER,
 ) -> PromptPreflightResult:
     parsed = split_slash_command(text)
@@ -111,6 +119,7 @@ async def preflight_user_input_async(
         parsed,
         resource_bundle=resource_bundle,
         load_skill_body=None,
+        allow_legacy_skill_body=allow_legacy_skill_body,
         template_expander=template_expander,
     )
 
@@ -121,6 +130,7 @@ def _preflight_resource_input(
     *,
     resource_bundle: ResourceBundle | None,
     load_skill_body: SkillBodyLoader | None,
+    allow_legacy_skill_body: bool,
     template_expander: PromptTemplateExpander,
 ) -> PromptPreflightResult:
     command_name, args = parsed
@@ -131,20 +141,20 @@ def _preflight_resource_input(
             raise SkillBodyLoadRequiresAsyncError(
                 "Catalog Skill body loading requires asynchronous preflight"
             )
-        skill = ResourceActivation(resource_bundle).find_skill(skill_name)
-        if skill is None:
-            return _unresolved_skill(original_text, skill_name)
-        body = strip_frontmatter(skill.content or "").strip()
-        source_path = skill.source_path.as_posix()
-        base_dir = skill.source_path.parent.as_posix()
-        skill_block = (
-            f'<skill name="{escape(skill.name, quote=True)}" '
-            f'location="{escape(source_path, quote=True)}">\n'
-            f"References are relative to {base_dir}.\n\n"
-            f"{body}\n"
-            "</skill>"
+        if not allow_legacy_skill_body:
+            raise SkillBodyAuthorityUnavailableError(
+                "Skill body expansion requires Catalog async loading or "
+                "explicit legacy authority"
+            )
+        expanded = expand_legacy_skill_input(
+            skill_name=skill_name,
+            resource_bundle=resource_bundle,
         )
-        return PromptPreflightResult(text=append_prompt_arguments(skill_block, args))
+        if expanded is None:
+            return _unresolved_skill(original_text, skill_name)
+        return PromptPreflightResult(
+            text=append_prompt_arguments(expanded.text, args)
+        )
 
     prompt = ResourceActivation(resource_bundle).find_prompt(command_name)
     if prompt is None:
@@ -241,6 +251,7 @@ __all__ = [
     "PromptPreflightResult",
     "LoadedSkillPreflightBody",
     "SkillBodyLoader",
+    "SkillBodyAuthorityUnavailableError",
     "SkillBodyLoadRequiresAsyncError",
     "preflight_user_input",
     "preflight_user_input_async",

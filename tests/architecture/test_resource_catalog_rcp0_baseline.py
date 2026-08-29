@@ -103,11 +103,19 @@ EXPECTED_CALL_SITES = {
         ),
         (
             Path("src/loushang/harness/session/command_sources.py"),
+            "ResourceCommandSourceRuntime.execute_async",
+        ),
+        (
+            Path("src/loushang/harness/session/command_sources.py"),
             "ResourceCommandSourceRuntime.list_descriptors",
         ),
         (
             Path("src/loushang/harness/session/command_sources.py"),
             "ResourceCommandSourceRuntime.preflight_user_input",
+        ),
+        (
+            Path("src/loushang/harness/session/command_sources.py"),
+            "ResourceCommandSourceRuntime.preflight_user_input_async",
         ),
         (
             Path("src/loushang/harness/session/resource_refresh.py"),
@@ -160,6 +168,20 @@ EXPECTED_SKILLS_ATTRIBUTE_LOAD_SITES = {
     (
         Path("src/loushang/harness/resources/_skill_catalog_status.py"),
         "SkillCatalogStatusProjection.__post_init__",
+    ),
+    # RCP5.3B stores immutable per-request loaded-Skill evidence.  These are
+    # evidence tuple reads, never ResourceBundle selection or body authority.
+    (
+        Path("src/loushang/harness/session/request_evidence.py"),
+        "PreparedResourceEvidence.__post_init__",
+    ),
+    (
+        Path("src/loushang/harness/session/request_evidence.py"),
+        "PreparedResourceEvidence.to_message_metadata",
+    ),
+    (
+        Path("src/loushang/harness/session/request_evidence.py"),
+        "PreparedResourceEvidence.to_message_payload",
     ),
     (
         Path("src/loushang/harness/commands/resources.py"),
@@ -558,11 +580,25 @@ def test_rcp0_skill_fallback_is_deleted_and_eager_body_sinks_are_exact() -> None
         attribute_name="content",
     ) == {
         (
-            Path("src/loushang/harness/capabilities/prompt_preflight.py"),
-            "_preflight_resource_input",
+            Path("src/loushang/harness/extensions/resources.py"),
+            "_catalog_route_contribution",
         ),
         (
-            Path("src/loushang/method/skill_adapter.py"),
+            Path(
+                "src/loushang/harness/resources/_catalog_extension_source.py"
+            ),
+            "ExtensionResourceRouteContribution.__post_init__",
+        ),
+        (
+            Path("src/loushang/harness/resources/_legacy_skill_body.py"),
+            "expand_legacy_skill_input",
+        ),
+        (
+            Path("src/loushang/harness/resources/_legacy_skill_body.py"),
+            "legacy_skill_description",
+        ),
+        (
+            Path("src/loushang/method/legacy_skill_adapter.py"),
             "method_from_skill",
         ),
     }
@@ -570,12 +606,7 @@ def test_rcp0_skill_fallback_is_deleted_and_eager_body_sinks_are_exact() -> None
         sources,
         receiver_name="skill",
         attribute_name="content",
-    ) == {
-        (
-            Path("src/loushang/harness/commands/resources.py"),
-            "command_description_from_skill",
-        )
-    }
+    ) == set()
 
 
 def test_rcp0_legacy_authority_mount_and_extension_merge_inventory_is_exact() -> None:

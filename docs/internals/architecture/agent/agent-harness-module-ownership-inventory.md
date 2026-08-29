@@ -171,7 +171,8 @@ execution and must not become a mandatory harness dependency.
 | `method/applicability.py` | Applicability metadata parsing | Method primitive | Keep. |
 | `method/resources.py` | Product-neutral skill-like resource protocol and minimal skill discovery for method loading | Method primitive | Keep scoped to method needs. Do not absorb coding prompt/theme/extension loading. |
 | `method/loader.py` | Discover method resources and skill-backed methods | Method primitive | Keep independent from coding loader. |
-| `method/skill_adapter.py` | Adapt skill-like descriptors into method descriptors | Method primitive | Accept protocol-shaped resources; do not depend on coding descriptor classes. |
+| `method/skill_adapter.py` | Forward the historical import to the explicit legacy adapter until RCP5.5 | Method compatibility shim | Own no body logic or discovery authority. |
+| `method/legacy_skill_adapter.py` | Adapt explicitly legacy skill-like descriptors into method descriptors | Method compatibility primitive | Accept protocol-shaped resources; do not depend on coding descriptor classes or serve Catalog-default callers. |
 
 Known method cleanup candidates:
 

@@ -27,6 +27,11 @@ from loushang.harness.resources.types import ResourceBundle
 
 ResultT = TypeVar("ResultT")
 ResourceCommandKind = Literal["prompt", "skill"]
+ResourceSkillBodyAuthority = Literal["catalog_required", "legacy_explicit"]
+
+
+class ResourceSkillBodyAuthorityError(RuntimeError):
+    """A Resource command source cannot satisfy its selected body authority."""
 
 
 class ExtensionCommandProvider(Protocol):
@@ -119,6 +124,15 @@ class ResourceCommandSourceRuntime(Generic[ResultT]):
         Callable[[], Sequence[SkillCommandSummary] | None] | None
     ) = None
     get_skill_body_loader: SkillBodyLoaderProvider | None = None
+    skill_body_authority: ResourceSkillBodyAuthority | None = None
+
+    def __post_init__(self) -> None:
+        if self.skill_body_authority not in {
+            None,
+            "catalog_required",
+            "legacy_explicit",
+        }:
+            raise ValueError("Resource Skill body authority is invalid")
 
     def list_descriptors(self) -> list[SessionCommandDescriptor]:
         return list_resource_command_descriptors(
@@ -127,6 +141,9 @@ class ResourceCommandSourceRuntime(Generic[ResultT]):
                 self.get_effective_skills()
                 if self.get_effective_skills is not None
                 else None
+            ),
+            allow_legacy_skill_body=(
+                self.skill_body_authority == "legacy_explicit"
             ),
         )
 
@@ -157,6 +174,9 @@ class ResourceCommandSourceRuntime(Generic[ResultT]):
             command_text,
             resource_bundle=resource_bundle,
             load_skill_body=skill_body_loader,
+            allow_legacy_skill_body=(
+                self.skill_body_authority == "legacy_explicit"
+            ),
         )
         return self._project_execution_result(
             invocation_name,
@@ -176,6 +196,9 @@ class ResourceCommandSourceRuntime(Generic[ResultT]):
             command_text,
             resource_bundle=resource_bundle,
             load_skill_body=skill_body_loader,
+            allow_legacy_skill_body=(
+                self.skill_body_authority == "legacy_explicit"
+            ),
         )
         return self._project_execution_result(
             invocation_name,
@@ -207,6 +230,9 @@ class ResourceCommandSourceRuntime(Generic[ResultT]):
             user_input,
             resource_bundle=self.get_resource_bundle(),
             load_skill_body=self._skill_body_loader(),
+            allow_legacy_skill_body=(
+                self.skill_body_authority == "legacy_explicit"
+            ),
         )
         self.record_diagnostics(result.diagnostics)
         return result
@@ -219,13 +245,29 @@ class ResourceCommandSourceRuntime(Generic[ResultT]):
             user_input,
             resource_bundle=self.get_resource_bundle(),
             load_skill_body=self._skill_body_loader(),
+            allow_legacy_skill_body=(
+                self.skill_body_authority == "legacy_explicit"
+            ),
         )
         self.record_diagnostics(result.diagnostics)
         return result
 
     def _skill_body_loader(self) -> SkillBodyLoader | None:
         provider = self.get_skill_body_loader
-        return provider() if provider is not None else None
+        loader = provider() if provider is not None else None
+        if self.skill_body_authority is None and loader is not None:
+            raise ResourceSkillBodyAuthorityError(
+                "Skill body loader requires an explicit body authority"
+            )
+        if self.skill_body_authority == "catalog_required" and loader is None:
+            raise ResourceSkillBodyAuthorityError(
+                "Catalog-required Skill body loader is unavailable"
+            )
+        if self.skill_body_authority == "legacy_explicit" and loader is not None:
+            raise ResourceSkillBodyAuthorityError(
+                "Legacy-explicit Skill commands cannot adopt Catalog body authority"
+            )
+        return loader
 
     def has_skill_body_loader(self) -> bool:
         return self._skill_body_loader() is not None
@@ -242,5 +284,7 @@ __all__ = [
     "ResourceCommandNotFoundRecorder",
     "ResourceCommandResultFactory",
     "ResourceCommandSourceRuntime",
+    "ResourceSkillBodyAuthority",
+    "ResourceSkillBodyAuthorityError",
     "DiagnosticDraftRecorder",
 ]

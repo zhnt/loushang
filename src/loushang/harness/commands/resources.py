@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Protocol
 
 from loushang.harness.commands.descriptors import SessionCommandDescriptor
+from loushang.harness.resources._legacy_skill_body import legacy_skill_description
 from loushang.harness.resources.frontmatter import strip_frontmatter
 from loushang.harness.resources.source import source_info_from_resource_descriptor
 from loushang.harness.resources.types import (
@@ -43,6 +44,7 @@ def list_resource_command_descriptors(
     resource_bundle: ResourceBundle | None,
     *,
     effective_skills: Sequence[SkillCommandSummary] | None = None,
+    allow_legacy_skill_body: bool = False,
 ) -> list[SessionCommandDescriptor]:
     """Project enabled prompt and skill resources into command descriptors."""
 
@@ -60,21 +62,27 @@ def list_resource_command_descriptors(
         )
         for prompt in prompts
     ]
-    skills: Sequence[SkillCommandSummary] = (
-        effective_skills
-        if effective_skills is not None
-        else tuple(
-            skill
-            for skill in resource_bundle.skills
-            if skill.enabled
-        )
-        if resource_bundle is not None
+    use_legacy_bundle_skills = (
+        allow_legacy_skill_body
+        and effective_skills is None
+        and resource_bundle is not None
+    )
+    legacy_skills = (
+        tuple(skill for skill in resource_bundle.skills if skill.enabled)
+        if use_legacy_bundle_skills and resource_bundle is not None
         else ()
+    )
+    skills: Sequence[SkillCommandSummary] = (
+        effective_skills if effective_skills is not None else legacy_skills
     )
     commands.extend(
         SessionCommandDescriptor(
             name=f"skill:{skill.name}",
-            description=command_description_from_skill(skill),
+            description=(
+                legacy_skill_description(skill)
+                if use_legacy_bundle_skills and isinstance(skill, SkillDescriptor)
+                else command_description_from_skill(skill)
+            ),
             source="skill",
             source_info=source_info_from_resource_descriptor(skill),
         )
@@ -95,13 +103,11 @@ def command_description_from_prompt(prompt: PromptFragmentDescriptor) -> str | N
 def command_description_from_skill(
     skill: SkillDescriptor | SkillCommandSummary,
 ) -> str | None:
-    """Prefer declared skill metadata, then use its visible skill body."""
+    """Return body-free declared Skill metadata for a typed projection."""
 
     if isinstance(skill.description, str) and skill.description.strip():
         return skill.description.strip()
-    content = getattr(skill, "content", None)
-    description = strip_frontmatter(content or "").strip()
-    return description or None
+    return None
 
 
 __all__ = [

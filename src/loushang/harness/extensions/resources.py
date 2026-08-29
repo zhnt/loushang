@@ -471,6 +471,25 @@ def _catalog_route_contribution(
     diagnostics: list[DiagnosticDraft],
 ) -> ExtensionResourceRouteContribution:
     normalized = contribution or ExtensionResourceContribution()
+    catalog_skills: list[SkillDescriptor] = []
+    catalog_skill_bodies: list[bytes | None] = []
+    for skill in normalized.skills:
+        catalog_skill_bodies.append(
+            skill.content.encode("utf-8")
+            if skill.content is not None
+            else None
+        )
+        catalog_skills.append(
+            replace(
+                skill,
+                content=None,
+                metadata={
+                    key: value
+                    for key, value in skill.metadata.items()
+                    if key != "body"
+                },
+            )
+        )
     return ExtensionResourceRouteContribution(
         extension_id=extension_declaration_id(route.extension),
         route_id=route.route_id,
@@ -479,7 +498,8 @@ def _catalog_route_contribution(
         source_root_order=route.extension.source_root_order,
         route_order=route_order,
         prompt_descriptors=tuple(normalized.prompt_descriptors),
-        skills=tuple(normalized.skills),
+        skills=tuple(catalog_skills),
+        skill_bodies=tuple(catalog_skill_bodies),
         extensions=tuple(normalized.extensions),
         prompts=tuple(normalized.prompts),
         themes=tuple(normalized.themes),

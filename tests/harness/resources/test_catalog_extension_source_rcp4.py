@@ -108,6 +108,11 @@ def _route(
     diagnostics: tuple[DiagnosticDraft, ...] = (),
     source_class: ResourceSourceKind = "project_local",
 ) -> ExtensionResourceRouteContribution:
+    body_free_skills = tuple(replace(skill, content=None) for skill in skills)
+    skill_bodies = tuple(
+        skill.content.encode("utf-8") if skill.content is not None else None
+        for skill in skills
+    )
     return ExtensionResourceRouteContribution(
         extension_id="example.review",
         route_id="example.review:resources_discover:resources",
@@ -116,9 +121,20 @@ def _route(
         source_root_order=3,
         route_order=0,
         prompt_descriptors=prompts,
-        skills=skills,
+        skills=body_free_skills,
+        skill_bodies=skill_bodies,
         diagnostics=diagnostics,
     )
+
+
+def test_extension_route_rejects_duplicate_skill_body_metadata(tmp_path: Path) -> None:
+    skill = replace(
+        _skill(tmp_path / "SKILL.md", content="Exact body"),
+        metadata={"body": "HIDDEN DUPLICATE"},
+    )
+
+    with pytest.raises(ValueError, match="metadata must be body-free"):
+        _route(skills=(skill,))
 
 
 def test_extension_generation_freezes_exact_provenance_and_body_bytes(
@@ -480,6 +496,68 @@ def test_extension_runtime_prepares_defensive_exact_route_inputs(
     tmp_path: Path,
 ) -> None:
     asyncio.run(_extension_runtime_prepares_defensive_exact_route_inputs(tmp_path))
+
+
+def test_extension_owner_routes_skill_as_body_free_descriptor_and_exact_bytes(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        skill = replace(
+            _skill(tmp_path / "audit" / "SKILL.md", content="Exact owner bytes."),
+            metadata={
+                "frontmatter": {"name": "audit"},
+                "body": "Exact owner bytes.",
+            },
+        )
+
+        async def discover(_event, _context):  # type: ignore[no-untyped-def]
+            return ExtensionResourceContribution(skills=[skill])
+
+        extension = LoadedExtension(
+            name="example.audit",
+            source_path=tmp_path / "extension.py",
+            source="extension",
+            source_kind="project_local",
+            source_scope="project",
+            source_root=tmp_path,
+            source_root_order=2,
+            hooks={"resources_discover": [discover]},
+        )
+        runtime = ExtensionResourceRuntime([extension], diagnostics=[])
+        discovery = await runtime.prepare_catalog_inputs_async(
+            ResourceBundle(cwd=tmp_path),
+            context=object(),
+        )
+
+        routed = discovery.route_contributions[0]
+        assert routed.skills[0].content is None
+        assert "body" not in routed.skills[0].metadata
+        assert routed.skill_bodies == (b"Exact owner bytes.",)
+
+        generation = freeze_extension_resource_source_generation(
+            product_id="coding",
+            runtime_id="extension-runtime-sidecar",
+            extension_generation=1,
+            extension_set_fingerprint=_digest("extension-sidecar"),
+            route_contributions=discovery.route_contributions,
+        )
+        candidate = generation.source_snapshot.candidate_summaries[0]
+        projected = generation.descriptor_bindings[0].descriptor
+        assert isinstance(projected, SkillDescriptor)
+        assert projected.content is None
+        handle = ResourceLoadHandle.from_catalog(
+            catalog_handle=ResourceCatalogHandle(
+                catalog_generation=3,
+                snapshot_fingerprint=_digest("catalog-sidecar"),
+                identity=candidate.identity,
+                candidate_fingerprint=candidate.candidate_fingerprint,
+            ),
+            candidate=candidate,
+        )
+        assert generation.load(handle).body == b"Exact owner bytes."
+        generation.dispose()
+
+    asyncio.run(scenario())
 
 
 async def _extension_runtime_prepares_defensive_exact_route_inputs(

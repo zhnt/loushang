@@ -790,7 +790,10 @@ def _prepare_coding_host_input(
 ) -> CliPhaseResult[PreparedAgentCliHostInput]:
     args = context.args
     bootstrap = context.bootstrap
-    domain_app = CodingDomainApp(cwd=bootstrap.project_root)
+    domain_app = CodingDomainApp(
+        cwd=bootstrap.project_root,
+        method_loader=_coding_method_loader(args),
+    )
     return prepare_agent_cli_host_input(
         resolve_input=lambda: resolve_agent_prompt_input(
             args,
@@ -912,7 +915,9 @@ def _run_method_visibility(
     try:
         result = run_method_listing(
             request,
-            discover_methods=lambda: MethodLoader().discover_methods(project_root),
+            discover_methods=lambda: _coding_method_loader(args).discover_methods(
+                project_root
+            ),
             compile_plan=lambda method: MethodCompiler().compile(
                 method, context=MethodContext(domain="coding")
             ),
@@ -922,6 +927,16 @@ def _run_method_visibility(
         return 1
     stdout.write(result.output)
     return 0
+
+
+def _coding_method_loader(args: CliArgs) -> MethodLoader:
+    return MethodLoader(
+        skill_authority=(
+            "legacy_explicit"
+            if args.resource_authority_mode == "legacy_explicit"
+            else "none"
+        )
+    )
 
 
 def _run_list_packages(
