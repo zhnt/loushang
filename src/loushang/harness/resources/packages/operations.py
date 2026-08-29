@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, TypeVar
 
 from loushang.harness.resources.packages.materializer import (
     PackageMaterializationRecord,
+)
+from loushang.harness.resources.packages.settings_mutation import (
+    PackageSourceSettingsMutation,
 )
 from loushang.harness.resources.packages.source import is_remote_package_source
 
@@ -37,10 +41,27 @@ class PackageMaterializerPort(Protocol):
 
 
 PackageMaterializerProvider = Callable[[], PackageMaterializerPort | None]
-PackageSourceRegistration = Callable[[str, str], None]
+PackageSourceRegistration = Callable[[str, str], PackageSourceSettingsMutation]
 PackageResourceRefresh = Callable[[], object | Awaitable[object]]
 PackageUpdatePreparation = Callable[[], object | Awaitable[object]]
-PackageResourceRevisionProvider = Callable[[], int]
+
+
+@dataclass(frozen=True, slots=True)
+class PackageResourceRefreshOutcome:
+    """Per-call proof of whether this package mutation crossed publication."""
+
+    published: bool
+    error: BaseException | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.published, bool):
+            raise TypeError("Package Resource refresh publication flag must be a bool")
+        if self.error is not None and not isinstance(self.error, BaseException):
+            raise TypeError("Package Resource refresh error is invalid")
+
+
+class PackageMutationRequiresAsyncError(RuntimeError):
+    """A Catalog-backed package mutation cannot publish synchronously."""
 
 
 @dataclass
@@ -52,7 +73,11 @@ class PackageOperationsRuntime:
     remove_source: PackageSourceRegistration
     refresh_resources: PackageResourceRefresh
     prepare_updates: PackageUpdatePreparation | None = None
-    get_resource_revision: PackageResourceRevisionProvider | None = None
+    _settings_transaction_lock: asyncio.Lock = field(
+        init=False,
+        default_factory=asyncio.Lock,
+        repr=False,
+    )
 
     async def materialize(self, source: str) -> PackageMaterializationRecord:
         if is_remote_package_source(source):
@@ -78,14 +103,11 @@ class PackageOperationsRuntime:
         record = await self.materialize(source)
         if record.lifecycle != "installed":
             return record
-        self.add_source(source, scope)
-        previous_revision = self._resource_revision()
-        try:
-            await _resolve(self.refresh_resources())
-        except BaseException:
-            if not self._refresh_published_since(previous_revision):
-                self.remove_source(source, scope)
-            raise
+        async with self._settings_transaction_lock:
+            mutation = self.add_source(source, scope)
+            outcome = await self._refresh_outcome()
+            self._finish_settings_mutation(mutation, outcome=outcome)
+            _raise_refresh_error(outcome)
         return record
 
     async def update(self, source: str) -> PackageMaterializationRecord:
@@ -94,7 +116,7 @@ class PackageOperationsRuntime:
         else:
             materializer = self._require_materializer()
             record = await materializer.update_remote_source(source)
-        await _resolve(self.refresh_resources())
+        _raise_refresh_error(await self._refresh_outcome())
         return record
 
     async def update_all(self) -> list[PackageMaterializationRecord]:
@@ -102,7 +124,7 @@ class PackageOperationsRuntime:
             await _resolve(self.prepare_updates())
         materializer = self._require_materializer()
         records = await materializer.update_all_remote_sources()
-        await _resolve(self.refresh_resources())
+        _raise_refresh_error(await self._refresh_outcome())
         return records
 
     def remove(self, source: str) -> PackageMaterializationRecord:
@@ -122,30 +144,118 @@ class PackageOperationsRuntime:
         *,
         scope: str,
     ) -> PackageMaterializationRecord:
-        record = self.remove(source)
-        self.remove_source(source, scope)
-        previous_revision = self._resource_revision()
-        try:
-            await _resolve(self.refresh_resources())
-        except BaseException:
-            if not self._refresh_published_since(previous_revision):
-                self.add_source(source, scope)
+        async with self._settings_transaction_lock:
+            mutation = self.remove_source(source, scope)
+            outcome = await self._refresh_outcome()
+            self._finish_settings_mutation(mutation, outcome=outcome)
+            if outcome.published:
+                record = self._remove_materialized_source(source, outcome=outcome)
             else:
-                self._forget_remote_source(source)
-            raise
-        self._forget_remote_source(source)
+                record = self._uninstalled_record(source)
+            _raise_refresh_error(outcome)
+            return record
+
+    def uninstall_sync(
+        self,
+        source: str,
+        *,
+        scope: str,
+    ) -> PackageMaterializationRecord:
+        """Preserve the legacy synchronous contract behind an explicit gate."""
+
+        mutation = self.remove_source(source, scope)
+        try:
+            refreshed = self.refresh_resources()
+        except BaseException as error:
+            outcome = PackageResourceRefreshOutcome(published=False, error=error)
+        else:
+            if inspect.isawaitable(refreshed):
+                if inspect.iscoroutine(refreshed):
+                    refreshed.close()
+                mutation.rollback()
+                raise PackageMutationRequiresAsyncError(
+                    "Catalog-backed package uninstall requires "
+                    "uninstall_package_async()"
+                )
+            outcome = _coerce_refresh_outcome(refreshed)
+        self._finish_settings_mutation(mutation, outcome=outcome)
+        if outcome.published:
+            record = self._remove_materialized_source(source, outcome=outcome)
+        else:
+            record = self._uninstalled_record(source)
+        _raise_refresh_error(outcome)
         return record
 
-    def _resource_revision(self) -> int | None:
-        provider = self.get_resource_revision
-        return None if provider is None else provider()
+    async def _refresh_outcome(self) -> PackageResourceRefreshOutcome:
+        try:
+            refreshed = await _resolve(self.refresh_resources())
+        except BaseException as error:
+            return PackageResourceRefreshOutcome(published=False, error=error)
+        return _coerce_refresh_outcome(refreshed)
 
-    def _refresh_published_since(self, previous_revision: int | None) -> bool:
-        provider = self.get_resource_revision
-        return (
-            previous_revision is not None
-            and provider is not None
-            and provider() != previous_revision
+    @staticmethod
+    def _finish_settings_mutation(
+        mutation: PackageSourceSettingsMutation,
+        *,
+        outcome: PackageResourceRefreshOutcome,
+    ) -> None:
+        if outcome.published:
+            mutation.commit()
+        else:
+            try:
+                mutation.rollback()
+            except BaseException as rollback_error:
+                if outcome.error is None:
+                    raise
+                outcome.error.add_note(
+                    "Package source settings rollback also failed: "
+                    f"{rollback_error!r}"
+                )
+
+    def _remove_materialized_source(
+        self,
+        source: str,
+        *,
+        outcome: PackageResourceRefreshOutcome,
+    ) -> PackageMaterializationRecord:
+        try:
+            record = self.remove(source)
+            if record.lifecycle == "failed":
+                raise RuntimeError(
+                    record.error_message or "Package materialization cleanup failed"
+                )
+            self._forget_remote_source(source)
+        except BaseException as cleanup_error:
+            if outcome.error is None:
+                raise
+            outcome.error.add_note(
+                f"Published package uninstall cleanup also failed: {cleanup_error!r}"
+            )
+            return self._uninstalled_record(source)
+        return record
+
+    def _uninstalled_record(self, source: str) -> PackageMaterializationRecord:
+        if not is_remote_package_source(source):
+            path = Path(source).expanduser().resolve()
+            return PackageMaterializationRecord(
+                source=source,
+                name=path.name,
+                lifecycle="remote_registered",
+                target_path=path,
+            )
+        materializer = self.get_materializer()
+        record = (
+            None
+            if materializer is None
+            else getattr(materializer, "get_record", lambda _source: None)(source)
+        )
+        if isinstance(record, PackageMaterializationRecord):
+            return record.with_lifecycle("remote_registered")
+        return PackageMaterializationRecord(
+            source=source,
+            name=Path(source.rstrip("/")).stem or "package",
+            lifecycle="remote_registered",
+            target_path=Path("."),
         )
 
     def _forget_remote_source(self, source: str) -> None:
@@ -166,12 +276,29 @@ async def _resolve(value: T | Awaitable[T]) -> T:
     return value
 
 
+def _coerce_refresh_outcome(value: object) -> PackageResourceRefreshOutcome:
+    if value is None:
+        return PackageResourceRefreshOutcome(published=True)
+    if isinstance(value, PackageResourceRefreshOutcome):
+        return value
+    return PackageResourceRefreshOutcome(
+        published=False,
+        error=TypeError("Package Resource refresh returned an invalid outcome"),
+    )
+
+
+def _raise_refresh_error(outcome: PackageResourceRefreshOutcome) -> None:
+    if outcome.error is not None:
+        raise outcome.error
+
+
 __all__ = [
     "PackageMaterializerPort",
     "PackageMaterializerProvider",
     "PackageOperationsRuntime",
+    "PackageMutationRequiresAsyncError",
     "PackageResourceRefresh",
-    "PackageResourceRevisionProvider",
+    "PackageResourceRefreshOutcome",
     "PackageSourceRegistration",
     "PackageUpdatePreparation",
 ]

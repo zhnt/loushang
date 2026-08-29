@@ -56,6 +56,9 @@ from loushang.harness.permissions import (
     permission_profile,
     permission_profile_snapshot,
 )
+from loushang.harness.resources.packages.settings_mutation import (
+    PackageSourceSettingsMutation,
+)
 from loushang.harness.resources.packages.source import (
     PackageSourceConfig,
     package_source_match_key,
@@ -646,6 +649,58 @@ class SettingsManager:
         next_sources = _without_package_source(current_sources, source)
         self.update_settings(scope=scope, package_sources=next_sources)
         return next_sources != current_sources
+
+    def begin_package_source_mutation(
+        self,
+        source: str,
+        *,
+        scope: SettingsScope,
+        present: bool,
+    ) -> PackageSourceSettingsMutation:
+        """Apply one scoped mutation while retaining its exact prior patch."""
+
+        layer = self._config.scope(scope)
+        previous_patch = layer.patch
+        if present:
+            self.add_package_source(source, scope=scope)
+        else:
+            self.remove_package_source(source, scope=scope)
+        applied_patch = layer.patch
+        changed_keys = {
+            key
+            for key in previous_patch.keys() | applied_patch.keys()
+            if previous_patch.get(key, UNSET) != applied_patch.get(key, UNSET)
+        }
+
+        def restore() -> None:
+            current_patch = layer.patch
+            conflicts = tuple(
+                sorted(
+                    key
+                    for key in changed_keys
+                    if current_patch.get(key, UNSET)
+                    != applied_patch.get(key, UNSET)
+                )
+            )
+            if conflicts:
+                raise RuntimeError(
+                    "Package source settings changed concurrently: "
+                    + ", ".join(conflicts)
+                )
+            restored_patch = deepcopy(current_patch)
+            for key in changed_keys:
+                if key in previous_patch:
+                    restored_patch[key] = deepcopy(previous_patch[key])
+                else:
+                    restored_patch.pop(key, None)
+            layer.replace(restored_patch)
+
+        return PackageSourceSettingsMutation(
+            source=source,
+            scope=scope,
+            changed=bool(changed_keys),
+            restore=restore,
+        )
 
     def get_plugin_sources(self) -> list[str]:
         return list(self._settings.plugin_sources)

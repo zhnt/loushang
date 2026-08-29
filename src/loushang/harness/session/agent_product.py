@@ -651,8 +651,10 @@ class AgentProductSession(AgentSessionAdapterMixin):
             get_diagnostics_service=lambda: self.diagnostics_service,
             refresh_resources=self._refresh_resources_for_extension_runtime,
             summary_provider=package_summary_provider,
-            get_resource_revision=(
-                lambda: self._composition.resource_refresh_runtime.resource_revision
+            supports_synchronous_refresh=(
+                lambda: (
+                    self._composition.resource_refresh_runtime.refresh_catalog is None
+                )
             ),
         )
         self._extension_provider_controller = ExtensionProviderRuntime(

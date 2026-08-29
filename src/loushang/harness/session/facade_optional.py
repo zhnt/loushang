@@ -137,7 +137,11 @@ class SessionPackagePort(Protocol):
 
     def remove_package(self, source: str) -> dict[str, object]: ...
 
-    async def uninstall_package(
+    def uninstall_package(
+        self, source: str, *, scope: str = "project"
+    ) -> dict[str, object]: ...
+
+    async def uninstall_package_async(
         self, source: str, *, scope: str = "project"
     ) -> dict[str, object]: ...
 
@@ -303,10 +307,18 @@ class SessionFacadeOptionalOperations:
     def remove_package(self, source: str) -> dict[str, object]:
         return self._require_packages().remove_package(source)
 
-    async def uninstall_package(
+    def uninstall_package(
         self, source: str, *, scope: str = "project"
     ) -> dict[str, object]:
-        return await self._require_packages().uninstall_package(source, scope=scope)
+        return self._require_packages().uninstall_package(source, scope=scope)
+
+    async def uninstall_package_async(
+        self, source: str, *, scope: str = "project"
+    ) -> dict[str, object]:
+        return await self._require_packages().uninstall_package_async(
+            source,
+            scope=scope,
+        )
 
     def _require_packages(self) -> SessionPackagePort:
         if self.packages is None:

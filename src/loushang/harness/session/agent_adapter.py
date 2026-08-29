@@ -41,6 +41,9 @@ from loushang.harness.resources.packages.materializer import (
     PackageMaterializer,
     PackageProgressEvent,
 )
+from loushang.harness.resources.packages.operations import (
+    PackageResourceRefreshOutcome,
+)
 from loushang.harness.resources.packages.session import SessionPackageController
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime.registration import (
@@ -541,8 +544,31 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
     def _set_resource_bundle(self, resource_bundle: ResourceBundle | None) -> None:
         self.resource_bundle = resource_bundle
 
-    async def _refresh_resources_for_extension_runtime(self) -> None:
-        await self._composition.resource_refresh_runtime.refresh_resources()
+    def _refresh_resources_for_extension_runtime(
+        self,
+    ) -> PackageResourceRefreshOutcome | Awaitable[PackageResourceRefreshOutcome]:
+        runtime = self._composition.resource_refresh_runtime
+        if runtime.refresh_catalog is None:
+            try:
+                runtime.refresh()
+            except BaseException as error:
+                return PackageResourceRefreshOutcome(
+                    published=False,
+                    error=error,
+                )
+            return PackageResourceRefreshOutcome(published=True)
+        return self._refresh_catalog_resources_for_extension_runtime()
+
+    async def _refresh_catalog_resources_for_extension_runtime(
+        self,
+    ) -> PackageResourceRefreshOutcome:
+        outcome = await (
+            self._composition.resource_refresh_runtime.refresh_with_outcome()
+        )
+        return PackageResourceRefreshOutcome(
+            published=outcome.published,
+            error=outcome.error,
+        )
 
     def _resource_watch_paths(self) -> list[Path]:
         cwd = Path(self.session_manager.get_cwd())

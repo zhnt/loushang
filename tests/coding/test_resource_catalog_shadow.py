@@ -38,6 +38,9 @@ from loushang.harness.capabilities.model_input_contracts import (
 from loushang.harness.capabilities.prompt_preflight import (
     SkillBodyLoadRequiresAsyncError,
 )
+from loushang.harness.capabilities.resources_consumers import (
+    ResourceSkillStatusCatalogCapabilityConsumer,
+)
 from loushang.harness.capabilities.workspace_contracts import (
     WORKSPACE_CAPABILITY_DEFINITION,
 )
@@ -45,6 +48,7 @@ from loushang.harness.plugin_authoring.host import PluginDeclarationHost
 from loushang.harness.resources._catalog_input_receipt import (
     ResourceCatalogInputReceipt,
 )
+from loushang.harness.resources._catalog_records import ResourceIdentity
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.packages.mounts import PackageResourceMount
@@ -97,9 +101,7 @@ def _copy_resource_only_plugin(target: Path) -> None:
     declarations_path = target / "declarations" / "plugin.json"
     declarations = json.loads(declarations_path.read_text(encoding="utf-8"))
     declarations["declarations"] = [
-        item
-        for item in declarations["declarations"]
-        if item["kind"] == "resource_item"
+        item for item in declarations["declarations"] if item["kind"] == "resource_item"
     ]
     declarations_path.write_text(
         json.dumps(declarations, sort_keys=True, separators=(",", ":")),
@@ -125,6 +127,37 @@ def _model() -> Model:
             context_window=128_000,
             max_tokens=4096,
         ),
+    )
+
+
+def _write_dynamic_prompt_extension(path: Path, *, text: str) -> None:
+    path.write_text(
+        "\n".join(
+            (
+                "from pathlib import Path",
+                "",
+                "from loushang.harness.extensions.agent import ExtensionResourceContribution",
+                "from loushang.harness.resources.types import PromptFragmentDescriptor",
+                "",
+                "",
+                "def register(api):",
+                "    def discover(bundle, ctx):",
+                "        del bundle, ctx",
+                "        return ExtensionResourceContribution(",
+                "            prompt_descriptors=[",
+                "                PromptFragmentDescriptor(",
+                "                    name='dynamic-review',",
+                "                    source_path=Path(__file__).resolve(),",
+                f"                    text={text!r},",
+                "                )",
+                "            ]",
+                "        )",
+                "",
+                "    api.on('resources_discover', discover)",
+                "",
+            )
+        ),
+        encoding="utf-8",
     )
 
 
@@ -724,9 +757,7 @@ def test_coding_initial_catalog_applies_disabled_skill_in_owner_status(
             disabled_preflight = await session._preflight_user_input_async(
                 "/skill:review must remain unresolved"
             )
-            assert disabled_preflight.text == (
-                "/skill:review must remain unresolved"
-            )
+            assert disabled_preflight.text == ("/skill:review must remain unresolved")
             assert [item.code for item in disabled_preflight.diagnostics] == [
                 "unresolved_skill_reference"
             ]
@@ -787,21 +818,123 @@ def test_coding_catalog_refresh_publishes_one_exact_next_generation(
             assert new_consumer is not None
             assert new_consumer is not old_consumer
             assert new_consumer.catalog_generation == 2
-            assert [item.description for item in old_consumer.list_effective_skills()] == [
-                "Review v1"
-            ]
-            assert [item.description for item in new_consumer.list_effective_skills()] == [
-                "Review v2"
-            ]
+            assert [
+                item.description for item in old_consumer.list_effective_skills()
+            ] == ["Review v1"]
+            assert [
+                item.description for item in new_consumer.list_effective_skills()
+            ] == ["Review v2"]
             assert session._capability_graph_runtime.generation == graph_generation
             assert session._composition.resource_refresh_runtime.resource_revision == 2
             assert mounted.ownership_state == "graph_owned"
             assert await mounted.retire_replaced_owner_generations() == ()
-            loaded = await session._preflight_user_input_async("/skill:review refreshed")
+            loaded = await session._preflight_user_input_async(
+                "/skill:review refreshed"
+            )
             assert "Review v2 body." in loaded.text
             assert "Review v1 body." not in loaded.text
             with pytest.raises(RuntimeError, match="not graph-owned"):
                 old_consumer.load_handle(old_consumer.list_effective_skills()[0])
+        finally:
+            await session.dispose()
+            services.resource_loader.close()
+
+    asyncio.run(scenario())
+
+
+def test_coding_catalog_extension_refresh_pins_real_load_and_serves_g2_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        project_root = tmp_path / "project-extension-refresh"
+        extension_file = project_root / "extensions" / "dynamic_review.py"
+        extension_file.parent.mkdir(parents=True)
+        _write_dynamic_prompt_extension(extension_file, text="extension body v1")
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=tmp_path / "project-settings.json",
+            )
+        )
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions-extension-refresh",
+            cwd=str(project_root),
+            persist=False,
+        )
+        session = _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
+        identity = ResourceIdentity(
+            resource_kind="prompt",
+            schema_id="loushang.resource.prompt",
+            schema_version=1,
+            public_id="dynamic-review",
+        )
+        try:
+            await session.prepare_model_call_runtime()
+            facets = session._resource_skill_catalog_facets
+            assert facets is not None
+            generation_one = ResourceSkillStatusCatalogCapabilityConsumer(facets)
+            assert generation_one.snapshot.catalog_generation == 1
+            handle_one = generation_one.load_handle(identity)
+
+            mounted = session._mounted_resource_candidate
+            assert mounted is not None
+            old_owner = mounted._require_prepared_owner_generation()
+            old_source_lease = old_owner._shadow._extension_source_lease  # type: ignore[attr-defined]
+            assert old_source_lease is not None
+            old_source_generation = old_source_lease._owner  # type: ignore[attr-defined]
+            original_load = old_source_lease.load
+            load_started = asyncio.Event()
+            release_load = asyncio.Event()
+
+            async def blocked_load(handle):  # type: ignore[no-untyped-def]
+                load_started.set()
+                await release_load.wait()
+                return original_load(handle)
+
+            old_source_lease.load = blocked_load  # type: ignore[method-assign]
+            inflight = asyncio.create_task(generation_one.load(handle_one))
+            await load_started.wait()
+
+            _write_dynamic_prompt_extension(
+                extension_file,
+                text="extension body from generation two",
+            )
+            refresh = asyncio.create_task(
+                session._composition.resource_refresh_runtime.refresh_async(
+                    reason="extension-g2"
+                )
+            )
+
+            async def wait_for_publication() -> None:
+                while (
+                    getattr(
+                        session._resource_catalog_snapshot,
+                        "catalog_generation",
+                        0,
+                    )
+                    < 2
+                ):
+                    await asyncio.sleep(0)
+
+            await asyncio.wait_for(wait_for_publication(), timeout=5)
+            assert refresh.done() is False
+            assert old_source_generation.is_disposed is False
+
+            generation_two = ResourceSkillStatusCatalogCapabilityConsumer(facets)
+            assert generation_two.snapshot.catalog_generation == 2
+            loaded_two = await generation_two.load(generation_two.load_handle(identity))
+            assert loaded_two.body == b"extension body from generation two"
+
+            release_load.set()
+            assert (await inflight).body == b"extension body v1"
+            await refresh
+            assert old_source_generation.is_disposed is True
         finally:
             await session.dispose()
             services.resource_loader.close()
@@ -965,10 +1098,9 @@ def test_coding_catalog_package_mutations_publish_before_return(
             assert settings.get_package_sources() == []
             assert session._skill_catalog_consumer is after_update
 
-            # Uninstall is async even when removing a not-yet-published source;
-            # its successful return includes the next Catalog publication.
+            # Catalog uninstall awaits its own next publication.
             settings.add_package_source(str(unsupported_root), scope="session")
-            uninstalled = await session.uninstall_package(
+            uninstalled = await session.uninstall_package_async(
                 str(unsupported_root),
                 scope="session",
             )
@@ -1210,7 +1342,9 @@ def test_coding_initial_catalog_compiles_configured_plugin_resource_admissions(
             assert [
                 (item.name, item.status) for item in session.list_skill_statuses()
             ] == [("standard", "effective")]
-            assert "Automatically admitted package Skill." in session.agent.system_prompt
+            assert (
+                "Automatically admitted package Skill." in session.agent.system_prompt
+            )
             assert "skill:standard" in {
                 command.name for command in session.list_commands()
             }
@@ -1488,9 +1622,7 @@ def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(
                 else skill
                 for skill in session.resource_bundle.skills
             ]
-            preflight = await session._preflight_user_input_async(
-                "/skill:standard"
-            )
+            preflight = await session._preflight_user_input_async("/skill:standard")
             assert "Review from the compiled package." in preflight.text
             assert "Forged compatibility body." not in preflight.text
             loaded = preflight.loaded_skills[0]

@@ -139,7 +139,7 @@ EXPECTED_CALL_SITES = {
         ),
         (
             Path("src/loushang/harness/session/resource_refresh.py"),
-            "SessionResourceRefreshRuntime.refresh_async",
+            "SessionResourceRefreshRuntime._refresh_with_outcome",
         ),
         (
             Path("src/loushang/harness/session/tool_controller.py"),

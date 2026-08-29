@@ -347,6 +347,57 @@ def test_catalog_refresh_is_async_only_and_never_enters_legacy_bundle_pipeline()
     assert runtime.resource_revision == 2
 
 
+def test_catalog_refresh_outcome_belongs_to_its_exact_lock_held_invocation() -> None:
+    async def scenario() -> None:
+        old = ResourceBundle(cwd=Path("/tmp/old"))
+        published_by_a = ResourceBundle(cwd=Path("/tmp/published-by-a"))
+        current: list[ResourceBundle | None] = [old]
+        first_started = asyncio.Event()
+        release_first = asyncio.Event()
+        calls = 0
+
+        async def refresh_catalog(_reason: str) -> ResourceBundle:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                first_started.set()
+                await release_first.wait()
+                current[0] = published_by_a
+                return published_by_a
+            raise RuntimeError("refresh B failed before publication")
+
+        runtime = SessionResourceRefreshRuntime(
+            get_resource_loader=lambda: None,
+            get_resource_bundle=lambda: current[0],
+            get_cwd=lambda: "/tmp/project",
+            get_extension_runtime=lambda: None,
+            get_settings=lambda: None,
+            set_resource_bundle=lambda bundle: current.__setitem__(0, bundle),
+            rebuild_prompt_and_tools_view=lambda: None,
+            record_refresh_failure=lambda _error: None,
+            sync_extension_diagnostics=lambda: None,
+            refresh_catalog=refresh_catalog,
+        )
+
+        refresh_a = asyncio.create_task(runtime.refresh_with_outcome(reason="A"))
+        await first_started.wait()
+        refresh_b = asyncio.create_task(runtime.refresh_with_outcome(reason="B"))
+        release_first.set()
+
+        outcome_a = await refresh_a
+        outcome_b = await refresh_b
+
+        assert outcome_a.published is True
+        assert outcome_a.error is None
+        assert outcome_b.published is False
+        assert isinstance(outcome_b.error, RuntimeError)
+        assert str(outcome_b.error) == "refresh B failed before publication"
+        assert runtime.resource_revision == 2
+        await runtime.close()
+
+    asyncio.run(scenario())
+
+
 def test_catalog_refresh_request_coalesces_and_reports_one_success() -> None:
     events: list[str] = []
 
@@ -417,9 +468,7 @@ def test_catalog_refresh_request_during_active_refresh_drains_one_successor() ->
     ]
 
 
-def test_catalog_refresh_close_is_admission_and_explicit_refresh_join_barrier() -> (
-    None
-):
+def test_catalog_refresh_close_is_admission_and_explicit_refresh_join_barrier() -> None:
     async def scenario() -> None:
         started = asyncio.Event()
         release = asyncio.Event()

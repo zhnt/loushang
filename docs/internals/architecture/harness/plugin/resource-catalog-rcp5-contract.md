@@ -428,20 +428,31 @@ calls that arrive during an active pass set a dirty latch, and the owned task
 drains one or more successor passes until no accepted request remains. Package
 install/update/uninstall operations await this authority before returning;
 unsupported unverified package inputs fail at that boundary and installation
-rolls back its settings registration rather than reporting false success. The
-legacy coordinator, direct loader reload, and independent disabled-name overlay
-remain reachable only when the caller explicitly selected `legacy_explicit`.
+rolls back its settings registration rather than reporting false success. Each
+explicit invocation receives its own publication outcome while holding the
+Catalog refresh lock; a Package transaction never infers its result from a
+Session-global revision change caused by another caller. Package-source settings
+use one scoped mutation receipt, restoring exact prior order without overwriting
+unrelated concurrent settings, and a remote checkout is removed only after that
+uninstall has published. The synchronous `uninstall_package()` compatibility
+entry point remains available to `legacy_explicit`; Catalog callers fail before
+mutation and use `uninstall_package_async()`. The legacy coordinator, direct
+loader reload, and independent disabled-name overlay remain reachable only when
+the caller explicitly selected `legacy_explicit`.
 
-After publication, the replaced Resource generation retires first. An in-flight
-load pins its exact source-component leases, so cleanup debt remains retryable
-until those leases drain; it never rolls back the already visible successor.
-Only then does the previous Extension generation retire. Session shutdown first
-closes refresh admission, joins or cancels the complete owned drain loop, and
-also joins any explicit Catalog refresh that already entered the publication
-lock. It then retries retained retirement debt and finally disposes the current
-mounted generation through the existing graph owner. Old typed Consumers retain
-immutable metadata for their captured generation, but cannot initiate a new
-load after that generation retires.
+After publication, the replaced Resource generation retires first. Every real
+Consumer load pins the Resource owner generation across the complete body read,
+including an awaited read through a borrowed Extension source; source-component
+leases remain an additional implementation-level pin. Cleanup therefore waits
+until active loads drain and never releases the Extension borrow mid-read or
+rolls back the already visible successor. Only then does the previous Extension
+generation retire. Session shutdown first closes refresh admission, joins or
+cancels the complete owned drain loop, and also joins any explicit Catalog
+refresh that already entered the publication lock. It then retries retained
+retirement debt and finally disposes the current mounted generation through the
+existing graph owner. Old typed Consumers retain immutable metadata for their
+captured generation, but cannot initiate a new load after that generation
+retires.
 
 ## Ordered cutover
 

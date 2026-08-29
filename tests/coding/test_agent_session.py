@@ -5187,9 +5187,7 @@ def test_agent_session_records_reload_failures_as_diagnostics(tmp_path) -> None:
     assert records[0].type == "error"
 
 
-def test_agent_session_records_candidate_bind_failures_as_diagnostics(tmp_path) -> (
-    None
-):
+def test_agent_session_records_candidate_bind_failures_as_diagnostics(tmp_path) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
@@ -5790,7 +5788,7 @@ def test_agent_session_installs_and_uninstalls_package_with_settings(tmp_path) -
     assert installed["lifecycle"] == "installed"
     assert [package.source for package in settings.get_package_sources()] == [source]
     assert settings.get_plugin_sources() == []
-    uninstalled = asyncio.run(session.uninstall_package(source))
+    uninstalled = session.uninstall_package(source)
     assert uninstalled["lifecycle"] == "remote_registered"
     assert settings.get_package_sources() == []
     assert materializer.get_record(source) is None
@@ -5838,9 +5836,7 @@ def test_agent_session_installs_and_uninstalls_local_package_with_settings(
     assert [package.source for package in settings.get_package_sources()] == [
         str(local_package)
     ]
-    uninstalled = asyncio.run(
-        session.uninstall_package(str(local_package), scope="project")
-    )
+    uninstalled = session.uninstall_package(str(local_package), scope="project")
     assert uninstalled["lifecycle"] == "remote_registered"
     assert settings.get_package_sources() == []
 

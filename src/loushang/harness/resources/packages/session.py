@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,7 +17,11 @@ from loushang.harness.resources.packages.catalog_diagnostics import (
     PackageCatalogDiagnosticsRecorder,
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
-from loushang.harness.resources.packages.operations import PackageOperationsRuntime
+from loushang.harness.resources.packages.operations import (
+    PackageMutationRequiresAsyncError,
+    PackageOperationsRuntime,
+    PackageResourceRefreshOutcome,
+)
 from loushang.harness.resources.packages.projection import (
     project_package_entries,
     serialize_package_materialization_record,
@@ -27,6 +30,9 @@ from loushang.harness.resources.packages.roots import (
     ResourceRootSettingsManager,
     ResourceRootSettingsSnapshot,
     configure_resource_loader_roots,
+)
+from loushang.harness.resources.packages.settings_mutation import (
+    PackageSourceSettingsMutation,
 )
 from loushang.harness.resources.packages.source import PackageSourceConfig
 from loushang.harness.resources.packages.source_resolver import PackageSourceResolver
@@ -44,9 +50,13 @@ class SessionPackageSettings(ResourceRootSettingsSnapshot, Protocol):
 class SessionPackageSettingsManager(ResourceRootSettingsManager, Protocol):
     def get_settings(self) -> SessionPackageSettings: ...
 
-    def add_package_source(self, source: str, *, scope: SettingsScope) -> None: ...
-
-    def remove_package_source(self, source: str, *, scope: SettingsScope) -> None: ...
+    def begin_package_source_mutation(
+        self,
+        source: str,
+        *,
+        scope: SettingsScope,
+        present: bool,
+    ) -> PackageSourceSettingsMutation: ...
 
 
 SettingsManagerProvider = Callable[[], SessionPackageSettingsManager | None]
@@ -68,7 +78,7 @@ class SessionPackageController:
     get_diagnostics_service: DiagnosticsServiceProvider
     refresh_resources: ResourceRefresh
     summary_provider: PackageSummaryProvider | None = None
-    get_resource_revision: Callable[[], int] | None = None
+    supports_synchronous_refresh: Callable[[], bool] = lambda: True
     _operations: PackageOperationsRuntime = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -78,7 +88,6 @@ class SessionPackageController:
             remove_source=self._remove_package_source,
             refresh_resources=self.refresh_package_resources,
             prepare_updates=self.prepare_configured_remote_package_records,
-            get_resource_revision=self.get_resource_revision,
         )
 
     @property
@@ -144,42 +153,85 @@ class SessionPackageController:
     def remove_package(self, source: str) -> dict[str, object]:
         return serialize_package_materialization_record(self._operations.remove(source))
 
-    async def uninstall_package(
+    def uninstall_package(
+        self, source: str, *, scope: str = "project"
+    ) -> dict[str, object]:
+        if not self.supports_synchronous_refresh():
+            raise PackageMutationRequiresAsyncError(
+                "Catalog-backed package uninstall requires uninstall_package_async()"
+            )
+        return serialize_package_materialization_record(
+            self._operations.uninstall_sync(source, scope=scope)
+        )
+
+    async def uninstall_package_async(
         self, source: str, *, scope: str = "project"
     ) -> dict[str, object]:
         return serialize_package_materialization_record(
             await self._operations.uninstall(source, scope=scope)
         )
 
-    def _add_package_source(self, source: str, scope: str) -> None:
+    def _add_package_source(
+        self,
+        source: str,
+        scope: str,
+    ) -> PackageSourceSettingsMutation:
+        return self._begin_package_source_mutation(
+            source,
+            scope=scope,
+            present=True,
+        )
+
+    def _remove_package_source(
+        self,
+        source: str,
+        scope: str,
+    ) -> PackageSourceSettingsMutation:
+        return self._begin_package_source_mutation(
+            source,
+            scope=scope,
+            present=False,
+        )
+
+    def _begin_package_source_mutation(
+        self,
+        source: str,
+        *,
+        scope: str,
+        present: bool,
+    ) -> PackageSourceSettingsMutation:
         settings_manager = self.get_settings_manager()
         if settings_manager is None:
-            return
+            return PackageSourceSettingsMutation(
+                source=source,
+                scope=scope,
+                changed=False,
+                restore=lambda: None,
+            )
+        resolved_scope = cast(
+            SettingsScope,
+            scope if scope in {"global", "project", "session"} else "session",
+        )
         try:
-            settings_manager.add_package_source(
-                source, scope=cast(SettingsScope, scope)
+            return settings_manager.begin_package_source_mutation(
+                source,
+                scope=resolved_scope,
+                present=present,
             )
         except ValueError:
-            settings_manager.add_package_source(source, scope="session")
-
-    def _remove_package_source(self, source: str, scope: str) -> None:
-        settings_manager = self.get_settings_manager()
-        if settings_manager is None:
-            return
-        try:
-            settings_manager.remove_package_source(
-                source, scope=cast(SettingsScope, scope)
+            if resolved_scope == "session":
+                raise
+            return settings_manager.begin_package_source_mutation(
+                source,
+                scope="session",
+                present=present,
             )
-        except ValueError:
-            settings_manager.remove_package_source(source, scope="session")
 
-    async def refresh_package_resources(self) -> None:
+    def refresh_package_resources(self) -> object | Awaitable[object]:
         if self.get_resource_loader() is None:
-            return
+            return PackageResourceRefreshOutcome(published=True)
         self.configure_package_resource_roots()
-        refreshed = self.refresh_resources()
-        if inspect.isawaitable(refreshed):
-            await refreshed
+        return self.refresh_resources()
 
     async def prepare_configured_remote_package_records(self) -> None:
         settings_manager = self.get_settings_manager()

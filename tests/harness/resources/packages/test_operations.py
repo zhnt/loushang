@@ -8,7 +8,13 @@ import pytest
 from loushang.harness.resources.packages.materializer import (
     PackageMaterializationRecord,
 )
-from loushang.harness.resources.packages.operations import PackageOperationsRuntime
+from loushang.harness.resources.packages.operations import (
+    PackageOperationsRuntime,
+    PackageResourceRefreshOutcome,
+)
+from loushang.harness.resources.packages.settings_mutation import (
+    PackageSourceSettingsMutation,
+)
 
 
 class _Materializer:
@@ -20,6 +26,7 @@ class _Materializer:
         self.removed: list[str] = []
         self.forgotten: list[str] = []
         self.materialize_result: PackageMaterializationRecord | None = None
+        self.remove_result: PackageMaterializationRecord | None = None
 
     async def materialize_remote_source(
         self, source: str
@@ -37,7 +44,7 @@ class _Materializer:
 
     def remove_remote_source(self, source: str) -> PackageMaterializationRecord:
         self.removed.append(source)
-        return self._record(source, "remote_registered")
+        return self.remove_result or self._record(source, "remote_registered")
 
     def forget_remote_source(self, source: str) -> None:
         self.forgotten.append(source)
@@ -62,10 +69,28 @@ def _runtime(
     async def prepare() -> None:
         calls.append("prepare")
 
+    def add_source(source: str, scope: str) -> PackageSourceSettingsMutation:
+        calls.append(f"add:{scope}:{source}")
+        return PackageSourceSettingsMutation(
+            source=source,
+            scope=scope,
+            changed=True,
+            restore=lambda: calls.append(f"remove:{scope}:{source}"),
+        )
+
+    def remove_source(source: str, scope: str) -> PackageSourceSettingsMutation:
+        calls.append(f"remove:{scope}:{source}")
+        return PackageSourceSettingsMutation(
+            source=source,
+            scope=scope,
+            changed=True,
+            restore=lambda: calls.append(f"add:{scope}:{source}"),
+        )
+
     return PackageOperationsRuntime(
         get_materializer=lambda: materializer,
-        add_source=lambda source, scope: calls.append(f"add:{scope}:{source}"),
-        remove_source=lambda source, scope: calls.append(f"remove:{scope}:{source}"),
+        add_source=add_source,
+        remove_source=remove_source,
         refresh_resources=refresh,
         prepare_updates=prepare,
     )
@@ -139,6 +164,26 @@ def test_operations_uninstall_forgets_remote_source_and_refreshes(tmp_path) -> N
     assert calls == [f"remove:session:{source}", "refresh"]
 
 
+def test_operations_keeps_failed_remote_cleanup_record_after_publication(
+    tmp_path,
+) -> None:
+    calls: list[str] = []
+    materializer = _Materializer(tmp_path)
+    source = "https://example.test/pack.git"
+    materializer.remove_result = materializer._record(source, "failed").with_lifecycle(
+        "failed",
+        error_message="checkout is busy",
+    )
+    runtime = _runtime(materializer, calls=calls)
+
+    with pytest.raises(RuntimeError, match="checkout is busy"):
+        asyncio.run(runtime.uninstall(source, scope="session"))
+
+    assert materializer.removed == [source]
+    assert materializer.forgotten == []
+    assert calls == [f"remove:session:{source}", "refresh"]
+
+
 def test_operations_rolls_back_registration_when_refresh_fails(tmp_path) -> None:
     calls: list[str] = []
     materializer = _Materializer(tmp_path)
@@ -149,8 +194,20 @@ def test_operations_rolls_back_registration_when_refresh_fails(tmp_path) -> None
 
     runtime = PackageOperationsRuntime(
         get_materializer=lambda: materializer,
-        add_source=lambda source, scope: calls.append(f"add:{scope}:{source}"),
-        remove_source=lambda source, scope: calls.append(f"remove:{scope}:{source}"),
+        add_source=lambda source, scope: _settings_mutation(
+            calls,
+            action=f"add:{scope}:{source}",
+            rollback=f"remove:{scope}:{source}",
+            source=source,
+            scope=scope,
+        ),
+        remove_source=lambda source, scope: _settings_mutation(
+            calls,
+            action=f"remove:{scope}:{source}",
+            rollback=f"add:{scope}:{source}",
+            source=source,
+            scope=scope,
+        ),
         refresh_resources=fail_refresh,
     )
     source = "https://example.test/pack.git"
@@ -170,19 +227,31 @@ def test_operations_keeps_registration_when_refresh_published_before_failure(
 ) -> None:
     calls: list[str] = []
     materializer = _Materializer(tmp_path)
-    revision = [1]
 
-    def fail_after_publication() -> None:
+    def fail_after_publication() -> PackageResourceRefreshOutcome:
         calls.append("refresh")
-        revision[0] += 1
-        raise RuntimeError("retirement remains pending")
+        return PackageResourceRefreshOutcome(
+            published=True,
+            error=RuntimeError("retirement remains pending"),
+        )
 
     runtime = PackageOperationsRuntime(
         get_materializer=lambda: materializer,
-        add_source=lambda source, scope: calls.append(f"add:{scope}:{source}"),
-        remove_source=lambda source, scope: calls.append(f"remove:{scope}:{source}"),
+        add_source=lambda source, scope: _settings_mutation(
+            calls,
+            action=f"add:{scope}:{source}",
+            rollback=f"remove:{scope}:{source}",
+            source=source,
+            scope=scope,
+        ),
+        remove_source=lambda source, scope: _settings_mutation(
+            calls,
+            action=f"remove:{scope}:{source}",
+            rollback=f"add:{scope}:{source}",
+            source=source,
+            scope=scope,
+        ),
         refresh_resources=fail_after_publication,
-        get_resource_revision=lambda: revision[0],
     )
     source = "https://example.test/pack.git"
 
@@ -192,8 +261,68 @@ def test_operations_keeps_registration_when_refresh_published_before_failure(
     assert calls == [f"add:project:{source}", "refresh"]
 
 
+def test_operations_does_not_attribute_unrelated_publication_to_failed_refresh(
+    tmp_path,
+) -> None:
+    calls: list[str] = []
+    materializer = _Materializer(tmp_path)
+
+    def fail_this_refresh() -> PackageResourceRefreshOutcome:
+        calls.append("refresh-after-unrelated-publication")
+        return PackageResourceRefreshOutcome(
+            published=False,
+            error=RuntimeError("this refresh failed before publication"),
+        )
+
+    runtime = PackageOperationsRuntime(
+        get_materializer=lambda: materializer,
+        add_source=lambda source, scope: _settings_mutation(
+            calls,
+            action=f"add:{scope}:{source}",
+            rollback=f"remove:{scope}:{source}",
+            source=source,
+            scope=scope,
+        ),
+        remove_source=lambda source, scope: _settings_mutation(
+            calls,
+            action=f"remove:{scope}:{source}",
+            rollback=f"add:{scope}:{source}",
+            source=source,
+            scope=scope,
+        ),
+        refresh_resources=fail_this_refresh,
+    )
+    source = "https://example.test/pack.git"
+
+    with pytest.raises(RuntimeError, match="this refresh failed"):
+        asyncio.run(runtime.install(source, scope="project"))
+
+    assert calls == [
+        f"add:project:{source}",
+        "refresh-after-unrelated-publication",
+        f"remove:project:{source}",
+    ]
+
+
 def test_operations_requires_materializer_for_remote_source(tmp_path) -> None:
     runtime = _runtime(None, calls=[])
 
     with pytest.raises(RuntimeError, match="Package materializer is not available"):
         asyncio.run(runtime.materialize("https://example.test/pack.git"))
+
+
+def _settings_mutation(
+    calls: list[str],
+    *,
+    action: str,
+    rollback: str,
+    source: str,
+    scope: str,
+) -> PackageSourceSettingsMutation:
+    calls.append(action)
+    return PackageSourceSettingsMutation(
+        source=source,
+        scope=scope,
+        changed=True,
+        restore=lambda: calls.append(rollback),
+    )

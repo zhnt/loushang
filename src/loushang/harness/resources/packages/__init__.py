@@ -52,8 +52,10 @@ if TYPE_CHECKING:
     from loushang.harness.resources.packages.operations import (
         PackageMaterializerPort,
         PackageMaterializerProvider,
+        PackageMutationRequiresAsyncError,
         PackageOperationsRuntime,
         PackageResourceRefresh,
+        PackageResourceRefreshOutcome,
         PackageSourceRegistration,
         PackageUpdatePreparation,
     )
@@ -71,6 +73,10 @@ if TYPE_CHECKING:
     from loushang.harness.resources.packages.security import (
         PackageSecurityPolicy,
         PackageSourceSecurityReport,
+    )
+    from loushang.harness.resources.packages.settings_mutation import (
+        PackageSourceMutationState,
+        PackageSourceSettingsMutation,
     )
     from loushang.harness.resources.packages.source import (
         PackageSourceConfig,
@@ -113,6 +119,7 @@ _EXPORT_MODULES = {
     "PackageResourceMount": "loushang.harness.resources.packages.mounts",
     "PackageResourceInventoryPort": "loushang.harness.resources.packages.inventory",
     "PackageMaterializerProvider": "loushang.harness.resources.packages.operations",
+    "PackageMutationRequiresAsyncError": "loushang.harness.resources.packages.operations",
     "PackageOperationsRuntime": "loushang.harness.resources.packages.operations",
     "PackageProgressEvent": "loushang.harness.resources.packages.materializer",
     "PackageResolveResult": "loushang.harness.resources.packages.source_resolver",
@@ -120,9 +127,12 @@ _EXPORT_MODULES = {
     "PackageSourceIdentity": "loushang.harness.resources.packages.source",
     "PackageSourcePolicy": "loushang.harness.resources.packages.materializer",
     "PackageResourceRefresh": "loushang.harness.resources.packages.operations",
+    "PackageResourceRefreshOutcome": "loushang.harness.resources.packages.operations",
     "PackageSecurityPolicy": "loushang.harness.resources.packages.security",
     "PackageSourceSecurityReport": "loushang.harness.resources.packages.security",
     "PackageSourceRegistration": "loushang.harness.resources.packages.operations",
+    "PackageSourceMutationState": "loushang.harness.resources.packages.settings_mutation",
+    "PackageSourceSettingsMutation": "loushang.harness.resources.packages.settings_mutation",
     "PackageSourceResolver": "loushang.harness.resources.packages.source_resolver",
     "PackageUpdatePreparation": "loushang.harness.resources.packages.operations",
     "PythonPackageInstallerBackend": "loushang.harness.resources.packages.materializer",

@@ -1550,7 +1550,12 @@ Skill capture and compatibility view, with synchronous rollback on failure.
 Watcher, package, ordinary, and Extension reload requests all use this async
 path, while `legacy_explicit` alone retains the old Bundle coordinator and
 disabled-name overlay. Replaced Resource generations drain exact load leases
-before old Extension generations retire. Peer loader/discovery deletion is now
+before old Extension generations retire. Package mutations consume an
+invocation-local publication outcome and a scoped settings receipt rather than
+inferring ownership from the Session revision clock; Catalog uninstall removes
+remote materialization only after publication and uses the explicit async API.
+The Resource owner also pins every awaited Consumer load, including borrowed
+Extension body reads, across retirement. Peer loader/discovery deletion is now
 the sole RCP5.5 debt.
 
 Exit: one Catalog path serves every Skill operation; native Skills need no
