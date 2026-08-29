@@ -85,9 +85,6 @@ class _PreparedResourceOwnerGeneration(Protocol):
     @property
     def catalog_projection(self) -> object: ...
 
-    @property
-    def skill_status_projection(self) -> object: ...
-
     def load_handle(self, identity: Any) -> Any: ...
 
     async def load(self, handle: Any) -> Any: ...
@@ -338,12 +335,6 @@ class StagedResourceCompositionCandidate:
         if self.__candidate.ownership not in {"root_owned", "graph_owned"}:
             raise RuntimeError("Resource Catalog generation is not retained")
         return self._require_prepared_owner_generation().catalog_projection
-
-    @property
-    def resource_skill_status_projection(self) -> object:
-        if self.__candidate.ownership not in {"root_owned", "graph_owned"}:
-            raise RuntimeError("Resource Catalog generation is not retained")
-        return self._require_prepared_owner_generation().skill_status_projection
 
     def resource_load_handle(self, identity: object) -> object:
         if self.__candidate.ownership != "graph_owned":

@@ -78,6 +78,15 @@ class SkillCatalogStatusSummary:
     revision_ref: RevisionResourceRef | None
 
     def __post_init__(self) -> None:
+        boolean_facts = (
+            self.declared_enabled,
+            self.declared_model_invocable,
+            self.effective,
+            self.primary,
+            self.model_invocable,
+        )
+        if any(type(value) is not bool for value in boolean_facts):
+            raise TypeError("Skill status boolean facts must be bool")
         if self.catalog_generation < 1:
             raise ValueError("Skill status Catalog generation must be positive")
         _require_digest(
@@ -104,10 +113,16 @@ class SkillCatalogStatusSummary:
         )
         if self.effective != (self.status == "effective"):
             raise ValueError("Skill status effective fact is inconsistent")
+        if self.declared_enabled != (self.status != "inactive_declaration"):
+            raise ValueError("Skill status declaration fact is inconsistent")
         if self.primary and not self.effective:
             raise ValueError("Only an effective Skill status can be primary")
         if self.model_invocable and not self.effective:
             raise ValueError("Only an effective Skill status can be model-invocable")
+        if self.model_invocable and not self.declared_model_invocable:
+            raise ValueError(
+                "A model-invocable Skill status must declare model invocation"
+            )
 
     @property
     def id(self) -> str:
@@ -143,6 +158,22 @@ class SkillCatalogStatusProjection:
         candidates = tuple(skill.candidate_fingerprint for skill in self.skills)
         if len(set(candidates)) != len(candidates):
             raise ValueError("Skill status candidates must be unique")
+        statuses_by_identity: dict[
+            ResourceIdentity,
+            list[SkillCatalogStatusSummary],
+        ] = {}
+        for skill in self.skills:
+            statuses_by_identity.setdefault(skill.identity, []).append(skill)
+        for statuses in statuses_by_identity.values():
+            effective = tuple(status for status in statuses if status.effective)
+            if effective and sum(status.primary for status in effective) != 1:
+                raise ValueError(
+                    "Effective Skill statuses must have exactly one primary"
+                )
+            if len({status.model_invocable for status in effective}) > 1:
+                raise ValueError(
+                    "Effective Skill statuses must share model invocation state"
+                )
 
 
 def build_skill_catalog_status_projection(
@@ -306,7 +337,18 @@ def _validated_skill_descriptor(
     candidate: ResourceCandidateSummary,
     binding: ResourceProjectionDescriptorBinding,
 ) -> SkillDescriptor:
-    descriptor = binding.descriptor
+    try:
+        verified_binding = ResourceProjectionDescriptorBinding(
+            candidate_fingerprint=binding.candidate_fingerprint,
+            resource_kind=binding.resource_kind,
+            descriptor=binding.descriptor,
+            descriptor_fingerprint=binding.descriptor_fingerprint,
+        )
+    except (TypeError, ValueError) as error:
+        raise SkillCatalogStatusProjectionError(
+            "Skill status descriptor binding evidence is invalid"
+        ) from error
+    descriptor = verified_binding.descriptor
     if not isinstance(descriptor, SkillDescriptor):
         raise SkillCatalogStatusProjectionError(
             "Skill status descriptor binding has the wrong type"

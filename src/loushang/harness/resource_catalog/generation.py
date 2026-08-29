@@ -135,7 +135,7 @@ class PreparedResourceOwnerGeneration:
         return self._shadow.catalog_projection
 
     @property
-    def skill_status_projection(self) -> SkillCatalogStatusProjection:
+    def _skill_status_projection(self) -> SkillCatalogStatusProjection:
         if self._ownership not in {
             "root_owned",
             "graph_constructing",

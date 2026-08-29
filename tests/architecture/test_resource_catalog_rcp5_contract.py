@@ -20,6 +20,12 @@ CAPABILITY_PROVIDER_PATH = Path(
 CAPABILITY_CONSUMER_PATH = Path(
     "src/loushang/harness/capabilities/resources_consumers.py"
 )
+CAPABILITY_CONTRACT_PATH = Path(
+    "src/loushang/harness/capabilities/resources_contracts.py"
+)
+COMPOSITION_RUNTIME_PATH = Path(
+    "src/loushang/harness/capabilities/composition_runtime.py"
+)
 PUBLIC_SURFACES = (
     Path("src/loushang/harness/resources/__init__.py"),
     Path("src/loushang/harness/__init__.py"),
@@ -148,3 +154,12 @@ def test_rcp52_status_projection_stays_with_the_resource_owner() -> None:
     assert ".content" not in source
     assert ".metadata" not in source
     assert ".opaque_locator" not in source
+
+    contracts = CAPABILITY_CONTRACT_PATH.read_text(encoding="utf-8")
+    provider = CAPABILITY_PROVIDER_PATH.read_text(encoding="utf-8")
+    consumer = CAPABILITY_CONSUMER_PATH.read_text(encoding="utf-8")
+    composition = COMPOSITION_RUNTIME_PATH.read_text(encoding="utf-8")
+    assert "RESOURCES_CAPABILITY_DEFINITION_V4" not in contracts
+    assert "skill_status_projection" not in provider
+    assert "skill_status_projection" not in consumer
+    assert "resource_skill_status_projection" not in composition

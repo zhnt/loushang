@@ -233,6 +233,7 @@ def test_skill_projection_requires_opt_in_v3_contract(tmp_path: Path) -> None:
             runtime.capture(RESOURCES_CATALOG_LOAD_REQUIREMENT)
         facet = catalog.facets.require("resource.catalog")
         assert not hasattr(facet, "projection")
+        assert not hasattr(facet, "skill_status_projection")
         assert catalog.skill_projection.skills
         assert await binder.dispose(runtime) == ()
 

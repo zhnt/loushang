@@ -2,17 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-from dataclasses import fields
+from dataclasses import fields, replace
 from pathlib import Path
 
 import pytest
 
-from loushang.harness.capabilities import (
-    stage_resource_composition_candidate,
-    standard_capability_composition_plan,
-)
 from loushang.harness.resource_catalog.generation import (
-    prepare_first_party_resource_owner_generation,
+    PreparedResourceOwnerGeneration,
+)
+from loushang.harness.resource_catalog.shadow import (
+    run_first_party_resource_catalog_shadow,
 )
 from loushang.harness.resources._catalog_engine import (
     compose_resource_catalog,
@@ -23,6 +22,7 @@ from loushang.harness.resources._catalog_native_source import (
 )
 from loushang.harness.resources._catalog_projection import (
     ResourceProjectionDescriptorBinding,
+    _descriptor_fingerprint,
     build_resource_projection_binding,
 )
 from loushang.harness.resources._catalog_records import (
@@ -48,7 +48,6 @@ from loushang.harness.resources.types import (
     ResourceSourceScope,
     SkillDescriptor,
 )
-from loushang.harness.runtime import RuntimeProfileResolver
 
 
 def _digest(value: str) -> str:
@@ -77,6 +76,7 @@ def _candidate_and_binding(
     source_id: str,
     source_kind: ResourceSourceKind,
     enabled: bool = True,
+    model_invocable: bool = True,
     source_root_order: int = 0,
 ) -> tuple[ResourceCandidateSummary, ResourceProjectionDescriptorBinding]:
     source_scope: ResourceSourceScope = {
@@ -104,7 +104,7 @@ def _candidate_and_binding(
         media_type="text/markdown",
         invocation_policy=ResourceInvocationPolicy(
             enabled=enabled,
-            model_invocable=True,
+            model_invocable=model_invocable,
             reason="test",
         ),
         source_generation_ref=source_ref,
@@ -126,6 +126,7 @@ def _candidate_and_binding(
         source_path=Path(f"/{source_id}/skills/review/SKILL.md"),
         content=body.decode(),
         description="Review changes",
+        disable_model_invocation=not model_invocable,
         enabled=enabled,
         canonical_name="review",
         source_kind=source_kind,
@@ -147,6 +148,7 @@ def _project(
         ResourceProjectionDescriptorBinding,
     ],
     disabled: bool = False,
+    model_disabled: bool = False,
 ) -> SkillCatalogStatusProjection:
     candidates = tuple(item[0] for item in candidates_and_bindings)
     bindings = tuple(item[1] for item in candidates_and_bindings)
@@ -163,6 +165,9 @@ def _project(
     activation_policy = build_activation_policy_snapshot(
         policy_revision="test-skill-status",
         disabled_identities=(candidates[0].identity,) if disabled else (),
+        model_invocation_disabled_identities=(
+            (candidates[0].identity,) if model_disabled else ()
+        ),
     )
     catalog = compose_resource_catalog(
         snapshots,
@@ -198,6 +203,10 @@ def test_status_projection_preserves_effective_and_shadowed_catalog_order() -> N
         "shadowed",
     ]
     assert [summary.primary for summary in projection.skills] == [True, False]
+    assert projection.skills[0].declared_model_invocable is True
+    assert projection.skills[0].model_invocable is True
+    assert projection.skills[1].declared_model_invocable is True
+    assert projection.skills[1].model_invocable is False
     assert [summary.status_reason for summary in projection.skills] == [
         "source_precedence",
         "source_precedence",
@@ -339,9 +348,165 @@ def test_status_projection_is_body_free_and_requires_complete_candidate_coverage
             descriptor_bindings=(foreign[1],),
         )
 
+    skill_descriptor = item[1].descriptor
+    assert isinstance(skill_descriptor, SkillDescriptor)
+    descriptor = replace(
+        skill_descriptor,
+        source_path=Path("/forged/body-shaped-path"),
+    )
+    forged = object.__new__(ResourceProjectionDescriptorBinding)
+    object.__setattr__(
+        forged,
+        "candidate_fingerprint",
+        item[1].candidate_fingerprint,
+    )
+    object.__setattr__(forged, "resource_kind", item[1].resource_kind)
+    object.__setattr__(forged, "descriptor", descriptor)
+    object.__setattr__(
+        forged,
+        "descriptor_fingerprint",
+        item[1].descriptor_fingerprint,
+    )
+    with pytest.raises(
+        SkillCatalogStatusProjectionError,
+        match="binding evidence is invalid",
+    ):
+        build_skill_catalog_status_projection(
+            snapshot=catalog,
+            descriptor_bindings=(forged,),
+        )
 
+    inconsistent_descriptor = replace(
+        skill_descriptor,
+        description="Facts no longer match the Catalog candidate",
+    )
+    inconsistent = ResourceProjectionDescriptorBinding(
+        candidate_fingerprint=item[1].candidate_fingerprint,
+        resource_kind=item[1].resource_kind,
+        descriptor=inconsistent_descriptor,
+        descriptor_fingerprint=_descriptor_fingerprint(
+            candidate_fingerprint=item[1].candidate_fingerprint,
+            resource_kind=item[1].resource_kind,
+            descriptor=inconsistent_descriptor,
+        ),
+    )
+    with pytest.raises(
+        SkillCatalogStatusProjectionError,
+        match="facts do not match",
+    ):
+        build_skill_catalog_status_projection(
+            snapshot=catalog,
+            descriptor_bindings=(inconsistent,),
+        )
+
+
+def test_status_summary_and_projection_reject_impossible_forged_values() -> None:
+    projection = _project(
+        _candidate_and_binding(
+            source_id="project",
+            source_kind="project_local",
+        )
+    )
+    summary = projection.skills[0]
+
+    for changes in (
+        {"effective": True, "status": "shadowed"},
+        {
+            "effective": False,
+            "primary": True,
+            "model_invocable": False,
+            "status": "shadowed",
+        },
+        {
+            "effective": False,
+            "model_invocable": True,
+            "primary": False,
+            "status": "shadowed",
+        },
+        {"declared_enabled": False},
+        {
+            "declared_enabled": True,
+            "effective": False,
+            "model_invocable": False,
+            "primary": False,
+            "status": "inactive_declaration",
+        },
+        {"declared_model_invocable": False, "model_invocable": True},
+        {"status": "forged"},
+    ):
+        with pytest.raises(ValueError):
+            replace(summary, **changes)  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="boolean facts must be bool"):
+        replace(summary, primary=1)  # type: ignore[arg-type]
+
+    foreign_generation = replace(
+        summary,
+        catalog_generation=summary.catalog_generation + 1,
+    )
+    with pytest.raises(ValueError, match="share one Catalog generation"):
+        replace(projection, skills=(foreign_generation,))
+    foreign_snapshot = replace(
+        summary,
+        catalog_snapshot_fingerprint=_digest("foreign-snapshot"),
+    )
+    with pytest.raises(ValueError, match="share one Catalog generation"):
+        replace(projection, skills=(foreign_snapshot,))
+    with pytest.raises(ValueError, match="candidates must be unique"):
+        replace(projection, skills=(summary, summary))
+
+    peer = replace(
+        summary,
+        candidate_fingerprint=_digest("peer-candidate"),
+    )
+    with pytest.raises(ValueError, match="exactly one primary"):
+        replace(projection, skills=(summary, peer))
+    with pytest.raises(ValueError, match="exactly one primary"):
+        replace(
+            projection,
+            skills=(
+                replace(summary, primary=False),
+                replace(peer, primary=False),
+            ),
+        )
+    with pytest.raises(ValueError, match="share model invocation state"):
+        replace(
+            projection,
+            skills=(
+                summary,
+                replace(peer, primary=False, model_invocable=False),
+            ),
+        )
+
+
+def test_status_projection_separates_declared_and_effective_model_invocation() -> None:
+    policy_disabled = _project(
+        _candidate_and_binding(
+            source_id="policy-disabled",
+            source_kind="project_local",
+        ),
+        model_disabled=True,
+    ).skills[0]
+    assert policy_disabled.status == "effective"
+    assert policy_disabled.effective is True
+    assert policy_disabled.declared_model_invocable is True
+    assert policy_disabled.model_invocable is False
+
+    declaration_disabled = _project(
+        _candidate_and_binding(
+            source_id="declaration-model-disabled",
+            source_kind="project_local",
+            model_invocable=False,
+        )
+    ).skills[0]
+    assert declaration_disabled.status == "effective"
+    assert declaration_disabled.declared_model_invocable is False
+    assert declaration_disabled.model_invocable is False
+
+
+@pytest.mark.parametrize("ownership", ("root", "graph"))
 def test_prepared_owner_generation_retains_status_until_disposal(
     tmp_path: Path,
+    ownership: str,
 ) -> None:
     async def scenario() -> None:
         workspace = tmp_path / "workspace"
@@ -359,12 +524,7 @@ def test_prepared_owner_generation_retains_status_until_disposal(
             root_kind="standard",
             source_root_order=0,
         )
-        profile = RuntimeProfileResolver().resolve(
-            standard_capability_composition_plan(product_id="coding")
-        )
-        candidate = stage_resource_composition_candidate(profile)
-        await prepare_first_party_resource_owner_generation(
-            staged_candidate=candidate,
+        shadow = await run_first_party_resource_catalog_shadow(
             product_id="coding",
             scope_id="workspace:test",
             runtime_id="resource-owner:skill-status",
@@ -374,15 +534,21 @@ def test_prepared_owner_generation_retains_status_until_disposal(
             expires_at=100,
             now=20,
         )
+        generation = PreparedResourceOwnerGeneration._from_shadow(shadow)
 
-        assert candidate.resource_catalog_projection is None
-        projection = candidate.resource_skill_status_projection
+        assert generation.catalog_projection is None
+        projection = generation._skill_status_projection
         assert isinstance(projection, SkillCatalogStatusProjection)
         assert [summary.status for summary in projection.skills] == ["effective"]
         assert not hasattr(projection.skills[0], "body")
 
-        await candidate.dispose_root_owned()
-        with pytest.raises(RuntimeError, match="generation is not retained"):
-            _ = candidate.resource_skill_status_projection
+        if ownership == "graph":
+            generation._begin_graph_construction()
+            generation._commit_graph_ownership()
+            await generation._dispose_graph_owned()
+        else:
+            await generation.dispose_root_owned()
+        with pytest.raises(RuntimeError, match="retiring or disposed"):
+            _ = generation._skill_status_projection
 
     asyncio.run(scenario())

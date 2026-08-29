@@ -162,7 +162,9 @@ without changing persisted settings or v2/v3 behavior.
 RCP5.2A is implemented owner-private in
 `loushang.harness.resources._skill_catalog_status`. The prepared Resource owner
 generation retains the projection under the same custody as its Catalog
-snapshot and drops access when that generation retires. RCP5.2B remains
+snapshot and drops access when that generation retires. RCP5.2A adds no public
+staged-candidate accessor or Graph facet; publication remains exclusively an
+RCP5.2B exact-v4 concern. RCP5.2B remains
 unauthorized until this implementation receives fresh source-backed review.
 
 ## Ordered cutover

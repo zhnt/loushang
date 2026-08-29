@@ -22,6 +22,7 @@ from loushang.harness.capabilities.resources_consumers import (
 from loushang.harness.capabilities.resources_contracts import (
     RESOURCES_CAPABILITY_DEFINITION,
     RESOURCES_CAPABILITY_DEFINITION_V2,
+    RESOURCES_CAPABILITY_DEFINITION_V3,
     RESOURCES_CATALOG_LOAD_REQUIREMENT,
     RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT,
 )
@@ -126,6 +127,23 @@ def _replace_resource_runtime(profile, implementation: str):  # type: ignore[no-
     return replace(profile, capabilities=tuple(capabilities))
 
 
+def test_v2_and_v3_resource_contract_shapes_remain_frozen() -> None:
+    expected_facets = (
+        "resource.runtime",
+        "prompt.sections",
+        "skill.activation",
+        "tool.packs",
+        "command.packs",
+        "resource.catalog",
+        "resource.load",
+    )
+
+    assert RESOURCES_CAPABILITY_DEFINITION_V2.contract_version == 2
+    assert RESOURCES_CAPABILITY_DEFINITION_V2.facets == expected_facets
+    assert RESOURCES_CAPABILITY_DEFINITION_V3.contract_version == 3
+    assert RESOURCES_CAPABILITY_DEFINITION_V3.facets == expected_facets
+
+
 def test_prepared_generation_is_one_candidate_child_and_root_cleanup_is_async(
     tmp_path: Path,
 ) -> None:
@@ -189,6 +207,10 @@ def test_v2_provider_adopts_generation_and_serves_exact_catalog_load(
         assert not hasattr(
             catalog.facets.require("resource.catalog"),
             "skill_projection",
+        )
+        assert not hasattr(
+            catalog.facets.require("resource.catalog"),
+            "skill_status_projection",
         )
         snapshot = catalog.snapshot
         identity = next(
