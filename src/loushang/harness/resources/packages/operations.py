@@ -52,12 +52,15 @@ class PackageResourceRefreshOutcome:
 
     published: bool
     error: BaseException | None = None
+    settled: bool = True
 
     def __post_init__(self) -> None:
         if not isinstance(self.published, bool):
             raise TypeError("Package Resource refresh publication flag must be a bool")
         if self.error is not None and not isinstance(self.error, BaseException):
             raise TypeError("Package Resource refresh error is invalid")
+        if not isinstance(self.settled, bool):
+            raise TypeError("Package Resource settlement flag must be a bool")
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,7 +171,7 @@ class PackageOperationsRuntime:
             outcome = await self._refresh_settings_mutation(
                 lambda: self.remove_source(source, scope)
             )
-            if outcome.published:
+            if outcome.published and outcome.settled:
                 record = self._remove_materialized_source(source, outcome=outcome)
             else:
                 record = self._uninstalled_record(source)
@@ -186,7 +189,7 @@ class PackageOperationsRuntime:
         outcome = self._refresh_settings_mutation_sync(
             lambda: self.remove_source(source, scope)
         )
-        if outcome.published:
+        if outcome.published and outcome.settled:
             record = self._remove_materialized_source(source, outcome=outcome)
         else:
             record = self._uninstalled_record(source)

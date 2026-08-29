@@ -175,6 +175,9 @@ from loushang.harness.session.resource_capability_ports import (
     SessionResourceCapabilityPorts,
 )
 from loushang.harness.session.resource_refresh import ExtensionDeclarationPreflight
+from loushang.harness.session.resource_refresh_gate import (
+    ResourceCatalogRefreshGatePort,
+)
 from loushang.harness.session.session_capability_consumer import (
     SessionResourceCompositionCapabilityConsumer,
     SessionSideQuestionCapabilityConsumer,
@@ -292,7 +295,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         resource_catalog_refresh_bootstrap_factory: (
             ResourceCatalogRefreshBootstrapFactory | None
         ) = None,
-        resource_catalog_refresh_lock: asyncio.Lock | None = None,
+        resource_catalog_refresh_lock: ResourceCatalogRefreshGatePort | None = None,
     ) -> None:
         self.agent = agent
         self._session_default_model = agent.model

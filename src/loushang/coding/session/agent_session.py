@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any
 
@@ -71,6 +70,9 @@ from loushang.harness.session.legacy_side_question import (
     bind_legacy_side_question,
 )
 from loushang.harness.session.model_call import SessionModelCallCapabilityConsumer
+from loushang.harness.session.resource_refresh_gate import (
+    ResourceCatalogRefreshGatePort,
+)
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import (
     BranchSummaryOutput,
@@ -165,7 +167,7 @@ class AgentSession(AgentProductSession):
         workspace_capability_binding: CapabilityBundleProviderBinding | None = None,
         initial_resource_catalog_bootstrap: Any | None = None,
         resource_catalog_refresh_bootstrap_factory: Any | None = None,
-        resource_catalog_refresh_lock: asyncio.Lock | None = None,
+        resource_catalog_refresh_lock: ResourceCatalogRefreshGatePort | None = None,
     ) -> None:
         if coding_lsp_plugin_assembly is not None and not isinstance(
             coding_lsp_plugin_assembly,

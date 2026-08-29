@@ -26,6 +26,10 @@ from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
 )
+from loushang.harness.session.resource_refresh_gate import (
+    ResourceCatalogRefreshGate,
+    ResourceCatalogRefreshGatePort,
+)
 
 
 class ResourceLoaderPort(Protocol):
@@ -63,12 +67,15 @@ class SessionResourceRefreshOutcome:
 
     published: bool
     error: BaseException | None = field(default=None, repr=False, compare=False)
+    settled: bool = True
 
     def __post_init__(self) -> None:
         if not isinstance(self.published, bool):
             raise TypeError("Session Resource publication flag must be a bool")
         if self.error is not None and not isinstance(self.error, BaseException):
             raise TypeError("Session Resource refresh error is invalid")
+        if not isinstance(self.settled, bool):
+            raise TypeError("Session Resource settlement flag must be a bool")
 
 
 @dataclass
@@ -90,11 +97,14 @@ class SessionResourceRefreshRuntime:
     )
     extension_declaration_preflight: ExtensionDeclarationPreflight | None = None
     refresh_catalog: ResourceCatalogRefresh | None = None
-    catalog_refresh_lock: asyncio.Lock | None = field(default=None, repr=False)
+    catalog_refresh_lock: ResourceCatalogRefreshGatePort | None = field(
+        default=None,
+        repr=False,
+    )
     _coordinator: ResourceRefreshCoordinator[ResourceBundle] = field(init=False)
     _discovery: RuntimeResourceDiscovery[ResourceBundle] = field(init=False)
     _resource_revision: int = field(init=False, default=0)
-    _catalog_refresh_lock: asyncio.Lock = field(init=False)
+    _catalog_refresh_lock: ResourceCatalogRefreshGatePort = field(init=False)
     _closing: bool = field(init=False, default=False)
     _closed: bool = field(init=False, default=False)
     _close_task: asyncio.Task[None] | None = field(init=False, default=None)
@@ -107,7 +117,9 @@ class SessionResourceRefreshRuntime:
 
     def __post_init__(self) -> None:
         self._resource_revision = 1 if self.get_resource_bundle() is not None else 0
-        self._catalog_refresh_lock = self.catalog_refresh_lock or asyncio.Lock()
+        self._catalog_refresh_lock = (
+            self.catalog_refresh_lock or ResourceCatalogRefreshGate()
+        )
         self._discovery = RuntimeResourceDiscovery(self.get_extension_runtime)
         self._coordinator = ResourceRefreshCoordinator(
             load_resource=self._load_resource_bundle,
@@ -199,11 +211,14 @@ class SessionResourceRefreshRuntime:
                         "Resource refresh transaction settlement also failed: "
                         f"{settlement_error!r}"
                     )
+                    error = outcome.error
                 else:
-                    outcome = SessionResourceRefreshOutcome(
-                        published=outcome.published,
-                        error=settlement_error,
-                    )
+                    error = settlement_error
+                outcome = SessionResourceRefreshOutcome(
+                    published=outcome.published,
+                    error=error,
+                    settled=False,
+                )
             return outcome
 
     async def _refresh_with_outcome(

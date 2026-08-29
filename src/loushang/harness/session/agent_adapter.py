@@ -573,6 +573,7 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
         return PackageResourceRefreshOutcome(
             published=outcome.published,
             error=outcome.error,
+            settled=outcome.settled,
         )
 
     def _refresh_package_resource_transaction(
@@ -595,7 +596,22 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
             )
         else:
             outcome = PackageResourceRefreshOutcome(published=True)
-        transaction.settle(mutation, outcome)
+        try:
+            transaction.settle(mutation, outcome)
+        except BaseException as settlement_error:
+            if outcome.error is not None:
+                outcome.error.add_note(
+                    "Package Resource transaction settlement also failed: "
+                    f"{settlement_error!r}"
+                )
+                final_error = outcome.error
+            else:
+                final_error = settlement_error
+            outcome = PackageResourceRefreshOutcome(
+                published=outcome.published,
+                error=final_error,
+                settled=False,
+            )
         return outcome
 
     async def _refresh_catalog_package_resource_transaction(
@@ -611,6 +627,7 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
                 PackageResourceRefreshOutcome(
                     published=outcome.published,
                     error=outcome.error,
+                    settled=outcome.settled,
                 ),
             )
 
@@ -623,6 +640,7 @@ class AgentSessionAdapterMixin(SessionFacade[Any, Any, Any, Any, Any, Any, Any])
         return PackageResourceRefreshOutcome(
             published=outcome.published,
             error=outcome.error,
+            settled=outcome.settled,
         )
 
     def _resource_watch_paths(self) -> list[Path]:

@@ -815,6 +815,34 @@ def test_package_source_mutation_commit_rejects_listener_same_key_drift(
     assert manager.get_project_settings() == {"packages": []}
 
 
+def test_noop_package_source_mutation_still_validates_operation_key(
+    tmp_path,
+) -> None:
+    from loushang.harness.config.agent import SettingsManager
+
+    source = "git:https://example.test/review.git"
+    manager = SettingsManager(project_settings_path=tmp_path / "project.json")
+    manager.set_package_sources((), scope="project")
+    unsubscribe_callbacks = [lambda: None]
+
+    def add_during_publication(_settings) -> None:  # type: ignore[no-untyped-def]
+        unsubscribe_callbacks[0]()
+        manager.add_package_source(source, scope="project")
+
+    unsubscribe_callbacks[0] = manager.subscribe(add_during_publication)
+    mutation = manager.begin_package_source_mutation(
+        source,
+        scope="project",
+        present=False,
+    )
+
+    assert mutation.changed is False
+    assert [item.source for item in manager.get_package_sources()] == [source]
+    with pytest.raises(RuntimeError, match="changed concurrently: packages"):
+        mutation.commit()
+    assert mutation.state == "active"
+
+
 def test_settings_manager_exposes_standard_control_getters_and_setters(
     tmp_path,
 ) -> None:

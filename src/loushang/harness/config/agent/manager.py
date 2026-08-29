@@ -664,10 +664,11 @@ class SettingsManager:
         layer = self._config.scope(scope)
         previous_patch: dict[str, object] = {}
         applied_patch: dict[str, object] = {}
+        operation_keys: set[str] = set()
         applied_ready = False
 
         def apply(current_patch: dict[str, object]) -> dict[str, object]:
-            nonlocal previous_patch, applied_patch, applied_ready
+            nonlocal previous_patch, applied_patch, operation_keys, applied_ready
             previous_patch = deepcopy(current_patch)
             current_sources = self._settings.package_sources
             next_sources = (
@@ -681,6 +682,7 @@ class SettingsManager:
             update_patch = build_settings_patch(
                 AgentSettingsUpdate(package_sources=next_sources)
             )
+            operation_keys = set(update_patch)
             applied_patch = merge_config_patch(current_patch, update_patch)
             applied_ready = True
             return applied_patch
@@ -713,10 +715,10 @@ class SettingsManager:
         changed_keys = mutation_keys()
 
         def validate() -> None:
-            if not layer.matches(applied_patch, keys=changed_keys):
+            if not layer.matches(applied_patch, keys=operation_keys):
                 raise RuntimeError(
                     "Package source settings changed concurrently: "
-                    + ", ".join(sorted(changed_keys))
+                    + ", ".join(sorted(operation_keys))
                 )
 
         def restore() -> None:

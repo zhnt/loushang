@@ -441,13 +441,23 @@ package settings. The scoped receipt restores exact prior order through one
 atomic compare/transform/persist operation without overwriting unrelated
 concurrent settings. Listener failure after persistence triggers exact-key
 compensation, while commit validates that no same-key listener drift occurred.
-A remote checkout is removed only after that uninstall has published. The
+Commit watches the package operation key even when the mutation itself is a
+no-op. A remote checkout is removed only after that uninstall has both published
+and settled its settings receipt; post-publication retirement failure does not
+revoke an otherwise successful settlement. The
 synchronous `uninstall_package()` compatibility entry point
 remains available to `legacy_explicit`; Catalog callers fail before mutation and
 the async CLI resolves `uninstall_package_async()` first; RPC preserves runtime
 owner precedence while each owner may expose either async-compatible name. The
 legacy coordinator, direct loader reload, and independent disabled-name overlay
 remain reachable only when the caller explicitly selected `legacy_explicit`.
+
+The shared gate owns an event-loop epoch rather than a permanently bound bare
+`asyncio.Lock`. Root and child holders/waiters in one active epoch serialize;
+concurrent entry from another loop fails explicitly. Once the gate has no
+holder or waiter, a later runtime invocation may rotate it to a new event loop,
+which keeps reusable `BootstrapServices` compatible with sequential SDK
+lifecycles built by separate `asyncio.run()` calls.
 
 After publication, the replaced Resource generation retires first. Every real
 Consumer load pins the Resource owner generation across the complete body read,

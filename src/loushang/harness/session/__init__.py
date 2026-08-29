@@ -330,6 +330,11 @@ if TYPE_CHECKING:
         SessionResourceRefreshOutcome,
         SessionResourceRefreshRuntime,
     )
+    from loushang.harness.session.resource_refresh_gate import (
+        ResourceCatalogRefreshGate,
+        ResourceCatalogRefreshGateLoopError,
+        ResourceCatalogRefreshGatePort,
+    )
     from loushang.harness.session.rpc_operations import SessionRpcOperationBinding
     from loushang.harness.session.runtime import (
         AfterTurnPolicyPort,
@@ -500,6 +505,9 @@ _EXPORT_MODULES = {
     "ResourceSettingsPort": "loushang.harness.session.resource_refresh",
     "ResourceSettingsProvider": "loushang.harness.session.resource_refresh",
     "ResourceRefreshRuntimeClosedError": "loushang.harness.session.resource_refresh",
+    "ResourceCatalogRefreshGate": "loushang.harness.session.resource_refresh_gate",
+    "ResourceCatalogRefreshGateLoopError": "loushang.harness.session.resource_refresh_gate",
+    "ResourceCatalogRefreshGatePort": "loushang.harness.session.resource_refresh_gate",
     "OutputCallback": "loushang.harness.session.facade",
     "ApprovalPresentationLease": "loushang.harness.session.facade",
     "ApprovalRequestDismisser": "loushang.harness.session.facade",

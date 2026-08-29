@@ -44,8 +44,7 @@ class PackageSourceSettingsMutation:
     def commit(self) -> None:
         if self._state != "active":
             raise RuntimeError("Package source mutation is already finalized")
-        if self.changed:
-            self._validate()
+        self._validate()
         self._state = "committed"
 
     def rollback(self) -> None:

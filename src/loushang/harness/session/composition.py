@@ -92,6 +92,9 @@ from loushang.harness.session.resource_refresh import (
     ResourceSettingsPort,
     SessionResourceRefreshRuntime,
 )
+from loushang.harness.session.resource_refresh_gate import (
+    ResourceCatalogRefreshGatePort,
+)
 from loushang.harness.session.runtime import (
     AfterTurnPolicyPort,
     SessionRuntime,
@@ -240,7 +243,7 @@ class SessionFoundationInputs:
     ) = None
     request_evidence: RequestEvidenceRuntimePort | None = None
     refresh_catalog: ResourceCatalogRefresh | None = None
-    resource_catalog_refresh_lock: asyncio.Lock | None = None
+    resource_catalog_refresh_lock: ResourceCatalogRefreshGatePort | None = None
 
 
 @dataclass(frozen=True)

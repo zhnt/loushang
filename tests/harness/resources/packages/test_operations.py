@@ -358,6 +358,109 @@ def test_operations_delegates_mutation_and_failed_uninstall_to_refresh_transacti
     assert materializer.forgotten == []
 
 
+def test_operations_keeps_checkout_when_publication_settlement_fails(
+    tmp_path,
+) -> None:
+    calls: list[str] = []
+    materializer = _Materializer(tmp_path)
+    source = "https://example.test/pack.git"
+
+    def remove_source(source: str, scope: str) -> PackageSourceSettingsMutation:
+        calls.append(f"remove:{scope}:{source}")
+
+        def reject_commit() -> None:
+            raise RuntimeError("settings changed concurrently: packages")
+
+        return PackageSourceSettingsMutation(
+            source=source,
+            scope=scope,
+            changed=True,
+            restore=lambda: calls.append(f"add:{scope}:{source}"),
+            validate=reject_commit,
+        )
+
+    async def publish_then_fail_settlement(
+        transaction: PackageResourceRefreshTransaction,
+    ) -> PackageResourceRefreshOutcome:
+        mutation = transaction.begin()
+        published = PackageResourceRefreshOutcome(published=True)
+        try:
+            transaction.settle(mutation, published)
+        except BaseException as error:
+            return PackageResourceRefreshOutcome(
+                published=True,
+                error=error,
+                settled=False,
+            )
+        raise AssertionError("settings settlement unexpectedly succeeded")
+
+    runtime = PackageOperationsRuntime(
+        get_materializer=lambda: materializer,
+        add_source=lambda source, scope: _settings_mutation(
+            calls,
+            action=f"add:{scope}:{source}",
+            rollback=f"remove:{scope}:{source}",
+            source=source,
+            scope=scope,
+        ),
+        remove_source=remove_source,
+        refresh_resources=lambda: pytest.fail("transaction port was bypassed"),
+        refresh_transaction=publish_then_fail_settlement,
+    )
+
+    with pytest.raises(RuntimeError, match="changed concurrently: packages"):
+        asyncio.run(runtime.uninstall(source, scope="project"))
+
+    assert materializer.removed == []
+    assert materializer.forgotten == []
+    assert calls == [f"remove:project:{source}"]
+
+
+def test_operations_cleans_checkout_after_settled_publication_retirement_error(
+    tmp_path,
+) -> None:
+    calls: list[str] = []
+    materializer = _Materializer(tmp_path)
+    source = "https://example.test/pack.git"
+
+    async def publish_then_report_retirement_error(
+        transaction: PackageResourceRefreshTransaction,
+    ) -> PackageResourceRefreshOutcome:
+        mutation = transaction.begin()
+        outcome = PackageResourceRefreshOutcome(
+            published=True,
+            error=RuntimeError("retirement remains pending"),
+        )
+        transaction.settle(mutation, outcome)
+        return outcome
+
+    runtime = PackageOperationsRuntime(
+        get_materializer=lambda: materializer,
+        add_source=lambda source, scope: _settings_mutation(
+            calls,
+            action=f"add:{scope}:{source}",
+            rollback=f"remove:{scope}:{source}",
+            source=source,
+            scope=scope,
+        ),
+        remove_source=lambda source, scope: _settings_mutation(
+            calls,
+            action=f"remove:{scope}:{source}",
+            rollback=f"add:{scope}:{source}",
+            source=source,
+            scope=scope,
+        ),
+        refresh_resources=lambda: pytest.fail("transaction port was bypassed"),
+        refresh_transaction=publish_then_report_retirement_error,
+    )
+
+    with pytest.raises(RuntimeError, match="retirement remains pending"):
+        asyncio.run(runtime.uninstall(source, scope="project"))
+
+    assert materializer.removed == [source]
+    assert materializer.forgotten == [source]
+
+
 def test_operations_requires_materializer_for_remote_source(tmp_path) -> None:
     runtime = _runtime(None, calls=[])
 

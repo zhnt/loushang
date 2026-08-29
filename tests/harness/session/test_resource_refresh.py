@@ -21,6 +21,9 @@ from loushang.harness.session.resource_refresh import (
     SessionResourceRefreshOutcome,
     SessionResourceRefreshRuntime,
 )
+from loushang.harness.session.resource_refresh_gate import (
+    ResourceCatalogRefreshGate,
+)
 
 
 class _Loader:
@@ -33,6 +36,42 @@ class _Loader:
         if isinstance(self.bundle, Exception):
             raise self.bundle
         return self.bundle
+
+
+def test_shared_catalog_gate_rotates_after_an_idle_event_loop_epoch() -> None:
+    gate = ResourceCatalogRefreshGate()
+
+    def run_epoch(label: str) -> list[str]:
+        events: list[str] = []
+
+        async def scenario() -> None:
+            first_entered = asyncio.Event()
+            release_first = asyncio.Event()
+
+            async def first() -> None:
+                async with gate:
+                    events.append(f"{label}:first")
+                    first_entered.set()
+                    await release_first.wait()
+
+            async def second() -> None:
+                await first_entered.wait()
+                async with gate:
+                    events.append(f"{label}:second")
+
+            first_task = asyncio.create_task(first())
+            second_task = asyncio.create_task(second())
+            await first_entered.wait()
+            await asyncio.sleep(0)
+            assert events == [f"{label}:first"]
+            release_first.set()
+            await asyncio.gather(first_task, second_task)
+
+        asyncio.run(scenario())
+        return events
+
+    assert run_epoch("A") == ["A:first", "A:second"]
+    assert run_epoch("B") == ["B:first", "B:second"]
 
 
 class _ExtensionRuntime:
@@ -558,6 +597,51 @@ def test_shared_catalog_lock_hides_root_mutation_from_child_session_refresh() ->
         assert child_current[0].cwd == Path("/tmp/child-package-False")
         await root.close()
         await child.close()
+
+    asyncio.run(scenario())
+
+
+def test_catalog_refresh_transaction_reports_publication_and_settlement_separately() -> (
+    None
+):
+    async def scenario() -> None:
+        current = [ResourceBundle(cwd=Path("/tmp/original"))]
+
+        async def refresh_catalog(_reason: str) -> ResourceBundle:
+            published = ResourceBundle(cwd=Path("/tmp/published"))
+            current[0] = published
+            return published
+
+        runtime = SessionResourceRefreshRuntime(
+            get_resource_loader=lambda: None,
+            get_resource_bundle=lambda: current[0],
+            get_cwd=lambda: "/tmp/project",
+            get_extension_runtime=lambda: None,
+            get_settings=lambda: None,
+            set_resource_bundle=lambda bundle: current.__setitem__(0, bundle),
+            rebuild_prompt_and_tools_view=lambda: None,
+            record_refresh_failure=lambda _error: None,
+            sync_extension_diagnostics=lambda: None,
+            refresh_catalog=refresh_catalog,
+        )
+
+        def fail_settlement(
+            _receipt: object,
+            _outcome: SessionResourceRefreshOutcome,
+        ) -> None:
+            raise RuntimeError("settings settlement failed")
+
+        outcome = await runtime.refresh_transaction_with_outcome(
+            begin=object,
+            settle=fail_settlement,
+        )
+
+        assert outcome.published is True
+        assert outcome.settled is False
+        assert isinstance(outcome.error, RuntimeError)
+        assert str(outcome.error) == "settings settlement failed"
+        assert current[0].cwd == Path("/tmp/published")
+        await runtime.close()
 
     asyncio.run(scenario())
 
