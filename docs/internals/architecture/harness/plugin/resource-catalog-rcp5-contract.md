@@ -10,8 +10,8 @@ status substrate. RCP5.2B now mounts exact-v4 for the default admitted Coding
 Resource Catalog and routes read-only Skill consumers to one captured
 generation. RCP5.3A/B/C move explicit body loading to the exact asynchronous
 Consumer, persist request-bound evidence, and remove eager body sinks from the
-Catalog projection and neutral consumers. Refresh and compatibility-loader
-deletion remain RCP5.4 and RCP5.5.
+Catalog projection and neutral consumers. RCP5.4 now moves live refresh to
+monotonic Catalog generations. Compatibility-loader deletion remains RCP5.5.
 
 Production cutover starts only after the RCP5.1 contract and implementation
 receive a fresh source-backed review. Stable public Resource authoring remains
@@ -393,6 +393,49 @@ ordinary `methods/` resources remain independent. Catalog synchronous Skill
 preflight, including direct queue APIs, continues to fail finitely with the
 asynchronous-load-required contract rather than manufacturing an empty body.
 
+### RCP5.4 — refresh authority
+
+RCP5.4 is implemented as an internal owner-generation replacement, not a
+Session Capability Graph replacement. The mounted `harness.resources`
+Capability remains stable because its mechanisms and dependent sealed Session
+nodes have not changed. Its private Resource owner atomically replaces
+generation `n` with an already prepared generation `n + 1`; any skipped,
+repeated, foreign-Profile, or non-graph-owned successor fails before
+publication.
+
+Coding prepares every successor from one fresh `ResourceLoader` discovery
+receipt after settings reload and package-root reconfiguration. The Product
+adapter recompiles exact Resource admissions, activation identities, native
+roots, embedded inputs, and verified package revision leases for that receipt.
+The legacy Bundle is an output projection of the new Catalog, never a refresh
+input that selects winners. Disabled-Skill settings enter only the new
+generation's activation policy; the Catalog path never calls the legacy
+`SkillActivationRuntime.apply()` commit overlay.
+
+One asynchronous joint transaction prepares the next Extension source and
+Resource owner generation. Extension Capability declarations receive the same
+synchronous restart-required preflight as the established reload path. At the
+no-await linearization point it publishes the Extension generation, swaps the
+Resource owner, captures a new exact-v4 Skill Consumer from the stable facet
+set, and replaces the Product Catalog/projection/Bundle view. A failed commit
+restores both owner custody and the previous Product view before asynchronous
+candidate cleanup. The graph generation does not change.
+
+Ordinary refresh, watcher refresh, package-triggered refresh, and Extension
+reload all enter this same asynchronous authority. Synchronous Catalog refresh
+fails finitely; best-effort callers schedule and coalesce one owned task. The
+legacy coordinator, direct loader reload, and independent disabled-name overlay
+remain reachable only when the caller explicitly selected `legacy_explicit`.
+
+After publication, the replaced Resource generation retires first. An in-flight
+load pins its exact source-component leases, so cleanup debt remains retryable
+until those leases drain; it never rolls back the already visible successor.
+Only then does the previous Extension generation retire. Session shutdown joins
+or cancels the owned best-effort request, retries retained retirement debt, and
+finally disposes the current mounted generation through the existing graph
+owner. Old typed Consumers retain immutable metadata for their captured
+generation, but cannot initiate a new load after that generation retires.
+
 ## Ordered cutover
 
 RCP5 proceeds in independently reviewable steps:
@@ -410,7 +453,8 @@ RCP5 proceeds in independently reviewable steps:
    immutability during refresh and uninstall.
 4. **RCP5.4 — refresh authority:** route Resource refresh through next Catalog
    generation publication; remove duplicate Skill/Resource watcher refresh and
-   independent disabled-name state.
+   independent disabled-name state. Implemented with a stable Mount and an
+   atomic internal owner-generation replacement.
 5. **RCP5.5 — peer deletion:** make `SkillLoader` and `ResourceLoader`
    forwarding-only while compatibility callers remain, then remove the
    adapters and production effective-selection imports when inventory reaches

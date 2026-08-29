@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +13,9 @@ from loushang.harness.capabilities.composition_runtime import (
     StagedResourceCompositionCandidate,
 )
 from loushang.harness.extensions.context import ExtensionRuntimeBindings
+from loushang.harness.extensions.declarations import (
+    ExtensionCapabilityDeclarationSnapshot,
+)
 from loushang.harness.resource_catalog.generation import (
     prepare_first_party_resource_owner_generation,
 )
@@ -83,6 +88,7 @@ class InitialSessionResourceCatalogInputs:
     expires_at: int
     now: int
     base_resource_bundle: ResourceBundle
+    catalog_generation: int = 1
     package_resources: tuple[AdmittedPackageResource, ...] = ()
     embedded_collections: tuple[EmbeddedResourceCollectionHandle, ...] = ()
     discovery_budget: NativeResourceDiscoveryBudget | None = None
@@ -105,6 +111,12 @@ class InitialSessionResourceCatalogInputs:
                 raise ValueError(f"{name} must not be empty")
         if not isinstance(self.base_resource_bundle, ResourceBundle):
             raise TypeError("initial Resource Catalog requires a base ResourceBundle")
+        if (
+            isinstance(self.catalog_generation, bool)
+            or not isinstance(self.catalog_generation, int)
+            or self.catalog_generation < 1
+        ):
+            raise ValueError("Session Resource Catalog generation must be positive")
         if any(
             not isinstance(item, NativeResourceRootHandle) for item in self.root_handles
         ):
@@ -147,6 +159,7 @@ class InitialSessionResourceCatalogBootstrap:
         self._inputs = inputs
         self._base_resource_bundle = _defensive_bundle(inputs.base_resource_bundle)
         self._joint: PreparedExtensionResourceJointGeneration | None = None
+        self._preflight_candidate: PreparedExtensionGenerationPort | None = None
         self._state: InitialSessionResourceCatalogBootstrapState = "unprepared"
         self._source_inputs_owned = True
 
@@ -159,6 +172,10 @@ class InitialSessionResourceCatalogBootstrap:
         return self._inputs.scope_id
 
     @property
+    def catalog_generation(self) -> int:
+        return self._inputs.catalog_generation
+
+    @property
     def state(self) -> InitialSessionResourceCatalogBootstrapState:
         return self._state
 
@@ -168,6 +185,9 @@ class InitialSessionResourceCatalogBootstrap:
         extension_host: InitialExtensionGenerationHost,
         staged_resource_candidate: StagedResourceCompositionCandidate,
         bindings: ExtensionRuntimeBindings,
+        extension_declaration_preflight: (
+            Callable[[ExtensionCapabilityDeclarationSnapshot], None] | None
+        ) = None,
     ) -> None:
         """Prepare one exact root-private Extension/Resource candidate."""
 
@@ -186,6 +206,33 @@ class InitialSessionResourceCatalogBootstrap:
             extension_candidate = prepare_generation(
                 tuple(self._base_resource_bundle.extensions)
             )
+            self._preflight_candidate = extension_candidate
+            if extension_declaration_preflight is not None:
+                declarations = getattr(
+                    extension_candidate,
+                    "capability_declarations",
+                    None,
+                )
+                if not isinstance(
+                    declarations,
+                    ExtensionCapabilityDeclarationSnapshot,
+                ):
+                    raise TypeError(
+                        "staged Extension generation does not expose capability "
+                        "declarations"
+                    )
+                preflight_result = extension_declaration_preflight(declarations)
+                if inspect.isawaitable(preflight_result):
+                    if inspect.iscoroutine(preflight_result):
+                        preflight_result.close()
+                    raise TypeError(
+                        "Extension declaration preflight must be synchronous"
+                    )
+                if preflight_result is not None:
+                    raise TypeError(
+                        "Extension declaration preflight must return None"
+                    )
+            self._preflight_candidate = None
 
             async def prepare_resource(
                 source_lease: BorrowedResourceSourceGenerationLease,
@@ -197,6 +244,7 @@ class InitialSessionResourceCatalogBootstrap:
                     scope_id=inputs.scope_id,
                     runtime_id=inputs.resource_runtime_id,
                     product_policy_revision=inputs.product_policy_revision,
+                    catalog_generation=inputs.catalog_generation,
                     root_handles=inputs.root_handles,
                     package_resources=inputs.package_resources,
                     embedded_collections=inputs.embedded_collections,
@@ -226,6 +274,17 @@ class InitialSessionResourceCatalogBootstrap:
                 prepare_resource_generation=prepare_resource,
             )
         except BaseException as preparation_error:
+            preflight_candidate = self._preflight_candidate
+            if preflight_candidate is not None:
+                try:
+                    await _rollback_preflight_candidate(preflight_candidate)
+                except BaseException as cleanup_error:
+                    preparation_error.add_note(
+                        "Extension declaration preflight rollback also failed: "
+                        f"{cleanup_error!r}"
+                    )
+                else:
+                    self._preflight_candidate = None
             try:
                 self._close_source_inputs()
             except BaseException as cleanup_error:
@@ -234,6 +293,8 @@ class InitialSessionResourceCatalogBootstrap:
                     f"{cleanup_error!r}"
                 )
             else:
+                if self._preflight_candidate is not None:
+                    raise
                 self._state = "disposed"
             raise
         self._source_inputs_owned = False
@@ -289,6 +350,10 @@ class InitialSessionResourceCatalogBootstrap:
             await joint.rollback(dispose_graph=dispose_graph)
             self._state = "disposed"
             return
+        preflight_candidate = self._preflight_candidate
+        if preflight_candidate is not None:
+            await _rollback_preflight_candidate(preflight_candidate)
+            self._preflight_candidate = None
         self.close_unprepared()
 
     def close_unprepared(self) -> None:
@@ -299,6 +364,10 @@ class InitialSessionResourceCatalogBootstrap:
         if self._state != "unprepared":
             raise RuntimeError(
                 "initial Resource Catalog bootstrap is already prepared"
+            )
+        if self._preflight_candidate is not None:
+            raise RuntimeError(
+                "initial Resource Catalog Extension candidate cleanup is pending"
             )
         self._close_source_inputs()
         self._state = "disposed"
@@ -340,6 +409,30 @@ def _defensive_bundle(bundle: ResourceBundle) -> ResourceBundle:
         themes=list(bundle.themes),
         diagnostics=list(bundle.diagnostics),
     )
+
+
+async def _rollback_preflight_candidate(
+    candidate: PreparedExtensionGenerationPort,
+) -> None:
+    task = asyncio.create_task(candidate.rollback())
+    cancellation: asyncio.CancelledError | None = None
+    caller = asyncio.current_task()
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as exc:
+            if caller is None or caller.cancelling() == 0:
+                reports = task.result()
+                break
+            cancellation = exc
+    else:
+        reports = task.result()
+    if any(report.has_failures for report in reports):
+        raise RuntimeError(
+            "Extension declaration preflight retirement remains pending"
+        )
+    if cancellation is not None:
+        raise cancellation
 
 
 __all__ = [

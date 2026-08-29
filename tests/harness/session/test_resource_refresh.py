@@ -15,7 +15,10 @@ from loushang.harness.resources.types import (
     ResourceBundle,
     SkillDescriptor,
 )
-from loushang.harness.session.resource_refresh import SessionResourceRefreshRuntime
+from loushang.harness.session.resource_refresh import (
+    CatalogRefreshRequiresAsyncError,
+    SessionResourceRefreshRuntime,
+)
 
 
 class _Loader:
@@ -178,6 +181,8 @@ def _runtime(
     failures: list[Exception] | None = None,
     syncs: list[str] | None = None,
     extension_declaration_preflight=None,
+    catalog_refresh=None,
+    prepare_refresh=None,
 ) -> SessionResourceRefreshRuntime:
     return SessionResourceRefreshRuntime(
         get_resource_loader=lambda: loader,
@@ -194,6 +199,8 @@ def _runtime(
             "resource_loading"
         ),
         extension_declaration_preflight=extension_declaration_preflight,
+        refresh_catalog=catalog_refresh,
+        prepare_resource_refresh=prepare_refresh,
     )
 
 
@@ -311,6 +318,85 @@ def test_session_resource_refresh_runtime_request_without_loader_is_a_no_op() ->
     runtime.request_refresh()
 
     assert syncs == []
+
+
+def test_catalog_refresh_is_async_only_and_never_enters_legacy_bundle_pipeline() -> (
+    None
+):
+    events: list[str] = []
+    loader = _Loader(AssertionError("legacy loader must not run"))
+
+    async def refresh_catalog(reason: str) -> ResourceBundle:
+        events.append(f"catalog:{reason}")
+        return ResourceBundle(cwd=Path("/tmp/project"))
+
+    runtime = _runtime(
+        loader=loader,
+        bundle=ResourceBundle(cwd=Path("/tmp/project")),
+        catalog_refresh=refresh_catalog,
+        prepare_refresh=lambda: events.append("prepare"),
+    )
+
+    with pytest.raises(CatalogRefreshRequiresAsyncError):
+        runtime.refresh()
+    asyncio.run(runtime.refresh_async(reason="watch"))
+
+    assert events == ["prepare", "catalog:watch"]
+    assert loader.calls == []
+    assert runtime.resource_revision == 2
+
+
+def test_catalog_refresh_request_coalesces_and_reports_one_success() -> None:
+    events: list[str] = []
+
+    async def scenario() -> None:
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def refresh_catalog(reason: str) -> ResourceBundle:
+            events.append(f"catalog:{reason}")
+            started.set()
+            await release.wait()
+            return ResourceBundle(cwd=Path("/tmp/project"))
+
+        runtime = _runtime(
+            loader=None,
+            catalog_refresh=refresh_catalog,
+            syncs=events,
+        )
+        runtime.request_refresh()
+        runtime.request_refresh()
+        await started.wait()
+        release.set()
+        await runtime.close()
+
+        assert runtime.resource_revision == 1
+
+    asyncio.run(scenario())
+    assert events == ["catalog:refresh", "resource_loading"]
+
+
+def test_catalog_extension_reload_delegates_to_the_same_refresh_authority() -> None:
+    events: list[str] = []
+
+    async def refresh_catalog(reason: str) -> ResourceBundle:
+        events.append(reason)
+        return ResourceBundle(cwd=Path("/tmp/project"))
+
+    current = ResourceBundle(cwd=Path("/tmp/current"))
+    runtime = _runtime(
+        loader=None,
+        bundle=current,
+        catalog_refresh=refresh_catalog,
+    )
+
+    result = asyncio.run(
+        runtime.reload_extension_generation(object(), reason="extension-reload")
+    )
+
+    assert result is current
+    assert events == ["extension-reload"]
+    assert runtime.resource_revision == 2
 
 
 def test_staged_extension_reload_publishes_resource_before_retiring_old_generation() -> (

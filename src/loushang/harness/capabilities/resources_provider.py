@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from loushang.foundation.json import dump_json_value
 from loushang.harness.capabilities.composition_runtime import (
     RESOURCE_CAPABILITY_SLOT_KEYS,
+    ResourceCatalogGenerationCapture,
     StagedResourceCompositionCandidate,
     resource_capability_profile,
     standard_capability_composition_implementations,
@@ -169,51 +170,81 @@ class _PackFacet:
 class _ResourceCatalogFacetV2:
     _owner: _StagedResources = field(repr=False, compare=False)
 
-    @property
-    def snapshot(self) -> object:
-        return self._owner.candidate.resource_catalog_snapshot
+    def capture(self) -> _CapturedResourceCatalogView:
+        return _capture_resource_catalog(self._owner, include_skills=False)
 
 
 @dataclass(frozen=True)
 class _ResourceCatalogFacetV3:
     _owner: _StagedResources = field(repr=False, compare=False)
-    _skill_projection: EffectiveSkillCatalogProjection = field(
-        repr=False,
-        compare=False,
-    )
 
-    @property
-    def snapshot(self) -> object:
-        return self._owner.candidate.resource_catalog_snapshot
-
-    @property
-    def skill_projection(self) -> EffectiveSkillCatalogProjection:
-        return self._skill_projection
+    def capture(self) -> _CapturedResourceCatalogView:
+        return _capture_resource_catalog(self._owner, include_skills=True)
 
 
 @dataclass(frozen=True)
 class _ResourceCatalogFacetV4:
     _owner: _StagedResources = field(repr=False, compare=False)
-    _skill_projection: EffectiveSkillCatalogProjection = field(
-        repr=False,
-        compare=False,
+
+    def capture(self) -> _CapturedResourceCatalogView:
+        return _capture_resource_catalog(
+            self._owner,
+            include_skills=True,
+            include_status=True,
+        )
+
+
+@dataclass(frozen=True)
+class _CapturedResourceCatalogView:
+    _generation: ResourceCatalogGenerationCapture = field(repr=False, compare=False)
+    snapshot: ResourceCatalogSnapshot
+    skill_projection: EffectiveSkillCatalogProjection | None = None
+    skill_status_projection: SkillCatalogStatusProjection | None = None
+
+    def load_handle(self, identity: object) -> object:
+        return self._generation.load_handle(identity)
+
+    async def load(self, handle: object) -> object:
+        return await self._generation.load(handle)
+
+
+def _capture_resource_catalog(
+    owner: _StagedResources,
+    *,
+    include_skills: bool,
+    include_status: bool = False,
+) -> _CapturedResourceCatalogView:
+    generation = owner.candidate.capture_resource_catalog_generation()
+    snapshot = generation.snapshot
+    projection = generation.projection
+    status = generation.skill_status_projection
+    if not isinstance(snapshot, ResourceCatalogSnapshot):
+        raise TypeError("Resource Catalog generation snapshot is invalid")
+    if include_skills:
+        if not isinstance(projection, ResourceCatalogProjection):
+            raise TypeError("Resource Catalog generation projection is invalid")
+        skill_projection = build_effective_skill_catalog_projection(
+            snapshot=snapshot,
+            projection=projection,
+        )
+    else:
+        skill_projection = None
+    skill_status = None
+    if include_status:
+        if not isinstance(status, SkillCatalogStatusProjection):
+            raise TypeError("Resource Catalog Skill status projection is invalid")
+        if (
+            status.catalog_generation != snapshot.catalog_generation
+            or status.catalog_snapshot_fingerprint != snapshot.snapshot_fingerprint
+        ):
+            raise RuntimeError("Skill status projection belongs to another Catalog")
+        skill_status = status
+    return _CapturedResourceCatalogView(
+        _generation=generation,
+        snapshot=snapshot,
+        skill_projection=skill_projection,
+        skill_status_projection=skill_status,
     )
-    _skill_status_projection: SkillCatalogStatusProjection = field(
-        repr=False,
-        compare=False,
-    )
-
-    @property
-    def snapshot(self) -> object:
-        return self._owner.candidate.resource_catalog_snapshot
-
-    @property
-    def skill_projection(self) -> EffectiveSkillCatalogProjection:
-        return self._skill_projection
-
-    @property
-    def skill_status_projection(self) -> SkillCatalogStatusProjection:
-        return self._skill_status_projection
 
 
 @dataclass(frozen=True)
@@ -409,20 +440,13 @@ def resources_capability_provider_binding(
                         raise RuntimeError(
                             "Skill Catalog v4 projections are unavailable"
                         )
-                    catalog_facet: object = _ResourceCatalogFacetV4(
-                        owner,
-                        skill_projection,
-                        skill_status_projection,
-                    )
+                    catalog_facet: object = _ResourceCatalogFacetV4(owner)
                 elif enable_skill_catalog_v3:
                     if skill_projection is None:
                         raise RuntimeError(
                             "Skill Catalog v3 projection is unavailable"
                         )
-                    catalog_facet = _ResourceCatalogFacetV3(
-                        owner,
-                        skill_projection,
-                    )
+                    catalog_facet = _ResourceCatalogFacetV3(owner)
                 else:
                     catalog_facet = _ResourceCatalogFacetV2(owner)
                 facets.extend(

@@ -215,6 +215,7 @@ class SessionOperations:
     ) -> None:
         try:
             await self.composition.resource_watch_controller.stop()
+            await self.composition.resource_refresh_runtime.close(cancel=True)
             if self.ports.extension_runner is not None:
                 await self.ports.extension_runner.emit_session_shutdown(
                     session_shutdown_event or SessionShutdownEvent(reason="quit")

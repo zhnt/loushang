@@ -42,6 +42,10 @@ EXPECTED_CALL_SITES = {
     },
     "reload_resources": {
         (
+            Path("src/loushang/coding/bootstrap.py"),
+            "_create_agent_session._create_session.prepare_resource_catalog_refresh",
+        ),
+        (
             Path("src/loushang/harness/resources/skills.py"),
             "SkillLoader.reload_skills",
         ),
@@ -132,6 +136,10 @@ EXPECTED_CALL_SITES = {
         (
             Path("src/loushang/harness/session/resource_refresh.py"),
             "SessionResourceRefreshRuntime.reload_extension_generation",
+        ),
+        (
+            Path("src/loushang/harness/session/resource_refresh.py"),
+            "SessionResourceRefreshRuntime.refresh_async",
         ),
         (
             Path("src/loushang/harness/session/tool_controller.py"),

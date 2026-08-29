@@ -32,7 +32,7 @@ family. Repeated call sites within tests are not separate authorities.
 | AUTH-11 | Extension candidate construction | `src/loushang/harness/extensions/runner.py::ExtensionRunner.prepare_generation` | Creates exactly one unpublished candidate runner for the next source generation; active `LoadedExtension` and API identities cannot be reused. `tests/harness/extensions/test_generation.py::test_prepare_generation_rejects_active_extension_or_api_identity_reuse` |
 | AUTH-12 | Extension registration staging | `src/loushang/harness/extensions/runner.py::PreparedExtensionGeneration.activate` | Holds the host lifecycle gate while the candidate activates generation-scoped entries in staged state. |
 | AUTH-13 | Extension/private composition publication | `src/loushang/harness/extensions/runner.py::PreparedExtensionGeneration.publish` -> `src/loushang/harness/extensions/runner.py::ExtensionRunner._publish_generation` | Commits candidate registration scopes, swaps private composition state and generation, and invokes the Resource publication callback synchronously. `tests/harness/extensions/test_generation.py::test_failed_generation_publication_restores_old_runtime_and_context` |
-| AUTH-14 | Extension/resource refresh orchestration | `src/loushang/harness/session/resource_refresh.py::SessionResourceRefreshRuntime.reload_extension_generation` | Discovers, activates, publishes, then retires a candidate; failure restores the prior Resource view before awaiting candidate rollback. `tests/harness/session/test_resource_refresh.py::test_failed_publication_restores_old_resource_before_async_candidate_cleanup` |
+| AUTH-14 | Extension/resource refresh orchestration | `src/loushang/harness/session/resource_refresh.py::SessionResourceRefreshRuntime.reload_extension_generation` and `src/loushang/harness/session/agent_product.py::AgentProductSession._refresh_resource_catalog` | Legacy-explicit reload discovers, activates, publishes, then retires a candidate. Catalog refresh asks the mounted Resource candidate to construct one mechanism-identical root-owned successor, publishes the exact next owner generation without rebuilding the Session Graph, and restores the prior owner/Product view on failure. `tests/harness/session/test_resource_refresh.py::test_failed_publication_restores_old_resource_before_async_candidate_cleanup`, `tests/harness/resources/test_catalog_mount_rcp4.py::test_mounted_catalog_generation_replacement_is_exact_and_rollback_capable` |
 | AUTH-15 | Extension rollback and retirement | `src/loushang/harness/extensions/runner.py::PreparedExtensionGeneration.rollback`, `ExtensionGenerationRetirement.retire`, and `ExtensionRunner.dispose_runtime_generation` | Candidate rollback, old-generation retirement, and shutdown cleanup remain Extension-owned. Retryable old entries remain explicit retirement facts. |
 
 ## Supported Entrypoints And Current Counts
@@ -108,7 +108,9 @@ The executable authority gates freeze these production construction sites:
   `resources_capability_provider_binding.create`, `bind_legacy_side_question`,
   and `AgentTranscriptProfileRuntime.__init__` only; and
 - `StagedResourceCompositionCandidate`: constructed only by
-  `stage_resource_composition_candidate`.
+  `stage_resource_composition_candidate` and its mounted owner's
+  `stage_refresh_successor`; the latter reuses the same focused binder,
+  Profile, and context and cannot change Resource mechanisms.
 
 These sites are focused Process owners, staged-candidate factories, or
 Provider-owned transfers. No Session peer Profile owner remains. CLA8 also

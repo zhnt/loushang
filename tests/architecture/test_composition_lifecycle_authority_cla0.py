@@ -85,6 +85,10 @@ EXPECTED_CONSTRUCTION_SITES = {
             Path("src/loushang/harness/capabilities/composition_runtime.py"),
             "stage_resource_composition_candidate",
         ),
+        (
+            Path("src/loushang/harness/capabilities/composition_runtime.py"),
+            "StagedResourceCompositionCandidate.stage_refresh_successor",
+        ),
     },
 }
 

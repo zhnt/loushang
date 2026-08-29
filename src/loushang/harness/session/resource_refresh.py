@@ -6,8 +6,9 @@ loading, settings, runtime discovery, diagnostics, and prompt/tool rebuilding.
 
 from __future__ import annotations
 
+import asyncio
 import inspect
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Protocol
@@ -43,6 +44,11 @@ ResourceBundleProvider = Callable[[], ResourceBundle | None]
 ResourceSettingsProvider = Callable[[], ResourceSettingsPort | None]
 RefreshFailureRecorder = Callable[[Exception], None]
 ExtensionDeclarationPreflight = Callable[[ExtensionCapabilityDeclarationSnapshot], None]
+ResourceCatalogRefresh = Callable[[str], Awaitable[ResourceBundle | None]]
+
+
+class CatalogRefreshRequiresAsyncError(RuntimeError):
+    """A Catalog-owned refresh cannot be linearized synchronously."""
 
 
 @dataclass
@@ -63,12 +69,19 @@ class SessionResourceRefreshRuntime:
         default_factory=SkillActivationRuntime
     )
     extension_declaration_preflight: ExtensionDeclarationPreflight | None = None
+    refresh_catalog: ResourceCatalogRefresh | None = None
     _coordinator: ResourceRefreshCoordinator[ResourceBundle] = field(init=False)
     _discovery: RuntimeResourceDiscovery[ResourceBundle] = field(init=False)
     _resource_revision: int = field(init=False, default=0)
+    _catalog_refresh_lock: asyncio.Lock = field(init=False)
+    _requested_refresh_task: asyncio.Task[None] | None = field(
+        init=False,
+        default=None,
+    )
 
     def __post_init__(self) -> None:
         self._resource_revision = 1 if self.get_resource_bundle() is not None else 0
+        self._catalog_refresh_lock = asyncio.Lock()
         self._discovery = RuntimeResourceDiscovery(self.get_extension_runtime)
         self._coordinator = ResourceRefreshCoordinator(
             load_resource=self._load_resource_bundle,
@@ -91,12 +104,49 @@ class SessionResourceRefreshRuntime:
         return []
 
     def refresh(self, *, reason: str = "refresh") -> None:
+        if self.refresh_catalog is not None:
+            raise CatalogRefreshRequiresAsyncError(
+                "Catalog-owned Resource refresh requires refresh_async()"
+            )
         self._coordinator.refresh(reason=reason)
 
     async def refresh_async(self, *, reason: str = "refresh") -> None:
+        catalog_refresh = self.refresh_catalog
+        if catalog_refresh is not None:
+            async with self._catalog_refresh_lock:
+                if self.prepare_resource_refresh is not None:
+                    prepared = self.prepare_resource_refresh()
+                    if inspect.isawaitable(prepared):
+                        await prepared
+                previous = self.get_resource_bundle()
+                try:
+                    await catalog_refresh(reason)
+                except BaseException:
+                    if self.get_resource_bundle() is not previous:
+                        self._resource_revision += 1
+                    raise
+                else:
+                    self._resource_revision += 1
+            return
         await self._coordinator.refresh_async(reason=reason)
 
     def request_refresh(self) -> None:
+        if self.refresh_catalog is not None:
+            task = self._requested_refresh_task
+            if task is not None and not task.done():
+                return
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                self.record_refresh_failure(
+                    CatalogRefreshRequiresAsyncError(
+                        "Catalog-owned Resource refresh requires a running event loop"
+                    )
+                )
+                return
+            task = loop.create_task(self._run_requested_catalog_refresh())
+            self._requested_refresh_task = task
+            return
         if self.get_resource_loader() is None:
             return
         try:
@@ -118,6 +168,11 @@ class SessionResourceRefreshRuntime:
         reason: str = "reload",
     ) -> ResourceBundle | None:
         """Stage, publish, then retire one Extension/resource generation."""
+
+        if self.refresh_catalog is not None:
+            del bindings
+            await self.refresh_async(reason=reason)
+            return self.get_resource_bundle()
 
         if self.prepare_resource_refresh is not None:
             prepared = self.prepare_resource_refresh()
@@ -207,6 +262,32 @@ class SessionResourceRefreshRuntime:
 
         self.request_refresh()
 
+    async def close(self, *, cancel: bool = False) -> None:
+        """Join a best-effort Catalog refresh before Session-owned disposal."""
+
+        task = self._requested_refresh_task
+        if task is None:
+            return
+        if cancel and not task.done():
+            task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        finally:
+            if self._requested_refresh_task is task:
+                self._requested_refresh_task = None
+
+    async def _run_requested_catalog_refresh(self) -> None:
+        try:
+            await self.refresh_async()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self.record_refresh_failure(exc)
+        else:
+            self.sync_extension_diagnostics()
+
     def _load_resource_bundle(self) -> ResourceBundle | None:
         resource_loader = self.get_resource_loader()
         if resource_loader is None:
@@ -256,8 +337,10 @@ class SessionResourceRefreshRuntime:
 
 
 __all__ = [
+    "CatalogRefreshRequiresAsyncError",
     "RefreshFailureRecorder",
     "ResourceBundleProvider",
+    "ResourceCatalogRefresh",
     "ResourceLoaderPort",
     "ResourceLoaderProvider",
     "ResourceSettingsPort",

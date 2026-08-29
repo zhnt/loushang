@@ -319,6 +319,7 @@ class InitialResourceCatalogProductAdapter:
             product_id=product_id,
             session_id=session_id,
             base_resource_bundle=base_resource_bundle,
+            catalog_generation=1,
         )
         try:
             session = construct(bootstrap)
@@ -340,12 +341,30 @@ class InitialResourceCatalogProductAdapter:
             raise
         return session
 
+    def prepare_session_bootstrap(
+        self,
+        *,
+        product_id: str,
+        session_id: str,
+        base_resource_bundle: ResourceBundle,
+        catalog_generation: int,
+    ) -> InitialSessionResourceCatalogBootstrap:
+        """Mint one exact next-generation bootstrap without constructing a Session."""
+
+        return self._mint_bootstrap(
+            product_id=product_id,
+            session_id=session_id,
+            base_resource_bundle=base_resource_bundle,
+            catalog_generation=catalog_generation,
+        )
+
     def _mint_bootstrap(
         self,
         *,
         product_id: str,
         session_id: str,
         base_resource_bundle: ResourceBundle,
+        catalog_generation: int,
     ) -> InitialSessionResourceCatalogBootstrap:
         if not isinstance(product_id, str) or not product_id.strip():
             raise ValueError("initial Resource Catalog Product id must not be empty")
@@ -353,6 +372,12 @@ class InitialResourceCatalogProductAdapter:
             raise ValueError("initial Resource Catalog Session id must not be empty")
         if not isinstance(base_resource_bundle, ResourceBundle):
             raise TypeError("initial Resource Catalog requires a base ResourceBundle")
+        if (
+            isinstance(catalog_generation, bool)
+            or not isinstance(catalog_generation, int)
+            or catalog_generation < 1
+        ):
+            raise ValueError("Session Resource Catalog generation must be positive")
         now = self.clock()
         if isinstance(now, bool) or not isinstance(now, int):
             raise TypeError("initial Resource Catalog Product clock must return an int")
@@ -429,8 +454,11 @@ class InitialResourceCatalogProductAdapter:
                 InitialSessionResourceCatalogInputs(
                     product_id=product_id,
                     scope_id=f"session:{session_id}",
-                    resource_runtime_id=f"resource-owner:{session_id}",
+                    resource_runtime_id=(
+                        f"resource-owner:{session_id}:catalog:{catalog_generation}"
+                    ),
                     product_policy_revision=selection.product_policy_revision,
+                    catalog_generation=catalog_generation,
                     root_handles=root_handles,
                     package_resources=tuple(package_resources),
                     embedded_collections=tuple(embedded_handles),

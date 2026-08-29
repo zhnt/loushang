@@ -216,6 +216,7 @@ async def run_first_party_resource_catalog_shadow(
     scope_id: str,
     runtime_id: str,
     product_policy_revision: str,
+    catalog_generation: int = 1,
     root_handles: tuple[NativeResourceRootHandle, ...],
     package_resources: tuple[AdmittedPackageResource, ...] = (),
     embedded_collections: tuple[EmbeddedResourceCollectionHandle, ...] = (),
@@ -235,6 +236,12 @@ async def run_first_party_resource_catalog_shadow(
 ) -> UnpublishedResourceCatalogShadowGeneration:
     """Bind, discover, compose, validate, and retain one unpublished generation."""
 
+    if (
+        isinstance(catalog_generation, bool)
+        or not isinstance(catalog_generation, int)
+        or catalog_generation < 1
+    ):
+        raise ValueError("Resource Catalog generation must be positive")
     if extension_source_lease is not None and not isinstance(
         extension_source_lease,
         BorrowedResourceSourceGenerationLease,
@@ -292,7 +299,7 @@ async def run_first_party_resource_catalog_shadow(
     if extension_source_lease is not None:
         extension_source_lease.claim()
     try:
-        bind_result = await binder.bind(
+        await binder.bind(
             runtime,
             resolution.resolved_set,
             resolution.bindings,
@@ -376,14 +383,14 @@ async def run_first_party_resource_catalog_shadow(
         )
         proposal = engine.compose(
             source_snapshots,
-            catalog_generation=bind_result.snapshot.generation,
+            catalog_generation=catalog_generation,
             merge_policy=effective_merge_policy,
             activation_policy=effective_activation_policy,
         )
         validate_resource_catalog_proposal(
             proposal,
             source_snapshots=source_snapshots,
-            catalog_generation=bind_result.snapshot.generation,
+            catalog_generation=catalog_generation,
             engine_binding_fingerprint=engine.binding_fingerprint,
             merge_policy=effective_merge_policy,
             activation_policy=effective_activation_policy,

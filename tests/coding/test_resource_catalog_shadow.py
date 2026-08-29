@@ -736,6 +736,208 @@ def test_coding_initial_catalog_applies_disabled_skill_in_owner_status(
     asyncio.run(scenario())
 
 
+def test_coding_catalog_refresh_publishes_one_exact_next_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        project_root = tmp_path / "project-refresh"
+        skill_file = project_root / "skills" / "review" / "SKILL.md"
+        skill_file.parent.mkdir(parents=True)
+        skill_file.write_text(
+            "---\nname: review\ndescription: Review v1\n---\nReview v1 body.\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=tmp_path / "project-settings.json",
+            )
+        )
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project_root),
+            persist=False,
+        )
+        session = _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
+        try:
+            await session.prepare_model_call_runtime()
+            old_consumer = session._skill_catalog_consumer
+            mounted = session._mounted_resource_candidate
+            assert old_consumer is not None
+            assert mounted is not None
+            assert old_consumer.catalog_generation == 1
+            graph_generation = session._capability_graph_runtime.generation
+
+            skill_file.write_text(
+                "---\nname: review\ndescription: Review v2\n---\nReview v2 body.\n",
+                encoding="utf-8",
+            )
+            await session._composition.resource_refresh_runtime.refresh_async(
+                reason="test"
+            )
+
+            new_consumer = session._skill_catalog_consumer
+            assert new_consumer is not None
+            assert new_consumer is not old_consumer
+            assert new_consumer.catalog_generation == 2
+            assert [item.description for item in old_consumer.list_effective_skills()] == [
+                "Review v1"
+            ]
+            assert [item.description for item in new_consumer.list_effective_skills()] == [
+                "Review v2"
+            ]
+            assert session._capability_graph_runtime.generation == graph_generation
+            assert session._composition.resource_refresh_runtime.resource_revision == 2
+            assert mounted.ownership_state == "graph_owned"
+            assert await mounted.retire_replaced_owner_generations() == ()
+            loaded = await session._preflight_user_input_async("/skill:review refreshed")
+            assert "Review v2 body." in loaded.text
+            assert "Review v1 body." not in loaded.text
+            with pytest.raises(RuntimeError, match="not graph-owned"):
+                old_consumer.load_handle(old_consumer.list_effective_skills()[0])
+        finally:
+            await session.dispose()
+            services.resource_loader.close()
+
+    asyncio.run(scenario())
+
+
+def test_coding_catalog_refresh_restores_owner_and_product_view_on_publish_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        project_root = tmp_path / "project-refresh-rollback"
+        skill_file = project_root / "skills" / "review" / "SKILL.md"
+        skill_file.parent.mkdir(parents=True)
+        skill_file.write_text(
+            "---\nname: review\ndescription: Review v1\n---\nReview v1 body.\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=tmp_path / "project-settings.json",
+            )
+        )
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project_root),
+            persist=False,
+        )
+        session = _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
+        try:
+            await session.prepare_model_call_runtime()
+            previous_catalog = session._resource_catalog_snapshot
+            previous_projection = session._resource_catalog_projection
+            previous_bundle = session.resource_bundle
+            previous_consumer = session._skill_catalog_consumer
+            mounted = session._mounted_resource_candidate
+            assert mounted is not None
+
+            skill_file.write_text(
+                "---\nname: review\ndescription: Review v2\n---\nReview v2 body.\n",
+                encoding="utf-8",
+            )
+            rebuild = session._rebuild_prompt_and_tools_view
+
+            def reject_publication() -> None:
+                raise RuntimeError("reject refreshed Product view")
+
+            session._rebuild_prompt_and_tools_view = reject_publication  # type: ignore[method-assign]
+            with pytest.raises(RuntimeError, match="reject refreshed Product view"):
+                await session._composition.resource_refresh_runtime.refresh_async(
+                    reason="test-failure"
+                )
+            session._rebuild_prompt_and_tools_view = rebuild  # type: ignore[method-assign]
+
+            assert session._resource_catalog_snapshot is previous_catalog
+            assert session._resource_catalog_projection is previous_projection
+            assert session.resource_bundle is previous_bundle
+            assert session._skill_catalog_consumer is previous_consumer
+            assert mounted.resource_catalog_snapshot is previous_catalog
+            assert mounted.ownership_state == "graph_owned"
+            assert await mounted.retire_replaced_owner_generations() == ()
+            assert session._composition.resource_refresh_runtime.resource_revision == 1
+        finally:
+            await session.dispose()
+            services.resource_loader.close()
+
+    asyncio.run(scenario())
+
+
+def test_coding_catalog_refresh_preflight_rejection_releases_candidate_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        project_root = tmp_path / "project-refresh-preflight"
+        skill_file = project_root / "skills" / "review" / "SKILL.md"
+        skill_file.parent.mkdir(parents=True)
+        skill_file.write_text(
+            "---\nname: review\ndescription: Review v1\n---\nReview v1 body.\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=tmp_path / "project-settings.json",
+            )
+        )
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(project_root),
+            persist=False,
+        )
+        session = _create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+        )
+        try:
+            await session.prepare_model_call_runtime()
+            previous_catalog = session._resource_catalog_snapshot
+            preflight = session._extension_declaration_preflight
+
+            def reject_declarations(_snapshot: object) -> None:
+                raise RuntimeError("Extension graph restart required")
+
+            session._extension_declaration_preflight = reject_declarations  # type: ignore[assignment]
+            with pytest.raises(RuntimeError, match="restart required"):
+                await session._composition.resource_refresh_runtime.refresh_async(
+                    reason="preflight-rejection"
+                )
+            assert session._resource_catalog_snapshot is previous_catalog
+
+            session._extension_declaration_preflight = preflight
+            skill_file.write_text(
+                "---\nname: review\ndescription: Review v2\n---\nReview v2 body.\n",
+                encoding="utf-8",
+            )
+            await session._composition.resource_refresh_runtime.refresh_async(
+                reason="preflight-retry"
+            )
+            assert session._skill_catalog_consumer is not None
+            assert session._skill_catalog_consumer.catalog_generation == 2
+        finally:
+            await session.dispose()
+            services.resource_loader.close()
+
+    asyncio.run(scenario())
+
+
 def test_coding_initial_catalog_compiles_configured_plugin_resource_admissions(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

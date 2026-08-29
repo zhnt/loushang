@@ -9,7 +9,7 @@ owns only the neutral factories and their configuration contracts.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Protocol, TypeVar, runtime_checkable
 
 from loushang.harness.capabilities.packs import (
@@ -105,6 +105,42 @@ class _PreparedResourceOwnerGeneration(Protocol):
     async def _dispose_graph_owned(self) -> None: ...
 
 
+@dataclass(frozen=True, slots=True)
+class ResourceCatalogGenerationCapture:
+    """Exact Resource owner-generation view minted by its mounted Capability."""
+
+    _generation: _PreparedResourceOwnerGeneration
+
+    @property
+    def snapshot(self) -> object:
+        return self._generation.catalog_snapshot
+
+    @property
+    def projection(self) -> object:
+        return self._generation.catalog_projection
+
+    @property
+    def skill_status_projection(self) -> object:
+        return self._generation._skill_status_projection
+
+    def load_handle(self, identity: object) -> object:
+        return self._generation.load_handle(identity)
+
+    async def load(self, handle: object) -> object:
+        return await self._generation.load(handle)
+
+
+class ResourceOwnerGenerationRetirementError(RuntimeError):
+    """Retryable cleanup debt for replaced Resource owner generations."""
+
+    def __init__(self, diagnostic_codes: tuple[str, ...]) -> None:
+        self.diagnostic_codes = tuple(sorted(set(diagnostic_codes)))
+        super().__init__(
+            "Resource owner generation retirement remains pending: "
+            + ", ".join(self.diagnostic_codes)
+        )
+
+
 def standard_capability_composition_plan(
     *,
     product_id: str,
@@ -186,7 +222,38 @@ class _CapabilityCompositionCandidate:
         "disposed",
     ] = "root_owned"
     owner_generation: _PreparedResourceOwnerGeneration | None = None
+    retired_owner_generations: list[_PreparedResourceOwnerGeneration] = field(
+        default_factory=list
+    )
     retirement_owner: Literal["root", "graph"] | None = None
+
+
+@dataclass(slots=True)
+class ResourceOwnerGenerationReplacement:
+    """Open no-await replacement transaction for one mounted Resource owner."""
+
+    _owner: StagedResourceCompositionCandidate
+    _previous: _PreparedResourceOwnerGeneration
+    _current: _PreparedResourceOwnerGeneration
+    _state: Literal["open", "committed", "rolled_back"] = "open"
+
+    def commit(self) -> None:
+        if self._state != "open":
+            raise RuntimeError("Resource generation replacement is already resolved")
+        self._owner._commit_owner_generation_replacement(
+            previous=self._previous,
+            current=self._current,
+        )
+        self._state = "committed"
+
+    def rollback(self) -> None:
+        if self._state != "open":
+            raise RuntimeError("Resource generation replacement is already resolved")
+        self._owner._rollback_owner_generation_replacement(
+            previous=self._previous,
+            current=self._current,
+        )
+        self._state = "rolled_back"
 
 
 @dataclass(frozen=True)
@@ -335,6 +402,138 @@ class StagedResourceCompositionCandidate:
             raise RuntimeError("Resource candidate has no prepared owner generation")
         return generation
 
+    def capture_resource_catalog_generation(self) -> ResourceCatalogGenerationCapture:
+        """Capture the exact current generation without exposing replacement rights."""
+
+        if self.__candidate.ownership != "graph_owned":
+            raise RuntimeError("Resource Catalog generation is not graph-owned")
+        return ResourceCatalogGenerationCapture(
+            self._require_prepared_owner_generation()
+        )
+
+    def stage_refresh_successor(self) -> StagedResourceCompositionCandidate:
+        """Create one root-owned successor with identical Resource mechanisms."""
+
+        if self.__candidate.ownership != "graph_owned":
+            raise RuntimeError("Only a mounted Resource candidate may stage refresh")
+        profile = self.__candidate.profile
+        binding = self.__candidate.binder.bind_sync(
+            resource_capability_profile(profile),
+            context=self.binding._context,
+        )
+        return StagedResourceCompositionCandidate(
+            binding=binding,
+            _binder=self.__candidate.binder,
+            _profile=profile,
+        )
+
+    def _claim_refresh_successor(self) -> None:
+        """Mark a fully prepared successor as owned by the mounted graph slot."""
+
+        self._begin_graph_construction()
+        self._commit_graph_ownership()
+
+    def begin_owner_generation_replacement(
+        self,
+        successor: StagedResourceCompositionCandidate,
+    ) -> ResourceOwnerGenerationReplacement:
+        """Swap one prepared successor in a synchronous rollback-capable window."""
+
+        if self.__candidate.ownership != "graph_owned":
+            raise RuntimeError("Resource generation replacement requires graph ownership")
+        if not isinstance(successor, StagedResourceCompositionCandidate):
+            raise TypeError("Resource generation successor is invalid")
+        if successor.__candidate.ownership != "graph_owned":
+            raise RuntimeError("Resource generation successor is not graph-owned")
+        expected = resource_capability_profile(self.profile).snapshot().to_json()
+        actual = resource_capability_profile(successor.profile).snapshot().to_json()
+        if actual != expected:
+            raise RuntimeError("Resource generation successor changes mechanisms")
+        previous = self._require_prepared_owner_generation()
+        current = successor._require_prepared_owner_generation()
+        previous_catalog_generation = getattr(
+            previous.catalog_snapshot,
+            "catalog_generation",
+            None,
+        )
+        current_catalog_generation = getattr(
+            current.catalog_snapshot,
+            "catalog_generation",
+            None,
+        )
+        if (
+            not isinstance(previous_catalog_generation, int)
+            or isinstance(previous_catalog_generation, bool)
+            or not isinstance(current_catalog_generation, int)
+            or isinstance(current_catalog_generation, bool)
+            or current_catalog_generation != previous_catalog_generation + 1
+        ):
+            raise ValueError("Resource Catalog successor generation is not monotonic")
+
+        successor.__candidate.binder.dispose_sync(successor.binding)
+        successor.__candidate.owner_generation = None
+        successor.__candidate.ownership = "disposed"
+        self.__candidate.owner_generation = current
+        return ResourceOwnerGenerationReplacement(
+            _owner=self,
+            _previous=previous,
+            _current=current,
+        )
+
+    def _commit_owner_generation_replacement(
+        self,
+        *,
+        previous: _PreparedResourceOwnerGeneration,
+        current: _PreparedResourceOwnerGeneration,
+    ) -> None:
+        if self.__candidate.owner_generation is not current:
+            raise RuntimeError("Resource generation replacement lost current custody")
+        self.__candidate.retired_owner_generations.append(previous)
+
+    def _rollback_owner_generation_replacement(
+        self,
+        *,
+        previous: _PreparedResourceOwnerGeneration,
+        current: _PreparedResourceOwnerGeneration,
+    ) -> None:
+        if self.__candidate.owner_generation is not current:
+            raise RuntimeError("Resource generation replacement lost current custody")
+        self.__candidate.owner_generation = previous
+        self.__candidate.retired_owner_generations.append(current)
+
+    async def retire_replaced_owner_generations(self) -> tuple[str, ...]:
+        """Retire every detached generation whose exact source leases have drained."""
+
+        pending = list(self.__candidate.retired_owner_generations)
+        remaining: list[_PreparedResourceOwnerGeneration] = []
+        diagnostic_codes: list[str] = []
+        for index, generation in enumerate(pending):
+            try:
+                await generation._dispose_graph_owned()
+            except BaseException as exc:
+                codes = getattr(exc, "diagnostic_codes", None)
+                if not isinstance(codes, tuple) or any(
+                    not isinstance(code, str) or not code for code in codes
+                ):
+                    self.__candidate.retired_owner_generations = [
+                        *remaining,
+                        generation,
+                        *pending[index + 1 :],
+                    ]
+                    raise
+                diagnostic_codes.extend(codes)
+                remaining.append(generation)
+        self.__candidate.retired_owner_generations = remaining
+        return tuple(sorted(set(diagnostic_codes)))
+
+    async def dispose_refresh_successor(self) -> tuple[str, ...]:
+        """Dispose a staged successor without granting whole-graph authority."""
+
+        if self.__candidate.ownership == "disposed":
+            return ()
+        await self._dispose_graph_owned_async()
+        return ()
+
     def _borrows_prepared_extension_source_lease(self, source: object) -> bool:
         """Prove exact borrowed-lease identity to the joint construction root."""
 
@@ -436,7 +635,7 @@ class StagedResourceCompositionCandidate:
 
     async def _dispose_graph_owned_async(self) -> None:
         generation = self.__candidate.owner_generation
-        if generation is None:
+        if generation is None and not self.__candidate.retired_owner_generations:
             self._dispose_graph_owned()
             return
         if self.__candidate.ownership == "disposed":
@@ -451,7 +650,14 @@ class StagedResourceCompositionCandidate:
             raise RuntimeError(
                 "Graph cannot dispose a Resource candidate it does not own"
             )
-        await generation._dispose_graph_owned()
+        if (
+            generation is not None
+            and generation not in self.__candidate.retired_owner_generations
+        ):
+            self.__candidate.retired_owner_generations.append(generation)
+        codes = await self.retire_replaced_owner_generations()
+        if codes:
+            raise ResourceOwnerGenerationRetirementError(codes)
         self.__candidate.binder.dispose_sync(self.binding)
         self.__candidate.ownership = "disposed"
         self.__candidate.retirement_owner = None
