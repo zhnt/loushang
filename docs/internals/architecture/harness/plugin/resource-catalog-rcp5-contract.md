@@ -232,6 +232,82 @@ an explicitly legacy custom loader, and a real CLI all-Skills listing. Tests
 must also prove `catalog_required` cannot construct a legacy-only Session and
 `legacy_explicit` cannot consume Catalog composition inputs.
 
+### RCP5.3 — body and Model Input evidence
+
+RCP5.3 removes eager `SkillDescriptor.content` as an authority in three
+independently reviewable slices. It does not add refresh or replace the
+captured Catalog generation; those semantics remain exclusively RCP5.4.
+
+#### RCP5.3A — exact asynchronous body preflight
+
+An admitted Catalog Session resolves `/skill:<name>` only through its captured
+`SkillCatalogConsumer`: resolve the effective summary, mint the exact
+generation-bound handle, load through the owner, validate the receipt and
+UTF-8 body, strip frontmatter, and construct the model-visible Skill block.
+The preflight result carries the immutable loaded-Skill value for the next
+evidence slice; metadata-only enumeration still performs no load.
+
+The Catalog path is asynchronous because source loading and generation drain
+are asynchronous. Product-neutral prompt preflight receives a narrow body-load
+port and does not import a source, Catalog engine, Session, or Product. A
+missing effective Skill produces the existing finite unresolved diagnostic.
+An owner load, receipt, digest, encoding, or disposed-generation failure is not
+translated into an unresolved reference and never retries through the
+compatibility Bundle.
+
+Synchronous Resource command/preflight APIs cannot borrow eager body authority
+for a Catalog Session. They fail with a finite asynchronous-load-required
+error for `/skill:*`; callers use the existing asynchronous prompt/command
+path. `legacy_explicit` Sessions retain their synchronous compatibility path
+until RCP5.3C, and prompt-template bodies remain unchanged in this slice.
+
+RCP5.3A exits when tests prove exact lazy loading for project, user, package,
+embedded, and Extension-backed effective Skills already covered by Catalog
+source conformance; no Catalog preflight reads `ResourceBundle.skills`; stale
+or disposed generations fail closed; unresolved names do not load; metadata
+operations remain body-free; and explicit legacy mode remains isolated.
+
+RCP5.3A is implemented. Catalog-backed Product Sessions now use the captured
+exact-v4 Consumer for asynchronous Skill command/preflight body loads, carry
+the validated immutable loaded value on the preflight result, and fail finite
+sync callers instead of consulting the compatibility Bundle. Existing Catalog
+source/Consumer conformance plus Product preflight tests cover the admitted
+source classes, receipt binding, unresolved and disabled names, compatibility
+Bundle divergence, lifecycle closure, and explicit legacy isolation. Durable
+request evidence and final eager-body sink deletion remain RCP5.3B and RCP5.3C.
+
+#### RCP5.3B — request-bound durable evidence
+
+The loaded-Skill value is projected into JSON-safe evidence bound to the exact
+prepared user message. The evidence records Catalog generation and snapshot
+fingerprint, activation-policy fingerprint, candidate and source-generation
+identity, schema/media facts, expected and observed digest/length, and the
+exact model-visible text or its durable content component. The durable Model
+Input logical projection commits this evidence beside the message before
+transport; transcript reconstruction therefore never reopens the original
+path or source Plugin.
+
+Evidence association is per prepared message, not ambient Session state.
+Queued prepared messages retain their own evidence; tool-loop model calls may
+reuse evidence for the same retained message; cancellation or a preflight that
+never queues/starts a turn publishes no evidence. A refresh or uninstall may
+retire the source only under the existing generation drain, while already
+committed request evidence remains immutable.
+
+#### RCP5.3C — eager-body sink deletion
+
+After durable evidence review, command execution, description fallback, Method
+adaptation, steer/follow-up handling, and compatibility callers either forward
+to the captured asynchronous Consumer or remain explicitly
+`legacy_explicit`. Production Catalog paths have zero direct reads of
+`SkillDescriptor.content`. The eager Skill body may then be removed from the
+Catalog compatibility projection without changing prompt-template or refresh
+authority.
+
+No RCP5.3 slice may introduce a detached body cache, reconstruct a handle from
+a path, hash a fresh path read as substitute evidence, silently select legacy
+authority, or keep a load handle beyond the captured generation's lifecycle.
+
 ## Ordered cutover
 
 RCP5 proceeds in independently reviewable steps:

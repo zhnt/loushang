@@ -42,6 +42,7 @@ from loushang.harness.capabilities.component_host import (
 from loushang.harness.capabilities.effective_runtime import (
     runtime_profile_fingerprint,
 )
+from loushang.harness.capabilities.prompt_preflight import SkillBodyLoader
 from loushang.harness.capabilities.resources_consumers import (
     ResourceSkillStatusCatalogCapabilityConsumer,
 )
@@ -84,6 +85,7 @@ from loushang.harness.resource_catalog.session_bootstrap import (
     InitialSessionResourcePublication,
 )
 from loushang.harness.resources._skill_catalog_consumer import (
+    LoadedSkillBody,
     SkillCatalogConsumer,
     SkillCatalogSummary,
 )
@@ -840,6 +842,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 get_extension_runner=lambda: self._extension_runner,
                 get_resource_bundle=lambda: self.resource_bundle,
                 get_effective_skills=self._effective_skill_summaries,
+                get_skill_body_loader=self._skill_body_loader,
                 get_diagnostics_service=lambda: self.diagnostics_service,
                 diagnostics_runtime=diagnostics_runtime,
                 standard_ports=StandardSessionCommandPorts(
@@ -1592,6 +1595,23 @@ class AgentProductSession(AgentSessionAdapterMixin):
         if self._initial_resource_catalog_bootstrap is not None:
             return ()
         return None
+
+    def _skill_body_loader(self) -> SkillBodyLoader | None:
+        if self._initial_resource_catalog_bootstrap is None:
+            return None
+        return self._load_effective_skill_body
+
+    async def _load_effective_skill_body(
+        self,
+        name: str,
+    ) -> LoadedSkillBody | None:
+        consumer = self._skill_catalog_consumer
+        if consumer is None:
+            raise RuntimeError("Session Skill Catalog v4 capture is not available")
+        summary = consumer.get_effective_skill(name)
+        if summary is None:
+            return None
+        return await consumer.load(consumer.load_handle(summary))
 
     def _capture_initial_resource_publication(self) -> object:
         return (

@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from html import escape
+from pathlib import Path
+from typing import Protocol
 
 from loushang.harness.capabilities.prompt import (
     DEFAULT_PROMPT_TEMPLATE_EXPANDER,
@@ -20,17 +22,45 @@ from loushang.harness.resources.frontmatter import strip_frontmatter
 from loushang.harness.resources.types import ResourceBundle
 
 
+class SkillBodyLoadRequiresAsyncError(RuntimeError):
+    """A captured Catalog Skill body cannot be loaded synchronously."""
+
+
+class SkillPreflightSummary(Protocol):
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def source_path(self) -> Path: ...
+
+
+class LoadedSkillPreflightBody(Protocol):
+    @property
+    def summary(self) -> SkillPreflightSummary: ...
+
+    @property
+    def content(self) -> str: ...
+
+
+SkillBodyLoader = Callable[[str], Awaitable[LoadedSkillPreflightBody | None]]
+
+
 @dataclass(frozen=True)
 class PromptPreflightResult:
     text: str
     consumed: bool = False
     diagnostics: tuple[DiagnosticDraft, ...] = field(default_factory=tuple)
+    loaded_skills: tuple[LoadedSkillPreflightBody, ...] = field(
+        default_factory=tuple,
+        repr=False,
+    )
 
 
 def preflight_user_input(
     text: str,
     *,
     resource_bundle: ResourceBundle | None = None,
+    load_skill_body: SkillBodyLoader | None = None,
     template_expander: PromptTemplateExpander = DEFAULT_PROMPT_TEMPLATE_EXPANDER,
 ) -> PromptPreflightResult:
     parsed = split_slash_command(text)
@@ -40,6 +70,7 @@ def preflight_user_input(
         text,
         parsed,
         resource_bundle=resource_bundle,
+        load_skill_body=load_skill_body,
         template_expander=template_expander,
     )
 
@@ -49,6 +80,7 @@ async def preflight_user_input_async(
     *,
     resource_bundle: ResourceBundle | None = None,
     execute_command: Callable[[str, str], Awaitable[object | None]] | None = None,
+    load_skill_body: SkillBodyLoader | None = None,
     template_expander: PromptTemplateExpander = DEFAULT_PROMPT_TEMPLATE_EXPANDER,
 ) -> PromptPreflightResult:
     parsed = split_slash_command(text)
@@ -60,10 +92,19 @@ async def preflight_user_input_async(
         await execute_command(command_name, args)
         return PromptPreflightResult(text=text, consumed=True)
 
+    if command_name.startswith("skill:") and load_skill_body is not None:
+        return await _preflight_catalog_skill_input(
+            text,
+            command_name.removeprefix("skill:"),
+            args,
+            load_skill_body=load_skill_body,
+        )
+
     return _preflight_resource_input(
         text,
         parsed,
         resource_bundle=resource_bundle,
+        load_skill_body=None,
         template_expander=template_expander,
     )
 
@@ -73,25 +114,20 @@ def _preflight_resource_input(
     parsed: tuple[str, str],
     *,
     resource_bundle: ResourceBundle | None,
+    load_skill_body: SkillBodyLoader | None,
     template_expander: PromptTemplateExpander,
 ) -> PromptPreflightResult:
     command_name, args = parsed
 
     if command_name.startswith("skill:"):
         skill_name = command_name.removeprefix("skill:")
+        if load_skill_body is not None:
+            raise SkillBodyLoadRequiresAsyncError(
+                "Catalog Skill body loading requires asynchronous preflight"
+            )
         skill = ResourceActivation(resource_bundle).find_skill(skill_name)
         if skill is None:
-            return PromptPreflightResult(
-                text=original_text,
-                diagnostics=(
-                    resource_diagnostic(
-                        code="unresolved_skill_reference",
-                        message=f"Skill reference '/skill:{skill_name}' did not match any discovered skill.",
-                        resource_id=skill_name,
-                        resource_type="skill",
-                    ),
-                ),
-            )
+            return _unresolved_skill(original_text, skill_name)
         body = strip_frontmatter(skill.content or "").strip()
         source_path = skill.source_path.as_posix()
         base_dir = skill.source_path.parent.as_posix()
@@ -127,8 +163,66 @@ def _preflight_resource_input(
     )
 
 
+async def _preflight_catalog_skill_input(
+    original_text: str,
+    skill_name: str,
+    args: str,
+    *,
+    load_skill_body: SkillBodyLoader,
+) -> PromptPreflightResult:
+    loaded = await load_skill_body(skill_name)
+    if loaded is None:
+        return _unresolved_skill(original_text, skill_name)
+    summary = loaded.summary
+    name = summary.name
+    source_path = summary.source_path
+    content = loaded.content
+    if not isinstance(name, str) or not name:
+        raise TypeError("Loaded Skill summary name is invalid")
+    if name != skill_name:
+        raise ValueError("Loaded Skill summary does not match the requested Skill")
+    if not isinstance(source_path, Path):
+        raise TypeError("Loaded Skill summary path is invalid")
+    if not isinstance(content, str):
+        raise TypeError("Loaded Skill content is invalid")
+    body = strip_frontmatter(content).strip()
+    source_path_text = source_path.as_posix()
+    base_dir = source_path.parent.as_posix()
+    skill_block = (
+        f'<skill name="{escape(name, quote=True)}" '
+        f'location="{escape(source_path_text, quote=True)}">\n'
+        f"References are relative to {base_dir}.\n\n"
+        f"{body}\n"
+        "</skill>"
+    )
+    return PromptPreflightResult(
+        text=append_prompt_arguments(skill_block, args),
+        loaded_skills=(loaded,),
+    )
+
+
+def _unresolved_skill(original_text: str, skill_name: str) -> PromptPreflightResult:
+    return PromptPreflightResult(
+        text=original_text,
+        diagnostics=(
+            resource_diagnostic(
+                code="unresolved_skill_reference",
+                message=(
+                    f"Skill reference '/skill:{skill_name}' did not match any "
+                    "discovered skill."
+                ),
+                resource_id=skill_name,
+                resource_type="skill",
+            ),
+        ),
+    )
+
+
 __all__ = [
     "PromptPreflightResult",
+    "LoadedSkillPreflightBody",
+    "SkillBodyLoader",
+    "SkillBodyLoadRequiresAsyncError",
     "preflight_user_input",
     "preflight_user_input_async",
 ]

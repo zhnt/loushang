@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+
+import pytest
 
 from loushang.harness.capabilities.prompt_assembly import (
     DEFAULT_HARNESS_SYSTEM_PROMPT,
@@ -10,6 +13,7 @@ from loushang.harness.capabilities.prompt_assembly import (
     assemble_prompt,
 )
 from loushang.harness.capabilities.prompt_preflight import (
+    SkillBodyLoadRequiresAsyncError,
     preflight_user_input,
     preflight_user_input_async,
 )
@@ -149,3 +153,110 @@ def test_standard_async_preflight_can_delegate_a_command() -> None:
     assert result.consumed is True
     assert result.text == "/publish draft"
     assert calls == [("publish", "draft")]
+
+
+def test_async_skill_preflight_uses_exact_loaded_body_and_retains_evidence() -> None:
+    @dataclass(frozen=True)
+    class Summary:
+        name: str
+        source_path: Path
+
+    @dataclass(frozen=True)
+    class Loaded:
+        summary: Summary
+        content: str
+
+    loaded = Loaded(
+        summary=Summary(
+            name='review"source',
+            source_path=Path('/catalog/skills/review"source/SKILL.md'),
+        ),
+        content="---\nname: review-source\n---\n\nExact Catalog body.",
+    )
+    calls: list[str] = []
+
+    async def load_skill_body(name: str) -> Loaded | None:
+        calls.append(name)
+        return loaded if name == 'review"source' else None
+
+    result = asyncio.run(
+        preflight_user_input_async(
+            '/skill:review"source focus',
+            resource_bundle=ResourceBundle(
+                cwd=Path("/legacy"),
+                skills=[
+                    SkillDescriptor(
+                        name='review"source',
+                        source_path=Path("/legacy/SKILL.md"),
+                        content="Forged compatibility body.",
+                    )
+                ],
+            ),
+            load_skill_body=load_skill_body,
+        )
+    )
+
+    assert calls == ['review"source']
+    assert "Exact Catalog body." in result.text
+    assert "Forged compatibility body." not in result.text
+    assert 'location="/catalog/skills/review&quot;source/SKILL.md"' in result.text
+    assert result.text.endswith("</skill>\n\nfocus")
+    assert result.loaded_skills == (loaded,)
+
+    with pytest.raises(SkillBodyLoadRequiresAsyncError, match="requires asynchronous"):
+        preflight_user_input(
+            '/skill:review"source focus',
+            resource_bundle=ResourceBundle(cwd=Path("/legacy")),
+            load_skill_body=load_skill_body,
+        )
+
+
+def test_async_skill_preflight_does_not_load_an_unresolved_body_twice() -> None:
+    calls: list[str] = []
+
+    async def load_skill_body(name: str):  # type: ignore[no-untyped-def]
+        calls.append(name)
+        return None
+
+    result = asyncio.run(
+        preflight_user_input_async(
+            "/skill:missing keep original",
+            load_skill_body=load_skill_body,
+        )
+    )
+
+    assert calls == ["missing"]
+    assert result.text == "/skill:missing keep original"
+    assert [item.code for item in result.diagnostics] == [
+        "unresolved_skill_reference"
+    ]
+    assert result.loaded_skills == ()
+
+
+def test_async_skill_preflight_rejects_a_body_for_another_skill() -> None:
+    @dataclass(frozen=True)
+    class Summary:
+        name: str
+        source_path: Path
+
+    @dataclass(frozen=True)
+    class Loaded:
+        summary: Summary
+        content: str
+
+    async def load_skill_body(_name: str) -> Loaded:
+        return Loaded(
+            summary=Summary(
+                name="another",
+                source_path=Path("/catalog/skills/another/SKILL.md"),
+            ),
+            content="Another body.",
+        )
+
+    with pytest.raises(ValueError, match="does not match the requested Skill"):
+        asyncio.run(
+            preflight_user_input_async(
+                "/skill:review",
+                load_skill_body=load_skill_body,
+            )
+        )

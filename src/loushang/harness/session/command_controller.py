@@ -11,7 +11,10 @@ from loushang.harness.capabilities.commands import (
     SessionCommandRuntime,
 )
 from loushang.harness.capabilities.packs import CapabilityPackComposer
-from loushang.harness.capabilities.prompt_preflight import PromptPreflightResult
+from loushang.harness.capabilities.prompt_preflight import (
+    PromptPreflightResult,
+    SkillBodyLoader,
+)
 from loushang.harness.commands import (
     CommandDispatchOutcome,
     ParsedSlashCommand,
@@ -94,6 +97,7 @@ class SessionCommandController(Generic[ResultT]):
     get_effective_skills: (
         Callable[[], Sequence[SkillCommandSummary] | None] | None
     ) = None
+    get_skill_body_loader: Callable[[], SkillBodyLoader | None] | None = None
     _runtime: SessionCommandRuntime[SessionCommandDescriptor, ResultT] = field(
         init=False,
         repr=False,
@@ -140,6 +144,7 @@ class SessionCommandController(Generic[ResultT]):
                 {"source": source, "text": text},
             ),
             get_effective_skills=self.get_effective_skills,
+            get_skill_body_loader=self.get_skill_body_loader,
         )
         self._runtime = SessionCommandRuntime(
             sources=(
@@ -259,7 +264,7 @@ class SessionCommandController(Generic[ResultT]):
                     invocation_name, args = command
                     await self.execute_command_async(invocation_name, args)
                     return PromptPreflightResult(text=user_input, consumed=True)
-        return self._resource_source.preflight_user_input(user_input)
+        return await self._resource_source.preflight_user_input_async(user_input)
 
     def record_preflight_diagnostics(
         self, diagnostics: tuple[DiagnosticDraft, ...]
@@ -300,6 +305,7 @@ class StandardSessionCommandController(
         get_effective_skills: (
             Callable[[], Sequence[SkillCommandSummary] | None] | None
         ) = None,
+        get_skill_body_loader: Callable[[], SkillBodyLoader | None] | None = None,
     ) -> None:
         super().__init__(
             session_manager=session_manager,
@@ -334,6 +340,7 @@ class StandardSessionCommandController(
             diagnostics_runtime=diagnostics_runtime,
             pack_composer=pack_composer or CapabilityPackComposer(),
             get_effective_skills=get_effective_skills,
+            get_skill_body_loader=get_skill_body_loader,
         )
 
 

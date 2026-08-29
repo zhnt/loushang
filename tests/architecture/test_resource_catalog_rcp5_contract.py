@@ -27,6 +27,10 @@ AGENT_PRODUCT_PATH = Path("src/loushang/harness/session/agent_product.py")
 COMPOSITION_RUNTIME_PATH = Path(
     "src/loushang/harness/capabilities/composition_runtime.py"
 )
+PROMPT_PREFLIGHT_PATH = Path(
+    "src/loushang/harness/capabilities/prompt_preflight.py"
+)
+COMMAND_SOURCE_PATH = Path("src/loushang/harness/session/command_sources.py")
 PUBLIC_SURFACES = (
     Path("src/loushang/harness/resources/__init__.py"),
     Path("src/loushang/harness/__init__.py"),
@@ -65,6 +69,9 @@ def test_rcp5_contract_freezes_conservative_order_and_authority() -> None:
     assert "admitted initial Resource Catalog" in normalized_contract
     assert "forbidden silent legacy fallback" in contract
     assert "RCP5.2B default ingress authority" in contract
+    assert "RCP5.3A — exact asynchronous body preflight" in contract
+    assert "RCP5.3B — request-bound durable evidence" in contract
+    assert "RCP5.3C — eager-body sink deletion" in contract
     assert "`catalog_required` is the public default" in contract
     assert "`legacy_explicit` is a caller-selected compatibility boundary" in contract
     assert "input-sensitive or exception-driven `auto` mode" in contract
@@ -196,3 +203,28 @@ def test_rcp52_status_projection_stays_with_the_resource_owner() -> None:
     assert "skill_status_projection" in consumer
     assert "def _resource_skill_status_projection" in composition
     assert "def resource_skill_status_projection" not in composition
+
+
+def test_rcp53a_catalog_body_preflight_uses_only_the_typed_async_loader() -> None:
+    prompt_source = PROMPT_PREFLIGHT_PATH.read_text(encoding="utf-8")
+    command_source = COMMAND_SOURCE_PATH.read_text(encoding="utf-8")
+    product_source = AGENT_PRODUCT_PATH.read_text(encoding="utf-8")
+    product_tree = ast.parse(product_source, filename=str(AGENT_PRODUCT_PATH))
+    loader = next(
+        node
+        for node in ast.walk(product_tree)
+        if isinstance(node, ast.AsyncFunctionDef)
+        and node.name == "_load_effective_skill_body"
+    )
+    loader_source = ast.unparse(loader)
+
+    assert "load_skill_body" in prompt_source
+    assert "loaded_skills" in prompt_source
+    assert "SkillBodyLoadRequiresAsyncError" in prompt_source
+    assert "await preflight_user_input_async" in command_source
+    assert "load_skill_body=self._skill_body_loader()" in command_source
+    assert "consumer.get_effective_skill" in loader_source
+    assert "consumer.load_handle" in loader_source
+    assert "await consumer.load" in loader_source
+    assert "resource_bundle" not in loader_source
+    assert "source_path" not in loader_source

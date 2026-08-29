@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
+from loushang.harness.capabilities.prompt_preflight import (
+    SkillBodyLoadRequiresAsyncError,
+)
 from loushang.harness.commands import parse_slash_command
 from loushang.harness.extensions.types import ResolvedCommand
 from loushang.harness.resources.types import (
@@ -143,8 +149,8 @@ def test_resource_command_source_projects_results_and_reports_failures() -> None
     assert review is not None
     assert unknown is not None
 
-    outcome = runtime.dispatch(review)
-    unresolved = runtime.dispatch(unknown)
+    outcome = asyncio.run(runtime.dispatch(review))
+    unresolved = asyncio.run(runtime.dispatch(unknown))
 
     assert [descriptor.name for descriptor in runtime.list_descriptors()] == ["review"]
     assert outcome.handled is True
@@ -156,6 +162,58 @@ def test_resource_command_source_projects_results_and_reports_failures() -> None
     assert unresolved.handled is False
     assert diagnostics == [(), ("unresolved_prompt_reference",)]
     assert missing == []
+
+
+def test_catalog_resource_command_loads_without_a_compatibility_bundle() -> None:
+    @dataclass(frozen=True)
+    class Summary:
+        name: str
+        source_path: Path
+
+    @dataclass(frozen=True)
+    class Loaded:
+        summary: Summary
+        content: str
+
+    loaded = Loaded(
+        summary=Summary(
+            name="review",
+            source_path=Path("/catalog/skills/review/SKILL.md"),
+        ),
+        content="Exact Catalog body.",
+    )
+
+    async def load_skill_body(name: str) -> Loaded | None:
+        return loaded if name == "review" else None
+
+    runtime = ResourceCommandSourceRuntime(
+        get_resource_bundle=lambda: None,
+        get_skill_body_loader=lambda: load_skill_body,
+        record_diagnostics=lambda _values: None,
+        record_command_not_found=lambda _name, _args: None,
+        result_factory=lambda name, source, text: {
+            "name": name,
+            "source": source,
+            "text": text,
+        },
+    )
+
+    result = asyncio.run(runtime.execute_async("skill:review", "focus"))
+
+    assert result == {
+        "name": "skill:review",
+        "source": "skill",
+        "text": (
+            '<skill name="review" '
+            'location="/catalog/skills/review/SKILL.md">\n'
+            "References are relative to /catalog/skills/review.\n\n"
+            "Exact Catalog body.\n"
+            "</skill>\n\n"
+            "focus"
+        ),
+    }
+    with pytest.raises(SkillBodyLoadRequiresAsyncError):
+        runtime.execute("skill:review", "")
 
 
 def test_command_source_runtimes_have_no_coding_import() -> None:
