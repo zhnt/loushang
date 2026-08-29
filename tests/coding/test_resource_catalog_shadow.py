@@ -798,7 +798,7 @@ def test_coding_failed_initial_publication_leaves_loader_unpublished(
                 ResourceLoaderCompatibilityError,
                 match="catalog_projection_not_published",
             ):
-                services.resource_loader.get_resource_bundle()
+                session.resource_loader.get_resource_bundle()
         finally:
             await session.dispose()
 
@@ -874,6 +874,11 @@ def test_catalog_compatibility_views_are_isolated_across_shared_services(
         try:
             with pytest.raises(RuntimeError, match="interleaved publication"):
                 await failed.prepare_model_call_runtime()
+            with pytest.raises(
+                ResourceLoaderCompatibilityError,
+                match="catalog_projection_not_published",
+            ):
+                failed.resource_loader.get_resource_bundle()
             assert first.resource_loader.get_resource_bundle().agents_md == (
                 "Project A guidance"
             )

@@ -139,8 +139,7 @@ def prepare_resource_catalog_bootstrap_projection(
                         source_generation_ref=source_ref,
                         admission_fingerprints=tuple(
                             sorted(
-                                item.admission.fingerprint
-                                for item in package_resources
+                                item.admission.fingerprint for item in package_resources
                             )
                         ),
                     )
@@ -190,10 +189,6 @@ def prepare_resource_catalog_bootstrap_projection(
                 "runtimeId": runtime_id,
             },
         )
-        disabled = _disabled_skill_identities(
-            descriptor_bindings,
-            selectors=disabled_skill_selectors,
-        )
         merge_policy = default_resource_merge_policy()
         selection_snapshot = compose_resource_catalog(
             source_snapshots,
@@ -203,6 +198,11 @@ def prepare_resource_catalog_bootstrap_projection(
             activation_policy=build_activation_policy_snapshot(
                 policy_revision=f"{product_policy_revision}:skill-selection",
             ),
+        )
+        disabled = _disabled_skill_identities(
+            selection_snapshot,
+            descriptor_bindings,
+            selectors=disabled_skill_selectors,
         )
         snapshot = compose_resource_catalog(
             source_snapshots,
@@ -240,6 +240,7 @@ def prepare_resource_catalog_bootstrap_projection(
 
 
 def _disabled_skill_identities(
+    selection_snapshot: ResourceCatalogSnapshot,
     bindings: Sequence[ResourceProjectionDescriptorBinding],
     *,
     selectors: Sequence[str],
@@ -247,8 +248,14 @@ def _disabled_skill_identities(
     disabled = {item for item in selectors if item}
     if not disabled:
         return ()
+    by_fingerprint = {binding.candidate_fingerprint: binding for binding in bindings}
     identities: list[ResourceIdentity] = []
-    for binding in bindings:
+    for entry in selection_snapshot.effective_entries:
+        if entry.identity.resource_kind != "skill":
+            continue
+        binding = by_fingerprint.get(entry.primary_candidate_fingerprint)
+        if binding is None:
+            continue
         descriptor = binding.descriptor
         if not isinstance(descriptor, SkillDescriptor):
             continue
@@ -260,14 +267,7 @@ def _disabled_skill_identities(
                 str(descriptor.source_path),
             }
         ):
-            identities.append(
-                ResourceIdentity(
-                    resource_kind="skill",
-                    schema_id="loushang.resource.skill",
-                    schema_version=1,
-                    public_id=descriptor.id or descriptor.name,
-                )
-            )
+            identities.append(entry.identity)
     return tuple(sorted(set(identities)))
 
 
@@ -283,9 +283,7 @@ def _disabled_skill_winner_descriptors(
         for entry in selection_snapshot.effective_entries
         if entry.identity.resource_kind == "skill" and entry.identity in disabled
     }
-    by_fingerprint = {
-        binding.candidate_fingerprint: binding for binding in bindings
-    }
+    by_fingerprint = {binding.candidate_fingerprint: binding for binding in bindings}
     descriptors: list[SkillDescriptor] = []
     for fingerprint in sorted(winners):
         binding = by_fingerprint.get(fingerprint)
