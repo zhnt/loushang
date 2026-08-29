@@ -341,8 +341,9 @@ def resources_capability_provider_binding(
                     "Staged Resource owner generation changed after Provider binding"
                 )
             if enable_skill_catalog_v3 or enable_skill_catalog_v4:
-                catalog_snapshot = staged_candidate.resource_catalog_snapshot
-                catalog_projection = staged_candidate.resource_catalog_projection
+                bootstrap_handles = staged_candidate._root_owned_handles()
+                catalog_snapshot = bootstrap_handles.resource_catalog_snapshot
+                catalog_projection = bootstrap_handles.resource_catalog_projection
                 if not isinstance(catalog_snapshot, ResourceCatalogSnapshot):
                     raise TypeError("Skill Catalog snapshot is invalid")
                 if not isinstance(catalog_projection, ResourceCatalogProjection):
@@ -354,9 +355,7 @@ def resources_capability_provider_binding(
                     projection=catalog_projection,
                 )
                 if enable_skill_catalog_v4:
-                    status_value = (
-                        staged_candidate._resource_skill_status_projection
-                    )
+                    status_value = bootstrap_handles._resource_skill_status_projection
                     if not isinstance(status_value, SkillCatalogStatusProjection):
                         raise TypeError(
                             "Skill Catalog v4 status projection is unavailable"

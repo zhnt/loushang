@@ -60,11 +60,13 @@ def _replace_catalog_snapshot(
     *,
     catalog_generation: int | None = None,
     engine_binding_fingerprint: str | None = None,
+    complete: bool | None = None,
 ) -> ResourceCatalogSnapshot:
     generation = catalog_generation or snapshot.catalog_generation
     engine_fingerprint = (
         engine_binding_fingerprint or snapshot.engine_binding_fingerprint
     )
+    resolved_complete = snapshot.complete if complete is None else complete
     snapshot_fingerprint = catalog_snapshot_fingerprint(
         catalog_contract_version=snapshot.catalog_contract_version,
         catalog_generation=generation,
@@ -76,12 +78,13 @@ def _replace_catalog_snapshot(
         effective_entries=snapshot.effective_entries,
         merge_decisions=snapshot.merge_decisions,
         diagnostics=snapshot.diagnostics,
-        complete=snapshot.complete,
+        complete=resolved_complete,
     )
     return replace(
         snapshot,
         catalog_generation=generation,
         engine_binding_fingerprint=engine_fingerprint,
+        complete=resolved_complete,
         snapshot_fingerprint=snapshot_fingerprint,
     )
 
@@ -296,8 +299,9 @@ def test_skill_projection_builder_rejects_another_catalog_snapshot(
             now=20,
             projection_cwd=workspace,
         )
-        snapshot = candidate.resource_catalog_snapshot
-        projection = candidate.resource_catalog_projection
+        bootstrap_handles = candidate._root_owned_handles()
+        snapshot = bootstrap_handles.resource_catalog_snapshot
+        projection = bootstrap_handles.resource_catalog_projection
         assert isinstance(snapshot, ResourceCatalogSnapshot)
         assert isinstance(projection, ResourceCatalogProjection)
         if snapshot_change == "generation":
@@ -516,6 +520,52 @@ def test_typed_skill_consumer_rejects_projection_not_bound_to_snapshot(
             match="facts do not match the captured Catalog",
         ):
             SkillCatalogConsumer(ForgedProjectionCatalog(catalog, forged_facts))
+        assert await binder.dispose(runtime) == ()
+
+    asyncio.run(scenario())
+
+
+def test_typed_skill_consumer_rejects_self_consistent_incomplete_catalog(
+    tmp_path: Path,
+) -> None:
+    class IncompleteCatalog:
+        def __init__(
+            self,
+            delegate: ResourceSkillCatalogCapabilityConsumer,
+        ) -> None:
+            self.delegate = delegate
+            self.snapshot = _replace_catalog_snapshot(
+                delegate.snapshot,
+                complete=False,
+            )
+            self.skill_projection = replace(
+                delegate.skill_projection,
+                catalog_snapshot_fingerprint=self.snapshot.snapshot_fingerprint,
+                skills=tuple(
+                    replace(
+                        summary,
+                        catalog_snapshot_fingerprint=(
+                            self.snapshot.snapshot_fingerprint
+                        ),
+                    )
+                    for summary in delegate.skill_projection.skills
+                ),
+            )
+
+        def load_handle(self, identity):  # type: ignore[no-untyped-def]
+            return self.delegate.load_handle(identity)
+
+        async def load(self, handle):  # type: ignore[no-untyped-def]
+            return await self.delegate.load(handle)
+
+    async def scenario() -> None:
+        _consumer, catalog, binder, runtime, _skill_body = (
+            await _mounted_skill_consumer(tmp_path)
+        )
+
+        with pytest.raises(SkillCatalogConsumerError, match="Catalog is incomplete"):
+            SkillCatalogConsumer(IncompleteCatalog(catalog))
+
         assert await binder.dispose(runtime) == ()
 
     asyncio.run(scenario())

@@ -186,6 +186,8 @@ class SkillCatalogConsumer:
             raise TypeError("Skill Consumer requires a Resource Catalog snapshot")
         if not isinstance(projection, EffectiveSkillCatalogProjection):
             raise TypeError("Skill Consumer requires a body-free Skill projection")
+        if not snapshot.complete:
+            raise SkillCatalogConsumerError("Skill Consumer Catalog is incomplete")
         if (
             projection.catalog_generation != snapshot.catalog_generation
             or projection.catalog_snapshot_fingerprint

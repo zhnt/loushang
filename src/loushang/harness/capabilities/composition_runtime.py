@@ -215,6 +215,22 @@ class _RootOwnedResourceCapabilityHandles:
     def tool_pack_composer(self) -> CapabilityPackComposer:
         return self._require_root().tool_pack_composer
 
+    @property
+    def resource_catalog_snapshot(self) -> object:
+        runtime = self._require_root()
+        return runtime._require_prepared_owner_generation().catalog_snapshot
+
+    @property
+    def resource_catalog_projection(self) -> object:
+        runtime = self._require_root()
+        return runtime._require_prepared_owner_generation().catalog_projection
+
+    @property
+    def _resource_skill_status_projection(self) -> object:
+        runtime = self._require_root()
+        generation = runtime._require_prepared_owner_generation()
+        return generation._skill_status_projection
+
     def dispose(self) -> None:
         self._runtime.dispose()
 
@@ -329,8 +345,8 @@ class StagedResourceCompositionCandidate:
 
     @property
     def resource_catalog_snapshot(self) -> object:
-        if self.__candidate.ownership not in {"root_owned", "graph_owned"}:
-            raise RuntimeError("Resource Catalog generation is not retained")
+        if self.__candidate.ownership != "graph_owned":
+            raise RuntimeError("Resource Catalog generation is not graph-owned")
         return self._require_prepared_owner_generation().catalog_snapshot
 
     @property
@@ -341,8 +357,8 @@ class StagedResourceCompositionCandidate:
 
     @property
     def _resource_skill_status_projection(self) -> object:
-        if self.__candidate.ownership not in {"root_owned", "graph_owned"}:
-            raise RuntimeError("Resource Catalog generation is not retained")
+        if self.__candidate.ownership != "graph_owned":
+            raise RuntimeError("Resource Catalog generation is not graph-owned")
         return self._require_prepared_owner_generation()._skill_status_projection
 
     def resource_load_handle(self, identity: object) -> object:

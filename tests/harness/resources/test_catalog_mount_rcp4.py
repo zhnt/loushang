@@ -154,10 +154,18 @@ def test_prepared_generation_is_one_candidate_child_and_root_cleanup_is_async(
         _workspace, handles, _skill_body = _fixture(tmp_path)
         candidate = stage_resource_composition_candidate(_profile())
         await _prepare(candidate, handles, runtime_id="resource-owner:first")
+        bootstrap_handles = candidate._root_owned_handles()
 
         assert candidate.ownership_state == "root_owned"
         assert candidate.prepared_owner_generation_state == "root_owned"
         assert candidate.has_prepared_owner_generation is True
+        assert bootstrap_handles.resource_catalog_snapshot is not None
+        assert bootstrap_handles.resource_catalog_projection is None
+        assert bootstrap_handles._resource_skill_status_projection is not None
+        with pytest.raises(RuntimeError, match="not graph-owned"):
+            _ = candidate.resource_catalog_snapshot
+        with pytest.raises(RuntimeError, match="not graph-owned"):
+            _ = candidate._resource_skill_status_projection
         with pytest.raises(
             RuntimeError, match="already has a prepared owner generation"
         ):
@@ -168,6 +176,8 @@ def test_prepared_generation_is_one_candidate_child_and_root_cleanup_is_async(
         await candidate.dispose_root_owned()
         assert candidate.ownership_state == "disposed"
         assert candidate.prepared_owner_generation_state == "disposed"
+        with pytest.raises(RuntimeError, match="no longer root-owned"):
+            _ = bootstrap_handles.resource_catalog_snapshot
 
     asyncio.run(scenario())
 
@@ -180,6 +190,7 @@ def test_v2_provider_adopts_generation_and_serves_exact_catalog_load(
         profile = _profile()
         candidate = stage_resource_composition_candidate(profile)
         await _prepare(candidate, handles, runtime_id="resource-owner:mounted")
+        bootstrap_handles = candidate._root_owned_handles()
         binding = resources_capability_provider_binding(
             profile=profile,
             scope_instance_id="session:coding",
@@ -197,6 +208,9 @@ def test_v2_provider_adopts_generation_and_serves_exact_catalog_load(
         assert binding.provider.implementation_version == 2
         assert candidate.ownership_state == "graph_owned"
         assert candidate.prepared_owner_generation_state == "graph_owned"
+        assert candidate.resource_catalog_snapshot is not None
+        with pytest.raises(RuntimeError, match="no longer root-owned"):
+            _ = bootstrap_handles.resource_catalog_snapshot
         catalog = ResourceCatalogCapabilityConsumer(
             runtime.capture(RESOURCES_CATALOG_LOAD_REQUIREMENT)
         )
