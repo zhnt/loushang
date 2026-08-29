@@ -76,6 +76,10 @@ class SessionResourceRefreshOutcome:
             raise TypeError("Session Resource refresh error is invalid")
         if not isinstance(self.settled, bool):
             raise TypeError("Session Resource settlement flag must be a bool")
+        if not self.settled and self.error is None:
+            raise ValueError(
+                "Unsettled Session Resource refresh requires an error"
+            )
 
 
 @dataclass

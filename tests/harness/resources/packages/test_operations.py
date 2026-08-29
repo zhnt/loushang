@@ -59,6 +59,11 @@ class _Materializer:
         )
 
 
+def test_package_refresh_outcome_rejects_silent_unsettled_state() -> None:
+    with pytest.raises(ValueError, match="Unsettled Package Resource"):
+        PackageResourceRefreshOutcome(published=True, settled=False)
+
+
 def _runtime(
     materializer: _Materializer | None,
     *,

@@ -61,6 +61,10 @@ class PackageResourceRefreshOutcome:
             raise TypeError("Package Resource refresh error is invalid")
         if not isinstance(self.settled, bool):
             raise TypeError("Package Resource settlement flag must be a bool")
+        if not self.settled and self.error is None:
+            raise ValueError(
+                "Unsettled Package Resource refresh requires an error"
+            )
 
 
 @dataclass(frozen=True, slots=True)

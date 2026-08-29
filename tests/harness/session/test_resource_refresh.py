@@ -38,6 +38,11 @@ class _Loader:
         return self.bundle
 
 
+def test_session_resource_refresh_outcome_rejects_silent_unsettled_state() -> None:
+    with pytest.raises(ValueError, match="Unsettled Session Resource"):
+        SessionResourceRefreshOutcome(published=True, settled=False)
+
+
 def test_shared_catalog_gate_rotates_after_an_idle_event_loop_epoch() -> None:
     gate = ResourceCatalogRefreshGate()
 
