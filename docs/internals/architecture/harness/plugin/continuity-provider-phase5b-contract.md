@@ -104,6 +104,10 @@ durable activation approval, load verified package symbols through the existing
 Plugin import realm and Component Host, and hand Continuity an owner-validated
 Provider value plus a revocation-safe authority lease.
 
+The concrete lifecycle, sole-writer split, sealed-process behavior, and
+consume-versus-revoke ordering are frozen by the
+[Phase 5C contract baseline](continuity-provider-phase5c-contract.md).
+
 It must not reintroduce any of the rejected Phase 5B review shapes:
 
 - a public contribution that accepts raw factory/disposer callables;

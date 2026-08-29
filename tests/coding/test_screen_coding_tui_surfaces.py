@@ -7,6 +7,10 @@ from types import SimpleNamespace
 from loushang.ai import Model
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model import ModelSelection
+from loushang.coding.continuity import (
+    bind_coding_continuity,
+    shutdown_coding_continuity,
+)
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.harness.multiagent import (
@@ -338,10 +342,7 @@ def test_screen_surface_model_selection_error_stays_in_tui() -> None:
     assert "/compact works" in " ".join(plain_lines)
     assert any("moonshot:test-endpoint:kimi-for-coding" in line for line in plain_lines)
     assert any(line.text.startswith("\x1b[91mError:") for line in rendered.lines)
-    assert any(
-        line.text.startswith("\x1b[33mTo use it:")
-        for line in rendered.lines
-    )
+    assert any(line.text.startswith("\x1b[33mTo use it:") for line in rendered.lines)
 
 
 def test_screen_surface_manager_opens_model_surface_in_bottom_frame_with_runtime_overlay_host() -> (
@@ -418,10 +419,13 @@ def test_screen_surface_manager_opens_resume_as_full_screen_continuity_page() ->
     runtime = SimpleNamespace(current_session=session)
     app = _app()
     app.surface_host = SurfaceHost()
+    composition = bind_coding_continuity(runtime)
+    reference = composition.hub.reference()
     manager = ScreenSurfaceManager(
         app=app,
         session=session,
         runtime=runtime,
+        continuity_reference=reference,
         status_provider=_status_provider(app),
     )
 
@@ -435,6 +439,8 @@ def test_screen_surface_manager_opens_resume_as_full_screen_continuity_page() ->
     assert surface.presentation == "page"
     assert isinstance(surface.renderable, ScreenSurfaceView)
     assert surface.renderable.purpose == "session"
+    reference.release()
+    asyncio.run(shutdown_coding_continuity(runtime))
 
 
 def test_screen_surface_manager_opens_live_agent_tree_page() -> None:
@@ -476,7 +482,9 @@ def test_screen_surface_manager_opens_live_agent_tree_page() -> None:
     asyncio.run(scenario())
 
 
-def test_screen_surface_manager_branches_from_selected_prompt_and_restores_composer() -> None:
+def test_screen_surface_manager_branches_from_selected_prompt_and_restores_composer() -> (
+    None
+):
     session = _Session()
     session.fork_messages = [
         {"entry_id": "entry-1", "text": "first prompt"},

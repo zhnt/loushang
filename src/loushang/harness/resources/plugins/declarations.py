@@ -31,6 +31,7 @@ MAX_PLUGIN_DECLARATIONS_PER_DOCUMENT = 1_024
 PluginContributionKind = Literal[
     "capability_provider",
     "command_pack",
+    "continuity_provider",
     "resource_item",
     "tool_pack",
 ]
@@ -38,9 +39,18 @@ PluginContributionExecutionModel = Literal["data_only", "in_process"]
 PluginDeclarationSourceKind = Literal["document", "in_process"]
 
 _SUPPORTED_CONTRIBUTION_KINDS = frozenset(
-    {"capability_provider", "command_pack", "resource_item", "tool_pack"}
+    {
+        "capability_provider",
+        "command_pack",
+        "continuity_provider",
+        "resource_item",
+        "tool_pack",
+    }
 )
 _SUPPORTED_EXECUTION_MODELS = frozenset({"data_only", "in_process"})
+_IN_PROCESS_CONTRIBUTION_KINDS = frozenset(
+    {"capability_provider", "continuity_provider"}
+)
 _DATA_ONLY_CONTRIBUTION_KINDS = frozenset(
     {"command_pack", "resource_item", "tool_pack"}
 )
@@ -240,10 +250,10 @@ class PluginContributionReservation:
         if self.contribution_execution_model not in _SUPPORTED_EXECUTION_MODELS:
             raise ValueError("Unsupported Plugin contribution execution model")
         if (
-            self.kind == "capability_provider"
+            self.kind in _IN_PROCESS_CONTRIBUTION_KINDS
             and self.contribution_execution_model != "in_process"
         ):
-            raise ValueError("Capability Provider contribution must be in-process")
+            raise ValueError(f"{self.kind} contribution must be in-process")
         if (
             self.kind in _DATA_ONLY_CONTRIBUTION_KINDS
             and self.contribution_execution_model != "data_only"
@@ -341,10 +351,10 @@ class PluginContributionReservation:
                 "plugin_declaration_field_type_mismatch",
                 "Plugin contribution required must be a boolean",
             )
-        if kind == "capability_provider" and execution_model != "in_process":
+        if kind in _IN_PROCESS_CONTRIBUTION_KINDS and execution_model != "in_process":
             _raise_codec(
                 "unsupported_plugin_contribution_execution_model",
-                "Capability Provider contribution must use in_process",
+                f"{kind} contribution must use in_process",
             )
         if kind in _DATA_ONLY_CONTRIBUTION_KINDS and execution_model != "data_only":
             _raise_codec(

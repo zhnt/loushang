@@ -113,6 +113,28 @@ def test_journal_batch_append_preserves_order(
     assert sync_calls == 1
 
 
+def test_durable_creation_and_replace_sync_parent_directory(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from loushang.harness.journal import append_jsonl_record, write_jsonl
+    from loushang.harness.journal import jsonl as jsonl_module
+
+    path = tmp_path / "nested" / "records.jsonl"
+    synced: list[Path] = []
+    monkeypatch.setattr(
+        jsonl_module,
+        "_sync_parent_directory",
+        lambda target, _durability: synced.append(target),
+    )
+
+    append_jsonl_record(path, _Record("one", "alpha"), record_codec=_RecordCodec())
+    append_jsonl_record(path, _Record("two", "beta"), record_codec=_RecordCodec())
+    write_jsonl(path, [_Record("three", "gamma")], record_codec=_RecordCodec())
+
+    assert synced == [path, path]
+
+
 def test_format_profile_preserves_unicode_and_key_order(tmp_path: Path) -> None:
     from loushang.harness.journal import (
         PROCESS_LOCAL_JOURNAL,
@@ -325,3 +347,19 @@ def test_header_errors_remain_distinguishable(tmp_path: Path) -> None:
         )
 
     assert exc_info.value.code == "missing_header"
+
+
+def test_nonblocking_file_lock_reports_contention_without_waiting(tmp_path) -> None:
+    import pytest
+
+    from loushang.harness.journal import (
+        JournalLockUnavailable,
+        journal_file_lock,
+    )
+
+    path = tmp_path / "state.jsonl"
+
+    with journal_file_lock(path, "exclusive"):
+        with pytest.raises(JournalLockUnavailable):
+            with journal_file_lock(path, "exclusive", blocking=False):
+                pytest.fail("contended non-blocking lock must not be acquired")

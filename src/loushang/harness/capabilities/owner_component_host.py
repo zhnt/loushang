@@ -44,6 +44,8 @@ from loushang.harness.resources.plugins.types import PublishedPluginPackage
 
 _COMPONENT_HOST_API_PREFIXES = (
     "loushang.harness.capabilities",
+    "loushang.harness.continuity.import_provider",
+    "loushang.harness.continuity.types",
     "loushang.harness.runtime",
 )
 _NO_PENDING_PAYLOAD = object()

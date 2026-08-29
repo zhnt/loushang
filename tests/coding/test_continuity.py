@@ -105,9 +105,7 @@ class _Runtime(AgentTranscriptDirectoryRuntime):
             raise ValueError("Session identity is not uniquely resolvable")
         discovery = matches[0].discovery
         if discovery is not None and not discovery.resumable:
-            raise ConflictedContinuityTargetError(
-                "Session identity is conflicted"
-            )
+            raise ConflictedContinuityTargetError("Session identity is conflicted")
         return matches[0].session_file
 
     async def prepare_restore_session_operation(
@@ -1020,15 +1018,19 @@ def test_coding_continuity_shutdown_closes_hub_before_disposing_binding(
         calls.append("dispose")
         await original_dispose(binding)
 
+    def cleanup_spy() -> None:
+        calls.append("owned-cleanup")
+
     monkeypatch.setattr(composition.hub, "close", close_spy)
     monkeypatch.setattr(composition.binder, "dispose", dispose_spy)
+    composition.owned_cleanup = cleanup_spy
 
     asyncio.run(shutdown_coding_continuity(runtime))
 
-    assert calls == ["close", "dispose"]
+    assert calls == ["close", "dispose", "owned-cleanup"]
     assert composition._shutdown
     asyncio.run(shutdown_coding_continuity(runtime))
-    assert calls == ["close", "dispose"]
+    assert calls == ["close", "dispose", "owned-cleanup"]
 
 
 def test_coding_continuity_failed_close_leaves_composition_retryable(
@@ -1067,3 +1069,33 @@ def test_coding_continuity_failed_close_leaves_composition_retryable(
     asyncio.run(shutdown_coding_continuity(runtime))
     assert composition._shutdown
     assert len(disposed) == 1
+
+
+def test_coding_continuity_shutdown_joins_cleanup_before_propagating_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        runtime = _Runtime(tmp_path)
+        composition = bind_coding_continuity(runtime)
+        original_shutdown = composition.shutdown
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def delayed_shutdown() -> None:
+            entered.set()
+            await release.wait()
+            await original_shutdown()
+
+        monkeypatch.setattr(composition, "shutdown", delayed_shutdown)
+        task = asyncio.create_task(shutdown_coding_continuity(runtime))
+        await entered.wait()
+        task.cancel()
+        release.set()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert composition._shutdown
+        assert not hasattr(runtime, "_loushang_coding_continuity")
+
+    asyncio.run(scenario())

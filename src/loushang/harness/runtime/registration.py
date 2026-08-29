@@ -6,8 +6,10 @@ import asyncio
 import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Literal, Protocol, TypeVar
+from typing import Literal, Protocol
 from uuid import uuid4
+
+from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 
 RegistrationOwnerKind = Literal[
     "product",
@@ -497,27 +499,6 @@ class RegistrationScope:
     async def __aexit__(self, *_args: object) -> None:
         if self._state == "open":
             await self.dispose()
-
-
-T = TypeVar("T")
-
-
-async def _await_cancellation_atomic(task: asyncio.Task[T]) -> T:
-    """Join an owned cleanup task before propagating caller cancellation."""
-
-    cancellation: asyncio.CancelledError | None = None
-    caller = asyncio.current_task()
-    while not task.done():
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError as exc:
-            if caller is None or caller.cancelling() == 0:
-                return task.result()
-            cancellation = exc
-    result = task.result()
-    if cancellation is not None:
-        raise cancellation
-    return result
 
 
 def _require_nonempty(value: object, *, name: str) -> str:

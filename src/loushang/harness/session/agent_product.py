@@ -95,11 +95,11 @@ from loushang.harness.runtime import (
     SideQuestionProviderFactory,
     SideQuestionUpdate,
 )
+from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 from loushang.harness.runtime.registration import (
     RegistrationDisposalResult,
     RegistrationLease,
     RegistrationOwner,
-    _await_cancellation_atomic,
 )
 from loushang.harness.session.agent_adapter import (
     AgentSessionAdapterMixin,

@@ -36,8 +36,10 @@ from loushang.coding.cli.workspace import (
     run_coding_workspace_command,
 )
 from loushang.coding.continuity import (
-    bind_coding_continuity,
     shutdown_coding_continuity,
+)
+from loushang.coding.continuity_bootstrap import (
+    bind_coding_configured_continuity,
 )
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
@@ -318,11 +320,9 @@ def default_runtime_builder(
                         origin=session_origin_from_resource_id(resource.resource_id),
                         priority=(
                             10
-                            if resource.resource_id
-                            == "sessions.cwd_compatibility"
+                            if resource.resource_id == "sessions.cwd_compatibility"
                             else 20
-                            if resource.resource_id
-                            == "sessions.home_compatibility"
+                            if resource.resource_id == "sessions.home_compatibility"
                             else 100
                         ),
                     )
@@ -514,11 +514,29 @@ async def _run_coding_pre_session_bootstrap(
             "use --continue for the latest session or --resume <session>"
         )
 
-    composition = bind_coding_continuity(
-        context.runtime,
-        cwd=context.bootstrap.project_root,
-        all_sessions=args.all_sessions,
-    )
+    settings_manager = context.state.settings_manager
+    try:
+        composition = await bind_coding_configured_continuity(
+            context.runtime,
+            settings_manager=settings_manager,
+            session_dir=context.state.session_dir,
+            cwd=context.bootstrap.project_root,
+            all_sessions=args.all_sessions,
+            diagnostics_service=getattr(
+                context.state.services,
+                "diagnostics_service",
+                None,
+            ),
+        )
+    except BaseException as bootstrap_error:
+        try:
+            await shutdown_coding_continuity(context.runtime)
+        except BaseException as cleanup_error:
+            bootstrap_error.add_note(
+                "Coding Continuity bootstrap cleanup also failed: "
+                f"{type(cleanup_error).__name__}"
+            )
+        raise
     continuity_reference = composition.hub.reference()
     activated = False
     try:

@@ -260,7 +260,6 @@ def build_runtime(
     tools: list[ToolDefinition] | None = None,
     persist: bool = False,
 ):
-    services = _build_bootstrap_services()
     return create_agent_session_runtime(
         session_dir=session_dir,
         model=offline_model(),
@@ -268,7 +267,6 @@ def build_runtime(
         system_prompt=system_prompt,
         tools=tools or [],
         persist=persist,
-        services=services,
     )
 
 

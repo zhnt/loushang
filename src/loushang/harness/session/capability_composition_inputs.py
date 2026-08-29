@@ -32,7 +32,7 @@ from loushang.harness.resources.plugins.selection import (
     PluginSourceTrustSnapshotV1,
 )
 from loushang.harness.resources.plugins.types import PublishedPluginPackage
-from loushang.harness.runtime.registration import _await_cancellation_atomic
+from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 
 SessionCompositionChange = Literal["no_change", "restart_required"]
 

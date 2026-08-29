@@ -200,7 +200,7 @@ sorted by contribution `id`, contains no duplicate ID, and each item has exactly
 | Key | Type |
 | --- | --- |
 | `configuration` | strict JSON object containing no secret material |
-| `contributionExecutionModel` | exact `"data_only"` or `"in_process"` contributed-runtime tag; `capability_provider` requires `"in_process"`, while `resource_item`, `tool_pack`, and `command_pack` require `"data_only"` |
+| `contributionExecutionModel` | exact `"data_only"` or `"in_process"` contributed-runtime tag; `capability_provider` and the exact-owner `continuity_provider` require `"in_process"`, while `resource_item`, `tool_pack`, and `command_pack` require `"data_only"` |
 | `declarationSource` | exact `PluginDeclarationSource` v1 object |
 | `id` | canonical contribution ID |
 | `kind` | supported contribution-kind tag |
@@ -589,6 +589,7 @@ payloads. The exact projection is:
 | `tool_pack` | `<Declaration owner>.tool-pack`, version equal to payload `payloadVersion` | one entry derived from exact payload `catalogId`/`catalogRevision` |
 | `command_pack` | `<Declaration owner>.command-pack`, version equal to payload `payloadVersion` | one entry derived from exact payload `catalogId`/`catalogRevision` |
 | `capability_provider` | `<Declaration owner>.capability-provider`, version equal to payload `payloadVersion` | `[]` |
+| `continuity_provider` | `harness.continuity.continuity-provider`, version equal to payload `payloadVersion` | `[]` |
 
 Catalog records have exactly `catalog` and positive-integer `revision`, are
 identity-sorted, and reject duplicate identities. Empty catalog use is always
@@ -974,6 +975,7 @@ The PLC1B codecs use these distinct codes:
 ```text
 unsupported_plugin_contribution_index_version
 unsupported_capability_provider_declaration_payload_version
+unsupported_continuity_provider_declaration_payload_version
 unsupported_resource_item_declaration_payload_version
 unsupported_tool_pack_declaration_payload_version
 unsupported_command_pack_declaration_payload_version

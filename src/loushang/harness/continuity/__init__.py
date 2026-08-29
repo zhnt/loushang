@@ -15,6 +15,7 @@ from loushang.harness.continuity.hub import (
     ContinuityHub,
     ContinuityProviderTimeoutError,
     InvalidContinuityCursor,
+    build_continuity_hub,
 )
 from loushang.harness.continuity.import_provider import (
     CONTINUITY_BUNDLE_MEDIA_TYPE,
@@ -23,7 +24,24 @@ from loushang.harness.continuity.import_provider import (
     ContinuityActivationPayload,
     ContinuityImportProvider,
     ContinuityImportProviderPack,
+    ContinuityMutationProvider,
     PreparedContinuityImport,
+)
+from loushang.harness.continuity.mutation import (
+    AcceptedContinuityDeletion,
+    AuthorizedContinuityDeletionLease,
+    ContinuityDeletionAuthority,
+    ContinuityDeletionAuthorization,
+    ContinuityDeletionDisposition,
+    ContinuityDeletionPlanV1,
+    ContinuityDeletionReceiptV1,
+    ContinuityDeletionRecoveryAuthority,
+    ContinuityMutationCodecError,
+    ContinuityMutationLifecycleError,
+    ContinuityMutationPendingCleanup,
+    PreparedContinuityDeletion,
+    consume_authorized_continuity_deletion,
+    prepare_authorized_continuity_deletion,
 )
 from loushang.harness.continuity.provider import (
     ContinuityDeletionProvider,
@@ -60,9 +78,11 @@ from loushang.harness.continuity.types import (
 )
 
 __all__ = [
+    "AcceptedContinuityDeletion",
     "ActivationDisposition",
     "ContinuityAction",
     "ActivationLeaseStateError",
+    "AuthorizedContinuityDeletionLease",
     "BoundContinuityProvider",
     "CallbackPreparedActivationLease",
     "CONTINUITY_BUNDLE_MEDIA_TYPE",
@@ -74,9 +94,19 @@ __all__ = [
     "ContinuityCompositionError",
     "ContinuityDiagnostic",
     "ContinuityDeletionProvider",
+    "ContinuityDeletionAuthorization",
+    "ContinuityDeletionAuthority",
+    "ContinuityDeletionDisposition",
+    "ContinuityDeletionPlanV1",
+    "ContinuityDeletionReceiptV1",
+    "ContinuityDeletionRecoveryAuthority",
     "ContinuityIndexState",
     "ContinuityImportProvider",
     "ContinuityImportProviderPack",
+    "ContinuityMutationCodecError",
+    "ContinuityMutationLifecycleError",
+    "ContinuityMutationPendingCleanup",
+    "ContinuityMutationProvider",
     "ContinuityHub",
     "ContinuityObservationDescriptor",
     "ContinuityPage",
@@ -96,6 +126,7 @@ __all__ = [
     "ExperienceDescriptor",
     "InvalidContinuityCursor",
     "PreparedActivationLease",
+    "PreparedContinuityDeletion",
     "PreparedContinuityImport",
     "ProviderPage",
     "ProviderPageItem",
@@ -103,7 +134,10 @@ __all__ = [
     "ProviderQuery",
     "StableContinuityReference",
     "StaleContinuityReferenceError",
+    "build_continuity_hub",
     "compose_experience_continuity",
     "continuity_provider_source",
     "consume_prepared_activation",
+    "consume_authorized_continuity_deletion",
+    "prepare_authorized_continuity_deletion",
 ]

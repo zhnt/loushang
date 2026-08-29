@@ -12,7 +12,11 @@ FOUNDATION_MODULES = {
     CAPABILITY_ROOT / "component_runtime.py",
     CAPABILITY_ROOT / "owner_component_host.py",
 }
-PRIVATE_FOUNDATION_CONSUMERS = {
+INTENTIONAL_FOUNDATION_CONSUMERS = {
+    Path("src/loushang/coding/continuity_bootstrap.py"),
+    Path("src/loushang/harness/continuity/composition.py"),
+    Path("src/loushang/harness/continuity/plugin_declaration.py"),
+    Path("src/loushang/harness/continuity/plugin_runtime.py"),
     Path("src/loushang/harness/resource_catalog/components.py"),
     Path("src/loushang/harness/resource_catalog/shadow.py"),
 }
@@ -40,13 +44,13 @@ def _imports_foundation(path: Path) -> bool:
     )
 
 
-def test_owner_component_foundation_is_unpublished_and_unmounted() -> None:
+def test_owner_component_foundation_is_private_and_explicitly_mounted() -> None:
     assert all(path.is_file() for path in FOUNDATION_MODULES)
     production_paths = set(Path("src/loushang").rglob("*.py")) - FOUNDATION_MODULES
 
     assert {
         path for path in production_paths if _imports_foundation(path)
-    } == PRIVATE_FOUNDATION_CONSUMERS
+    } == INTENTIONAL_FOUNDATION_CONSUMERS
     public_surface = (CAPABILITY_ROOT / "__init__.py").read_text(encoding="utf-8")
     assert "CapabilityComponentDefinition" not in public_surface
     assert "CapabilityOwnerComponentRuntime" not in public_surface

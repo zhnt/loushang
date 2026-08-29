@@ -127,7 +127,7 @@ class _TrackedActivationLease:
 
     async def consume(self) -> object:
         if self._hub._closing:
-            await self._inner.abort()
+            await self.abort()
             raise ActivationLeaseStateError("activation lease is closed")
         try:
             return await self._inner.consume()
@@ -135,10 +135,8 @@ class _TrackedActivationLease:
             self._hub._untrack_activation_lease(self)
 
     async def abort(self) -> None:
-        try:
-            await self._inner.abort()
-        finally:
-            self._hub._untrack_activation_lease(self)
+        await self._inner.abort()
+        self._hub._untrack_activation_lease(self)
 
     async def close(self) -> None:
         await self.abort()
@@ -692,6 +690,27 @@ class ContinuityHub:
         )
 
 
+def build_continuity_hub(
+    composition: ExperienceComposition,
+    *,
+    cursor_secret: bytes | None = None,
+    provider_timeout: float = 5.0,
+    activation_timeout: float | None = 120.0,
+    concurrency_limit: int = 8,
+    cursor_ttl: float = 900.0,
+) -> ContinuityHub:
+    """Sole production constructor for one process Continuity authority."""
+
+    return ContinuityHub(
+        composition,
+        cursor_secret=cursor_secret,
+        provider_timeout=provider_timeout,
+        activation_timeout=activation_timeout,
+        concurrency_limit=concurrency_limit,
+        cursor_ttl=cursor_ttl,
+    )
+
+
 def _parse_timestamp(value: str) -> float:
     try:
         normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
@@ -721,4 +740,4 @@ def _urlsafe_decode(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + padding)
 
 
-__all__ = ["ContinuityHub", "InvalidContinuityCursor"]
+__all__ = ["ContinuityHub", "InvalidContinuityCursor", "build_continuity_hub"]

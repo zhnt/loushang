@@ -66,6 +66,21 @@ Neither may silently override a narrower implemented owner contract.
 - [Phase 5B Continuity Provider Foundation](continuity-provider-phase5b-contract.md)
   freezes portable read-only Provider contracts, Product lifecycle bridging,
   and the handoff requirements for later Plugin admission.
+- [Phase 5C Continuity Provider Plugin Lifecycle](continuity-provider-phase5c-contract.md)
+  implements the installed-Plugin declaration, exact owner-component
+  lifecycle, sealed process composition, revocation linearization, durable
+  recovery barrier, and Package cleanup handoff.
+- [Phase 5D Continuity Mutation Foundation](continuity-mutation-phase5d-contract.md)
+  implements exact deletion proposals, opaque Product authorization evidence,
+  cancellation-safe settlement, and the lifecycle handoff required before an
+  installed Plugin may expose mutation.
+- [Phase 5E Installed Continuity Mutation Lifecycle](continuity-mutation-phase5e-contract.md)
+  implements the durable Product deletion journal, generation-gated installed
+  Provider adapter, startup recovery barrier, and explicit Coding binding.
+- [Phase 5F Continuity Production Composition and Operations](continuity-production-phase5f-contract.md)
+  binds that lifecycle to real Coding configuration, `--resume`, TUI stable
+  references, canonical machine state, recovery diagnostics, retry, and
+  process-owned shutdown.
 
 These contracts refine the architecture only inside their stated versions and
 implemented slices. An unimplemented Worker, Skill-action, remote-service, or

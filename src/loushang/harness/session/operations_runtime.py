@@ -22,7 +22,7 @@ from loushang.harness.extensions.context import (
     SessionShutdownEvent,
 )
 from loushang.harness.runtime import CancellationSignal
-from loushang.harness.runtime.registration import _await_cancellation_atomic
+from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 from loushang.harness.session.composition import (
     SessionComposition,
     SessionExtensionCompositionPort,

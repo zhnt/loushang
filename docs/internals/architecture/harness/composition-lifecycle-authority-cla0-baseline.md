@@ -102,7 +102,8 @@ The executable authority gates freeze these production construction sites:
 
 - `RuntimeCapabilityGraphRuntime`, `RuntimeCapabilityGraphBinder`, and
   `RuntimeCapabilityGraphProjector`: `AgentProductSession.__init__` only;
-- `RuntimeProfileBinder`: focused construction in `bind_coding_continuity`,
+- `RuntimeProfileBinder`: focused construction in
+  `_compose_coding_continuity_base`,
   `stage_resource_composition_candidate`,
   `resources_capability_provider_binding.create`, `bind_legacy_side_question`,
   and `AgentTranscriptProfileRuntime.__init__` only; and

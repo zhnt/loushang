@@ -918,8 +918,9 @@ Implemented CLA7d evidence:
   frozen issuance-time observation descriptor;
 - the architecture gate
   `tests/architecture/test_composition_lifecycle_authority_cla0.py::test_cla7d_continuity_has_one_process_authority_and_typed_reference`
-  freezes `ContinuityHub` construction to `coding/continuity.py`, reference
-  issuance to `ContinuityHub.reference()`, and prohibits the `ContinuityHub`
+  freezes `ContinuityHub` construction to the Continuity-owned
+  `build_continuity_hub()` constructor, reference issuance to
+  `ContinuityHub.reference()`, and prohibits the `ContinuityHub`
   name across `harness/session/`, `harnesstui/`, `coding/cli/`, and
   `coding/ui/` sources;
 - the graph `stable_reference` requirement binding remains fail-closed

@@ -5409,6 +5409,8 @@ def test_agent_session_exposes_context_usage_and_stats(tmp_path) -> None:
             "cache_read": 5,
             "cache_write": 7,
             "total": 17,
+            "source": "legacy_derived",
+            "incomplete_attempts": True,
         },
         "cost": 0.25,
         "context_usage": None,
@@ -5614,8 +5616,11 @@ def test_agent_session_records_remote_package_manifest_diagnostics(tmp_path) -> 
 
     packages = session.get_packages()
 
-    assert packages[0]["manifestDiagnostics"][0]["code"] == "invalid_package_manifest"
-    records = diagnostics.get_diagnostics(code="invalid_package_manifest")
+    assert (
+        packages[0]["manifestDiagnostics"][0]["code"]
+        == "plugin_declaration_invalid_json"
+    )
+    records = diagnostics.get_diagnostics(code="plugin_declaration_invalid_json")
     assert len(records) == 1
     assert records[0].phase == "resource_loading"
     assert records[0].source == "package"

@@ -497,7 +497,10 @@ def test_git_package_materializer_backend_clones_remote_plugin_source(tmp_path) 
     from loushang.harness.resources.packages.materializer import (
         GitPackageMaterializerBackend,
     )
-    from loushang.harness.resources.plugins import PluginManager
+    from loushang.harness.resources.plugins import (
+        PluginResolutionAuthority,
+        PluginSource,
+    )
 
     source_repo = tmp_path / "source"
     source_repo.mkdir()
@@ -526,10 +529,13 @@ def test_git_package_materializer_backend_clones_remote_plugin_source(tmp_path) 
     assert record.lifecycle == "installed"
     assert record.target_path == tmp_path / "packages" / "review-pack"
     assert (record.target_path / "plugin.json").is_file()
-    manager = PluginManager()
-    plugin = manager.add_plugin_source(record.target_path)
-    assert plugin.manifest.name == "review-pack"
-    assert plugin.manifest.version == "1.2.3"
+    inspection = PluginResolutionAuthority().inspect(
+        PluginSource(path=record.target_path)
+    )
+    inspection.raise_for_error()
+    assert inspection.package is not None
+    assert inspection.package.manifest.name == "review-pack"
+    assert inspection.package.manifest.version == "1.2.3"
 
 
 def test_package_materializer_updates_existing_git_checkout(tmp_path) -> None:
@@ -1672,7 +1678,10 @@ def test_package_projection_reports_invalid_remote_manifest_diagnostics(tmp_path
 
     assert entries[0]["version"] == ""
     assert entries[0]["diagnostics"] == 1
-    assert entries[0]["manifestDiagnostics"][0]["code"] == "invalid_package_manifest"
+    assert (
+        entries[0]["manifestDiagnostics"][0]["code"]
+        == "plugin_declaration_invalid_json"
+    )
 
 
 def test_package_projection_reports_denied_materializer_security(tmp_path) -> None:

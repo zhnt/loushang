@@ -13,6 +13,11 @@ import hmac
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
+from loushang.harness.continuity.mutation import (
+    ContinuityDeletionPlanV1,
+    ContinuityDeletionReceiptV1,
+    PreparedContinuityDeletion,
+)
 from loushang.harness.continuity.provider import PreparedActivationLease
 from loushang.harness.continuity.types import (
     ContinuityPreview,
@@ -135,6 +140,15 @@ class ContinuityImportProvider(Protocol):
     ) -> PreparedContinuityImport: ...
 
 
+class ContinuityMutationProvider(Protocol):
+    """Optional exact-target mutation seam implemented by an import Provider."""
+
+    async def prepare_delete(
+        self,
+        target: ContinuityTarget,
+    ) -> PreparedContinuityDeletion: ...
+
+
 @dataclass(frozen=True, slots=True)
 class ContinuityImportProviderPack:
     """Bounded owner input; construction and authority are owned elsewhere."""
@@ -169,7 +183,11 @@ __all__ = [
     "CONTINUITY_JSONL_MEDIA_TYPE",
     "ContinuityActivationBridge",
     "ContinuityActivationPayload",
+    "ContinuityDeletionPlanV1",
+    "ContinuityDeletionReceiptV1",
     "ContinuityImportProvider",
     "ContinuityImportProviderPack",
+    "ContinuityMutationProvider",
+    "PreparedContinuityDeletion",
     "PreparedContinuityImport",
 ]

@@ -18,6 +18,11 @@ from loushang.harness.plugin_authoring.resource_item import (
     _payload_from_declaration,
 )
 from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
+from loushang.harness.resources.plugins.continuity_provider import (
+    CONTINUITY_PROVIDER_DECLARATION_OWNER,
+    CONTINUITY_PROVIDER_SEMANTIC_SCHEMA_ID,
+    decode_continuity_provider_declaration_payload,
+)
 from loushang.harness.resources.plugins.declarations import (
     PluginContributionKind,
     PluginDeclaration,
@@ -104,12 +109,9 @@ class _SemanticProjection:
         ):
             raise ValueError("Plugin semantic payload schema version must be positive")
         if any(
-            not isinstance(item, _CatalogRevision)
-            for item in self.catalog_revisions
+            not isinstance(item, _CatalogRevision) for item in self.catalog_revisions
         ):
-            raise TypeError(
-                "Plugin semantic catalog revisions must be typed records"
-            )
+            raise TypeError("Plugin semantic catalog revisions must be typed records")
         identities = tuple(item.catalog for item in self.catalog_revisions)
         if identities != tuple(sorted(identities)):
             raise ValueError("Plugin semantic catalog revisions must be sorted")
@@ -175,6 +177,18 @@ def _project_declaration(declaration: PluginDeclaration) -> _SemanticProjection:
             catalog_revision=command_payload.catalog_revision,
             payload_version=command_payload.payload_version,
             payload=command_payload.to_dict(),
+        )
+    if declaration.kind == "continuity_provider":
+        if declaration.owner != CONTINUITY_PROVIDER_DECLARATION_OWNER:
+            raise ValueError("Continuity Provider semantic owner is invalid")
+        continuity_payload = decode_continuity_provider_declaration_payload(
+            declaration.to_dict()["payload"]
+        )
+        return _SemanticProjection(
+            payload_schema_id=CONTINUITY_PROVIDER_SEMANTIC_SCHEMA_ID,
+            payload_schema_version=continuity_payload.payload_version,
+            catalog_revisions=(),
+            payload=continuity_payload.to_dict(),
         )
     provider_payload = _capability_provider_payload_from_declaration(declaration)
     return _SemanticProjection(

@@ -163,6 +163,15 @@ def test_extension_runtime_binding_factory_wires_session_callbacks_and_ui_error_
         "staleAfterCompaction": False,
         "compactable": False,
         "reason": "usage below threshold",
+        "authority": "unknown",
+        "accuracy": "unknown",
+        "transcriptRevision": None,
+        "leafId": None,
+        "estimatorId": None,
+        "surfaceFingerprint": None,
+        "providerAnchor": None,
+        "structuralEnvelopeFingerprint": None,
+        "structuralEnvelopeStatus": "unavailable",
     }
     assert bindings.get_thinking_level() == "high"
     assert bindings.get_system_prompt() == "system"
