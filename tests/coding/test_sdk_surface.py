@@ -166,6 +166,7 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
         "project_settings_path",
         "resource_loader_options",
         "extension_flag_values",
+        "resource_authority_mode",
     )
     assert tuple(inspect.signature(coding.create_agent_session).parameters) == (
         "session_manager",

@@ -88,6 +88,7 @@ from loushang.harness.resource_catalog.session_bootstrap import (
     InitialSessionResourceCatalogBootstrap,
     InitialSessionResourcePublication,
 )
+from loushang.harness.resources._catalog_projection import ResourceCatalogProjection
 from loushang.harness.resources._skill_catalog_consumer import (
     LoadedSkillBody,
     SkillCatalogConsumer,
@@ -312,7 +313,12 @@ class AgentProductSession(AgentSessionAdapterMixin):
         )
         self.model_registry = model_registry
         self.api_registry = api_registry or get_default_api_registry()
-        self._resource_loader = resource_loader
+        self._resource_loader = (
+            resource_loader.create_catalog_session_view()
+            if resource_loader is not None
+            and initial_resource_catalog_bootstrap is not None
+            else resource_loader
+        )
         self.resource_bundle = resource_bundle
         self._extension_runner = extension_runner
         self._initial_resource_catalog_bootstrap = initial_resource_catalog_bootstrap
@@ -1786,6 +1792,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 self._resource_catalog_snapshot = catalog
                 self._resource_catalog_projection = projection
                 self._skill_catalog_consumer = SkillCatalogConsumer(skill_catalog)
+                self._adopt_resource_loader_catalog_projection(projection)
                 self._set_resource_bundle(bundle)
                 self._rebuild_prompt_and_tools_view()
 
@@ -1814,6 +1821,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     self._resource_catalog_snapshot = catalog
                     self._resource_catalog_projection = projection
                     self._skill_catalog_consumer = skill_consumer
+                    self._restore_resource_loader_catalog_projection(projection)
                     self._set_resource_bundle(bundle)
                     self._rebuild_prompt_and_tools_view()
                 except BaseException as restoration_error:
@@ -1929,6 +1937,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
     ) -> None:
         self._resource_catalog_snapshot = catalog
         self._resource_catalog_projection = projection
+        self._adopt_resource_loader_catalog_projection(projection)
         self._set_resource_bundle(bundle)
         self._rebuild_prompt_and_tools_view()
 
@@ -1940,8 +1949,28 @@ class AgentProductSession(AgentSessionAdapterMixin):
             raise TypeError("initial Resource publication Bundle is invalid")
         self._resource_catalog_snapshot = catalog
         self._resource_catalog_projection = projection
+        self._restore_resource_loader_catalog_projection(projection)
         self._set_resource_bundle(bundle)
         self._rebuild_prompt_and_tools_view()
+
+    def _adopt_resource_loader_catalog_projection(self, projection: object) -> None:
+        loader = self._resource_loader
+        if loader is None:
+            return
+        if not isinstance(projection, ResourceCatalogProjection):
+            raise TypeError("Session Resource Catalog projection is invalid")
+        loader.adopt_catalog_projection(projection)
+
+    def _restore_resource_loader_catalog_projection(self, projection: object) -> None:
+        loader = self._resource_loader
+        if loader is None:
+            return
+        if projection is not None and not isinstance(
+            projection,
+            ResourceCatalogProjection,
+        ):
+            raise TypeError("Session Resource Catalog projection is invalid")
+        loader.restore_catalog_projection(projection)
 
     def evaluate_capability_composition_change(
         self,

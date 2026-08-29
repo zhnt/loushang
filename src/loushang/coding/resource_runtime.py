@@ -6,7 +6,6 @@ from typing import Any
 from loushang.harness.resources.loader import (
     DEFAULT_CONTEXT_FILE_NAMES,
     ProfiledResourceLoader,
-    ResourceLoader,
     ResourceLoaderProfile,
 )
 from loushang.harness.resources.packages.catalog import (
@@ -20,7 +19,6 @@ from loushang.harness.resources.packages.projection import (
     collect_projected_package_entries,
 )
 from loushang.harness.resources.packages.source import PackageSourceConfig
-from loushang.harness.resources.skills import SkillLoader
 from loushang.harness.resources.types import PackageResourceSummary, ResourceBundle
 
 from .plugin_dependency_grants import (
@@ -93,23 +91,6 @@ class CodingPackageMaterializer(PackageMaterializer):
         )
 
 
-class CodingSkillLoader(SkillLoader):
-    """Harness skill loader with Coding's built-in resource content."""
-
-    def __init__(
-        self,
-        *,
-        resource_loader: ResourceLoader | None = None,
-        package_roots: list[str | Path] | tuple[str | Path, ...] | None = None,
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(
-            resource_loader=resource_loader
-            or CodingResourceLoader(package_roots=package_roots),
-            **kwargs,
-        )
-
-
 def summarize_coding_package_root(
     package_root: Path,
     cwd: Path,
@@ -140,7 +121,6 @@ __all__ = [
     "CODING_RESOURCE_PROFILE",
     "CodingPackageMaterializer",
     "CodingResourceLoader",
-    "CodingSkillLoader",
     "collect_coding_package_entries",
     "summarize_coding_package_root",
 ]

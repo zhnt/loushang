@@ -271,10 +271,18 @@ def default_runtime_builder(
         services.resource_loader,
         args,
     )
+    resource_authority_mode = getattr(
+        args,
+        "resource_authority_mode",
+        "catalog_required",
+    )
     services_factory = cwd_bound_services_factory(
         services,
         resource_loader_options,
         create_services=create_agent_session_services,
+        create_services_options={
+            "resource_authority_mode": resource_authority_mode,
+        },
     )
     runtime = create_agent_session_runtime(
         session_dir=session_dir,
@@ -287,11 +295,7 @@ def default_runtime_builder(
         approval_resolver=approval_resolver,
         tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=True,
-        resource_authority_mode=getattr(
-            args,
-            "resource_authority_mode",
-            "catalog_required",
-        ),
+        resource_authority_mode=resource_authority_mode,
     )
     resource_layout = resolve_machine_resource_layout(cwd=cwd)
     platform_sessions = resource_layout.sessions

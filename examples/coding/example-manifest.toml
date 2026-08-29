@@ -300,18 +300,6 @@ requires_api_key = false
 tags = ["coding", "ui", "existing", "offline", "render", "tools", "json"]
 
 [[example]]
-id = "skill-01"
-slug = "skill_01_discovery"
-title = "skill_01_discovery.py - skill discovery, filtering, and replacement"
-category = "skill"
-description = "Demonstrates skill discovery from a local skills/ directory, filtering by state/source, and runtime enable/disable replacement."
-runtime = "offline"
-entrypoint = "skill_01_discovery.py"
-model_profile = ""
-requires_api_key = false
-tags = ["skill", "discovery", "filter", "replace", "offline"]
-
-[[example]]
 id = "skill-02"
 slug = "skill_02_advanced"
 title = "skill_02_advanced.py - disable-model-invocation & system prompt injection"
@@ -322,30 +310,6 @@ entrypoint = "skill_02_advanced.py"
 model_profile = ""
 requires_api_key = false
 tags = ["skill", "disable-model-invocation", "system-prompt", "offline"]
-
-[[example]]
-id = "skill-03"
-slug = "skill_03_precedence"
-title = "skill_03_precedence.py - source precedence & collision handling"
-category = "skill"
-description = "Demonstrates project_local > external_package precedence and same-precedence collision disabling both identities."
-runtime = "offline"
-entrypoint = "skill_03_precedence.py"
-model_profile = ""
-requires_api_key = false
-tags = ["skill", "precedence", "collision", "source-kind", "offline"]
-
-[[example]]
-id = "skill-04"
-slug = "skill_04_reload"
-title = "skill_04_reload.py - hot reload skills at runtime"
-category = "skill"
-description = "Demonstrates adding a new SKILL.md after initial discovery and reloading skills without restarting the process."
-runtime = "offline"
-entrypoint = "skill_04_reload.py"
-model_profile = ""
-requires_api_key = false
-tags = ["skill", "reload", "hot-reload", "offline"]
 
 [[example]]
 id = "config-01"

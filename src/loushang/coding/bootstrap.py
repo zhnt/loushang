@@ -14,7 +14,8 @@ from loushang.agent import Agent, StreamFn, ThinkingLevel
 from loushang.ai.model import Model, ModelSelection
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.coding._resource_catalog_shadow import (
-    prepare_coding_initial_resource_catalog_adapter,
+    CodingResourceCatalogAdmissionError,
+    build_coding_initial_resource_catalog_adapter,
 )
 from loushang.coding.capabilities import (
     CODING_LSP_CAPABILITY,
@@ -85,6 +86,12 @@ from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.multiagent import DelegatedExecutionProfile
 from loushang.harness.policy import PolicyEvaluator
+from loushang.harness.resource_catalog.product_inputs import (
+    InitialResourceCatalogProductAdapter,
+)
+from loushang.harness.resources._catalog_input_receipt import (
+    ResourceCatalogInputReceipt,
+)
 from loushang.harness.resources.packages.materializer import (
     GitPackageMaterializerBackend,
     resolve_session_package_install_root,
@@ -154,6 +161,43 @@ def create_services(
     )
 
 
+def _prepare_coding_catalog_projection(
+    resource_loader: DefaultResourceLoader,
+    *,
+    cwd: Path,
+    session_id: str,
+    disabled_skills: tuple[str, ...] | list[str] = (),
+    product_composition: object | None = None,
+    admission_now: int | None = None,
+) -> tuple[InitialResourceCatalogProductAdapter, ResourceBundle]:
+    """Prepare one Catalog adapter and its disposable bootstrap projection."""
+
+    evaluated_at = int(time.time()) if admission_now is None else admission_now
+    try:
+        receipt = resource_loader.prepare_catalog_input_receipt(cwd)
+    except (AttributeError, RuntimeError) as exc:
+        raise CodingResourceCatalogAdmissionError(
+            ("catalog_receipt_unavailable",)
+        ) from exc
+    if not isinstance(receipt, ResourceCatalogInputReceipt):
+        raise CodingResourceCatalogAdmissionError(
+            ("catalog_receipt_unavailable",)
+        )
+    adapter = build_coding_initial_resource_catalog_adapter(
+        receipt,
+        product_scope_id=session_id,
+        disabled_skills=disabled_skills,
+        product_composition=cast(Any, product_composition),
+        package_admission_now=evaluated_at,
+    )
+    bundle = adapter.prepare_bootstrap_projection(
+        product_id=CODING_PRODUCT_ID,
+        session_id=session_id,
+        cwd=cwd,
+    )
+    return adapter, bundle
+
+
 def create_agent_session_services(
     *,
     cwd: str | Path,
@@ -169,7 +213,23 @@ def create_agent_session_services(
     project_settings_path: str | Path | None = None,
     resource_loader_options: dict[str, object] | None = None,
     extension_flag_values: ExtensionFlagValues | None = None,
+    resource_authority_mode: ResourceAuthorityMode = "catalog_required",
 ) -> AgentSessionServices:
+    if resource_authority_mode not in RESOURCE_AUTHORITY_MODES:
+        raise ValueError("Coding Resource authority mode is invalid")
+
+    def prepare_catalog_preview(
+        loader: DefaultResourceLoader,
+        resolved_cwd: Path,
+    ) -> ResourceBundle:
+        preview_id = hashlib.sha256(str(resolved_cwd).encode("utf-8")).hexdigest()
+        _, bundle = _prepare_coding_catalog_projection(
+            loader,
+            cwd=resolved_cwd,
+            session_id=f"services-preview:{preview_id}",
+        )
+        return bundle
+
     def create_cwd_services(resolved_cwd: Path) -> BootstrapServices:
         resolved_settings_manager = settings_manager or SettingsManager(
             global_settings_path=Path(global_settings_path)
@@ -213,7 +273,13 @@ def create_agent_session_services(
         configure_resource_loader=lambda loader, options: loader.set_runtime_options(
             **dict(options)
         ),
+        prepare_catalog_projection=(
+            prepare_catalog_preview
+            if resource_authority_mode == "catalog_required"
+            else None
+        ),
         extension_flag_values=extension_flag_values,
+        resource_authority_mode=resource_authority_mode,
     )
 
 
@@ -386,6 +452,39 @@ def _create_agent_session(
         package_materializer or _default_package_materializer(session_manager)
     )
     session_id = session_manager.get_header().conversation_id
+    prepared_resource_catalog_adapters: list[
+        InitialResourceCatalogProductAdapter
+    ] = []
+
+    def prepare_initial_resource_catalog_projection(
+        loader: DefaultResourceLoader,
+        resolved_cwd: Path,
+    ) -> ResourceBundle:
+        if prepared_resource_catalog_adapters:
+            raise RuntimeError(
+                "Initial Resource Catalog projection was already prepared"
+            )
+        evaluated_at = int(time.time())
+        product_composition = (
+            assemble_product_composition(
+                initial_resource_catalog_product_composition_assembly,
+                evaluated_at=evaluated_at,
+            )
+            if initial_resource_catalog_product_composition_assembly is not None
+            else None
+        )
+        adapter, projection = _prepare_coding_catalog_projection(
+            loader,
+            cwd=resolved_cwd,
+            session_id=session_id,
+            disabled_skills=(
+                services.settings_manager.get_settings().disabled_skills
+            ),
+            product_composition=product_composition,
+            admission_now=evaluated_at,
+        )
+        prepared_resource_catalog_adapters.append(adapter)
+        return projection
 
     def _create_session(
         capability_runtime: StagedResourceCompositionCandidate,
@@ -400,26 +499,11 @@ def _create_agent_session(
     ) -> AgentSession:
         resource_catalog_adapter = None
         if resource_authority_mode == "catalog_required":
-            composition_evaluated_at = int(time.time())
-            product_composition = (
-                assemble_product_composition(
-                    initial_resource_catalog_product_composition_assembly,
-                    evaluated_at=composition_evaluated_at,
+            if len(prepared_resource_catalog_adapters) != 1:
+                raise RuntimeError(
+                    "Initial Resource Catalog projection adapter is unavailable"
                 )
-                if initial_resource_catalog_product_composition_assembly is not None
-                else None
-            )
-            resource_catalog_adapter = (
-                prepare_coding_initial_resource_catalog_adapter(
-                    services.resource_loader,
-                    product_scope_id=session_id,
-                    disabled_skills=(
-                        services.settings_manager.get_settings().disabled_skills
-                    ),
-                    product_composition=product_composition,
-                    admission_now=composition_evaluated_at,
-                )
-            )
+            resource_catalog_adapter = prepared_resource_catalog_adapters.pop()
 
         def prepare_resource_catalog_refresh(
             catalog_generation: int,
@@ -429,9 +513,6 @@ def _create_agent_session(
                     "Resource Catalog refresh requires catalog_required authority"
                 )
             evaluated_at = int(time.time())
-            refreshed_bundle = services.resource_loader.reload_resources(
-                session_manager.get_cwd()
-            )
             product_composition = (
                 assemble_product_composition(
                     initial_resource_catalog_product_composition_assembly,
@@ -440,12 +521,11 @@ def _create_agent_session(
                 if initial_resource_catalog_product_composition_assembly is not None
                 else None
             )
-            adapter = prepare_coding_initial_resource_catalog_adapter(
+            adapter, refreshed_bundle = _prepare_coding_catalog_projection(
                 services.resource_loader,
-                product_scope_id=session_id,
-                disabled_skills=(
-                    services.settings_manager.get_settings().disabled_skills
-                ),
+                cwd=Path(session_manager.get_cwd()),
+                session_id=session_id,
+                disabled_skills=services.settings_manager.get_settings().disabled_skills,
                 product_composition=product_composition,
                 admission_now=evaluated_at,
             )
@@ -651,6 +731,12 @@ def _create_agent_session(
         session_id=session_id,
         cwd=session_manager.get_cwd(),
         extension_flag_values=extension_flag_values,
+        catalog_authoritative=(resource_authority_mode == "catalog_required"),
+        prepare_catalog_bootstrap_projection=(
+            prepare_initial_resource_catalog_projection
+            if resource_authority_mode == "catalog_required"
+            else None
+        ),
         explicit_system_prompt=system_prompt,
         append_system_prompt=resolved_append_system_prompt,
         model=model,
@@ -796,11 +882,22 @@ def create_agent_session_from_services(
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: PolicyEvaluator | None = None,
     enable_multiagent: bool = False,
-    resource_authority_mode: ResourceAuthorityMode = "catalog_required",
+    resource_authority_mode: ResourceAuthorityMode | None = None,
     lsp_definitions: Iterable[LspServerDefinition] = (),
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
 ) -> CreateAgentSessionResult:
+    prepared_authority = agent_services.resource_authority_mode
+    if prepared_authority not in RESOURCE_AUTHORITY_MODES:
+        raise ValueError("Agent Session services have no valid Resource authority")
+    if (
+        resource_authority_mode is not None
+        and resource_authority_mode != prepared_authority
+    ):
+        raise ValueError(
+            "Agent Session Resource authority must match prepared services"
+        )
+    resolved_resource_authority = cast(ResourceAuthorityMode, prepared_authority)
     extension_flag_values = (
         agent_services.extension_runner.get_flag_values()
         if agent_services.extension_runner is not None
@@ -826,7 +923,7 @@ def create_agent_session_from_services(
         approval_resolver=approval_resolver,
         tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=enable_multiagent,
-        resource_authority_mode=resource_authority_mode,
+        resource_authority_mode=resolved_resource_authority,
         lsp_definitions=lsp_definitions,
         lsp_baseline_environment=lsp_baseline_environment,
         lsp_read_text=lsp_read_text,

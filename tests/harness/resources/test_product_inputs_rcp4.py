@@ -253,6 +253,129 @@ def test_product_selection_rejects_duplicate_package_admissions(
         handle.close()
 
 
+def test_catalog_bootstrap_disabled_skill_retains_only_precedence_winner(
+    tmp_path: Path,
+) -> None:
+    admission, handle = _package_skill_admission(tmp_path)
+    project = tmp_path / "project"
+    user = tmp_path / "user"
+    for root, description in (
+        (project, "Project review"),
+        (user, "User review"),
+    ):
+        skill = root / "skills" / "review" / "SKILL.md"
+        skill.parent.mkdir(parents=True)
+        skill.write_text(
+            f"---\nname: review\ndescription: {description}\n---\n{description}.\n",
+            encoding="utf-8",
+        )
+    selection = InitialResourceCatalogProductSelection(
+        product_policy_revision="policy-v1",
+        product_composition=_product_composition(admission),
+        native_roots=(
+            ProductNativeResourceRootSpec(
+                handle_id="project-resources",
+                root=project,
+                source_class="project_local",
+                root_kind="standard",
+            ),
+            ProductNativeResourceRootSpec(
+                handle_id="user-resources",
+                root=user,
+                source_class="user_global",
+                root_kind="standard",
+            ),
+        ),
+        package_resources=(
+            ProductAdmittedPackageResourceSpec(
+                admission=admission,
+                revision_handle=handle,
+            ),
+        ),
+        embedded_collections=(
+            ProductEmbeddedResourceCollectionSpec(
+                collection_id="builtin-resources",
+                embedded_revision="v1",
+                files={
+                    "skills/review/SKILL.md": (
+                        b"---\nname: review\ndescription: Builtin review\n---\n"
+                        b"Builtin review.\n"
+                    )
+                },
+            ),
+        ),
+        disabled_skill_selectors=("review",),
+    )
+    try:
+        bundle = InitialResourceCatalogProductAdapter(
+            selection,
+            clock=lambda: 2,
+        ).prepare_bootstrap_projection(
+            product_id="product",
+            session_id="session-disabled-precedence",
+            cwd=project,
+        )
+        assert [
+            (skill.name, skill.source_kind, skill.enabled) for skill in bundle.skills
+        ] == [("review", "project_local", False)]
+    finally:
+        handle.close()
+
+
+@pytest.mark.parametrize(
+    ("selector_source", "expected_enabled"),
+    (("user", True), ("project", False)),
+)
+def test_catalog_bootstrap_skill_path_selector_applies_only_to_winner(
+    tmp_path: Path,
+    selector_source: str,
+    expected_enabled: bool,
+) -> None:
+    project = tmp_path / "project"
+    user = tmp_path / "user"
+    skill_paths = {
+        "project": project / "skills" / "review" / "SKILL.md",
+        "user": user / "skills" / "review" / "SKILL.md",
+    }
+    for source, skill in skill_paths.items():
+        skill.parent.mkdir(parents=True)
+        skill.write_text(
+            f"---\nname: review\ndescription: {source} review\n---\n{source} review.\n",
+            encoding="utf-8",
+        )
+    selection = InitialResourceCatalogProductSelection(
+        product_policy_revision="policy-v1",
+        native_roots=(
+            ProductNativeResourceRootSpec(
+                handle_id="project-resources",
+                root=project,
+                source_class="project_local",
+                root_kind="standard",
+            ),
+            ProductNativeResourceRootSpec(
+                handle_id="user-resources",
+                root=user,
+                source_class="user_global",
+                root_kind="standard",
+            ),
+        ),
+        disabled_skill_selectors=(str(skill_paths[selector_source]),),
+    )
+
+    bundle = InitialResourceCatalogProductAdapter(
+        selection,
+        clock=lambda: 2,
+    ).prepare_bootstrap_projection(
+        product_id="product",
+        session_id=f"session-{selector_source}-path",
+        cwd=project,
+    )
+
+    assert [
+        (skill.name, skill.source_kind, skill.enabled) for skill in bundle.skills
+    ] == [("review", "project_local", expected_enabled)]
+
+
 def test_product_adapter_consumes_compiled_resource_admissions_from_plugin_selection(
     tmp_path: Path,
 ) -> None:

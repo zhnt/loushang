@@ -352,6 +352,10 @@ async def prepare_extension_resource_joint_generation(
         catalog_projection = staged_resource_candidate.resource_catalog_projection
         if not isinstance(catalog_projection, ResourceCatalogProjection):
             raise TypeError("Resource preparation did not retain a Catalog projection")
+        _validate_extension_bootstrap_projection(
+            base_resource_bundle,
+            catalog_projection.to_compatibility_bundle(),
+        )
         await extension_candidate.activate(bindings)
     except BaseException as preparation_error:
         cleanup = asyncio.create_task(
@@ -373,6 +377,34 @@ async def prepare_extension_resource_joint_generation(
         staged_resource_candidate=staged_resource_candidate,
         resource_catalog=resource_catalog,
         catalog_projection=catalog_projection,
+    )
+
+
+def _validate_extension_bootstrap_projection(
+    bootstrap: ResourceBundle,
+    catalog: ResourceBundle,
+) -> None:
+    if _extension_projection_facts(bootstrap) != _extension_projection_facts(catalog):
+        raise RuntimeError(
+            "Extension bootstrap projection changed before Catalog preparation"
+        )
+
+
+def _extension_projection_facts(bundle: ResourceBundle) -> tuple[tuple[object, ...], ...]:
+    return tuple(
+        sorted(
+            (
+                extension.id,
+                extension.name,
+                extension.canonical_name,
+                str(extension.source_path),
+                str(extension.entry_path) if extension.entry_path is not None else "",
+                extension.source_kind,
+                extension.source_scope,
+                extension.source_root_order,
+            )
+            for extension in bundle.extensions
+        )
     )
 
 

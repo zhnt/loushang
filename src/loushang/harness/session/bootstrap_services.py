@@ -100,6 +100,7 @@ class AgentSessionServices(Generic[ServicesT, BundleT, ExtensionT, DiagnosticRec
     resource_bundle: BundleT | None = None
     extension_runner: ExtensionT | None = None
     diagnostics: tuple[DiagnosticRecordT, ...] = ()
+    resource_authority_mode: str | None = None
 
     @property
     def settings_manager(self) -> object:
@@ -143,11 +144,20 @@ def prepare_agent_session_services(
     configure_resource_loader: (
         Callable[[ResourceLoaderT, Mapping[str, object]], None] | None
     ) = None,
+    prepare_catalog_projection: (
+        Callable[[ResourceLoaderT, Path], BundleT] | None
+    ) = None,
     extension_flag_values: ExtensionFlagValues | None = None,
+    resource_authority_mode: str | None = None,
 ) -> AgentSessionServices[ServicesT, BundleT, ExtensionT, DiagnosticRecordT]:
     """Prepare cwd-bound session services with the existing resource runtime."""
 
     resolved_cwd = Path(cwd).expanduser().resolve(strict=False)
+    if resource_authority_mode is not None and (
+        not isinstance(resource_authority_mode, str)
+        or not resource_authority_mode.strip()
+    ):
+        raise ValueError("Resource authority mode must be a non-empty string")
     if services is None:
         resolved_services = create_services(resolved_cwd)
     else:
@@ -170,6 +180,7 @@ def prepare_agent_session_services(
         loader=loader,
         cwd=resolved_cwd,
         extension_flags=extension_flag_values,
+        discover_resources=prepare_catalog_projection,
     )
     return AgentSessionServices(
         cwd=str(resolved_cwd),
@@ -177,6 +188,7 @@ def prepare_agent_session_services(
         resource_bundle=prepared.resource_bundle,
         extension_runner=prepared.extension_runtime,
         diagnostics=prepared.diagnostics,
+        resource_authority_mode=resource_authority_mode,
     )
 
 

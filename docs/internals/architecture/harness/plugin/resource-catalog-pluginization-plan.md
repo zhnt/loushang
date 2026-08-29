@@ -1558,6 +1558,15 @@ The Resource owner also pins every awaited Consumer load, including borrowed
 Extension body reads, across retirement. Peer loader/discovery deletion is now
 the sole RCP5.5 debt.
 
+RCP5.5 now removes `SkillLoader` and its Coding export, replaces the default
+loader discovery/reload calls with source-only receipt preparation, and derives
+the synchronous bootstrap seed through Catalog-native/package/embedded sources
+and the standard Catalog merge policy. `ResourceLoader` retains only lazy,
+explicit legacy compatibility construction plus forwarding reads from an exact
+published Catalog projection; default Coding imports and executes no legacy
+effective-selection pipeline. There is no exception-driven fallback from
+Catalog preparation to that compatibility path.
+
 Exit: one Catalog path serves every Skill operation; native Skills need no
 Plugin; same-name selection is source-explainable; current-request immutability
 and exact body receipts are proven.

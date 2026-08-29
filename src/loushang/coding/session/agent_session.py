@@ -29,9 +29,6 @@ from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE
 from loushang.coding.resource_runtime import (
     CodingPackageMaterializer as PackageMaterializer,
 )
-from loushang.coding.resource_runtime import (
-    CodingResourceLoader as DefaultResourceLoader,
-)
 from loushang.coding.resource_runtime import summarize_coding_package_root
 from loushang.coding.runtime_capability_admission import (
     CodingExtensionDeclarationPreflight,
@@ -54,6 +51,7 @@ from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 from loushang.harness.multiagent import DelegatedExecutionProfile
 from loushang.harness.policy import PolicyEvaluator
+from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.sandbox import SandboxExecutionRuntime, SandboxStatus
 from loushang.harness.session import AgentProductSession
@@ -142,7 +140,7 @@ class AgentSession(AgentProductSession):
         session_manager: SessionManager,
         settings_manager: SettingsManager | None = None,
         model_registry: ModelRegistry | None = None,
-        resource_loader: DefaultResourceLoader | None = None,
+        resource_loader: ResourceLoader | None = None,
         resource_bundle: ResourceBundle | None = None,
         extension_runner: ExtensionRunner | None = None,
         tool_registry: WorkspaceToolRegistry | None = None,

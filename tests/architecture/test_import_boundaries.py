@@ -4767,7 +4767,6 @@ def test_resource_package_runtime_has_harness_owners() -> None:
     from loushang.coding.resource_runtime import (
         CodingPackageMaterializer,
         CodingResourceLoader,
-        CodingSkillLoader,
     )
     from loushang.harness.resources.loader import ResourceLoader
     from loushang.harness.resources.packages import (
@@ -4775,15 +4774,14 @@ def test_resource_package_runtime_has_harness_owners() -> None:
         PackageMaterializer,
         PackageSourceResolver,
     )
-    from loushang.harness.resources.skills import SkillLoader
 
     assert issubclass(CodingResourceLoader, ResourceLoader)
     assert issubclass(CodingPackageMaterializer, PackageMaterializer)
-    assert issubclass(CodingSkillLoader, SkillLoader)
     assert PackageCatalogBuilder.__module__.startswith("loushang.harness")
     assert PackageSourceResolver.__module__.startswith("loushang.harness")
     assert "ResourceBundle" not in coding.__all__
     assert "PluginManager" not in coding.__all__
+    assert "SkillLoader" not in coding.__all__
 
 
 def test_coding_internal_resource_consumers_use_harness_owners() -> None:
