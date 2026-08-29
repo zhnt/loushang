@@ -26,6 +26,7 @@ from loushang.harness.capabilities.resources_contracts import (
     SKILL_ACTIVATION_FACET,
     TOOL_PACKS_FACET,
 )
+from loushang.harness.resources._catalog_projection import ResourceCatalogProjection
 from loushang.harness.resources._catalog_records import (
     LoadedResource,
     ResourceCatalogSnapshot,
@@ -64,6 +65,9 @@ class _PromptFacet(Protocol):
 class _ResourceCatalogFacet(Protocol):
     @property
     def snapshot(self) -> ResourceCatalogSnapshot: ...
+
+    @property
+    def projection(self) -> ResourceCatalogProjection: ...
 
 
 class _ResourceLoadFacet(Protocol):
@@ -164,6 +168,18 @@ class ResourceCatalogCapabilityConsumer:
             _ResourceCatalogFacet,
             self.facets.require(RESOURCE_CATALOG_FACET),
         ).snapshot
+
+    @property
+    def projection(self) -> ResourceCatalogProjection:
+        value = cast(
+            _ResourceCatalogFacet,
+            self.facets.require(RESOURCE_CATALOG_FACET),
+        ).projection
+        if not isinstance(value, ResourceCatalogProjection):
+            raise RuntimeError(
+                "Resource Catalog descriptor projection is not available"
+            )
+        return value
 
     def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle:
         return cast(

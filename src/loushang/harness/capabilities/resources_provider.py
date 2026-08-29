@@ -162,6 +162,10 @@ class _ResourceCatalogFacet:
     def snapshot(self) -> object:
         return self._owner.candidate.resource_catalog_snapshot
 
+    @property
+    def projection(self) -> object:
+        return self._owner.candidate.resource_catalog_projection
+
 
 @dataclass(frozen=True)
 class _ResourceLoadFacet:

@@ -7,7 +7,8 @@
   and Model Input boundaries. It does not amend those boundaries implicitly.
 - Design status: RCP0 contract frozen; final narrow freeze re-review passed.
 - Implementation status: RCP0 through RCP3 are complete on the Harness lane;
-  RCP4 has started with ten unpublished foundation slices.
+  RCP4 has ten unpublished foundation slices and RCP5 has started with one
+  conservative, unpublished typed-Consumer slice.
   RCP2's first unpublished foundation slice implements the generic
   `CapabilityComponentDefinition`, exact candidate/admission/selection/binding
   records, atomic owner generations, cancellation-safe reverse rollback,
@@ -33,6 +34,11 @@
   compilation, and Coding's private initial shadow consumes that assembly
   request. No Product bootstrap invokes the path by default and no refresh route
   calls it.
+  RCP5.1 adds a body-free typed Skill summary over the exact captured Catalog
+  projection and a Skill-narrowed lazy load handle returning the validated
+  Resource receipt. It has no legacy loader, `ResourceBundle`, Product, or
+  public SDK dependency. Default Product callers and all legacy peer paths are
+  unchanged pending a fresh cutover review.
   RCP3 adds admitted-package and embedded/OEM source components beside the
   native source. Capability-aware orchestration converts exact Resource-owner
   admission into a capability-neutral verified input with an independently
@@ -1454,6 +1460,23 @@ retires only its adopted owner generation; model calls pin a Catalog generation.
   `_loader_precedence`, `_loader_resolution`, and `_loader_pipeline`; and
 - forbid direct Extension `ResourceBundle.merge()` publication after Catalog
   cutover. Parity fixtures may retain old helpers only in the cutover commit.
+
+#### RCP5.1 implemented: exact-generation typed Skill read path
+
+The internal Skill Catalog Consumer validates that the captured descriptor
+projection and Catalog snapshot belong to the same generation, exposes only
+body-free immutable effective-Skill summaries, and mints Skill-narrowed wrappers
+around owner-issued Resource load handles. A successful body load returns the
+exact bytes, strict UTF-8 content, and the validated Resource receipt. Foreign
+generation, foreign projection, non-Skill, unselected, and post-disposal loads
+fail closed. Inactive/status projection remains explicit RCP5.2 debt, so this
+first API cannot be mistaken for the all-Skills CLI cutover surface.
+
+This slice changes no default Product construction or legacy caller. Its
+rollback surface is limited to the internal Consumer and the projection
+accessor on the existing private v2 Catalog facet. The ordered production
+cutover and peer deletion remain RCP5.2 through RCP5.5 and require fresh
+source-backed review before default wiring changes.
 
 Exit: one Catalog path serves every Skill operation; native Skills need no
 Plugin; same-name selection is source-explainable; current-request immutability
