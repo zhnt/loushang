@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Callable, Mapping
+from copy import deepcopy
 from dataclasses import replace
 from typing import cast
 
@@ -54,6 +55,7 @@ from loushang.harness.session.request_evidence import (
     RESOURCE_EVIDENCE_COMPONENT,
     RESOURCE_EVIDENCE_SCHEMA_ID,
     PreparedResourceEvidence,
+    RequestEvidenceIntegrityError,
     SessionRequestEvidenceRuntime,
 )
 from loushang.harness.session.turn_performance import TurnStartPerformanceRuntime
@@ -115,7 +117,15 @@ def _skill_evidence_payload() -> dict[str, JSONValue]:
         "schemaVersion": 1,
         "sourceGeneration": {
             "generation": "generation-3",
-            "producer": {"type": "resource_component"},
+            "producer": {
+                "bindingFingerprint": "f" * 64,
+                "componentAdmissionFingerprint": "1" * 64,
+                "componentCandidateFingerprint": "2" * 64,
+                "componentContributionId": "project-skill-component",
+                "packageContentDigest": "3" * 64,
+                "pluginInstanceRevisionRef": "project-revision-3",
+                "type": "resource_component",
+            },
             "productId": "coding",
             "sourceId": "project-skills",
             "sourcePolicyFingerprint": "e" * 64,
@@ -572,7 +582,11 @@ def test_resource_evidence_is_request_bound_durable_and_resumable() -> None:
         )
 
         compacted = SessionRequestEvidenceRuntime(
-            get_context_message_bindings=lambda: (),
+            get_context_message_bindings=lambda records=None: (
+                ()
+                if records is None
+                else session.get_context_message_bindings(records)
+            ),
             get_active_records=session.get_active_entries,
             rebuild_model_input=session.rebuild_model_input,
         )
@@ -595,6 +609,75 @@ def test_resource_evidence_is_request_bound_durable_and_resumable() -> None:
         compacted.close()
         resumed.close()
         evidence_runtime.close()
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_resource_evidence_recovery_is_strict_and_transactional() -> None:
+    async def scenario() -> None:
+        session = await _transcript_session()
+        message_record_id, transcript_message = (
+            session.get_context_message_bindings()[0]
+        )
+        evidence = PreparedResourceEvidence(
+            model_visible_text="hello",
+            skills=(_skill_evidence_payload(),),
+        )
+        first_message = evidence.to_message_payload(
+            message_record_id=message_record_id,
+            message_index=0,
+        )
+        duplicate_message = deepcopy(first_message)
+        component: dict[str, object] = {
+            "contextComplete": True,
+            "schemaId": RESOURCE_EVIDENCE_SCHEMA_ID,
+            "schemaVersion": 1,
+            "messages": [first_message, duplicate_message],
+        }
+        runtime = _model_call_runtime(
+            session,
+            is_current=lambda: True,
+            request_evidence_provider=lambda _preparation: component,
+        )
+        adapter = _PreparedAdapter()
+        registry = get_default_api_registry()
+        source_id = "session-model-call-invalid-resource-evidence"
+        registry.register_api_adapter(adapter, source_id=source_id)
+        agent = Agent(
+            initial_state={
+                "system_prompt": "durable system prompt",
+                "model": _model(api=adapter.api),
+                "thinking_level": "off",
+            },
+            prepare_model_call=runtime.prepare,
+        )
+        try:
+            await agent.prompt("hello")
+        finally:
+            registry.unregister_api_adapters(source_id)
+
+        resumed = SessionRequestEvidenceRuntime(
+            get_context_message_bindings=session.get_context_message_bindings,
+            get_active_records=session.get_active_entries,
+            rebuild_model_input=session.rebuild_model_input,
+        )
+        preparation = ModelCallPreparation(
+            purpose="continuation",
+            sequence=2,
+            model=_model(api=adapter.api),
+            context=Context(
+                system_prompt="durable system prompt",
+                messages=[transcript_message],
+            ),
+            options=CallOptions(),
+        )
+        with pytest.raises(RequestEvidenceIntegrityError, match="repeats a message index"):
+            resumed.project_model_input(preparation)
+
+        session.branch(message_record_id)
+        assert resumed.project_model_input(preparation) is None
+        resumed.close()
         await runtime.dispose()
 
     asyncio.run(scenario())

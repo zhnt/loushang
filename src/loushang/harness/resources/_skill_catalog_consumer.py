@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -26,6 +27,8 @@ from loushang.harness.resources.types import (
     RevisionResourceRef,
     SkillDescriptor,
 )
+
+_SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 
 
 class SkillCatalogConsumerError(RuntimeError):
@@ -76,7 +79,7 @@ class SkillCatalogSummary:
             raise ValueError("Skill summary Catalog generation must be positive")
         if (
             not isinstance(self.activation_policy_fingerprint, str)
-            or len(self.activation_policy_fingerprint) != 64
+            or _SHA256_RE.fullmatch(self.activation_policy_fingerprint) is None
         ):
             raise ValueError(
                 "Skill summary activation-policy fingerprint must be a digest"

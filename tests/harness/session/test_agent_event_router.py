@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from loushang.ai.types import AssistantMessage, TextPart, Usage
+from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 from loushang.harness.session import AgentEventRouter
 from loushang.harness.transcript import ApplicationMessage, AutoRetryOutcome
 
@@ -137,24 +137,28 @@ def test_agent_event_router_binds_request_evidence_before_dispatch() -> None:
     order: list[str] = []
 
     class Evidence:
+        def prepare_message_commit(self, message: object) -> dict[str, object]:
+            order.append(f"prepare:{message.role}")
+            return {"resource": {"durable": True}}
+
         def commit_message(self, message: object, record_id: str) -> bool:
             order.append(f"evidence:{record_id}:{message.role}")
             return True
 
     async def scenario() -> None:
-        async def append_message(_message: object) -> str:
+        async def append_message(
+            _message: object,
+            *,
+            metadata: object | None = None,
+        ) -> str:
+            assert metadata == {"resource": {"durable": True}}
             order.append("append")
             return "record-1"
 
-        message = ApplicationMessage(
-            application_message_id="app-1",
-            custom_type="test",
-            content="context",
-            display=True,
-            details=None,
+        message = UserMessage(
+            role="user",
+            content=[TextPart(type="text", text="context")],
             timestamp=0.0,
-            origin="test",
-            delivery_mode="trigger_turn",
         )
         router = AgentEventRouter(
             append_message=append_message,
@@ -176,9 +180,10 @@ def test_agent_event_router_binds_request_evidence_before_dispatch() -> None:
 
     asyncio.run(scenario())
 
-    assert order[:4] == [
+    assert order[:5] == [
+        "prepare:user",
         "append",
-        "evidence:record-1:application",
+        "evidence:record-1:user",
         "dispatch",
         "extension",
     ]

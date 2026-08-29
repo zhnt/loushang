@@ -320,10 +320,12 @@ class AgentTranscriptUnitOfWork:
 
     def replay_projection(
         self,
+        records: Sequence[AgentTranscriptRecord] | None = None,
     ) -> ConversationReplayProjection[AgentMessage, AgentTranscriptState]:
         """Return the selected context items with exact transcript record ids."""
 
-        return self._profile.replay_projection(self.active_path())
+        selected = self.active_path() if records is None else tuple(records)
+        return self._profile.replay_projection(selected)
 
     async def commit(self, record: AgentTranscriptRecord) -> AgentTranscriptCommit:
         """Durably append one prebuilt record, then advance runtime state."""

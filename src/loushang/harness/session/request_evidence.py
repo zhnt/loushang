@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Callable, Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Protocol, cast
 
@@ -11,6 +13,7 @@ from loushang.agent import ModelCallPreparation
 from loushang.foundation.json import JSONValue, require_json_mapping
 from loushang.harness.capabilities.prompt_preflight import PromptPreflightResult
 from loushang.harness.resources._skill_catalog_consumer import LoadedSkillBody
+from loushang.harness.transcript.kinds import AGENT_MESSAGE_KIND
 from loushang.harness.transcript.model_input import RebuiltModelInput
 from loushang.harness.transcript.model_input_types import ModelInputSnapshot
 from loushang.harness.transcript.model_input_v2_types import ModelInputSnapshotV2
@@ -19,11 +22,37 @@ from loushang.harness.transcript.types import AgentTranscriptRecord
 RESOURCE_EVIDENCE_COMPONENT = "resource_evidence"
 RESOURCE_EVIDENCE_SCHEMA_ID = "loushang.model-input.resource-evidence"
 RESOURCE_EVIDENCE_SCHEMA_VERSION = 1
+RESOURCE_EVIDENCE_METADATA_KEY = "loushang.request.resource_evidence"
 _MESSAGE_TEXT_DIGEST_DOMAIN = b"loushang.model-input.message-text/v1\0"
+_SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 
 
 class RequestEvidenceIntegrityError(RuntimeError):
     """Request evidence cannot be associated without guessing."""
+
+
+class _FrozenJSONMapping(Mapping[str, JSONValue]):
+    """Own a deep JSON copy and never expose a mutable nested value."""
+
+    __slots__ = ("_data",)
+
+    def __init__(self, value: Mapping[str, object], *, name: str) -> None:
+        self._data = require_json_mapping(dict(value), name=name)
+
+    def __getitem__(self, key: str) -> JSONValue:
+        return cast(JSONValue, deepcopy(self._data[key]))
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def to_payload(self) -> dict[str, JSONValue]:
+        return cast(dict[str, JSONValue], deepcopy(self._data))
+
+    def __repr__(self) -> str:
+        return repr(self._data)
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,7 +60,7 @@ class PreparedResourceEvidence:
     """Immutable loaded-Resource evidence before a message has a record id."""
 
     model_visible_text: str
-    skills: tuple[dict[str, JSONValue], ...] = field(repr=False)
+    skills: tuple[Mapping[str, JSONValue], ...] = field(repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.model_visible_text, str) or not self.model_visible_text:
@@ -39,7 +68,10 @@ class PreparedResourceEvidence:
         if not self.skills:
             raise ValueError("Resource evidence must contain a loaded Skill")
         frozen_skills = tuple(
-            require_json_mapping(skill, name=f"resource evidence skill[{index}]")
+            _FrozenJSONMapping(
+                _validated_skill_payload(skill, index=index),
+                name=f"resource evidence skill[{index}]",
+            )
             for index, skill in enumerate(self.skills)
         )
         object.__setattr__(self, "skills", frozen_skills)
@@ -56,14 +88,29 @@ class PreparedResourceEvidence:
     ) -> dict[str, JSONValue]:
         if not isinstance(message_record_id, str) or not message_record_id:
             raise ValueError("Resource evidence message record id must be non-empty")
-        if isinstance(message_index, bool) or message_index < 0:
+        if (
+            isinstance(message_index, bool)
+            or not isinstance(message_index, int)
+            or message_index < 0
+        ):
             raise ValueError("Resource evidence message index must be non-negative")
         return {
             "messageIndex": message_index,
             "messageRecordId": message_record_id,
             "messageTextDigest": self.message_text_digest,
             "modelVisibleText": self.model_visible_text,
-            "skills": [dict(skill) for skill in self.skills],
+            "skills": [_copy_frozen_mapping(skill) for skill in self.skills],
+        }
+
+    def to_message_metadata(self) -> dict[str, JSONValue]:
+        """Return the durable evidence anchor committed with the user message."""
+
+        return {
+            "schemaId": RESOURCE_EVIDENCE_SCHEMA_ID,
+            "schemaVersion": RESOURCE_EVIDENCE_SCHEMA_VERSION,
+            "messageTextDigest": self.message_text_digest,
+            "modelVisibleText": self.model_visible_text,
+            "skills": [_copy_frozen_mapping(skill) for skill in self.skills],
         }
 
 
@@ -72,7 +119,19 @@ class RequestEvidenceRuntimePort(Protocol):
 
     def prepare(self, result: object) -> object | None: ...
 
-    def bind(self, message: object, evidence: object, *, owner: object) -> None: ...
+    def bind(
+        self,
+        message: object,
+        evidence: object,
+        *,
+        owner: object,
+        allow_signature_fallback: bool = False,
+    ) -> None: ...
+
+    def prepare_message_commit(
+        self,
+        message: object,
+    ) -> Mapping[str, JSONValue] | None: ...
 
     def commit_message(self, message: object, record_id: str) -> bool: ...
 
@@ -81,7 +140,7 @@ class RequestEvidenceRuntimePort(Protocol):
     def close(self) -> None: ...
 
 
-ContextMessageBindings = Callable[[], tuple[tuple[str, object], ...]]
+ContextMessageBindings = Callable[..., tuple[tuple[str, object], ...]]
 ActiveRecordsProvider = Callable[[], Sequence[AgentTranscriptRecord]]
 ModelInputRebuilder = Callable[[str], RebuiltModelInput]
 
@@ -93,6 +152,7 @@ class _PendingEvidence:
     text: str
     evidence: PreparedResourceEvidence
     owner: object
+    allow_signature_fallback: bool
 
 
 class SessionRequestEvidenceRuntime:
@@ -118,6 +178,7 @@ class SessionRequestEvidenceRuntime:
         self._pending: list[_PendingEvidence] = []
         self._committed: dict[str, PreparedResourceEvidence] = {}
         self._recovered: dict[str, PreparedResourceEvidence] = {}
+        self._scanned_anchor_record_ids: set[str] = set()
         self._scanned_snapshot_ids: set[str] = set()
         self._closed = False
 
@@ -135,11 +196,20 @@ class SessionRequestEvidenceRuntime:
             skills=skills,
         )
 
-    def bind(self, message: object, evidence: object, *, owner: object) -> None:
+    def bind(
+        self,
+        message: object,
+        evidence: object,
+        *,
+        owner: object,
+        allow_signature_fallback: bool = False,
+    ) -> None:
         self._require_open()
         if not isinstance(evidence, PreparedResourceEvidence):
             raise TypeError("request evidence binding received an invalid value")
-        role, text = _message_signature(message)
+        if not isinstance(allow_signature_fallback, bool):
+            raise TypeError("request evidence fallback policy must be a boolean")
+        role, text = _message_signature(message, application_as_user=False)
         if role != "user" or text != evidence.model_visible_text:
             raise RequestEvidenceIntegrityError(
                 "prepared Resource evidence does not match its delivered user message"
@@ -151,23 +221,47 @@ class SessionRequestEvidenceRuntime:
                 text=text,
                 evidence=evidence,
                 owner=owner,
+                allow_signature_fallback=allow_signature_fallback,
             )
         )
+
+    def prepare_message_commit(
+        self,
+        message: object,
+    ) -> Mapping[str, JSONValue] | None:
+        """Pin one pending binding and return metadata for its atomic commit."""
+
+        self._require_open()
+        role, text = _message_signature(message, application_as_user=False)
+        pending_index = self._pending_index(message, role=role, text=text)
+        if pending_index is None:
+            return None
+        pending = self._pending[pending_index]
+        pending.message = message
+        pending.role = role
+        pending.text = text
+        pending.allow_signature_fallback = False
+        return {
+            RESOURCE_EVIDENCE_METADATA_KEY: pending.evidence.to_message_metadata()
+        }
 
     def commit_message(self, message: object, record_id: str) -> bool:
         self._require_open()
         if not isinstance(record_id, str) or not record_id:
             raise ValueError("request evidence requires a transcript record id")
-        role, text = _message_signature(message)
+        role, text = _message_signature(message, application_as_user=False)
+        existing = self._committed.get(record_id)
+        if existing is not None:
+            if role != "user" or text != existing.model_visible_text:
+                raise RequestEvidenceIntegrityError(
+                    "a retried transcript record conflicts with its Resource evidence"
+                )
+            return True
         pending_index = self._pending_index(message, role=role, text=text)
         if pending_index is None:
             return False
-        pending = self._pending.pop(pending_index)
-        existing = self._committed.get(record_id)
-        if existing is not None and existing != pending.evidence:
-            raise RequestEvidenceIntegrityError(
-                "one transcript message has conflicting Resource evidence"
-            )
+        pending = self._pending[pending_index]
+        self._pending.pop(pending_index)
         self._committed[record_id] = pending.evidence
         return True
 
@@ -181,6 +275,7 @@ class SessionRequestEvidenceRuntime:
         self._pending.clear()
         self._committed.clear()
         self._recovered.clear()
+        self._scanned_anchor_record_ids.clear()
         self._scanned_snapshot_ids.clear()
 
     def project_model_input(
@@ -194,7 +289,12 @@ class SessionRequestEvidenceRuntime:
             raise TypeError("request evidence requires ModelCallPreparation")
         active_records = tuple(self._get_active_records())
         active_by_id = {record.record_id: record for record in active_records}
-        self._recover_from_snapshots(active_records, active_by_id=active_by_id)
+        if len(active_by_id) != len(active_records):
+            raise RequestEvidenceIntegrityError(
+                "selected transcript path contains duplicate record ids"
+            )
+        self._recover_from_message_anchors(active_records)
+        self._recover_from_snapshots(active_records)
 
         bindings = tuple(self._get_context_message_bindings())
         binding_record_ids = tuple(record_id for record_id, _message in bindings)
@@ -277,7 +377,9 @@ class SessionRequestEvidenceRuntime:
         matches = [
             index
             for index, pending in enumerate(self._pending)
-            if pending.role == role and pending.text == text
+            if pending.allow_signature_fallback
+            and pending.role == role
+            and pending.text == text
         ]
         if len(matches) > 1:
             raise RequestEvidenceIntegrityError(
@@ -285,13 +387,43 @@ class SessionRequestEvidenceRuntime:
             )
         return matches[0] if matches else None
 
+    def _recover_from_message_anchors(
+        self,
+        active_records: tuple[AgentTranscriptRecord, ...],
+    ) -> None:
+        for record in active_records:
+            if record.record_id in self._scanned_anchor_record_ids:
+                continue
+            component = record.metadata.get(RESOURCE_EVIDENCE_METADATA_KEY)
+            if component is None:
+                self._scanned_anchor_record_ids.add(record.record_id)
+                continue
+            if record.kind != AGENT_MESSAGE_KIND:
+                raise RequestEvidenceIntegrityError(
+                    "Resource evidence metadata is attached to a non-message record"
+                )
+            role, text = _message_signature(
+                record.payload,
+                application_as_user=False,
+            )
+            if role != "user":
+                raise RequestEvidenceIntegrityError(
+                    "Resource evidence metadata is attached to a non-user message"
+                )
+            evidence = _validated_message_metadata(component)
+            if evidence.model_visible_text != text:
+                raise RequestEvidenceIntegrityError(
+                    "Resource evidence metadata does not match its transcript message"
+                )
+            self._merge_recovered({record.record_id: evidence})
+            self._scanned_anchor_record_ids.add(record.record_id)
+
     def _recover_from_snapshots(
         self,
         active_records: tuple[AgentTranscriptRecord, ...],
-        *,
-        active_by_id: Mapping[str, AgentTranscriptRecord],
     ) -> None:
-        for record in reversed(active_records):
+        for record_index in range(len(active_records) - 1, -1, -1):
+            record = active_records[record_index]
             snapshot = record.payload
             if not isinstance(snapshot, ModelInputSnapshot | ModelInputSnapshotV2):
                 continue
@@ -302,10 +434,12 @@ class SessionRequestEvidenceRuntime:
             component = rebuilt.logical_input.get(RESOURCE_EVIDENCE_COMPONENT)
             context_complete = False
             if component is not None:
-                context_complete = self._recover_component(
+                context_complete, recovered = self._recover_component(
                     component,
-                    active_by_id=active_by_id,
+                    snapshot_records=active_records[:record_index],
+                    logical_messages=rebuilt.logical_input.get("messages"),
                 )
+                self._merge_recovered(recovered)
             self._scanned_snapshot_ids.add(snapshot_id)
             if context_complete:
                 break
@@ -314,9 +448,20 @@ class SessionRequestEvidenceRuntime:
         self,
         component: object,
         *,
-        active_by_id: Mapping[str, AgentTranscriptRecord],
-    ) -> bool:
+        snapshot_records: tuple[AgentTranscriptRecord, ...],
+        logical_messages: object,
+    ) -> tuple[bool, dict[str, PreparedResourceEvidence]]:
         payload = require_json_mapping(component, name="Model Input resource evidence")
+        _require_exact_keys(
+            payload,
+            {
+                "contextComplete",
+                "messages",
+                "schemaId",
+                "schemaVersion",
+            },
+            name="Model Input Resource evidence",
+        )
         if payload.get("schemaId") != RESOURCE_EVIDENCE_SCHEMA_ID:
             raise RequestEvidenceIntegrityError(
                 "Model Input Resource evidence has an unsupported schema id"
@@ -331,15 +476,55 @@ class SessionRequestEvidenceRuntime:
                 "Model Input Resource evidence context completeness is invalid"
             )
         messages = payload.get("messages")
-        if not isinstance(messages, list):
+        if not isinstance(messages, list) or not messages:
             raise RequestEvidenceIntegrityError(
-                "Model Input Resource evidence messages must be an array"
+                "Model Input Resource evidence messages must be a non-empty array"
             )
+        if not isinstance(logical_messages, list):
+            raise RequestEvidenceIntegrityError(
+                "Model Input Resource evidence has no logical message array"
+            )
+        snapshot_bindings = tuple(
+            self._get_context_message_bindings(snapshot_records)
+        )
+        transcript_shape = tuple(
+            _message_signature(message) for _record_id, message in snapshot_bindings
+        )
+        logical_shape = tuple(_message_signature(message) for message in logical_messages)
+        if context_complete and transcript_shape != logical_shape:
+            raise RequestEvidenceIntegrityError(
+                "Model Input Resource evidence falsely claims complete context"
+            )
+        binding_positions = {
+            record_id: index
+            for index, (record_id, _message) in enumerate(snapshot_bindings)
+        }
+        if len(binding_positions) != len(snapshot_bindings):
+            raise RequestEvidenceIntegrityError(
+                "snapshot context contains duplicate message record ids"
+            )
+        transcript_positions = _signature_positions(transcript_shape)
+        logical_positions = _signature_positions(logical_shape)
+        snapshot_by_id = {record.record_id: record for record in snapshot_records}
+        recovered: dict[str, PreparedResourceEvidence] = {}
+        message_indices: set[int] = set()
         for index, value in enumerate(messages):
             message = require_json_mapping(
                 value,
                 name=f"Model Input resource evidence message[{index}]",
             )
+            _require_exact_keys(
+                message,
+                {
+                    "messageIndex",
+                    "messageRecordId",
+                    "messageTextDigest",
+                    "modelVisibleText",
+                    "skills",
+                },
+                name=f"Model Input Resource evidence message[{index}]",
+            )
+            message_index = message.get("messageIndex")
             record_id = message.get("messageRecordId")
             model_visible_text = message.get("modelVisibleText")
             text_digest = message.get("messageTextDigest")
@@ -348,6 +533,20 @@ class SessionRequestEvidenceRuntime:
                 raise RequestEvidenceIntegrityError(
                     "Model Input Resource evidence has no message record id"
                 )
+            if (
+                isinstance(message_index, bool)
+                or not isinstance(message_index, int)
+                or message_index < 0
+                or message_index >= len(logical_messages)
+            ):
+                raise RequestEvidenceIntegrityError(
+                    "Model Input Resource evidence message index is invalid"
+                )
+            if message_index in message_indices:
+                raise RequestEvidenceIntegrityError(
+                    "Model Input Resource evidence repeats a message index"
+                )
+            message_indices.add(message_index)
             if not isinstance(model_visible_text, str) or not model_visible_text:
                 raise RequestEvidenceIntegrityError(
                     "Model Input Resource evidence has no model-visible text"
@@ -360,9 +559,48 @@ class SessionRequestEvidenceRuntime:
                 raise RequestEvidenceIntegrityError(
                     "Model Input Resource evidence has no loaded Skills"
                 )
-            if record_id not in active_by_id:
+            if record_id in recovered:
                 raise RequestEvidenceIntegrityError(
-                    "Model Input Resource evidence names a foreign transcript message"
+                    "Model Input Resource evidence repeats a transcript message"
+                )
+            record = snapshot_by_id.get(record_id)
+            if record is None:
+                raise RequestEvidenceIntegrityError(
+                    "Model Input Resource evidence names a non-ancestral transcript message"
+                )
+            if record.kind != AGENT_MESSAGE_KIND:
+                raise RequestEvidenceIntegrityError(
+                    "Model Input Resource evidence names a non-message record"
+                )
+            record_role, record_text = _message_signature(
+                record.payload,
+                application_as_user=False,
+            )
+            if record_role != "user" or record_text != model_visible_text:
+                raise RequestEvidenceIntegrityError(
+                    "Model Input Resource evidence does not match its transcript record"
+                )
+            source_index = binding_positions.get(record_id)
+            if source_index is None:
+                raise RequestEvidenceIntegrityError(
+                    "Model Input Resource evidence message is outside snapshot context"
+                )
+            signature = transcript_shape[source_index]
+            source_matches = transcript_positions[signature]
+            target_matches = logical_positions.get(signature, ())
+            if len(source_matches) != len(target_matches):
+                raise RequestEvidenceIntegrityError(
+                    "Model Input Resource evidence snapshot has ambiguous duplicates"
+                )
+            occurrence = source_matches.index(source_index)
+            if target_matches[occurrence] != message_index:
+                raise RequestEvidenceIntegrityError(
+                    "Model Input Resource evidence message index changed"
+                )
+            logical_role, logical_text = logical_shape[message_index]
+            if logical_role != "user" or logical_text != model_visible_text:
+                raise RequestEvidenceIntegrityError(
+                    "Model Input Resource evidence does not match its logical message"
                 )
             evidence = PreparedResourceEvidence(
                 model_visible_text=model_visible_text,
@@ -371,13 +609,20 @@ class SessionRequestEvidenceRuntime:
                     for skill_index, skill in enumerate(skills)
                 ),
             )
+            recovered[record_id] = evidence
+        return context_complete, recovered
+
+    def _merge_recovered(
+        self,
+        recovered: Mapping[str, PreparedResourceEvidence],
+    ) -> None:
+        for record_id, evidence in recovered.items():
             existing = self._recovered.get(record_id)
             if existing is not None and existing != evidence:
                 raise RequestEvidenceIntegrityError(
-                    "durable Model Inputs disagree about one message's Resource evidence"
+                    "durable evidence disagrees about one transcript message"
                 )
-            self._recovered[record_id] = evidence
-        return context_complete
+        self._recovered.update(recovered)
 
     def _require_open(self) -> None:
         if self._closed:
@@ -421,18 +666,40 @@ def _validated_skill_payload(value: object, *, index: int) -> dict[str, JSONValu
         value,
         name=f"Model Input resource evidence skill[{index}]",
     )
-    required_strings = (
+    _require_exact_keys(
+        payload,
+        {
+            "activationPolicyFingerprint",
+            "candidateFingerprint",
+            "catalogGeneration",
+            "catalogSnapshotFingerprint",
+            "expectedContentDigest",
+            "expectedContentLength",
+            "mediaType",
+            "observedContentDigest",
+            "observedContentLength",
+            "resourceIdentity",
+            "schemaId",
+            "schemaVersion",
+            "sourceGeneration",
+        },
+        name=f"Model Input Resource evidence Skill[{index}]",
+    )
+    required_digests = (
         "activationPolicyFingerprint",
         "candidateFingerprint",
         "catalogSnapshotFingerprint",
         "expectedContentDigest",
-        "mediaType",
         "observedContentDigest",
-        "schemaId",
     )
-    if any(not isinstance(payload.get(key), str) or not payload[key] for key in required_strings):
+    if any(not _is_sha256(payload.get(key)) for key in required_digests):
         raise RequestEvidenceIntegrityError(
-            "Model Input Resource evidence Skill string facts are invalid"
+            "Model Input Resource evidence Skill digest facts are invalid"
+        )
+    for key in ("mediaType", "schemaId"):
+        _require_non_empty_string(
+            payload.get(key),
+            name=f"Model Input Resource evidence Skill {key}",
         )
     required_positive = ("catalogGeneration", "schemaVersion")
     if any(
@@ -461,17 +728,228 @@ def _validated_skill_payload(value: object, *, index: int) -> dict[str, JSONValu
         raise RequestEvidenceIntegrityError(
             "Model Input Resource evidence Skill content facts diverge"
         )
-    for key in ("resourceIdentity", "sourceGeneration"):
-        if not isinstance(payload.get(key), dict):
-            raise RequestEvidenceIntegrityError(
-                f"Model Input Resource evidence Skill {key} is invalid"
-            )
+    identity = _validated_resource_identity(payload.get("resourceIdentity"))
+    if (
+        identity["schemaId"] != payload["schemaId"]
+        or identity["schemaVersion"] != payload["schemaVersion"]
+    ):
+        raise RequestEvidenceIntegrityError(
+            "Model Input Resource evidence Skill schema facts diverge"
+        )
+    payload["resourceIdentity"] = identity
+    payload["sourceGeneration"] = _validated_source_generation(
+        payload.get("sourceGeneration")
+    )
     return payload
 
 
-def _message_signature(message: object) -> tuple[str, str]:
-    role = getattr(message, "role", None)
-    if role == "application":
+def _validated_message_metadata(value: object) -> PreparedResourceEvidence:
+    payload = require_json_mapping(value, name="transcript Resource evidence metadata")
+    _require_exact_keys(
+        payload,
+        {
+            "messageTextDigest",
+            "modelVisibleText",
+            "schemaId",
+            "schemaVersion",
+            "skills",
+        },
+        name="transcript Resource evidence metadata",
+    )
+    if payload.get("schemaId") != RESOURCE_EVIDENCE_SCHEMA_ID:
+        raise RequestEvidenceIntegrityError(
+            "transcript Resource evidence metadata has an unsupported schema id"
+        )
+    if payload.get("schemaVersion") != RESOURCE_EVIDENCE_SCHEMA_VERSION:
+        raise RequestEvidenceIntegrityError(
+            "transcript Resource evidence metadata has an unsupported schema version"
+        )
+    text = payload.get("modelVisibleText")
+    if not isinstance(text, str) or not text:
+        raise RequestEvidenceIntegrityError(
+            "transcript Resource evidence metadata has no model-visible text"
+        )
+    if payload.get("messageTextDigest") != _message_text_digest(text):
+        raise RequestEvidenceIntegrityError(
+            "transcript Resource evidence metadata message digest is invalid"
+        )
+    skills = payload.get("skills")
+    if not isinstance(skills, list) or not skills:
+        raise RequestEvidenceIntegrityError(
+            "transcript Resource evidence metadata has no loaded Skills"
+        )
+    return PreparedResourceEvidence(
+        model_visible_text=text,
+        skills=tuple(
+            _validated_skill_payload(skill, index=index)
+            for index, skill in enumerate(skills)
+        ),
+    )
+
+
+def _validated_resource_identity(value: object) -> dict[str, JSONValue]:
+    payload = require_json_mapping(
+        value,
+        name="Model Input Resource evidence identity",
+    )
+    _require_exact_keys(
+        payload,
+        {"publicId", "resourceKind", "schemaId", "schemaVersion"},
+        name="Model Input Resource evidence identity",
+    )
+    for key in ("publicId", "schemaId"):
+        _require_non_empty_string(
+            payload.get(key),
+            name=f"Model Input Resource evidence identity {key}",
+        )
+    if payload.get("resourceKind") != "skill":
+        raise RequestEvidenceIntegrityError(
+            "Model Input Resource evidence identity does not name a Skill"
+        )
+    schema_version = payload.get("schemaVersion")
+    if (
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
+        or schema_version < 1
+    ):
+        raise RequestEvidenceIntegrityError(
+            "Model Input Resource evidence identity schema version is invalid"
+        )
+    return payload
+
+
+def _validated_source_generation(value: object) -> dict[str, JSONValue]:
+    payload = require_json_mapping(
+        value,
+        name="Model Input Resource evidence source generation",
+    )
+    _require_exact_keys(
+        payload,
+        {
+            "generation",
+            "producer",
+            "productId",
+            "sourceId",
+            "sourcePolicyFingerprint",
+        },
+        name="Model Input Resource evidence source generation",
+    )
+    for key in ("generation", "productId", "sourceId"):
+        _require_non_empty_string(
+            payload.get(key),
+            name=f"Model Input Resource evidence source generation {key}",
+        )
+    if not _is_sha256(payload.get("sourcePolicyFingerprint")):
+        raise RequestEvidenceIntegrityError(
+            "Model Input Resource evidence source policy fingerprint is invalid"
+        )
+    producer = require_json_mapping(
+        payload.get("producer"),
+        name="Model Input Resource evidence source producer",
+    )
+    producer_type = producer.get("type")
+    if producer_type == "resource_component":
+        _require_exact_keys(
+            producer,
+            {
+                "bindingFingerprint",
+                "componentAdmissionFingerprint",
+                "componentCandidateFingerprint",
+                "componentContributionId",
+                "packageContentDigest",
+                "pluginInstanceRevisionRef",
+                "type",
+            },
+            name="Model Input Resource evidence component producer",
+        )
+        for key in (
+            "bindingFingerprint",
+            "componentAdmissionFingerprint",
+            "componentCandidateFingerprint",
+            "packageContentDigest",
+        ):
+            if not _is_sha256(producer.get(key)):
+                raise RequestEvidenceIntegrityError(
+                    f"Model Input Resource evidence producer {key} is invalid"
+                )
+        for key in ("componentContributionId", "pluginInstanceRevisionRef"):
+            _require_non_empty_string(
+                producer.get(key),
+                name=f"Model Input Resource evidence producer {key}",
+            )
+    elif producer_type == "extension_owner":
+        _require_exact_keys(
+            producer,
+            {
+                "extensionGeneration",
+                "extensionOwnerFingerprint",
+                "extensionSetFingerprint",
+                "runtimeId",
+                "type",
+            },
+            name="Model Input Resource evidence Extension producer",
+        )
+        if producer.get("extensionGeneration") != payload["generation"]:
+            raise RequestEvidenceIntegrityError(
+                "Model Input Resource evidence Extension generation diverges"
+            )
+        _require_non_empty_string(
+            producer.get("runtimeId"),
+            name="Model Input Resource evidence Extension runtime id",
+        )
+        for key in ("extensionOwnerFingerprint", "extensionSetFingerprint"):
+            if not _is_sha256(producer.get(key)):
+                raise RequestEvidenceIntegrityError(
+                    f"Model Input Resource evidence producer {key} is invalid"
+                )
+    else:
+        raise RequestEvidenceIntegrityError(
+            "Model Input Resource evidence source producer type is invalid"
+        )
+    payload["producer"] = producer
+    return payload
+
+
+def _require_exact_keys(
+    payload: Mapping[str, object],
+    expected: set[str],
+    *,
+    name: str,
+) -> None:
+    actual = set(payload)
+    if actual != expected:
+        raise RequestEvidenceIntegrityError(
+            f"{name} fields are invalid: expected {sorted(expected)}, got {sorted(actual)}"
+        )
+
+
+def _require_non_empty_string(value: object, *, name: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise RequestEvidenceIntegrityError(f"{name} must be non-empty text")
+    return value
+
+
+def _is_sha256(value: object) -> bool:
+    return isinstance(value, str) and _SHA256_RE.fullmatch(value) is not None
+
+
+def _copy_frozen_mapping(value: Mapping[str, JSONValue]) -> dict[str, JSONValue]:
+    if isinstance(value, _FrozenJSONMapping):
+        return value.to_payload()
+    return require_json_mapping(dict(value), name="Resource evidence Skill")
+
+
+def _message_signature(
+    message: object,
+    *,
+    application_as_user: bool = True,
+) -> tuple[str, str]:
+    role = (
+        message.get("role")
+        if isinstance(message, Mapping)
+        else getattr(message, "role", None)
+    )
+    if application_as_user and role == "application":
         role = "user"
     if not isinstance(role, str):
         role = ""
@@ -479,7 +957,11 @@ def _message_signature(message: object) -> tuple[str, str]:
 
 
 def _message_text(message: object) -> str:
-    content = getattr(message, "content", "")
+    content = (
+        message.get("content", "")
+        if isinstance(message, Mapping)
+        else getattr(message, "content", "")
+    )
     if isinstance(content, str):
         return content
     if not isinstance(content, list):
@@ -517,6 +999,7 @@ __all__ = [
     "RequestEvidenceIntegrityError",
     "RequestEvidenceRuntimePort",
     "RESOURCE_EVIDENCE_COMPONENT",
+    "RESOURCE_EVIDENCE_METADATA_KEY",
     "RESOURCE_EVIDENCE_SCHEMA_ID",
     "RESOURCE_EVIDENCE_SCHEMA_VERSION",
     "SessionRequestEvidenceRuntime",

@@ -318,6 +318,15 @@ canonicalization handoff may use an exact role/text match only when it is
 unique. An ambiguous match fails closed. Clearing a queue or abandoning a turn
 removes only its uncommitted binding.
 
+The message commit also carries a JSON-safe evidence anchor in transcript
+record metadata under `loushang.request.resource_evidence`. This metadata is
+part of the same atomic record append as the user message and contains the
+schema version, exact model-visible text and digest, and immutable loaded-Skill
+facts; the enclosing record supplies the durable message identity. It closes
+the crash window before the first Model Input is prepared without extending the
+AI message schema or adding a second journal authority. Model Input remains the
+request-level projection and records the logical-message index.
+
 The optional Model Input `resource_evidence` component has schema id
 `loushang.model-input.resource-evidence` and schema version `1`. Each message
 entry records its exact logical-message index, transcript record id, exact
@@ -340,6 +349,15 @@ data. A resumed Session may recover retained evidence only from verified Model
 Input snapshots on its selected transcript path; it never reopens a Resource
 source. Compaction and branch selection naturally exclude evidence whose
 message record is no longer in the projected context.
+
+Recovery treats both message anchors and Model Input components as untrusted
+typed input. It validates exact field sets, SHA-256 facts, Resource and
+source-generation shapes, schema agreement, snapshot ancestry, logical-message
+indices, duplicate occurrences, and transcript text. A component is parsed
+fully into a local value and published to Session recovery state only after all
+entries succeed. Queue bindings use one owner per delivered message: consumption
+moves that owner from clearable queue state to in-flight state, `message_end`
+completes it, and `agent_end` discards an incomplete delivery.
 
 #### RCP5.3C — eager-body sink deletion
 

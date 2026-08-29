@@ -217,6 +217,12 @@ class SessionRuntime:
             ),
             consume_queued_message=self._queue_controller.mark_message_consumed,
             request_evidence=self.request_evidence,
+            complete_queued_message=(
+                self._queue_controller.complete_message_evidence
+            ),
+            discard_in_flight_messages=(
+                self._queue_controller.discard_in_flight_evidence
+            ),
         )
         self.transcript.set_commit_observer(self._schedule_transcript_commit)
         self._unsubscribe_agent = self.agent.subscribe(self.handle_agent_event)

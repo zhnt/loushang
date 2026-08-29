@@ -153,6 +153,7 @@ from loushang.harness.session.product_composition_assembly import (
 )
 from loushang.harness.session.request_evidence import (
     RESOURCE_EVIDENCE_COMPONENT,
+    RESOURCE_EVIDENCE_METADATA_KEY,
     RESOURCE_EVIDENCE_SCHEMA_ID,
 )
 from loushang.harness.transcript import (
@@ -232,6 +233,32 @@ class _CatalogEvidencePreparedAdapter:
         prepared = self.prepare_request(request)
         async for part in self.invoke_prepared_raw(request, prepared):
             yield part
+
+
+class _BlockingCatalogEvidencePreparedAdapter(_CatalogEvidencePreparedAdapter):
+    api = "catalog-evidence-blocking-prepared-test"
+
+    def __init__(self) -> None:
+        self.first_started = asyncio.Event()
+        self.release_first = asyncio.Event()
+        self.call_count = 0
+
+    async def invoke_prepared_raw(
+        self,
+        request: ProviderRequest,
+        prepared: PreparedModelRequest,
+    ) -> AsyncIterator[dict[str, object]]:
+        del request
+        prepared.payload_for_transport()
+        self.call_count += 1
+        call = self.call_count
+        yield {"type": "response_start", "response_id": f"catalog-evidence-{call}"}
+        if call == 1:
+            self.first_started.set()
+            await self.release_first.wait()
+        yield {"type": "text_delta", "text": f"done-{call}"}
+        yield {"type": "stop_reason", "stop_reason": "stop"}
+        yield {"type": "response_done"}
 
 
 class _ContractProductSession(AgentProductSession):
@@ -888,6 +915,18 @@ def test_catalog_prompt_commits_exact_resource_evidence_before_transport(
             await session.prepare_model_call_runtime()
             await session.prompt("/skill:review focus")
 
+            user_record = next(
+                entry
+                for entry in reversed(transcript.get_active_entries())
+                if entry.kind == "agent.message"
+                and getattr(entry.payload, "role", None) == "user"
+                and RESOURCE_EVIDENCE_METADATA_KEY in entry.metadata
+            )
+            anchor = user_record.metadata[RESOURCE_EVIDENCE_METADATA_KEY]
+            assert isinstance(anchor, Mapping)
+            assert anchor["schemaId"] == RESOURCE_EVIDENCE_SCHEMA_ID
+            assert anchor["modelVisibleText"].endswith("focus")
+
             snapshot = next(
                 entry.payload
                 for entry in reversed(transcript.get_active_entries())
@@ -924,6 +963,103 @@ def test_catalog_prompt_commits_exact_resource_evidence_before_transport(
                 == component
             )
         finally:
+            registry.unregister_api_adapters(source_id)
+            await session.dispose()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("streaming_behavior", ["steer", "followUp"])
+def test_catalog_queued_prompt_keeps_exact_resource_evidence(
+    tmp_path: Path,
+    streaming_behavior: str,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        product_id = f"catalog-evidence-{streaming_behavior.lower()}"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        capability_runtime = _capability_runtime(product_id)
+        bootstrap, base_bundle = _initial_catalog_bootstrap(
+            tmp_path,
+            product_id=product_id,
+        )
+        extension_runner = ExtensionRunner([])
+        adapter = _BlockingCatalogEvidencePreparedAdapter()
+        registry = get_default_api_registry()
+        source_id = f"catalog-evidence-{streaming_behavior}-adapter"
+        registry.register_api_adapter(adapter, source_id=source_id)
+        agent = Agent(
+            initial_state={
+                "system_prompt": "catalog evidence prompt",
+                "model": Model(
+                    id="catalog-evidence-queue-model",
+                    name="Catalog Evidence Queue Model",
+                    provider="test",
+                    api=adapter.api,
+                    endpoint="test",
+                    base_url="https://provider.test/v1",
+                    auth=Auth(kind="none"),
+                    capabilities=Capabilities(
+                        input=("text",),
+                        output=("text",),
+                        context_window=128_000,
+                        stream=True,
+                    ),
+                ),
+                "thinking_level": "off",
+            }
+        )
+        session = _ContractProductSession(
+            product_id=product_id,
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+            resource_bundle=base_bundle,
+            extension_runner=extension_runner,
+            initial_resource_catalog_bootstrap=bootstrap,
+            agent=agent,
+        )
+        first_prompt: asyncio.Task[None] | None = None
+        try:
+            await session.prepare_model_call_runtime()
+            first_prompt = asyncio.create_task(session.prompt("plain first request"))
+            await asyncio.wait_for(adapter.first_started.wait(), timeout=5.0)
+            await session.prompt(
+                "/skill:review queued",
+                streaming_behavior=streaming_behavior,
+            )
+            adapter.release_first.set()
+            await asyncio.wait_for(first_prompt, timeout=5.0)
+
+            anchored = [
+                entry
+                for entry in transcript.get_active_entries()
+                if RESOURCE_EVIDENCE_METADATA_KEY in entry.metadata
+            ]
+            assert len(anchored) == 1
+            anchor = anchored[0].metadata[RESOURCE_EVIDENCE_METADATA_KEY]
+            assert isinstance(anchor, Mapping)
+            assert anchor["modelVisibleText"].endswith("queued")
+
+            components = []
+            for entry in transcript.get_active_entries():
+                if entry.kind != "model.input.prepared":
+                    continue
+                rebuilt = transcript.rebuild_model_input(entry.payload.snapshot_id)
+                component = rebuilt.logical_input.get(RESOURCE_EVIDENCE_COMPONENT)
+                if component is not None:
+                    components.append(component)
+            assert len(components) == 1
+            evidence_message = components[0]["messages"][-1]
+            assert evidence_message["messageRecordId"] == anchored[0].record_id
+            assert evidence_message["modelVisibleText"].endswith("queued")
+            assert adapter.call_count >= 2
+        finally:
+            adapter.release_first.set()
+            if first_prompt is not None and not first_prompt.done():
+                await first_prompt
             registry.unregister_api_adapters(source_id)
             await session.dispose()
 

@@ -291,6 +291,7 @@ class PromptController:
                 message,
                 evidence,
                 owner=evidence_owner,
+                allow_signature_fallback=True,
             )
         return message
 

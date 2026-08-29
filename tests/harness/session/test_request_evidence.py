@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -10,7 +11,7 @@ from loushang.ai import Context
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.options import CallOptions
 from loushang.ai.types import TextPart, UserMessage
-from loushang.foundation.json import require_json_value
+from loushang.foundation.json import JSONValue, require_json_value
 from loushang.harness.capabilities.prompt_preflight import PromptPreflightResult
 from loushang.harness.conversation.types import ConversationRecord
 from loushang.harness.resources._catalog_records import (
@@ -24,7 +25,9 @@ from loushang.harness.resources._skill_catalog_consumer import (
     SkillCatalogSummary,
 )
 from loushang.harness.session.request_evidence import (
+    RESOURCE_EVIDENCE_METADATA_KEY,
     RESOURCE_EVIDENCE_SCHEMA_ID,
+    PreparedResourceEvidence,
     RequestEvidenceIntegrityError,
     SessionRequestEvidenceRuntime,
 )
@@ -108,11 +111,125 @@ def test_unidentified_duplicate_pending_messages_fail_closed() -> None:
         PromptPreflightResult(text="same", loaded_skills=(_loaded_skill(),))
     )
     assert prepared is not None
-    runtime.bind(_user_message("same"), prepared, owner=object())
-    runtime.bind(_user_message("same"), prepared, owner=object())
+    runtime.bind(
+        _user_message("same"),
+        prepared,
+        owner=object(),
+        allow_signature_fallback=True,
+    )
+    runtime.bind(
+        _user_message("same"),
+        prepared,
+        owner=object(),
+        allow_signature_fallback=True,
+    )
 
     with pytest.raises(RequestEvidenceIntegrityError, match="multiple uncommitted"):
         runtime.commit_message(_user_message("same"), "message-1")
+
+
+def test_message_metadata_closes_pre_model_input_crash_window() -> None:
+    message = _user_message("durable")
+    first_runtime = _runtime([], [])
+    prepared = first_runtime.prepare(
+        PromptPreflightResult(text="durable", loaded_skills=(_loaded_skill(),))
+    )
+    assert prepared is not None
+    first_runtime.bind(message, prepared, owner=object())
+
+    metadata = first_runtime.prepare_message_commit(message)
+
+    assert metadata is not None
+    assert RESOURCE_EVIDENCE_METADATA_KEY in metadata
+    record = _message_record("message-1", message, metadata=metadata)
+    resumed = _runtime([record], [("message-1", message)])
+    projection = resumed.project_model_input(_preparation([message]))
+    assert projection is not None
+    assert projection["messages"][0]["messageRecordId"] == "message-1"
+    assert projection["messages"][0]["skills"] == list(prepared.skills)
+
+
+def test_retry_is_idempotent_and_does_not_consume_same_text_pending() -> None:
+    runtime = _runtime([], [])
+    prepared = runtime.prepare(
+        PromptPreflightResult(text="same", loaded_skills=(_loaded_skill(),))
+    )
+    assert prepared is not None
+    first = _user_message("same")
+    second = _user_message("same")
+    runtime.bind(
+        first,
+        prepared,
+        owner=object(),
+        allow_signature_fallback=True,
+    )
+    assert runtime.prepare_message_commit(first) is not None
+    assert runtime.commit_message(first, "message-1") is True
+    runtime.bind(
+        second,
+        prepared,
+        owner=object(),
+        allow_signature_fallback=True,
+    )
+
+    assert runtime.commit_message(first, "message-1") is True
+    assert runtime.prepare_message_commit(second) is not None
+    assert runtime.commit_message(second, "message-2") is True
+
+
+def test_queued_binding_is_identity_only_and_evidence_is_deeply_immutable() -> None:
+    runtime = _runtime([], [])
+    prepared = runtime.prepare(
+        PromptPreflightResult(text="same", loaded_skills=(_loaded_skill(),))
+    )
+    assert prepared is not None
+    delivered = _user_message("same")
+    runtime.bind(delivered, prepared, owner=object())
+
+    assert runtime.prepare_message_commit(_user_message("same")) is None
+    assert runtime.prepare_message_commit(delivered) is not None
+
+    exposed_skill = prepared.skills[0]
+    exposed_identity = exposed_skill["resourceIdentity"]
+    assert isinstance(exposed_identity, dict)
+    exposed_identity["publicId"] = "forged"
+    payload = prepared.to_message_payload(
+        message_record_id="message-1",
+        message_index=0,
+    )
+    assert payload["skills"][0]["resourceIdentity"]["publicId"] == "review"
+
+    skill_with_locator = dict(exposed_skill)
+    skill_with_locator["opaqueLocator"] = "forbidden"
+    with pytest.raises(RequestEvidenceIntegrityError, match="fields are invalid"):
+        PreparedResourceEvidence(
+            model_visible_text="same",
+            skills=(skill_with_locator,),
+        )
+
+
+def test_close_is_idempotent_and_rejects_further_evidence_use() -> None:
+    runtime = _runtime([], [])
+    prepared = runtime.prepare(
+        PromptPreflightResult(text="closed", loaded_skills=(_loaded_skill(),))
+    )
+    assert prepared is not None
+    runtime.bind(_user_message("closed"), prepared, owner=object())
+
+    runtime.close()
+    runtime.close()
+    runtime.discard_owner(object())
+
+    with pytest.raises(RuntimeError, match="closed"):
+        runtime.prepare(
+            PromptPreflightResult(text="closed", loaded_skills=(_loaded_skill(),))
+        )
+    with pytest.raises(RuntimeError, match="closed"):
+        runtime.bind(_user_message("closed"), prepared, owner=object())
+    with pytest.raises(RuntimeError, match="closed"):
+        runtime.commit_message(_user_message("closed"), "message-1")
+    with pytest.raises(RuntimeError, match="closed"):
+        runtime.project_model_input(_preparation([]))
 
 
 def test_request_evidence_omits_absent_context_and_fails_on_duplicate_subset() -> None:
@@ -170,6 +287,7 @@ def _message_record(
     message: UserMessage,
     *,
     parent_id: str | None = None,
+    metadata: Mapping[str, JSONValue] | None = None,
 ) -> ConversationRecord[object]:
     return ConversationRecord(
         record_id=record_id,
@@ -178,6 +296,7 @@ def _message_record(
         payload_version=1,
         created_at="2026-08-29T00:00:00Z",
         payload=message,
+        metadata={} if metadata is None else metadata,
     )
 
 

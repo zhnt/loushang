@@ -56,8 +56,13 @@ class QueueController:
         init=False,
         repr=False,
     )
-    _queue_evidence_owner: object = field(
-        default_factory=object,
+    _queued_evidence_owners: dict[int, tuple[object, object]] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
+    _in_flight_evidence_owners: dict[int, tuple[object, object]] = field(
+        default_factory=dict,
         init=False,
         repr=False,
     )
@@ -175,19 +180,53 @@ class QueueController:
     def clear_queue(self) -> dict[str, list[str]]:
         steering = self.get_steering_messages()
         follow_up = self.get_follow_up_messages()
+        queued_owners = tuple(
+            owner for _message, owner in self._queued_evidence_owners.values()
+        )
         self._queue.clear()
         if self.request_evidence is not None:
-            self.request_evidence.discard_owner(self._queue_evidence_owner)
+            for owner in queued_owners:
+                self.request_evidence.discard_owner(owner)
+        self._queued_evidence_owners.clear()
         log.debug_event(
             "agent", "queue.cleared", steering=len(steering), follow_up=len(follow_up)
         )
         return {"steering": steering, "followUp": follow_up, "follow_up": follow_up}
 
     def mark_message_consumed(self, message: object) -> bool:
-        return self._queue.consume_visible(
+        consumed = self._queue.consume_visible(
             message,
             fallback_text=_visible_message_text(message),
         )
+        if consumed:
+            identity = id(message)
+            queued = self._queued_evidence_owners.get(identity)
+            if queued is not None and queued[0] is message:
+                self._queued_evidence_owners.pop(identity, None)
+                self._in_flight_evidence_owners[identity] = queued
+        return consumed
+
+    def complete_message_evidence(self, message: object) -> None:
+        """Release one delivered queue owner after its message commit."""
+
+        identity = id(message)
+        in_flight = self._in_flight_evidence_owners.get(identity)
+        if in_flight is None or in_flight[0] is not message:
+            return
+        self._in_flight_evidence_owners.pop(identity, None)
+        if self.request_evidence is not None:
+            self.request_evidence.discard_owner(in_flight[1])
+
+    def discard_in_flight_evidence(self) -> None:
+        """Discard queued messages that started but never reached message_end."""
+
+        owners = tuple(
+            owner for _message, owner in self._in_flight_evidence_owners.values()
+        )
+        self._in_flight_evidence_owners.clear()
+        if self.request_evidence is not None:
+            for owner in owners:
+                self.request_evidence.discard_owner(owner)
 
     def prepare_continue_run(self) -> bool:
         last_message = (
@@ -208,11 +247,13 @@ class QueueController:
         if pending is not None and pending[0] is message:
             if self.request_evidence is None:
                 raise RuntimeError("queued request evidence has no Session runtime")
+            owner = object()
             self.request_evidence.bind(
                 delivered,
                 pending[1],
-                owner=self._queue_evidence_owner,
+                owner=owner,
             )
+            self._queued_evidence_owners[id(delivered)] = (delivered, owner)
         return delivered
 
     def _enqueue(
