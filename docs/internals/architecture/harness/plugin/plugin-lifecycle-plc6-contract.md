@@ -13,17 +13,23 @@ PLC6 does not publish the general Plugin SDK, implement `coding.arch.default`,
 or move Product identity, safety, workspace ceilings, Session correctness, or
 Model Input commit out of the Coding Kernel.
 
-Implementation checkpoint (2026-08-29): PLC6A and PLC6B are implemented. The
+Implementation checkpoint (2026-08-29): PLC6A through PLC6C are implemented. The
 checked-in data-only package is selected by the default `coding-standard`
 request and enters Resource discovery through an independent verified lease,
 without a hidden settings source. The Catalog-owned production path now uses
 the Kernel Prompt and publishes the standard Prompt and Skill from the exact
 package generation. A combined Product selection preserves configured
 Resource Plugin compatibility while retaining the Composition Set policy and
-trust provenance for `coding.base`. Tool and Command admissions are present as
-inert composition evidence only; their owner publication, management-state
-binding, legacy cleanup, and final production review remain PLC6C through
-PLC6E.
+trust provenance for `coding.base`. The configured Resource receipt first joins
+its verified packages with `coding.base` and optional `coding.lsp.default`; one
+prepared Product compilation then feeds Resource Catalog and the same base-only
+or combined base/LSP Session without recompiling owner admission. The admitted Tool and Command packs stage
+through `tools.workspace` and `commands.session`, publish atomically with the
+usable Session, enter effective-runtime provenance, and retire through their
+exact generations. The peer CLI Tool registrar and unconditional standard
+Command publication are absent from the Catalog-owned production path.
+Management-state binding, legacy Resource-authority cleanup, and final
+production review remain PLC6D and PLC6E.
 
 ## First principles
 
