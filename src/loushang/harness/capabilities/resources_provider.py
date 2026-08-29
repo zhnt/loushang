@@ -34,8 +34,15 @@ from loushang.harness.capabilities.resources_contracts import (
     RESOURCE_RUNTIME_FACET,
     RESOURCES_CAPABILITY_DEFINITION,
     RESOURCES_CAPABILITY_DEFINITION_V2,
+    RESOURCES_CAPABILITY_DEFINITION_V3,
     SKILL_ACTIVATION_FACET,
     TOOL_PACKS_FACET,
+)
+from loushang.harness.resources._catalog_projection import ResourceCatalogProjection
+from loushang.harness.resources._catalog_records import ResourceCatalogSnapshot
+from loushang.harness.resources._skill_catalog_consumer import (
+    EffectiveSkillCatalogProjection,
+    build_effective_skill_catalog_projection,
 )
 from loushang.harness.resources.activation import ResourceActivation
 from loushang.harness.resources.types import ResourceBundle
@@ -155,16 +162,29 @@ class _PackFacet:
 
 
 @dataclass(frozen=True)
-class _ResourceCatalogFacet:
+class _ResourceCatalogFacetV2:
     _owner: _StagedResources = field(repr=False, compare=False)
 
     @property
     def snapshot(self) -> object:
         return self._owner.candidate.resource_catalog_snapshot
 
+
+@dataclass(frozen=True)
+class _ResourceCatalogFacetV3:
+    _owner: _StagedResources = field(repr=False, compare=False)
+    _skill_projection: EffectiveSkillCatalogProjection = field(
+        repr=False,
+        compare=False,
+    )
+
     @property
-    def projection(self) -> object:
-        return self._owner.candidate.resource_catalog_projection
+    def snapshot(self) -> object:
+        return self._owner.candidate.resource_catalog_snapshot
+
+    @property
+    def skill_projection(self) -> EffectiveSkillCatalogProjection:
+        return self._skill_projection
 
 
 @dataclass(frozen=True)
@@ -186,6 +206,7 @@ def resources_capability_provider_binding(
     provider_id: str = "harness.resources.standard",
     source_id: str = "builtin",
     staged_candidate: StagedResourceCompositionCandidate | None = None,
+    enable_skill_catalog_v3: bool = False,
 ) -> CapabilityBundleProviderBinding:
     """Map private Profile selections into one graph-owned Bundle Provider.
 
@@ -195,6 +216,8 @@ def resources_capability_provider_binding(
     deliberately do not enter the construction fingerprint.
     """
 
+    if not isinstance(enable_skill_catalog_v3, bool):
+        raise TypeError("Skill Catalog v3 opt-in must be a bool")
     focused_profile = resource_capability_profile(profile)
     if staged_candidate is not None:
         staged_profile = resource_capability_profile(staged_candidate.profile)
@@ -208,12 +231,16 @@ def resources_capability_provider_binding(
         else staged_candidate.resource_owner_generation_binding_fingerprint
     )
     has_prepared_generation = prepared_generation_fingerprint is not None
+    if enable_skill_catalog_v3 and not has_prepared_generation:
+        raise ValueError("Skill Catalog v3 requires a prepared owner generation")
     definition = (
-        RESOURCES_CAPABILITY_DEFINITION_V2
+        RESOURCES_CAPABILITY_DEFINITION_V3
+        if enable_skill_catalog_v3
+        else RESOURCES_CAPABILITY_DEFINITION_V2
         if has_prepared_generation
         else RESOURCES_CAPABILITY_DEFINITION
     )
-    provider_version = 2 if has_prepared_generation else 1
+    provider_version = definition.contract_version
     implementations = tuple(
         implementation
         for implementation in (
@@ -224,19 +251,25 @@ def resources_capability_provider_binding(
     )
     provider = CapabilityBundleProvider(
         capability_id=(
-            RESOURCES_CAPABILITY_DEFINITION_V2.capability_id
+            RESOURCES_CAPABILITY_DEFINITION_V3.capability_id
+            if enable_skill_catalog_v3
+            else RESOURCES_CAPABILITY_DEFINITION_V2.capability_id
             if has_prepared_generation
             else RESOURCES_CAPABILITY_DEFINITION.capability_id
         ),
         provider_id=provider_id,
         implementation_version=provider_version,
         compatible_contract=CapabilityContractRange.exact(
-            RESOURCES_CAPABILITY_DEFINITION_V2.contract_version
+            RESOURCES_CAPABILITY_DEFINITION_V3.contract_version
+            if enable_skill_catalog_v3
+            else RESOURCES_CAPABILITY_DEFINITION_V2.contract_version
             if has_prepared_generation
             else RESOURCES_CAPABILITY_DEFINITION.contract_version
         ),
         facets=(
-            RESOURCES_CAPABILITY_DEFINITION_V2.facets
+            RESOURCES_CAPABILITY_DEFINITION_V3.facets
+            if enable_skill_catalog_v3
+            else RESOURCES_CAPABILITY_DEFINITION_V2.facets
             if has_prepared_generation
             else RESOURCES_CAPABILITY_DEFINITION.facets
         ),
@@ -246,6 +279,7 @@ def resources_capability_provider_binding(
 
     def create(_context: CapabilityProviderContext) -> CapabilityBundleValue:
         owner: _BoundResources | _StagedResources
+        skill_projection: EffectiveSkillCatalogProjection | None = None
         if staged_candidate is None:
             binder = RuntimeProfileBinder(RuntimeCapabilityRegistry(implementations))
             binding = binder.bind_sync(focused_profile)
@@ -257,6 +291,19 @@ def resources_capability_provider_binding(
             ):
                 raise RuntimeError(
                     "Staged Resource owner generation changed after Provider binding"
+                )
+            if enable_skill_catalog_v3:
+                catalog_snapshot = staged_candidate.resource_catalog_snapshot
+                catalog_projection = staged_candidate.resource_catalog_projection
+                if not isinstance(catalog_snapshot, ResourceCatalogSnapshot):
+                    raise TypeError("Skill Catalog v3 snapshot is invalid")
+                if not isinstance(catalog_projection, ResourceCatalogProjection):
+                    raise TypeError(
+                        "Skill Catalog v3 compatibility projection is unavailable"
+                    )
+                skill_projection = build_effective_skill_catalog_projection(
+                    snapshot=catalog_snapshot,
+                    projection=catalog_projection,
                 )
             staged_candidate._begin_graph_construction()
             owner = _StagedResources(staged_candidate)
@@ -292,7 +339,11 @@ def resources_capability_provider_binding(
                     (
                         CapabilityFacetBinding(
                             RESOURCE_CATALOG_FACET,
-                            _ResourceCatalogFacet(owner),
+                            (
+                                _ResourceCatalogFacetV3(owner, skill_projection)
+                                if skill_projection is not None
+                                else _ResourceCatalogFacetV2(owner)
+                            ),
                         ),
                         CapabilityFacetBinding(
                             RESOURCE_LOAD_FACET,
@@ -361,7 +412,7 @@ def _binding_input_fingerprint(
     else:
         if owner_generation_binding_fingerprint is None:
             raise ValueError(
-                "Resources v2 fingerprint requires an owner generation binding"
+                "Resources Catalog fingerprint requires an owner generation binding"
             )
         payload_value = {
             "schemaVersion": 2,

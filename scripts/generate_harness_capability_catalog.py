@@ -147,6 +147,26 @@ SOURCE_BACKED_SEAMS = (
     ),
     CapabilitySeam(
         definition=(
+            "loushang.harness.capabilities.resources_contracts:"
+            "RESOURCES_CAPABILITY_DEFINITION_V3"
+        ),
+        providers=(
+            "loushang.harness.capabilities.resources_provider:"
+            "resources_capability_provider_binding",
+        ),
+        consumers=(
+            (
+                "loushang.harness.capabilities.resources_consumers:"
+                "ResourceSkillCatalogCapabilityConsumer",
+                (
+                    "loushang.harness.capabilities.resources_contracts:"
+                    "RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT",
+                ),
+            ),
+        ),
+    ),
+    CapabilitySeam(
+        definition=(
             "loushang.harness.capabilities.session_contracts:"
             "SESSION_CAPABILITY_DEFINITION"
         ),

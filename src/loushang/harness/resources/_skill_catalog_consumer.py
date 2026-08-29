@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources._catalog_projection import ResourceCatalogProjection
 from loushang.harness.resources._catalog_records import (
     LoadedResource,
+    ResourceCandidateSummary,
+    ResourceCatalogDiagnostic,
     ResourceCatalogSnapshot,
     ResourceIdentity,
     ResourceLoadHandle,
@@ -33,7 +33,7 @@ class _ResourceCatalogLoadConsumer(Protocol):
     def snapshot(self) -> ResourceCatalogSnapshot: ...
 
     @property
-    def projection(self) -> ResourceCatalogProjection: ...
+    def skill_projection(self) -> EffectiveSkillCatalogProjection: ...
 
     def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle: ...
 
@@ -62,8 +62,7 @@ class SkillCatalogSummary:
     source_scope: ResourceSourceScope
     source_root_order: int
     source: str
-    metadata: Mapping[str, object]
-    diagnostics: tuple[DiagnosticDraft, ...]
+    diagnostics: tuple[ResourceCatalogDiagnostic, ...]
     declared_id: str | None
     revision_ref: RevisionResourceRef | None
 
@@ -87,28 +86,32 @@ class SkillCatalogSummary:
     def disable_model_invocation(self) -> bool:
         return not self.model_invocable
 
-    def to_metadata_descriptor(self) -> SkillDescriptor:
-        """Project a body-free legacy shape without granting body authority."""
 
-        return SkillDescriptor(
-            name=self.name,
-            source_path=self.source_path,
-            content=None,
-            description=self.description,
-            disable_model_invocation=not self.model_invocable,
-            source=self.source,
-            enabled=self.enabled,
-            metadata=self.metadata,
-            diagnostics=self.diagnostics,
-            id=self.identity.public_id,
-            source_kind=self.source_kind,
-            source_scope=self.source_scope,
-            canonical_name=self.canonical_name,
-            declared_id=self.declared_id,
-            source_root=self.source_root,
-            source_root_order=self.source_root_order,
-            revision_ref=self.revision_ref,
-        )
+
+@dataclass(frozen=True, slots=True)
+class EffectiveSkillCatalogProjection:
+    """Body-free effective Skill view owned by one Catalog generation."""
+
+    catalog_generation: int
+    catalog_snapshot_fingerprint: str
+    skills: tuple[SkillCatalogSummary, ...]
+
+    def __post_init__(self) -> None:
+        if self.catalog_generation < 1:
+            raise ValueError("Skill projection Catalog generation must be positive")
+        if any(
+            skill.catalog_generation != self.catalog_generation
+            or skill.catalog_snapshot_fingerprint
+            != self.catalog_snapshot_fingerprint
+            for skill in self.skills
+        ):
+            raise ValueError("Skill projection summaries must share one Catalog")
+        identities = tuple(skill.identity for skill in self.skills)
+        candidates = tuple(skill.candidate_fingerprint for skill in self.skills)
+        if len(set(identities)) != len(identities):
+            raise ValueError("Skill projection identities must be unique")
+        if len(set(candidates)) != len(candidates):
+            raise ValueError("Skill projection candidates must be unique")
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,6 +156,18 @@ class LoadedSkillBody:
             != self.summary.catalog_snapshot_fingerprint
         ):
             raise ValueError("Loaded Skill receipt names another Catalog snapshot")
+        if (
+            self.receipt.schema_id != self.summary.identity.schema_id
+            or self.receipt.schema_version != self.summary.identity.schema_version
+        ):
+            raise ValueError("Loaded Skill receipt names another schema")
+        if self.receipt.media_type != self.summary.media_type:
+            raise ValueError("Loaded Skill receipt names another media type")
+        if (
+            self.receipt.content_digest != self.summary.expected_content_digest
+            or self.receipt.content_length != self.summary.expected_content_length
+        ):
+            raise ValueError("Loaded Skill receipt names another body identity")
         if self.body.decode("utf-8") != self.content:
             raise ValueError("Loaded Skill content does not match its bytes")
 
@@ -162,11 +177,11 @@ class SkillCatalogConsumer:
 
     def __init__(self, catalog: _ResourceCatalogLoadConsumer) -> None:
         snapshot = catalog.snapshot
-        projection = catalog.projection
+        projection = catalog.skill_projection
         if not isinstance(snapshot, ResourceCatalogSnapshot):
             raise TypeError("Skill Consumer requires a Resource Catalog snapshot")
-        if not isinstance(projection, ResourceCatalogProjection):
-            raise TypeError("Skill Consumer requires a Resource Catalog projection")
+        if not isinstance(projection, EffectiveSkillCatalogProjection):
+            raise TypeError("Skill Consumer requires a body-free Skill projection")
         if (
             projection.catalog_generation != snapshot.catalog_generation
             or projection.catalog_snapshot_fingerprint
@@ -178,7 +193,8 @@ class SkillCatalogConsumer:
         self._catalog = catalog
         self._catalog_generation = snapshot.catalog_generation
         self._snapshot_fingerprint = snapshot.snapshot_fingerprint
-        self._skills = _project_skill_summaries(
+        self._skills = projection.skills
+        self._candidates = _bind_projection_to_snapshot(
             snapshot=snapshot,
             projection=projection,
         )
@@ -219,11 +235,9 @@ class SkillCatalogConsumer:
         skill: SkillCatalogSummary | str,
     ) -> SkillCatalogLoadHandle:
         summary = self._resolve_owned_summary(skill)
+        candidate = self._candidate_for_summary(summary)
         handle = self._catalog.load_handle(summary.identity)
-        if handle.candidate_fingerprint != summary.candidate_fingerprint:
-            raise SkillCatalogConsumerError(
-                "Catalog load handle selected another Skill candidate"
-            )
+        _validate_resource_handle(summary, candidate, handle)
         return SkillCatalogLoadHandle(
             catalog_generation=summary.catalog_generation,
             catalog_snapshot_fingerprint=summary.catalog_snapshot_fingerprint,
@@ -245,9 +259,16 @@ class SkillCatalogConsumer:
         summary = self._summary_by_candidate(handle.candidate_fingerprint)
         if summary.identity != handle.identity:
             raise SkillCatalogConsumerError("Skill load handle identity is inconsistent")
+        candidate = self._candidate_for_summary(summary)
+        _validate_resource_handle(summary, candidate, handle.resource_handle)
+        canonical_handle = self._catalog.load_handle(summary.identity)
+        _validate_resource_handle(summary, candidate, canonical_handle)
+        if canonical_handle != handle.resource_handle:
+            raise SkillCatalogConsumerError(
+                "Skill load handle is not the owner-minted exact handle"
+            )
         loaded = await self._catalog.load(handle.resource_handle)
-        if loaded.receipt.candidate_fingerprint != summary.candidate_fingerprint:
-            raise SkillCatalogConsumerError("Loaded Resource is not the selected Skill")
+        _validate_loaded_resource(summary, handle.resource_handle, loaded)
         try:
             content = loaded.body.decode("utf-8")
         except UnicodeDecodeError as error:
@@ -283,12 +304,36 @@ class SkillCatalogConsumer:
                 return summary
         raise SkillCatalogConsumerError("Skill candidate is not selected")
 
+    def _candidate_for_summary(
+        self,
+        summary: SkillCatalogSummary,
+    ) -> ResourceCandidateSummary:
+        try:
+            return self._candidates[summary.candidate_fingerprint]
+        except KeyError as error:
+            raise SkillCatalogConsumerError(
+                "Skill candidate is not bound to the captured Catalog"
+            ) from error
 
-def _project_skill_summaries(
+
+def build_effective_skill_catalog_projection(
     *,
     snapshot: ResourceCatalogSnapshot,
     projection: ResourceCatalogProjection,
-) -> tuple[SkillCatalogSummary, ...]:
+) -> EffectiveSkillCatalogProjection:
+    if not isinstance(snapshot, ResourceCatalogSnapshot):
+        raise TypeError("Skill projection requires a Resource Catalog snapshot")
+    if not isinstance(projection, ResourceCatalogProjection):
+        raise TypeError("Skill projection requires a compatibility projection")
+    if not snapshot.complete:
+        raise SkillCatalogConsumerError("Skill projection Catalog is incomplete")
+    if (
+        projection.catalog_generation != snapshot.catalog_generation
+        or projection.catalog_snapshot_fingerprint != snapshot.snapshot_fingerprint
+    ):
+        raise SkillCatalogConsumerError(
+            "Skill compatibility projection belongs to another Catalog generation"
+        )
     effective_by_identity = {
         entry.identity: entry
         for entry in snapshot.effective_entries
@@ -320,51 +365,150 @@ def _project_skill_summaries(
             or candidate.expected_content_length is None
         ):
             raise SkillCatalogConsumerError("Selected Skill has no body identity")
-        metadata_descriptor = replace(
-            descriptor,
-            content=None,
-            enabled=effective.enabled,
-            disable_model_invocation=not effective.model_invocable,
-        )
         summaries.append(
             SkillCatalogSummary(
                 catalog_generation=snapshot.catalog_generation,
                 catalog_snapshot_fingerprint=snapshot.snapshot_fingerprint,
                 candidate_fingerprint=candidate.candidate_fingerprint,
                 identity=candidate.identity,
-                name=metadata_descriptor.name,
-                canonical_name=(
-                    metadata_descriptor.canonical_name or metadata_descriptor.name
-                ),
-                description=metadata_descriptor.description,
-                enabled=metadata_descriptor.enabled,
-                model_invocable=not metadata_descriptor.disable_model_invocation,
+                name=descriptor.name,
+                canonical_name=(descriptor.canonical_name or descriptor.name),
+                description=descriptor.description,
+                enabled=effective.enabled,
+                model_invocable=effective.model_invocable,
                 media_type=candidate.media_type,
                 expected_content_digest=candidate.expected_content_digest,
                 expected_content_length=candidate.expected_content_length,
-                source_path=metadata_descriptor.source_path,
-                source_root=metadata_descriptor.source_root,
-                source_kind=metadata_descriptor.source_kind,
-                source_scope=metadata_descriptor.source_scope,
-                source_root_order=metadata_descriptor.source_root_order,
-                source=metadata_descriptor.source,
-                metadata=metadata_descriptor.metadata,
-                diagnostics=metadata_descriptor.diagnostics,
-                declared_id=metadata_descriptor.declared_id,
-                revision_ref=metadata_descriptor.revision_ref,
+                source_path=descriptor.source_path,
+                source_root=descriptor.source_root,
+                source_kind=descriptor.source_kind,
+                source_scope=descriptor.source_scope,
+                source_root_order=descriptor.source_root_order,
+                source=descriptor.source,
+                diagnostics=candidate.diagnostics,
+                declared_id=descriptor.declared_id,
+                revision_ref=descriptor.revision_ref,
             )
         )
     if len(summaries) != len(effective_by_identity):
         raise SkillCatalogConsumerError(
             "Catalog Skill selection and projection do not match"
         )
-    return tuple(summaries)
+    return EffectiveSkillCatalogProjection(
+        catalog_generation=snapshot.catalog_generation,
+        catalog_snapshot_fingerprint=snapshot.snapshot_fingerprint,
+        skills=tuple(summaries),
+    )
+
+
+def _validate_resource_handle(
+    summary: SkillCatalogSummary,
+    candidate: ResourceCandidateSummary,
+    handle: ResourceLoadHandle,
+) -> None:
+    if (
+        handle.catalog_generation != summary.catalog_generation
+        or handle.snapshot_fingerprint != summary.catalog_snapshot_fingerprint
+        or handle.candidate_fingerprint != summary.candidate_fingerprint
+        or handle.identity != summary.identity
+        or handle.schema_id != summary.identity.schema_id
+        or handle.schema_version != summary.identity.schema_version
+        or handle.media_type != summary.media_type
+        or handle.expected_content_digest != summary.expected_content_digest
+        or handle.expected_content_length != summary.expected_content_length
+        or handle.source_generation_ref != candidate.source_generation_ref
+        or handle.opaque_locator != candidate.opaque_locator
+    ):
+        raise SkillCatalogConsumerError(
+            "Resource load handle does not match the selected Skill"
+        )
+
+
+def _bind_projection_to_snapshot(
+    *,
+    snapshot: ResourceCatalogSnapshot,
+    projection: EffectiveSkillCatalogProjection,
+) -> dict[str, ResourceCandidateSummary]:
+    effective_by_identity = {
+        entry.identity: entry
+        for entry in snapshot.effective_entries
+        if entry.identity.resource_kind == "skill"
+    }
+    candidates: dict[str, ResourceCandidateSummary] = {}
+    for summary in projection.skills:
+        try:
+            candidate = snapshot.candidate_by_fingerprint(
+                summary.candidate_fingerprint
+            )
+        except KeyError as error:
+            raise SkillCatalogConsumerError(
+                "Skill projection names a foreign Catalog candidate"
+            ) from error
+        effective = effective_by_identity.get(summary.identity)
+        if (
+            effective is None
+            or effective.primary_candidate_fingerprint
+            != summary.candidate_fingerprint
+            or candidate.identity != summary.identity
+            or candidate.canonical_name != summary.canonical_name
+            or candidate.description != summary.description
+            or candidate.media_type != summary.media_type
+            or candidate.expected_content_digest
+            != summary.expected_content_digest
+            or candidate.expected_content_length != summary.expected_content_length
+            or candidate.source_class != summary.source_kind
+            or candidate.scope_id != summary.source_scope
+            or candidate.source_root_order != summary.source_root_order
+            or candidate.diagnostics != summary.diagnostics
+            or effective.enabled != summary.enabled
+            or effective.model_invocable != summary.model_invocable
+        ):
+            raise SkillCatalogConsumerError(
+                "Skill projection facts do not match the captured Catalog"
+            )
+        candidates[candidate.candidate_fingerprint] = candidate
+    if len(candidates) != len(effective_by_identity):
+        raise SkillCatalogConsumerError(
+            "Skill projection does not cover the effective Catalog Skills"
+        )
+    return candidates
+
+
+def _validate_loaded_resource(
+    summary: SkillCatalogSummary,
+    handle: ResourceLoadHandle,
+    loaded: LoadedResource,
+) -> None:
+    receipt = loaded.receipt
+    if (
+        receipt.catalog_generation != handle.catalog_generation
+        or receipt.snapshot_fingerprint != handle.snapshot_fingerprint
+        or receipt.candidate_fingerprint != handle.candidate_fingerprint
+        or receipt.source_generation_ref != handle.source_generation_ref
+        or receipt.schema_id != handle.schema_id
+        or receipt.schema_version != handle.schema_version
+        or receipt.media_type != handle.media_type
+        or receipt.content_digest != handle.expected_content_digest
+        or receipt.content_length != handle.expected_content_length
+    ):
+        raise SkillCatalogConsumerError(
+            "Loaded Resource receipt does not match the owner-minted Skill handle"
+        )
+    if (
+        receipt.content_digest != summary.expected_content_digest
+        or receipt.content_length != summary.expected_content_length
+    ):
+        raise SkillCatalogConsumerError(
+            "Loaded Resource receipt does not match the selected Skill body"
+        )
 
 
 __all__ = [
     "LoadedSkillBody",
+    "EffectiveSkillCatalogProjection",
     "SkillCatalogConsumer",
     "SkillCatalogConsumerError",
     "SkillCatalogLoadHandle",
     "SkillCatalogSummary",
+    "build_effective_skill_catalog_projection",
 ]

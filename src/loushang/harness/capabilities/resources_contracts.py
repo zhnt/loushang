@@ -50,6 +50,16 @@ RESOURCES_CAPABILITY_DEFINITION_V2 = CapabilityDefinition(
     phase="bootstrap",
 )
 
+RESOURCES_CAPABILITY_DEFINITION_V3 = CapabilityDefinition(
+    capability_id="harness.resources",
+    owner_id="harness",
+    contract_version=3,
+    facets=RESOURCES_CAPABILITY_DEFINITION_V2.facets,
+    scope="session",
+    refresh_boundary="sealed",
+    phase="bootstrap",
+)
+
 RESOURCES_ACTIVATION_REQUIREMENT = CapabilityRequirement(
     capability="harness.resources",
     facets=(RESOURCE_RUNTIME_FACET, SKILL_ACTIVATION_FACET),
@@ -96,6 +106,11 @@ RESOURCES_CATALOG_LOAD_REQUIREMENT = CapabilityRequirement(
     facets=(RESOURCE_CATALOG_FACET, RESOURCE_LOAD_FACET),
     compatible_contract=CapabilityContractRange.exact(2),
 )
+RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT = CapabilityRequirement(
+    capability="harness.resources",
+    facets=(RESOURCE_CATALOG_FACET, RESOURCE_LOAD_FACET),
+    compatible_contract=CapabilityContractRange.exact(3),
+)
 
 __all__ = [
     "COMMAND_PACKS_FACET",
@@ -105,11 +120,13 @@ __all__ = [
     "RESOURCES_ACTIVATION_REQUIREMENT",
     "RESOURCES_CAPABILITY_DEFINITION",
     "RESOURCES_CAPABILITY_DEFINITION_V2",
+    "RESOURCES_CAPABILITY_DEFINITION_V3",
     "RESOURCES_CATALOG_LOAD_REQUIREMENT",
     "RESOURCES_CATALOG_REQUIREMENT",
     "RESOURCES_COMMAND_PACK_REQUIREMENT",
     "RESOURCES_LOAD_REQUIREMENT",
     "RESOURCES_PROMPT_REQUIREMENT",
+    "RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT",
     "RESOURCES_SESSION_COMPOSITION_REQUIREMENT",
     "RESOURCES_TOOL_PACK_REQUIREMENT",
     "RESOURCE_RUNTIME_FACET",

@@ -44,6 +44,7 @@ RCP4_MODULES = {
 }
 RCP5_MODULES = {
     RESOURCE_ROOT / "_skill_catalog_consumer.py",
+    CAPABILITY_ROOT / "resources_provider.py",
 }
 PRIVATE_CATALOG_MODULES = (
     RCP1_MODULES | RCP2_MODULES | RCP3_MODULES | RCP4_MODULES | RCP5_MODULES

@@ -326,8 +326,8 @@ class StagedResourceCompositionCandidate:
 
     @property
     def resource_catalog_snapshot(self) -> object:
-        if self.__candidate.ownership != "graph_owned":
-            raise RuntimeError("Resource Catalog generation is not graph-owned")
+        if self.__candidate.ownership not in {"root_owned", "graph_owned"}:
+            raise RuntimeError("Resource Catalog generation is not retained")
         return self._require_prepared_owner_generation().catalog_snapshot
 
     @property

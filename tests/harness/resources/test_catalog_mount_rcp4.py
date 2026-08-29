@@ -23,6 +23,7 @@ from loushang.harness.capabilities.resources_contracts import (
     RESOURCES_CAPABILITY_DEFINITION,
     RESOURCES_CAPABILITY_DEFINITION_V2,
     RESOURCES_CATALOG_LOAD_REQUIREMENT,
+    RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT,
 )
 from loushang.harness.capabilities.resources_provider import (
     resources_capability_provider_binding,
@@ -177,6 +178,17 @@ def test_v2_provider_adopts_generation_and_serves_exact_catalog_load(
         assert candidate.prepared_owner_generation_state == "graph_owned"
         catalog = ResourceCatalogCapabilityConsumer(
             runtime.capture(RESOURCES_CATALOG_LOAD_REQUIREMENT)
+        )
+        with pytest.raises(RuntimeError, match="contract is incompatible"):
+            runtime.capture(RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT)
+        assert not hasattr(catalog, "projection")
+        assert not hasattr(
+            catalog.facets.require("resource.catalog"),
+            "projection",
+        )
+        assert not hasattr(
+            catalog.facets.require("resource.catalog"),
+            "skill_projection",
         )
         snapshot = catalog.snapshot
         identity = next(

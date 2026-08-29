@@ -34,11 +34,13 @@
   compilation, and Coding's private initial shadow consumes that assembly
   request. No Product bootstrap invokes the path by default and no refresh route
   calls it.
-  RCP5.1 adds a body-free typed Skill summary over the exact captured Catalog
-  projection and a Skill-narrowed lazy load handle returning the validated
-  Resource receipt. It has no legacy loader, `ResourceBundle`, Product, or
-  public SDK dependency. Default Product callers and all legacy peer paths are
-  unchanged pending a fresh cutover review.
+  RCP5.1 adds an opt-in internal v3 Resource contract with a body-free typed
+  effective-Skill projection and a Skill-narrowed lazy load handle returning
+  the independently rebound Resource receipt. The eager compatibility
+  projection remains owner-private and the v2 contract is unchanged. The new
+  path has no legacy loader, `ResourceBundle`, Product, or public SDK dependency.
+  Default Product callers and all legacy peer paths are unchanged pending a
+  fresh cutover review.
   RCP3 adds admitted-package and embedded/OEM source components beside the
   native source. Capability-aware orchestration converts exact Resource-owner
   admission into a capability-neutral verified input with an independently
@@ -453,11 +455,14 @@ caller:
 
 The internal `harness.resources` contract v2 adds focused `resource.catalog`
 and `resource.load` facets beside the existing activation/prompt/Tool-pack/
-Command-pack facets. `SkillCatalogConsumer` requires only those two Resource
-facets and applies its typed projection; there is no `skill.catalog` facet or
-Skill Capability. The top-level Provider remains `refresh_boundary="sealed"`.
-Content refresh replaces an owner-private Catalog generation under the already
-accepted Resource-generation rule and does not rebind the sealed Provider.
+Command-pack facets. RCP5.1 leaves that contract unchanged and introduces an
+opt-in internal v3 over the same facet identities: its Catalog facet adds only
+an owner-derived, body-free effective-Skill view, never the eager compatibility
+projection. `SkillCatalogConsumer` requires only the exact-v3 versions of those
+two Resource facets; there is no `skill.catalog` facet or Skill Capability. The
+top-level Provider remains `refresh_boundary="sealed"`. Content refresh
+replaces an owner-private Catalog generation under the already accepted
+Resource-generation rule and does not rebind the sealed Provider.
 
 ### `ResourceIdentity`
 
@@ -1463,20 +1468,22 @@ retires only its adopted owner generation; model calls pin a Catalog generation.
 
 #### RCP5.1 implemented: exact-generation typed Skill read path
 
-The internal Skill Catalog Consumer validates that the captured descriptor
-projection and Catalog snapshot belong to the same generation, exposes only
-body-free immutable effective-Skill summaries, and mints Skill-narrowed wrappers
-around owner-issued Resource load handles. A successful body load returns the
-exact bytes, strict UTF-8 content, and the validated Resource receipt. Foreign
-generation, foreign projection, non-Skill, unselected, and post-disposal loads
-fail closed. Inactive/status projection remains explicit RCP5.2 debt, so this
-first API cannot be mistaken for the all-Skills CLI cutover surface.
+The internal v3 Skill Catalog Consumer validates that its body-free projection
+and Catalog snapshot belong to the same generation, exposes only immutable
+effective-Skill summaries with no generic metadata bag, and mints
+Skill-narrowed wrappers around owner-issued Resource load handles. Load
+re-mints and fully compares the canonical handle, then independently binds the
+receipt to the summary. Foreign generation, foreign projection, forged handle,
+foreign receipt, non-Skill, unselected, and post-disposal loads fail closed.
+Inactive/status projection remains explicit RCP5.2 debt, so this first API
+cannot be mistaken for the all-Skills CLI cutover surface.
 
 This slice changes no default Product construction or legacy caller. Its
-rollback surface is limited to the internal Consumer and the projection
-accessor on the existing private v2 Catalog facet. The ordered production
-cutover and peer deletion remain RCP5.2 through RCP5.5 and require fresh
-source-backed review before default wiring changes.
+rollback surface is limited to the internal Consumer, private v3 contract, and
+body-free Skill projection accessor; the existing private v2 Catalog facet is
+unchanged. The ordered production cutover and peer deletion remain RCP5.2
+through RCP5.5 and require fresh source-backed review before default wiring
+changes.
 
 Exit: one Catalog path serves every Skill operation; native Skills need no
 Plugin; same-name selection is source-explainable; current-request immutability
