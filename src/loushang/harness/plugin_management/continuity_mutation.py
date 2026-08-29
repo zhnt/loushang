@@ -32,7 +32,7 @@ from loushang.harness.journal import (
     load_jsonl,
 )
 from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
-from loushang.harness.runtime.registration import _await_cancellation_atomic
+from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 
 PluginContinuityDeletionEventKind = Literal["accepted", "completed", "cancelled"]
 PluginContinuityDeletionState = Literal["accepted", "completed", "cancelled"]
@@ -44,6 +44,7 @@ _SOURCE_FIELDS = {
     "instanceId",
     "instanceRevision",
     "ownerBindingFingerprint",
+    "ownerRecoveryFingerprint",
     "pluginId",
     "providerId",
     "source",
@@ -51,6 +52,7 @@ _SOURCE_FIELDS = {
     "sourceTrustClass",
     "sourceTrustPolicyRevision",
 }
+_LEGACY_SOURCE_FIELDS = _SOURCE_FIELDS - {"ownerRecoveryFingerprint"}
 
 
 class PluginContinuityDeletionJournalError(RuntimeError):
@@ -230,7 +232,9 @@ class PluginContinuityDeletionJournal:
     ) -> PluginContinuityDeletionSnapshotV1:
         with self._exclusive():
             events = self._load_unlocked()
-            current = _state_for_authorization(events, authorization_id, path=self._path)
+            current = _state_for_authorization(
+                events, authorization_id, path=self._path
+            )
             if current.state == "completed":
                 if current.receipt != receipt:
                     raise self._conflict("Deletion completion receipt changed")
@@ -257,7 +261,9 @@ class PluginContinuityDeletionJournal:
     def cancel(self, authorization_id: str) -> PluginContinuityDeletionSnapshotV1:
         with self._exclusive():
             events = self._load_unlocked()
-            current = _state_for_authorization(events, authorization_id, path=self._path)
+            current = _state_for_authorization(
+                events, authorization_id, path=self._path
+            )
             if current.state == "cancelled":
                 return current
             if current.state != "accepted":
@@ -379,6 +385,7 @@ class PluginContinuityDeletionAuthority:
         repr=False,
         compare=False,
     )
+
     def __post_init__(self) -> None:
         if not isinstance(self.journal, PluginContinuityDeletionJournal):
             raise TypeError("Continuity deletion authority requires its journal")
@@ -393,9 +400,7 @@ class PluginContinuityDeletionAuthority:
         while True:
             flight, leader = self._join_operation_flight(operation_key)
             if not leader:
-                snapshot, error = await asyncio.shield(
-                    asyncio.wrap_future(flight)
-                )
+                snapshot, error = await asyncio.shield(asyncio.wrap_future(flight))
                 if error is not None:
                     raise error
                 if snapshot is None or snapshot.state == "cancelled":
@@ -786,7 +791,10 @@ def _source_fingerprint(source: ContinuityProviderSourceDescriptor) -> str:
 
 
 def _source_from_dict(value: object) -> ContinuityProviderSourceDescriptor:
-    if type(value) is not dict or set(value) != _SOURCE_FIELDS:
+    if type(value) is not dict:
+        raise ValueError("Continuity deletion source fields are invalid")
+    fields = set(value)
+    if fields != _SOURCE_FIELDS and fields != _LEGACY_SOURCE_FIELDS:
         raise ValueError("Continuity deletion source fields are invalid")
     source = ContinuityProviderSourceDescriptor(
         provider_id=cast(str, value["providerId"]),
@@ -804,6 +812,10 @@ def _source_from_dict(value: object) -> ContinuityProviderSourceDescriptor:
             value["sourceTrustPolicyRevision"],
         ),
         owner_binding_fingerprint=cast(str, value["ownerBindingFingerprint"]),
+        owner_recovery_fingerprint=cast(
+            str | None,
+            value.get("ownerRecoveryFingerprint"),
+        ),
     )
     _validate_plugin_source(source)
     return source

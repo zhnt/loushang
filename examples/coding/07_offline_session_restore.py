@@ -12,6 +12,7 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from loushang.agent import prepared_request_conformant
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
@@ -90,6 +91,7 @@ def _stream_with_final_message(
     return stream
 
 
+@prepared_request_conformant
 async def _stream_fn(model, context, options=None):
     del model, options
     last_message = context.messages[-1] if context.messages else None

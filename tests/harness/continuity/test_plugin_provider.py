@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import threading
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -569,9 +570,7 @@ def test_duplicate_delete_storm_cannot_starve_product_settlement(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    asyncio.run(
-        _duplicate_delete_storm_cannot_starve_settlement(tmp_path, monkeypatch)
-    )
+    asyncio.run(_duplicate_delete_storm_cannot_starve_settlement(tmp_path, monkeypatch))
 
 
 async def _duplicate_delete_storm_cannot_starve_settlement(
@@ -626,8 +625,7 @@ async def _duplicate_delete_storm_cannot_starve_settlement(
     first = asyncio.create_task(hub.delete(target))
     await commit_started.wait()
     duplicates = tuple(
-        asyncio.create_task(hub.delete(target))
-        for _index in range(request_count - 1)
+        asyncio.create_task(hub.delete(target)) for _index in range(request_count - 1)
     )
     while len(provider.delete_candidates) < request_count:
         await asyncio.sleep(0)
@@ -640,14 +638,20 @@ async def _duplicate_delete_storm_cannot_starve_settlement(
 
     assert results == [True] * request_count
     assert acquisition_attempts == 1
-    assert sum(
-        candidate.events == ["commit", "close"]
-        for candidate in provider.delete_candidates
-    ) == 1
-    assert sum(
-        candidate.events == ["abort", "close"]
-        for candidate in provider.delete_candidates
-    ) == request_count - 1
+    assert (
+        sum(
+            candidate.events == ["commit", "close"]
+            for candidate in provider.delete_candidates
+        )
+        == 1
+    )
+    assert (
+        sum(
+            candidate.events == ["abort", "close"]
+            for candidate in provider.delete_candidates
+        )
+        == request_count - 1
+    )
     assert tuple(item.event_kind for item in authority.journal.records()) == (
         "accepted",
         "completed",
@@ -688,6 +692,87 @@ async def _startup_recovery_settles_before_ready(tmp_path) -> None:
     assert await authority.pending_deletions() == ()
     assert provider.prepared_delete is not None
     assert provider.prepared_delete.plan == plan
+
+
+def test_startup_recovery_accepts_reconstructed_attempt_with_same_semantics(
+    tmp_path,
+) -> None:
+    asyncio.run(_startup_recovery_accepts_reconstructed_attempt(tmp_path))
+
+
+async def _startup_recovery_accepts_reconstructed_attempt(tmp_path) -> None:
+    target = ContinuityTarget("plugin.sessions", "one", "revision-1")
+    authority = PluginContinuityDeletionAuthority(
+        PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+    )
+    recovery_fingerprint = "9" * 64
+    accepted = _mutation_provenance(
+        generation_fingerprint="e" * 64,
+        recovery_fingerprint=recovery_fingerprint,
+    )
+    authority.journal.accept(
+        ContinuityDeletionPlanV1(target),
+        plugin_continuity_provider_source(
+            provider_id=target.provider_id,
+            implementation_version=1,
+            provenance=accepted,
+        ),
+    )
+    provider = _Provider(target=target, supported_actions=("activate", "delete"))
+    reconstructed = _mutation_provenance(
+        generation_fingerprint="f" * 64,
+        candidate_fingerprint="1" * 64,
+        admission_fingerprint="2" * 64,
+        selection_plan_fingerprint="3" * 64,
+        binding_fingerprint="4" * 64,
+        recovery_fingerprint=recovery_fingerprint,
+    )
+    wrapped = PluginContinuityProvider(
+        provider,
+        bridge=_Bridge(),
+        provenance=reconstructed,
+        gate=ContinuityPluginGenerationGate(),
+        deletion_authority=authority,
+    )
+
+    await recover_continuity_plugin_deletions((wrapped,), authority=authority)
+
+    assert await authority.pending_deletions() == ()
+    assert provider.prepared_delete is not None
+
+
+def test_startup_recovery_preserves_phase5e_exact_attempt_rule(tmp_path) -> None:
+    asyncio.run(_startup_recovery_preserves_phase5e_exact_attempt_rule(tmp_path))
+
+
+async def _startup_recovery_preserves_phase5e_exact_attempt_rule(tmp_path) -> None:
+    target = ContinuityTarget("plugin.sessions", "one", "revision-1")
+    authority = PluginContinuityDeletionAuthority(
+        PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+    )
+    provenance = _mutation_provenance(generation_fingerprint="e" * 64)
+    source = plugin_continuity_provider_source(
+        provider_id=target.provider_id,
+        implementation_version=1,
+        provenance=provenance,
+    )
+    authority.journal.accept(
+        ContinuityDeletionPlanV1(target),
+        replace(source, owner_recovery_fingerprint=None),
+    )
+    provider = _Provider(target=target, supported_actions=("activate", "delete"))
+    wrapped = PluginContinuityProvider(
+        provider,
+        bridge=_Bridge(),
+        provenance=provenance,
+        gate=ContinuityPluginGenerationGate(),
+        deletion_authority=authority,
+    )
+
+    await recover_continuity_plugin_deletions((wrapped,), authority=authority)
+
+    assert await authority.pending_deletions() == ()
+    assert provider.prepared_delete is not None
 
 
 @pytest.mark.parametrize(
@@ -1838,9 +1923,7 @@ async def _instance_ledger_adapter_resolves_exact_active_revision(
         ledger=ledger,
         package_lifecycle=package_lifecycle,
         security_acceptance_journal=(
-            PluginContinuitySecurityRetirementJournal.for_instance_runtime(
-                runtime_path
-            )
+            PluginContinuitySecurityRetirementJournal.for_instance_runtime(runtime_path)
         ),
     )
 
@@ -2007,9 +2090,7 @@ class _Provider:
         target: ContinuityTarget,
     ) -> _PreparedDelete:
         disposition = (
-            self.delete_dispositions.pop(0)
-            if self.delete_dispositions
-            else "applied"
+            self.delete_dispositions.pop(0) if self.delete_dispositions else "applied"
         )
         self.prepared_delete = _PreparedDelete(
             self.delete_plan or ContinuityDeletionPlanV1(target),
@@ -2026,9 +2107,7 @@ class _Provider:
 @dataclass(slots=True)
 class _MissingDeleteProvider:
     inner: _Provider = field(
-        default_factory=lambda: _Provider(
-            supported_actions=("activate", "delete")
-        )
+        default_factory=lambda: _Provider(supported_actions=("activate", "delete"))
     )
 
     @property
@@ -2281,10 +2360,30 @@ def _provenance(
     admission_fingerprint: str = "b" * 64,
     selection_plan_fingerprint: str = "c" * 64,
     binding_fingerprint: str = "d" * 64,
+    recovery_fingerprint: str | None = None,
     source_trust_policy_revision: str = "trust-1",
     source_trust_class: str = "host-equivalent-local",
     supported_actions: tuple[str, ...] = ("activate",),
 ) -> PluginContinuityProviderProvenance:
+    if recovery_fingerprint is None:
+        recovery_fingerprint = hashlib.sha256(
+            repr(
+                (
+                    component_id,
+                    plugin_id,
+                    contribution_id,
+                    instance_id,
+                    instance_revision,
+                    candidate_fingerprint,
+                    admission_fingerprint,
+                    selection_plan_fingerprint,
+                    binding_fingerprint,
+                    source_trust_policy_revision,
+                    source_trust_class,
+                    supported_actions,
+                )
+            ).encode("utf-8")
+        ).hexdigest()
     return _create_plugin_continuity_provider_provenance(
         component_id=component_id,
         plugin_id=plugin_id,
@@ -2298,6 +2397,7 @@ def _provenance(
         admission_fingerprint=admission_fingerprint,
         selection_plan_fingerprint=selection_plan_fingerprint,
         binding_fingerprint=binding_fingerprint,
+        recovery_fingerprint=recovery_fingerprint,
         generation_fingerprint=generation_fingerprint,
     )
 
@@ -2314,6 +2414,7 @@ def _mutation_provenance(
     admission_fingerprint: str = "b" * 64,
     selection_plan_fingerprint: str = "c" * 64,
     binding_fingerprint: str = "d" * 64,
+    recovery_fingerprint: str | None = None,
     source_trust_policy_revision: str = "trust-1",
     source_trust_class: str = "host-equivalent-local",
 ) -> PluginContinuityProviderProvenance:
@@ -2328,6 +2429,7 @@ def _mutation_provenance(
         admission_fingerprint=admission_fingerprint,
         selection_plan_fingerprint=selection_plan_fingerprint,
         binding_fingerprint=binding_fingerprint,
+        recovery_fingerprint=recovery_fingerprint,
         source_trust_policy_revision=source_trust_policy_revision,
         source_trust_class=source_trust_class,
         supported_actions=("activate", "delete"),

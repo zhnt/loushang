@@ -6238,14 +6238,14 @@ def test_run_cli_bare_resume_can_request_user_global_session_listing(
         async def dispose(self) -> None:
             return None
 
-    def bind(_runtime, **kwargs):
+    async def bind(_runtime, **kwargs):
         bindings.append(kwargs)
         return _Composition()
 
     async def cancel_picker(**_kwargs):
         return None
 
-    monkeypatch.setattr(cli_main, "bind_coding_continuity", bind)
+    monkeypatch.setattr(cli_main, "bind_coding_configured_continuity", bind)
 
     exit_code = asyncio.run(
         cli_main.run_cli(
@@ -6262,9 +6262,69 @@ def test_run_cli_bare_resume_can_request_user_global_session_listing(
     )
 
     assert exit_code == 0
-    assert bindings == [
-        {"cwd": tmp_path.resolve(), "all_sessions": True},
-    ]
+    assert len(bindings) == 1
+    assert bindings[0]["cwd"] == tmp_path.resolve()
+    assert bindings[0]["all_sessions"] is True
+    assert isinstance(bindings[0]["session_dir"], Path)
+
+
+def test_run_cli_bare_resume_awaits_configured_continuity_composition(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.coding.cli import __main__ as cli_main
+
+    runtime = FakeRuntime(FakeSession("placeholder"))
+    services = _fake_services(plugin_sources=("plugins/continuity",))
+    bindings: list[dict[str, object]] = []
+
+    class _Reference:
+        def release(self) -> None:
+            return None
+
+    class _Hub:
+        def reference(self):
+            return _Reference()
+
+    class _Composition:
+        hub = _Hub()
+
+        async def dispose(self) -> None:
+            return None
+
+    async def bind_configured(_runtime, **kwargs):
+        bindings.append(kwargs)
+        return _Composition()
+
+    async def cancel_picker(**_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        cli_main,
+        "bind_coding_configured_continuity",
+        bind_configured,
+    )
+    exit_code = asyncio.run(
+        cli_main.run_cli(
+            ["--resume"],
+            stdin=TtyStringIO(),
+            stdout=TtyStringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=services,
+            runtime_builder=lambda **kwargs: runtime,
+            tui_runner=FakeRunner(),
+            continuity_runner=cancel_picker,
+        )
+    )
+
+    assert exit_code == 0
+    assert len(bindings) == 1
+    assert bindings[0]["settings_manager"] is services.settings_manager
+    assert bindings[0]["cwd"] == tmp_path.resolve()
+    assert bindings[0]["all_sessions"] is False
+    assert bindings[0]["diagnostics_service"] is services.diagnostics_service
+    assert isinstance(bindings[0]["session_dir"], Path)
 
 
 def test_run_cli_bare_resume_activates_selection_before_starting_main_tui(
@@ -6317,10 +6377,13 @@ def test_run_cli_bare_resume_activates_selection_before_starting_main_tui(
         result = await kwargs["activate"](target)
         return ContinuityPickerSelection(target=target, activation_result=result)
 
+    async def bind_configured(_runtime, **_kwargs):
+        return _Composition()
+
     monkeypatch.setattr(
         cli_main,
-        "bind_coding_continuity",
-        lambda _runtime, **_kwargs: _Composition(),
+        "bind_coding_configured_continuity",
+        bind_configured,
     )
 
     exit_code = asyncio.run(

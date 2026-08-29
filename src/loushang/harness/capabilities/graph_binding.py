@@ -28,12 +28,9 @@ from loushang.harness.capabilities.provider_binding import (
     CapabilityProviderContext,
     CapabilityRegistrationCollector,
 )
+from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 from loushang.harness.runtime.bindings import RuntimeBindingState
-from loushang.harness.runtime.registration import (
-    RegistrationOwner,
-    RegistrationScope,
-    _await_cancellation_atomic,
-)
+from loushang.harness.runtime.registration import RegistrationOwner, RegistrationScope
 
 
 @dataclass(frozen=True)

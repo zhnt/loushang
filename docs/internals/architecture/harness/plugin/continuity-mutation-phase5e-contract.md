@@ -106,14 +106,22 @@ their first possible await. A competing publisher cannot expose a Hub during
 recovery. Failed publication permanently retires that generation for disposal;
 a retry constructs a fresh sealed generation.
 
-A process restart necessarily creates a new generation fingerprint. Recovery
-therefore requires equality of provider ID, Plugin ID, contribution ID, Instance
-ID and revision, trust class and policy revision, implementation identity and
-version, plus an owner-binding fingerprint covering the candidate, admission,
-selection plan, binding, and admitted actions; only the process generation fingerprint may differ. The authority
+A process restart necessarily creates new generation and one-attempt execution
+fingerprints. Recovery therefore requires equality of provider ID, Plugin ID,
+contribution ID, Instance ID and revision, trust class and policy revision,
+implementation identity and version, plus a stable owner-recovery fingerprint
+covering the package/binding specification, declaration authority,
+Product/owner policy, trust, authorities, and admitted actions. The exact
+attempt owner-binding fingerprint remains in every record for audit, but may
+differ when the same semantic selection is reconstructed after a crash. The authority
 continues to authorize against the original accepted source record. A different
 Plugin revision, trust decision, contribution, implementation, or Provider
 cannot inherit the operation.
+
+Journals written before the stable recovery field was introduced remain
+readable. Because those records cannot prove semantic identity across process
+attempts, recovery preserves their stricter legacy rule and requires the exact
+owner-binding fingerprint; no identity is synthesized during migration.
 
 The recreated candidate is compared with the accepted plan before
 reauthorization. A mismatch aborts only that unpublished candidate and leaves the durable confirmed intent pending for a future compatible generation.

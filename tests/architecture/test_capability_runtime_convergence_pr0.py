@@ -55,6 +55,7 @@ GRAPH_RUNTIME_MODULE_IMPORTS = {
         "loushang.harness.capabilities.graph_planning",
         "loushang.harness.capabilities.graph_runtime",
         "loushang.harness.capabilities.provider_binding",
+        "loushang.harness.runtime._owned_tasks",
         "loushang.harness.runtime.bindings",
         "loushang.harness.runtime.registration",
     },

@@ -345,6 +345,13 @@ def resolve_machine_resource_layout(
             "managed archive retention",
         ),
         MachineResourcePath(
+            "plugins.state",
+            paths.state / "plugins",
+            "durable_machine_state",
+            "canonical",
+            "Plugin lifecycle authority only; never generic cleanup",
+        ),
+        MachineResourcePath(
             "cache.global",
             paths.cache,
             "reproducible_cache",

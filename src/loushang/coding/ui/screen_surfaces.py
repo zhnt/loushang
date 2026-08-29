@@ -3,11 +3,11 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from loushang.coding.continuity import bind_coding_continuity
 from loushang.coding.model_selection_tui import select_available_model
 from loushang.coding.ui.hotkeys import format_hotkeys
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.settings_page import build_coding_settings_page
+from loushang.harness.continuity import StableContinuityReference
 from loushang.harness.session import SessionApprovalInteractionPort
 from loushang.harnesstui.conversation.agent_application import (
     current_agent_runtime_session,
@@ -27,8 +27,7 @@ from loushang.harnesstui.surface.workflow import (
 
 _CODING_MODEL_SELECTOR_PROFILE = SessionModelSelectorSurfaceProfile(
     subtitle=(
-        "Choose a model for this session · legacy: "
-        "loushang --model <provider:model>"
+        "Choose a model for this session · legacy: loushang --model <provider:model>"
     ),
     presentation="bottom-exclusive",
 )
@@ -43,6 +42,7 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         app: ScreenCodingTuiApp,
         session: Any,
         runtime: Any | None = None,
+        continuity_reference: StableContinuityReference | None = None,
         status_provider: StatusProvider,
         on_approval: Callable[[dict[str, Any]], Awaitable[bool | None]] | None = None,
         approval_interaction_provider: (
@@ -54,13 +54,10 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         self.runtime = runtime
         self.status_provider = status_provider
         app.context_usage_provider = self._context_usage
-        continuity = bind_coding_continuity(runtime) if runtime is not None else None
         ports = build_standard_agent_screen_surface_workflow_ports(
             session,
             runtime=runtime,
-            continuity_reference=(
-                continuity.hub.reference() if continuity is not None else None
-            ),
+            continuity_reference=continuity_reference,
             session_provider=self._current_session,
             approval_interaction_provider=approval_interaction_provider,
             select_model=lambda value: select_available_model(

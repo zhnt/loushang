@@ -7,7 +7,7 @@ import os
 import secrets
 import stat
 from collections import OrderedDict
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -207,11 +207,12 @@ class CodingContinuityActivationBridge:
                     f"{abort_error!r}"
                 )
             raise
+        settlement = _CodingPreparedSessionSettlement(prepared)
         return CallbackPreparedActivationLease(
             target=target,
             disposition="in_place",
-            consume=lambda: _consume_coding_prepared_operation(prepared),
-            abort=prepared.abort,
+            consume=settlement.consume,
+            abort=settlement.abort,
         )
 
 
@@ -596,7 +597,10 @@ class CodingContinuityComposition:
     binder: RuntimeProfileBinder
     hub: ContinuityHub
     plugin_publication: ContinuityPluginPublication | None = None
+    owned_cleanup: Callable[[], None] | None = None
     runtime_owned: bool = False
+    _core_shutdown: bool = False
+    _owned_cleanup_complete: bool = False
     _shutdown: bool = False
 
     async def dispose(self) -> None:
@@ -616,11 +620,17 @@ class CodingContinuityComposition:
 
         if self._shutdown:
             return
-        if self.plugin_publication is None:
-            await self.hub.close()
-        else:
-            await self.plugin_publication.shutdown()
-        await self.binder.dispose(self.binding)
+        if not self._core_shutdown:
+            if self.plugin_publication is None:
+                await self.hub.close()
+            else:
+                await self.plugin_publication.shutdown()
+            await self.binder.dispose(self.binding)
+            self._core_shutdown = True
+        if not self._owned_cleanup_complete:
+            if self.owned_cleanup is not None:
+                self.owned_cleanup()
+            self._owned_cleanup_complete = True
         self._shutdown = True
 
 
@@ -713,6 +723,7 @@ async def bind_coding_plugin_continuity(
     instance_family_authority: ContinuityPluginInstanceFamilyAuthority,
     runtime_id: str,
     deletion_authority: ContinuityDeletionRecoveryAuthority | None = None,
+    owned_cleanup: Callable[[], None] | None = None,
     cwd: str | Path | None = None,
     all_sessions: bool = False,
     temporary_root: str | Path | None = None,
@@ -805,6 +816,7 @@ async def bind_coding_plugin_continuity(
         binder=binder,
         hub=publication.hub,
         plugin_publication=publication,
+        owned_cleanup=owned_cleanup,
     )
     if getattr(runtime, _RUNTIME_BINDING_ATTRIBUTE, None) is not reservation:
         raise RuntimeError("Coding continuity binding reservation was replaced")
@@ -888,21 +900,39 @@ def _retain_coding_continuity(
         result.runtime_owned = True
 
 
-async def _consume_coding_prepared_operation(
-    prepared: CodingPreparedSessionOperation,
-) -> object:
-    try:
-        return await prepared.consume()
-    except BaseException as operation_error:
+@dataclass(slots=True)
+class _CodingPreparedSessionSettlement:
+    prepared: CodingPreparedSessionOperation
+    _abort_complete: bool = False
+
+    async def consume(self) -> object:
         try:
-            abort_task = asyncio.create_task(prepared.abort())
+            return await self.prepared.consume()
+        except BaseException as operation_error:
+            try:
+                await self.abort()
+            except BaseException as abort_error:
+                operation_error.add_note(
+                    "Coding prepared Session abort also failed: "
+                    f"{type(abort_error).__name__}"
+                )
+            raise
+
+    async def abort(self) -> None:
+        if self._abort_complete:
+            return
+        abort_task = asyncio.create_task(self.prepared.abort())
+        try:
             await _await_owned_task_cancellation_atomic(abort_task)
-        except BaseException as abort_error:
-            operation_error.add_note(
-                "Coding prepared Session abort also failed: "
-                f"{type(abort_error).__name__}"
-            )
-        raise
+        except BaseException:
+            if _task_completed_successfully(abort_task):
+                self._abort_complete = True
+            raise
+        self._abort_complete = True
+
+
+def _task_completed_successfully(task: asyncio.Task[object]) -> bool:
+    return task.done() and not task.cancelled() and task.exception() is None
 
 
 @dataclass(frozen=True, slots=True)

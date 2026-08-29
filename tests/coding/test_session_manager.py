@@ -867,6 +867,8 @@ async def test_persistent_session_externalizes_hydrates_and_forks_images(
 ) -> None:
     import base64
 
+    import pytest
+
     from loushang.ai.json_codec import serialize_message
     from loushang.ai.prepared_request import PreparedModelRequest
     from loushang.ai.types import ImagePart, TextPart, UserMessage
@@ -901,9 +903,10 @@ async def test_persistent_session_externalizes_hydrates_and_forks_images(
     assert isinstance(stored_message, UserMessage)
     stored_image = stored_message.content[1]
     assert isinstance(stored_image, SessionImagePart)
-    # Durable Harness placeholders remain valid ImagePart subclasses; generic
-    # AI serializers cannot crash if a caller inspects the stored message.
-    assert serialize_message(stored_message)["content"][1]["data"] == ""
+    # A durable Harness placeholder is deliberately not an AI wire image. The
+    # transcript codec below owns the empty-inline representation and blob ref.
+    with pytest.raises(ValueError, match="Unsupported content part type"):
+        serialize_message(stored_message)
     session_file = manager.get_session_file()
     assert session_file is not None
     assert encoded not in session_file.read_text(encoding="utf-8")

@@ -14,6 +14,7 @@ from loushang.harness.capabilities.component_admission import (
     CapabilityComponentOwnerAuthority,
     CapabilityComponentOwnerSnapshot,
 )
+from loushang.harness.capabilities.component_contracts import _digest_document
 from loushang.harness.capabilities.component_runtime import (
     CapabilityOwnerComponentBinder,
     CapabilityOwnerComponentGenerationSnapshot,
@@ -23,6 +24,7 @@ from loushang.harness.capabilities.component_selection import (
     CapabilityComponentSelectionChoice,
     CapabilityComponentSelectionPlan,
     ProductCapabilityComponentResolver,
+    ResolvedCapabilityComponent,
     ResolvedCapabilityComponentSet,
 )
 from loushang.harness.capabilities.owner_component_host import (
@@ -65,10 +67,12 @@ from loushang.harness.continuity.plugin_provider import (
 from loushang.harness.resources.plugins.selection import (
     PluginContributionCandidate,
     PluginContributionRef,
+    PluginDocumentDecodedEvidence,
+    PluginInProcessEvaluatedEvidence,
     PluginInstanceRevisionRef,
     PluginSelection,
 )
-from loushang.harness.runtime.registration import _await_cancellation_atomic
+from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 
 T = TypeVar("T")
 
@@ -1144,6 +1148,13 @@ async def _capture_generation_providers(
             ).supported_actions
             for item in resolved.candidates
         }
+        plugin_candidate_by_component_id = {
+            continuity_provider_component_id(
+                item.package.manifest.name,
+                item.declaration.contribution_id,
+            ): item
+            for item in resolved.candidates
+        }
         resolved_by_id = {
             item.component_id: item for item in resolved.resolved_set.components
         }
@@ -1180,6 +1191,13 @@ async def _capture_generation_providers(
                 binding_fingerprint=(
                     binding_by_id[component.component_id].binding_fingerprint
                 ),
+                recovery_fingerprint=_continuity_recovery_fingerprint(
+                    component,
+                    plugin_candidate_by_component_id[component.component_id],
+                    supported_actions=declared_actions_by_component_id[
+                        component.component_id
+                    ],
+                ),
                 generation_fingerprint=snapshot.generation_fingerprint,
             )
             result.extend((provider, provenance) for provider in payload.providers)
@@ -1187,6 +1205,61 @@ async def _capture_generation_providers(
     finally:
         for lease in reversed(leases):
             await lease.aclose()
+
+
+def _continuity_recovery_fingerprint(
+    component: ResolvedCapabilityComponent,
+    plugin_candidate: PluginContributionCandidate,
+    *,
+    supported_actions: tuple[str, ...],
+) -> str:
+    """Stable semantic owner identity, excluding one-attempt execution facts."""
+
+    resolved = component
+    admission = component.admission
+    candidate = admission.candidate
+    evidence = plugin_candidate.evidence
+    if isinstance(evidence, PluginInProcessEvaluatedEvidence):
+        declaration_authority = {
+            "kind": evidence.kind,
+            "subjectDigest": evidence.consumption_receipt.subject_digest,
+        }
+    elif isinstance(evidence, PluginDocumentDecodedEvidence):
+        declaration_authority = {
+            "documentBytesDigest": evidence.document_bytes_digest,
+            "kind": evidence.kind,
+        }
+    else:  # pragma: no cover - PluginContributionCandidate seals this union.
+        raise TypeError("Continuity recovery requires declaration evidence")
+    instance = candidate.instance_revision_ref
+    assert instance is not None
+    return _digest_document(
+        "loushang.plugin-continuity-owner-recovery/v1",
+        {
+            "allowedAuthorityCeiling": list(candidate.allowed_authority_ceiling),
+            "bindingSpecFingerprint": candidate.binding_spec.fingerprint,
+            "componentId": resolved.component_id,
+            "contributionDeclarationFingerprint": (
+                plugin_candidate.declaration.fingerprint
+            ),
+            "declarationAuthority": declaration_authority,
+            "definitionFingerprint": candidate.definition.fingerprint,
+            "effectiveAuthorities": list(admission.effective_authorities),
+            "instanceRevisionRef": instance.to_dict(),
+            "ownerPolicyRevision": admission.owner_policy_revision,
+            "ownerRevocationEpoch": admission.revocation_epoch,
+            "ownerSnapshotFingerprint": resolved.owner_snapshot_fingerprint,
+            "packageSourceIdentity": candidate.package_source_identity,
+            "productId": candidate.product_id,
+            "productPolicyRevision": candidate.product_policy_revision,
+            "requestedAuthorities": list(candidate.requested_authorities),
+            "scopeId": candidate.scope_id,
+            "sourceTrustClass": candidate.source_trust_class,
+            "sourceTrusted": candidate.source_trusted,
+            "sourceTrustPolicyRevision": candidate.source_trust_policy_revision,
+            "supportedActions": list(supported_actions),
+        },
+    )
 
 
 async def _rollback_private_generation(

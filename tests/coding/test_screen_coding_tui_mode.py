@@ -805,6 +805,64 @@ def test_run_coding_tui_injects_on_approval_callback(monkeypatch) -> None:
     assert isinstance(captured.get("loop_kwargs"), dict)
 
 
+def test_run_coding_tui_awaits_bootstrap_and_releases_injected_reference(
+    monkeypatch,
+) -> None:
+    from loushang.coding.ui import mode
+
+    session = _Session()
+    runtime = _runtime_for(session)
+    events: list[str] = []
+
+    class _Reference:
+        def release(self) -> None:
+            events.append("release")
+
+    reference = _Reference()
+
+    class _Hub:
+        def reference(self):
+            events.append("reference")
+            return reference
+
+    async def bind_configured(bound_runtime, **kwargs):
+        assert bound_runtime is runtime
+        assert kwargs["cwd"] == "/repo"
+        events.append("bind")
+        return SimpleNamespace(hub=_Hub())
+
+    class RecordingSurfaceManager(ScreenSurfaceManager):
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            assert kwargs["continuity_reference"] is reference
+            events.append("surface")
+            super().__init__(*args, **kwargs)
+
+    async def fake_screen_loop(**_kwargs: object) -> int:
+        events.append("loop")
+        return 0
+
+    monkeypatch.setattr(
+        mode,
+        "bind_coding_configured_continuity",
+        bind_configured,
+    )
+    monkeypatch.setattr(mode, "ScreenSurfaceManager", RecordingSurfaceManager)
+    monkeypatch.setattr(mode, "run_action_host_conversation_screen", fake_screen_loop)
+
+    exit_code = asyncio.run(
+        mode.run_coding_tui(
+            runtime=runtime,
+            session=session,
+            stdin=_TTYStringIO(),
+            stdout=_TTYStringIO(),
+            stderr=StringIO(),
+        )
+    )
+
+    assert exit_code == 0
+    assert events == ["bind", "reference", "surface", "loop", "release"]
+
+
 def test_screen_approval_presenter_resolves_ask_tools_and_clears_pending(
     tmp_path,
 ) -> None:

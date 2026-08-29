@@ -56,6 +56,7 @@ class PluginContinuityProviderProvenance:
     admission_fingerprint: str
     selection_plan_fingerprint: str
     binding_fingerprint: str
+    recovery_fingerprint: str
     generation_fingerprint: str
 
     def __init__(self) -> None:
@@ -82,6 +83,7 @@ class PluginContinuityProviderProvenance:
             ("component admission fingerprint", self.admission_fingerprint),
             ("component selection fingerprint", self.selection_plan_fingerprint),
             ("component binding fingerprint", self.binding_fingerprint),
+            ("owner recovery fingerprint", self.recovery_fingerprint),
             ("owner generation fingerprint", self.generation_fingerprint),
         ):
             _require_sha256(value, name=name)
@@ -245,6 +247,7 @@ def _create_plugin_continuity_provider_provenance(
     admission_fingerprint: str,
     selection_plan_fingerprint: str,
     binding_fingerprint: str,
+    recovery_fingerprint: str,
     generation_fingerprint: str,
 ) -> PluginContinuityProviderProvenance:
     provenance = object.__new__(PluginContinuityProviderProvenance)
@@ -267,9 +270,7 @@ def continuity_provider_source(
     if isinstance(provenance, PluginContinuityProviderProvenance):
         return plugin_continuity_provider_source(
             provider_id=provider_id,
-            implementation_version=(
-                bound.provider.descriptor.implementation_version
-            ),
+            implementation_version=(bound.provider.descriptor.implementation_version),
             provenance=provenance,
         )
     selection = provenance.selection
@@ -314,6 +315,7 @@ def plugin_continuity_provider_source(
                 "supportedActions": list(provenance.supported_actions),
             },
         ),
+        owner_recovery_fingerprint=provenance.recovery_fingerprint,
     )
 
 

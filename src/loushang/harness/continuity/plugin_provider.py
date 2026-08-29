@@ -40,7 +40,7 @@ from loushang.harness.continuity.types import (
     ProviderPage,
     ProviderQuery,
 )
-from loushang.harness.runtime.registration import _await_cancellation_atomic
+from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 
 
 class ContinuityPluginGenerationClosingError(RuntimeError):
@@ -312,9 +312,7 @@ class PluginContinuityProvider:
             ("activate",),
             ("activate", "delete"),
         }:
-            raise ValueError(
-                "Continuity Plugin Provider exposes unsupported actions"
-            )
+            raise ValueError("Continuity Plugin Provider exposes unsupported actions")
         if "delete" in descriptor.supported_actions:
             if deletion_authority is None or not isinstance(
                 deletion_authority,
@@ -494,8 +492,8 @@ class PluginContinuityProvider:
             raise
         except Exception:
             failure = ContinuityPluginProviderCallError("delete")
-            failure.pending_mutation = ContinuityPluginMutationPendingSettlement._create(
-                lease
+            failure.pending_mutation = (
+                ContinuityPluginMutationPendingSettlement._create(lease)
             )
             raise failure from None
         return receipt.disposition == "applied"
@@ -774,7 +772,10 @@ async def recover_continuity_plugin_deletions(
                 for provider in current_providers
                 if _recovery_source_matches(provider._source, operation.source)
             )
-            if len(matches) != 1 or "delete" not in matches[0].descriptor.supported_actions:
+            if (
+                len(matches) != 1
+                or "delete" not in matches[0].descriptor.supported_actions
+            ):
                 raise ContinuityPluginMutationRecoveryError(
                     "Accepted Continuity deletion has no exact live generation owner."
                 )
@@ -824,7 +825,29 @@ def _recovery_source_matches(current: object, accepted: object) -> bool:
         or accepted.source != "plugin"
     ):
         return False
-    return replace(current, source_id=accepted.source_id) == accepted
+    if accepted.owner_recovery_fingerprint is None:
+        # A Phase 5E record has no process-stable semantic identity. Preserve
+        # its original fail-closed rule: only the exact attempt binding may
+        # recover it (source_id is the generation-local projection).
+        return (
+            replace(
+                current,
+                source_id=accepted.source_id,
+                owner_recovery_fingerprint=None,
+            )
+            == accepted
+        )
+    if current.owner_recovery_fingerprint is None:
+        return False
+    return (
+        current.owner_recovery_fingerprint == accepted.owner_recovery_fingerprint
+        and replace(
+            current,
+            source_id=accepted.source_id,
+            owner_binding_fingerprint=accepted.owner_binding_fingerprint,
+        )
+        == accepted
+    )
 
 
 async def _abort_prepare_leases(

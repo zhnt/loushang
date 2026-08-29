@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import pytest
 
@@ -62,9 +62,7 @@ async def _startup_authority_recovers_accepted_operation(tmp_path) -> None:
     path = tmp_path / "deletions.jsonl"
     accepted = PluginContinuityDeletionJournal(path).accept(_plan(), _source())
 
-    recovered = PluginContinuityDeletionAuthority(
-        PluginContinuityDeletionJournal(path)
-    )
+    recovered = PluginContinuityDeletionAuthority(PluginContinuityDeletionJournal(path))
     pending = await recovered.pending_deletions()
     assert len(pending) == 1
     assert pending[0].plan == _plan()
@@ -95,9 +93,11 @@ async def _cancelled_authorization_reopens(tmp_path) -> None:
     second = await authority.authorize_delete(_plan(), _source())
 
     assert first.authorization_id != second.authorization_id
-    assert tuple(
-        item.event_kind for item in authority.journal.records()
-    ) == ("accepted", "cancelled", "accepted")
+    assert tuple(item.event_kind for item in authority.journal.records()) == (
+        "accepted",
+        "cancelled",
+        "accepted",
+    )
     with pytest.raises(PluginContinuityDeletionJournalError) as caught:
         await authority.cancel_delete(first)
     assert caught.value.code == "plugin_continuity_deletion_authorization_unknown"
@@ -115,9 +115,7 @@ async def _concurrent_authorizations_serialize_until_terminal(tmp_path) -> None:
         PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
     )
     first = await authority.authorize_delete(_plan(), _source())
-    second_task = asyncio.create_task(
-        authority.authorize_delete(_plan(), _source())
-    )
+    second_task = asyncio.create_task(authority.authorize_delete(_plan(), _source()))
     await asyncio.sleep(0.01)
     assert not second_task.done()
 
@@ -139,12 +137,8 @@ def test_process_single_flight_is_shared_across_authority_instances(tmp_path) ->
 
 async def _process_single_flight_is_shared_across_authorities(tmp_path) -> None:
     path = tmp_path / "deletions.jsonl"
-    leader = PluginContinuityDeletionAuthority(
-        PluginContinuityDeletionJournal(path)
-    )
-    follower = PluginContinuityDeletionAuthority(
-        PluginContinuityDeletionJournal(path)
-    )
+    leader = PluginContinuityDeletionAuthority(PluginContinuityDeletionJournal(path))
+    follower = PluginContinuityDeletionAuthority(PluginContinuityDeletionJournal(path))
     authorization = await leader.authorize_delete(_plan(), _source())
     follower_events: list[str] = []
     follower_lease = asyncio.create_task(
@@ -170,12 +164,14 @@ async def _process_single_flight_is_shared_across_authorities(tmp_path) -> None:
 
 
 def test_event_codec_and_journal_fail_closed(tmp_path) -> None:
-    event = PluginContinuityDeletionJournal(
-        tmp_path / "deletions.jsonl"
-    ).accept(_plan(), _source())
-    raw = PluginContinuityDeletionJournal(
-        tmp_path / "deletions.jsonl"
-    ).records()[0].to_dict()
+    event = PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl").accept(
+        _plan(), _source()
+    )
+    raw = (
+        PluginContinuityDeletionJournal(tmp_path / "deletions.jsonl")
+        .records()[0]
+        .to_dict()
+    )
     raw["extension"] = True
     with pytest.raises(JournalCodecError):
         PluginContinuityDeletionEventV1.from_dict(raw)
@@ -186,6 +182,19 @@ def test_event_codec_and_journal_fail_closed(tmp_path) -> None:
         PluginContinuityDeletionJournal(path).records()
     assert caught.value.code == "plugin_continuity_deletion_journal_corrupt"
     assert event.state == "accepted"
+
+
+def test_journal_reads_phase5e_source_without_recovery_fingerprint(tmp_path) -> None:
+    path = tmp_path / "legacy-deletions.jsonl"
+    legacy_source = replace(_source(), owner_recovery_fingerprint=None)
+    accepted = PluginContinuityDeletionJournal(path).accept(_plan(), legacy_source)
+
+    [wire_record] = path.read_text(encoding="utf-8").splitlines()
+    assert "ownerRecoveryFingerprint" not in wire_record
+    [reloaded] = PluginContinuityDeletionJournal(path).records()
+
+    assert reloaded.authorization_id == accepted.authorization_id
+    assert reloaded.source == legacy_source
 
 
 @pytest.mark.parametrize("second_revision", (2, 3), ids=("transition", "revision-gap"))
@@ -309,12 +318,16 @@ def test_instance_runtime_path_factory_is_canonical_and_sidecar_scoped(
     assert PluginContinuityDeletionJournal.for_instance_runtime(runtime_path).path == (
         expected
     )
-    assert plugin_continuity_deletion_journal_path(
-        tmp_path / "other" / "instance-runtime.jsonl"
-    ) != expected
-    assert plugin_continuity_deletion_journal_path(
-        runtime_path.with_suffix("")
-    ) != expected
+    assert (
+        plugin_continuity_deletion_journal_path(
+            tmp_path / "other" / "instance-runtime.jsonl"
+        )
+        != expected
+    )
+    assert (
+        plugin_continuity_deletion_journal_path(runtime_path.with_suffix(""))
+        != expected
+    )
 
 
 @dataclass(slots=True)
@@ -376,4 +389,5 @@ def _source() -> ContinuityProviderSourceDescriptor:
         source_trust_class="host-equivalent-local",
         source_trust_policy_revision="trust-1",
         owner_binding_fingerprint="f" * 64,
+        owner_recovery_fingerprint="a" * 64,
     )

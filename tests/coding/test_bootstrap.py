@@ -1657,11 +1657,21 @@ def test_create_agent_session_uses_settings_plugin_sources_for_external_package_
     assert "Plugin debug prompt" in session.agent.system_prompt
     assert [skill.name for skill in bundle.skills] == ["debug"]
     assert bundle.skills[0].source_kind == "external_package"
-    assert [
-        (command.name, command.source_info.origin, command.source_info.base_dir)
+    extension_commands = [
+        command
         for command in session.list_commands()
         if command.source == "extension"
-    ] == [("deploy", "package", str(extensions_dir))]
+    ]
+    assert len(extension_commands) == 1
+    [command] = extension_commands
+    assert (command.name, command.source_info.origin) == ("deploy", "package")
+    revision_extensions = Path(command.source_info.base_dir)
+    assert revision_extensions.name == "extensions"
+    assert revision_extensions.parent.parent == tmp_path / "plugin-revisions/sha256"
+    assert revision_extensions != extensions_dir
+    assert (revision_extensions / "deploy.py").read_text(encoding="utf-8") == (
+        extensions_dir / "deploy.py"
+    ).read_text(encoding="utf-8")
 
 
 def test_create_agent_session_materializes_git_package_sources_by_default(
@@ -3340,12 +3350,15 @@ def test_create_agent_session_records_executable_source_identity_diagnostic(
     assert isinstance(diagnostics[0].details["coding_module_file"], str)
 
 
-def test_create_agent_session_records_package_lockfile_diagnostics(tmp_path) -> None:
+def test_create_agent_session_fails_closed_and_records_lockfile_diagnostics(
+    tmp_path,
+) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.resource_runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.resources.plugins.manifest import PluginManifestError
 
     lockfile = tmp_path / "package-lock.json"
     lockfile.write_text("not json", encoding="utf-8")
@@ -3359,12 +3372,15 @@ def test_create_agent_session_records_package_lockfile_diagnostics(tmp_path) -> 
     )
     services = create_services()
 
-    create_agent_session(
-        session_manager=manager,
-        services=services,
-        model=_model(),
-        package_materializer=materializer,
-    )
+    with pytest.raises(PluginManifestError) as caught:
+        create_agent_session(
+            session_manager=manager,
+            services=services,
+            model=_model(),
+            package_materializer=materializer,
+        )
+
+    assert caught.value.code == "plugin_binding_lock_invalid"
 
     diagnostics = services.diagnostics_service.get_diagnostics(
         phase="startup",
@@ -3420,7 +3436,7 @@ def test_create_agent_session_records_invalid_plugin_source_and_continues(
     diagnostics = [
         record
         for record in services.diagnostics_service.get_diagnostics(
-            phase="startup", source="bootstrap"
+            phase="startup", source="package"
         )
         if record.code == "plugin_source_unresolved"
     ]
@@ -3428,7 +3444,5 @@ def test_create_agent_session_records_invalid_plugin_source_and_continues(
     assert "Valid package prompt" in session.agent.system_prompt
     assert len(diagnostics) == 1
     assert diagnostics[0].type == "warning"
-    assert diagnostics[0].details == {
-        "plugin_source": str(invalid_plugin),
-        "exception_type": "FileNotFoundError",
-    }
+    assert diagnostics[0].source_path == invalid_plugin
+    assert diagnostics[0].details == {"plugin_source": str(invalid_plugin)}

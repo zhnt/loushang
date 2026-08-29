@@ -88,6 +88,7 @@ def _assistant_text_message(text: str) -> AssistantMessage:
 def test_headless_public_api_golden_allows_policy_approved_write_and_records_session(
     tmp_path,
 ) -> None:
+    from loushang.agent import synthetic_model_transport
     from loushang.coding import (
         ControlConfig,
         SessionManager,
@@ -97,7 +98,6 @@ def test_headless_public_api_golden_allows_policy_approved_write_and_records_ses
         create_services,
     )
     from loushang.coding.cli.__main__ import build_builtin_tool_registry
-    from loushang.agent import synthetic_model_transport
 
     project = tmp_path / "project"
     project.mkdir()

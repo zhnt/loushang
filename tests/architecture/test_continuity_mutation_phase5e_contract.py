@@ -4,23 +4,20 @@ import ast
 from pathlib import Path
 
 CONTRACT = Path(
-    "docs/internals/architecture/harness/plugin/"
-    "continuity-mutation-phase5e-contract.md"
+    "docs/internals/architecture/harness/plugin/continuity-mutation-phase5e-contract.md"
 )
 MUTATION = Path("src/loushang/harness/continuity/mutation.py")
 PLUGIN_PROVIDER = Path("src/loushang/harness/continuity/plugin_provider.py")
 PLUGIN_RUNTIME = Path("src/loushang/harness/continuity/plugin_runtime.py")
-PRODUCT_JOURNAL = Path(
-    "src/loushang/harness/plugin_management/continuity_mutation.py"
-)
+PRODUCT_JOURNAL = Path("src/loushang/harness/plugin_management/continuity_mutation.py")
 CODING = Path("src/loushang/coding/continuity.py")
 
 
 def test_phase5e_contract_is_indexed_and_freezes_all_authority_layers() -> None:
     contract = CONTRACT.read_text(encoding="utf-8")
-    readme = Path(
-        "docs/internals/architecture/harness/plugin/README.md"
-    ).read_text(encoding="utf-8")
+    readme = Path("docs/internals/architecture/harness/plugin/README.md").read_text(
+        encoding="utf-8"
+    )
 
     assert "# Installed Continuity Mutation Lifecycle (Phase 5E Contract)" in contract
     assert "implemented incremental contract" in contract
@@ -30,7 +27,7 @@ def test_phase5e_contract_is_indexed_and_freezes_all_authority_layers() -> None:
         "durable Product authority appends ACCEPTED",
         "generation registers the authorized mutation lease",
         "publication barrier",
-        "only the process generation fingerprint may differ",
+        "stable owner-recovery fingerprint",
         "Instance/Package ownership pinned",
         "exact operation-scoped filesystem lock",
         "synchronously reserve the sole generation publication slot",
@@ -47,11 +44,22 @@ def test_phase5e_dependency_direction_is_enforced_by_ast() -> None:
     journal_imports = _imports(PRODUCT_JOURNAL)
     coding_imports = _imports(CODING)
 
-    assert not any(item.startswith("loushang.harness.plugin_management") for item in mutation_imports)
-    assert not any(item.startswith("loushang.harness.plugin_management") for item in provider_imports)
-    assert not any(item.startswith("loushang.harness.plugin_management") for item in runtime_imports)
+    assert not any(
+        item.startswith("loushang.harness.plugin_management")
+        for item in mutation_imports
+    )
+    assert not any(
+        item.startswith("loushang.harness.plugin_management")
+        for item in provider_imports
+    )
+    assert not any(
+        item.startswith("loushang.harness.plugin_management")
+        for item in runtime_imports
+    )
     assert "loushang.harness.continuity.mutation" in journal_imports
-    assert "loushang.harness.plugin_management.continuity_mutation" not in coding_imports
+    assert (
+        "loushang.harness.plugin_management.continuity_mutation" not in coding_imports
+    )
 
 
 def test_phase5e_generation_gate_and_recovery_are_real_code_paths() -> None:
@@ -80,12 +88,16 @@ def test_phase5e_generation_gate_and_recovery_are_real_code_paths() -> None:
     assert "class PluginContinuityDeletionAuthority" in journal
     assert "_execution_lock_target" in journal
     assert "owner_binding_fingerprint" in journal
+    assert "owner_recovery_fingerprint" in journal
 
 
 def test_phase5e_coding_binding_is_explicit_and_activation_compatible() -> None:
     coding = CODING.read_text(encoding="utf-8")
 
-    assert "deletion_authority: ContinuityDeletionRecoveryAuthority | None = None" in coding
+    assert (
+        "deletion_authority: ContinuityDeletionRecoveryAuthority | None = None"
+        in coding
+    )
     assert "publish_continuity_plugin_generation_with_mutations" in coding
     assert "if deletion_authority is None:" in coding
     assert "publish_continuity_plugin_generation(" in coding

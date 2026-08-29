@@ -118,7 +118,9 @@ class ContinuityProviderDescriptor:
         if type(self.supports_in_place) is not bool:
             raise TypeError("supports_in_place must be a bool")
         actions = tuple(self.supported_actions)
-        if not actions or any(action not in {"activate", "delete"} for action in actions):
+        if not actions or any(
+            action not in {"activate", "delete"} for action in actions
+        ):
             raise ValueError("supported_actions must contain supported actions")
         if len(set(actions)) != len(actions):
             raise ValueError("supported_actions must be unique")
@@ -149,6 +151,7 @@ class ContinuityProviderSourceDescriptor:
     source_trust_class: str | None = None
     source_trust_policy_revision: str | None = None
     owner_binding_fingerprint: str | None = None
+    owner_recovery_fingerprint: str | None = None
 
     def __post_init__(self) -> None:
         _nonempty(self.provider_id, name="provider source provider_id")
@@ -170,6 +173,7 @@ class ContinuityProviderSourceDescriptor:
             self.source_trust_class,
             self.source_trust_policy_revision,
             self.owner_binding_fingerprint,
+            self.owner_recovery_fingerprint,
         )
         if self.source == "plugin":
             for value, name in (
@@ -191,8 +195,17 @@ class ContinuityProviderSourceDescriptor:
                     for character in self.owner_binding_fingerprint
                 )
             ):
+                raise ValueError("provider Plugin owner binding fingerprint is invalid")
+            if self.owner_recovery_fingerprint is not None and (
+                not isinstance(self.owner_recovery_fingerprint, str)
+                or len(self.owner_recovery_fingerprint) != 64
+                or any(
+                    character not in "0123456789abcdef"
+                    for character in self.owner_recovery_fingerprint
+                )
+            ):
                 raise ValueError(
-                    "provider Plugin owner binding fingerprint is invalid"
+                    "provider Plugin owner recovery fingerprint is invalid"
                 )
             if (
                 isinstance(self.instance_revision, bool)
@@ -204,7 +217,7 @@ class ContinuityProviderSourceDescriptor:
             raise ValueError("non-Plugin provider source cannot carry Plugin identity")
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        document: dict[str, object] = {
             "providerId": self.provider_id,
             "source": self.source,
             "sourceId": self.source_id,
@@ -218,6 +231,11 @@ class ContinuityProviderSourceDescriptor:
             "sourceTrustPolicyRevision": self.source_trust_policy_revision,
             "ownerBindingFingerprint": self.owner_binding_fingerprint,
         }
+        # Omission preserves the exact Phase 5E wire representation and its
+        # authorization fingerprint when an older accepted journal is loaded.
+        if self.owner_recovery_fingerprint is not None:
+            document["ownerRecoveryFingerprint"] = self.owner_recovery_fingerprint
+        return document
 
 
 @dataclass(frozen=True)
@@ -273,7 +291,9 @@ class ContinuitySummary:
         _optional_text(self.excerpt, name="summary excerpt")
         _optional_text(self.status, name="summary status")
         actions = tuple(self.actions)
-        if not actions or any(action not in {"activate", "delete"} for action in actions):
+        if not actions or any(
+            action not in {"activate", "delete"} for action in actions
+        ):
             raise ValueError("summary actions must contain supported actions")
         if len(set(actions)) != len(actions):
             raise ValueError("summary actions must be unique")
