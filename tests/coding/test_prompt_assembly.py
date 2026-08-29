@@ -34,6 +34,30 @@ def test_default_system_prompt_includes_exploration_progress_guidelines() -> Non
     assert "多步骤任务阶段结束时说明结果、验证和下一步或阻塞。" in system_prompt
 
 
+def test_plc6_kernel_prompt_has_no_unmounted_standard_tool_claims() -> None:
+    from loushang.coding.prompt import (
+        CODING_KERNEL_SYSTEM_PROMPT,
+        CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT,
+        DEFAULT_CODING_SYSTEM_PROMPT,
+    )
+
+    for tool_claim in (
+        "execute commands",
+        "write new files",
+        "Prefer specialized tools over bash",
+        "before editing",
+    ):
+        assert tool_claim not in CODING_KERNEL_SYSTEM_PROMPT
+        assert tool_claim in CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT
+
+    # PLC6A is a shadow boundary: the supported default remains unchanged until
+    # coding.base is admitted and published by its production owners.
+    assert DEFAULT_CODING_SYSTEM_PROMPT.startswith(
+        "You are an expert coding assistant operating inside loushang"
+    )
+    assert "You help users by reading files" in DEFAULT_CODING_SYSTEM_PROMPT
+
+
 def test_assemble_prompt_returns_prompt_assembly() -> None:
     from pathlib import Path
 

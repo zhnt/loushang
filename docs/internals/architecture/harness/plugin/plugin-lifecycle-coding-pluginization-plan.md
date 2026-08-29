@@ -37,8 +37,10 @@
   both `always` and `on_demand` modes through Tool execution, status, explicit
   stop and exact-generation retirement. The Product-owned exact-policy Approval
   owner, default cutover and deletion of the deferred runtime, early Tool
-  registrar and legacy cleanup input are implemented. PLC6 through PLC9 and the
-  public Plugin SDK remain unimplemented.
+  registrar and legacy cleanup input are implemented. PLC6A now freezes the
+  inert Composition Set request and Kernel/Base Prompt boundary; PLC6's live
+  `coding.base` owner cutovers, PLC7 through PLC9, and the public Plugin SDK
+  remain unimplemented.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/
@@ -1297,6 +1299,18 @@ owner-correct disposal, and deletion of deferred/early-binding peers.
 This remains the first production Graph proof.
 
 ### PLC6: `coding.base` Production Resource Plugin
+
+PLC6A implementation status (2026-08-29): the conservative production boundary
+is frozen in the
+[PLC6 contract](plugin-lifecycle-plc6-contract.md). Coding now exposes one
+canonical, fingerprinted and side-effect-free expansion for
+`coding-minimal`, `coding-standard`, and `coding-architecture`. The records are
+Product requests only: they do not mutate management desired state or perform
+Plugin selection, admission, publication, refresh, or retirement. The target
+Kernel Prompt is separately characterized and contains no standard Tool claim,
+while the currently supported default prompt remains byte-for-byte unchanged
+until the Resource-owner production cutover. PLC6B through PLC6E remain
+unimplemented.
 
 Scope:
 
