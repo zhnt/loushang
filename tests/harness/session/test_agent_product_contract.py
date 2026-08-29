@@ -657,6 +657,10 @@ def test_initial_catalog_bootstrap_publishes_one_graph_owned_session_view(
         assert session._staged_resource_candidate is None
         assert session._resource_catalog_snapshot is not None
         assert session._resource_catalog_projection is not None
+        statuses = session.list_skill_statuses()
+        assert [(status.name, status.status) for status in statuses] == [
+            ("review", "effective")
+        ]
         assert session.resource_bundle is not base_bundle
         assert session.resource_bundle is not None
         assert [skill.name for skill in session.resource_bundle.skills] == ["review"]

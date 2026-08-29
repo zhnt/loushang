@@ -31,6 +31,46 @@ def _command_descriptor(item: dict[str, object]) -> SimpleNamespace:
     )
 
 
+def _skill_status(
+    *,
+    name: str,
+    path: Path,
+    description: str,
+    canonical_name: str | None = None,
+    source_kind: str = "project_local",
+    source_scope: str = "project",
+    source: str = "filesystem",
+    source_root: Path | None = None,
+    declared_enabled: bool = True,
+    declared_model_invocable: bool = True,
+    effective: bool = True,
+    primary: bool = True,
+    status: str = "effective",
+    status_reason: str = "source_precedence",
+    diagnostics: tuple[object, ...] = (),
+) -> SimpleNamespace:
+    canonical = canonical_name or f"{name}/SKILL.md"
+    return SimpleNamespace(
+        name=name,
+        id=canonical,
+        canonical_name=canonical,
+        description=description,
+        source_path=path,
+        source_kind=source_kind,
+        source_scope=source_scope,
+        source=source,
+        source_root=source_root,
+        declared_enabled=declared_enabled,
+        declared_model_invocable=declared_model_invocable,
+        effective=effective,
+        primary=primary,
+        model_invocable=effective and declared_model_invocable,
+        status=status,
+        status_reason=status_reason,
+        diagnostics=diagnostics,
+    )
+
+
 class FakeSession:
     def __init__(self, session_id: str) -> None:
         self.session_id = session_id
@@ -43,7 +83,9 @@ class FakeSession:
         self.set_jsonl_export_calls: list[str | None] = []
         self.get_available_models_calls = 0
         self.list_commands_calls = 0
+        self.list_skill_statuses_calls = 0
         self.commands_payload = []
+        self.skill_statuses_payload: tuple[object, ...] = ()
         self.diagnostics_payload = []
         self.execute_command_calls: list[tuple[str, str]] = []
         self.execute_command_result: object | None = None
@@ -90,6 +132,10 @@ class FakeSession:
     def list_commands(self):
         self.list_commands_calls += 1
         return self.commands_payload
+
+    def list_skill_statuses(self) -> tuple[object, ...]:
+        self.list_skill_statuses_calls += 1
+        return self.skill_statuses_payload
 
     def get_last_diagnostics(self, limit: int = 50):
         return self.diagnostics_payload[-limit:]
@@ -867,6 +913,8 @@ def test_cli_help_explains_runtime_provenance_flags() -> None:
     )
     assert "show executable, import, Git, and bundled component provenance" in output
     assert "with --version, show runtime provenance" in output
+    assert "--resource-authority-mode" in output
+    assert "Select Catalog authority (default)" in output
 
 
 def test_parse_args_supports_resume_session_reference() -> None:
@@ -1294,6 +1342,7 @@ def test_default_runtime_builder_applies_resource_and_prompt_options(tmp_path) -
             no_context_files=True,
             system_prompt=str(system_file),
             append_system_prompt=(str(append_file), "Inline append"),
+            resource_authority_mode="legacy_explicit",
         ),
         cwd=project_root,
         session_dir=tmp_path / "sessions",
@@ -1645,6 +1694,8 @@ def test_parse_args_supports_command_dispatch_flags() -> None:
     args = parse_args(
         [
             "--source-info",
+            "--resource-authority-mode",
+            "legacy_explicit",
             "--source-info-format",
             "json",
             "--list-commands",
@@ -1689,6 +1740,7 @@ def test_parse_args_supports_command_dispatch_flags() -> None:
     )
 
     assert args.source_info is True
+    assert args.resource_authority_mode == "legacy_explicit"
     assert args.source_info_format == "json"
     assert args.list_commands is True
     assert args.list_commands_format == "json"
@@ -1712,6 +1764,14 @@ def test_parse_args_supports_command_dispatch_flags() -> None:
     assert args.command_args == "now"
     assert args.command_result_format == "json"
     assert args.messages == ("hello",)
+
+
+def test_parse_args_defaults_to_catalog_resource_authority() -> None:
+    from loushang.coding.cli.args import parse_args
+
+    args = parse_args([])
+
+    assert args.resource_authority_mode == "catalog_required"
 
 
 def test_parse_args_maps_pi_style_package_subcommands_to_package_manager_commands() -> (
@@ -7558,34 +7618,29 @@ def test_run_cli_lists_diagnostics_as_tsv_and_returns_early(tmp_path) -> None:
 
 def test_run_cli_lists_skills_as_json(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.harness.resources.diagnostics import resource_diagnostic
-    from loushang.harness.resources.types import SkillDescriptor
 
     session = FakeSession("session-1")
-    session.resource_bundle.skills = [
-        SkillDescriptor(
+    session.skill_statuses_payload = (
+        _skill_status(
             name="debug",
-            source_path=Path("/tmp/project/skills/debug/SKILL.md"),
-            content="Debug skill",
+            path=Path("/tmp/project/skills/debug/SKILL.md"),
             description="Debug failures by tracing the narrowest failing path.",
-            disable_model_invocation=True,
+            declared_model_invocable=False,
             source_kind="project_local",
             source_scope="project",
             source="filesystem",
             canonical_name="debug/SKILL.md",
             source_root=Path("/tmp/project/skills"),
             diagnostics=(
-                resource_diagnostic(
+                SimpleNamespace(
                     code="invalid_skill_description",
-                    message="Skill frontmatter description is required.",
-                    source_path=Path("/tmp/project/skills/debug/SKILL.md"),
-                    resource_type="skill",
-                    source_kind="project_local",
-                    metadata={"field": "description"},
+                    reason="Skill frontmatter description is required.",
+                    source_id="project-standard",
+                    details=(("field", "description"),),
                 ),
             ),
-        )
-    ]
+        ),
+    )
     runtime = FakeRuntime(session)
     stdout = StringIO()
     stderr = StringIO()
@@ -7600,7 +7655,7 @@ def test_run_cli_lists_skills_as_json(tmp_path) -> None:
             services=_fake_services(),
             runtime_builder=lambda **kwargs: runtime,
         )
-        assert exit_code == 0
+        assert exit_code == 0, (stdout.getvalue(), stderr.getvalue())
 
     asyncio.run(scenario())
 
@@ -7617,14 +7672,19 @@ def test_run_cli_lists_skills_as_json(tmp_path) -> None:
             "source_root": "/tmp/project/skills",
             "disable_model_invocation": True,
             "enabled": True,
+            "declared_enabled": True,
+            "declared_model_invocable": False,
+            "effective": True,
+            "primary": True,
+            "model_invocable": False,
+            "status": "effective",
+            "status_reason": "source_precedence",
             "diagnostics": [
                 {
                     "code": "invalid_skill_description",
-                    "message": "Skill frontmatter description is required.",
-                    "path": "/tmp/project/skills/debug/SKILL.md",
-                    "resource_type": "skill",
-                    "source_kind": "project_local",
-                    "metadata": {"field": "description"},
+                    "reason": "Skill frontmatter description is required.",
+                    "source_id": "project-standard",
+                    "details": {"field": "description"},
                 }
             ],
         }
@@ -7647,7 +7707,19 @@ def test_run_cli_lists_project_skill_provenance_as_json(tmp_path) -> None:
     loader = DefaultResourceLoader()
     bundle = loader.discover_resources(tmp_path)
     session = FakeSession("session-1")
-    session.resource_bundle = bundle
+    skill = bundle.skills[0]
+    session.skill_statuses_payload = (
+        _skill_status(
+            name=skill.name,
+            path=skill.source_path,
+            description=skill.description or "",
+            canonical_name=skill.canonical_name,
+            source_kind=skill.source_kind,
+            source_scope=skill.source_scope,
+            source=skill.source,
+            source_root=skill.source_root,
+        ),
+    )
     runtime = FakeRuntime(session)
     stdout = StringIO()
     stderr = StringIO()
@@ -7679,9 +7751,96 @@ def test_run_cli_lists_project_skill_provenance_as_json(tmp_path) -> None:
             "source_root": str(tmp_path / "skills"),
             "disable_model_invocation": False,
             "enabled": True,
+            "declared_enabled": True,
+            "declared_model_invocable": True,
+            "effective": True,
+            "primary": True,
+            "model_invocable": True,
+            "status": "effective",
+            "status_reason": "source_precedence",
             "diagnostics": [],
         }
     ]
+    assert stderr.getvalue() == ""
+
+
+def test_run_cli_lists_skills_from_real_catalog_session(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.ai.model import Endpoint, Model, ModelSelection, Provider
+    from loushang.ai.model.registry import ModelRegistry
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.coding.control import ControlConfig, SettingsManager
+
+    skill_dir = tmp_path / "skills" / "review"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: review\ndescription: Review through the real Catalog.\n---\n"
+        "Review body.\n",
+        encoding="utf-8",
+    )
+    endpoint = Endpoint(
+        id="test-endpoint",
+        provider="faux",
+        api="test",
+        models={
+            "beta": Model(
+                id="beta",
+                provider="faux",
+                endpoint="test-endpoint",
+            )
+        },
+    )
+    services = create_services(
+        ai_model_registry=ModelRegistry.from_providers(
+            {
+                "faux": Provider(
+                    id="faux",
+                    endpoints={endpoint.id: endpoint},
+                )
+            }
+        ),
+        settings_manager=SettingsManager(
+            ControlConfig(
+                default_model=ModelSelection(
+                    provider="faux",
+                    endpoint_id="test-endpoint",
+                    model_id="beta",
+                )
+            )
+        ),
+    )
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+    stdout = StringIO()
+    stderr = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            [
+                "--no-session",
+                "--list-skills",
+                "--list-skills-format",
+                "json",
+            ],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=tmp_path,
+            services=services,
+        )
+        assert exit_code == 0, stderr.getvalue()
+
+    asyncio.run(scenario())
+
+    [skill] = json.loads(stdout.getvalue())
+    assert (skill["name"], skill["status"], skill["effective"]) == (
+        "review",
+        "effective",
+        True,
+    )
+    assert skill["description"] == "Review through the real Catalog."
     assert stderr.getvalue() == ""
 
 

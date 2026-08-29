@@ -42,8 +42,12 @@ from loushang.harness.capabilities.component_host import (
 from loushang.harness.capabilities.effective_runtime import (
     runtime_profile_fingerprint,
 )
+from loushang.harness.capabilities.resources_consumers import (
+    ResourceSkillStatusCatalogCapabilityConsumer,
+)
 from loushang.harness.capabilities.resources_contracts import (
-    RESOURCES_CAPABILITY_DEFINITION_V2,
+    RESOURCES_CAPABILITY_DEFINITION_V4,
+    RESOURCES_SKILL_STATUS_CATALOG_LOAD_REQUIREMENT,
 )
 from loushang.harness.capabilities.resources_provider import (
     resources_capability_provider_binding,
@@ -78,6 +82,13 @@ from loushang.harness.resource_catalog.session_bootstrap import (
     InitialExtensionGenerationHost,
     InitialSessionResourceCatalogBootstrap,
     InitialSessionResourcePublication,
+)
+from loushang.harness.resources._skill_catalog_consumer import (
+    SkillCatalogConsumer,
+    SkillCatalogSummary,
+)
+from loushang.harness.resources._skill_catalog_status import (
+    SkillCatalogStatusSummary,
 )
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.catalog import PackageSummaryProvider
@@ -282,6 +293,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self._initial_resource_catalog_bootstrap = initial_resource_catalog_bootstrap
         self._resource_catalog_snapshot: object | None = None
         self._resource_catalog_projection: object | None = None
+        self._skill_catalog_consumer: SkillCatalogConsumer | None = None
         self._extension_declaration_preflight = extension_declaration_preflight
         self._extension_bridge = AgentSessionExtensionBridge()
         if (
@@ -827,6 +839,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 session_manager=self.session_manager,
                 get_extension_runner=lambda: self._extension_runner,
                 get_resource_bundle=lambda: self.resource_bundle,
+                get_effective_skills=self._effective_skill_summaries,
                 get_diagnostics_service=lambda: self.diagnostics_service,
                 diagnostics_runtime=diagnostics_runtime,
                 standard_ports=StandardSessionCommandPorts(
@@ -883,6 +896,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
             foundation=SessionFoundationInputs(
                 resource_loader=self._resource_loader,
                 get_resource_bundle=lambda: self.resource_bundle,
+                get_effective_skills=self._effective_skill_summaries,
                 tool_registry=self._tool_registry,
                 allowed_tool_names=allowed_tool_names,
                 active_tool_names=active_tool_names,
@@ -1039,6 +1053,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         owner_cleanup_failed = False
         async with self._model_call_bind_lock:
             self._model_call_consumer = None
+            self._skill_catalog_consumer = None
             self._side_question_consumer = None
             self._transcript_consumer = None
             self._workspace_capability_ports.invalidate()
@@ -1210,6 +1225,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 StagedSessionCapabilityOwnerGeneration, ...
             ] = ()
             resource_consumer_installed = False
+            skill_catalog_consumer_installed = False
             try:
                 composition_inputs = self._capability_composition_inputs
                 component_host = self._capability_component_host
@@ -1267,6 +1283,14 @@ class AgentProductSession(AgentSessionAdapterMixin):
                         SESSION_RESOURCE_COMPOSITION_REQUIREMENT
                     )
                 )
+                if catalog_bootstrap is not None:
+                    skill_catalog = ResourceSkillStatusCatalogCapabilityConsumer(
+                        self._capability_graph_runtime.capture(
+                            RESOURCES_SKILL_STATUS_CATALOG_LOAD_REQUIREMENT
+                        )
+                    )
+                    self._skill_catalog_consumer = SkillCatalogConsumer(skill_catalog)
+                    skill_catalog_consumer_installed = True
                 side_question = SessionSideQuestionCapabilityConsumer(
                     self._capability_graph_runtime.capture(
                         SESSION_SIDE_QUESTION_REQUIREMENT
@@ -1342,6 +1366,8 @@ class AgentProductSession(AgentSessionAdapterMixin):
                         )
                 if resource_consumer_installed:
                     self._resource_capability_ports.invalidate()
+                if skill_catalog_consumer_installed:
+                    self._skill_catalog_consumer = None
                 for prepared in reversed(prepared_components):
                     try:
                         await prepared.abort_uncommitted()
@@ -1480,6 +1506,8 @@ class AgentProductSession(AgentSessionAdapterMixin):
 
     def _build_resource_capability_provider_binding(
         self,
+        *,
+        enable_skill_catalog_v4: bool = False,
     ) -> CapabilityBundleProviderBinding:
         """Freeze the current Resource candidate through one mount-owner seam."""
 
@@ -1488,13 +1516,16 @@ class AgentProductSession(AgentSessionAdapterMixin):
             profile=candidate.profile,
             scope_instance_id=self._capability_graph_runtime.runtime_id,
             staged_candidate=candidate,
+            enable_skill_catalog_v4=enable_skill_catalog_v4,
         )
 
     def _replace_initial_resource_catalog_graph_inputs(self) -> None:
-        resource_binding = self._build_resource_capability_provider_binding()
-        if resource_binding.provider.implementation_version != 2:
+        resource_binding = self._build_resource_capability_provider_binding(
+            enable_skill_catalog_v4=True
+        )
+        if resource_binding.provider.implementation_version != 4:
             raise RuntimeError(
-                "initial Resource Catalog did not select the v2 Resources Provider"
+                "initial Resource Catalog did not select the v4 Resources Provider"
             )
         composition_inputs = self._capability_composition_inputs
         external_definitions = (
@@ -1513,7 +1544,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
         workspace_binding = self._workspace_capability_binding
         definitions = (
             MODEL_INPUT_CAPABILITY_DEFINITION,
-            RESOURCES_CAPABILITY_DEFINITION_V2,
+            RESOURCES_CAPABILITY_DEFINITION_V4,
             SESSION_CAPABILITY_DEFINITION,
             *((WORKSPACE_CAPABILITY_DEFINITION,) if workspace_binding else ()),
             *external_definitions,
@@ -1538,6 +1569,29 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 providers=providers,
             )
         )
+
+    def list_skill_statuses(self) -> tuple[SkillCatalogStatusSummary, ...]:
+        """Return exact-v4 all-Skill status records for Product presentation."""
+
+        consumer = self._skill_catalog_consumer
+        if consumer is None:
+            raise RuntimeError(
+                "Session Skill Catalog v4 capture is not available"
+            )
+        return consumer.list_skill_statuses()
+
+    def _effective_skill_summaries(
+        self,
+    ) -> tuple[SkillCatalogSummary, ...] | None:
+        consumer = self._skill_catalog_consumer
+        if consumer is not None:
+            return consumer.list_effective_skills()
+        # A Catalog-intended Session must never enumerate the compatibility
+        # Bundle while exact-v4 is still being prepared.  An empty projection
+        # keeps construction body-free; publication rebuilds the view.
+        if self._initial_resource_catalog_bootstrap is not None:
+            return ()
+        return None
 
     def _capture_initial_resource_publication(self) -> object:
         return (

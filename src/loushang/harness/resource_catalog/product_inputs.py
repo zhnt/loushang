@@ -39,6 +39,10 @@ from loushang.harness.resources._catalog_native_source import (
 from loushang.harness.resources._catalog_package_source import (
     PackageResourceDiscoveryBudget,
 )
+from loushang.harness.resources._catalog_records import (
+    ResourceIdentity,
+    build_activation_policy_snapshot,
+)
 from loushang.harness.resources._discovery_conventions import (
     DEFAULT_CONTEXT_FILE_NAMES,
 )
@@ -170,6 +174,7 @@ class InitialResourceCatalogProductSelection:
     native_discovery_budget: NativeResourceDiscoveryBudget | None = None
     package_discovery_budget: PackageResourceDiscoveryBudget | None = None
     embedded_discovery_budget: EmbeddedResourceDiscoveryBudget | None = None
+    disabled_skill_selectors: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if (
@@ -262,10 +267,23 @@ class InitialResourceCatalogProductSelection:
             EmbeddedResourceDiscoveryBudget,
         ):
             raise TypeError("Product embedded Resource discovery budget is invalid")
+        disabled_skill_selectors = tuple(self.disabled_skill_selectors)
+        if any(
+            not isinstance(item, str) or not item.strip()
+            for item in disabled_skill_selectors
+        ):
+            raise ValueError("Product disabled Skill selectors must not be empty")
+        if len(set(disabled_skill_selectors)) != len(disabled_skill_selectors):
+            raise ValueError("Product disabled Skill selectors must not repeat")
         object.__setattr__(self, "native_roots", native_roots)
         object.__setattr__(self, "package_resources", package_resources)
         object.__setattr__(self, "embedded_collections", embedded_collections)
         object.__setattr__(self, "context_file_names", context_file_names)
+        object.__setattr__(
+            self,
+            "disabled_skill_selectors",
+            disabled_skill_selectors,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -376,6 +394,19 @@ class InitialResourceCatalogProductAdapter:
         )
         package_resources: list[AdmittedPackageResource] = []
         embedded_handles: list[EmbeddedResourceCollectionHandle] = []
+        disabled_skill_identities = tuple(
+            ResourceIdentity(
+                resource_kind="skill",
+                schema_id="loushang.resource.skill",
+                schema_version=1,
+                public_id=skill.id or skill.name,
+            )
+            for skill in base_resource_bundle.skills
+            if _skill_matches_selectors(
+                skill,
+                selection.disabled_skill_selectors,
+            )
+        )
         try:
             for package_spec in selection.package_resources:
                 package_resources.append(
@@ -411,6 +442,12 @@ class InitialResourceCatalogProductAdapter:
                     package_discovery_budget=(selection.package_discovery_budget),
                     embedded_discovery_budget=(selection.embedded_discovery_budget),
                     context_file_names=selection.context_file_names,
+                    activation_policy=build_activation_policy_snapshot(
+                        policy_revision=(
+                            f"{selection.product_policy_revision}:skill-activation"
+                        ),
+                        disabled_identities=disabled_skill_identities,
+                    ),
                 )
             )
         except BaseException as preparation_error:
@@ -431,6 +468,23 @@ class InitialResourceCatalogProductAdapter:
                         f"{cleanup_error!r}"
                     )
             raise
+
+
+def _skill_matches_selectors(
+    skill: object,
+    selectors: tuple[str, ...],
+) -> bool:
+    if not selectors:
+        return False
+    return bool(
+        set(selectors)
+        & {
+            str(getattr(skill, "name", "")),
+            str(getattr(skill, "id", "")),
+            str(getattr(skill, "canonical_name", "")),
+            str(getattr(skill, "source_path", "")),
+        }
+    )
 
 
 __all__ = [

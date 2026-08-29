@@ -133,6 +133,34 @@ EXPECTED_CALL_SITES = {
 }
 
 EXPECTED_SKILLS_ATTRIBUTE_LOAD_SITES = {
+    # The Product adapter compiles legacy disabled-name settings to typed
+    # activation identities before Catalog composition; it does not select the
+    # effective Skill set.
+    (
+        Path("src/loushang/harness/resource_catalog/product_inputs.py"),
+        "InitialResourceCatalogProductAdapter._mint_bootstrap",
+    ),
+    # RCP5's private projections validate immutable Catalog-owned Skill tuples.
+    (
+        Path("src/loushang/harness/resources/_skill_catalog_consumer.py"),
+        "EffectiveSkillCatalogProjection.__post_init__",
+    ),
+    (
+        Path("src/loushang/harness/resources/_skill_catalog_consumer.py"),
+        "SkillCatalogConsumer.__init__",
+    ),
+    (
+        Path("src/loushang/harness/resources/_skill_catalog_consumer.py"),
+        "_bind_projection_to_snapshot",
+    ),
+    (
+        Path("src/loushang/harness/resources/_skill_catalog_consumer.py"),
+        "_bind_status_projection_to_snapshot",
+    ),
+    (
+        Path("src/loushang/harness/resources/_skill_catalog_status.py"),
+        "SkillCatalogStatusProjection.__post_init__",
+    ),
     (
         Path("src/loushang/harness/commands/resources.py"),
         "list_resource_command_descriptors",
@@ -507,20 +535,19 @@ def test_rcp0_discovery_and_projection_caller_inventory_is_exact() -> None:
         assert _call_sites(sources, callable_name) == expected
 
 
-def test_rcp0_skill_fallback_projection_and_eager_body_sinks_are_exact() -> None:
+def test_rcp0_skill_fallback_is_deleted_and_eager_body_sinks_are_exact() -> None:
     sources = _source_texts()
-    skill_listing_path = Path("src/loushang/harness/cli/skill_listing.py")
 
     assert _getattr_sites(
         sources,
         receiver_name="bundle",
         attribute_name="skills",
-    ) == {(skill_listing_path, "list_skill_records")}
+    ) == set()
     assert _getattr_sites(
         sources,
         receiver_name="loader",
         attribute_name="get_skills",
-    ) == {(skill_listing_path, "list_skill_records")}
+    ) == set()
     assert _call_sites(sources, "get_skills") == set()
     assert (
         _attribute_load_sites(sources, "skills") == EXPECTED_SKILLS_ATTRIBUTE_LOAD_SITES
@@ -535,13 +562,19 @@ def test_rcp0_skill_fallback_projection_and_eager_body_sinks_are_exact() -> None
             "_preflight_resource_input",
         ),
         (
-            Path("src/loushang/harness/commands/resources.py"),
-            "command_description_from_skill",
-        ),
-        (
             Path("src/loushang/method/skill_adapter.py"),
             "method_from_skill",
         ),
+    }
+    assert _getattr_sites(
+        sources,
+        receiver_name="skill",
+        attribute_name="content",
+    ) == {
+        (
+            Path("src/loushang/harness/commands/resources.py"),
+            "command_description_from_skill",
+        )
     }
 
 

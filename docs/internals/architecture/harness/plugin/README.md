@@ -81,6 +81,10 @@ Neither may silently override a narrower implemented owner contract.
   binds that lifecycle to real Coding configuration, `--resume`, TUI stable
   references, canonical machine state, recovery diagnostics, retry, and
   process-owned shutdown.
+- [RCP5 Resource Catalog Skill Convergence](resource-catalog-rcp5-contract.md)
+  freezes the conservative, exact-generation typed Skill Consumer and the
+  ordered deletion of legacy Skill/Resource peer authority. Its first slice is
+  internal and does not authorize Product cutover.
 
 These contracts refine the architecture only inside their stated versions and
 implemented slices. An unimplemented Worker, Skill-action, remote-service, or

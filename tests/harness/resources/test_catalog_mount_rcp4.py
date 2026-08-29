@@ -22,7 +22,10 @@ from loushang.harness.capabilities.resources_consumers import (
 from loushang.harness.capabilities.resources_contracts import (
     RESOURCES_CAPABILITY_DEFINITION,
     RESOURCES_CAPABILITY_DEFINITION_V2,
+    RESOURCES_CAPABILITY_DEFINITION_V3,
+    RESOURCES_CAPABILITY_DEFINITION_V4,
     RESOURCES_CATALOG_LOAD_REQUIREMENT,
+    RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT,
 )
 from loushang.harness.capabilities.resources_provider import (
     resources_capability_provider_binding,
@@ -125,6 +128,25 @@ def _replace_resource_runtime(profile, implementation: str):  # type: ignore[no-
     return replace(profile, capabilities=tuple(capabilities))
 
 
+def test_v2_and_v3_resource_contract_shapes_remain_frozen_beside_v4() -> None:
+    expected_facets = (
+        "resource.runtime",
+        "prompt.sections",
+        "skill.activation",
+        "tool.packs",
+        "command.packs",
+        "resource.catalog",
+        "resource.load",
+    )
+
+    assert RESOURCES_CAPABILITY_DEFINITION_V2.contract_version == 2
+    assert RESOURCES_CAPABILITY_DEFINITION_V2.facets == expected_facets
+    assert RESOURCES_CAPABILITY_DEFINITION_V3.contract_version == 3
+    assert RESOURCES_CAPABILITY_DEFINITION_V3.facets == expected_facets
+    assert RESOURCES_CAPABILITY_DEFINITION_V4.contract_version == 4
+    assert RESOURCES_CAPABILITY_DEFINITION_V4.facets == expected_facets
+
+
 def test_prepared_generation_is_one_candidate_child_and_root_cleanup_is_async(
     tmp_path: Path,
 ) -> None:
@@ -132,10 +154,18 @@ def test_prepared_generation_is_one_candidate_child_and_root_cleanup_is_async(
         _workspace, handles, _skill_body = _fixture(tmp_path)
         candidate = stage_resource_composition_candidate(_profile())
         await _prepare(candidate, handles, runtime_id="resource-owner:first")
+        bootstrap_handles = candidate._root_owned_handles()
 
         assert candidate.ownership_state == "root_owned"
         assert candidate.prepared_owner_generation_state == "root_owned"
         assert candidate.has_prepared_owner_generation is True
+        assert bootstrap_handles.resource_catalog_snapshot is not None
+        assert bootstrap_handles.resource_catalog_projection is None
+        assert bootstrap_handles._resource_skill_status_projection is not None
+        with pytest.raises(RuntimeError, match="not graph-owned"):
+            _ = candidate.resource_catalog_snapshot
+        with pytest.raises(RuntimeError, match="not graph-owned"):
+            _ = candidate._resource_skill_status_projection
         with pytest.raises(
             RuntimeError, match="already has a prepared owner generation"
         ):
@@ -146,6 +176,8 @@ def test_prepared_generation_is_one_candidate_child_and_root_cleanup_is_async(
         await candidate.dispose_root_owned()
         assert candidate.ownership_state == "disposed"
         assert candidate.prepared_owner_generation_state == "disposed"
+        with pytest.raises(RuntimeError, match="no longer root-owned"):
+            _ = bootstrap_handles.resource_catalog_snapshot
 
     asyncio.run(scenario())
 
@@ -158,6 +190,7 @@ def test_v2_provider_adopts_generation_and_serves_exact_catalog_load(
         profile = _profile()
         candidate = stage_resource_composition_candidate(profile)
         await _prepare(candidate, handles, runtime_id="resource-owner:mounted")
+        bootstrap_handles = candidate._root_owned_handles()
         binding = resources_capability_provider_binding(
             profile=profile,
             scope_instance_id="session:coding",
@@ -175,8 +208,26 @@ def test_v2_provider_adopts_generation_and_serves_exact_catalog_load(
         assert binding.provider.implementation_version == 2
         assert candidate.ownership_state == "graph_owned"
         assert candidate.prepared_owner_generation_state == "graph_owned"
+        assert candidate.resource_catalog_snapshot is not None
+        with pytest.raises(RuntimeError, match="no longer root-owned"):
+            _ = bootstrap_handles.resource_catalog_snapshot
         catalog = ResourceCatalogCapabilityConsumer(
             runtime.capture(RESOURCES_CATALOG_LOAD_REQUIREMENT)
+        )
+        with pytest.raises(RuntimeError, match="contract is incompatible"):
+            runtime.capture(RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT)
+        assert not hasattr(catalog, "projection")
+        assert not hasattr(
+            catalog.facets.require("resource.catalog"),
+            "projection",
+        )
+        assert not hasattr(
+            catalog.facets.require("resource.catalog"),
+            "skill_projection",
+        )
+        assert not hasattr(
+            catalog.facets.require("resource.catalog"),
+            "skill_status_projection",
         )
         snapshot = catalog.snapshot
         identity = next(

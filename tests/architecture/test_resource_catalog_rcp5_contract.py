@@ -1,0 +1,198 @@
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+
+CONTRACT_PATH = Path(
+    "docs/internals/architecture/harness/plugin/resource-catalog-rcp5-contract.md"
+)
+CONSUMER_PATH = Path(
+    "src/loushang/harness/resources/_skill_catalog_consumer.py"
+)
+STATUS_PROJECTION_PATH = Path(
+    "src/loushang/harness/resources/_skill_catalog_status.py"
+)
+README_PATH = Path("docs/internals/architecture/harness/plugin/README.md")
+SOURCE_ROOT = Path("src/loushang")
+CAPABILITY_PROVIDER_PATH = Path(
+    "src/loushang/harness/capabilities/resources_provider.py"
+)
+CAPABILITY_CONSUMER_PATH = Path(
+    "src/loushang/harness/capabilities/resources_consumers.py"
+)
+CAPABILITY_CONTRACT_PATH = Path(
+    "src/loushang/harness/capabilities/resources_contracts.py"
+)
+AGENT_PRODUCT_PATH = Path("src/loushang/harness/session/agent_product.py")
+COMPOSITION_RUNTIME_PATH = Path(
+    "src/loushang/harness/capabilities/composition_runtime.py"
+)
+PUBLIC_SURFACES = (
+    Path("src/loushang/harness/resources/__init__.py"),
+    Path("src/loushang/harness/__init__.py"),
+    Path("src/loushang/coding/__init__.py"),
+)
+PRIVATE_SKILL_SYMBOLS = (
+    "EffectiveSkillCatalogProjection",
+    "RESOURCES_CAPABILITY_DEFINITION_V3",
+    "RESOURCES_CAPABILITY_DEFINITION_V4",
+    "RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT",
+    "RESOURCES_SKILL_STATUS_CATALOG_LOAD_REQUIREMENT",
+    "ResourceSkillCatalogCapabilityConsumer",
+    "ResourceSkillStatusCatalogCapabilityConsumer",
+    "SkillCandidateStatus",
+    "SkillCatalogConsumer",
+    "SkillCatalogStatusProjectionError",
+    "SkillCatalogSummary",
+    "SkillCatalogStatusProjection",
+    "SkillCatalogStatusSummary",
+    "build_skill_catalog_status_projection",
+)
+
+
+def test_rcp5_contract_freezes_conservative_order_and_authority() -> None:
+    contract = CONTRACT_PATH.read_text(encoding="utf-8")
+    normalized_contract = " ".join(contract.split())
+    readme = README_PATH.read_text(encoding="utf-8")
+
+    assert "A Skill is a Resource, not a Plugin" in contract
+    assert "RCP5.1 \u2014 typed read path" in contract
+    assert "RCP5.2A \u2014 owner-native status substrate" in contract
+    assert "RCP5.2B \u2014 exact-v4 read-only cutover" in contract
+    assert "exact-v2 and exact-v3 Graph contracts remain unchanged" in contract
+    assert "never a legacy fallback" in contract
+    assert "RCP5.2B default ingress is complete" in contract
+    assert "admitted initial Resource Catalog" in normalized_contract
+    assert "forbidden silent legacy fallback" in contract
+    assert "RCP5.2B default ingress authority" in contract
+    assert "`catalog_required` is the public default" in contract
+    assert "`legacy_explicit` is a caller-selected compatibility boundary" in contract
+    assert "input-sensitive or exception-driven `auto` mode" in contract
+    assert "The mode is Product policy, not a ResourceLoader type test" in contract
+    assert "Raw `package_roots` and non-Plugin `package_sources`" in contract
+    assert "RCP5.5 \u2014 peer deletion" in contract
+    assert "Production cutover starts only after" in contract
+    assert "Only then is PLC6" in contract
+    assert readme.count("resource-catalog-rcp5-contract.md") == 1
+
+
+def test_rcp5_typed_consumer_has_no_legacy_or_product_dependency() -> None:
+    source = CONSUMER_PATH.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(CONSUMER_PATH))
+    imported_modules = {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module is not None
+    } | {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+
+    assert not imported_modules & {
+        "loushang.coding",
+        "loushang.harness.resources.loader",
+        "loushang.harness.resources.skills",
+        "loushang.harness.resources._loader_pipeline",
+        "loushang.harness.resources._loader_precedence",
+        "loushang.harness.resources._loader_resolution",
+    }
+    assert "ResourceBundle" not in source
+    assert "SkillLoader" not in source
+
+
+def test_rcp5_consumer_stays_private_and_product_uses_only_exact_v4() -> None:
+    target = "loushang.harness.resources._skill_catalog_consumer"
+    importers: set[Path] = set()
+    for path in SOURCE_ROOT.rglob("*.py"):
+        if path == CONSUMER_PATH:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imported = {
+            node.module
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module is not None
+        } | {
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        }
+        if target in imported:
+            importers.add(path)
+
+    assert importers == {
+        CAPABILITY_PROVIDER_PATH,
+        CAPABILITY_CONSUMER_PATH,
+        AGENT_PRODUCT_PATH,
+    }
+    for path in PUBLIC_SURFACES:
+        source = path.read_text(encoding="utf-8")
+        for symbol in PRIVATE_SKILL_SYMBOLS:
+            assert symbol not in source
+
+    v3_opt_in_mentions = {
+        path
+        for path in SOURCE_ROOT.rglob("*.py")
+        if "enable_skill_catalog_v3"
+        in path.read_text(encoding="utf-8")
+    }
+    assert v3_opt_in_mentions == {CAPABILITY_PROVIDER_PATH}
+    provider_source = CAPABILITY_PROVIDER_PATH.read_text(encoding="utf-8")
+    assert "enable_skill_catalog_v3: bool = False" in provider_source
+    v4_opt_in_mentions = {
+        path
+        for path in SOURCE_ROOT.rglob("*.py")
+        if "enable_skill_catalog_v4"
+        in path.read_text(encoding="utf-8")
+    }
+    assert v4_opt_in_mentions == {CAPABILITY_PROVIDER_PATH, AGENT_PRODUCT_PATH}
+    product_source = AGENT_PRODUCT_PATH.read_text(encoding="utf-8")
+    assert "RESOURCES_SKILL_STATUS_CATALOG_LOAD_REQUIREMENT" in product_source
+    assert "RESOURCES_SKILL_CATALOG_LOAD_REQUIREMENT" not in product_source
+
+
+def test_rcp52_status_projection_stays_with_the_resource_owner() -> None:
+    target = "loushang.harness.resources._skill_catalog_status"
+    importers: set[Path] = set()
+    for path in SOURCE_ROOT.rglob("*.py"):
+        if path == STATUS_PROJECTION_PATH:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imported = {
+            node.module
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module is not None
+        } | {
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        }
+        if target in imported:
+            importers.add(path)
+
+    assert importers == {
+        Path("src/loushang/harness/capabilities/resources_consumers.py"),
+        Path("src/loushang/harness/capabilities/resources_provider.py"),
+        Path("src/loushang/harness/resource_catalog/generation.py"),
+        Path("src/loushang/harness/resource_catalog/shadow.py"),
+        Path("src/loushang/harness/resources/_skill_catalog_consumer.py"),
+        AGENT_PRODUCT_PATH,
+    }
+    source = STATUS_PROJECTION_PATH.read_text(encoding="utf-8")
+    assert ".content" not in source
+    assert ".metadata" not in source
+    assert ".opaque_locator" not in source
+
+    contracts = CAPABILITY_CONTRACT_PATH.read_text(encoding="utf-8")
+    provider = CAPABILITY_PROVIDER_PATH.read_text(encoding="utf-8")
+    consumer = CAPABILITY_CONSUMER_PATH.read_text(encoding="utf-8")
+    composition = COMPOSITION_RUNTIME_PATH.read_text(encoding="utf-8")
+    assert "RESOURCES_CAPABILITY_DEFINITION_V4" in contracts
+    assert "RESOURCES_SKILL_STATUS_CATALOG_LOAD_REQUIREMENT" in contracts
+    assert "skill_status_projection" in provider
+    assert "skill_status_projection" in consumer
+    assert "def _resource_skill_status_projection" in composition
+    assert "def resource_skill_status_projection" not in composition

@@ -42,6 +42,9 @@ from loushang.harness.resources._catalog_source_contracts import (
 from loushang.harness.resources._discovery_conventions import (
     DEFAULT_CONTEXT_FILE_NAMES,
 )
+from loushang.harness.resources._skill_catalog_status import (
+    SkillCatalogStatusProjection,
+)
 
 ResourceOwnerGenerationState = Literal[
     "root_owned",
@@ -130,6 +133,16 @@ class PreparedResourceOwnerGeneration:
         }:
             raise RuntimeError("Resource owner generation is retiring or disposed")
         return self._shadow.catalog_projection
+
+    @property
+    def _skill_status_projection(self) -> SkillCatalogStatusProjection:
+        if self._ownership not in {
+            "root_owned",
+            "graph_constructing",
+            "graph_owned",
+        }:
+            raise RuntimeError("Resource owner generation is retiring or disposed")
+        return self._shadow.skill_status_projection
 
     def load_handle(self, identity: ResourceIdentity) -> ResourceLoadHandle:
         self._require_graph_owned()

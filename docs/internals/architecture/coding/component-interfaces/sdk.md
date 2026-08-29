@@ -42,6 +42,7 @@
 - `DiagnosticsQuery`
 - `DiagnosticSummary`
 - `ExtensionFlagValues`
+- `ResourceAuthorityMode`
 - `AgentSession`
 - `AgentSessionRuntime`
 
@@ -55,6 +56,7 @@
 
 - 语义上对齐 `reference CLI` 的 embedding / programmatic entry surface
 - `create_agent_session(...)` 保持兼容，继续返回 `AgentSession`
+- session 创建入口默认使用 `resource_authority_mode="catalog_required"`；尚未迁移的自定义 loader 或原始 package path 必须由宿主显式选择 `legacy_explicit`，不存在自动降级。CLI 提供等价的 `--resource-authority-mode legacy_explicit` 显式迁移开关
 - `create_agent_session_result(...)` 提供 Python 风格的结构化创建结果，暴露创建期 session、resource bundle、diagnostics、cwd audit snapshot
 - `create_agent_session_services(...)` 对齐 `reference CLI` 的 cwd-bound service creation，暴露 settings/resource/diagnostics 服务包
 - `create_agent_session_services(...)` 会加载 extension registry、暴露 `extension_runner`、应用 `extension_flag_values`，并把未知 flag / string flag 缺值收敛为创建期 diagnostics

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Generic, Literal, Protocol, TypeVar
 
@@ -17,6 +17,7 @@ from loushang.harness.commands import (
     list_resource_command_descriptors,
     split_slash_command,
 )
+from loushang.harness.commands.resources import SkillCommandSummary
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.commands import list_extension_command_descriptors
 from loushang.harness.extensions.types import ResolvedCommand
@@ -111,9 +112,19 @@ class ResourceCommandSourceRuntime(Generic[ResultT]):
     record_diagnostics: DiagnosticDraftRecorder
     record_command_not_found: ResourceCommandNotFoundRecorder
     result_factory: ResourceCommandResultFactory[ResultT]
+    get_effective_skills: (
+        Callable[[], Sequence[SkillCommandSummary] | None] | None
+    ) = None
 
     def list_descriptors(self) -> list[SessionCommandDescriptor]:
-        return list_resource_command_descriptors(self.get_resource_bundle())
+        return list_resource_command_descriptors(
+            self.get_resource_bundle(),
+            effective_skills=(
+                self.get_effective_skills()
+                if self.get_effective_skills is not None
+                else None
+            ),
+        )
 
     def dispatch(
         self, invocation: ParsedSlashCommand
