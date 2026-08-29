@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from loushang.coding._base_plugin_owners import (
+    CodingBaseCommandOwner,
+    CodingBaseToolOwner,
+)
 from loushang.coding.composition_sets import CodingCompositionSetPlan
 from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.coding.resource_runtime import CodingPackageMaterializer
@@ -16,6 +21,10 @@ from loushang.harness.capabilities.contribution_admission import (
     OwnerContributionAuthority,
     OwnerContributionKind,
     OwnerContributionPolicy,
+    OwnerContributionSnapshot,
+)
+from loushang.harness.capabilities.provider_binding import (
+    CapabilityBundleProviderBinding,
 )
 from loushang.harness.plugin_authoring.host import PluginDeclarationHost
 from loushang.harness.resources.plugins.authority import (
@@ -38,10 +47,20 @@ from loushang.harness.resources.plugins.types import (
     PluginSourceBinding,
     PublishedPluginPackage,
 )
+from loushang.harness.session.capability_composition_inputs import (
+    SessionCapabilityCompositionInputs,
+    SessionCapabilityOwnerAuthorityGate,
+)
 from loushang.harness.session.product_composition_assembly import (
     ProductCompositionAssemblyRequest,
     ProductContributionOwnerBinding,
+    ProductPluginCompositionAssembly,
+    ProductPluginCompositionAssemblyRequest,
+    ProductPluginCompositionPreparation,
+    ProductPluginSelectionSeed,
+    prepare_product_plugin_composition,
 )
+from loushang.harness.tools.workspace.factory import ToolsOptions
 
 _PLUGIN_ID = "coding.base"
 _SOURCE_TRUST_CLASS = "host-equivalent-local"
@@ -76,11 +95,60 @@ class CodingBasePluginAssembly:
     composition_set_fingerprint: str
     _closed: bool = field(default=False, init=False, repr=False)
 
+    @property
+    def selection_seed(self) -> ProductPluginSelectionSeed:
+        return ProductPluginSelectionSeed(
+            selection=self.selection,
+            packages=(self.package,),
+            bindings=(self.binding,),
+            owner_bindings=self.composition_request.owner_bindings,
+        )
+
     def close(self) -> None:
         if self._closed:
             return
         self.runtime.close()
         self._closed = True
+
+
+@dataclass(frozen=True, slots=True)
+class CodingBasePluginSessionPreparation:
+    """One base Product compilation awaiting the host workspace Provider."""
+
+    base: CodingBasePluginAssembly = field(repr=False, compare=False)
+    product: ProductPluginCompositionPreparation
+
+    @property
+    def product_composition(self):
+        return self.product.product_composition
+
+    def bind_workspace(
+        self,
+        workspace_binding: CapabilityBundleProviderBinding,
+    ) -> CodingBasePluginSessionAssembly:
+        if not isinstance(workspace_binding, CapabilityBundleProviderBinding):
+            raise TypeError("Coding base Session requires a workspace binding")
+        plugin_assembly = self.product.bind_host_providers(
+            (workspace_binding.provider,)
+        )
+        return CodingBasePluginSessionAssembly(
+            plugin_assembly=plugin_assembly,
+            session_inputs=plugin_assembly.bind_session_inputs({}),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CodingBasePluginSessionAssembly:
+    """Base-only Product closure bound to one Session's host Providers."""
+
+    plugin_assembly: ProductPluginCompositionAssembly
+    session_inputs: SessionCapabilityCompositionInputs
+
+
+@dataclass(frozen=True, slots=True)
+class CodingBasePluginOwners:
+    tool: CodingBaseToolOwner = field(repr=False)
+    command: CodingBaseCommandOwner = field(repr=False)
 
 
 def coding_base_plugin_root() -> Path:
@@ -159,6 +227,134 @@ def prepare_coding_base_plugin_assembly(
     except BaseException:
         runtime.close()
         raise
+
+
+def prepare_coding_base_plugin_session(
+    assembly: CodingBasePluginAssembly,
+    *,
+    evaluated_at: int,
+    selection_seed: ProductPluginSelectionSeed | None = None,
+) -> CodingBasePluginSessionPreparation:
+    """Compile the base selection once before Session host construction."""
+
+    if not isinstance(assembly, CodingBasePluginAssembly):
+        raise TypeError("Coding base Session preparation requires base assembly")
+    seed = selection_seed or assembly.selection_seed
+    if not isinstance(seed, ProductPluginSelectionSeed):
+        raise TypeError("Coding base Session selection seed is invalid")
+    if _PLUGIN_ID not in seed.selection.plan.selected_plugin_ids:
+        raise ValueError("Coding base Session selection omits coding.base")
+    contribution_request = ProductCompositionAssemblyRequest(
+        selection=seed.selection,
+        owner_bindings=seed.owner_bindings,
+        mandatory_roots=assembly.composition_request.mandatory_roots,
+        definitions=assembly.composition_request.definitions,
+        select_optional_requirements=(
+            assembly.composition_request.select_optional_requirements
+        ),
+    )
+    request = ProductPluginCompositionAssemblyRequest(
+        contribution_request=contribution_request,
+        provider_owner_bindings=(),
+        provider_roots=(),
+        host_capability_ids=(
+            MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,
+            WORKSPACE_CAPABILITY_DEFINITION.capability_id,
+        ),
+        select_capability_providers=lambda _admissions: (),
+    )
+    return CodingBasePluginSessionPreparation(
+        base=assembly,
+        product=prepare_product_plugin_composition(
+            request,
+            evaluated_at=evaluated_at,
+        ),
+    )
+
+
+def build_coding_base_plugin_owners(
+    assembly: CodingBasePluginAssembly,
+    plugin_assembly: ProductPluginCompositionAssembly,
+    *,
+    clock: Callable[[], int],
+    tool_options: ToolsOptions = ToolsOptions(),
+) -> CodingBasePluginOwners:
+    """Build exact base owners from the sole compiled Product composition."""
+
+    if not isinstance(assembly, CodingBasePluginAssembly):
+        raise TypeError("Coding base owners require base assembly")
+    if not isinstance(plugin_assembly, ProductPluginCompositionAssembly):
+        raise TypeError("Coding base owners require Product Plugin assembly")
+    if not callable(clock):
+        raise TypeError("Coding base owner clock is invalid")
+    if not isinstance(tool_options, ToolsOptions):
+        raise TypeError("Coding base Tool options are invalid")
+    admissions = {
+        (item.owner_id, item.contribution_kind, item.contribution_id): item
+        for item in plugin_assembly.product_composition.catalog_admissions
+        if item.plugin_id == _PLUGIN_ID
+    }
+    tool_admission = admissions.get(("tools.workspace", "tool_pack", "coding.builtin"))
+    command_admission = admissions.get(
+        ("commands.session", "command_pack", "coding.standard")
+    )
+    if tool_admission is None or command_admission is None or len(admissions) != 2:
+        raise ValueError("Coding base requires exact Tool and Command admissions")
+    authorities = {
+        item.owner_key: item.authority
+        for item in plugin_assembly.contribution_request.owner_bindings
+    }
+    context = plugin_assembly.product_composition.authority_context
+
+    def read_owner(
+        owner_id: str,
+        contribution_kind: str,
+        product_id: str,
+    ) -> OwnerContributionSnapshot:
+        authority = authorities.get((owner_id, contribution_kind, product_id))
+        if authority is None:
+            raise ValueError("Coding base owner reader received another owner")
+        return authority.snapshot()
+
+    def read_trust(
+        plugin_id: str,
+        source_identity: str,
+    ) -> PluginSourceTrustSnapshotV1:
+        matches = tuple(
+            item
+            for item in context.trust_snapshots
+            if item.plugin_id == plugin_id
+            and item.package_source_identity == source_identity
+        )
+        if len(matches) != 1:
+            raise ValueError("Coding base owner requires one trust snapshot")
+        return matches[0]
+
+    def read_product_policy(product_id: str, scope_id: str) -> str:
+        if product_id != context.product_id or scope_id != context.scope_id:
+            raise ValueError("Coding base owner received another Product scope")
+        return context.product_policy_revision
+
+    gate = SessionCapabilityOwnerAuthorityGate(
+        authority_context=context,
+        owner_snapshot_reader=read_owner,
+        trust_snapshot_reader=read_trust,
+        product_policy_revision_reader=read_product_policy,
+        clock=clock,
+    )
+    return CodingBasePluginOwners(
+        tool=CodingBaseToolOwner(
+            admission=tool_admission,
+            authority_gate=gate,
+            options=tool_options,
+            scope_id=assembly.scope_id,
+        ),
+        command=CodingBaseCommandOwner(
+            admission=command_admission,
+            authority_gate=gate,
+            scope_id=assembly.scope_id,
+        ),
+    )
 
 
 def _finalize_selection(
@@ -260,6 +456,11 @@ def _normalized(value: str, *, name: str) -> str:
 __all__ = [
     "CodingBasePluginAssembly",
     "CodingBasePluginAssemblyError",
+    "CodingBasePluginOwners",
+    "CodingBasePluginSessionAssembly",
+    "CodingBasePluginSessionPreparation",
+    "build_coding_base_plugin_owners",
     "coding_base_plugin_root",
     "prepare_coding_base_plugin_assembly",
+    "prepare_coding_base_plugin_session",
 ]

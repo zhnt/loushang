@@ -121,9 +121,7 @@ def _copy_resource_only_plugin(target: Path) -> None:
         if declaration["contributionId"] == "prompt-standard":
             declaration["payload"]["locator"] = "prompts/package-standard.md"
         if declaration["contributionId"] == "skill-standard":
-            declaration["payload"]["locator"] = (
-                "skills/package-standard/SKILL.md"
-            )
+            declaration["payload"]["locator"] = "skills/package-standard/SKILL.md"
     declarations_path.write_text(
         json.dumps(declarations, sort_keys=True, separators=(",", ":")),
         encoding="utf-8",
@@ -963,9 +961,7 @@ def test_coding_initial_catalog_applies_disabled_skill_in_owner_status(
             )
             assert status.declared_enabled is True
             assert status.effective is False
-            standard_status = next(
-                item for item in statuses if item.name == "standard"
-            )
+            standard_status = next(item for item in statuses if item.name == "standard")
             assert standard_status.status == "effective"
             assert "Review code" not in session.agent.system_prompt
             assert "skill:review" not in {
@@ -1297,9 +1293,7 @@ def test_coding_catalog_package_mutations_publish_before_return(
                 "standard",
             ]
 
-            (
-                package_root / "skills" / "package-standard" / "SKILL.md"
-            ).write_text(
+            (package_root / "skills" / "package-standard" / "SKILL.md").write_text(
                 "---\nname: package-standard\n"
                 "description: Updated admitted package Skill.\n---\n"
                 "Use the updated admitted package Skill.\n",
@@ -1430,9 +1424,7 @@ def test_coding_catalog_refresh_reloads_disabled_skill_policy(
                 "standard"
             ]
             status = next(
-                item
-                for item in session.list_skill_statuses()
-                if item.name == "review"
+                item for item in session.list_skill_statuses() if item.name == "review"
             )
             assert (status.status, status.status_reason) == (
                 "inactive_activation",
@@ -1586,7 +1578,12 @@ def test_coding_initial_catalog_compiles_configured_plugin_resource_admissions(
         _copy_resource_only_plugin(plugin_root)
         project_settings_path = tmp_path / "project-settings.json"
         project_settings_path.write_text(
-            json.dumps({"plugin_sources": [str(plugin_root)]}),
+            json.dumps(
+                {
+                    "capabilities": {"coding.lsp": "always"},
+                    "plugin_sources": [str(plugin_root)],
+                }
+            ),
             encoding="utf-8",
         )
         monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
@@ -1607,6 +1604,35 @@ def test_coding_initial_catalog_compiles_configured_plugin_resource_admissions(
             model=_model(),
         )
         try:
+            inputs = session._capability_composition_inputs
+            assert inputs is not None
+            assert inputs.product_composition.authority_context.product_id == "coding"
+            assert session._coding_lsp_plugin_assembly is not None
+            assert (
+                session._coding_lsp_plugin_assembly.selection.plan.selected_plugin_ids
+                == (
+                    "coding.base",
+                    "coding.lsp.default",
+                    "coding.test.resources",
+                )
+            )
+            assert {
+                (item.plugin_id, item.contribution_id)
+                for item in inputs.product_composition.catalog_admissions
+            } == {
+                ("coding.base", "coding.builtin"),
+                ("coding.base", "coding.standard"),
+                ("coding.lsp.default", "coding-lsp-tools"),
+            }
+            assert {
+                (item.plugin_id, item.contribution_id)
+                for item in inputs.product_composition.resource_admissions
+            } == {
+                ("coding.base", "prompt-standard"),
+                ("coding.base", "skill-standard"),
+                ("coding.test.resources", "prompt-standard"),
+                ("coding.test.resources", "skill-standard"),
+            }
             await session.prepare_model_call_runtime()
 
             assert [

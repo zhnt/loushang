@@ -344,7 +344,11 @@ def test_coding_session_mounts_workspace_and_rejects_process_cwd_outside_root(
             assert session._capability_graph_runtime.generation == first_generation
             snapshot = session._capability_graph_runtime.snapshot
             assert snapshot is not None
-            assert snapshot.roots == ("coding.lsp", "harness.model_input")
+            assert snapshot.roots == (
+                "coding.lsp",
+                "harness.model_input",
+                "harness.workspace",
+            )
             nodes = {node.capability_id: node for node in snapshot.nodes}
             assert tuple(
                 requirement.capability_id
@@ -439,15 +443,15 @@ def test_on_demand_lsp_discovers_installed_product_defaults(
     project = tmp_path / "project"
     project.mkdir()
     captured_definitions: list[LspServerDefinition] = []
-    assemble = coding_bootstrap.assemble_coding_lsp_plugin_opt_in
+    prepare = coding_bootstrap.prepare_coding_lsp_plugin_opt_in
 
     def capture_definitions(request, **kwargs):
         captured_definitions.extend(kwargs["config"].definitions)
-        return assemble(request, **kwargs)
+        return prepare(request, **kwargs)
 
     monkeypatch.setattr(
         coding_bootstrap,
-        "assemble_coding_lsp_plugin_opt_in",
+        "prepare_coding_lsp_plugin_opt_in",
         capture_definitions,
     )
     services = create_services(
@@ -497,7 +501,7 @@ def test_disabled_lsp_session_does_not_resolve_the_default_plugin(
 
     monkeypatch.setattr(
         coding_bootstrap,
-        "assemble_coding_lsp_plugin_opt_in",
+        "prepare_coding_lsp_plugin_opt_in",
         reject_plugin_resolution,
     )
     project = tmp_path / "project"
@@ -523,6 +527,178 @@ def test_disabled_lsp_session_does_not_resolve_the_default_plugin(
     assert {"document_outline", "inspect_symbol"}.isdisjoint(
         definition.name for definition in session.get_all_tools()
     )
+    asyncio.run(session.dispose())
+
+
+def test_lsp_preparation_failure_closes_the_prepared_base_revision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import loushang.coding.bootstrap as coding_bootstrap
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    prepared = []
+    prepare_base = coding_bootstrap.prepare_coding_base_plugin_assembly
+
+    def capture_base(*args, **kwargs):
+        assembly = prepare_base(*args, **kwargs)
+        prepared.append(assembly)
+        return assembly
+
+    def reject_lsp(*_args, **_kwargs):
+        raise RuntimeError("injected LSP preparation failure")
+
+    monkeypatch.setattr(
+        coding_bootstrap,
+        "prepare_coding_base_plugin_assembly",
+        capture_base,
+    )
+    monkeypatch.setattr(
+        coding_bootstrap,
+        "prepare_coding_lsp_plugin_opt_in",
+        reject_lsp,
+    )
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(tmp_path),
+            persist=False,
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="injected LSP preparation failure"):
+        create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(capabilities={"coding.lsp": "always"})
+                )
+            ),
+        )
+
+    assert len(prepared) == 1
+    assert prepared[0].package.revision_handle.closed is True
+
+
+def test_catalog_default_publishes_base_tools_and_commands_as_owner_generations(
+    tmp_path: Path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(tmp_path),
+            persist=False,
+        )
+    )
+    session = create_agent_session(
+        session_manager=manager,
+        model=_model(),
+        services=create_services(
+            settings_manager=SettingsManager(
+                ControlConfig(capabilities={"coding.lsp": "disabled"})
+            )
+        ),
+    )
+    registry = session._composition.tool_controller.tool_registry
+    inputs = session._capability_composition_inputs
+    assert inputs is not None
+    assert inputs.component_requests == ()
+    assert {
+        (item.plugin_id, item.contribution_id)
+        for item in inputs.product_composition.catalog_admissions
+    } == {
+        ("coding.base", "coding.builtin"),
+        ("coding.base", "coding.standard"),
+    }
+    assert {item.name for item in session.get_all_tools()}.isdisjoint(
+        {"bash", "edit", "find", "grep", "ls", "read", "write"}
+    )
+    assert "session" not in {item.name for item in session.list_commands()}
+
+    asyncio.run(session.prepare_model_call_runtime())
+
+    assert {"bash", "edit", "find", "grep", "ls", "read", "write"}.issubset(
+        {item.name for item in session.get_all_tools()}
+    )
+    assert "session" in {item.name for item in session.list_commands()}
+    assert len(session._capability_owner_generations) == 2
+    assert asyncio.run(session.execute_command_async("session", "")) is not None
+    command_registrations = tuple(
+        item
+        for item in session.get_effective_runtime_view().registrations
+        if item.surface == "session_command_pack"
+    )
+    assert len(command_registrations) == 1
+    assert command_registrations[0].public_key == "harness.session.standard"
+    assert command_registrations[0].owner_id == "commands.session"
+    assert command_registrations[0].attachment == "effective"
+
+    asyncio.run(session.dispose())
+    assert {item.name for item in registry.list_definitions()}.isdisjoint(
+        {"bash", "edit", "find", "grep", "ls", "read", "write"}
+    )
+
+
+def test_lsp_and_base_share_one_compilation_and_three_owner_generations(
+    tmp_path: Path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.lsp import LspServerDefinition
+    from loushang.coding.session_manager import SessionManager
+
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(tmp_path),
+            persist=False,
+        )
+    )
+    session = create_agent_session(
+        session_manager=manager,
+        model=_model(),
+        services=create_services(
+            settings_manager=SettingsManager(
+                ControlConfig(capabilities={"coding.lsp": "always"})
+            )
+        ),
+        lsp_definitions=(
+            LspServerDefinition(
+                id="python-test",
+                command=("python-language-server", "--stdio"),
+                language_extensions={"python": (".py",)},
+            ),
+        ),
+    )
+    lsp_assembly = session._coding_lsp_plugin_assembly
+    inputs = session._capability_composition_inputs
+    assert lsp_assembly is not None
+    assert inputs is not None
+    assert (
+        inputs.product_composition is lsp_assembly.plugin_assembly.product_composition
+    )
+    assert lsp_assembly.selection.plan.selected_plugin_ids == (
+        "coding.base",
+        "coding.lsp.default",
+    )
+    assert {
+        (item.plugin_id, item.contribution_id)
+        for item in inputs.product_composition.catalog_admissions
+    } == {
+        ("coding.base", "coding.builtin"),
+        ("coding.base", "coding.standard"),
+        ("coding.lsp.default", "coding-lsp-tools"),
+    }
+
+    asyncio.run(session.prepare_model_call_runtime())
+    assert len(session._capability_owner_generations) == 3
     asyncio.run(session.dispose())
 
 
@@ -648,6 +824,7 @@ def test_default_lsp_plugin_rolls_back_graph_when_tool_staging_fails(
     )
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.session.tool_controller import SessionToolController
+
     stage_runtime_tool = SessionToolController.stage_runtime_tool
 
     def fail_second_tool(self, tool, **kwargs):
@@ -813,9 +990,8 @@ def test_create_agent_session_from_services_uses_cwd_bound_services(tmp_path) ->
     assert result.session.settings_manager is agent_services.settings_manager
     assert result.session.resource_loader is not agent_services.resource_loader
     asyncio.run(result.session.prepare_model_call_runtime())
-    assert (
-        result.session.resource_loader.get_resource_bundle().cwd
-        == Path(agent_services.cwd)
+    assert result.session.resource_loader.get_resource_bundle().cwd == Path(
+        agent_services.cwd
     )
     assert result.session.session_manager is manager
 
@@ -1751,9 +1927,7 @@ def test_create_agent_session_uses_settings_plugin_sources_for_external_package_
     assert [skill.name for skill in bundle.skills] == ["debug"]
     assert bundle.skills[0].source_kind == "external_package"
     extension_commands = [
-        command
-        for command in session.list_commands()
-        if command.source == "extension"
+        command for command in session.list_commands() if command.source == "extension"
     ]
     assert len(extension_commands) == 1
     [command] = extension_commands
@@ -3523,11 +3697,7 @@ def test_create_agent_session_records_invalid_plugin_source_and_continues(
 
     settings_path = tmp_path / "settings.json"
     settings_path.write_text(
-        (
-            "{"
-            f'"plugin_sources": ["{invalid_plugin}"]'
-            "}"
-        ),
+        (f'{{"plugin_sources": ["{invalid_plugin}"]}}'),
         encoding="utf-8",
     )
     services = create_services(

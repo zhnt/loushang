@@ -13,7 +13,23 @@ from types import SimpleNamespace
 
 import pytest
 
+from loushang.ai.model import Capabilities, Model
 from loushang.harness.runtime import SessionOperationResult
+
+
+def _model() -> Model:
+    return Model(
+        id="faux-model",
+        name="Faux",
+        provider="faux",
+        endpoint="anthropic-messages",
+        capabilities=Capabilities(
+            reasoning=True,
+            input=("text",),
+            context_window=128000,
+            max_tokens=4096,
+        ),
+    )
 
 
 def _command_descriptor(item: dict[str, object]) -> SimpleNamespace:
@@ -1579,22 +1595,29 @@ def test_run_cli_keeps_legacy_fixed_runtime_builder_signature(tmp_path) -> None:
     assert captured["cwd"] == tmp_path.resolve()
 
 
-def test_cli_builtin_tool_registry_uses_settings_external_tool_policy(
+def test_cli_base_tool_owner_uses_settings_without_direct_registry_publication(
+    tmp_path,
     monkeypatch,
 ) -> None:
+    import asyncio
+
+    import loushang.coding._base_plugin_owners as base_owners
+    from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.cli import __main__ as cli_main
     from loushang.coding.control import ControlConfig, SettingsManager, ToolSettings
+    from loushang.coding.session_manager import SessionManager
 
     captured: dict[str, object] = {}
+    create_definitions = base_owners.create_coding_builtin_tool_definitions
 
-    def fake_register_coding_builtin_tools(registry, **kwargs):
-        captured.update(kwargs)
-        return registry
+    def capture_definitions(*, options=None):
+        captured["options"] = options
+        return create_definitions(options=options)
 
     monkeypatch.setattr(
-        cli_main,
-        "register_coding_builtin_tools",
-        fake_register_coding_builtin_tools,
+        base_owners,
+        "create_coding_builtin_tool_definitions",
+        capture_definitions,
     )
     manager = SettingsManager(
         ControlConfig(
@@ -1604,90 +1627,115 @@ def test_cli_builtin_tool_registry_uses_settings_external_tool_policy(
         )
     )
 
-    cli_main.build_builtin_tool_registry(settings_manager=manager)
+    registry = cli_main.build_builtin_tool_registry(settings_manager=manager)
+    assert {item.name for item in registry.list_definitions()}.isdisjoint(
+        {"bash", "edit", "find", "grep", "ls", "read", "write"}
+    )
 
-    assert captured["external_tool_policy"] == "required"
-    assert captured["shell_path"] == r"C:\tools\pwsh.exe"
-    assert captured["command_prefix"] == "$ErrorActionPreference = 'Stop'"
+    async def scenario() -> None:
+        session = create_agent_session(
+            session_manager=await SessionManager.new(
+                session_dir=tmp_path / "sessions",
+                cwd=str(tmp_path),
+                persist=False,
+            ),
+            model=_model(),
+            services=create_services(settings_manager=manager),
+            tool_registry=registry,
+        )
+        try:
+            await session.prepare_model_call_runtime()
+            options = captured["options"]
+            assert getattr(options, "external_tool_policy") == "required"
+            assert getattr(options, "shell_path") == r"C:\tools\pwsh.exe"
+            assert (
+                getattr(options, "command_prefix") == "$ErrorActionPreference = 'Stop'"
+            )
+        finally:
+            await session.dispose()
+
+    asyncio.run(scenario())
 
 
 def test_cli_policy_settings_bind_to_an_explicit_execution_scope(
     tmp_path,
 ) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.cli import __main__ as cli_main
     from loushang.coding.control import ControlConfig, SettingsManager, ToolSettings
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.approval import InteractiveApprovalResolver
     from loushang.harness.policy_engine import PolicyEngine
-    from loushang.harness.tools.workspace import ToolContext
-    from loushang.harness.tools.workspace.authorization import (
-        create_workspace_tool_execution_host,
-    )
     from loushang.harness.tools.workspace.factory import (
         workspace_tool_runtime_settings,
     )
 
-    def context_provider(*, tool_call_id: str) -> ToolContext:
-        return ToolContext(tool_call_id=tool_call_id, cwd=str(tmp_path))
+    async def build_session(manager: SettingsManager, suffix: str):
+        runtime_settings = workspace_tool_runtime_settings(
+            manager,
+            policy_factory=PolicyEngine,
+        )
+        session = create_agent_session(
+            session_manager=await SessionManager.new(
+                session_dir=tmp_path / f"sessions-{suffix}",
+                cwd=str(tmp_path),
+                persist=False,
+            ),
+            model=_model(),
+            services=create_services(settings_manager=manager),
+            tool_registry=cli_main.build_builtin_tool_registry(
+                settings_manager=manager
+            ),
+            active_tool_names=["write"],
+            approval_resolver=InteractiveApprovalResolver(
+                fallback=runtime_settings.approval_resolver
+            ),
+            tool_policy_evaluator=runtime_settings.policy_engine,
+        )
+        await session.prepare_model_call_runtime()
+        tool = next(item for item in session.agent.tools if item.name == "write")
+        return session, tool
 
-    allow_manager = SettingsManager(
-        ControlConfig(
-            tools=ToolSettings(
-                ask_tools=("write",),
-                approval_mode="allow",
+    async def scenario() -> None:
+        allow_manager = SettingsManager(
+            ControlConfig(
+                tools=ToolSettings(
+                    ask_tools=("write",),
+                    approval_mode="allow",
+                )
             )
         )
-    )
-    allow_registry = cli_main.build_builtin_tool_registry(
-        settings_manager=allow_manager
-    )
-    allow_settings = workspace_tool_runtime_settings(
-        allow_manager,
-        policy_factory=PolicyEngine,
-    )
-    allow_registry.bind_execution_host(
-        create_workspace_tool_execution_host(
-            policy_evaluator=allow_settings.policy_engine,
-            approval_resolver=allow_settings.approval_resolver,
-        )
-    )
-    allow_tool = allow_registry.materialize_tool(
-        "write", context_provider=context_provider
-    )
+        allow_session, allow_tool = await build_session(allow_manager, "allow")
+        try:
+            await allow_tool.execute(
+                "call-allow", {"path": "allowed.txt", "content": "ok"}
+            )
+        finally:
+            await allow_session.dispose()
 
-    asyncio.run(
-        allow_tool.execute("call-allow", {"path": "allowed.txt", "content": "ok"})
-    )
-
-    deny_manager = SettingsManager(
-        ControlConfig(
-            tools=ToolSettings(
-                ask_tools=("write",),
-                approval_mode="deny",
-                approval_reason="headless policy denied",
+        deny_manager = SettingsManager(
+            ControlConfig(
+                tools=ToolSettings(
+                    ask_tools=("write",),
+                    approval_mode="deny",
+                    approval_reason="headless policy denied",
+                )
             )
         )
-    )
-    deny_registry = cli_main.build_builtin_tool_registry(settings_manager=deny_manager)
-    deny_settings = workspace_tool_runtime_settings(
-        deny_manager,
-        policy_factory=PolicyEngine,
-    )
-    deny_registry.bind_execution_host(
-        create_workspace_tool_execution_host(
-            policy_evaluator=deny_settings.policy_engine,
-            approval_resolver=deny_settings.approval_resolver,
-        )
-    )
-    deny_tool = deny_registry.materialize_tool(
-        "write", context_provider=context_provider
-    )
+        deny_session, deny_tool = await build_session(deny_manager, "deny")
+        try:
+            with pytest.raises(PermissionError, match="headless policy denied"):
+                await deny_tool.execute(
+                    "call-deny",
+                    {"path": "denied.txt", "content": "blocked"},
+                )
+        finally:
+            await deny_session.dispose()
 
-    with pytest.raises(PermissionError, match="headless policy denied"):
-        asyncio.run(
-            deny_tool.execute("call-deny", {"path": "denied.txt", "content": "blocked"})
-        )
+        assert (tmp_path / "allowed.txt").read_text(encoding="utf-8") == "ok"
+        assert not (tmp_path / "denied.txt").exists()
 
-    assert (tmp_path / "allowed.txt").read_text(encoding="utf-8") == "ok"
-    assert not (tmp_path / "denied.txt").exists()
+    asyncio.run(scenario())
 
 
 def test_parse_args_supports_command_dispatch_flags() -> None:

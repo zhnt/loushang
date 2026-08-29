@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
+from loushang.coding._base_plugin import CodingBasePluginAssembly
 from loushang.coding.lsp._plugin_tool_owner import CodingLspToolOwner
 from loushang.coding.lsp._provider_api import (
     CODING_LSP_CAPABILITY_DEFINITION,
@@ -85,10 +86,13 @@ from loushang.harness.session.product_composition_assembly import (
     ProductContributionOwnerBinding,
     ProductPluginCompositionAssembly,
     ProductPluginCompositionAssemblyRequest,
-    assemble_product_plugin_composition,
+    ProductPluginCompositionPreparation,
+    ProductPluginSelectionSeed,
+    prepare_product_plugin_composition,
 )
 
 _PLUGIN_ID = "coding.lsp.default"
+_BASE_PLUGIN_ID = "coding.base"
 _PROVIDER_ID = "coding.lsp.default"
 _TOOL_OWNER_ID = "coding.tools"
 _TOOL_CATALOG_ID = "coding.lsp.tools"
@@ -155,6 +159,7 @@ class _CodingLspDefaultPluginApprovalOwner:
     """Approve only Coding's exact checked-in LSP package policy closure."""
 
     clock: Callable[[], int] = field(repr=False, compare=False)
+    product_policy_revision: str = _PRODUCT_POLICY_REVISION
 
     def approve_definition(
         self,
@@ -162,7 +167,10 @@ class _CodingLspDefaultPluginApprovalOwner:
         journal: PluginExecutionDecisionJournal,
         subject: PluginExecutionApprovalSubject,
     ) -> PluginApprovalDecisionRecordV1:
-        _validate_default_definition_subject(subject)
+        _validate_default_definition_subject(
+            subject,
+            product_policy_revision=self.product_policy_revision,
+        )
         now = _read_clock(self.clock)
         return journal.issue_execution_decision(
             subject,
@@ -180,7 +188,10 @@ class _CodingLspDefaultPluginApprovalOwner:
         journal: PluginActivationDecisionJournal,
         subject: ContributionActivationApprovalSubject,
     ) -> PluginActivationDecisionRecordV1:
-        _validate_default_activation_subject(subject)
+        _validate_default_activation_subject(
+            subject,
+            product_policy_revision=self.product_policy_revision,
+        )
         now = _read_clock(self.clock)
         return journal.issue_activation_decision(
             subject,
@@ -195,13 +206,19 @@ class _CodingLspDefaultPluginApprovalOwner:
 def create_coding_lsp_default_plugin_opt_in_request(
     *,
     clock: Callable[[], int],
+    product_policy_revision: str = _PRODUCT_POLICY_REVISION,
 ) -> CodingLspPluginOptInRequest:
     """Create Coding's private exact-policy request for its checked-in Plugin."""
 
     if not callable(clock):
         raise TypeError("Coding LSP default Approval clock is invalid")
+    if not isinstance(product_policy_revision, str) or not product_policy_revision:
+        raise ValueError("Coding LSP Product policy revision is invalid")
     return CodingLspPluginOptInRequest(
-        approval_owner=_CodingLspDefaultPluginApprovalOwner(clock=clock)
+        approval_owner=_CodingLspDefaultPluginApprovalOwner(
+            clock=clock,
+            product_policy_revision=product_policy_revision,
+        )
     )
 
 
@@ -252,30 +269,137 @@ class CodingLspPluginOptInAssembly:
             raise primary_error
 
 
-def assemble_coding_lsp_plugin_opt_in(
+@dataclass(slots=True)
+class CodingLspPluginOptInPreparation:
+    """Definition-approved closure compiled before host Provider construction."""
+
+    request: CodingLspPluginOptInRequest = field(repr=False)
+    runtime: PluginRuntimeResolution = field(repr=False)
+    selection: PluginSelection
+    product: ProductPluginCompositionPreparation
+    provider_owner_authority: CapabilityProviderOwnerAuthority = field(repr=False)
+    tool_owner_authority: OwnerContributionAuthority = field(repr=False)
+    scope_id: str
+    state_root: Path
+    state_cleanup: Callable[[], None] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+    _closed: bool = field(default=False, init=False, repr=False)
+    _transferred: bool = field(default=False, init=False, repr=False)
+
+    @property
+    def product_composition(self):
+        return self.product.product_composition
+
+    def bind_workspace(
+        self,
+        workspace_binding: CapabilityBundleProviderBinding,
+        *,
+        host_boot_id: str,
+        tool_mode: CapabilityMountMode,
+        clock: Callable[[], int],
+    ) -> CodingLspPluginOptInAssembly:
+        if self._closed or self._transferred:
+            raise RuntimeError("Coding LSP Plugin preparation is no longer available")
+        _validate_workspace_binding(
+            workspace_binding,
+            host_boot_id=host_boot_id,
+            tool_mode=tool_mode,
+            clock=clock,
+        )
+        try:
+            plugin_assembly = self.product.bind_host_providers(
+                (workspace_binding.provider,)
+            )
+            component_host, session_inputs = _approve_activation_and_bind_inputs(
+                self.selection,
+                plugin_assembly,
+                request=self.request,
+                provider_authority=self.provider_owner_authority,
+                scope_id=self.scope_id,
+                state_root=self.state_root,
+                host_boot_id=host_boot_id,
+                clock=clock,
+            )
+            tool_owner = _build_tool_owner(
+                self.selection,
+                plugin_assembly,
+                authority=self.tool_owner_authority,
+                scope_id=self.scope_id,
+                mode=tool_mode,
+                clock=clock,
+            )
+        except BaseException as error:
+            try:
+                self.close()
+            except BaseException as cleanup_error:
+                error.add_note(
+                    f"Coding LSP preparation cleanup also failed: {cleanup_error}"
+                )
+            raise
+        self._transferred = True
+        return CodingLspPluginOptInAssembly(
+            runtime=self.runtime,
+            selection=self.selection,
+            plugin_assembly=plugin_assembly,
+            component_host=component_host,
+            session_inputs=session_inputs,
+            tool_owner=tool_owner,
+            provider_owner_authority=self.provider_owner_authority,
+            tool_owner_authority=self.tool_owner_authority,
+            scope_id=self.scope_id,
+            state_root=self.state_root,
+            state_cleanup=self.state_cleanup,
+        )
+
+    def close(self) -> None:
+        if self._closed or self._transferred:
+            return
+        primary_error: BaseException | None = None
+        try:
+            self.runtime.close()
+        except BaseException as exc:
+            primary_error = exc
+        try:
+            if self.state_cleanup is not None:
+                self.state_cleanup()
+        except BaseException as cleanup_error:
+            if primary_error is None:
+                primary_error = cleanup_error
+            else:
+                primary_error.add_note(
+                    f"Coding LSP state cleanup also failed: {cleanup_error}"
+                )
+        finally:
+            self._closed = True
+        if primary_error is not None:
+            raise primary_error
+
+
+def prepare_coding_lsp_plugin_opt_in(
     request: CodingLspPluginOptInRequest,
     *,
     session_id: str,
     config: CodingLspPluginConfigV1,
     package_materializer: CodingPackageMaterializer,
-    workspace_binding: CapabilityBundleProviderBinding,
     state_root: str | Path,
-    host_boot_id: str,
-    tool_mode: CapabilityMountMode,
     clock: Callable[[], int],
+    coding_base_plugin_assembly: CodingBasePluginAssembly | None = None,
+    coding_product_selection_seed: ProductPluginSelectionSeed | None = None,
     state_cleanup: Callable[[], None] | None = None,
-) -> CodingLspPluginOptInAssembly:
-    """Resolve and approve the fixed package without importing or starting it."""
+) -> CodingLspPluginOptInPreparation:
+    """Resolve, approve and compile once without constructing host Providers."""
 
-    _validate_inputs(
+    _validate_preparation_inputs(
         request,
         session_id=session_id,
         config=config,
         package_materializer=package_materializer,
-        workspace_binding=workspace_binding,
-        host_boot_id=host_boot_id,
-        tool_mode=tool_mode,
         clock=clock,
+        coding_base_plugin_assembly=coding_base_plugin_assembly,
+        coding_product_selection_seed=coding_product_selection_seed,
     )
     _read_clock(clock)
     if state_cleanup is not None and not callable(state_cleanup):
@@ -298,11 +422,14 @@ def assemble_coding_lsp_plugin_opt_in(
             try:
                 state_cleanup()
             except BaseException as cleanup_error:
-                error.add_note(
-                    f"Coding LSP state cleanup also failed: {cleanup_error}"
-                )
+                error.add_note(f"Coding LSP state cleanup also failed: {cleanup_error}")
         raise
     try:
+        resolved_product_seed = coding_product_selection_seed or (
+            coding_base_plugin_assembly.selection_seed
+            if coding_base_plugin_assembly is not None
+            else None
+        )
         selection = _finalize_selection(
             runtime,
             request=request,
@@ -310,43 +437,24 @@ def assemble_coding_lsp_plugin_opt_in(
             config=config,
             state_root=resolved_state_root,
             clock=clock,
+            coding_product_selection_seed=resolved_product_seed,
         )
         provider_authority = _provider_owner_authority()
         tool_authority = _tool_owner_authority()
-        plugin_assembly = assemble_product_plugin_composition(
+        product = prepare_product_plugin_composition(
             _assembly_request(
                 selection,
                 provider_authority=provider_authority,
                 tool_authority=tool_authority,
-                workspace_binding=workspace_binding,
+                coding_product_selection_seed=resolved_product_seed,
             ),
             evaluated_at=_read_clock(clock),
         )
-        component_host, session_inputs = _approve_activation_and_bind_inputs(
-            selection,
-            plugin_assembly,
+        return CodingLspPluginOptInPreparation(
             request=request,
-            provider_authority=provider_authority,
-            scope_id=scope_id,
-            state_root=resolved_state_root,
-            host_boot_id=host_boot_id,
-            clock=clock,
-        )
-        tool_owner = _build_tool_owner(
-            selection,
-            plugin_assembly,
-            authority=tool_authority,
-            scope_id=scope_id,
-            mode=tool_mode,
-            clock=clock,
-        )
-        return CodingLspPluginOptInAssembly(
             runtime=runtime,
             selection=selection,
-            plugin_assembly=plugin_assembly,
-            component_host=component_host,
-            session_inputs=session_inputs,
-            tool_owner=tool_owner,
+            product=product,
             provider_owner_authority=provider_authority,
             tool_owner_authority=tool_authority,
             scope_id=scope_id,
@@ -357,17 +465,49 @@ def assemble_coding_lsp_plugin_opt_in(
         try:
             runtime.close()
         except BaseException as cleanup_error:
-            error.add_note(
-                f"Coding LSP revision cleanup also failed: {cleanup_error}"
-            )
+            error.add_note(f"Coding LSP revision cleanup also failed: {cleanup_error}")
         if state_cleanup is not None:
             try:
                 state_cleanup()
             except BaseException as cleanup_error:
-                error.add_note(
-                    f"Coding LSP state cleanup also failed: {cleanup_error}"
-                )
+                error.add_note(f"Coding LSP state cleanup also failed: {cleanup_error}")
         raise
+
+
+def assemble_coding_lsp_plugin_opt_in(
+    request: CodingLspPluginOptInRequest,
+    *,
+    session_id: str,
+    config: CodingLspPluginConfigV1,
+    package_materializer: CodingPackageMaterializer,
+    workspace_binding: CapabilityBundleProviderBinding,
+    state_root: str | Path,
+    host_boot_id: str,
+    tool_mode: CapabilityMountMode,
+    clock: Callable[[], int],
+    coding_base_plugin_assembly: CodingBasePluginAssembly | None = None,
+    coding_product_selection_seed: ProductPluginSelectionSeed | None = None,
+    state_cleanup: Callable[[], None] | None = None,
+) -> CodingLspPluginOptInAssembly:
+    """Compatibility facade over the prepare-once, bind-host phases."""
+
+    preparation = prepare_coding_lsp_plugin_opt_in(
+        request,
+        session_id=session_id,
+        config=config,
+        package_materializer=package_materializer,
+        state_root=state_root,
+        clock=clock,
+        coding_base_plugin_assembly=coding_base_plugin_assembly,
+        coding_product_selection_seed=coding_product_selection_seed,
+        state_cleanup=state_cleanup,
+    )
+    return preparation.bind_workspace(
+        workspace_binding,
+        host_boot_id=host_boot_id,
+        tool_mode=tool_mode,
+        clock=clock,
+    )
 
 
 def _build_tool_owner(
@@ -379,7 +519,17 @@ def _build_tool_owner(
     mode: CapabilityMountMode,
     clock: Callable[[], int],
 ) -> CodingLspToolOwner:
-    [admission] = plugin_assembly.product_composition.catalog_admissions
+    matches = tuple(
+        item
+        for item in plugin_assembly.product_composition.catalog_admissions
+        if item.plugin_id == _PLUGIN_ID
+        and item.contribution_id == "coding-lsp-tools"
+        and item.owner_id == _TOOL_OWNER_ID
+        and item.contribution_kind == "tool_pack"
+    )
+    if len(matches) != 1:
+        raise ValueError("Coding LSP Tool owner requires one exact admission")
+    [admission] = matches
     trust_snapshots = selection.plan.source_trust_snapshots
 
     def read_owner(
@@ -413,7 +563,7 @@ def _build_tool_owner(
     def read_product_policy(product_id: str, requested_scope_id: str) -> str:
         if product_id != CODING_PRODUCT_ID or requested_scope_id != scope_id:
             raise ValueError("Coding LSP Tool owner received another Product scope")
-        return _PRODUCT_POLICY_REVISION
+        return selection.plan.context.policy_revision
 
     return CodingLspToolOwner(
         admission=admission,
@@ -469,7 +619,7 @@ def _approve_activation_and_bind_inputs(
     def read_product_policy(product_id: str, requested_scope_id: str) -> str:
         if product_id != CODING_PRODUCT_ID or requested_scope_id != scope_id:
             raise ValueError("Coding LSP policy reader received another Product scope")
-        return _PRODUCT_POLICY_REVISION
+        return selection.plan.context.policy_revision
 
     component_host = CapabilityComponentHost(
         decision_journal=journal,
@@ -534,6 +684,7 @@ def _finalize_selection(
     config: CodingLspPluginConfigV1,
     state_root: Path,
     clock: Callable[[], int],
+    coding_product_selection_seed: ProductPluginSelectionSeed | None,
 ) -> PluginSelection:
     [package] = runtime.packages
     [binding] = runtime.bindings
@@ -542,7 +693,29 @@ def _finalize_selection(
         source_identity=binding.source_identity,
         scope_id=scope_id,
         config=config,
+        coding_product_selection_seed=coding_product_selection_seed,
     )
+    package_bindings = tuple(
+        sorted(
+            (
+                *(
+                    tuple(
+                        zip(
+                            coding_product_selection_seed.packages,
+                            coding_product_selection_seed.bindings,
+                            strict=True,
+                        )
+                    )
+                    if coding_product_selection_seed is not None
+                    else ()
+                ),
+                (package, binding),
+            ),
+            key=lambda item: item[0].manifest.name,
+        )
+    )
+    packages = tuple(item[0] for item in package_bindings)
+    bindings = tuple(item[1] for item in package_bindings)
     journal = PluginExecutionDecisionJournal(
         state_root / "definition-decisions.jsonl",
         scope_kind="workspace",
@@ -560,8 +733,8 @@ def _finalize_selection(
         )
     )
     outcome = host.resolve(
-        runtime.packages,
-        bindings=runtime.bindings,
+        packages,
+        bindings=bindings,
         plan=plan,
         decision_lookup=journal,
     )
@@ -581,8 +754,8 @@ def _finalize_selection(
                     code="coding_lsp_plugin_definition_approval_mismatch",
                 )
         outcome = host.resolve(
-            runtime.packages,
-            bindings=runtime.bindings,
+            packages,
+            bindings=bindings,
             plan=plan,
             decision_lookup=journal,
         )
@@ -605,45 +778,100 @@ def _selection_plan(
     source_identity: str,
     scope_id: str,
     config: CodingLspPluginConfigV1,
+    coding_product_selection_seed: ProductPluginSelectionSeed | None,
 ) -> PluginSelectionPlanV2:
     contributions = package.contribution_index.items
+    base_plan = (
+        coding_product_selection_seed.selection.plan
+        if coding_product_selection_seed is not None
+        else None
+    )
+    policy_revision = (
+        base_plan.context.policy_revision
+        if base_plan is not None
+        else _PRODUCT_POLICY_REVISION
+    )
+    base_instance_refs = (
+        base_plan.context.instance_revision_refs if base_plan is not None else ()
+    )
+    base_plugin_ids = base_plan.selected_plugin_ids if base_plan is not None else ()
+    base_contributions = (
+        base_plan.selected_contributions if base_plan is not None else ()
+    )
+    base_trust = base_plan.source_trust_snapshots if base_plan is not None else ()
+    base_config_entries = (
+        base_plan.effective_configuration_set.entries if base_plan is not None else ()
+    )
     return PluginSelectionPlanV2(
         context=PluginPreflightContextV1(
             product_id=CODING_PRODUCT_ID,
             scope_id=scope_id,
-            policy_revision=_PRODUCT_POLICY_REVISION,
-            instance_revision_refs=(
-                PluginInstanceRevisionRef(
-                    instance_id=f"{_PLUGIN_ID}@{scope_id}",
-                    plugin_id=_PLUGIN_ID,
-                    revision=1,
-                ),
+            policy_revision=policy_revision,
+            instance_revision_refs=tuple(
+                sorted(
+                    (
+                        *base_instance_refs,
+                        PluginInstanceRevisionRef(
+                            instance_id=f"{_PLUGIN_ID}@{scope_id}",
+                            plugin_id=_PLUGIN_ID,
+                            revision=1,
+                        ),
+                    ),
+                    key=lambda item: (
+                        item.plugin_id,
+                        item.instance_id,
+                        item.revision,
+                    ),
+                )
             ),
         ),
-        selected_plugin_ids=(_PLUGIN_ID,),
+        selected_plugin_ids=tuple(sorted((*base_plugin_ids, _PLUGIN_ID))),
         selected_contributions=tuple(
-            PluginContributionRef(_PLUGIN_ID, item.contribution_id)
-            for item in contributions
+            sorted(
+                (
+                    *base_contributions,
+                    *tuple(
+                        PluginContributionRef(_PLUGIN_ID, item.contribution_id)
+                        for item in contributions
+                    ),
+                )
+            )
         ),
-        source_trust_snapshots=(
-            PluginSourceTrustSnapshotV1(
-                plugin_id=_PLUGIN_ID,
-                package_source_identity=source_identity,
-                source_trust_class=_SOURCE_TRUST_CLASS,
-                source_trust_policy_revision=_SOURCE_TRUST_POLICY_REVISION,
-                trusted=True,
-            ),
+        source_trust_snapshots=tuple(
+            sorted(
+                (
+                    *base_trust,
+                    PluginSourceTrustSnapshotV1(
+                        plugin_id=_PLUGIN_ID,
+                        package_source_identity=source_identity,
+                        source_trust_class=_SOURCE_TRUST_CLASS,
+                        source_trust_policy_revision=_SOURCE_TRUST_POLICY_REVISION,
+                        trusted=True,
+                    ),
+                ),
+                key=lambda item: (item.plugin_id, item.package_source_identity),
+            )
         ),
         effective_configuration_set=PluginEffectiveConfigurationSetV1(
             entries=tuple(
-                PluginEffectiveConfigurationEntry(
-                    plugin_id=_PLUGIN_ID,
-                    contribution_id=item.contribution_id,
-                    configuration=(
-                        config.to_dict() if item.kind == "capability_provider" else {}
+                sorted(
+                    (
+                        *base_config_entries,
+                        *tuple(
+                            PluginEffectiveConfigurationEntry(
+                                plugin_id=_PLUGIN_ID,
+                                contribution_id=item.contribution_id,
+                                configuration=(
+                                    config.to_dict()
+                                    if item.kind == "capability_provider"
+                                    else {}
+                                ),
+                            )
+                            for item in contributions
+                        ),
                     ),
+                    key=lambda item: (item.plugin_id, item.contribution_id),
                 )
-                for item in contributions
             )
         ),
         allowed_authority_ceiling=("filesystem", "process"),
@@ -655,7 +883,7 @@ def _assembly_request(
     *,
     provider_authority: CapabilityProviderOwnerAuthority,
     tool_authority: OwnerContributionAuthority,
-    workspace_binding: CapabilityBundleProviderBinding,
+    coding_product_selection_seed: ProductPluginSelectionSeed | None,
 ) -> ProductPluginCompositionAssemblyRequest:
     def select(
         admissions: tuple[CapabilityProviderAdmissionRecord, ...],
@@ -674,7 +902,14 @@ def _assembly_request(
     return ProductPluginCompositionAssemblyRequest(
         contribution_request=ProductCompositionAssemblyRequest(
             selection=selection,
-            owner_bindings=(ProductContributionOwnerBinding(authority=tool_authority),),
+            owner_bindings=(
+                *(
+                    coding_product_selection_seed.owner_bindings
+                    if coding_product_selection_seed is not None
+                    else ()
+                ),
+                ProductContributionOwnerBinding(authority=tool_authority),
+            ),
             mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
             definitions=(
                 MODEL_INPUT_CAPABILITY_DEFINITION,
@@ -693,7 +928,6 @@ def _assembly_request(
             WORKSPACE_CAPABILITY_DEFINITION.capability_id,
         ),
         select_capability_providers=select,
-        prebound_providers=(workspace_binding.provider,),
     )
 
 
@@ -731,17 +965,18 @@ def _tool_owner_authority() -> OwnerContributionAuthority:
 
 def _validate_default_definition_subject(
     subject: PluginExecutionApprovalSubject,
+    *,
+    product_policy_revision: str,
 ) -> None:
     if (
         subject.plugin_id != _PLUGIN_ID
         or subject.product_id != CODING_PRODUCT_ID
         or not subject.scope_id.startswith("session:")
         or subject.scope_id == "session:"
-        or subject.policy_revision != _PRODUCT_POLICY_REVISION
+        or subject.policy_revision != product_policy_revision
         or subject.entrypoint != _DEFAULT_DEFINITION_ENTRYPOINT
         or subject.source_trust_class != _SOURCE_TRUST_CLASS
-        or subject.source_trust_policy_revision
-        != _SOURCE_TRUST_POLICY_REVISION
+        or subject.source_trust_policy_revision != _SOURCE_TRUST_POLICY_REVISION
         or subject.requested_authorities != ("filesystem", "process")
         or subject.allowed_authority_ceiling != ("filesystem", "process")
         or subject.instance_revision_ref.instance_id
@@ -757,6 +992,8 @@ def _validate_default_definition_subject(
 
 def _validate_default_activation_subject(
     subject: ContributionActivationApprovalSubject,
+    *,
+    product_policy_revision: str,
 ) -> None:
     if (
         subject.capability_id != CODING_LSP_CAPABILITY_DEFINITION.capability_id
@@ -768,9 +1005,8 @@ def _validate_default_activation_subject(
         or not subject.scope_id.startswith("session:")
         or subject.scope_id == "session:"
         or subject.source_trust_class != _SOURCE_TRUST_CLASS
-        or subject.source_trust_policy_revision
-        != _SOURCE_TRUST_POLICY_REVISION
-        or subject.product_policy_revision != _PRODUCT_POLICY_REVISION
+        or subject.source_trust_policy_revision != _SOURCE_TRUST_POLICY_REVISION
+        or subject.product_policy_revision != product_policy_revision
         or subject.owner_policy_revision != _PROVIDER_OWNER_POLICY_REVISION
         or subject.revocation_epoch != 0
         or subject.effective_facets
@@ -795,16 +1031,15 @@ def _default_approval_authorization() -> PluginApprovalAuthorizationV1:
     )
 
 
-def _validate_inputs(
+def _validate_preparation_inputs(
     request: CodingLspPluginOptInRequest,
     *,
     session_id: str,
     config: CodingLspPluginConfigV1,
     package_materializer: CodingPackageMaterializer,
-    workspace_binding: CapabilityBundleProviderBinding,
-    host_boot_id: str,
-    tool_mode: CapabilityMountMode,
     clock: Callable[[], int],
+    coding_base_plugin_assembly: CodingBasePluginAssembly | None,
+    coding_product_selection_seed: ProductPluginSelectionSeed | None,
 ) -> None:
     if not isinstance(request, CodingLspPluginOptInRequest):
         raise TypeError("Coding LSP Plugin opt-in request is invalid")
@@ -814,6 +1049,34 @@ def _validate_inputs(
         raise TypeError("Coding LSP Plugin opt-in configuration is invalid")
     if not isinstance(package_materializer, CodingPackageMaterializer):
         raise TypeError("Coding LSP Plugin opt-in requires Coding materialization")
+    if coding_base_plugin_assembly is not None:
+        if not isinstance(coding_base_plugin_assembly, CodingBasePluginAssembly):
+            raise TypeError("Coding LSP Plugin base assembly is invalid")
+        expected_scope = f"session:{session_id.strip()}"
+        if coding_base_plugin_assembly.scope_id != expected_scope:
+            raise ValueError("Coding base and LSP Plugin scopes do not match")
+        if coding_base_plugin_assembly.package.revision_handle.closed:
+            raise RuntimeError("Coding base Plugin revision is unavailable")
+    if coding_product_selection_seed is not None:
+        if not isinstance(coding_product_selection_seed, ProductPluginSelectionSeed):
+            raise TypeError("Coding LSP Product selection seed is invalid")
+        if (
+            coding_base_plugin_assembly is not None
+            and _BASE_PLUGIN_ID
+            not in coding_product_selection_seed.selection.plan.selected_plugin_ids
+        ):
+            raise ValueError("Coding LSP Product seed omits coding.base")
+    if not callable(clock):
+        raise TypeError("Coding LSP Plugin opt-in clock is invalid")
+
+
+def _validate_workspace_binding(
+    workspace_binding: CapabilityBundleProviderBinding,
+    *,
+    host_boot_id: str,
+    tool_mode: CapabilityMountMode,
+    clock: Callable[[], int],
+) -> None:
     if not isinstance(workspace_binding, CapabilityBundleProviderBinding):
         raise TypeError("Coding LSP Plugin opt-in workspace binding is invalid")
     if (
@@ -833,6 +1096,34 @@ def _validate_inputs(
         raise TypeError("Coding LSP Plugin opt-in clock is invalid")
 
 
+def _validate_inputs(
+    request: CodingLspPluginOptInRequest,
+    *,
+    session_id: str,
+    config: CodingLspPluginConfigV1,
+    package_materializer: CodingPackageMaterializer,
+    workspace_binding: CapabilityBundleProviderBinding,
+    host_boot_id: str,
+    tool_mode: CapabilityMountMode,
+    clock: Callable[[], int],
+) -> None:
+    _validate_preparation_inputs(
+        request,
+        session_id=session_id,
+        config=config,
+        package_materializer=package_materializer,
+        clock=clock,
+        coding_base_plugin_assembly=None,
+        coding_product_selection_seed=None,
+    )
+    _validate_workspace_binding(
+        workspace_binding,
+        host_boot_id=host_boot_id,
+        tool_mode=tool_mode,
+        clock=clock,
+    )
+
+
 def _read_clock(clock: Callable[[], int]) -> int:
     value = clock()
     if isinstance(value, bool) or not isinstance(value, int):
@@ -846,7 +1137,9 @@ __all__ = [
     "CodingLspPluginApprovalOwner",
     "CodingLspPluginOptInAssembly",
     "CodingLspPluginOptInError",
+    "CodingLspPluginOptInPreparation",
     "CodingLspPluginOptInRequest",
     "assemble_coding_lsp_plugin_opt_in",
     "create_coding_lsp_default_plugin_opt_in_request",
+    "prepare_coding_lsp_plugin_opt_in",
 ]

@@ -64,7 +64,6 @@ from loushang.coding.prompt_command import (
     run_prompt_plan_command,
 )
 from loushang.coding.resource_runtime import collect_coding_package_entries
-from loushang.coding.tool_pack import register_coding_builtin_tools
 from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.workflow import run_prompt_steps_workflow
 from loushang.harness.approval import (
@@ -199,26 +198,6 @@ def build_builtin_tool_registry(
     configure_persistent_approval_policy(
         resolved_approval_resolver,
         settings_manager,
-    )
-    get_external_tool_policy = getattr(
-        settings_manager, "get_external_tool_policy", None
-    )
-    get_shell_path = getattr(settings_manager, "get_shell_path", None)
-    get_shell_command_prefix = getattr(
-        settings_manager,
-        "get_shell_command_prefix",
-        None,
-    )
-    register_coding_builtin_tools(
-        registry,
-        diagnostics_service=diagnostics_service,
-        external_tool_policy=get_external_tool_policy()
-        if callable(get_external_tool_policy)
-        else None,
-        shell_path=get_shell_path() if callable(get_shell_path) else None,
-        command_prefix=(
-            get_shell_command_prefix() if callable(get_shell_command_prefix) else None
-        ),
     )
     register_coding_arch_tools(
         registry,
@@ -634,8 +613,13 @@ def _coding_state_preparation_ports(
             )
         ),
         policy_factory=PolicyEngine,
-        build_interactive_approval_resolver=lambda: InteractiveApprovalResolver(
-            fallback=HeadlessApprovalResolver(mode="deny")
+        build_interactive_approval_resolver=lambda fallback=None: (
+            InteractiveApprovalResolver(
+                fallback=cast(
+                    ApprovalResolver,
+                    fallback or HeadlessApprovalResolver(mode="deny"),
+                )
+            )
         ),
         run_resource_toggle=run_resource_toggle_operation,
         evaluate_plugin_source=_package_source_policy_reason,

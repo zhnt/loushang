@@ -63,6 +63,7 @@ from loushang.harness.resources.plugins.selection import (
 from loushang.harness.session.product_composition_assembly import (
     ProductCompositionAssemblyRequest,
     ProductContributionOwnerBinding,
+    ProductPluginSelectionSeed,
     assemble_product_composition,
 )
 
@@ -136,9 +137,7 @@ def build_coding_initial_resource_catalog_adapter(
     ):
         raise ValueError("Coding Resource Catalog Product scope is invalid")
     resolved_admission_now = (
-        int(time.time())
-        if package_admission_now is None
-        else package_admission_now
+        int(time.time()) if package_admission_now is None else package_admission_now
     )
     if product_composition is not None and not isinstance(
         product_composition,
@@ -259,10 +258,9 @@ def build_coding_initial_resource_catalog_adapter(
             package_resources=package_resources,
             embedded_collections=embedded,
             context_file_names=receipt.context_file_names,
-            disabled_skill_selectors=tuple(
-                item for item in disabled_skills if item
-            ),
-        )
+            disabled_skill_selectors=tuple(item for item in disabled_skills if item),
+        ),
+        clock=lambda: resolved_admission_now,
     )
 
 
@@ -384,25 +382,40 @@ def _prepare_package_resources(
     return tuple(specs)
 
 
-def _compile_coding_package_product_composition(
+def prepare_coding_package_plugin_selection_seed(
     receipt: ResourceCatalogInputReceipt,
     *,
     product_scope_id: str | None,
     evaluated_at: int,
     product_selection: PluginSelection | None = None,
-) -> ProductCompositionCompilation | None:
+    selection_seed: ProductPluginSelectionSeed | None = None,
+) -> ProductPluginSelectionSeed | None:
+    """Combine configured Resource Plugins with one exact Product seed."""
+
+    if selection_seed is not None:
+        if not isinstance(selection_seed, ProductPluginSelectionSeed):
+            raise TypeError("Coding package Product selection seed is invalid")
+        if product_selection is not None:
+            raise ValueError("Coding package selection received two Product seeds")
+        product_selection = selection_seed.selection
     package_inputs = receipt.catalog_plugin_package_inputs
     if not package_inputs:
         return None
     if isinstance(evaluated_at, bool) or not isinstance(evaluated_at, int):
         raise TypeError("Coding package Resource admission time must be an integer")
 
+    seed_plugin_ids = (
+        tuple(product_selection.plan.selected_plugin_ids)
+        if product_selection is not None
+        else ()
+    )
     selected_inputs = tuple(
         sorted(
             (
                 item
                 for item in package_inputs
-                if any(
+                if item.package.manifest.name in seed_plugin_ids
+                or any(
                     reservation.kind == "resource_item"
                     for reservation in item.package.contribution_index.items
                 )
@@ -415,11 +428,6 @@ def _compile_coding_package_product_composition(
     selected_input_by_id = {
         item.package.manifest.name: item for item in selected_inputs
     }
-    seed_plugin_ids = (
-        tuple(product_selection.plan.selected_plugin_ids)
-        if product_selection is not None
-        else ()
-    )
     seed_selected_contributions = (
         {
             (item.plugin_id, item.contribution_id)
@@ -436,9 +444,7 @@ def _compile_coding_package_product_composition(
 
     missing_seed_plugins = sorted(set(seed_plugin_ids) - set(selected_input_by_id))
     if missing_seed_plugins:
-        raise CodingResourceCatalogAdmissionError(
-            ("product_selected_package_missing",)
-        )
+        raise CodingResourceCatalogAdmissionError(("product_selected_package_missing",))
     if product_selection is not None:
         selected_seed_digests = {
             candidate.package.manifest.name: candidate.package.content_digest
@@ -456,9 +462,7 @@ def _compile_coding_package_product_composition(
         product_selection.plan.context.scope_id
         if product_selection is not None
         else (
-            product_scope_id.strip()
-            if product_scope_id
-            else f"session:{receipt.cwd}"
+            product_scope_id.strip() if product_scope_id else f"session:{receipt.cwd}"
         )
     )
     seed_instance_refs = (
@@ -470,10 +474,7 @@ def _compile_coding_package_product_composition(
         else {}
     )
     seed_trust = (
-        {
-            item.plugin_id: item
-            for item in product_selection.plan.source_trust_snapshots
-        }
+        {item.plugin_id: item for item in product_selection.plan.source_trust_snapshots}
         if product_selection is not None
         else {}
     )
@@ -583,37 +584,59 @@ def _compile_coding_package_product_composition(
                 ("invalid_package_resource_declaration",)
             )
         owner_key = (candidate.owner_id, candidate.contribution_kind)
-        owner_collections.setdefault(owner_key, set()).add(
-            contribution.collection_id
-        )
+        owner_collections.setdefault(owner_key, set()).add(contribution.collection_id)
         owner_trust_classes.setdefault(owner_key, set()).add(
             candidate.source_trust_class
         )
-    request = ProductCompositionAssemblyRequest(
-        selection=selection,
-        owner_bindings=tuple(
-            ProductContributionOwnerBinding(
-                authority=OwnerContributionAuthority(
-                    OwnerContributionPolicy(
-                        owner_id=owner_key[0],
-                        contribution_kind=owner_key[1],
-                        product_id="coding",
-                        policy_revision=(
-                            f"{owner_key[0]}-{owner_key[1]}-coding-ingress-v1"
-                        ),
-                        revocation_epoch=0,
-                        allowed_source_trust_classes=tuple(
-                            sorted(owner_trust_classes[owner_key])
-                        ),
-                        allowed_collection_ids=tuple(sorted(collection_ids)),
-                        allowed_requirement_bindings=("direct",),
-                        consumer_scope="session",
-                        consumer_refresh_boundary="sealed",
-                    )
+    owner_bindings = tuple(
+        ProductContributionOwnerBinding(
+            authority=OwnerContributionAuthority(
+                OwnerContributionPolicy(
+                    owner_id=owner_key[0],
+                    contribution_kind=owner_key[1],
+                    product_id="coding",
+                    policy_revision=(
+                        f"{owner_key[0]}-{owner_key[1]}-coding-ingress-v1"
+                    ),
+                    revocation_epoch=0,
+                    allowed_source_trust_classes=tuple(
+                        sorted(owner_trust_classes[owner_key])
+                    ),
+                    allowed_collection_ids=tuple(sorted(collection_ids)),
+                    allowed_requirement_bindings=("direct",),
+                    consumer_scope="session",
+                    consumer_refresh_boundary="sealed",
                 )
             )
-            for owner_key, collection_ids in sorted(owner_collections.items())
-        ),
+        )
+        for owner_key, collection_ids in sorted(owner_collections.items())
+    )
+    return ProductPluginSelectionSeed(
+        selection=selection,
+        packages=tuple(item.package for item in selected_inputs),
+        bindings=tuple(item.binding for item in selected_inputs),
+        owner_bindings=owner_bindings,
+    )
+
+
+def _compile_coding_package_product_composition(
+    receipt: ResourceCatalogInputReceipt,
+    *,
+    product_scope_id: str | None,
+    evaluated_at: int,
+    product_selection: PluginSelection | None = None,
+) -> ProductCompositionCompilation | None:
+    seed = prepare_coding_package_plugin_selection_seed(
+        receipt,
+        product_scope_id=product_scope_id,
+        evaluated_at=evaluated_at,
+        product_selection=product_selection,
+    )
+    if seed is None:
+        return None
+    request = ProductCompositionAssemblyRequest(
+        selection=seed.selection,
+        owner_bindings=seed.owner_bindings,
         mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
         definitions=(
             MODEL_INPUT_CAPABILITY_DEFINITION,
