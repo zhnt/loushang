@@ -344,6 +344,10 @@ def test_rcp55_default_path_has_no_peer_loader_or_skill_authority() -> None:
     coding_source = CODING_BOOTSTRAP_PATH.read_text(encoding="utf-8")
     input_source = CATALOG_INPUT_PREPARATION_PATH.read_text(encoding="utf-8")
     bootstrap_source = CATALOG_BOOTSTRAP_PROJECTION_PATH.read_text(encoding="utf-8")
+    product_source = AGENT_PRODUCT_PATH.read_text(encoding="utf-8")
+    services_source = Path(
+        "src/loushang/harness/session/bootstrap_services.py"
+    ).read_text(encoding="utf-8")
 
     top_level_imports = {
         node.module
@@ -366,3 +370,7 @@ def test_rcp55_default_path_has_no_peer_loader_or_skill_authority() -> None:
     assert "_loader_resolution" not in input_source
     assert "compose_resource_catalog" in bootstrap_source
     assert "project_resource_catalog" in bootstrap_source
+    assert "_disabled_skill_winner_descriptors" in bootstrap_source
+    assert "class CatalogSessionResourceLoaderView" in loader_source
+    assert "create_catalog_session_view()" in product_source
+    assert "resource_authority_mode" in services_source

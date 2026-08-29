@@ -33,6 +33,7 @@ from loushang.harness.resources._catalog_projection import (
     project_resource_catalog,
 )
 from loushang.harness.resources._catalog_records import (
+    ResourceCatalogSnapshot,
     ResourceComponentProducer,
     ResourceIdentity,
     ResourceSourceSnapshot,
@@ -193,11 +194,21 @@ def prepare_resource_catalog_bootstrap_projection(
             descriptor_bindings,
             selectors=disabled_skill_selectors,
         )
+        merge_policy = default_resource_merge_policy()
+        selection_snapshot = compose_resource_catalog(
+            source_snapshots,
+            catalog_generation=_PREFLIGHT_GENERATION,
+            engine_binding_fingerprint=engine_binding,
+            merge_policy=merge_policy,
+            activation_policy=build_activation_policy_snapshot(
+                policy_revision=f"{product_policy_revision}:skill-selection",
+            ),
+        )
         snapshot = compose_resource_catalog(
             source_snapshots,
             catalog_generation=_PREFLIGHT_GENERATION,
             engine_binding_fingerprint=engine_binding,
-            merge_policy=default_resource_merge_policy(),
+            merge_policy=merge_policy,
             activation_policy=build_activation_policy_snapshot(
                 policy_revision=f"{product_policy_revision}:skill-activation",
                 disabled_identities=disabled,
@@ -209,15 +220,14 @@ def prepare_resource_catalog_bootstrap_projection(
             descriptor_bindings=tuple(descriptor_bindings),
         ).to_compatibility_bundle()
         selected_skill_ids = {skill.id or skill.name for skill in bundle.skills}
-        disabled_skill_ids = {identity.public_id for identity in disabled}
         bundle.skills.extend(
-            replace(binding.descriptor, enabled=False)
-            for binding in descriptor_bindings
-            if isinstance(binding.descriptor, SkillDescriptor)
-            and (binding.descriptor.id or binding.descriptor.name)
-            in disabled_skill_ids
-            and (binding.descriptor.id or binding.descriptor.name)
-            not in selected_skill_ids
+            replace(descriptor, enabled=False)
+            for descriptor in _disabled_skill_winner_descriptors(
+                selection_snapshot,
+                descriptor_bindings,
+                disabled_identities=disabled,
+            )
+            if (descriptor.id or descriptor.name) not in selected_skill_ids
         )
         return bundle
     finally:
@@ -259,6 +269,29 @@ def _disabled_skill_identities(
                 )
             )
     return tuple(sorted(set(identities)))
+
+
+def _disabled_skill_winner_descriptors(
+    selection_snapshot: ResourceCatalogSnapshot,
+    bindings: Sequence[ResourceProjectionDescriptorBinding],
+    *,
+    disabled_identities: Sequence[ResourceIdentity],
+) -> tuple[SkillDescriptor, ...]:
+    disabled = frozenset(disabled_identities)
+    winners = {
+        entry.primary_candidate_fingerprint
+        for entry in selection_snapshot.effective_entries
+        if entry.identity.resource_kind == "skill" and entry.identity in disabled
+    }
+    by_fingerprint = {
+        binding.candidate_fingerprint: binding for binding in bindings
+    }
+    descriptors: list[SkillDescriptor] = []
+    for fingerprint in sorted(winners):
+        binding = by_fingerprint.get(fingerprint)
+        if binding is not None and isinstance(binding.descriptor, SkillDescriptor):
+            descriptors.append(binding.descriptor)
+    return tuple(descriptors)
 
 
 def _preflight_binding_fingerprint(

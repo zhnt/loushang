@@ -345,6 +345,39 @@ def test_resource_loader_authority_selection_is_monotonic(tmp_path: Path) -> Non
         match="catalog_loader_cannot_enter_legacy_authority",
     ):
         catalog.reload_resources(tmp_path)
+    with pytest.raises(
+        ResourceLoaderCompatibilityError,
+        match="legacy_loader_cannot_restore_catalog_projection",
+    ):
+        legacy.restore_catalog_projection(None)
+
+
+def test_catalog_preparation_failure_keeps_compatibility_reads_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harness.resources import loader as loader_module
+
+    loader = ResourceLoader(user_resource_roots=())
+
+    def fail_verification(_mounts: object) -> None:
+        raise RuntimeError("injected mount verification failure")
+
+    monkeypatch.setattr(loader_module, "_verify_package_mounts", fail_verification)
+    with pytest.raises(RuntimeError, match="injected mount verification"):
+        loader.prepare_catalog_input_receipt(tmp_path)
+
+    for read in (
+        loader.get_resource_bundle,
+        loader.get_resource_snapshot,
+        loader.get_skills,
+        loader.get_diagnostics,
+    ):
+        with pytest.raises(
+            ResourceLoaderCompatibilityError,
+            match="catalog_projection_not_published",
+        ):
+            read()
 
 
 def test_resource_loader_receipt_carries_verified_package_candidate_facts(

@@ -504,8 +504,9 @@ receipt.  A Catalog-owned synchronous preflight uses the same native, admitted
 package, and embedded sources plus the standard merge/activation policy to
 produce the body-free Extension/prompt seed; it is disposed before Session
 construction and has no publication authority.  Initial and refresh
-publication then bind the loader's compatibility reads to the exact captured
-Catalog projection.  The legacy discovery pipeline is lazy compatibility code:
+publication then bind a Session-owned loader compatibility view to the exact
+captured Catalog projection; the shared Product input loader never holds a
+Session projection.  The legacy discovery pipeline is lazy compatibility code:
 it is neither imported nor called by `catalog_required`, and it cannot provide
 a fallback when Catalog preparation or publication fails.
 

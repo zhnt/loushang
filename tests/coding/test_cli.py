@@ -1442,6 +1442,7 @@ def test_cwd_bound_services_factory_uses_sdk_services_creation(
         base_services,
         resource_loader_options,
         create_services=fake_create_agent_session_services,
+        create_services_options={"resource_authority_mode": "legacy_explicit"},
     )
 
     assert factory is not None
@@ -1450,6 +1451,7 @@ def test_cwd_bound_services_factory_uses_sdk_services_creation(
         {
             "cwd": str(project_b),
             "resource_loader_options": resource_loader_options,
+            "resource_authority_mode": "legacy_explicit",
         }
     ]
 

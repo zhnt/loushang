@@ -313,7 +313,12 @@ class AgentProductSession(AgentSessionAdapterMixin):
         )
         self.model_registry = model_registry
         self.api_registry = api_registry or get_default_api_registry()
-        self._resource_loader = resource_loader
+        self._resource_loader = (
+            resource_loader.create_catalog_session_view()
+            if resource_loader is not None
+            and initial_resource_catalog_bootstrap is not None
+            else resource_loader
+        )
         self.resource_bundle = resource_bundle
         self._extension_runner = extension_runner
         self._initial_resource_catalog_bootstrap = initial_resource_catalog_bootstrap

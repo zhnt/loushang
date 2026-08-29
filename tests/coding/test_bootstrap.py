@@ -778,6 +778,7 @@ def test_create_agent_session_services_builds_cwd_bound_services(tmp_path) -> No
 
     assert isinstance(services, AgentSessionServices)
     assert services.cwd == str(project_root.resolve())
+    assert services.resource_authority_mode == "catalog_required"
     assert services.settings_manager.get_settings().system_prompt == "Project prompt."
     assert services.resource_bundle is not None
     assert services.resource_bundle.agents_md == "Project guidance"
@@ -810,8 +811,74 @@ def test_create_agent_session_from_services_uses_cwd_bound_services(tmp_path) ->
     )
 
     assert result.session.settings_manager is agent_services.settings_manager
-    assert result.session.resource_loader is agent_services.resource_loader
+    assert result.session.resource_loader is not agent_services.resource_loader
+    asyncio.run(result.session.prepare_model_call_runtime())
+    assert (
+        result.session.resource_loader.get_resource_bundle().cwd
+        == Path(agent_services.cwd)
+    )
     assert result.session.session_manager is manager
+
+
+def test_create_agent_session_from_services_inherits_and_validates_authority(
+    tmp_path,
+) -> None:
+    from loushang.coding import (
+        create_agent_session_from_services,
+        create_agent_session_services,
+    )
+    from loushang.coding.session_manager import SessionManager
+
+    legacy_project = tmp_path / "legacy-project"
+    legacy_project.mkdir()
+    legacy_services = create_agent_session_services(
+        cwd=legacy_project,
+        global_settings_path=tmp_path / "global-legacy" / "settings.json",
+        resource_authority_mode="legacy_explicit",
+    )
+    legacy_manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "legacy-sessions",
+            cwd=str(legacy_project),
+            persist=False,
+        )
+    )
+    legacy_result = create_agent_session_from_services(
+        agent_services=legacy_services,
+        session_manager=legacy_manager,
+        model=_model(),
+    )
+    assert legacy_services.resource_authority_mode == "legacy_explicit"
+    assert legacy_result.session._initial_resource_catalog_bootstrap is None
+
+    catalog_project = tmp_path / "catalog-project"
+    catalog_project.mkdir()
+    catalog_services = create_agent_session_services(
+        cwd=catalog_project,
+        global_settings_path=tmp_path / "global-catalog" / "settings.json",
+    )
+    catalog_manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "catalog-sessions",
+            cwd=str(catalog_project),
+            persist=False,
+        )
+    )
+    with pytest.raises(ValueError, match="must match prepared services"):
+        create_agent_session_from_services(
+            agent_services=legacy_services,
+            session_manager=legacy_manager,
+            model=_model(),
+            resource_authority_mode="catalog_required",
+        )
+    with pytest.raises(ValueError, match="must match prepared services"):
+        create_agent_session_from_services(
+            agent_services=catalog_services,
+            session_manager=catalog_manager,
+            model=_model(),
+            resource_authority_mode="legacy_explicit",
+        )
+    asyncio.run(legacy_result.session.dispose())
 
 
 def test_create_agent_session_services_loads_extension_flags_and_values(
@@ -1169,9 +1236,14 @@ def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
 
     asyncio.run(session.prepare_model_call_runtime())
     assert (
-        services.resource_loader.get_resource_bundle().agents_md
+        session.resource_loader.get_resource_bundle().agents_md
         == "Use repo conventions."
     )
+    with pytest.raises(
+        ResourceLoaderCompatibilityError,
+        match="catalog_projection_not_published",
+    ):
+        services.resource_loader.get_resource_bundle()
 
 
 def test_create_agent_session_applies_allowed_tool_names_to_default_active_tools(
@@ -2361,7 +2433,10 @@ def test_create_agent_session_passes_resource_loader_into_agent_session(
         services=services,
     )
 
-    assert session._resource_loader is loader
+    from loushang.harness.resources.loader import CatalogSessionResourceLoaderView
+
+    assert isinstance(session._resource_loader, CatalogSessionResourceLoaderView)
+    assert session._resource_loader.input_loader is loader
     # /tmp is a symlink to /private/tmp on macOS; assert the resolved form.
     assert loader.discover_calls == [str(Path("/tmp/project").resolve())]
 

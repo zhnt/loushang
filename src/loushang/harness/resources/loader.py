@@ -363,6 +363,7 @@ class ResourceLoader:
         # Catalog-required caller must never fall back to legacy discovery by
         # handling a preparation error and reusing this loader.
         self._catalog_authority_selected = True
+        self._catalog_inputs_pending = True
         self._initial_resource_catalog_input_receipt = None
         _verify_package_mounts(self._package_mounts)
         target = Path(cwd)
@@ -402,8 +403,18 @@ class ResourceLoader:
             for source in self._append_system_prompt_sources
             if (resolved := _resolve_prompt_input(source, cwd=target)) is not None
         )
-        self._catalog_inputs_pending = True
         return receipt
+
+    def create_catalog_session_view(self) -> CatalogSessionResourceLoaderView:
+        """Create an isolated compatibility view over this input authority."""
+
+        if self._legacy_authority_selected:
+            raise ResourceLoaderCompatibilityError(
+                "legacy_loader_cannot_create_catalog_session_view"
+            )
+        self._catalog_authority_selected = True
+        self._catalog_inputs_pending = True
+        return CatalogSessionResourceLoaderView(self)
 
     def _discover_resources(
         self,
@@ -479,6 +490,14 @@ class ResourceLoader:
     ) -> None:
         """Restore a previously captured Catalog projection during rollback."""
 
+        if self._legacy_authority_selected:
+            raise ResourceLoaderCompatibilityError(
+                "legacy_loader_cannot_restore_catalog_projection"
+            )
+        if not self._catalog_authority_selected:
+            raise ResourceLoaderCompatibilityError(
+                "catalog_projection_restore_without_catalog_authority"
+            )
         if projection is not None and not isinstance(
             projection,
             ResourceCatalogProjection,
@@ -520,7 +539,7 @@ class ResourceLoader:
             raise ResourceLoaderCompatibilityError(
                 "catalog_projection_has_no_legacy_candidate_snapshot"
             )
-        if self._catalog_inputs_pending:
+        if self._catalog_authority_selected and self._catalog_projection is None:
             raise ResourceLoaderCompatibilityError(
                 "catalog_projection_not_published"
             )
@@ -668,6 +687,133 @@ class ResourceLoader:
         return list(self.get_resource_bundle().extensions)
 
 
+class CatalogSessionResourceLoaderView(ResourceLoader):
+    """Session-owned Catalog compatibility view over a shared input loader.
+
+    Configuration and input preparation remain on the shared loader. Catalog
+    publication state is deliberately local to this view, so one Session can
+    neither observe nor roll back another Session's projection.
+    """
+
+    def __init__(self, source_loader: ResourceLoader) -> None:
+        if not isinstance(source_loader, ResourceLoader):
+            raise TypeError("Catalog Session view requires a ResourceLoader")
+        self._source_loader = source_loader
+        self._snapshot: Any | None = None
+        self._catalog_projection: ResourceCatalogProjection | None = None
+        self._catalog_inputs_pending = True
+        self._catalog_authority_selected = True
+        self._legacy_authority_selected = False
+
+    @property
+    def input_loader(self) -> ResourceLoader:
+        """Return the shared configuration/input authority for diagnostics."""
+
+        return self._source_loader
+
+    def set_package_roots(
+        self,
+        package_roots: Sequence[str | Path] | None,
+        package_source_filters: Mapping[str | Path, PackageSourceConfig] | None = None,
+    ) -> None:
+        self._source_loader.set_package_roots(
+            package_roots,
+            package_source_filters,
+        )
+
+    def set_package_mounts(
+        self,
+        mounts: Sequence[PackageResourceMount],
+        *,
+        catalog_plugin_package_inputs: Sequence[CatalogPluginPackageInput] = (),
+    ) -> None:
+        self._source_loader.set_package_mounts(
+            mounts,
+            catalog_plugin_package_inputs=catalog_plugin_package_inputs,
+        )
+
+    def set_user_resource_roots(
+        self,
+        user_resource_roots: Sequence[str | Path] | None,
+        *,
+        explicit_roots: Collection[str | Path] | None = None,
+    ) -> None:
+        self._source_loader.set_user_resource_roots(
+            user_resource_roots,
+            explicit_roots=explicit_roots,
+        )
+
+    def set_workspace_root(self, workspace_root: str | Path | None) -> None:
+        self._source_loader.set_workspace_root(workspace_root)
+
+    def set_runtime_options(
+        self,
+        *,
+        additional_extension_paths: list[str | Path]
+        | tuple[str | Path, ...]
+        | None = None,
+        additional_skill_paths: list[str | Path] | tuple[str | Path, ...] | None = None,
+        additional_prompt_template_paths: list[str | Path]
+        | tuple[str | Path, ...]
+        | None = None,
+        additional_theme_paths: list[str | Path] | tuple[str | Path, ...] | None = None,
+        no_extensions: bool | None = None,
+        no_skills: bool | None = None,
+        no_prompt_templates: bool | None = None,
+        no_themes: bool | None = None,
+        no_context_files: bool | None = None,
+        system_prompt: str | None = None,
+        append_system_prompt: list[str] | tuple[str, ...] | None = None,
+    ) -> None:
+        self._source_loader.set_runtime_options(
+            additional_extension_paths=additional_extension_paths,
+            additional_skill_paths=additional_skill_paths,
+            additional_prompt_template_paths=additional_prompt_template_paths,
+            additional_theme_paths=additional_theme_paths,
+            no_extensions=no_extensions,
+            no_skills=no_skills,
+            no_prompt_templates=no_prompt_templates,
+            no_themes=no_themes,
+            no_context_files=no_context_files,
+            system_prompt=system_prompt,
+            append_system_prompt=append_system_prompt,
+        )
+
+    def prepare_catalog_input_receipt(
+        self,
+        cwd: str | Path,
+    ) -> ResourceCatalogInputReceipt:
+        return self._source_loader.prepare_catalog_input_receipt(cwd)
+
+    def _take_initial_resource_catalog_input_receipt(
+        self,
+    ) -> ResourceCatalogInputReceipt:
+        return self._source_loader._take_initial_resource_catalog_input_receipt()
+
+    @property
+    def _package_roots(self) -> tuple[Path, ...]:
+        return self._source_loader._package_roots
+
+    def get_system_prompt_override(self) -> str | None:
+        return self._source_loader.get_system_prompt_override()
+
+    def get_append_system_prompt_overrides(self) -> list[str]:
+        return self._source_loader.get_append_system_prompt_overrides()
+
+    def get_system_prompt(self, *, base_prompt: str | None = None) -> str | None:
+        profile = getattr(self._source_loader, "_resource_profile", None)
+        assembler = getattr(profile, "system_prompt_assembler", None)
+        if assembler is None:
+            return base_prompt
+        return assembler(base_prompt, self.get_resource_bundle())
+
+    def close(self) -> None:
+        """Release only this view; the shared input loader owns source leases."""
+
+        self._catalog_projection = None
+        self._catalog_inputs_pending = True
+
+
 class ProfiledResourceLoader(ResourceLoader):
     """Resource loader bound to one Product profile."""
 
@@ -696,6 +842,7 @@ class ProfiledResourceLoader(ResourceLoader):
 
 
 __all__ = [
+    "CatalogSessionResourceLoaderView",
     "DEFAULT_CONTEXT_FILE_NAMES",
     "ProfiledResourceLoader",
     "ResourceLoader",

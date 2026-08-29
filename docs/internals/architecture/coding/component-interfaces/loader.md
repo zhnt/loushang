@@ -72,6 +72,8 @@ merge、diagnostics 与 package materialization 由 `loushang.harness.resources`
   exact Catalog projection；不导入或执行 legacy effective-selection pipeline
 - 每个 loader 实例只允许单调选择一次 Catalog 或显式 legacy 权威；准备、发布或
   回滚失败不会让同一实例切换到另一条路径，未发布 Catalog 查询返回有限错误
+- `BootstrapServices` 的共享 loader 只保存配置与准备 input receipt；每个 Catalog
+  Session 都创建独立 compatibility view，projection 发布/回滚不会跨 Session 串写
 - 保留显式 Coding loader adapter，避免产品配置散落进 bootstrap 或 session
 - Harness loader 是 package provenance 的源头；Coding session / RPC / CLI
   只做产品投影，不重新推断 package 来源

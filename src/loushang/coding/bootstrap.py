@@ -229,6 +229,7 @@ def create_agent_session_services(
             session_id=f"services-preview:{preview_id}",
         )
         return bundle
+
     def create_cwd_services(resolved_cwd: Path) -> BootstrapServices:
         resolved_settings_manager = settings_manager or SettingsManager(
             global_settings_path=Path(global_settings_path)
@@ -278,6 +279,7 @@ def create_agent_session_services(
             else None
         ),
         extension_flag_values=extension_flag_values,
+        resource_authority_mode=resource_authority_mode,
     )
 
 
@@ -880,11 +882,22 @@ def create_agent_session_from_services(
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: PolicyEvaluator | None = None,
     enable_multiagent: bool = False,
-    resource_authority_mode: ResourceAuthorityMode = "catalog_required",
+    resource_authority_mode: ResourceAuthorityMode | None = None,
     lsp_definitions: Iterable[LspServerDefinition] = (),
     lsp_baseline_environment: Mapping[str, str] | None = None,
     lsp_read_text: WorkspaceTextReader | None = None,
 ) -> CreateAgentSessionResult:
+    prepared_authority = agent_services.resource_authority_mode
+    if prepared_authority not in RESOURCE_AUTHORITY_MODES:
+        raise ValueError("Agent Session services have no valid Resource authority")
+    if (
+        resource_authority_mode is not None
+        and resource_authority_mode != prepared_authority
+    ):
+        raise ValueError(
+            "Agent Session Resource authority must match prepared services"
+        )
+    resolved_resource_authority = cast(ResourceAuthorityMode, prepared_authority)
     extension_flag_values = (
         agent_services.extension_runner.get_flag_values()
         if agent_services.extension_runner is not None
@@ -910,7 +923,7 @@ def create_agent_session_from_services(
         approval_resolver=approval_resolver,
         tool_policy_evaluator=tool_policy_evaluator,
         enable_multiagent=enable_multiagent,
-        resource_authority_mode=resource_authority_mode,
+        resource_authority_mode=resolved_resource_authority,
         lsp_definitions=lsp_definitions,
         lsp_baseline_environment=lsp_baseline_environment,
         lsp_read_text=lsp_read_text,

@@ -49,8 +49,8 @@ python run.py run legacy-001 --dry-run
 - `run <id|slug>`: 运行指定示例，支持透传参数到原始脚本
 - `--json`: 机器友好输出
 
-`run.py` 基于 `example-manifest.toml` 统一管理 232 个示例（包含：
-37 个可执行脚本 + 195 个生成示例）。
+`run.py` 基于 `example-manifest.toml` 统一管理 231 个示例（包含：
+33 个可执行脚本 + 198 个生成示例）。
 
 ### 直接运行单个示例
 

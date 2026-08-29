@@ -54,6 +54,10 @@
 - 语义上吸收 `reference CLI` 的 customization / resource discovery 经验
 - RCP5.5 已删除独立 `SkillLoader`；Skill 不再拥有私有 discovery、body cache
   或 disabled-name overlay
+- 迁移旧 `SkillLoader.list_skills()` / `reload_skills()` 调用时，Session 内部查询改用
+  `list_skill_statuses()` 与 captured `SkillCatalogConsumer`；正文执行改用异步
+  `/skill:*` preflight。只有明确选择 `legacy_explicit` 的兼容产品才继续通过
+  `DefaultResourceLoader.discover_resources()` 读取旧 Bundle
 - Session 只从一个 captured Catalog generation 暴露 Skill 查询与正文加载
 - `description` 用于 `/skill:name` command 描述与 system prompt 中的 available skills 摘要。
 - `disable-model-invocation: true` 让 skill 仍可显式 `/skill:name` 调用，但不会进入模型可自动发现的 skill 摘要。

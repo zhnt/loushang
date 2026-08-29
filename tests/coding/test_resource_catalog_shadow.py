@@ -805,6 +805,89 @@ def test_coding_failed_initial_publication_leaves_loader_unpublished(
     asyncio.run(scenario())
 
 
+def test_catalog_compatibility_views_are_isolated_across_shared_services(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+        services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=tmp_path / "project-settings.json",
+            )
+        )
+        sessions = []
+        for name in ("a", "b"):
+            project = tmp_path / f"project-{name}"
+            project.mkdir()
+            (project / "AGENTS.md").write_text(
+                f"Project {name.upper()} guidance",
+                encoding="utf-8",
+            )
+            manager = await SessionManager.new(
+                session_dir=tmp_path / f"sessions-{name}",
+                cwd=str(project),
+                persist=False,
+            )
+            session = _create_agent_session(
+                session_manager=manager,
+                services=services,
+                model=_model(),
+            )
+            await session.prepare_model_call_runtime()
+            sessions.append(session)
+
+        first, second = sessions
+        assert first.resource_loader is not second.resource_loader
+        assert first.resource_loader is not services.resource_loader
+        assert first.resource_loader.get_resource_bundle().agents_md == (
+            "Project A guidance"
+        )
+        assert second.resource_loader.get_resource_bundle().agents_md == (
+            "Project B guidance"
+        )
+
+        failed_project = tmp_path / "project-failed"
+        failed_project.mkdir()
+        failed_manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions-failed",
+            cwd=str(failed_project),
+            persist=False,
+        )
+        failed = _create_agent_session(
+            session_manager=failed_manager,
+            services=services,
+            model=_model(),
+        )
+        original_commit = failed._commit_initial_resource_publication
+
+        def fail_after_commit(
+            catalog: object,
+            projection: object,
+            bundle: object,
+        ) -> None:
+            original_commit(catalog, projection, bundle)  # type: ignore[arg-type]
+            raise RuntimeError("injected interleaved publication failure")
+
+        failed._commit_initial_resource_publication = fail_after_commit  # type: ignore[method-assign]
+        try:
+            with pytest.raises(RuntimeError, match="interleaved publication"):
+                await failed.prepare_model_call_runtime()
+            assert first.resource_loader.get_resource_bundle().agents_md == (
+                "Project A guidance"
+            )
+            assert second.resource_loader.get_resource_bundle().agents_md == (
+                "Project B guidance"
+            )
+        finally:
+            await failed.dispose()
+            for session in reversed(sessions):
+                await session.dispose()
+
+    asyncio.run(scenario())
+
+
 def test_coding_initial_catalog_applies_disabled_skill_in_owner_status(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
