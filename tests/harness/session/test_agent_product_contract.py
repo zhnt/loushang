@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,9 +13,12 @@ import pytest
 
 from loushang.agent import Agent, ModelCallPreparation
 from loushang.ai import Context
-from loushang.ai.model import Capabilities, Model
+from loushang.ai.api_registry import get_default_api_registry
+from loushang.ai.json_codec import serialize_message
+from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.options import CallOptions
 from loushang.ai.prepared_request import PreparedModelRequest
+from loushang.ai.provider.protocol import ProviderRequest
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 from loushang.harness.approval.plugin_activation import (
     PluginActivationDecisionJournal,
@@ -148,6 +151,10 @@ from loushang.harness.session.product_composition_assembly import (
     ProductPluginCompositionAssemblyRequest,
     assemble_product_plugin_composition,
 )
+from loushang.harness.session.request_evidence import (
+    RESOURCE_EVIDENCE_COMPONENT,
+    RESOURCE_EVIDENCE_SCHEMA_ID,
+)
 from loushang.harness.transcript import (
     AgentTranscriptLifecycle,
     AgentTranscriptProfile,
@@ -192,6 +199,41 @@ class _Footer:
         self.disposed = True
 
 
+class _CatalogEvidencePreparedAdapter:
+    api = "catalog-evidence-prepared-test"
+
+    def prepare_request(self, request: ProviderRequest) -> PreparedModelRequest:
+        return PreparedModelRequest.from_provider_request(
+            request,
+            payload={
+                "messages": [
+                    serialize_message(message) for message in request.context.messages
+                ],
+                "model": request.model.id,
+            },
+        )
+
+    async def invoke_prepared_raw(
+        self,
+        request: ProviderRequest,
+        prepared: PreparedModelRequest,
+    ) -> AsyncIterator[dict[str, object]]:
+        del request
+        prepared.payload_for_transport()
+        yield {"type": "response_start", "response_id": "catalog-evidence"}
+        yield {"type": "text_delta", "text": "done"}
+        yield {"type": "stop_reason", "stop_reason": "stop"}
+        yield {"type": "response_done"}
+
+    async def invoke_raw(
+        self,
+        request: ProviderRequest,
+    ) -> AsyncIterator[dict[str, object]]:
+        prepared = self.prepare_request(request)
+        async for part in self.invoke_prepared_raw(request, prepared):
+            yield part
+
+
 class _ContractProductSession(AgentProductSession):
     def __init__(
         self,
@@ -212,6 +254,7 @@ class _ContractProductSession(AgentProductSession):
         initial_resource_catalog_bootstrap: (
             InitialSessionResourceCatalogBootstrap | None
         ) = None,
+        agent: Agent | None = None,
     ) -> None:
         self.product_id = product_id
         self.executor_calls: list[tuple[str, str | None]] = []
@@ -251,7 +294,8 @@ class _ContractProductSession(AgentProductSession):
             del delay_ms, signal
 
         super().__init__(
-            agent=Agent(
+            agent=agent
+            or Agent(
                 initial_state={
                     "system_prompt": f"{product_id} prompt",
                     "model": _model(product_id),
@@ -786,6 +830,102 @@ def test_product_input_adapter_carries_native_and_embedded_skills_through_sessio
         await session.dispose()
         assert capability_runtime.ownership_state == "disposed"
         assert disposed_transcripts == [session_id]
+
+    asyncio.run(scenario())
+
+
+def test_catalog_prompt_commits_exact_resource_evidence_before_transport(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        disposed_transcripts: list[str] = []
+        _bind_transcript_factory(disposed_transcripts)
+        product_id = "catalog-evidence"
+        transcript = await _new_transcript(tmp_path, product_id=product_id)
+        capability_runtime = _capability_runtime(product_id)
+        bootstrap, base_bundle = _initial_catalog_bootstrap(
+            tmp_path,
+            product_id=product_id,
+        )
+        extension_runner = ExtensionRunner([])
+        adapter = _CatalogEvidencePreparedAdapter()
+        registry = get_default_api_registry()
+        source_id = "catalog-evidence-test-adapter"
+        registry.register_api_adapter(adapter, source_id=source_id)
+        agent = Agent(
+            initial_state={
+                "system_prompt": "catalog evidence prompt",
+                "model": Model(
+                    id="catalog-evidence-model",
+                    name="Catalog Evidence Model",
+                    provider="test",
+                    api=adapter.api,
+                    endpoint="test",
+                    base_url="https://provider.test/v1",
+                    auth=Auth(kind="none"),
+                    capabilities=Capabilities(
+                        input=("text",),
+                        output=("text",),
+                        context_window=128_000,
+                        stream=True,
+                    ),
+                ),
+                "thinking_level": "off",
+            }
+        )
+        session = _ContractProductSession(
+            product_id=product_id,
+            transcript=transcript,
+            capability_runtime=capability_runtime,
+            reserve_tokens=1_111,
+            compact_percent=61.0,
+            resource_bundle=base_bundle,
+            extension_runner=extension_runner,
+            initial_resource_catalog_bootstrap=bootstrap,
+            agent=agent,
+        )
+        try:
+            await session.prepare_model_call_runtime()
+            await session.prompt("/skill:review focus")
+
+            snapshot = next(
+                entry.payload
+                for entry in reversed(transcript.get_active_entries())
+                if entry.kind == "model.input.prepared"
+            )
+            rebuilt = transcript.rebuild_model_input(snapshot.snapshot_id)
+            component = rebuilt.logical_input[RESOURCE_EVIDENCE_COMPONENT]
+            assert component["schemaId"] == RESOURCE_EVIDENCE_SCHEMA_ID
+            assert component["schemaVersion"] == 1
+            message = component["messages"][0]
+            assert "Review carefully." in message["modelVisibleText"]
+            assert message["modelVisibleText"].endswith("focus")
+            assert rebuilt.logical_input["messages"][message["messageIndex"]][
+                "content"
+            ][0]["text"] == message["modelVisibleText"]
+            skill = message["skills"][0]
+            assert skill["expectedContentDigest"] == skill["observedContentDigest"]
+            assert skill["expectedContentLength"] == skill["observedContentLength"]
+            assert skill["activationPolicyFingerprint"]
+
+            skill_file = (
+                tmp_path
+                / product_id
+                / ".loushang"
+                / "skills"
+                / "review"
+                / "SKILL.md"
+            )
+            skill_file.unlink()
+            assert (
+                transcript.rebuild_model_input(snapshot.snapshot_id).logical_input[
+                    RESOURCE_EVIDENCE_COMPONENT
+                ]
+                == component
+            )
+        finally:
+            registry.unregister_api_adapters(source_id)
+            await session.dispose()
 
     asyncio.run(scenario())
 

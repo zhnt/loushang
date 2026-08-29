@@ -36,6 +36,7 @@ from loushang.harness.session.agent_event_router import (
 from loushang.harness.session.application_input import ApplicationInputRuntime
 from loushang.harness.session.prompt_controller import AgentPort, PromptController
 from loushang.harness.session.queue_controller import AgentQueuePort, QueueController
+from loushang.harness.session.request_evidence import RequestEvidenceRuntimePort
 from loushang.harness.session.turn_performance import TurnStartPerformanceRuntime
 from loushang.harness.transcript import (
     ApplicationMessage,
@@ -143,6 +144,7 @@ class SessionRuntime:
     transcript: TranscriptRuntimePort
     turn_policy: TurnPolicyPort
     after_turn_policy: AfterTurnPolicyPort
+    request_evidence: RequestEvidenceRuntimePort | None = None
 
     def __post_init__(self) -> None:
         self._closed = False
@@ -165,6 +167,7 @@ class SessionRuntime:
             preflight_user_input=self.turn_policy.preflight_user_input,
             reject_extension_command=self.turn_policy.reject_queued_extension_command,
             emit_queue_update=self._emit_queue_update,
+            request_evidence=self.request_evidence,
         )
         self._prompt_controller = PromptController(
             agent=cast(AgentPort, self.agent),
@@ -187,6 +190,7 @@ class SessionRuntime:
             ),
             run_prompt=self.run_agent_prompt,
             turn_performance=self.turn_policy.turn_performance,
+            request_evidence=self.request_evidence,
         )
         self._application_inputs = ApplicationInputRuntime(
             commit_application_message=self.transcript.commit_application_message,
@@ -212,6 +216,7 @@ class SessionRuntime:
                 model_call_purpose="retry"
             ),
             consume_queued_message=self._queue_controller.mark_message_consumed,
+            request_evidence=self.request_evidence,
         )
         self.transcript.set_commit_observer(self._schedule_transcript_commit)
         self._unsubscribe_agent = self.agent.subscribe(self.handle_agent_event)
@@ -378,6 +383,8 @@ class SessionRuntime:
         self._closed = True
         self._unsubscribe_agent()
         self.transcript.set_commit_observer(None)
+        if self.request_evidence is not None:
+            self.request_evidence.close()
         self._event_bus.clear()
 
     async def _project_direct_application_message(

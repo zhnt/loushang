@@ -57,6 +57,41 @@ def test_queue_controller_owns_steering_follow_up_and_next_turn_messages() -> No
     assert agent.has_queued_messages() is True
 
 
+def test_queue_controller_binds_evidence_to_delivered_message_and_clears_it() -> None:
+    class Evidence:
+        def __init__(self) -> None:
+            self.bindings: list[tuple[object, object, object]] = []
+            self.discarded: list[object] = []
+
+        def bind(self, message: object, evidence: object, *, owner: object) -> None:
+            self.bindings.append((message, evidence, owner))
+
+        def discard_owner(self, owner: object) -> None:
+            self.discarded.append(owner)
+
+    agent = Agent()
+    evidence_runtime = Evidence()
+    controller = QueueController(
+        agent=agent,
+        preflight_user_input=_preflight,
+        reject_extension_command=lambda text: None,
+        emit_queue_update=lambda: None,
+        request_evidence=evidence_runtime,  # type: ignore[arg-type]
+    )
+    evidence = object()
+
+    controller.queue_prepared_steering(
+        "exact",
+        request_evidence=evidence,
+    )
+
+    delivered = agent.steering_queue._messages[0]
+    assert evidence_runtime.bindings[0][0] is delivered
+    assert evidence_runtime.bindings[0][1] is evidence
+    controller.clear_queue()
+    assert evidence_runtime.discarded == [evidence_runtime.bindings[0][2]]
+
+
 def test_queue_controller_drains_local_queue_before_continue_from_assistant() -> None:
     agent = Agent()
     controller = QueueController(

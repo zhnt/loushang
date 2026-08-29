@@ -13,6 +13,7 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from loushang.agent.types import AgentMessage
 from loushang.ai.types import AssistantMessage, ToolResultMessage, UserMessage
 from loushang.foundation.json import require_json_value
 from loushang.harness.conversation import (
@@ -130,6 +131,19 @@ class AgentTranscriptSession:
 
     def get_entries(self) -> list[AgentTranscriptRecord]:
         return list(self.entries)
+
+    def get_active_entries(self) -> list[AgentTranscriptRecord]:
+        """Return the selected transcript path in commit order."""
+
+        return list(self._transcript.active_path())
+
+    def get_context_message_bindings(
+        self,
+    ) -> tuple[tuple[str, AgentMessage], ...]:
+        """Bind every projected context message to its exact source record."""
+
+        projection = self._transcript.replay_projection()
+        return tuple(zip(projection.item_record_ids, projection.items, strict=True))
 
     def get_children(self, parent_id: str) -> list[AgentTranscriptRecord]:
         return list(self._transcript.children(parent_id))

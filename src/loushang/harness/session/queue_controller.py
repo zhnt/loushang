@@ -14,6 +14,7 @@ from loushang.harness.events.session import (
 from loushang.harness.runtime.input_queue import HostInputQueue
 from loushang.harness.runtime.turn import TurnInputQueue
 from loushang.harness.runtime.types import QueueMode
+from loushang.harness.session.request_evidence import RequestEvidenceRuntimePort
 
 PreflightUserInput = Callable[[str], object]
 RejectExtensionCommand = Callable[[str], None]
@@ -48,7 +49,18 @@ class QueueController:
     preflight_user_input: PreflightUserInput
     reject_extension_command: RejectExtensionCommand
     emit_queue_update: QueueUpdateEmitter
+    request_evidence: RequestEvidenceRuntimePort | None = None
     _queue: TurnInputQueue[object] = field(init=False, repr=False)
+    _pending_submission_evidence: dict[int, tuple[object, object]] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
+    _queue_evidence_owner: object = field(
+        default_factory=object,
+        init=False,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         self._queue = TurnInputQueue(
@@ -102,27 +114,57 @@ class QueueController:
         self.queue_prepared_follow_up(str(getattr(preflight, "text")), images=images)
 
     def queue_prepared_steering(
-        self, text: str, images: list[ImagePart] | None = None
+        self,
+        text: str,
+        images: list[ImagePart] | None = None,
+        *,
+        request_evidence: object | None = None,
     ) -> None:
-        self.queue_steering_message(text, _user_message(text, images=images))
-
-    def queue_prepared_follow_up(
-        self, text: str, images: list[ImagePart] | None = None
-    ) -> None:
-        self.queue_follow_up_message(text, _user_message(text, images=images))
-
-    def queue_steering_message(self, visible_text: str, message: object) -> None:
-        self._queue.enqueue(
-            "steering",
-            text=visible_text,
-            payload=message,
+        self.queue_steering_message(
+            text,
+            _user_message(text, images=images),
+            request_evidence=request_evidence,
         )
 
-    def queue_follow_up_message(self, visible_text: str, message: object) -> None:
-        self._queue.enqueue(
+    def queue_prepared_follow_up(
+        self,
+        text: str,
+        images: list[ImagePart] | None = None,
+        *,
+        request_evidence: object | None = None,
+    ) -> None:
+        self.queue_follow_up_message(
+            text,
+            _user_message(text, images=images),
+            request_evidence=request_evidence,
+        )
+
+    def queue_steering_message(
+        self,
+        visible_text: str,
+        message: object,
+        *,
+        request_evidence: object | None = None,
+    ) -> None:
+        self._enqueue(
+            "steering",
+            visible_text=visible_text,
+            message=message,
+            request_evidence=request_evidence,
+        )
+
+    def queue_follow_up_message(
+        self,
+        visible_text: str,
+        message: object,
+        *,
+        request_evidence: object | None = None,
+    ) -> None:
+        self._enqueue(
             "follow_up",
-            text=visible_text,
-            payload=message,
+            visible_text=visible_text,
+            message=message,
+            request_evidence=request_evidence,
         )
 
     def queue_mailbox_message(self, message: object) -> None:
@@ -134,6 +176,8 @@ class QueueController:
         steering = self.get_steering_messages()
         follow_up = self.get_follow_up_messages()
         self._queue.clear()
+        if self.request_evidence is not None:
+            self.request_evidence.discard_owner(self._queue_evidence_owner)
         log.debug_event(
             "agent", "queue.cleared", steering=len(steering), follow_up=len(follow_up)
         )
@@ -157,8 +201,42 @@ class QueueController:
 
     def _submit(self, kind: QueueKind, message: object) -> object:
         if kind == "steering":
-            return self.agent.steer(message)
-        return self.agent.follow_up(message)
+            delivered = self.agent.steer(message)
+        else:
+            delivered = self.agent.follow_up(message)
+        pending = self._pending_submission_evidence.get(id(message))
+        if pending is not None and pending[0] is message:
+            if self.request_evidence is None:
+                raise RuntimeError("queued request evidence has no Session runtime")
+            self.request_evidence.bind(
+                delivered,
+                pending[1],
+                owner=self._queue_evidence_owner,
+            )
+        return delivered
+
+    def _enqueue(
+        self,
+        kind: QueueKind,
+        *,
+        visible_text: str,
+        message: object,
+        request_evidence: object | None,
+    ) -> None:
+        identity = id(message)
+        if request_evidence is not None:
+            self._pending_submission_evidence[identity] = (
+                message,
+                request_evidence,
+            )
+        try:
+            self._queue.enqueue(
+                kind,
+                text=visible_text,
+                payload=message,
+            )
+        finally:
+            self._pending_submission_evidence.pop(identity, None)
 
     @staticmethod
     def _observe_queue_event(event: str, item: QueuedMessageSnapshot) -> None:

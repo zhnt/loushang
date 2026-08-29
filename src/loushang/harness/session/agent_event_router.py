@@ -6,6 +6,7 @@ from typing import Protocol
 
 from loushang.agent import AbortSignal, AgentEvent
 from loushang.ai.types import AssistantMessage
+from loushang.harness.session.request_evidence import RequestEvidenceRuntimePort
 from loushang.harness.transcript import AutoRetryOutcome, CompactionResult
 
 AppendMessage = Callable[[object], Awaitable[str]]
@@ -56,6 +57,7 @@ class AgentEventRouter:
     check_auto_compaction: AutoCompactionChecker
     schedule_continue_run: ContinueRun
     consume_queued_message: QueuedMessageConsumer | None = None
+    request_evidence: RequestEvidenceRuntimePort | None = None
     _committed_messages: dict[int, tuple[object, str]] = field(
         default_factory=dict,
         init=False,
@@ -75,6 +77,11 @@ class AgentEventRouter:
         if event["type"] == "message_end":
             committed_message = event["message"]
             source_record_id = await self._append_message_once(committed_message)
+            if self.request_evidence is not None:
+                self.request_evidence.commit_message(
+                    committed_message,
+                    source_record_id,
+                )
         if event["type"] == "tool_execution_end" and event.get("is_error"):
             self.record_tool_execution_error(event)
         await self.dispatch_event(event, source_record_id=source_record_id)

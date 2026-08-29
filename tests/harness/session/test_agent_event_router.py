@@ -133,6 +133,57 @@ def test_agent_event_router_preserves_assistant_message_end_ordering() -> None:
     ]
 
 
+def test_agent_event_router_binds_request_evidence_before_dispatch() -> None:
+    order: list[str] = []
+
+    class Evidence:
+        def commit_message(self, message: object, record_id: str) -> bool:
+            order.append(f"evidence:{record_id}:{message.role}")
+            return True
+
+    async def scenario() -> None:
+        async def append_message(_message: object) -> str:
+            order.append("append")
+            return "record-1"
+
+        message = ApplicationMessage(
+            application_message_id="app-1",
+            custom_type="test",
+            content="context",
+            display=True,
+            details=None,
+            timestamp=0.0,
+            origin="test",
+            delivery_mode="trigger_turn",
+        )
+        router = AgentEventRouter(
+            append_message=append_message,
+            dispatch_event=lambda _event, **_kwargs: _record_async(order, "dispatch"),
+            emit_extension_agent_event=lambda _event: _record_async(
+                order, "extension"
+            ),
+            record_tool_execution_error=lambda _event: None,
+            retry_controller=_RetryRecorder(order),
+            compaction_controller=_CompactionRecorder(order),
+            sync_extension_diagnostics=lambda **_kwargs: None,
+            record_assistant_response_error=lambda _message: None,
+            check_auto_compaction=lambda _message: _record_async(order, "compact"),
+            schedule_continue_run=lambda: _record_async(order, "continue"),
+            request_evidence=Evidence(),  # type: ignore[arg-type]
+        )
+
+        await router.handle({"type": "message_end", "message": message}, object())
+
+    asyncio.run(scenario())
+
+    assert order[:4] == [
+        "append",
+        "evidence:record-1:application",
+        "dispatch",
+        "extension",
+    ]
+
+
 def test_agent_event_router_consumes_queued_application_message_on_start() -> None:
     consumed: list[object] = []
     message = ApplicationMessage(

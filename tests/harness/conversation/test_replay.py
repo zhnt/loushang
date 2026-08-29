@@ -118,6 +118,7 @@ def test_multiple_checkpoints_rebuild_items_without_compacting_product_state() -
         "evidence:Run interviews",
         "note:Demand is regional",
     )
+    assert projection.item_record_ids == ("c2", "n1", "e2", "n2")
     assert projection.state == ResearchState(
         visited_record_ids=("q", "e1", "n1", "c1", "e2", "c2", "n2"),
         evidence_count=2,
@@ -217,6 +218,7 @@ def test_missing_checkpoint_boundary_keeps_summary_then_appends_later_items() ->
         "summary:Prior work unavailable",
         "evidence:New filing",
     )
+    assert projection.item_record_ids == ("c1", "e1")
     assert projection.state.visited_record_ids == ("q", "c1", "e1")
     assert projection.state.evidence_count == 1
 
@@ -257,6 +259,7 @@ def test_replay_folds_only_the_repository_active_path() -> None:
         "question:What changed?",
         "evidence:Filing evidence",
     )
+    assert projection.item_record_ids == ("q", "left")
     assert projection.state.visited_record_ids == ("q", "left")
 
 

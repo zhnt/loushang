@@ -50,6 +50,7 @@ class SkillCatalogSummary:
 
     catalog_generation: int
     catalog_snapshot_fingerprint: str
+    activation_policy_fingerprint: str
     candidate_fingerprint: str
     identity: ResourceIdentity
     name: str
@@ -73,6 +74,13 @@ class SkillCatalogSummary:
     def __post_init__(self) -> None:
         if self.catalog_generation < 1:
             raise ValueError("Skill summary Catalog generation must be positive")
+        if (
+            not isinstance(self.activation_policy_fingerprint, str)
+            or len(self.activation_policy_fingerprint) != 64
+        ):
+            raise ValueError(
+                "Skill summary activation-policy fingerprint must be a digest"
+            )
         if self.identity.resource_kind != "skill":
             raise ValueError("Skill summary identity must name a Skill")
         if self.identity.public_id == "":
@@ -398,6 +406,7 @@ def build_effective_skill_catalog_projection(
             SkillCatalogSummary(
                 catalog_generation=snapshot.catalog_generation,
                 catalog_snapshot_fingerprint=snapshot.snapshot_fingerprint,
+                activation_policy_fingerprint=(snapshot.activation_policy_fingerprint),
                 candidate_fingerprint=candidate.candidate_fingerprint,
                 identity=candidate.identity,
                 name=descriptor.name,
