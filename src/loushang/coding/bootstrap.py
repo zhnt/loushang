@@ -595,7 +595,19 @@ def _create_agent_session(
                     else base_ephemeral_state.cleanup
                 ),
             )
-        except BaseException:
+        except BaseException as error:
+            if isinstance(error, CodingBasePluginAssemblyError):
+                services.diagnostics_service.capture_failure(
+                    code=error.code,
+                    error=str(error),
+                    phase="startup",
+                    source="bootstrap",
+                    session_id=session_id,
+                    details={
+                        "check": "coding_base_exact_replay",
+                        "ok": False,
+                    },
+                )
             # Exact-replay validation refreshes the durable lock after the
             # initial bootstrap diagnostic pass.  Preserve the public startup
             # diagnostic contract when that refresh discovers corruption.

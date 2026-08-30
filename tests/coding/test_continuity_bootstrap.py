@@ -555,6 +555,52 @@ def test_continuity_bootstrap_rejects_unsupported_secure_staging_before_import(
     assert not marker.exists()
 
 
+def test_empty_selected_continuity_still_completes_common_startup_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding._plugin_lifecycle import CodingPluginLifecycle
+
+    workspace = tmp_path / "workspace"
+    layout = _test_layout(tmp_path / "state", workspace)
+    plugin_root = _write_continuity_plugin(tmp_path / "plugin")
+    settings = SimpleNamespace(
+        get_settings=lambda: SimpleNamespace(
+            plugin_sources=(str(plugin_root),),
+            disabled_plugins=("continuity-example",),
+        )
+    )
+    calls: list[Path] = []
+    complete = CodingPluginLifecycle.complete_startup_recovery
+
+    def track_complete(self: CodingPluginLifecycle) -> None:
+        calls.append(self.layout.root)
+        complete(self)
+
+    monkeypatch.setattr(
+        CodingPluginLifecycle,
+        "complete_startup_recovery",
+        track_complete,
+    )
+    runtime = _Runtime(tmp_path / "sessions")
+
+    result = asyncio.run(
+        bind_coding_configured_continuity(
+            runtime,
+            settings_manager=settings,
+            session_dir=runtime.session_dir,
+            cwd=workspace,
+            materializer=_materializer_for_layout(layout),
+            state_layout=layout,
+            runtime_id="coding-process:empty-selection",
+        )
+    )
+
+    assert result.plugin_publication is None
+    assert calls == [layout.root]
+    asyncio.run(shutdown_coding_continuity(runtime))
+
+
 def test_continuity_bootstrap_rejects_noncanonical_package_authority(
     tmp_path: Path,
 ) -> None:

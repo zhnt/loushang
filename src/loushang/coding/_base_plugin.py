@@ -113,6 +113,7 @@ class CodingBasePluginAssembly:
         repr=False,
     )
     _runtime_closed: bool = field(default=False, init=False, repr=False)
+    _management_released: bool = field(default=False, init=False, repr=False)
     _state_cleaned: bool = field(default=False, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
 
@@ -124,35 +125,21 @@ class CodingBasePluginAssembly:
     def close(self) -> None:
         if self._closed:
             return
-        # Durable retirement must not claim that host/package cleanup succeeded
-        # until the actual Package runtime and Product state handles have both
-        # completed.  Each step is independently retryable; the Session family
-        # remains live while either cleanup still has debt.
-        primary_error: BaseException | None = None
+        # The Package handle must close before durable retirement can complete.
+        # Ephemeral lifecycle state is different: its journals and held lock
+        # files are the authority needed to release the Session family, so the
+        # temporary root can only be removed after that release succeeds.
         if not self._runtime_closed:
-            try:
-                self.runtime.close()
-            except BaseException as cleanup_error:
-                primary_error = cleanup_error
-            else:
-                self._runtime_closed = True
+            self.runtime.close()
+            self._runtime_closed = True
+        if not self._management_released:
+            if self.management_lease is not None:
+                self.management_lease.close()
+            self._management_released = True
         if not self._state_cleaned:
-            try:
-                if self.state_cleanup is not None:
-                    self.state_cleanup()
-            except BaseException as cleanup_error:
-                if primary_error is None:
-                    primary_error = cleanup_error
-                else:
-                    primary_error.add_note(
-                        f"Coding base state cleanup also failed: {cleanup_error}"
-                    )
-            else:
-                self._state_cleaned = True
-        if primary_error is not None:
-            raise primary_error
-        if self.management_lease is not None:
-            self.management_lease.close()
+            if self.state_cleanup is not None:
+                self.state_cleanup()
+            self._state_cleaned = True
         self._closed = True
 
 

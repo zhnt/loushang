@@ -221,6 +221,7 @@ class AgentSession(AgentProductSession):
         ] = ()
         self._coding_base_owner_generations_prepared = False
         self._coding_base_owner_generations_published = False
+        self._coding_base_owner_generations_retired = False
         self._coding_base_owner_publication_error: BaseException | None = None
         self._coding_lsp_plugin_capture: CapabilityFacetSet | None = None
         self.delegated_execution_profile = delegated_execution_profile
@@ -674,6 +675,7 @@ class AgentSession(AgentProductSession):
             and base_plugin_assembly is not None
             and base_plugin_assembly.management_lease is not None
             and self._coding_base_owner_retirement_receipts
+            and not self._coding_base_owner_generations_retired
         ):
             try:
                 if not self._coding_base_owner_generations_prepared:
@@ -684,6 +686,7 @@ class AgentSession(AgentProductSession):
                 base_plugin_assembly.management_lease.retire_owner_generations(
                     self._coding_base_owner_retirement_receipts
                 )
+                self._coding_base_owner_generations_retired = True
             except BaseException as cleanup_error:
                 primary_error = cleanup_error
         plugin_assembly = getattr(self, "_coding_lsp_plugin_assembly", None)

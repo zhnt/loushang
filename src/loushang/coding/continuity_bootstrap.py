@@ -385,6 +385,7 @@ async def bind_coding_configured_continuity(
             layout=layout,
         )
         if not replayed_runtime.packages and not inspections:
+            lifecycle.common.complete_startup_recovery()
             result = bind_coding_continuity(
                 runtime,
                 cwd=cwd,

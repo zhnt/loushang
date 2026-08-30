@@ -7,6 +7,7 @@ import subprocess
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from pathlib import Path
 
 import pytest
@@ -432,6 +433,37 @@ def test_concurrent_last_session_close_linearizes_exact_retirement(
     assert len(completed.latest_outcomes) == 2
 
 
+def test_public_lease_publish_writes_prepared_evidence_first(tmp_path: Path) -> None:
+    lifecycle = _lifecycle(tmp_path)
+    key = lifecycle.installation_key("coding.base")
+    lifecycle.bootstrap_first_party_default(key, _package_ref())
+    lease = lifecycle.acquire_session(
+        key,
+        session_id="write-ahead-session",
+        lease_attempt_id="write-ahead-attempt",
+        owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
+    )
+    receipt = OwnerGenerationRetirementReceipt(
+        owner_reference="owner:write-ahead",
+        owner_generation_reference="generation:write-ahead",
+        retirement_handle="retirement:write-ahead",
+        contribution_ids=("coding.standard",),
+    )
+
+    lease.publish_owner_generations((receipt,))
+
+    evidence = lifecycle.owner_evidence.family(lease.family.family_id)
+    assert evidence is not None
+    assert evidence.publication_state == "published"
+    assert len(
+        lifecycle.layout.owner_generation_evidence.read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ) == 2
+    lease.retire_owner_generations((receipt,))
+    lease.close()
+
+
 @pytest.mark.parametrize("publish_owner_evidence", [False, True])
 def test_startup_lock_fault_injection_requires_positive_orphan_evidence(
     tmp_path: Path,
@@ -534,7 +566,13 @@ def _start_plugin_lifecycle_child(
         text=True,
     )
     assert process.stdout is not None
-    line = process.stdout.readline()
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        handshake = executor.submit(process.stdout.readline)
+        try:
+            line = handshake.result(timeout=20)
+        except FutureTimeoutError:
+            _stop_plugin_lifecycle_child(process)
+            pytest.fail("Plugin lifecycle child handshake timed out")
     if not line:
         assert process.stderr is not None
         stderr = process.stderr.read()
@@ -772,16 +810,16 @@ def test_production_package_replay_crosses_session_save_directories(
 
 
 @pytest.mark.parametrize(
-    ("corruption", "expected_code", "diagnostic_code"),
+    ("corruption", "expected_code"),
     (
-        ("missing_binding", "coding_base_binding_replay_unavailable", None),
-        ("missing_revision", "coding_base_revision_replay_unavailable", None),
-        ("tampered_revision", "coding_base_revision_replay_integrity_failed", None),
+        ("missing_binding", "coding_base_binding_replay_unavailable"),
+        ("missing_revision", "coding_base_revision_replay_unavailable"),
+        ("tampered_revision", "coding_base_revision_replay_integrity_failed"),
         (
             "dependency_mismatch",
             "coding_base_binding_replay_invalid",
-            "package_lockfile_invalid_plugin_binding",
         ),
+        ("selected_revision_mismatch", "coding_base_selected_revision_mismatch"),
     ),
 )
 def test_public_base_replay_fails_closed_without_leaking_a_session_family(
@@ -789,7 +827,6 @@ def test_public_base_replay_fails_closed_without_leaking_a_session_family(
     monkeypatch: pytest.MonkeyPatch,
     corruption: str,
     expected_code: str,
-    diagnostic_code: str | None,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
@@ -828,7 +865,33 @@ def test_public_base_replay_fails_closed_without_leaking_a_session_family(
 
         lifecycle = build_coding_plugin_lifecycle(layout)
         families_before = lifecycle.instances.snapshot().open_families
-        if corruption in {"missing_binding", "dependency_mismatch"}:
+        if corruption == "selected_revision_mismatch":
+            key = lifecycle.installation_key("coding.base")
+            snapshot = lifecycle.desired.snapshot()
+            update = lifecycle.management.submit(
+                PluginManagementUpdateCommandV2(
+                    operation_id="public-replay-selection-mismatch",
+                    idempotency_key="public-replay-selection-mismatch",
+                    expected_inventory_revision=snapshot.inventory_revision,
+                    installation_key=key,
+                    expected_package_revision=selected,
+                    staged_package_revision=package_revision_ref(
+                        plugin_id=selected.plugin_id,
+                        plugin_version="invalid-selected-version",
+                        package_content_digest=selected.package_content_digest,
+                        dependency_lock_digest=selected.dependency_lock_digest,
+                        package_source_identity=(
+                            selected.package_source_identity
+                        ),
+                    ),
+                    actor_id="test:operator",
+                    policy_revision="test-policy-v1",
+                    approval_reference="test",
+                )
+            )
+            assert update.result is not None
+            assert update.result.disposition == "restart_required"
+        elif corruption in {"missing_binding", "dependency_mismatch"}:
             payload = json.loads(layout.package_lockfile.read_text(encoding="utf-8"))
             bindings = payload["pluginBindings"]
             if corruption == "missing_binding":
@@ -890,19 +953,30 @@ def test_public_base_replay_fails_closed_without_leaking_a_session_family(
             )
 
         assert caught.value.code == expected_code
-        assert lifecycle.instances.snapshot().open_families == families_before
-        assert all(handle.closed for handle in reopened_handles)
-        if diagnostic_code is not None:
-            diagnostics = failed_services.diagnostics_service.get_diagnostics(
-                phase="startup",
-                source="bootstrap",
-                code=diagnostic_code,
-            )
-            assert diagnostics
-            assert all(
-                item.session_id == failed_manager.get_header().conversation_id
-                for item in diagnostics
-            )
+        family_ids_before = {family.family_id for family in families_before}
+        family_ids_after = {
+            family.family_id
+            for family in lifecycle.instances.snapshot().open_families
+        }
+        assert family_ids_after <= family_ids_before
+        if corruption == "selected_revision_mismatch":
+            assert len(reopened_handles) == 1
+            assert reopened_handles[0].closed is True
+        else:
+            assert reopened_handles == []
+        diagnostics = failed_services.diagnostics_service.get_diagnostics(
+            phase="startup",
+            source="bootstrap",
+            code=expected_code,
+        )
+        assert len(diagnostics) == 1
+        assert diagnostics[0].session_id == (
+            failed_manager.get_header().conversation_id
+        )
+        assert diagnostics[0].details == {
+            "check": "coding_base_exact_replay",
+            "ok": False,
+        }
 
     asyncio.run(scenario())
 
@@ -1850,12 +1924,16 @@ def test_management_family_close_failure_retries_after_host_cleanup(
         assert family_id in draining.open_family_ids
         assert assembly._closed is False
         assert assembly._runtime_closed is True
+        assert assembly._management_released is False
+        assert assembly._state_cleaned is False
         assert assembly.package.revision_handle.closed is True
 
         await active.dispose()
 
         assert attempts == 2
         assert assembly._closed is True
+        assert assembly._management_released is True
+        assert assembly._state_cleaned is True
         retired = lifecycle.instances.snapshot().instance(selected_ref)
         assert retired is not None
         assert retired.state == "RETIRED"
@@ -1864,7 +1942,7 @@ def test_management_family_close_failure_retries_after_host_cleanup(
 
 
 @pytest.mark.parametrize("failure_phase", ("runtime", "state"))
-def test_host_cleanup_failure_keeps_instance_draining_until_retry(
+def test_cleanup_failure_orders_runtime_before_and_state_after_retirement(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     failure_phase: str,
@@ -1933,9 +2011,17 @@ def test_host_cleanup_failure_keeps_instance_draining_until_retry(
 
         interrupted = lifecycle.instances.snapshot().instance(selected_ref)
         assert interrupted is not None
-        assert interrupted.state == "DRAINING"
-        assert management_lease.family.family_id in interrupted.open_family_ids
-        assert lifecycle.packages.snapshot().cleanup_tasks == ()
+        if failure_phase == "runtime":
+            assert interrupted.state == "DRAINING"
+            assert management_lease.family.family_id in interrupted.open_family_ids
+            assert assembly._management_released is False
+            assert lifecycle.packages.snapshot().cleanup_tasks == ()
+        else:
+            assert interrupted.state == "RETIRED"
+            assert management_lease.family.family_id not in interrupted.open_family_ids
+            assert assembly._management_released is True
+            [cleanup] = lifecycle.packages.snapshot().cleanup_tasks
+            assert cleanup.state == "succeeded"
 
         await active.dispose()
 
@@ -1945,6 +2031,52 @@ def test_host_cleanup_failure_keeps_instance_draining_until_retry(
         assert retired.state == "RETIRED"
         [cleanup] = lifecycle.packages.snapshot().cleanup_tasks
         assert cleanup.state == "succeeded"
+
+    asyncio.run(scenario())
+
+
+def test_ephemeral_public_session_releases_family_before_removing_state_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=False,
+        )
+        session = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(capabilities={"coding.lsp": "disabled"})
+                )
+            ),
+        )
+        await session.prepare_model_call_runtime()
+        assembly = session._coding_base_plugin_assembly
+        assert assembly is not None
+        lease = assembly.management_lease
+        assert lease is not None
+        ephemeral_root = lease.lifecycle.layout.root
+        assert ephemeral_root.exists()
+
+        await session.dispose()
+
+        assert assembly._closed is True
+        assert assembly._runtime_closed is True
+        assert assembly._management_released is True
+        assert assembly._state_cleaned is True
+        assert ephemeral_root.exists() is False
 
     asyncio.run(scenario())
 
