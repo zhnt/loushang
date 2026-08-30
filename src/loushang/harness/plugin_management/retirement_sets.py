@@ -208,16 +208,10 @@ class PluginOwnerRetirementPlanV1:
             for target in self.targets
         )
         handles = tuple(target.retirement_handle for target in self.targets)
-        contribution_ids = tuple(
-            contribution_id
-            for target in self.targets
-            for contribution_id in target.contribution_ids
-        )
         for values, name in (
             (target_ids, "owner retirement target ids"),
             (owner_generations, "owner generation pairs"),
             (handles, "owner retirement handles"),
-            (contribution_ids, "owner retirement contribution ids"),
         ):
             if len(values) != len(set(values)):
                 raise ValueError(f"{name} must be unique")

@@ -120,21 +120,16 @@ class CodingBasePluginAssembly:
     def close(self) -> None:
         if self._closed:
             return
+        # The Session family is the management authority for everything held
+        # below it.  If that exact family cannot close yet, retain the Package
+        # and state handles so the same assembly remains retryable.
+        if self.management_lease is not None:
+            self.management_lease.close()
         primary_error: BaseException | None = None
-        try:
-            if self.management_lease is not None:
-                self.management_lease.close()
-        except BaseException as exc:
-            primary_error = exc
         try:
             self.runtime.close()
         except BaseException as cleanup_error:
-            if primary_error is None:
-                primary_error = cleanup_error
-            else:
-                primary_error.add_note(
-                    f"Coding base revision cleanup also failed: {cleanup_error}"
-                )
+            primary_error = cleanup_error
         try:
             if self.state_cleanup is not None:
                 self.state_cleanup()
@@ -145,10 +140,9 @@ class CodingBasePluginAssembly:
                 primary_error.add_note(
                     f"Coding base state cleanup also failed: {cleanup_error}"
                 )
-        finally:
-            self._closed = True
         if primary_error is not None:
             raise primary_error
+        self._closed = True
 
 
 @dataclass(frozen=True, slots=True)

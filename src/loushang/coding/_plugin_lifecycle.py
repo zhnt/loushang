@@ -11,6 +11,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from loushang.coding._plugin_owner_generations import (
+    CodingOwnerGenerationEvidenceLedger,
+)
 from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.foundation.platform_paths import PlatformPaths, resolve_platform_paths
 from loushang.harness.plugin_management import (
@@ -36,6 +39,9 @@ from loushang.harness.plugin_management.security_acceptance import (
     PluginInstanceSecurityRetirementJournal,
 )
 from loushang.harness.resources.plugins import PluginInstanceRevisionRef
+from loushang.harness.runtime.registration import (
+    OwnerGenerationRetirementReceipt,
+)
 
 _PRODUCT_POLICY_REVISION = "coding-plugin-lifecycle-v1"
 _DEFAULT_APPROVAL_REFERENCE = "coding-first-party-default"
@@ -78,6 +84,10 @@ class CodingPluginLifecycleStateLayout:
     def plugin_revision_root(self) -> Path:
         return self.package_root / "plugin-revisions"
 
+    @property
+    def owner_generation_evidence(self) -> Path:
+        return self.root / "owner-generation-evidence.jsonl"
+
 
 @dataclass(slots=True)
 class CodingPluginLifecycle:
@@ -91,6 +101,7 @@ class CodingPluginLifecycle:
     retirement_sets: PluginRetirementSetLedger = field(repr=False)
     packages: PluginPackageLifecycleLedger = field(repr=False)
     security: PluginInstanceSecurityRetirementJournal = field(repr=False)
+    owner_evidence: CodingOwnerGenerationEvidenceLedger = field(repr=False)
 
     def complete_startup_recovery(self) -> None:
         """Seal Package recovery after the composition root reconciles Instances."""
@@ -212,49 +223,117 @@ class CodingPluginLifecycle:
             self._complete_ready_retirement(intent)
             runtime = self.instances.snapshot()
 
+    def publish_session_owner_generations(
+        self,
+        family: PluginInstanceLeaseFamilyV1,
+        receipts: tuple[OwnerGenerationRetirementReceipt, ...],
+    ) -> None:
+        """Bind actual live owner generations to their exact Session family."""
+
+        if not isinstance(family, PluginInstanceLeaseFamilyV1):
+            raise TypeError("Coding owner publication requires a Session family")
+        [member] = family.members
+        self.owner_evidence.publish(
+            family_id=family.family_id,
+            instance_revision_ref=member.instance_revision_ref,
+            receipts=receipts,
+            publication_reference=f"coding-session-publication:{family.family_id}",
+        )
+
     def retire_session_owner_generations(
         self,
         family: PluginInstanceLeaseFamilyV1,
+        receipts: tuple[OwnerGenerationRetirementReceipt, ...],
     ) -> None:
-        """Record owner disposal after the Session runtime closed its owners."""
+        """Record success only after the exact owner runtimes fully disposed."""
 
         if not isinstance(family, PluginInstanceLeaseFamilyV1):
             raise TypeError("Coding owner retirement requires a Session family")
-        self.reconcile_retirements()
         [member] = family.members
-        intent = next(
-            (
-                item
-                for item in self.management_retirement_intents()
-                if item.instance_revision_ref == member.instance_revision_ref
-            ),
-            None,
+        self.owner_evidence.retire(
+            family_id=family.family_id,
+            instance_revision_ref=member.instance_revision_ref,
+            receipts=receipts,
+            outcome_reference=f"coding-session-disposed:{family.family_id}",
         )
-        if intent is None:
-            return
+
+    def _ensure_owner_retirement_plan(self, intent, runtime) -> None:
         retirement_set = self.retirement_sets.snapshot().retirement_set(
             intent.retirement_id
         )
-        if retirement_set is None or retirement_set.plan is None:
+        if retirement_set is None:
             raise CodingPluginLifecycleError(
-                "Coding owner retirement plan is unavailable",
+                "Coding retirement set is unavailable",
+                code="coding_plugin_retirement_set_unavailable",
+            )
+        if retirement_set.plan is None and any(
+            family.lease_kind == "session_membership"
+            and any(
+                member.instance_revision_ref == intent.instance_revision_ref
+                for member in family.members
+            )
+            for family in runtime.open_families
+        ):
+            # A family that acquired before cutover may still publish its exact
+            # owner generations.  Seal the plan only after every Session family
+            # has either retired its receipts or closed without publishing.
+            return
+        families = self.owner_evidence.retired_families_for_instance(
+            intent.instance_revision_ref
+        )
+        receipts = tuple(
+            receipt for family in families for receipt in family.receipts
+        )
+        targets = tuple(
+            PluginOwnerRetirementTargetV1.create(
+                owner_reference=receipt.owner_reference,
+                owner_generation_reference=receipt.owner_generation_reference,
+                retirement_handle=receipt.retirement_handle,
+                contribution_ids=receipt.contribution_ids,
+            )
+            for receipt in receipts
+        )
+        canonical_targets = tuple(sorted(targets, key=lambda item: item.target_id))
+        closure_digest = hashlib.sha256(
+            repr(tuple(item.target_id for item in canonical_targets)).encode("utf-8")
+        ).hexdigest()
+        # Re-submit the exact plan and outcomes idempotently.  A process may
+        # stop after sealing the plan or after only some target outcomes; the
+        # next reconciliation must finish that durable transition.
+        committed = self.retirement_sets.commit_plan(
+            PluginOwnerRetirementPlanV1.create(
+                retirement_id=intent.retirement_id,
+                owner_closure_reference=f"coding-owner-closure:{closure_digest}",
+                targets=canonical_targets,
+            )
+        )
+        if committed.plan is None:
+            raise CodingPluginLifecycleError(
+                "Coding owner retirement plan was not committed",
                 code="coding_plugin_owner_retirement_plan_unavailable",
             )
-        runtime = self.instances.snapshot()
-        [member] = family.members
-        open_session_families = {
-            candidate.family_id
-            for candidate in runtime.open_families
-            if candidate.lease_kind == "session_membership"
-            and any(
-                candidate_member.instance_revision_ref
-                == member.instance_revision_ref
-                for candidate_member in candidate.members
-            )
+        outcome_references = {
+            (
+                receipt.owner_reference,
+                receipt.owner_generation_reference,
+                receipt.retirement_handle,
+            ): family.retirement_outcome_reference
+            for family in families
+            for receipt in family.receipts
         }
-        if open_session_families != {family.family_id}:
-            return
-        for target in retirement_set.plan.targets:
+        for target in committed.plan.targets:
+            outcome_reference = outcome_references[
+                (
+                    target.owner_reference,
+                    target.owner_generation_reference,
+                    target.retirement_handle,
+                )
+            ]
+            if outcome_reference is None:
+                raise CodingPluginLifecycleError(
+                    "Coding owner retirement lacks an exact cleanup outcome",
+                    code="coding_plugin_owner_retirement_outcome_unavailable",
+                )
             identity = hashlib.sha256(
                 repr((intent.retirement_id, target.target_id)).encode("utf-8")
             ).hexdigest()
@@ -266,72 +345,10 @@ class CodingPluginLifecycle:
                     idempotency_key=f"coding-owner-retired:{identity}",
                     attempt=1,
                     disposition="succeeded",
-                    result_code="coding.owner.retired",
-                    owner_outcome_reference=(
-                        "coding-owner-outcome:"
-                        f"{member.instance_revision_ref.instance_id}:"
-                        f"{member.instance_revision_ref.revision}:"
-                        f"{target.owner_reference}"
-                    ),
+                    result_code="coding.owner.exact_retired",
+                    owner_outcome_reference=outcome_reference,
                 )
             )
-
-    def _ensure_owner_retirement_plan(self, intent, runtime) -> None:
-        retirement_set = self.retirement_sets.snapshot().retirement_set(
-            intent.retirement_id
-        )
-        if retirement_set is None:
-            raise CodingPluginLifecycleError(
-                "Coding retirement set is unavailable",
-                code="coding_plugin_retirement_set_unavailable",
-            )
-        if retirement_set.plan is not None:
-            return
-        contributions_by_owner: dict[str, set[str]] = {}
-        for family in runtime.open_families:
-            if family.lease_kind != "session_membership" or not any(
-                member.instance_revision_ref == intent.instance_revision_ref
-                for member in family.members
-            ):
-                continue
-            for owner_reference, contribution_ids in _session_holder_owners(
-                family.holder_reference
-            ):
-                contributions_by_owner.setdefault(owner_reference, set()).update(
-                    contribution_ids
-                )
-        targets = tuple(
-            PluginOwnerRetirementTargetV1.create(
-                owner_reference=owner_reference,
-                owner_generation_reference=(
-                    "coding-instance:"
-                    f"{intent.instance_revision_ref.instance_id}:"
-                    f"{intent.instance_revision_ref.revision}:owner:"
-                    f"{owner_reference}"
-                ),
-                retirement_handle=(
-                    "coding-owner-retirement:"
-                    f"{intent.instance_revision_ref.instance_id}:"
-                    f"{intent.instance_revision_ref.revision}:"
-                    f"{owner_reference}"
-                ),
-                contribution_ids=tuple(sorted(contribution_ids)),
-            )
-            for owner_reference, contribution_ids in sorted(
-                contributions_by_owner.items()
-            )
-        )
-        canonical_targets = tuple(sorted(targets, key=lambda item: item.target_id))
-        closure_digest = hashlib.sha256(
-            repr(tuple(item.target_id for item in canonical_targets)).encode("utf-8")
-        ).hexdigest()
-        self.retirement_sets.commit_plan(
-            PluginOwnerRetirementPlanV1.create(
-                retirement_id=intent.retirement_id,
-                owner_closure_reference=f"coding-owner-closure:{closure_digest}",
-                targets=canonical_targets,
-            )
-        )
 
     def _complete_ready_retirement(self, intent) -> None:
         retirement_set = self.retirement_sets.snapshot().retirement_set(
@@ -535,10 +552,37 @@ class CodingPluginSessionLease:
             current_package_revision=current_package,
         )
 
+    def publish_owner_generations(
+        self,
+        receipts: tuple[OwnerGenerationRetirementReceipt, ...],
+    ) -> None:
+        if self._closed:
+            raise CodingPluginLifecycleError(
+                "Closed Coding Session cannot publish owner generations",
+                code="coding_plugin_session_lease_closed",
+            )
+        self.lifecycle.publish_session_owner_generations(self.family, receipts)
+
+    def retire_owner_generations(
+        self,
+        receipts: tuple[OwnerGenerationRetirementReceipt, ...],
+    ) -> None:
+        if self._closed:
+            raise CodingPluginLifecycleError(
+                "Closed Coding Session cannot retire owner generations",
+                code="coding_plugin_session_lease_closed",
+            )
+        self.lifecycle.retire_session_owner_generations(self.family, receipts)
+
     def close(self) -> None:
         if self._closed:
             return
-        self.lifecycle.retire_session_owner_generations(self.family)
+        evidence = self.lifecycle.owner_evidence.family(self.family.family_id)
+        if evidence is not None and not evidence.retired:
+            raise CodingPluginLifecycleError(
+                "Coding Session owner generation cleanup remains pending",
+                code="coding_plugin_owner_generation_cleanup_pending",
+            )
         self.lifecycle.instances.release_family(_family_release(self.family))
         self.lifecycle.reconcile_retirements()
         self._closed = True
@@ -683,6 +727,9 @@ def build_coding_plugin_lifecycle(
         instance_runtime=instances,
         retirement_sets=retirement_sets,
     )
+    owner_evidence = CodingOwnerGenerationEvidenceLedger(
+        layout.owner_generation_evidence
+    )
     return CodingPluginLifecycle(
         layout=layout,
         startup_id=resolved_startup_id,
@@ -692,6 +739,7 @@ def build_coding_plugin_lifecycle(
         retirement_sets=retirement_sets,
         packages=packages,
         security=security,
+        owner_evidence=owner_evidence,
     )
 
 

@@ -1228,11 +1228,16 @@ class AgentProductSession(AgentSessionAdapterMixin):
                 else:
                     self._capability_owner_generations = ()
                     self._external_consumer_captures = ()
-            self._resource_capability_ports.invalidate()
-            try:
-                await self._retire_resource_catalog_replacements()
-            except BaseException as exc:
-                errors.append(exc)
+            # Tool owner disposal rebuilds the prompt after removing each exact
+            # registration.  Keep its Resource ports live when any owner
+            # generation remains retryable; invalidating them here would turn a
+            # transient Tool cleanup failure into a permanent retry failure.
+            if not owner_cleanup_failed:
+                self._resource_capability_ports.invalidate()
+                try:
+                    await self._retire_resource_catalog_replacements()
+                except BaseException as exc:
+                    errors.append(exc)
             catalog_rollback_handled = False
             catalog_bootstrap = self._initial_resource_catalog_bootstrap
             if (

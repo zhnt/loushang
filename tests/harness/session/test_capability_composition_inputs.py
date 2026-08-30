@@ -18,6 +18,9 @@ from loushang.harness.resources.plugins.selection import (
     PluginInstanceRevisionRef,
     PluginSourceTrustSnapshotV1,
 )
+from loushang.harness.runtime.registration import (
+    OwnerGenerationRetirementReceipt,
+)
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityOwnerAuthorityGate,
     SessionCapabilityOwnerGenerationBinding,
@@ -69,6 +72,7 @@ async def _owner_commit_rolls_back_every_attempted_generation_in_reverse() -> No
             authority_gate=authority_gate,
             stage=lambda _captures: object(),
             dispose=lambda _value: None,
+            retirement_receipt=_retirement_receipt(first),
             commit=lambda _value: events.append("commit:tools-a"),
             rollback_commit=lambda _value: events.append("rollback:tools-a"),
         ),
@@ -81,6 +85,7 @@ async def _owner_commit_rolls_back_every_attempted_generation_in_reverse() -> No
             authority_gate=authority_gate,
             stage=lambda _captures: object(),
             dispose=lambda _value: None,
+            retirement_receipt=_retirement_receipt(second),
             commit=fail_second,
             rollback_commit=lambda _value: events.append("rollback:tools-b"),
         ),
@@ -127,6 +132,7 @@ async def _later_commit_batch_does_not_rollback_an_existing_generation() -> None
             authority_gate=authority_gate,
             stage=lambda _captures: object(),
             dispose=lambda _value: None,
+            retirement_receipt=_retirement_receipt(first),
             commit=lambda _value: events.append("commit:tools-a"),
             rollback_commit=lambda _value: events.append("rollback:tools-a"),
         ),
@@ -139,6 +145,7 @@ async def _later_commit_batch_does_not_rollback_an_existing_generation() -> None
             authority_gate=authority_gate,
             stage=lambda _captures: object(),
             dispose=lambda _value: None,
+            retirement_receipt=_retirement_receipt(second),
             commit=fail_second,
             rollback_commit=lambda _value: events.append("rollback:tools-b"),
         ),
@@ -193,6 +200,7 @@ async def _owner_commit_revalidates_authority_after_async_staging() -> None:
         authority_gate=gate,
         stage=lambda _captures: asyncio.sleep(0, result=object()),
         dispose=lambda _value: None,
+        retirement_receipt=_retirement_receipt(admission),
         commit=published.append,
         rollback_commit=lambda _value: None,
     )
@@ -226,6 +234,7 @@ async def _owner_commit_rejects_async_publication_callback() -> None:
         authority_gate=_authority_gate(admission),
         stage=lambda _captures: object(),
         dispose=lambda _value: None,
+        retirement_receipt=_retirement_receipt(admission),
         commit=invalid_commit,  # type: ignore[arg-type]
         rollback_commit=lambda _value: None,
     )
@@ -253,6 +262,7 @@ def test_owner_commit_rejects_non_none_publication_result() -> None:
         authority_gate=_authority_gate(admission),
         stage=lambda _captures: object(),
         dispose=lambda _value: None,
+        retirement_receipt=_retirement_receipt(admission),
         commit=lambda _value: "invalid",  # type: ignore[arg-type,return-value]
         rollback_commit=lambda _value: None,
     )
@@ -288,6 +298,7 @@ async def _owner_rollback_rejects_async_publication_callback() -> None:
         authority_gate=_authority_gate(admission),
         stage=lambda _captures: object(),
         dispose=lambda _value: None,
+        retirement_receipt=_retirement_receipt(admission),
         commit=lambda _value: None,
         rollback_commit=invalid_rollback,  # type: ignore[arg-type]
     )
@@ -335,6 +346,7 @@ async def _owner_staging_preserves_generation_when_rollback_must_be_retried() ->
             authority_gate=authority_gate,
             stage=lambda _captures: object(),
             dispose=dispose_first,
+            retirement_receipt=_retirement_receipt(first),
             commit=lambda _value: None,
             rollback_commit=lambda _value: None,
         ),
@@ -347,6 +359,7 @@ async def _owner_staging_preserves_generation_when_rollback_must_be_retried() ->
             authority_gate=authority_gate,
             stage=fail_second,
             dispose=lambda _value: None,
+            retirement_receipt=_retirement_receipt(second),
             commit=lambda _value: None,
             rollback_commit=lambda _value: None,
         ),
@@ -390,6 +403,7 @@ async def _owner_staging_rechecks_expiry_before_live_generation() -> None:
         authority_gate=_authority_gate(admission, now=200),
         stage=stage,
         dispose=lambda _value: None,
+        retirement_receipt=_retirement_receipt(admission),
         commit=lambda _value: None,
         rollback_commit=lambda _value: None,
     )
@@ -465,6 +479,7 @@ async def _owner_generation_disposal_is_single_flight() -> None:
         authority_gate=_authority_gate(admission),
         stage=lambda _captures: object(),
         dispose=dispose,
+        retirement_receipt=_retirement_receipt(admission),
         commit=lambda _value: None,
         rollback_commit=lambda _value: None,
     )
@@ -482,6 +497,15 @@ async def _owner_generation_disposal_is_single_flight() -> None:
     await asyncio.gather(first, second)
     assert generation.disposed is True
     assert attempts == 1
+
+
+def _retirement_receipt(admission):  # type: ignore[no-untyped-def]
+    return lambda _value: OwnerGenerationRetirementReceipt(
+        owner_reference=f"owner:{admission.owner_id}",
+        owner_generation_reference=f"generation:{admission.fingerprint}",
+        retirement_handle=f"retirement:{admission.fingerprint}",
+        contribution_ids=(admission.contribution_id,),
+    )
 
 
 def _admission(*, owner_id: str, contribution_id: str):  # type: ignore[no-untyped-def]

@@ -509,6 +509,7 @@ def test_nonpersistent_transcript_honors_configured_durable_product_disable(
             resolve_coding_plugin_lifecycle_state_layout(workspace)
         )
         _disable_or_remove(lifecycle, action="disable")
+        lifecycle.reconcile_retirements()
 
         second_manager = await SessionManager.new(
             session_dir=tmp_path / "sessions-b",
@@ -639,8 +640,11 @@ def test_retirement_waits_for_every_session_owner_generation(
     assert retirement_set is not None
     assert retirement_set.state == "succeeded"
     assert retirement_set.plan is not None
-    assert len(retirement_set.plan.targets) == 4
-    assert len(retirement_set.latest_outcomes) == 4
+    # These low-level assemblies never publish a Session runtime, so there are
+    # no real owner generations to retire.  Lifecycle must not manufacture the
+    # historical four static owner targets.
+    assert retirement_set.plan.targets == ()
+    assert retirement_set.latest_outcomes == ()
 
 
 def test_update_selects_new_revision_while_old_session_remains_pinned(
@@ -1035,6 +1039,10 @@ def test_production_bootstrap_disable_keeps_active_generation_and_omits_new_base
         )
         await active.prepare_model_call_runtime()
         assert active._coding_base_plugin_assembly is not None
+        active_lease = active._coding_base_plugin_assembly.management_lease
+        assert active_lease is not None
+        active_ref = active_lease.instance_revision_ref
+        active_family_id = active_lease.family.family_id
         before_tools = tuple(active.get_active_tool_names())
 
         lifecycle = build_coding_plugin_lifecycle(
@@ -1079,6 +1087,490 @@ def test_production_bootstrap_disable_keeps_active_generation_and_omits_new_base
             replacement.get_active_tool_names()
         )
         await replacement.dispose()
+        await active.dispose()
+        retired = lifecycle.instances.snapshot().instance(active_ref)
+        assert retired is not None
+        assert retired.state == "RETIRED"
+        [intent] = lifecycle.management_retirement_intents()
+        retirement_set = lifecycle.retirement_sets.snapshot().retirement_set(
+            intent.retirement_id
+        )
+        assert retirement_set is not None
+        assert retirement_set.state == "succeeded"
+        assert retirement_set.plan is not None
+        assert len(retirement_set.plan.targets) == 3
+        assert {
+            target.contribution_ids for target in retirement_set.plan.targets
+        } == {
+            ("coding.builtin",),
+            ("coding.standard",),
+            ("prompt-standard", "skill-standard"),
+        }
+        assert all(
+            outcome.owner_outcome_reference
+            == f"coding-session-disposed:{active_family_id}"
+            for outcome in retirement_set.latest_outcomes
+        )
+
+    asyncio.run(scenario())
+
+
+def test_retirement_preserves_distinct_exact_generations_for_two_live_sessions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from collections import Counter
+
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    async def scenario() -> None:
+        services = create_services(
+            settings_manager=SettingsManager(
+                ControlConfig(capabilities={"coding.lsp": "disabled"})
+            )
+        )
+        sessions = []
+        for sequence in (1, 2):
+            manager = await SessionManager.new(
+                session_dir=tmp_path / "sessions",
+                cwd=str(workspace),
+                persist=True,
+            )
+            session = create_agent_session(
+                session_manager=manager,
+                model=_model(),
+                services=services,
+            )
+            await session.prepare_model_call_runtime()
+            sessions.append(session)
+
+        leases = tuple(
+            session._coding_base_plugin_assembly.management_lease
+            for session in sessions
+            if session._coding_base_plugin_assembly is not None
+        )
+        assert len(leases) == 2
+        assert all(lease is not None for lease in leases)
+        first_lease, second_lease = leases
+        assert first_lease is not None
+        assert second_lease is not None
+        assert first_lease.instance_revision_ref == second_lease.instance_revision_ref
+        assert first_lease.family.family_id != second_lease.family.family_id
+        selected_ref = first_lease.instance_revision_ref
+
+        lifecycle = build_coding_plugin_lifecycle(
+            resolve_coding_plugin_lifecycle_state_layout(workspace)
+        )
+        _disable_or_remove(lifecycle, action="disable")
+        lifecycle.reconcile_retirements()
+
+        await sessions[0].dispose()
+        draining = lifecycle.instances.snapshot().instance(selected_ref)
+        assert draining is not None
+        assert draining.state == "DRAINING"
+        [intent] = lifecycle.management_retirement_intents()
+        collecting = lifecycle.retirement_sets.snapshot().retirement_set(
+            intent.retirement_id
+        )
+        assert collecting is not None
+        assert collecting.plan is None
+
+        await sessions[1].dispose()
+        retired = lifecycle.instances.snapshot().instance(selected_ref)
+        assert retired is not None
+        assert retired.state == "RETIRED"
+        completed = lifecycle.retirement_sets.snapshot().retirement_set(
+            intent.retirement_id
+        )
+        assert completed is not None
+        assert completed.state == "succeeded"
+        assert completed.plan is not None
+        assert len(completed.plan.targets) == 6
+        assert Counter(
+            target.contribution_ids for target in completed.plan.targets
+        ) == Counter(
+            {
+                ("coding.builtin",): 2,
+                ("coding.standard",): 2,
+                ("prompt-standard", "skill-standard"): 2,
+            }
+        )
+        assert len(
+            {
+                (
+                    target.owner_reference,
+                    target.owner_generation_reference,
+                    target.retirement_handle,
+                )
+                for target in completed.plan.targets
+            }
+        ) == 6
+        assert {
+            outcome.owner_outcome_reference
+            for outcome in completed.latest_outcomes
+        } == {
+            f"coding-session-disposed:{first_lease.family.family_id}",
+            f"coding-session-disposed:{second_lease.family.family_id}",
+        }
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("owner_id", ["commands.session", "tools.workspace"])
+def test_owner_cleanup_failure_keeps_session_family_retryable_until_exact_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    owner_id: str,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=True,
+        )
+        active = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(capabilities={"coding.lsp": "disabled"})
+                )
+            ),
+        )
+        await active.prepare_model_call_runtime()
+        assembly = active._coding_base_plugin_assembly
+        assert assembly is not None
+        lease = assembly.management_lease
+        assert lease is not None
+        family_id = lease.family.family_id
+        ref = lease.instance_revision_ref
+        tool_generation = next(
+            generation
+            for generation in active._capability_owner_generations
+            if generation.binding.plugin_id == "coding.base"
+            and generation.binding.owner_id == owner_id
+        )
+        registration_scope = tool_generation.value.scope
+        failing_lease = registration_scope._leases[0]
+        original_disposer = failing_lease._dispose
+        assert original_disposer is not None
+        attempts = 0
+
+        def fail_once():
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise RuntimeError("transient exact owner cleanup failure")
+            return original_disposer()
+
+        failing_lease._dispose = fail_once
+        lifecycle = build_coding_plugin_lifecycle(
+            resolve_coding_plugin_lifecycle_state_layout(workspace)
+        )
+        _disable_or_remove(lifecycle, action="disable")
+        lifecycle.reconcile_retirements()
+
+        with pytest.raises(
+            RuntimeError,
+            match="generation disposal remains incomplete",
+        ):
+            await active.dispose()
+
+        evidence = lifecycle.owner_evidence.family(family_id)
+        assert evidence is not None
+        assert evidence.retired is False
+        draining = lifecycle.instances.snapshot().instance(ref)
+        assert draining is not None
+        assert draining.state == "DRAINING"
+        assert family_id in draining.open_family_ids
+        [intent] = lifecycle.management_retirement_intents()
+        collecting = lifecycle.retirement_sets.snapshot().retirement_set(
+            intent.retirement_id
+        )
+        assert collecting is not None
+        assert collecting.plan is None
+
+        await active.dispose()
+
+        assert attempts == 2
+        evidence = lifecycle.owner_evidence.family(family_id)
+        assert evidence is not None
+        assert evidence.retired is True
+        retired = lifecycle.instances.snapshot().instance(ref)
+        assert retired is not None
+        assert retired.state == "RETIRED"
+        completed = lifecycle.retirement_sets.snapshot().retirement_set(
+            intent.retirement_id
+        )
+        assert completed is not None
+        assert completed.state == "succeeded"
+        assert completed.plan is not None
+        assert len(completed.plan.targets) == 3
+
+    asyncio.run(scenario())
+
+
+def test_management_family_close_failure_keeps_base_assembly_retryable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=True,
+        )
+        active = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(capabilities={"coding.lsp": "disabled"})
+                )
+            ),
+        )
+        await active.prepare_model_call_runtime()
+        assembly = active._coding_base_plugin_assembly
+        assert assembly is not None
+        management_lease = assembly.management_lease
+        assert management_lease is not None
+        family_id = management_lease.family.family_id
+        selected_ref = management_lease.instance_revision_ref
+        lifecycle = build_coding_plugin_lifecycle(
+            resolve_coding_plugin_lifecycle_state_layout(workspace)
+        )
+        _disable_or_remove(lifecycle, action="disable")
+        lifecycle.reconcile_retirements()
+
+        original_close = type(management_lease).close
+        attempts = 0
+
+        def fail_once(candidate) -> None:
+            nonlocal attempts
+            if candidate is management_lease:
+                attempts += 1
+                if attempts == 1:
+                    raise RuntimeError("transient family close failure")
+            original_close(candidate)
+
+        monkeypatch.setattr(type(management_lease), "close", fail_once)
+
+        with pytest.raises(RuntimeError, match="transient family close failure"):
+            await active.dispose()
+
+        evidence = lifecycle.owner_evidence.family(family_id)
+        assert evidence is not None
+        assert evidence.retired is True
+        draining = lifecycle.instances.snapshot().instance(selected_ref)
+        assert draining is not None
+        assert draining.state == "DRAINING"
+        assert family_id in draining.open_family_ids
+        assert assembly._closed is False
+        assert assembly.package.revision_handle.closed is False
+
+        await active.dispose()
+
+        assert attempts == 2
+        assert assembly._closed is True
+        retired = lifecycle.instances.snapshot().instance(selected_ref)
+        assert retired is not None
+        assert retired.state == "RETIRED"
+
+    asyncio.run(scenario())
+
+
+def test_owner_evidence_publication_failure_retries_before_retirement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=True,
+        )
+        active = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(capabilities={"coding.lsp": "disabled"})
+                )
+            ),
+        )
+        assembly = active._coding_base_plugin_assembly
+        assert assembly is not None
+        management_lease = assembly.management_lease
+        assert management_lease is not None
+        original_publish = type(management_lease).publish_owner_generations
+        attempts = 0
+
+        def fail_once(candidate, receipts) -> None:
+            nonlocal attempts
+            if candidate is management_lease:
+                attempts += 1
+                if attempts == 1:
+                    raise RuntimeError("transient owner evidence publication failure")
+            original_publish(candidate, receipts)
+
+        monkeypatch.setattr(
+            type(management_lease),
+            "publish_owner_generations",
+            fail_once,
+        )
+
+        with pytest.raises(
+            RuntimeError,
+            match="transient owner evidence publication failure",
+        ):
+            await active.prepare_model_call_runtime()
+
+        assert active._coding_base_owner_retirement_receipts
+        assert active._coding_base_owner_generations_published is False
+        assert (
+            management_lease.lifecycle.owner_evidence.family(
+                management_lease.family.family_id
+            )
+            is None
+        )
+
+        await active.prepare_model_call_runtime()
+
+        assert attempts == 2
+        assert active._coding_base_owner_generations_published is True
+        evidence = management_lease.lifecycle.owner_evidence.family(
+            management_lease.family.family_id
+        )
+        assert evidence is not None
+        assert evidence.retired is False
+        await active.dispose()
+        retired = management_lease.lifecycle.owner_evidence.family(
+            management_lease.family.family_id
+        )
+        assert retired is not None
+        assert retired.retired is True
+
+    asyncio.run(scenario())
+
+
+def test_reconciliation_resumes_after_plan_commit_before_owner_outcomes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.plugin_management import PluginRetirementSetLedger
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=True,
+        )
+        active = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(capabilities={"coding.lsp": "disabled"})
+                )
+            ),
+        )
+        await active.prepare_model_call_runtime()
+        assembly = active._coding_base_plugin_assembly
+        assert assembly is not None
+        management_lease = assembly.management_lease
+        assert management_lease is not None
+        lifecycle = management_lease.lifecycle
+        selected_ref = management_lease.instance_revision_ref
+
+        observer = build_coding_plugin_lifecycle(
+            resolve_coding_plugin_lifecycle_state_layout(workspace)
+        )
+        _disable_or_remove(observer, action="disable")
+        observer.reconcile_retirements()
+
+        original_record_outcome = PluginRetirementSetLedger.record_outcome
+        attempts = 0
+
+        def fail_once(candidate, outcome):
+            nonlocal attempts
+            attempts += 1
+            if candidate is lifecycle.retirement_sets and attempts == 1:
+                raise RuntimeError("crash after exact plan commit")
+            return original_record_outcome(candidate, outcome)
+
+        monkeypatch.setattr(
+            PluginRetirementSetLedger,
+            "record_outcome",
+            fail_once,
+        )
+
+        with pytest.raises(RuntimeError, match="crash after exact plan commit"):
+            await active.dispose()
+
+        [intent] = observer.management_retirement_intents()
+        interrupted = observer.retirement_sets.snapshot().retirement_set(
+            intent.retirement_id
+        )
+        assert interrupted is not None
+        assert interrupted.state == "retiring"
+        assert interrupted.plan is not None
+        assert len(interrupted.plan.targets) == 3
+        assert interrupted.latest_outcomes == ()
+        draining = observer.instances.snapshot().instance(selected_ref)
+        assert draining is not None
+        assert draining.state == "DRAINING"
+
+        recovered = build_coding_plugin_lifecycle(
+            resolve_coding_plugin_lifecycle_state_layout(workspace)
+        )
+        recovered.reconcile_retirements()
+        assert attempts == 4
+        completed = recovered.retirement_sets.snapshot().retirement_set(
+            intent.retirement_id
+        )
+        assert completed is not None
+        assert completed.state == "succeeded"
+        assert len(completed.latest_outcomes) == 3
+        retired = recovered.instances.snapshot().instance(selected_ref)
+        assert retired is not None
+        assert retired.state == "RETIRED"
         await active.dispose()
 
     asyncio.run(scenario())

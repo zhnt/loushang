@@ -62,6 +62,9 @@ from loushang.harness.policy import PolicyEvaluator
 from loushang.harness.resources.loader import ResourceLoader
 from loushang.harness.resources.packages.roots import SelectedPluginPackageInput
 from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.runtime.registration import (
+    OwnerGenerationRetirementReceipt,
+)
 from loushang.harness.sandbox import SandboxExecutionRuntime, SandboxStatus
 from loushang.harness.session import AgentProductSession
 from loushang.harness.session.capability_composition_inputs import (
@@ -211,6 +214,11 @@ class AgentSession(AgentProductSession):
         self._lsp_access: CodingLspSessionAccess | None = None
         self._coding_lsp_plugin_assembly = coding_lsp_plugin_assembly
         self._coding_base_plugin_assembly = coding_base_plugin_assembly
+        self._coding_base_owner_retirement_receipts: tuple[
+            OwnerGenerationRetirementReceipt,
+            ...,
+        ] = ()
+        self._coding_base_owner_generations_published = False
         self._coding_lsp_plugin_capture: CapabilityFacetSet | None = None
         self.delegated_execution_profile = delegated_execution_profile
         self.cwd_bound_services_audit: CwdBoundServicesAudit | None = None
@@ -517,14 +525,89 @@ class AgentSession(AgentProductSession):
                 )
         super()._prepare_resource_refresh()
 
+    async def prepare_model_call_runtime(self) -> None:
+        await super().prepare_model_call_runtime()
+        self._publish_coding_base_owner_retirement_receipts()
+
+    def _publish_coding_base_owner_retirement_receipts(self) -> None:
+        assembly = self._coding_base_plugin_assembly
+        if assembly is None or assembly.management_lease is None:
+            return
+        if self._coding_base_owner_retirement_receipts:
+            if not self._coding_base_owner_generations_published:
+                assembly.management_lease.publish_owner_generations(
+                    self._coding_base_owner_retirement_receipts
+                )
+                self._coding_base_owner_generations_published = True
+            return
+        receipts = [
+            generation.capture_retirement_receipt()
+            for generation in self._capability_owner_generations
+            if generation.binding.plugin_id == "coding.base"
+        ]
+        resource_contribution_ids = tuple(
+            sorted(
+                {
+                    contribution_id
+                    for owner_reference, contribution_ids in (
+                        assembly.management_lease.owner_contributions
+                    )
+                    if owner_reference.startswith("resources.")
+                    for contribution_id in contribution_ids
+                }
+            )
+        )
+        if resource_contribution_ids:
+            candidate = self._mounted_resource_candidate
+            if candidate is None:
+                raise RuntimeError(
+                    "Coding base Resource owner generation is not mounted"
+                )
+            receipts.append(
+                candidate.resource_owner_generation_retirement_receipt(
+                    contribution_ids=resource_contribution_ids,
+                )
+            )
+        canonical = tuple(
+            sorted(
+                receipts,
+                key=lambda item: (
+                    item.owner_reference,
+                    item.owner_generation_reference,
+                    item.retirement_handle,
+                ),
+            )
+        )
+        self._coding_base_owner_retirement_receipts = canonical
+        assembly.management_lease.publish_owner_generations(canonical)
+        self._coding_base_owner_generations_published = True
+
     async def _dispose_session_runtime_profile(self) -> None:
         primary_error: BaseException | None = None
         try:
             await super()._dispose_session_runtime_profile()
         except BaseException as exc:
             primary_error = exc
+        base_plugin_assembly = getattr(self, "_coding_base_plugin_assembly", None)
+        if (
+            primary_error is None
+            and base_plugin_assembly is not None
+            and base_plugin_assembly.management_lease is not None
+            and self._coding_base_owner_retirement_receipts
+        ):
+            try:
+                if not self._coding_base_owner_generations_published:
+                    base_plugin_assembly.management_lease.publish_owner_generations(
+                        self._coding_base_owner_retirement_receipts
+                    )
+                    self._coding_base_owner_generations_published = True
+                base_plugin_assembly.management_lease.retire_owner_generations(
+                    self._coding_base_owner_retirement_receipts
+                )
+            except BaseException as cleanup_error:
+                primary_error = cleanup_error
         plugin_assembly = getattr(self, "_coding_lsp_plugin_assembly", None)
-        if plugin_assembly is not None:
+        if primary_error is None and plugin_assembly is not None:
             try:
                 plugin_assembly.close()
             except BaseException as cleanup_error:
@@ -537,8 +620,7 @@ class AgentSession(AgentProductSession):
                     )
             self._coding_lsp_plugin_capture = None
             self._lsp_access = None
-        base_plugin_assembly = getattr(self, "_coding_base_plugin_assembly", None)
-        if base_plugin_assembly is not None:
+        if primary_error is None and base_plugin_assembly is not None:
             try:
                 base_plugin_assembly.close()
             except BaseException as cleanup_error:

@@ -33,6 +33,9 @@ from loushang.harness.resources.plugins.selection import (
 )
 from loushang.harness.resources.plugins.types import PublishedPluginPackage
 from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
+from loushang.harness.runtime.registration import (
+    OwnerGenerationRetirementReceipt,
+)
 
 SessionCompositionChange = Literal["no_change", "restart_required"]
 
@@ -254,6 +257,9 @@ OwnerGenerationStage: TypeAlias = Callable[
 ]
 OwnerGenerationDispose: TypeAlias = Callable[[object], None | Awaitable[None]]
 OwnerGenerationTransition: TypeAlias = Callable[[object], None]
+OwnerGenerationReceiptProvider: TypeAlias = Callable[
+    [object], OwnerGenerationRetirementReceipt
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -378,6 +384,10 @@ class SessionCapabilityOwnerGenerationBinding:
     )
     stage: OwnerGenerationStage = field(repr=False, compare=False)
     dispose: OwnerGenerationDispose = field(repr=False, compare=False)
+    retirement_receipt: OwnerGenerationReceiptProvider = field(
+        repr=False,
+        compare=False,
+    )
     commit: OwnerGenerationTransition = field(
         repr=False,
         compare=False,
@@ -407,6 +417,7 @@ class SessionCapabilityOwnerGenerationBinding:
             for item in (
                 self.stage,
                 self.dispose,
+                self.retirement_receipt,
                 self.commit,
                 self.rollback_commit,
             )
@@ -486,6 +497,16 @@ class StagedSessionCapabilityOwnerGeneration:
             if self._dispose_task is task:
                 self._dispose_task = None
             raise
+
+    def capture_retirement_receipt(self) -> OwnerGenerationRetirementReceipt:
+        if not self.committed or self.disposed:
+            raise RuntimeError(
+                "only a committed live owner generation can mint retirement evidence"
+            )
+        receipt = self.binding.retirement_receipt(self.value)
+        if not isinstance(receipt, OwnerGenerationRetirementReceipt):
+            raise TypeError("owner generation retirement receipt is invalid")
+        return receipt
 
     async def _dispose(self) -> None:
         result = self.binding.dispose(self.value)

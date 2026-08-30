@@ -128,6 +128,7 @@ from loushang.harness.resources.plugins.types import (
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.runtime import (
     CancellationSignal,
+    OwnerGenerationRetirementReceipt,
     RegistrationIdentity,
     RegistrationOwner,
     RuntimeProfileResolver,
@@ -2270,6 +2271,14 @@ def test_foundation_plugin_reaches_one_session_graph_and_reverse_owner_unload(
                 ),
                 stage=stage_tools,
                 dispose=dispose_tools,
+                retirement_receipt=lambda _value: (
+                    OwnerGenerationRetirementReceipt(
+                        owner_reference="owner:product.tools",
+                        owner_generation_reference="generation:1",
+                        retirement_handle="retirement:1",
+                        contribution_ids=(owner_admission.contribution_id,),
+                    )
+                ),
                 commit=lambda _value: None,
                 rollback_commit=lambda _value: None,
             )
