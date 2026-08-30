@@ -12,12 +12,11 @@ from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleValue,
     CapabilityProviderContext,
 )
-from loushang.harness.plugin_authoring.builder import PluginDeclarationBuilder
-from loushang.harness.plugin_authoring.capability_provider import (
-    CapabilityProviderDeclarationPayload,
-    PluginSymbolReference,
+from loushang.plugin import (
+    PluginDefinitionBuilder,
+    capability_provider,
+    plugin_definition,
 )
-from loushang.harness.resources.plugins.declarations import PluginDeclaration
 
 CONTRIBUTION_ID = "coding-arch-default"
 
@@ -34,27 +33,28 @@ def dispose_provider(value: CapabilityBundleValue) -> None:
     dispose_coding_arch_provider(value)
 
 
-def declare(builder: PluginDeclarationBuilder) -> tuple[PluginDeclaration, ...]:
+@plugin_definition
+def declare(plugin: PluginDefinitionBuilder) -> None:
     """Project the approved reservation to inert Provider declaration IR."""
 
-    config = CodingArchPluginConfigV1.from_mapping(
-        builder.effective_configuration(contribution_id=CONTRIBUTION_ID)
+    CodingArchPluginConfigV1.from_mapping(
+        plugin.effective_configuration(contribution_id=CONTRIBUTION_ID)
     )
-    builder.add_capability_provider(
-        contribution_id=CONTRIBUTION_ID,
-        payload=CapabilityProviderDeclarationPayload(
-            provider=coding_arch_capability_provider(),
-            factory=PluginSymbolReference(
-                path="definition.py",
-                symbol="create_provider",
-                execution_model="in_process",
+    provider = coding_arch_capability_provider()
+    plugin.add(
+        capability_provider(
+            contribution_id=CONTRIBUTION_ID,
+            capability=provider.capability_id,
+            provider_id=provider.provider_id,
+            implementation_version=provider.implementation_version,
+            contract=(
+                provider.compatible_contract.minimum,
+                provider.compatible_contract.maximum,
             ),
-            disposer=PluginSymbolReference(
-                path="definition.py",
-                symbol="dispose_provider",
-                execution_model="in_process",
-            ),
-            binding_inputs=config.to_dict(),
+            facets=provider.facets,
+            requirements=provider.requirements,
+            authorities=tuple(sorted(provider.required_authorities)),
+            factory="definition.py:create_provider",
+            disposer="definition.py:dispose_provider",
         ),
     )
-    return builder.build()

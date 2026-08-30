@@ -39,6 +39,7 @@ from loushang.harness.resources.plugins.selection import (
 
 _MAX_JOURNAL_CAS_ATTEMPTS = 16
 _HOST_API_PREFIXES = (
+    "loushang.plugin",
     "loushang.harness.capabilities",
     "loushang.harness.plugin_authoring",
 )
@@ -337,13 +338,10 @@ class PluginDefinitionEvaluator:
             dependency_lock=dependency_lock,
             relative_path=relative_path.as_posix(),
             module_name=(
-                "_loushang_plugin_definition_"
-                + group.source_group_fingerprint[:16]
+                "_loushang_plugin_definition_" + group.source_group_fingerprint[:16]
             ),
             host_api_prefixes=_HOST_API_PREFIXES,
-            distribution_evidence_resolver=(
-                self._distribution_evidence_resolver
-            ),
+            distribution_evidence_resolver=(self._distribution_evidence_resolver),
         )
         definition = module.resolve(symbol)
         if not callable(definition):

@@ -1,5 +1,18 @@
 {
+  "manifestVersion": 1,
+  "engine": {
+    "apiVersion": 1,
+    "declarationIrVersion": 2,
+    "requiredFeatures": [
+      "capability-provider-v2",
+      "catalog-consumer-v1",
+      "declaration-document-v1",
+      "in-process-definition-v1",
+      "symbol-reference-v2"
+    ]
+  },
   "name": "coding.lsp.default",
+  "packageRoot": ".",
   "version": "1",
   "contributionIndex": {
     "version": 2,
