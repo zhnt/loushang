@@ -382,6 +382,289 @@ def test_same_session_resume_is_process_exclusive_and_retryable(
     resumed.close()
 
 
+def test_same_session_owner_reenters_until_its_last_process_lease_closes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lifecycle = _lifecycle(tmp_path)
+    key = lifecycle.installation_key("coding.base")
+    lifecycle.bootstrap_first_party_default(key, _package_ref())
+    owner_id = "session-manager:shared"
+    first = lifecycle.acquire_session(
+        key,
+        session_id="shared-conversation",
+        lease_attempt_id="attempt-first",
+        owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
+        session_owner_id=owner_id,
+    )
+    second = _lifecycle(tmp_path).acquire_session(
+        key,
+        session_id="shared-conversation",
+        lease_attempt_id="attempt-second",
+        owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
+        session_owner_id=owner_id,
+    )
+    lease_path = plugin_lifecycle_module._session_owner_lease_path(
+        lifecycle.layout,
+        session_id="shared-conversation",
+    )
+    with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
+        state = plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES[lease_path]
+        assert state.owner_id == owner_id
+        assert state.references == 2
+
+    first.close()
+    with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
+        assert (
+            plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES[
+                lease_path
+            ].references
+            == 1
+        )
+    with pytest.raises(CodingPluginLifecycleError) as caught:
+        _lifecycle(tmp_path).acquire_session(
+            key,
+            session_id="shared-conversation",
+            lease_attempt_id="attempt-contender",
+            owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
+            session_owner_id="session-manager:other",
+        )
+    assert caught.value.code == "coding_plugin_session_already_active"
+
+    release_started = threading.Event()
+    allow_release = threading.Event()
+    replacement_started = threading.Event()
+    replacement_lock_attempted = threading.Event()
+
+    class BlockingLease:
+        def __init__(self, underlying) -> None:
+            self.underlying = underlying
+
+        def __exit__(self, *args) -> None:
+            release_started.set()
+            assert allow_release.wait(timeout=20)
+            self.underlying.__exit__(*args)
+
+    class ObservableLock:
+        def __init__(self, underlying) -> None:
+            self.underlying = underlying
+
+        def __enter__(self):
+            if replacement_started.is_set():
+                replacement_lock_attempted.set()
+            self.underlying.acquire()
+            return self
+
+        def __exit__(self, *_args) -> None:
+            self.underlying.release()
+
+    monkeypatch.setattr(
+        plugin_lifecycle_module,
+        "_PROCESS_SESSION_OWNER_LEASES_LOCK",
+        ObservableLock(
+            plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK
+        ),
+    )
+
+    with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
+        state = plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES[lease_path]
+        state.lease = BlockingLease(state.lease)
+    replacement_lifecycle = _lifecycle(tmp_path)
+
+    def acquire_replacement():
+        replacement_started.set()
+        return replacement_lifecycle.acquire_session(
+            key,
+            session_id="shared-conversation",
+            lease_attempt_id="attempt-replacement",
+            owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
+            session_owner_id=owner_id,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        close_future = executor.submit(second.close)
+        assert release_started.wait(timeout=20)
+        replacement_future = executor.submit(acquire_replacement)
+        assert replacement_lock_attempted.wait(timeout=20)
+        assert replacement_future.done() is False
+        allow_release.set()
+        close_future.result(timeout=20)
+        replacement = replacement_future.result(timeout=20)
+
+    replacement.close()
+    with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
+        assert lease_path not in plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES
+    resumed = _lifecycle(tmp_path).acquire_session(
+        key,
+        session_id="shared-conversation",
+        lease_attempt_id="attempt-after-close",
+        owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
+        session_owner_id="session-manager:other",
+    )
+    resumed.close()
+
+
+def test_same_session_manager_allows_one_prepared_runtime_at_a_time(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=True,
+        )
+        services = create_services(
+            settings_manager=SettingsManager(
+                ControlConfig(capabilities={"coding.lsp": "disabled"})
+            )
+        )
+        first = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=services,
+        )
+        second = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=services,
+        )
+        first_assembly = first._coding_base_plugin_assembly
+        second_assembly = second._coding_base_plugin_assembly
+        assert first_assembly is not None
+        assert second_assembly is not None
+        assert first_assembly.scope_id == second_assembly.scope_id
+        manager_owner_id = getattr(
+            manager,
+            "_loushang_coding_plugin_owner_id",
+        )
+        assert manager_owner_id.startswith("session-manager:")
+        assert len(manager_owner_id.removeprefix("session-manager:")) == 32
+        assert manager_owner_id != f"session-manager:{id(manager):x}"
+        try:
+            await first.prepare_model_call_runtime()
+            first_lease = first_assembly.management_lease
+            second_lease = second_assembly.management_lease
+            assert first_lease is not None
+            assert second_lease is not None
+            lease_path = plugin_lifecycle_module._session_owner_lease_path(
+                first_lease.lifecycle.layout,
+                session_id=manager.get_header().conversation_id,
+            )
+            with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
+                state = plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES[
+                    lease_path
+                ]
+                assert state.references == 2
+                assert state.runtime_claim_id == first_lease.family.family_id
+            with pytest.raises(CodingPluginLifecycleError) as caught:
+                await second.prepare_model_call_runtime()
+            assert caught.value.code == "coding_plugin_session_runtime_already_active"
+            assert first._coding_base_owner_retirement_receipts
+            assert second._coding_base_owner_retirement_receipts == ()
+            await first.dispose()
+            with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
+                state = plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES[
+                    lease_path
+                ]
+                assert state.references == 1
+                assert state.runtime_claim_id is None
+            await second.dispose()
+        finally:
+            await first.dispose()
+            await second.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_session_owner_unlock_failure_drops_invalid_process_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lifecycle = _lifecycle(tmp_path)
+    key = lifecycle.installation_key("coding.base")
+    lifecycle.bootstrap_first_party_default(key, _package_ref())
+    lease = lifecycle.acquire_session(
+        key,
+        session_id="unlock-failure",
+        lease_attempt_id="attempt-failing-close",
+        owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
+        session_owner_id="session-manager:first",
+    )
+    lease_path = plugin_lifecycle_module._session_owner_lease_path(
+        lifecycle.layout,
+        session_id="unlock-failure",
+    )
+
+    class UnlockThenFailLease:
+        def __init__(self, underlying) -> None:
+            self.underlying = underlying
+
+        def __exit__(self, *args) -> None:
+            self.underlying.__exit__(*args)
+            raise OSError("injected unlock report failure")
+
+    with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
+        state = plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES[lease_path]
+        state.lease = UnlockThenFailLease(state.lease)
+
+    failed_release_completed = threading.Event()
+    allow_old_wrapper_check = threading.Event()
+    release_owner_lease = plugin_lifecycle_module._release_session_owner_lease
+
+    def release_then_pause(*args, **kwargs) -> None:
+        try:
+            release_owner_lease(*args, **kwargs)
+        except OSError:
+            failed_release_completed.set()
+            assert allow_old_wrapper_check.wait(timeout=20)
+            raise
+
+    monkeypatch.setattr(
+        plugin_lifecycle_module,
+        "_release_session_owner_lease",
+        release_then_pause,
+    )
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        failed_close = executor.submit(lease.close)
+        assert failed_release_completed.wait(timeout=20)
+        with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
+            assert (
+                lease_path
+                not in plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES
+            )
+
+        replacement = _lifecycle(tmp_path).acquire_session(
+            key,
+            session_id="unlock-failure",
+            lease_attempt_id="attempt-after-failed-unlock",
+            owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
+            session_owner_id="session-manager:first",
+        )
+        replacement_authority_id = replacement._session_owner_lease.authority_id
+        allow_old_wrapper_check.set()
+        with pytest.raises(OSError, match="injected unlock report failure"):
+            failed_close.result(timeout=20)
+
+    # The first Session family release succeeded before platform unlock
+    # reported its error; retrying its close must not touch the new owner.
+    lease.close()
+    with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
+        state = plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES[lease_path]
+        assert state.owner_id == "session-manager:first"
+        assert state.authority_id == replacement_authority_id
+        assert state.references == 1
+    replacement.close()
+
+
 def test_concurrent_last_session_close_linearizes_exact_retirement(
     tmp_path: Path,
 ) -> None:
@@ -587,6 +870,46 @@ def _stop_plugin_lifecycle_child(process: subprocess.Popen[str]) -> None:
     if process.poll() is None:
         process.kill()
     process.communicate(timeout=20)
+
+
+def test_same_session_owner_lease_rejects_another_process_until_exit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    process, child_state, _marker = _start_plugin_lifecycle_child(
+        tmp_path,
+        mode="hold",
+    )
+    lifecycle = build_coding_plugin_lifecycle(
+        resolve_coding_plugin_lifecycle_state_layout(workspace)
+    )
+    key = lifecycle.installation_key("coding.base")
+    try:
+        with pytest.raises(CodingPluginLifecycleError) as caught:
+            lifecycle.acquire_session(
+                key,
+                session_id=str(child_state["sessionId"]),
+                lease_attempt_id="attempt-while-child-live",
+                owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
+                session_owner_id="parent-runtime",
+            )
+        assert caught.value.code == "coding_plugin_session_already_active"
+
+        process.kill()
+        assert process.wait(timeout=20) != 0
+        resumed = lifecycle.acquire_session(
+            key,
+            session_id=str(child_state["sessionId"]),
+            lease_attempt_id="attempt-after-child-exit",
+            owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
+            session_owner_id="parent-runtime",
+        )
+        resumed.close()
+    finally:
+        _stop_plugin_lifecycle_child(process)
 
 
 def test_real_process_death_preserves_live_family_then_recovers_exact_owners(

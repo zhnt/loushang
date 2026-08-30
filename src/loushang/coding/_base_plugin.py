@@ -251,6 +251,7 @@ def prepare_managed_coding_base_plugin_assembly(
     include_tool_contribution: bool = True,
     include_tool_claim_prompt: bool = True,
     state_cleanup: Callable[[], None] | None = None,
+    session_owner_id: str | None = None,
 ) -> CodingBasePluginAssembly | None:
     """Intersect the Product request with one durable management snapshot."""
 
@@ -376,6 +377,7 @@ def prepare_managed_coding_base_plugin_assembly(
                 include_tools=include_tool_contribution,
                 include_prompt=include_tool_claim_prompt,
             ),
+            session_owner_id=session_owner_id,
         )
         if (
             lease.package_revision != selected_revision
