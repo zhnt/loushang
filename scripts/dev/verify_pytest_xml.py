@@ -13,6 +13,11 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("report", type=Path)
     parser.add_argument(
+        "--allow-skipped",
+        action="store_true",
+        help="allow platform-inapplicable skips while still requiring a passed test",
+    )
+    parser.add_argument(
         "--require-property",
         action="append",
         default=[],
@@ -22,7 +27,12 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def verify_report(report: Path, required_properties: tuple[str, ...] = ()) -> str:
+def verify_report(
+    report: Path,
+    required_properties: tuple[str, ...] = (),
+    *,
+    allow_skipped: bool = False,
+) -> str:
     try:
         root = ET.parse(report).getroot()
     except (OSError, ET.ParseError) as error:
@@ -39,9 +49,13 @@ def verify_report(report: Path, required_properties: tuple[str, ...] = ()) -> st
     problems: list[str] = []
     if counts["tests"] <= 0:
         problems.append("tests must be greater than zero")
-    for key in ("skipped", "failures", "errors"):
+    for key in ("failures", "errors"):
         if counts[key] != 0:
             problems.append(f"{key} must be zero, got {counts[key]}")
+    if counts["skipped"] != 0 and not allow_skipped:
+        problems.append(f"skipped must be zero, got {counts['skipped']}")
+    if allow_skipped and counts["tests"] - counts["skipped"] <= 0:
+        problems.append("at least one test must pass when skipped tests are allowed")
 
     properties = {
         (item.get("name") or ""): item.get("value") or ""
@@ -79,7 +93,11 @@ def _integer_attribute(suite: ET.Element, name: str, report: Path) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        summary = verify_report(args.report, tuple(args.require_property))
+        summary = verify_report(
+            args.report,
+            tuple(args.require_property),
+            allow_skipped=args.allow_skipped,
+        )
     except ValueError as error:
         print(error, file=sys.stderr)
         return 1
