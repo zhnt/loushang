@@ -1044,7 +1044,7 @@ def _stable_read(
             code="resource_source_discovery_failed",
             reason="symlink_not_allowed",
         )
-    flags = os.O_RDONLY
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
     try:

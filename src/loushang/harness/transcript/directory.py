@@ -1098,7 +1098,8 @@ def _bounded_file_digest(
     # read still consumes its reservation, so one merge can never retry past
     # the process-wide comparison budget.
     budget.remaining -= before.st_size
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(path, flags)
     except OSError:

@@ -23,6 +23,10 @@ from .platform_paths import PlatformPaths, resolve_platform_paths
 
 _LEASE_NAME = ".lease"
 _GC_PREFIX = ".gc-"
+# Keep the Windows byte-range lock well outside the bounded lease record.  A
+# lock at byte zero makes the otherwise-readable record inaccessible through
+# every second handle, including one opened by the owning process.
+_WINDOWS_LEASE_LOCK_OFFSET = 1 << 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,10 +160,8 @@ class RunLease:
         descriptor = -1
         try:
             descriptor = _open_new_private_file(lease_path)
-            # Windows byte-range locking requires the locked byte to exist.
-            _write_all(descriptor, b"\0")
-            os.lseek(descriptor, 0, os.SEEK_SET)
             _lock_descriptor(descriptor, blocking=True)
+            os.lseek(descriptor, 0, os.SEEK_SET)
             os.ftruncate(descriptor, 0)
             payload = json.dumps(
                 {
@@ -598,15 +600,18 @@ def _validate_lease_identity(
     lease_path: Path,
     expected: tuple[int, int],
 ) -> None:
-    metadata = lease_path.lstat()
-    if (
-        not stat.S_ISREG(metadata.st_mode)
-        or (
-            metadata.st_dev,
-            metadata.st_ino,
-        )
-        != expected
-    ):
+    path_metadata = lease_path.lstat()
+    if not stat.S_ISREG(path_metadata.st_mode) or _is_reparse_point(path_metadata):
+        raise PermissionError(f"runtime lease identity changed: {lease_path}")
+    if os.name == "nt":
+        descriptor = _open_existing_private_file(lease_path)
+        try:
+            metadata = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+    else:
+        metadata = path_metadata
+    if (metadata.st_dev, metadata.st_ino) != expected:
         raise PermissionError(f"runtime lease identity changed: {lease_path}")
 
 
@@ -718,7 +723,7 @@ def _lock_descriptor(descriptor: int, *, blocking: bool) -> bool:
     if os.name == "nt":
         import msvcrt
 
-        os.lseek(descriptor, 0, os.SEEK_SET)
+        os.lseek(descriptor, _WINDOWS_LEASE_LOCK_OFFSET, os.SEEK_SET)
         mode = (
             getattr(msvcrt, "LK_LOCK")
             if blocking
@@ -750,7 +755,7 @@ def _unlock_and_close(descriptor: int) -> None:
         if os.name == "nt":
             import msvcrt
 
-            os.lseek(descriptor, 0, os.SEEK_SET)
+            os.lseek(descriptor, _WINDOWS_LEASE_LOCK_OFFSET, os.SEEK_SET)
             locking = getattr(msvcrt, "locking")
             locking(descriptor, getattr(msvcrt, "LK_UNLCK"), 1)
         else:

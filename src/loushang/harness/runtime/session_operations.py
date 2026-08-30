@@ -247,6 +247,7 @@ def copy_file_exclusive(
         f".{destination.name}.{uuid4().hex}.tmp"
     )
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     descriptor = -1
     source_descriptor = -1
@@ -406,7 +407,7 @@ class _FixedLengthReader:
 
 
 def _open_source_no_follow(source: Path) -> tuple[int, int]:
-    file_flags = os.O_RDONLY
+    file_flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     file_flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     directory_flag = getattr(os, "O_DIRECTORY", 0)
     if os.name != "nt" and directory_flag:

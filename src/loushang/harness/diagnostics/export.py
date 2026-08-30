@@ -592,6 +592,7 @@ def _json_text(value: object) -> str:
 
 def _open_new_private_file(path: Path) -> int:
     flags = os.O_RDWR | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
     return os.open(path, flags, 0o600)
 

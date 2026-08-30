@@ -1218,7 +1218,7 @@ def _migration_target_matches(
 
 
 def _read_stable_regular_file(path: Path, metadata: os.stat_result) -> bytes:
-    flags = os.O_RDONLY
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
     descriptor = os.open(path, flags)
     try:

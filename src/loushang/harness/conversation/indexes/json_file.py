@@ -500,7 +500,7 @@ def _read_stable_regular_file(path: Path, *, max_bytes: int) -> bytes:
 
 
 def _open_file_no_follow(path: Path) -> tuple[int, int]:
-    flags = os.O_RDONLY
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     directory_flag = getattr(os, "O_DIRECTORY", 0)
     if os.name != "nt" and directory_flag:

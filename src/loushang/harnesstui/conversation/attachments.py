@@ -276,6 +276,7 @@ def _display_path(path: Path, *, relative_to: Path | None) -> str:
 
 def _write_private_file(path: Path, content: bytes) -> None:
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
     descriptor = os.open(
         path,

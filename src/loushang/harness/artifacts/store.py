@@ -441,8 +441,9 @@ def sweep_managed_artifacts(
                 ):
                     skipped += 1
                     continue
+                candidate_path = Path(entry.path)
                 try:
-                    metadata = entry.stat(follow_symlinks=False)
+                    metadata = candidate_path.lstat()
                 except OSError:
                     failed += 1
                     continue
@@ -455,7 +456,7 @@ def sweep_managed_artifacts(
                     continue
                 candidates.append(
                     _RetentionCandidate(
-                        path=Path(entry.path),
+                        path=candidate_path,
                         size=metadata.st_size,
                         modified_at=metadata.st_mtime,
                         identity=(metadata.st_dev, metadata.st_ino),
@@ -534,7 +535,7 @@ def _read_stable_source(
         raise ArtifactSourceRejected(
             f"artifact source is outside allowed roots: {source}"
         )
-    flags = os.O_RDONLY
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
     try:
         descriptor = os.open(resolved, flags)
@@ -608,7 +609,7 @@ def prepare_private_artifact_directory(path: str | Path) -> Path:
 
 
 def _read_owned_artifact(record: _StoredArtifactRecord) -> bytes:
-    flags = os.O_RDONLY
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
     try:
         descriptor = os.open(record.path, flags)
@@ -658,6 +659,7 @@ def _validate_private_directory(path: Path) -> None:
 
 def _write_new_private_file(path: Path, content: bytes) -> tuple[int, int]:
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
     descriptor = os.open(path, flags, 0o600)
     metadata = os.fstat(descriptor)

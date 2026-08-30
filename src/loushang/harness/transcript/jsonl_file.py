@@ -595,7 +595,7 @@ def _read_stable_regular_file(
             path=path,
             code="session_file_too_large",
         )
-    flags = os.O_RDONLY
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
     descriptor, parent_descriptor = _open_file_no_follow(path, flags=flags)
     try:
@@ -625,7 +625,7 @@ def _read_stable_regular_prefix(path: Path, *, max_bytes: int) -> bytes:
     before = path.lstat()
     if not _status_is_regular_no_follow(before):
         raise OSError("transcript source must be a regular file")
-    flags = os.O_RDONLY
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
     descriptor, parent_descriptor = _open_file_no_follow(path, flags=flags)
     try:

@@ -1596,7 +1596,7 @@ def _read_tombstone_json(target: Path) -> dict[str, object] | None:
 
 
 def _open_file_no_follow(path: Path) -> tuple[int, int]:
-    file_flags = os.O_RDONLY
+    file_flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     file_flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     directory_flag = getattr(os, "O_DIRECTORY", 0)
     if os.name != "nt" and directory_flag:

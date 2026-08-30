@@ -673,7 +673,7 @@ def _unique_objects(
 
 
 def _read_blob_object(path: Path, reference: SessionBlobRef) -> bytes:
-    flags = os.O_RDONLY
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
     descriptor = os.open(path, flags)
     try:
@@ -710,7 +710,7 @@ def _read_stable_private_file(
     *,
     max_bytes: int,
 ) -> bytes:
-    flags = os.O_RDONLY
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
     parent_descriptor = -1
     directory_flag = getattr(os, "O_DIRECTORY", 0)
