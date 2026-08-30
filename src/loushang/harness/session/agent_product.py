@@ -1495,6 +1495,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     except SessionCapabilityOwnerGenerationStagingError as exc:
                         owner_generations = exc.pending_generations
                         raise
+                self._prepare_session_owner_generation_evidence(owner_generations)
                 if catalog_bootstrap is not None:
                     retirement = catalog_bootstrap.publish(
                         InitialSessionResourcePublication(
@@ -1519,6 +1520,7 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     self._pending_resource_catalog_retirements.remove(retirement)
                 else:
                     commit_session_capability_owner_generations(owner_generations)
+                    self._commit_session_owner_generation_evidence()
             except BaseException as error:
                 owner_cleanup_failed = False
                 if owner_generations:
@@ -2030,6 +2032,21 @@ class AgentProductSession(AgentSessionAdapterMixin):
 
         self._commit_initial_resource_publication(catalog, projection, bundle)
         commit_session_capability_owner_generations(owner_generations)
+        self._commit_session_owner_generation_evidence()
+
+    def _prepare_session_owner_generation_evidence(
+        self,
+        owner_generations: tuple[
+            StagedSessionCapabilityOwnerGeneration,
+            ...,
+        ],
+    ) -> None:
+        """Product hook for write-ahead exact-owner retirement evidence."""
+
+        del owner_generations
+
+    def _commit_session_owner_generation_evidence(self) -> None:
+        """Product hook sealing write-ahead evidence after publication."""
 
     def _restore_initial_resource_publication(self, previous: object) -> None:
         if not isinstance(previous, tuple) or len(previous) != 3:

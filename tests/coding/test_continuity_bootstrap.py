@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -804,7 +805,7 @@ def test_bootstrap_failure_is_redacted_and_explicit_retry_succeeds(
     asyncio.run(scenario())
 
 
-def test_changed_revision_reports_unselected_and_accepts_source_rollback(
+def test_changed_source_replays_selected_revision_until_management_update(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -838,24 +839,23 @@ def test_changed_revision_reports_unselected_and_accepts_source_rollback(
         changed["version"] = "2"
         manifest_path.write_text(json.dumps(changed), encoding="utf-8")
         changed_runtime = _Runtime(tmp_path / "sessions")
-        with pytest.raises(CodingContinuityBootstrapError) as caught:
-            await bind_coding_configured_continuity(
-                changed_runtime,
-                runtime_id="coding-process:revision-changed",
-                **kwargs,
-            )
-        assert caught.value.code == "coding_continuity_plugin_revision_not_selected"
-        assert caught.value.retryable is False
+        replayed = await bind_coding_configured_continuity(
+            changed_runtime,
+            runtime_id="coding-process:revision-changed",
+            **kwargs,
+        )
+        assert replayed.plugin_publication is not None
+        await shutdown_coding_continuity(changed_runtime)
 
-        manifest_path.write_bytes(original_manifest)
-        restored_runtime = _Runtime(tmp_path / "sessions")
+        shutil.rmtree(plugin_root)
+        deleted_source_runtime = _Runtime(tmp_path / "sessions")
         restored = await bind_coding_configured_continuity(
-            restored_runtime,
-            runtime_id="coding-process:revision-restored",
+            deleted_source_runtime,
+            runtime_id="coding-process:revision-source-deleted",
             **kwargs,
         )
         assert restored.plugin_publication is not None
-        await shutdown_coding_continuity(restored_runtime)
+        await shutdown_coding_continuity(deleted_source_runtime)
 
     asyncio.run(scenario())
 

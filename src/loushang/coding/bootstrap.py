@@ -537,6 +537,8 @@ def _create_agent_session(
             )
             else TemporaryDirectory(prefix="loushang-coding-plugin-")
         )
+        base_package_materializer: PackageMaterializer | None = None
+        recorded_base_lockfile_diagnostics: list[dict[str, object]] = []
         try:
             lifecycle_layout = (
                 resolve_coding_plugin_lifecycle_state_layout(
@@ -569,8 +571,11 @@ def _create_agent_session(
                 backend=GitPackageMaterializerBackend(),
             )
             if base_package_materializer is not resolved_package_materializer:
+                recorded_base_lockfile_diagnostics = (
+                    base_package_materializer.get_lockfile_diagnostics()
+                )
                 record_package_lockfile_diagnostics(
-                    base_package_materializer.get_lockfile_diagnostics(),
+                    recorded_base_lockfile_diagnostics,
                     diagnostics_service=services.diagnostics_service,
                     session_id=session_id,
                 )
@@ -591,6 +596,22 @@ def _create_agent_session(
                 ),
             )
         except BaseException:
+            # Exact-replay validation refreshes the durable lock after the
+            # initial bootstrap diagnostic pass.  Preserve the public startup
+            # diagnostic contract when that refresh discovers corruption.
+            if base_package_materializer is not None:
+                refreshed_diagnostics = (
+                    base_package_materializer.get_lockfile_diagnostics()
+                )
+                record_package_lockfile_diagnostics(
+                    [
+                        diagnostic
+                        for diagnostic in refreshed_diagnostics
+                        if diagnostic not in recorded_base_lockfile_diagnostics
+                    ],
+                    diagnostics_service=services.diagnostics_service,
+                    session_id=session_id,
+                )
             if base_ephemeral_state is not None:
                 base_ephemeral_state.cleanup()
             raise

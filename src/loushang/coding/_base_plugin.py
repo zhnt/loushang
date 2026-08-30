@@ -39,6 +39,8 @@ from loushang.harness.resources.plugins.authority import (
     PluginResolutionAuthority,
     PluginRuntimeResolution,
 )
+from loushang.harness.resources.plugins.manifest import PluginManifestError
+from loushang.harness.resources.plugins.revisions import PluginRevisionError
 from loushang.harness.resources.plugins.selection import (
     PluginContributionRef,
     PluginEffectiveConfigurationEntry,
@@ -110,6 +112,8 @@ class CodingBasePluginAssembly:
         default=None,
         repr=False,
     )
+    _runtime_closed: bool = field(default=False, init=False, repr=False)
+    _state_cleaned: bool = field(default=False, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
 
     def evaluate_management_change(self) -> CodingPluginManagementChange | None:
@@ -120,28 +124,35 @@ class CodingBasePluginAssembly:
     def close(self) -> None:
         if self._closed:
             return
-        # The Session family is the management authority for everything held
-        # below it.  If that exact family cannot close yet, retain the Package
-        # and state handles so the same assembly remains retryable.
-        if self.management_lease is not None:
-            self.management_lease.close()
+        # Durable retirement must not claim that host/package cleanup succeeded
+        # until the actual Package runtime and Product state handles have both
+        # completed.  Each step is independently retryable; the Session family
+        # remains live while either cleanup still has debt.
         primary_error: BaseException | None = None
-        try:
-            self.runtime.close()
-        except BaseException as cleanup_error:
-            primary_error = cleanup_error
-        try:
-            if self.state_cleanup is not None:
-                self.state_cleanup()
-        except BaseException as cleanup_error:
-            if primary_error is None:
+        if not self._runtime_closed:
+            try:
+                self.runtime.close()
+            except BaseException as cleanup_error:
                 primary_error = cleanup_error
             else:
-                primary_error.add_note(
-                    f"Coding base state cleanup also failed: {cleanup_error}"
-                )
+                self._runtime_closed = True
+        if not self._state_cleaned:
+            try:
+                if self.state_cleanup is not None:
+                    self.state_cleanup()
+            except BaseException as cleanup_error:
+                if primary_error is None:
+                    primary_error = cleanup_error
+                else:
+                    primary_error.add_note(
+                        f"Coding base state cleanup also failed: {cleanup_error}"
+                    )
+            else:
+                self._state_cleaned = True
         if primary_error is not None:
             raise primary_error
+        if self.management_lease is not None:
+            self.management_lease.close()
         self._closed = True
 
 
@@ -317,17 +328,39 @@ def prepare_managed_coding_base_plugin_assembly(
                 code="coding_base_management_selection_incomplete",
             )
         if runtime is None:
-            replay_binding = package_materializer.get_plugin_binding_by_revision(
-                selected_revision.package_source_identity,
-                content_digest=selected_revision.package_content_digest,
-                dependency_lock_digest=selected_revision.dependency_lock_digest,
-            )
+            try:
+                replay_binding = package_materializer.get_plugin_binding_by_revision(
+                    selected_revision.package_source_identity,
+                    content_digest=selected_revision.package_content_digest,
+                    dependency_lock_digest=selected_revision.dependency_lock_digest,
+                )
+            except PluginManifestError as exc:
+                raise CodingBasePluginAssemblyError(
+                    "Selected Coding base binding lock failed exact replay",
+                    code="coding_base_binding_replay_invalid",
+                ) from exc
             if replay_binding is None:
                 raise CodingBasePluginAssemblyError(
                     "Selected Coding base binding is unavailable for replay",
                     code="coding_base_binding_replay_unavailable",
                 )
-            package = package_materializer.reopen_plugin_package(replay_binding)
+            try:
+                package = package_materializer.reopen_plugin_package(replay_binding)
+            except PluginRevisionError as exc:
+                code = (
+                    "coding_base_revision_replay_unavailable"
+                    if exc.code == "plugin_revision_unavailable"
+                    else "coding_base_revision_replay_integrity_failed"
+                )
+                raise CodingBasePluginAssemblyError(
+                    "Selected Coding base revision failed exact replay",
+                    code=code,
+                ) from exc
+            except PluginManifestError as exc:
+                raise CodingBasePluginAssemblyError(
+                    "Selected Coding base binding failed exact replay",
+                    code="coding_base_binding_replay_invalid",
+                ) from exc
             runtime = PluginRuntimeResolution(
                 packages=(package,),
                 plugins=(),

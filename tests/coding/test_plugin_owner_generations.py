@@ -91,6 +91,43 @@ def test_owner_generation_evidence_rejects_conflicting_family_reuse(
     assert pending.value.code == "coding_owner_generation_cleanup_pending"
 
 
+def test_owner_generation_evidence_preflights_cross_family_receipt_conflict(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "owner-generations.jsonl"
+    ledger = CodingOwnerGenerationEvidenceLedger(path)
+    ref = _instance_ref()
+    receipts = (_receipt("session-a", "commands.session", "coding.standard"),)
+    prepared = ledger.prepare(
+        family_id="family-a",
+        instance_revision_ref=ref,
+        receipts=receipts,
+        preparation_reference="preparation:a",
+    )
+    assert prepared.publication_state == "prepared"
+    published = ledger.publish(
+        family_id="family-a",
+        instance_revision_ref=ref,
+        receipts=receipts,
+        publication_reference="publication:a",
+    )
+    assert published.publication_state == "published"
+    revision_before = len(path.read_text(encoding="utf-8").splitlines())
+
+    with pytest.raises(CodingOwnerGenerationEvidenceError) as caught:
+        ledger.prepare(
+            family_id="family-b",
+            instance_revision_ref=ref,
+            receipts=receipts,
+            preparation_reference="preparation:b",
+        )
+
+    assert caught.value.code == "coding_owner_generation_evidence_conflict"
+    assert len(path.read_text(encoding="utf-8").splitlines()) == revision_before
+    assert CodingOwnerGenerationEvidenceLedger(path).family("family-a") == published
+    assert CodingOwnerGenerationEvidenceLedger(path).family("family-b") is None
+
+
 def test_owner_generation_evidence_rejects_empty_publication(tmp_path: Path) -> None:
     ledger = CodingOwnerGenerationEvidenceLedger(
         tmp_path / "owner-generations.jsonl"

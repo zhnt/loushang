@@ -21,6 +21,7 @@ from time import time_ns
 from typing import Literal, Protocol
 
 from loushang.coding._plugin_lifecycle import (
+    CodingPluginLifecycle,
     CodingPluginLifecycleStateLayout,
     build_coding_plugin_lifecycle,
     resolve_coding_plugin_lifecycle_state_layout,
@@ -73,6 +74,7 @@ from loushang.harness.plugin_management import (
     PluginDesiredStateLedger,
     PluginDesiredStateMutationV1,
     PluginInstallationKeyV1,
+    PluginInstallationStateV1,
     PluginInstanceRuntimeLedger,
     PluginManagementCommandV1,
     PluginManagementService,
@@ -88,6 +90,7 @@ from loushang.harness.resources.packages.materializer import (
     PackageMaterializer,
 )
 from loushang.harness.resources.plugins import (
+    InstalledPlugin,
     PluginContributionRef,
     PluginEffectiveConfigurationEntry,
     PluginEffectiveConfigurationSetV1,
@@ -105,6 +108,7 @@ from loushang.harness.resources.plugins import (
     PluginSourceBinding,
     PluginSourceTrustSnapshotV1,
     PublishedPluginPackage,
+    ResolvedPluginPackage,
     is_remote_plugin_source,
 )
 from loushang.harness.resources.plugins.import_realm import PluginImportRealm
@@ -188,6 +192,7 @@ class CodingContinuityStateLayout:
 
 @dataclass(slots=True)
 class _InstalledLifecycle:
+    common: CodingPluginLifecycle
     desired: PluginDesiredStateLedger
     management: PluginManagementService
     instances: PluginInstanceRuntimeLedger
@@ -370,12 +375,16 @@ async def bind_coding_configured_continuity(
         )
         _prepare_private_state_layout(layout)
         _prepare_private_runtime_roots(layout)
-        inspections = _continuity_inspections(
+        lifecycle = _build_lifecycle(layout, runtime_id=resolved_runtime_id)
+        lifecycle.common.reconcile_retirements()
+        replayed_runtime, inspections = _continuity_runtime_inputs(
             sources,
             disabled_plugins=disabled_plugins,
             materializer=resolved_materializer,
+            lifecycle=lifecycle,
+            layout=layout,
         )
-        if not inspections:
+        if not replayed_runtime.packages and not inspections:
             result = bind_coding_continuity(
                 runtime,
                 cwd=cwd,
@@ -393,6 +402,7 @@ async def bind_coding_configured_continuity(
             return result
 
         if not supports_coding_continuity_secure_staging():
+            replayed_runtime.close()
             raise CodingContinuityBootstrapError(
                 code="coding_continuity_secure_staging_unsupported",
                 retryable=False,
@@ -401,21 +411,18 @@ async def bind_coding_configured_continuity(
         resolution_authority = PluginResolutionAuthority(
             disabled_plugins=tuple(disabled_plugins)
         )
-        runtime_resolution = resolution_authority.publish_runtime(
-            inspections,
-            binding_store=resolved_materializer,
+        runtime_resolution = _publish_continuity_runtime(
+            replayed_runtime,
+            inspections=inspections,
+            authority=resolution_authority,
+            materializer=resolved_materializer,
         )
-        lifecycle = _build_lifecycle(layout, runtime_id=resolved_runtime_id)
         instance_refs = _reconcile_enabled_instances(
             runtime_resolution,
             lifecycle,
             layout=layout,
         )
-        lifecycle.packages.complete_startup_recovery(
-            operation_id=f"continuity-bootstrap-recovery:{resolved_runtime_id}",
-            idempotency_key=f"continuity-bootstrap-recovery:{resolved_runtime_id}",
-            recovery_reference=f"continuity-bootstrap:{resolved_runtime_id}",
-        )
+        lifecycle.common.complete_startup_recovery()
         selection = _finalize_selection(
             runtime_resolution,
             instance_refs=instance_refs,
@@ -614,50 +621,237 @@ def _configured_source_base(
     return None
 
 
-def _continuity_inspections(
+def _continuity_runtime_inputs(
     sources: tuple[str, ...],
     *,
     disabled_plugins: frozenset[str],
     materializer: PackageMaterializer,
-) -> tuple[PluginInspection, ...]:
+    lifecycle: _InstalledLifecycle,
+    layout: CodingContinuityStateLayout,
+) -> tuple[PluginRuntimeResolution, tuple[PluginInspection, ...]]:
+    """Resolve seen sources from desired exact revisions; inspect only unseen ones."""
+
     authority = PluginResolutionAuthority(disabled_plugins=tuple(disabled_plugins))
-    selected: list[PluginInspection] = []
+    desired_by_source = _desired_installations_by_source(lifecycle, layout=layout)
+    replayed_packages: list[PublishedPluginPackage] = []
+    replayed_bindings: list[PluginSourceBinding] = []
+    replayed_plugins: list[InstalledPlugin] = []
+    inspections: list[PluginInspection] = []
     plugin_ids: set[str] = set()
-    for source in sources:
-        plugin_source: PluginSource
-        if is_remote_plugin_source(source):
-            record = materializer.get_record(source)
-            if record is None or record.lifecycle != "installed":
-                continue
-            plugin_source = PluginSource(
-                path=record.target_path,
-                url=source,
-                kind="remote",
+    try:
+        for source in sources:
+            current_binding = materializer.get_plugin_binding(source)
+            desired = (
+                None
+                if current_binding is None
+                else desired_by_source.get(current_binding.source_identity)
             )
-        else:
-            plugin_source = PluginSource(path=Path(source).expanduser())
-        inspection = authority.inspect(plugin_source)
-        inspection.raise_for_error()
-        package = inspection.package
-        if package is None:
-            continue
-        plugin_id = package.manifest.name
-        if plugin_id in disabled_plugins:
-            continue
-        has_continuity = any(
-            item.kind == CONTINUITY_PROVIDER_CONTRIBUTION_KIND
-            for item in package.contribution_index.items
+            if desired is not None:
+                plugin_id = desired.installation_key.plugin_id
+                if plugin_id in plugin_ids:
+                    raise CodingContinuityBootstrapError(
+                        code="coding_continuity_plugin_identity_ambiguous",
+                        retryable=False,
+                    )
+                plugin_ids.add(plugin_id)
+                if (
+                    plugin_id in disabled_plugins
+                    or desired.selection.desired_state != "installed_enabled"
+                ):
+                    continue
+                selected_revision = desired.selection.package_revision
+                if selected_revision is None:
+                    raise CodingContinuityBootstrapError(
+                        code="coding_continuity_management_selection_incomplete",
+                        retryable=False,
+                    )
+                replay_binding = materializer.get_plugin_binding_by_revision(
+                    selected_revision.package_source_identity,
+                    content_digest=selected_revision.package_content_digest,
+                    dependency_lock_digest=(
+                        selected_revision.dependency_lock_digest
+                    ),
+                )
+                if replay_binding is None:
+                    raise CodingContinuityBootstrapError(
+                        code="coding_continuity_binding_replay_unavailable",
+                        retryable=False,
+                    )
+                package = materializer.reopen_plugin_package(replay_binding)
+                actual_revision = PluginPackageRevisionRefV1(
+                    plugin_id=package.manifest.name,
+                    plugin_version=package.manifest.version,
+                    package_content_digest=package.content_digest,
+                    dependency_lock_digest=package.dependency_lock.digest,
+                    package_source_identity=replay_binding.source_identity,
+                )
+                if (
+                    actual_revision != selected_revision
+                    or not _has_continuity_contribution(package)
+                ):
+                    package.revision_handle.close()
+                    raise CodingContinuityBootstrapError(
+                        code="coding_continuity_selected_revision_invalid",
+                        retryable=False,
+                    )
+                replayed_packages.append(package)
+                replayed_bindings.append(replay_binding)
+                replayed_plugins.append(authority.project_package(package))
+                continue
+
+            inspection = _inspect_continuity_source(
+                source,
+                authority=authority,
+                materializer=materializer,
+            )
+            if inspection is None:
+                continue
+            inspected_package = inspection.package
+            assert inspected_package is not None
+            plugin_id = inspected_package.manifest.name
+            if plugin_id in plugin_ids:
+                raise CodingContinuityBootstrapError(
+                    code="coding_continuity_plugin_identity_ambiguous",
+                    retryable=False,
+                )
+            plugin_ids.add(plugin_id)
+            inspections.append(inspection)
+    except BaseException:
+        for package in replayed_packages:
+            package.revision_handle.close()
+        raise
+    return (
+        PluginRuntimeResolution(
+            packages=tuple(replayed_packages),
+            plugins=tuple(replayed_plugins),
+            bindings=tuple(replayed_bindings),
+        ),
+        tuple(inspections),
+    )
+
+
+def _inspect_continuity_source(
+    source: str,
+    *,
+    authority: PluginResolutionAuthority,
+    materializer: PackageMaterializer,
+) -> PluginInspection | None:
+    plugin_source: PluginSource
+    if is_remote_plugin_source(source):
+        record = materializer.get_record(source)
+        if record is None or record.lifecycle != "installed":
+            return None
+        plugin_source = PluginSource(
+            path=record.target_path,
+            url=source,
+            kind="remote",
         )
-        if not has_continuity:
+    else:
+        plugin_source = PluginSource(path=Path(source).expanduser())
+    inspection = authority.inspect(plugin_source)
+    inspection.raise_for_error()
+    package = inspection.package
+    if (
+        package is None
+        or inspection.plugin is None
+        or not inspection.plugin.enabled
+        or not _has_continuity_contribution(package)
+    ):
+        return None
+    return inspection
+
+
+def _has_continuity_contribution(
+    package: PublishedPluginPackage | ResolvedPluginPackage,
+) -> bool:
+    return any(
+        item.kind == CONTINUITY_PROVIDER_CONTRIBUTION_KIND
+        for item in package.contribution_index.items
+    )
+
+
+def _desired_installations_by_source(
+    lifecycle: _InstalledLifecycle,
+    *,
+    layout: CodingContinuityStateLayout,
+) -> dict[str, PluginInstallationStateV1]:
+    snapshot = lifecycle.desired.snapshot()
+    states = {
+        item.installation_key: item
+        for item in snapshot.installations
+        if item.installation_key.product_id == CODING_EXPERIENCE_ID
+        and item.installation_key.scope_id == layout.scope_id
+    }
+    source_keys: dict[str, set[PluginInstallationKeyV1]] = {}
+    historical_states = [
+        state
+        for transition in lifecycle.desired.transitions()
+        for state in (transition.previous_state, transition.committed_state)
+    ]
+    for state in (*states.values(), *historical_states):
+        key = state.installation_key
+        package = state.selection.package_revision
+        if (
+            key.product_id != CODING_EXPERIENCE_ID
+            or key.scope_id != layout.scope_id
+            or package is None
+        ):
             continue
-        if plugin_id in plugin_ids:
+        source_keys.setdefault(package.package_source_identity, set()).add(key)
+    ambiguous = tuple(
+        source_identity
+        for source_identity, keys in source_keys.items()
+        if len(keys) != 1
+    )
+    if ambiguous:
+        raise CodingContinuityBootstrapError(
+            code="coding_continuity_source_identity_ambiguous",
+            retryable=False,
+        )
+    return {
+        source_identity: states[next(iter(keys))]
+        for source_identity, keys in source_keys.items()
+    }
+
+
+def _publish_continuity_runtime(
+    replayed: PluginRuntimeResolution,
+    *,
+    inspections: tuple[PluginInspection, ...],
+    authority: PluginResolutionAuthority,
+    materializer: PackageMaterializer,
+) -> PluginRuntimeResolution:
+    published = PluginRuntimeResolution(packages=(), plugins=(), bindings=())
+    try:
+        if inspections:
+            published = authority.publish_runtime(
+                inspections,
+                binding_store=materializer,
+            )
+        packages = (*replayed.packages, *published.packages)
+        bindings = {
+            item.plugin_id: item
+            for item in (*replayed.bindings, *published.bindings)
+        }
+        plugins = {
+            item.manifest.name: item
+            for item in (*replayed.plugins, *published.plugins)
+        }
+        if len(packages) != len(bindings) or len(packages) != len(plugins):
             raise CodingContinuityBootstrapError(
                 code="coding_continuity_plugin_identity_ambiguous",
                 retryable=False,
             )
-        plugin_ids.add(plugin_id)
-        selected.append(inspection)
-    return tuple(selected)
+        ordered = tuple(sorted(packages, key=lambda item: item.manifest.name))
+        return PluginRuntimeResolution(
+            packages=ordered,
+            plugins=tuple(plugins[item.manifest.name] for item in ordered),
+            bindings=tuple(bindings[item.manifest.name] for item in ordered),
+        )
+    except BaseException:
+        replayed.close()
+        published.close()
+        raise
 
 
 def _coding_continuity_materializer(
@@ -676,6 +870,9 @@ def _build_lifecycle(
     *,
     runtime_id: str,
 ) -> _InstalledLifecycle:
+    security = PluginContinuitySecurityRetirementJournal.for_instance_runtime(
+        layout.instance_runtime
+    )
     common = build_coding_plugin_lifecycle(
         CodingPluginLifecycleStateLayout(
             root=layout.root,
@@ -691,18 +888,11 @@ def _build_lifecycle(
             package_lifecycle=layout.package_lifecycle,
         ),
         startup_id=runtime_id,
+        security_acceptances=security,
     )
     desired = common.desired
     management = common.management
     instances = common.instances
-    # The common Coding lifecycle owns the canonical security journal path,
-    # while Continuity retains its deployed diagnostic namespace at that same
-    # wire-compatible authority.  Rebind by canonical path before publishing
-    # the Continuity family port.
-    security = PluginContinuitySecurityRetirementJournal.for_instance_runtime(
-        layout.instance_runtime
-    )
-    instances.bind_security_acceptance_source(security)
     packages = common.packages
     family_authority = PluginInstanceLedgerContinuityFamilyAuthority(
         ledger=instances,
@@ -713,6 +903,7 @@ def _build_lifecycle(
         layout.instance_runtime
     )
     return _InstalledLifecycle(
+        common=common,
         desired=desired,
         management=management,
         instances=instances,

@@ -572,14 +572,16 @@ def registration_scope_retirement_receipt(
     scope: RegistrationScope,
     *,
     contribution_ids: tuple[str, ...],
+    allow_open: bool = False,
 ) -> OwnerGenerationRetirementReceipt:
     """Mint exact retirement evidence from the scope that owns live leases."""
 
     if not isinstance(scope, RegistrationScope):
         raise TypeError("owner generation receipt requires a registration scope")
-    if scope.state != "committed":
+    allowed_states = {"open", "committed"} if allow_open else {"committed"}
+    if scope.state not in allowed_states:
         raise RuntimeError(
-            "owner generation retirement evidence requires a committed scope"
+            "owner generation retirement evidence requires a live scope"
         )
     owner = scope.owner
     registrations = tuple(

@@ -306,6 +306,23 @@ class CodingPluginLifecycle:
             publication_reference=f"coding-session-publication:{family.family_id}",
         )
 
+    def prepare_session_owner_generations(
+        self,
+        family: PluginInstanceLeaseFamilyV1,
+        receipts: tuple[OwnerGenerationRetirementReceipt, ...],
+    ) -> None:
+        """Write exact cleanup identities before owner publication can commit."""
+
+        if not isinstance(family, PluginInstanceLeaseFamilyV1):
+            raise TypeError("Coding owner preparation requires a Session family")
+        [member] = family.members
+        self.owner_evidence.prepare(
+            family_id=family.family_id,
+            instance_revision_ref=member.instance_revision_ref,
+            receipts=receipts,
+            preparation_reference=f"coding-session-preparation:{family.family_id}",
+        )
+
     def retire_session_owner_generations(
         self,
         family: PluginInstanceLeaseFamilyV1,
@@ -482,68 +499,77 @@ class CodingPluginLifecycle:
         lease_attempt_id: str,
         owner_contributions: tuple[tuple[str, tuple[str, ...]], ...],
     ) -> CodingPluginSessionLease:
-        self.reconcile_retirements()
-        state = self.desired.snapshot().installation(key)
-        ref = state.selection.instance_revision_ref
-        if state.selection.desired_state != "installed_enabled" or ref is None:
-            raise CodingPluginLifecycleError(
-                "Plugin Installation is not selected for a new Coding Session",
-                code="coding_plugin_not_enabled",
-            )
-        instance = self.instances.snapshot().instance(ref)
-        activation_identity = _activation_identity(key, ref)
-        if instance is None:
-            instance = self.instances.activate_current(
-                key,
-                operation_id=f"coding-plugin-activate:{activation_identity}",
-                idempotency_key=f"coding-plugin-activate:{activation_identity}",
-                direct_host_reference=(
-                    "coding-plugin-host:"
-                    f"{self.layout.scope_id}:{ref.instance_id}:{ref.revision}"
-                ),
-            )
-        if instance.state != "ACTIVE" or instance.instance_revision_ref != ref:
-            raise CodingPluginLifecycleError(
-                "Selected Plugin Instance is not ACTIVE",
-                code="coding_plugin_instance_not_active",
-            )
-        owners = _normalize_owner_contributions(owner_contributions)
-        identity = _lease_identity(
-            key,
-            ref,
-            session_id,
-            lease_attempt_id,
-            owners,
-        )
-        holder_reference = _session_holder_reference(
+        session_owner_lease = _acquire_session_owner_lease(
+            self.layout,
             session_id=session_id,
-            lease_attempt_id=lease_attempt_id,
-            owner_contributions=owners,
-            startup_id=self.startup_id,
         )
-        family = self.instances.acquire_current_family(
-            (key,),
-            lease_kind="session_membership",
-            operation_id=f"coding-plugin-session:{identity}",
-            idempotency_key=f"coding-plugin-session:{identity}",
-            holder_reference=holder_reference,
-        )
-        [member] = family.members
-        if member.instance_revision_ref != ref:
-            release = _family_release(family)
-            self.instances.release_family(release)
-            raise CodingPluginLifecycleError(
-                "Session lease returned another Plugin Instance Revision",
-                code="coding_plugin_instance_revision_stale",
+        try:
+            self.reconcile_retirements()
+            state = self.desired.snapshot().installation(key)
+            ref = state.selection.instance_revision_ref
+            if state.selection.desired_state != "installed_enabled" or ref is None:
+                raise CodingPluginLifecycleError(
+                    "Plugin Installation is not selected for a new Coding Session",
+                    code="coding_plugin_not_enabled",
+                )
+            instance = self.instances.snapshot().instance(ref)
+            activation_identity = _activation_identity(key, ref)
+            if instance is None:
+                instance = self.instances.activate_current(
+                    key,
+                    operation_id=f"coding-plugin-activate:{activation_identity}",
+                    idempotency_key=f"coding-plugin-activate:{activation_identity}",
+                    direct_host_reference=(
+                        "coding-plugin-host:"
+                        f"{self.layout.scope_id}:{ref.instance_id}:{ref.revision}"
+                    ),
+                )
+            if instance.state != "ACTIVE" or instance.instance_revision_ref != ref:
+                raise CodingPluginLifecycleError(
+                    "Selected Plugin Instance is not ACTIVE",
+                    code="coding_plugin_instance_not_active",
+                )
+            owners = _normalize_owner_contributions(owner_contributions)
+            identity = _lease_identity(
+                key,
+                ref,
+                session_id,
+                lease_attempt_id,
+                owners,
             )
-        return CodingPluginSessionLease(
-            lifecycle=self,
-            installation_key=key,
-            family=family,
-            package_revision=member.package_revision,
-            instance_revision_ref=member.instance_revision_ref,
-            owner_contributions=owners,
-        )
+            holder_reference = _session_holder_reference(
+                session_id=session_id,
+                lease_attempt_id=lease_attempt_id,
+                owner_contributions=owners,
+                startup_id=self.startup_id,
+            )
+            family = self.instances.acquire_current_family(
+                (key,),
+                lease_kind="session_membership",
+                operation_id=f"coding-plugin-session:{identity}",
+                idempotency_key=f"coding-plugin-session:{identity}",
+                holder_reference=holder_reference,
+            )
+            [member] = family.members
+            if member.instance_revision_ref != ref:
+                release = _family_release(family)
+                self.instances.release_family(release)
+                raise CodingPluginLifecycleError(
+                    "Session lease returned another Plugin Instance Revision",
+                    code="coding_plugin_instance_revision_stale",
+                )
+            return CodingPluginSessionLease(
+                lifecycle=self,
+                installation_key=key,
+                family=family,
+                package_revision=member.package_revision,
+                instance_revision_ref=member.instance_revision_ref,
+                owner_contributions=owners,
+                _session_owner_lease=session_owner_lease,
+            )
+        except BaseException:
+            session_owner_lease.__exit__(None, None, None)
+            raise
 
     def _submit_default(
         self,
@@ -593,6 +619,9 @@ class CodingPluginSessionLease:
     package_revision: PluginPackageRevisionRefV1
     instance_revision_ref: PluginInstanceRevisionRef
     owner_contributions: tuple[tuple[str, tuple[str, ...]], ...]
+    _session_owner_lease: AbstractContextManager[None] = field(
+        repr=False,
+    )
     _closed: bool = field(default=False, init=False, repr=False)
 
     def evaluate_management_change(self) -> CodingPluginManagementChange:
@@ -624,6 +653,17 @@ class CodingPluginSessionLease:
             pinned_package_revision=self.package_revision,
             current_package_revision=current_package,
         )
+
+    def prepare_owner_generations(
+        self,
+        receipts: tuple[OwnerGenerationRetirementReceipt, ...],
+    ) -> None:
+        if self._closed:
+            raise CodingPluginLifecycleError(
+                "Closed Coding Session cannot prepare owner generations",
+                code="coding_plugin_session_lease_closed",
+            )
+        self.lifecycle.prepare_session_owner_generations(self.family, receipts)
 
     def publish_owner_generations(
         self,
@@ -657,6 +697,7 @@ class CodingPluginSessionLease:
                 code="coding_plugin_owner_generation_cleanup_pending",
             )
         self.lifecycle.release_session_family_and_reconcile(self.family)
+        self._session_owner_lease.__exit__(None, None, None)
         self._closed = True
 
 
@@ -763,6 +804,7 @@ def build_coding_plugin_lifecycle(
     layout: CodingPluginLifecycleStateLayout,
     *,
     startup_id: str | None = None,
+    security_acceptances: PluginInstanceSecurityRetirementJournal | None = None,
 ) -> CodingPluginLifecycle:
     if not isinstance(layout, CodingPluginLifecycleStateLayout):
         raise TypeError("Coding Plugin lifecycle layout is required")
@@ -780,8 +822,10 @@ def build_coding_plugin_lifecycle(
         retirement_sets=retirement_sets,
     )
     management.recover()
-    security = PluginInstanceSecurityRetirementJournal.for_instance_runtime(
-        layout.instance_runtime
+    security = security_acceptances or (
+        PluginInstanceSecurityRetirementJournal.for_instance_runtime(
+            layout.instance_runtime
+        )
     )
     instances = PluginInstanceRuntimeLedger(
         layout.instance_runtime,
@@ -1006,6 +1050,39 @@ def _startup_lease_path(
         + _nonempty(startup_id, name="Startup id").encode("utf-8")
     ).hexdigest()
     return (layout.root / "process-startups" / f"{identity}.lease").resolve()
+
+
+def _session_owner_lease_path(
+    layout: CodingPluginLifecycleStateLayout,
+    *,
+    session_id: str,
+) -> Path:
+    identity = hashlib.sha256(
+        b"loushang.coding-plugin-session-owner/v1\0"
+        + _nonempty(session_id, name="Session id").encode("utf-8")
+    ).hexdigest()
+    return (layout.root / "session-owners" / f"{identity}.lease").resolve()
+
+
+def _acquire_session_owner_lease(
+    layout: CodingPluginLifecycleStateLayout,
+    *,
+    session_id: str,
+) -> AbstractContextManager[None]:
+    lease = journal_file_lock(
+        _session_owner_lease_path(layout, session_id=session_id),
+        "exclusive",
+        lock_suffix="",
+        blocking=False,
+    )
+    try:
+        lease.__enter__()
+    except JournalLockUnavailable as exc:
+        raise CodingPluginLifecycleError(
+            "Coding Session is already active in another runtime",
+            code="coding_plugin_session_already_active",
+        ) from exc
+    return lease
 
 
 def _hold_process_startup_lease(

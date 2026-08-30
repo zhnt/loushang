@@ -25,7 +25,12 @@ from loushang.harness.runtime.registration import (
     OwnerGenerationRetirementReceipt,
 )
 
-CodingOwnerGenerationEventKind = Literal["published", "retired"]
+CodingOwnerGenerationEventKind = Literal["prepared", "published", "retired"]
+CodingOwnerGenerationPublicationState = Literal[
+    "prepared",
+    "published",
+    "retired",
+]
 
 
 class CodingOwnerGenerationEvidenceError(RuntimeError):
@@ -55,7 +60,7 @@ class CodingOwnerGenerationEvidenceEventV1:
             or self.journal_revision < 1
         ):
             raise ValueError("Coding owner evidence revision must be positive")
-        if self.event_kind not in {"published", "retired"}:
+        if self.event_kind not in {"prepared", "published", "retired"}:
             raise ValueError("Coding owner evidence kind is invalid")
         for value, name in (
             (self.family_id, "family id"),
@@ -174,8 +179,12 @@ class CodingOwnerGenerationFamilyEvidence:
     family_id: str
     instance_revision_ref: PluginInstanceRevisionRef
     receipts: tuple[OwnerGenerationRetirementReceipt, ...]
-    retired: bool
+    publication_state: CodingOwnerGenerationPublicationState
     retirement_outcome_reference: str | None
+
+    @property
+    def retired(self) -> bool:
+        return self.publication_state == "retired"
 
 
 class CodingOwnerGenerationEvidenceLedger:
@@ -185,6 +194,24 @@ class CodingOwnerGenerationEvidenceLedger:
         self.path = Path(path).resolve()
         self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
         self._load_policy = JournalLoadPolicy(partial_tail="repair")
+
+    def prepare(
+        self,
+        *,
+        family_id: str,
+        instance_revision_ref: PluginInstanceRevisionRef,
+        receipts: tuple[OwnerGenerationRetirementReceipt, ...],
+        preparation_reference: str,
+    ) -> CodingOwnerGenerationFamilyEvidence:
+        """Write exact cleanup identities before any owner becomes effective."""
+
+        return self._append_transition(
+            event_kind="prepared",
+            family_id=family_id,
+            instance_revision_ref=instance_revision_ref,
+            receipts=receipts,
+            outcome_reference=preparation_reference,
+        )
 
     def publish(
         self,
@@ -283,29 +310,39 @@ class CodingOwnerGenerationEvidenceLedger:
             records = self._load_unlocked()
             families = self._replay(records)
             existing = families.get(family_id)
-            if event_kind == "published":
-                if existing is not None:
-                    if (
-                        existing.instance_revision_ref != instance_revision_ref
-                        or existing.receipts != canonical
-                    ):
-                        raise self._conflict(
-                            "Coding Session family reused owner generation evidence"
-                        )
-                    return existing
-            else:
-                if existing is None:
+            if existing is None:
+                if event_kind == "retired":
                     raise self._conflict(
-                        "Coding owner retirement has no published generation"
+                        "Coding owner retirement has no prepared generation"
                     )
+                occupied = {
+                    _receipt_identity(receipt): item.family_id
+                    for item in families.values()
+                    for receipt in item.receipts
+                }
+                if any(
+                    identity in occupied
+                    for identity in map(_receipt_identity, canonical)
+                ):
+                    raise self._conflict(
+                        "Coding owner generation belongs to another Session family"
+                    )
+            else:
                 if (
                     existing.instance_revision_ref != instance_revision_ref
                     or existing.receipts != canonical
                 ):
                     raise self._conflict(
-                        "Coding owner retirement contradicts publication"
+                        "Coding Session family reused owner generation evidence"
                     )
-                if existing.retired:
+                if event_kind == "prepared":
+                    return existing
+                if event_kind == "published" and existing.publication_state in {
+                    "published",
+                    "retired",
+                }:
+                    return existing
+                if event_kind == "retired" and existing.retired:
                     return existing
             event = CodingOwnerGenerationEvidenceEventV1.create(
                 journal_revision=len(records) + 1,
@@ -365,15 +402,9 @@ class CodingOwnerGenerationEvidenceLedger:
         ] = {}
         for event in records:
             existing = families.get(event.family_id)
-            if event.event_kind == "published":
-                if existing is not None:
-                    raise self._corrupt("Coding owner publication repeats a family")
+            if event.event_kind in {"prepared", "published"} and existing is None:
                 for receipt in event.receipts:
-                    identity = (
-                        receipt.owner_reference,
-                        receipt.owner_generation_reference,
-                        receipt.retirement_handle,
-                    )
+                    identity = _receipt_identity(receipt)
                     owner_family = receipt_owners.setdefault(identity, event.family_id)
                     if owner_family != event.family_id:
                         raise self._corrupt(
@@ -383,7 +414,27 @@ class CodingOwnerGenerationEvidenceLedger:
                     family_id=event.family_id,
                     instance_revision_ref=event.instance_revision_ref,
                     receipts=event.receipts,
-                    retired=False,
+                    publication_state=event.event_kind,
+                    retirement_outcome_reference=None,
+                )
+                continue
+            if event.event_kind == "prepared":
+                raise self._corrupt("Coding owner preparation repeats a family")
+            if event.event_kind == "published":
+                if (
+                    existing is None
+                    or existing.publication_state != "prepared"
+                    or existing.instance_revision_ref != event.instance_revision_ref
+                    or existing.receipts != event.receipts
+                ):
+                    raise self._corrupt(
+                        "Coding owner publication contradicts its preparation"
+                    )
+                families[event.family_id] = CodingOwnerGenerationFamilyEvidence(
+                    family_id=existing.family_id,
+                    instance_revision_ref=existing.instance_revision_ref,
+                    receipts=existing.receipts,
+                    publication_state="published",
                     retirement_outcome_reference=None,
                 )
                 continue
@@ -400,7 +451,7 @@ class CodingOwnerGenerationEvidenceLedger:
                 family_id=existing.family_id,
                 instance_revision_ref=existing.instance_revision_ref,
                 receipts=existing.receipts,
-                retired=True,
+                publication_state="retired",
                 retirement_outcome_reference=event.outcome_reference,
             )
         return families
@@ -433,6 +484,16 @@ def _canonical_receipts(
                 item.contribution_ids,
             ),
         )
+    )
+
+
+def _receipt_identity(
+    receipt: OwnerGenerationRetirementReceipt,
+) -> tuple[str, str, str]:
+    return (
+        receipt.owner_reference,
+        receipt.owner_generation_reference,
+        receipt.retirement_handle,
     )
 
 

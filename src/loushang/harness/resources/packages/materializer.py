@@ -558,6 +558,7 @@ class PackageMaterializer:
         if not isinstance(dependency_lock_digest, str) or not dependency_lock_digest:
             raise ValueError("Plugin dependency-lock digest must be non-empty")
         self._refresh_lockfile()
+        self._assert_plugin_binding_lock_valid()
         matches = tuple(
             binding
             for binding in self._plugin_binding_history.values()

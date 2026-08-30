@@ -195,13 +195,14 @@ class _CodingBaseGeneration:
         *,
         contribution_id: str,
     ) -> OwnerGenerationRetirementReceipt:
-        if self.scope.state != "committed":
+        if self.scope.state not in {"open", "committed"}:
             raise RuntimeError(
-                "Coding base retirement evidence requires a committed generation"
+                "Coding base retirement evidence requires a live generation"
             )
         return registration_scope_retirement_receipt(
             self.scope,
             contribution_ids=(contribution_id,),
+            allow_open=True,
         )
 
 

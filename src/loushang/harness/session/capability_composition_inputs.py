@@ -503,6 +503,17 @@ class StagedSessionCapabilityOwnerGeneration:
             raise RuntimeError(
                 "only a committed live owner generation can mint retirement evidence"
             )
+        return self.capture_prepared_retirement_receipt()
+
+    def capture_prepared_retirement_receipt(
+        self,
+    ) -> OwnerGenerationRetirementReceipt:
+        """Mint the stable cleanup identity before publication commits."""
+
+        if self.disposed:
+            raise RuntimeError(
+                "a disposed owner generation cannot mint retirement evidence"
+            )
         receipt = self.binding.retirement_receipt(self.value)
         if not isinstance(receipt, OwnerGenerationRetirementReceipt):
             raise TypeError("owner generation retirement receipt is invalid")
