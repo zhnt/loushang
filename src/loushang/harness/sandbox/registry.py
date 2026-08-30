@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from loushang.harness.environment import HostEnvironment, OperatingSystemFamily
 
@@ -10,6 +10,7 @@ from .types import SandboxBackendStatus
 
 SandboxBackendFactory = Callable[[], SandboxBackend]
 _OS_FAMILIES: frozenset[str] = frozenset({"linux", "macos", "windows", "other"})
+_BUILTIN_MANAGED_PROCESS_BACKEND_AUTHORITY = object()
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +54,11 @@ class SandboxBackendResolution:
     environment: HostEnvironment
     backend: SandboxBackend | None
     statuses: tuple[SandboxBackendStatus, ...]
+    _managed_process_backend_authority: object | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     @property
     def selected_status(self) -> SandboxBackendStatus | None:
@@ -76,12 +82,23 @@ class SandboxBackendResolution:
             return "; ".join(reasons)
         return f"no sandbox backend is applicable to {self.environment.platform_name}"
 
+    def _claim_managed_process_backend_authority(self) -> object | None:
+        if (
+            self.backend is not None
+            and self.selected_status is not None
+            and self._managed_process_backend_authority
+            is _BUILTIN_MANAGED_PROCESS_BACKEND_AUTHORITY
+        ):
+            return self._managed_process_backend_authority
+        return None
+
 
 class SandboxBackendRegistry:
     def __init__(
         self,
         registrations: Iterable[SandboxBackendRegistration] = (),
     ) -> None:
+        self._managed_process_backend_authority: object | None = None
         indexed = tuple(enumerate(registrations))
         ids = [registration.backend_id for _, registration in indexed]
         duplicates = sorted(
@@ -159,6 +176,9 @@ class SandboxBackendRegistry:
                     environment=environment,
                     backend=backend,
                     statuses=tuple(statuses),
+                    _managed_process_backend_authority=(
+                        self._managed_process_backend_authority
+                    ),
                 )
 
         return SandboxBackendResolution(
@@ -166,6 +186,18 @@ class SandboxBackendRegistry:
             backend=None,
             statuses=tuple(statuses),
         )
+
+
+def _builtin_sandbox_backend_registry(
+    registrations: Iterable[SandboxBackendRegistration],
+) -> SandboxBackendRegistry:
+    """Admit only Harness-owned backend registrations for managed processes."""
+
+    registry = SandboxBackendRegistry(registrations)
+    registry._managed_process_backend_authority = (
+        _BUILTIN_MANAGED_PROCESS_BACKEND_AUTHORITY
+    )
+    return registry
 
 
 __all__ = [

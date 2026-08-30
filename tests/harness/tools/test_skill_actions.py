@@ -13,7 +13,16 @@ from loushang.harness.authorization import (
     EffectiveExecutionProfile,
     ExecutionAuthorizationError,
 )
+from loushang.harness.capabilities.contribution_admission import (
+    OwnerContributionAuthority,
+    OwnerContributionCandidateEnvelope,
+    OwnerContributionPolicy,
+    ResourceContributionSpec,
+)
 from loushang.harness.environment import HostEnvironment, LocalHostEnvironmentProbe
+from loushang.harness.resource_catalog.inputs import (
+    acquire_admitted_package_resource,
+)
 from loushang.harness.resource_catalog.shadow import (
     run_first_party_resource_catalog_shadow,
 )
@@ -24,11 +33,16 @@ from loushang.harness.resources._skill_catalog_consumer import (
     SkillCatalogConsumer,
     build_effective_skill_catalog_projection,
 )
+from loushang.harness.resources.plugins.manifest import PluginManifestParser
+from loushang.harness.resources.plugins.revisions import PluginRevisionStore
+from loushang.harness.resources.plugins.selection import PluginInstanceRevisionRef
 from loushang.harness.resources.skill_actions import (
     CatalogManagedSkillAction,
     SkillActionCatalogSelection,
     SkillActionDocument,
     SkillActionDocumentCodec,
+    _catalog_action_binding_fingerprint,
+    _CatalogActionOwnerSeal,
 )
 from loushang.harness.sandbox import (
     SandboxBackendRegistration,
@@ -37,6 +51,7 @@ from loushang.harness.sandbox import (
     SandboxExecutionRuntime,
     SandboxScopeRequest,
     SandboxSettings,
+    SandboxUnavailableError,
     bind_sandbox_execution_runtime,
 )
 from loushang.harness.tools.process_hosting import (
@@ -53,7 +68,7 @@ from loushang.harness.tools.skill_actions import (
 from loushang.harness.workspace.exec import ExecRequest, ExecService
 from loushang.harness.workspace.process.host import ProcessHost
 from loushang.harness.workspace.process.local import ProcessContainmentPlan
-from loushang.plugin import skill_action, skill_action_effect
+from loushang.plugin import package, resource, skill_action, skill_action_effect
 
 
 class _ApprovalResolver:
@@ -178,37 +193,152 @@ async def _catalog_action(
     return action
 
 
+async def _catalog_package_action(
+    script: bytes,
+    *,
+    root: Path,
+) -> CatalogManagedSkillAction:
+    plugin_id = f"managed-action-package-{uuid4().hex}"
+    contribution_id = f"{plugin_id}.skill"
+    source = root / f"source-{plugin_id}"
+    locator = "skills/review"
+    declaration = _declaration(script)
+    compiled = package(
+        id=plugin_id,
+        version="1",
+        contributions=(
+            resource.skill(
+                contribution_id=contribution_id,
+                locator=locator,
+                actions=(declaration,),
+            ),
+        ),
+    )
+    for artifact in compiled.artifacts:
+        target = source / artifact.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(artifact.content)
+    skill_root = source / locator
+    (skill_root / "SKILL.md").write_text(
+        "---\nname: review\ndescription: Review package\n---\nReview carefully.\n",
+        encoding="utf-8",
+    )
+    script_path = skill_root / declaration.relative_script
+    script_path.parent.mkdir(parents=True)
+    script_path.write_bytes(script)
+
+    published = PluginRevisionStore(root / f"revisions-{plugin_id}").publish(
+        PluginManifestParser().parse(source)
+    )
+    revision = published.revision_handle
+    assert revision is not None
+    contribution = ResourceContributionSpec(
+        resource_kind="skill",
+        locator=locator,
+        locator_kind="directory",
+        media_type="text/markdown",
+        schema_id="loushang.resource.skill",
+        schema_version=1,
+        managed_skill_actions=True,
+    )
+    candidate = OwnerContributionCandidateEnvelope(
+        owner_id="resources.skill",
+        plugin_id=plugin_id,
+        contribution_id=contribution_id,
+        contribution=contribution,
+        plugin_candidate_fingerprint="1" * 64,
+        declaration_fingerprint="2" * 64,
+        declaration_evidence_fingerprint="3" * 64,
+        package_content_digest=revision.content_digest,
+        dependency_lock_digest="4" * 64,
+        product_id="coding",
+        scope_id="workspace:test",
+        product_policy_revision="managed-action-test-v1",
+        instance_revision_ref=PluginInstanceRevisionRef(
+            instance_id=f"{plugin_id}@product",
+            plugin_id=plugin_id,
+            revision=1,
+        ),
+        package_source_identity=f"test:{plugin_id}",
+        source_trust_class="test_trusted",
+        source_trust_policy_revision="test-trust-v1",
+        source_trusted=True,
+    )
+    admission = OwnerContributionAuthority(
+        OwnerContributionPolicy(
+            owner_id="resources.skill",
+            contribution_kind="resource_item",
+            product_id="coding",
+            policy_revision="resource-skill-owner-v1",
+            revocation_epoch=0,
+            allowed_source_trust_classes=("test_trusted",),
+            allowed_collection_ids=("loushang.resource.skill",),
+            allowed_requirement_bindings=("direct",),
+            consumer_scope="session",
+            consumer_refresh_boundary="sealed",
+        )
+    ).admit(candidate, issued_at=10, expires_at=100)
+    resource_input = acquire_admitted_package_resource(
+        admission=admission,
+        revision_handle=revision,
+    )
+    try:
+        shadow = await run_first_party_resource_catalog_shadow(
+            product_id="coding",
+            scope_id="workspace:test",
+            runtime_id=f"managed-package-action:{uuid4().hex}",
+            product_policy_revision="managed-action-test-v1",
+            root_handles=(),
+            package_resources=(resource_input,),
+            issued_at=10,
+            expires_at=100,
+            now=20,
+            projection_cwd=root,
+        )
+        assert shadow.catalog_projection is not None
+        projection = build_effective_skill_catalog_projection(
+            snapshot=shadow.catalog_snapshot,
+            projection=shadow.catalog_projection,
+        )
+
+        class _ShadowCatalog:
+            snapshot = shadow.catalog_snapshot
+            skill_projection = projection
+
+            def load_handle(self, identity):
+                return shadow.load_handle(identity)
+
+            async def load(self, handle):
+                return await shadow.load(handle)
+
+        consumer = SkillCatalogConsumer(_ShadowCatalog())
+        [summary] = consumer.list_effective_skills()
+        [action] = consumer.capture_managed_actions(summary)
+        assert await shadow.dispose() == ()
+        return action
+    finally:
+        resource_input.close()
+        revision.close()
+
+
 def _launcher(
     *,
     resolver,
     root: Path,
 ) -> tuple[SandboxExecutionRuntime, ScopeBoundProcessLauncher]:
-    backend = _HostedSandboxBackend()
-    registry = SandboxBackendRegistry(
-        (
-            SandboxBackendRegistration(
-                backend_id=backend.backend_id,
-                os_families=frozenset({"linux"}),
-                factory=lambda: backend,
-            ),
-        )
-    )
     profile = EffectiveExecutionProfile(
         readable_roots=(root,),
         writable_roots=(root,),
     )
-    runtime = bind_sandbox_execution_runtime(
-        base_exec_service=ExecService(execution_profile=profile),
-        settings=SandboxSettings(enabled=True, requirement="required"),
-        registry=registry,
-        environment_probe=LocalHostEnvironmentProbe(
-            platform_name="linux",
-            architecture="x86_64",
-            environ={},
-        ),
-        scope_request_factory=lambda request: _sandbox_scope(root, request),
-        execution_profile=profile,
-    )
+    try:
+        runtime = bind_sandbox_execution_runtime(
+            base_exec_service=ExecService(execution_profile=profile),
+            settings=SandboxSettings(enabled=True, requirement="required"),
+            scope_request_factory=lambda request: _sandbox_scope(root, request),
+            execution_profile=profile,
+        )
+    except SandboxUnavailableError as exc:
+        pytest.skip(f"managed action requires an enforcing Sandbox backend: {exc}")
     launcher = runtime.bind_process_launcher(
         ProcessExecutionScope(
             approval_resolver=resolver,
@@ -224,7 +354,7 @@ def _sandbox_scope(root: Path, request: ExecRequest) -> SandboxScopeRequest:
     assert request.cwd is not None
     return SandboxScopeRequest(
         cwd=Path(request.cwd),
-        readable_roots=(root,),
+        readable_roots=(root, Path(sys.executable).resolve().parent.parent),
         writable_roots=(root,),
     )
 
@@ -267,11 +397,76 @@ def test_catalog_action_owner_seal_rejects_object_new_clone(tmp_path: Path) -> N
             "_script_body",
             "_owner_identity",
             "_owner_seal",
+            "_skill_root_identity",
         ):
             object.__setattr__(clone, name, getattr(action, name))
 
         with pytest.raises(ValueError, match="owner evidence"):
             ManagedSkillActionBinding.bind(clone)
+
+    asyncio.run(scenario())
+
+
+def test_catalog_action_rejects_fresh_self_signed_object_graph(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        genuine = await _catalog_action(b"print('registered')\n", root=tmp_path)
+        owner_identity = object()
+        selection = object.__new__(SkillActionCatalogSelection)
+        for name in (
+            "catalog_generation",
+            "catalog_snapshot_fingerprint",
+            "candidate_fingerprint",
+            "skill_content_digest",
+            "source_kind",
+            "source_revision",
+        ):
+            object.__setattr__(selection, name, getattr(genuine.selection, name))
+        object.__setattr__(selection, "_owner_identity", owner_identity)
+        fingerprint = _catalog_action_binding_fingerprint(
+            selection=selection,
+            declaration=genuine.declaration,
+            action_document_digest=genuine.action_document_digest,
+        )
+        forged = object.__new__(CatalogManagedSkillAction)
+        for name, value in (
+            ("selection", selection),
+            ("declaration", genuine.declaration),
+            ("action_document_digest", genuine.action_document_digest),
+            ("skill_root", genuine.skill_root),
+            ("binding_source_fingerprint", fingerprint),
+            ("_script_body", genuine.read_script()),
+            ("_owner_identity", owner_identity),
+            ("_skill_root_identity", genuine._skill_root_identity),
+        ):
+            object.__setattr__(forged, name, value)
+        seal = object.__new__(_CatalogActionOwnerSeal)
+        for name, value in (
+            ("_action", forged),
+            ("_owner_identity", owner_identity),
+            ("_binding_source_fingerprint", fingerprint),
+            ("_script_digest", genuine.declaration.script_digest),
+            ("_skill_root", genuine.skill_root),
+            ("_skill_root_identity", genuine._skill_root_identity),
+        ):
+            object.__setattr__(seal, name, value)
+        object.__setattr__(forged, "_owner_seal", seal)
+
+        with pytest.raises(ValueError, match="live Resource-owner evidence"):
+            ManagedSkillActionBinding.bind(forged)
+
+    asyncio.run(scenario())
+
+
+def test_catalog_action_rejects_replaced_skill_root(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        action = await _catalog_action(b"print('root')\n", root=tmp_path)
+        binding = ManagedSkillActionBinding.bind(action)
+        original = action.skill_root.with_name("review-original")
+        action.skill_root.rename(original)
+        action.skill_root.mkdir()
+
+        with pytest.raises(ValueError, match="root identity changed"):
+            binding.read_verified_script()
 
     asyncio.run(scenario())
 
@@ -309,6 +504,41 @@ def test_catalog_action_uses_exact_approval_and_captured_script(tmp_path: Path) 
             assert metadata["actionDocumentDigest"] == binding.action_document_digest
             assert metadata["candidateFingerprint"] == binding.candidate_fingerprint
             assert approval.arguments["command"][1:] == ("-", "--check")
+        finally:
+            await sandbox_runtime.close()
+
+    asyncio.run(scenario())
+
+
+def test_package_catalog_action_executes_through_same_sandbox_process_path(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        workspace_root = tmp_path / "package-workspace"
+        workspace_root.mkdir()
+        action = await _catalog_package_action(
+            b"print('package-captured')\n",
+            root=tmp_path,
+        )
+        binding = ManagedSkillActionBinding.bind(action)
+        sandbox_runtime, launcher = _launcher(
+            resolver=_ApprovalResolver(),
+            root=tmp_path,
+        )
+        try:
+            result = await execute_managed_skill_action(
+                binding,
+                runtime=SkillRuntimeBinding.capture(
+                    runtime="python",
+                    executable=sys.executable,
+                ),
+                launcher=launcher,
+                workspace_root=workspace_root,
+                correlation_id="package-skill-action",
+            )
+            assert result.return_code == 0
+            assert result.stdout == b"package-captured\n"
+            assert binding.source_kind == "package"
         finally:
             await sandbox_runtime.close()
 
@@ -357,44 +587,81 @@ def test_managed_action_rejects_fake_launcher_and_weak_containment(
                     workspace_root=workspace_root,
                     correlation_id="unowned-launcher",
                 )
-            with pytest.raises(
-                TypeError,
-                match="exact Sandbox containment planner",
-            ):
-                _bind_process_owner_launcher(
-                    scope=ProcessExecutionScope(
-                        approval_resolver=_ApprovalResolver(),
-                        require_approval=True,
-                    ),
-                    host=host,
-                    containment=_Containment(),
-                )
-            with pytest.raises(
-                TypeError,
-                match="exact Sandbox containment planner",
-            ):
-                _bind_process_owner_launcher(
-                    scope=ProcessExecutionScope(
-                        approval_resolver=_ApprovalResolver(),
-                        require_approval=True,
-                    ),
-                    host=host,
-                    containment=object(),  # type: ignore[arg-type]
-                )
+            structurally_bound = _bind_process_owner_launcher(
+                scope=ProcessExecutionScope(
+                    approval_resolver=_ApprovalResolver(),
+                    require_approval=True,
+                ),
+                host=host,
+                containment=_Containment(),
+            )
+            assert structurally_bound._managed_owner_authority is None
         finally:
             await host.close()
+
+        backend = _HostedSandboxBackend()
+        registry = SandboxBackendRegistry(
+            (
+                SandboxBackendRegistration(
+                    backend_id=backend.backend_id,
+                    os_families=frozenset({"linux"}),
+                    factory=lambda: backend,
+                ),
+            )
+        )
+        profile = EffectiveExecutionProfile(
+            readable_roots=(tmp_path,),
+            writable_roots=(tmp_path,),
+        )
+        custom_runtime = bind_sandbox_execution_runtime(
+            base_exec_service=ExecService(execution_profile=profile),
+            settings=SandboxSettings(enabled=True, requirement="required"),
+            registry=registry,
+            environment_probe=LocalHostEnvironmentProbe(
+                platform_name="linux",
+                architecture="x86_64",
+                environ={},
+            ),
+            scope_request_factory=lambda request: _sandbox_scope(tmp_path, request),
+            execution_profile=profile,
+        )
+        custom_launcher = custom_runtime.bind_process_launcher(
+            ProcessExecutionScope(
+                approval_resolver=_ApprovalResolver(),
+                execution_profile_ceiling=profile,
+                require_approval=True,
+            )
+        )
+        try:
+            with pytest.raises(
+                ExecutionAuthorizationError,
+                match="Process-owner-minted launcher",
+            ):
+                await execute_managed_skill_action(
+                    binding,
+                    runtime=runtime,
+                    launcher=custom_launcher,
+                    workspace_root=workspace_root,
+                    correlation_id="untrusted-custom-backend",
+                )
+        finally:
+            await custom_runtime.close()
 
     asyncio.run(weak_scenario())
 
 
-def test_runtime_is_revalidated_after_approval_and_before_spawn(
+def test_runtime_executes_sealed_bytes_when_source_changes_after_approval(
     tmp_path: Path,
 ) -> None:
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()
     executable = tmp_path / "python-copy"
     executable.write_bytes(Path(sys.executable).read_bytes())
-    runtime = SkillRuntimeBinding.capture(runtime="python", executable=executable)
+    runtime = SkillRuntimeBinding.capture(
+        runtime="python",
+        executable=executable,
+        environment=(("PYTHONHOME", sys.base_prefix),),
+    )
     resolver = _ApprovalResolver(on_resolve=lambda: executable.write_bytes(b"changed"))
 
     async def scenario() -> None:
@@ -406,15 +673,16 @@ def test_runtime_is_revalidated_after_approval_and_before_spawn(
             root=tmp_path,
         )
         try:
-            with pytest.raises(ManagedSkillActionError) as captured:
-                await execute_managed_skill_action(
-                    binding,
-                    runtime=runtime,
-                    launcher=launcher,
-                    workspace_root=workspace_root,
-                    correlation_id="runtime-race",
-                )
-            assert captured.value.code == "skill_action_runtime_changed"
+            result = await execute_managed_skill_action(
+                binding,
+                runtime=runtime,
+                launcher=launcher,
+                workspace_root=workspace_root,
+                correlation_id="runtime-race",
+            )
+            assert result.return_code == 0
+            assert result.stdout == b"ok\n"
+            assert executable.read_bytes() == b"changed"
             assert len(resolver.requests) == 1
         finally:
             await sandbox_runtime.close()
@@ -629,12 +897,38 @@ def test_managed_action_cancellation_reclaims_process_and_pipe_tasks(
             )
         )
         try:
-            await asyncio.sleep(0.2)
+            required_tasks = {
+                "managed-skill-action-stdout",
+                "managed-skill-action-stderr",
+                "managed-skill-action-wait",
+            }
+            deadline = asyncio.get_running_loop().time() + 5
+            while True:
+                live_names = {
+                    item.get_name()
+                    for item in asyncio.all_tasks()
+                    if not item.done()
+                }
+                if (
+                    sandbox_runtime._process_host._registrations
+                    and required_tasks.issubset(live_names)
+                ):
+                    break
+                if task.done():
+                    await task
+                if asyncio.get_running_loop().time() >= deadline:
+                    raise AssertionError("managed action did not reach live pipe ownership")
+                await asyncio.sleep(0)
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await asyncio.wait_for(task, timeout=5)
             assert not sandbox_runtime._process_host._reservations
             assert not sandbox_runtime._process_host._registrations
+            assert not {
+                item.get_name()
+                for item in asyncio.all_tasks()
+                if item.get_name().startswith("managed-skill-action-")
+            }
         finally:
             await sandbox_runtime.close()
 

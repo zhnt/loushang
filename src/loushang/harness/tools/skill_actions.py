@@ -25,6 +25,11 @@ from loushang.harness.tools.process_hosting import (
     ScopeBoundProcessLauncher,
     _managed_process_launch_request,
 )
+from loushang.harness.workspace.process._sealed_executable import (
+    SealedProcessExecutableUnavailable,
+    _capture_sealed_process_executable,
+    _SealedProcessExecutable,
+)
 
 _MAX_ACTION_OUTPUT_BYTES = 1_048_576
 _ACTION_OUTPUT_CHUNK_BYTES = 64 * 1024
@@ -179,6 +184,18 @@ class SkillRuntimeBinding:
                 code="skill_action_runtime_changed",
             )
 
+    def _capture_sealed_executable(self) -> _SealedProcessExecutable:
+        try:
+            return _capture_sealed_process_executable(
+                self.executable,
+                expected_digest=self.executable_digest,
+            )
+        except (OSError, SealedProcessExecutableUnavailable) as exc:
+            raise ManagedSkillActionError(
+                "Managed Skill runtime could not be sealed",
+                code="skill_action_runtime_unsealable",
+            ) from exc
+
 
 @dataclass(frozen=True, slots=True)
 class ManagedSkillActionResult:
@@ -224,37 +241,43 @@ async def execute_managed_skill_action(
         *(("-",) if declaration.runtime == "python" else ("-s", "--")),
         *declaration.argv,
     )
-    request = _managed_process_launch_request(
-        command=command,
-        cwd=str(cwd),
-        effective_environment=effective_environment,
-        declared_effects=tuple(
-            _tool_effect(
-                effect, skill_root=binding.skill_root, workspace_root=workspace
-            )
-            for effect in declaration.effects
-        ),
-        authorization_metadata={
-            "actionBindingFingerprint": binding.binding_fingerprint,
-            "actionId": declaration.action_id,
-            "actionDocumentDigest": binding.action_document_digest,
-            "candidateFingerprint": binding.candidate_fingerprint,
-            "catalogGeneration": binding.catalog_generation,
-            "catalogSnapshotFingerprint": binding.catalog_snapshot_fingerprint,
-            "catalogSourceRevision": binding.catalog_source_revision,
-            "runtimeDigest": runtime.executable_digest,
-            "scriptDigest": declaration.script_digest,
-            "skillContentDigest": binding.skill_content_digest,
-            "sourceKind": binding.source_kind,
-            "sourceRevision": binding.source_revision,
-        },
-        pre_start_validator=runtime.verify,
-    )
-    handle = await launcher._start_managed(
-        request,
-        correlation_id=correlation_id,
-        signal=signal,
-    )
+    sealed_executable = runtime._capture_sealed_executable()
+    try:
+        request = _managed_process_launch_request(
+            command=command,
+            cwd=str(cwd),
+            effective_environment=effective_environment,
+            declared_effects=tuple(
+                _tool_effect(
+                    effect, skill_root=binding.skill_root, workspace_root=workspace
+                )
+                for effect in declaration.effects
+            ),
+            authorization_metadata={
+                "actionBindingFingerprint": binding.binding_fingerprint,
+                "actionId": declaration.action_id,
+                "actionDocumentDigest": binding.action_document_digest,
+                "candidateFingerprint": binding.candidate_fingerprint,
+                "catalogGeneration": binding.catalog_generation,
+                "catalogSnapshotFingerprint": binding.catalog_snapshot_fingerprint,
+                "catalogSourceRevision": binding.catalog_source_revision,
+                "runtimeDigest": runtime.executable_digest,
+                "scriptDigest": declaration.script_digest,
+                "skillContentDigest": binding.skill_content_digest,
+                "sourceKind": binding.source_kind,
+                "sourceRevision": binding.source_revision,
+            },
+            pre_start_validator=sealed_executable.verify,
+            sealed_executable=sealed_executable,
+        )
+        handle = await launcher._start_managed(
+            request,
+            correlation_id=correlation_id,
+            signal=signal,
+        )
+    except BaseException:
+        sealed_executable.close()
+        raise
     try:
         stdout_task = asyncio.create_task(
             _drain_action_output(handle.read_stdout, stream="stdout"),
@@ -287,7 +310,10 @@ async def execute_managed_skill_action(
             stderr=stderr,
         )
     finally:
-        await handle.close()
+        try:
+            await handle.close()
+        finally:
+            sealed_executable.close()
 
 
 async def _write_action_input(handle: object, script: bytes) -> None:

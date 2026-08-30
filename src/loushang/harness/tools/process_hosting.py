@@ -37,6 +37,9 @@ from loushang.harness.tools.execution import (
 from loushang.harness.tools.workspace.authorization import (
     WorkspaceToolAuthorizationGateway,
 )
+from loushang.harness.workspace.process._sealed_executable import (
+    _SealedProcessExecutable,
+)
 from loushang.harness.workspace.process.host import ProcessHost
 from loushang.harness.workspace.process.local import (
     ProcessContainmentPlan,
@@ -104,6 +107,10 @@ class _ManagedProcessLaunchRequest(ProcessLaunchRequest):
         repr=False,
     )
     pre_start_validator: Callable[[], None] = field(repr=False, compare=False)
+    _sealed_executable: _SealedProcessExecutable = field(
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         super(_ManagedProcessLaunchRequest, self).__post_init__()
@@ -125,6 +132,9 @@ class _ManagedProcessLaunchRequest(ProcessLaunchRequest):
             raise TypeError("managed process metadata must be a string-key mapping")
         if not callable(self.pre_start_validator):
             raise TypeError("managed process pre-start validator must be callable")
+        if type(self._sealed_executable) is not _SealedProcessExecutable:
+            raise TypeError("managed process requires a sealed executable")
+        self._sealed_executable.verify()
         object.__setattr__(self, "declared_effects", effects)
         object.__setattr__(
             self,
@@ -141,6 +151,7 @@ def _managed_process_launch_request(
     declared_effects: tuple[ToolEffect, ...],
     authorization_metadata: Mapping[str, object],
     pre_start_validator: Callable[[], None],
+    sealed_executable: _SealedProcessExecutable,
 ) -> ProcessLaunchRequest:
     """Build the private Approval envelope without widening the public request."""
 
@@ -151,6 +162,7 @@ def _managed_process_launch_request(
         declared_effects=declared_effects,
         authorization_metadata=authorization_metadata,
         pre_start_validator=pre_start_validator,
+        _sealed_executable=sealed_executable,
         stream_stderr=True,
     )
 
@@ -171,6 +183,9 @@ class ScopeBoundProcessLauncher:
         self._host = host
         self._containment = containment
         self._managed_owner_authority: object | None = None
+        self._managed_plan_verifier: (
+            Callable[[ProcessContainmentPlan, object | None], None] | None
+        ) = None
         self._gateway = WorkspaceToolAuthorizationGateway(
             policy_evaluator=(
                 _MandatoryProcessApprovalPolicy(scope.policy_evaluator)
@@ -296,11 +311,7 @@ class ScopeBoundProcessLauncher:
                     execution_profile=action.execution_profile,
                 )
                 if isinstance(request, _ManagedProcessLaunchRequest):
-                    verifier = getattr(
-                        self._containment,
-                        "_verify_managed_process_plan",
-                        None,
-                    )
+                    verifier = self._managed_plan_verifier
                     if not callable(verifier):
                         raise ExecutionAuthorizationError(
                             "managed process containment is not Sandbox-owner-bound"
@@ -326,25 +337,24 @@ def _bind_process_owner_launcher(
     scope: ProcessExecutionScope,
     host: ProcessHost,
     containment: HostedProcessContainmentPort,
+    managed_owner_authority: object | None = None,
+    managed_plan_verifier: (
+        Callable[[ProcessContainmentPlan, object | None], None] | None
+    ) = None,
 ) -> ScopeBoundProcessLauncher:
     """Mint the managed-start authority only at the Sandbox/Process owner seam."""
 
     if type(host) is not ProcessHost:
         raise TypeError("managed process owner requires the exact ProcessHost")
-    # Import lazily to keep Sandbox -> Tool composition acyclic at module load.
-    from loushang.harness.sandbox.process import HostedProcessContainmentPlanner
-
-    if type(containment) is not HostedProcessContainmentPlanner:
-        raise TypeError(
-            "managed process owner requires the exact Sandbox containment planner"
-        )
-    managed_owner_authority = containment._claim_managed_process_owner_authority()
+    if managed_owner_authority is not None and not callable(managed_plan_verifier):
+        raise TypeError("managed process owner requires a Sandbox plan verifier")
     launcher = ScopeBoundProcessLauncher(
         scope=scope,
         host=host,
         containment=containment,
     )
     launcher._managed_owner_authority = managed_owner_authority
+    launcher._managed_plan_verifier = managed_plan_verifier
     return launcher
 
 

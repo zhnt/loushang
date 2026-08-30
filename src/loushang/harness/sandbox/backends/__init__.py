@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from loushang.harness.workspace.exec import ExecBackend
 
-from ..registry import SandboxBackendRegistration, SandboxBackendRegistry
+from ..registry import (
+    SandboxBackendRegistration,
+    SandboxBackendRegistry,
+    _builtin_sandbox_backend_registry,
+)
 from .linux import LinuxBubblewrapBackend
 
 
@@ -12,7 +16,7 @@ def default_sandbox_backend_registry(
 ) -> SandboxBackendRegistry:
     """Return lazy platform registrations used by enabled sandbox bindings."""
 
-    return SandboxBackendRegistry(
+    return _builtin_sandbox_backend_registry(
         (
             SandboxBackendRegistration(
                 backend_id=LinuxBubblewrapBackend.backend_id,

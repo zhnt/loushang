@@ -52,13 +52,13 @@ from loushang.harness.resources._discovery_conventions import (
     IGNORE_FILE_NAMES,
     SOURCE_LABEL,
 )
+from loushang.harness.resources._safe_files import (
+    ContainedFileCaptureError,
+    capture_contained_regular_file,
+)
 from loushang.harness.resources._skill_ignore import (
     is_skill_path_ignored,
     normalize_skill_ignore_pattern,
-)
-from loushang.harness.resources.plugins.safe_files import (
-    ContainedFileCaptureError,
-    capture_contained_regular_file,
 )
 from loushang.harness.resources.skill_actions import (
     MAX_SKILL_ACTION_DOCUMENT_BYTES,

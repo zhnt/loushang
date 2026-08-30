@@ -42,7 +42,14 @@ class HostedProcessContainmentPlanner:
         self._plans: set[ProcessContainmentPlan] = set()
         self._state = "open"
         self._lock = asyncio.Lock()
-        self._managed_process_owner_authority = object()
+        backend_authority = (
+            resolution._claim_managed_process_backend_authority()
+            if resolution is not None
+            else None
+        )
+        self._managed_process_owner_authority = (
+            object() if backend_authority is not None else None
+        )
 
     @property
     def requirement(self) -> str:
@@ -60,6 +67,7 @@ class HostedProcessContainmentPlanner:
             or self._resolution.backend is None
             or self._resolution.selected_status is None
             or self._scope_request_factory is None
+            or self._managed_process_owner_authority is None
         ):
             return None
         return self._managed_process_owner_authority
@@ -71,6 +79,7 @@ class HostedProcessContainmentPlanner:
     ) -> None:
         if (
             type(plan) is not _SandboxOwnedProcessContainmentPlan
+            or self._managed_process_owner_authority is None
             or authority is not self._managed_process_owner_authority
             or plan._managed_process_owner_authority is not authority
         ):
@@ -222,7 +231,7 @@ class _SandboxOwnedProcessContainmentPlan(ProcessContainmentPlan):
         self,
         request: ProcessLaunchRequest,
         *,
-        managed_process_owner_authority: object,
+        managed_process_owner_authority: object | None,
         close,
     ) -> None:
         super().__init__(request, close=close)

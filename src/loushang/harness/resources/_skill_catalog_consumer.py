@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,6 +18,9 @@ from loushang.harness.resources._catalog_records import (
     ResourceIdentity,
     ResourceLoadHandle,
     ResourceLoadReceipt,
+)
+from loushang.harness.resources._skill_action_authority import (
+    _register_catalog_managed_skill_action,
 )
 from loushang.harness.resources._skill_catalog_status import (
     SkillCatalogStatusProjection,
@@ -261,6 +265,7 @@ class SkillCatalogConsumer:
             item.candidate_fingerprint: item
             for item in projection.managed_action_sources
         }
+        self._managed_action_owner_identity = object()
         status_projection = getattr(catalog, "skill_status_projection", None)
         if status_projection is None:
             self._skill_statuses: tuple[SkillCatalogStatusSummary, ...] | None = None
@@ -393,7 +398,7 @@ class SkillCatalogConsumer:
                 raise SkillCatalogConsumerError(
                     "Catalog action source contains invalid script evidence"
                 )
-            owner_identity = object()
+            owner_identity = self._managed_action_owner_identity
             selection = object.__new__(SkillActionCatalogSelection)
             object.__setattr__(
                 selection,
@@ -429,6 +434,8 @@ class SkillCatalogConsumer:
                 action_document_digest=source.capture.action_document_digest,
             )
             resolved_root = source.skill_root.resolve(strict=True)
+            root_metadata = os.stat(resolved_root, follow_symlinks=False)
+            root_identity = (root_metadata.st_dev, root_metadata.st_ino)
             action = object.__new__(CatalogManagedSkillAction)
             object.__setattr__(action, "selection", selection)
             object.__setattr__(action, "declaration", declaration)
@@ -445,6 +452,7 @@ class SkillCatalogConsumer:
             )
             object.__setattr__(action, "_script_body", bytes(script_body))
             object.__setattr__(action, "_owner_identity", owner_identity)
+            object.__setattr__(action, "_skill_root_identity", root_identity)
             seal = object.__new__(_CatalogActionOwnerSeal)
             object.__setattr__(seal, "_action", action)
             object.__setattr__(seal, "_owner_identity", owner_identity)
@@ -455,7 +463,16 @@ class SkillCatalogConsumer:
             )
             object.__setattr__(seal, "_script_digest", declaration.script_digest)
             object.__setattr__(seal, "_skill_root", resolved_root)
+            object.__setattr__(seal, "_skill_root_identity", root_identity)
             object.__setattr__(action, "_owner_seal", seal)
+            _register_catalog_managed_skill_action(
+                action,
+                owner_identity=owner_identity,
+                catalog_generation=summary.catalog_generation,
+                catalog_snapshot_fingerprint=summary.catalog_snapshot_fingerprint,
+                binding_source_fingerprint=binding_fingerprint,
+                skill_root_identity=root_identity,
+            )
             action.verify()
             actions.append(action)
         return tuple(actions)

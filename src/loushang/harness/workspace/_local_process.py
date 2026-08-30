@@ -18,8 +18,11 @@ async def spawn_local_process(
     cwd: str,
     environment: Mapping[str, str],
     pipe_stdin: bool,
+    inherited_file_descriptors: tuple[int, ...] = (),
 ) -> asyncio.subprocess.Process:
     if _is_windows():
+        if inherited_file_descriptors:
+            raise RuntimeError("inherited file descriptors are not supported on Windows")
         return await asyncio.create_subprocess_exec(
             *command,
             cwd=cwd,
@@ -29,15 +32,29 @@ async def spawn_local_process(
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-    return await asyncio.create_subprocess_exec(
-        *command,
-        cwd=cwd,
-        env=dict(environment),
-        start_new_session=True,
-        stdin=asyncio.subprocess.PIPE if pipe_stdin else None,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+    previous_inheritable = tuple(
+        os.get_inheritable(descriptor) for descriptor in inherited_file_descriptors
     )
+    try:
+        for descriptor in inherited_file_descriptors:
+            os.set_inheritable(descriptor, True)
+        return await asyncio.create_subprocess_exec(
+            *command,
+            cwd=cwd,
+            env=dict(environment),
+            start_new_session=True,
+            stdin=asyncio.subprocess.PIPE if pipe_stdin else None,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            pass_fds=inherited_file_descriptors,
+        )
+    finally:
+        for descriptor, inheritable in zip(
+            inherited_file_descriptors,
+            previous_inheritable,
+            strict=True,
+        ):
+            os.set_inheritable(descriptor, inheritable)
 
 
 async def terminate_local_process_tree(process: object) -> bool:

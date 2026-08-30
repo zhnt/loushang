@@ -67,6 +67,19 @@ def inspect_plugin_engine_contract(
 
     claims_stable_contract = "manifestVersion" in payload or "engine" in payload
     if not claims_stable_contract:
+        if contribution_index is not None and any(
+            MANAGED_SKILL_ACTION_CONFIGURATION_KEY in item.configuration
+            for item in contribution_index.items
+        ):
+            return None, (
+                PluginEngineDiagnostic(
+                    code="plugin_engine_contract_missing",
+                    message=(
+                        "Managed Skill actions require a stable Plugin engine "
+                        "contract"
+                    ),
+                ),
+            )
         return None, ()
     diagnostics: list[PluginEngineDiagnostic] = []
     if set(payload) != STABLE_PLUGIN_MANIFEST_FIELDS:

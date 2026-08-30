@@ -101,14 +101,6 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS = {
         "_editable_project_root",
     ): "installed-python-distribution-evidence-resolver",
     (
-        Path("src/loushang/harness/resources/plugins/safe_files.py"),
-        "_capture_descriptor_relative",
-    ): "contained-regular-file-capture",
-    (
-        Path("src/loushang/harness/resources/plugins/safe_files.py"),
-        "_capture_portable",
-    ): "contained-regular-file-capture",
-    (
         Path("src/loushang/harness/resources/plugins/revisions.py"),
         "_digest_file",
     ): "verified-revision-publisher",
@@ -259,16 +251,6 @@ EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_CALL_COUNTS = {
         Path("src/loushang/harness/resources/packages/mounts.py"),
         "PackageResourceMount.read_text",
         "verified_open_file:handle",
-    ): 1,
-    (
-        Path("src/loushang/harness/resources/plugins/safe_files.py"),
-        "_capture_descriptor_relative",
-        "path_read",
-    ): 3,
-    (
-        Path("src/loushang/harness/resources/plugins/safe_files.py"),
-        "_capture_portable",
-        "path_read",
     ): 1,
     (
         Path("src/loushang/harness/resources/plugins/_strict_json.py"),
@@ -2790,7 +2772,6 @@ def test_current_plugin_package_boundary_sinks_have_qualified_owners() -> None:
         EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS
     )
     assert set(EXPECTED_PLUGIN_PACKAGE_BOUNDARY_SINK_OWNERS.values()) == {
-        "contained-regular-file-capture",
         "package-catalog",
         "package-manifest-parser",
         "package-materializer",

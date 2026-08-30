@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Literal, NoReturn, cast
 
+from loushang.harness.resources._skill_action_authority import (
+    _verify_catalog_managed_skill_action,
+)
 from loushang.harness.resources.plugins._strict_json import (
     PluginJsonCodecError,
     StrictPluginJsonCodec,
@@ -104,7 +108,7 @@ class SkillActionCatalogSelection:
         }
 
 
-@dataclass(frozen=True, slots=True, init=False)
+@dataclass(frozen=True, slots=True, init=False, weakref_slot=True)
 class CatalogManagedSkillAction:
     """Opaque Resource-owner evidence for one captured Catalog action."""
 
@@ -116,6 +120,7 @@ class CatalogManagedSkillAction:
     _script_body: bytes
     _owner_identity: object = field(repr=False, compare=False)
     _owner_seal: _CatalogActionOwnerSeal = field(repr=False, compare=False)
+    _skill_root_identity: tuple[int, int] = field(repr=False, compare=False)
 
     def __init__(self) -> None:
         raise TypeError("Managed Skill action evidence is Resource-owner-minted")
@@ -125,6 +130,7 @@ class CatalogManagedSkillAction:
         return self._script_body
 
     def verify(self) -> None:
+        _verify_catalog_managed_skill_action(self)
         seal = getattr(self, "_owner_seal", None)
         if type(seal) is not _CatalogActionOwnerSeal:
             raise ValueError("Catalog action owner evidence is invalid")
@@ -152,6 +158,9 @@ class CatalogManagedSkillAction:
         root = Path(self.skill_root)
         if not root.is_absolute() or not root.is_dir() or root.resolve() != root:
             raise ValueError("Catalog action Skill root evidence is invalid")
+        metadata = os.stat(root, follow_symlinks=False)
+        if (metadata.st_dev, metadata.st_ino) != self._skill_root_identity:
+            raise ValueError("Catalog action Skill root identity changed")
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -163,6 +172,7 @@ class _CatalogActionOwnerSeal:
     _binding_source_fingerprint: str
     _script_digest: str
     _skill_root: Path
+    _skill_root_identity: tuple[int, int]
 
     def __init__(self) -> None:
         raise TypeError("Catalog action owner seals are Resource-owner-minted")
@@ -177,6 +187,7 @@ class _CatalogActionOwnerSeal:
             or hashlib.sha256(action._script_body).hexdigest()
             != self._script_digest
             or action.skill_root != self._skill_root
+            or action._skill_root_identity != self._skill_root_identity
         ):
             raise ValueError("Catalog action owner evidence is invalid")
 

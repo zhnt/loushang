@@ -109,9 +109,12 @@ source, import the private Catalog projection, list or enable a Skill, refresh
 the Catalog, or mint replacement Catalog facts.
 Each action additionally carries a Resource-owner identity and an
 identity-bound seal over that exact evidence object. Every verification checks
-the seal. Copying fields, recomputing fingerprints, using `object.__new__`, or
-copying another action's seal cannot create acceptable evidence, and there is
-no module-level action mint helper callable by an ordinary consumer.
+the seal and a separate live Resource-owner registration for the exact action,
+Catalog generation, snapshot, binding, and Skill-root identity. The
+registration is not part of the caller-constructible evidence graph. Copying
+fields, recomputing fingerprints, using `object.__new__`, self-signing a fresh
+seal, or copying another action's seal cannot create acceptable evidence, and
+there is no module-level action mint helper callable by an ordinary consumer.
 The historical explicit eager-body compatibility path is not an action source
 and is not a peer path for package/native managed actions; its final unrelated
 adapter cleanup remains PLC9 work.
@@ -133,12 +136,17 @@ then retain copied bytes plus the package content digest; Tool binding never
 reopens an author-selected path. Binding verifies the opaque Resource-owner
 record and fingerprints all action, Catalog, source, and content facts.
 
-The Host chooses and fingerprints the exact runtime executable. After Approval
-and containment planning, the Process owner revalidates it at the final
-pre-spawn boundary. Script bytes cross stdin (`python -` or `sh -s --`) so
-mutable script paths are never re-opened by the child. Cwd, environment, argv,
-effects, source facts, and binding digest enter the existing Process
-authorization fingerprint.
+The Host chooses and fingerprints the exact runtime executable. Before
+Approval, the Process substrate copies those revalidated bytes into a bounded
+anonymous Linux file, applies kernel write/grow/shrink seals, and retains its
+descriptor through spawn. The admitted Bubblewrap backend mounts that exact
+descriptor read-only over the approved executable path. The child therefore
+executes the digest-bound immutable image even if the original path changes
+after Approval or queues a replacement immediately before spawn. Hosts without
+an accepted immutable executable mechanism fail closed. Script bytes cross
+stdin (`python -` or `sh -s --`) so mutable script paths are never re-opened by
+the child. Cwd, environment, argv, effects, source facts, and binding digest
+enter the existing Process authorization fingerprint.
 
 Managed actions require both:
 
@@ -146,13 +154,16 @@ Managed actions require both:
    path configured for mandatory Approval; and
 2. a containment planner whose requirement is exactly `required`.
 
-Managed-start authority additionally requires the exact
-`HostedProcessContainmentPlanner` from an active required Sandbox binding. Each
-plan is sealed to that planner and checked before Process Host receives it; a
-structural object that merely reports `requirement = "required"` or returns a
-raw no-op plan cannot acquire managed authority. Disabled and best-effort
-Sandbox runtimes retain their ordinary process launcher, but it carries no
-managed-start capability.
+Managed-start authority additionally requires an active required Sandbox
+binding whose selected backend was admitted by the Harness-owned backend
+registry. A public custom registry cannot self-declare managed-process trust.
+Each plan is sealed to its planner and checked before Process Host receives it;
+a structural object that merely reports `requirement = "required"` or returns
+a raw no-op plan cannot acquire managed authority. The Sandbox composition
+seam passes a private token and plan verifier into the Process Tool, which
+depends only on its neutral containment port and never imports a Sandbox
+concrete. Disabled, best-effort, and untrusted-custom Sandbox runtimes retain
+their ordinary process launcher, but it carries no managed-start capability.
 
 An ordinary allow or absent policy becomes an explicit Approval request; deny
 and ask remain deny and ask. Weak/best-effort containment fails before process

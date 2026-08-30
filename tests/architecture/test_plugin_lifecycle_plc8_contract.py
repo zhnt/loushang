@@ -22,6 +22,9 @@ PROCESS_RUNTIME = Path("src/loushang/harness/tools/process_hosting.py")
 SKILL_CONSUMER = Path(
     "src/loushang/harness/resources/_skill_catalog_consumer.py"
 )
+ACTION_AUTHORITY = Path(
+    "src/loushang/harness/resources/_skill_action_authority.py"
+)
 
 
 def _imports(path: Path) -> set[str]:
@@ -93,6 +96,7 @@ def test_managed_action_consumes_catalog_facts_and_existing_host_authorities() -
     action_source = ACTION_RUNTIME.read_text(encoding="utf-8")
     process_source = PROCESS_RUNTIME.read_text(encoding="utf-8")
     consumer_source = SKILL_CONSUMER.read_text(encoding="utf-8")
+    authority_source = ACTION_AUTHORITY.read_text(encoding="utf-8")
 
     assert "CatalogManagedSkillAction" in action_source
     assert "SkillCatalogConsumer" not in action_source
@@ -103,9 +107,16 @@ def test_managed_action_consumes_catalog_facts_and_existing_host_authorities() -
     assert "_start_managed" in action_source
     assert "_ManagedProcessLaunchRequest" in process_source
     assert "pre_start_validator" in process_source
+    assert "_sealed_executable" in action_source
+    assert not any(
+        name.startswith("loushang.harness.sandbox")
+        for name in _imports(PROCESS_RUNTIME)
+    )
     assert "capture_managed_actions" in consumer_source
     assert "_mint_catalog_managed_skill_action" not in consumer_source
     assert "_CatalogActionOwnerSeal" in consumer_source
+    assert "_register_catalog_managed_skill_action" in consumer_source
+    assert "_REGISTRATIONS" in authority_source
 
 
 def test_public_process_request_contract_is_not_widened_for_skill_actions() -> None:

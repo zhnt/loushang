@@ -59,6 +59,12 @@ class SandboxExecutionRuntime:
             scope=scope,
             host=self._process_host,
             containment=self._process_containment,
+            managed_owner_authority=(
+                self._process_containment._claim_managed_process_owner_authority()
+            ),
+            managed_plan_verifier=(
+                self._process_containment._verify_managed_process_plan
+            ),
         )
         self._process_launcher = launcher
         return launcher

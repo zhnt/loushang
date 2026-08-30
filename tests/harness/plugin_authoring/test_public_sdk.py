@@ -295,6 +295,54 @@ def test_stable_action_feature_is_required_by_runtime_and_public_validation(
     assert caught.value.code == "plugin_engine_feature_declaration_incomplete"
 
 
+def test_legacy_manifest_cannot_retain_managed_action_marker(
+    tmp_path: Path,
+) -> None:
+    script = b"print('legacy bypass')\n"
+    declaration = skill_action(
+        id="review",
+        script="scripts/review.py",
+        script_digest=sha256(script).hexdigest(),
+        runtime="python",
+    )
+    compiled = package(
+        id="org.example.legacy-action-marker",
+        version="1",
+        contributions=(
+            resource.skill(
+                contribution_id="review-skill",
+                locator="skills/review",
+                actions=(declaration,),
+            ),
+        ),
+    )
+    for artifact in compiled.artifacts:
+        target = tmp_path / artifact.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(artifact.content)
+    skill_root = tmp_path / "skills" / "review"
+    (skill_root / "SKILL.md").write_text("# Review\n", encoding="utf-8")
+    scripts = skill_root / "scripts"
+    scripts.mkdir()
+    (scripts / "review.py").write_bytes(script)
+
+    manifest_path = tmp_path / "plugin.json"
+    manifest = StrictPluginJsonCodec.decode_bytes(manifest_path.read_bytes())
+    assert isinstance(manifest, dict)
+    manifest.pop("manifestVersion")
+    manifest.pop("engine")
+    manifest_path.write_bytes(StrictPluginJsonCodec.encode(manifest))
+
+    result = validate_package(tmp_path)
+    with pytest.raises(PluginManifestError) as caught:
+        PluginManifestParser().parse(tmp_path)
+
+    assert {item.code for item in result.diagnostics} == {
+        "plugin_engine_contract_missing"
+    }
+    assert caught.value.code == "plugin_engine_contract_missing"
+
+
 def test_validation_rejects_oversized_manifest_before_json_decode(
     tmp_path: Path,
 ) -> None:
