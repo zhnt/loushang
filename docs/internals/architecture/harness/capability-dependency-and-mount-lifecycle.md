@@ -15,9 +15,9 @@ contract contains the sealed side-question facet, the adopted transcript
 Store/Profile/Compaction trio, one focused Resources facet, and two narrow
 Workspace dependency facets;
 Process-scoped continuity remains staged rollout work. `coding.lsp` and
-`coding.arch` remain rollout targets rather than
-claimed runtime nodes. Runtime Profile slots remain the implemented finer
-binding layer inside those Bundles.
+`coding.arch` are production-mounted through one Coding Capability-Plugin
+composition when selected and enabled. Runtime Profile slots remain the
+implemented finer binding layer inside those Bundles.
 
 Canonical Product, Capability, Mount, Package, Plugin, and Extension terms are
 defined in the
@@ -143,9 +143,13 @@ and process Consumers. Coding realizes this edge from its admitted Workspace
 Provider; generic Products omit the optional node. Both plans therefore have
 only `harness.model_input` as a root.
 
-The optional `coding.arch -> coding.lsp` edge is a permitted future shape, not
-part of the initial target. `coding.arch` must remain independently usable
-unless a later accepted Product decision changes that contract.
+The displayed optional `coding.arch -> coding.lsp` semantic edge is accepted
+target architecture, not Current PLC7 wiring. The current LSP facets do not
+constitute a neutral semantic-fact protocol, so Arch declares only its Workspace
+requirement. A later change must first introduce the narrow consumer-owned fact
+port and LSP adapter, then add a typed optional requirement. Arch already
+remains independently usable; no ambient lookup or fallback construction
+exists.
 
 Coarse graph identity does not grant coarse authority. A consumer declares a
 narrow facet view separately:

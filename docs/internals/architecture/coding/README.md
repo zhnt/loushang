@@ -50,9 +50,9 @@ Accepted target directions include explicit Product Capability composition,
 bounded `coding.lsp` and `coding.arch` scopes, Product-owned Method-to-Work
 preparation, and evidence-linked architecture/runtime diagnostics. Harness now
 owns the implemented Capability Planner/Binder/Runtime/Projector substrate;
-`coding.lsp.default` is now the sole enabled production route through that
-graph, while production mounting of `coding.arch` remains a Product rollout
-target.
+`coding.lsp.default` and `coding.arch.default` now share one Product Plugin
+composition and one Session graph. Arch remains independently mountable when
+LSP is disabled.
 
 ## Direct Architecture Children
 
@@ -71,8 +71,9 @@ black-box contract and internal component model.
   process-hosting, tool-composition and lifecycle contracts selected by Coding.
 - Harness does not import either Coding capability.
 - `coding.arch` remains usable without LSP.
-- A future optional semantic-fact dependency is consumer-owned by Arch and
-  implemented by an LSP adapter; neither child imports the other's internals.
+- The optional semantic dependency is consumer-owned by Arch and injected as
+  the typed `coding.lsp(semantic)` facet; neither child discovers a peer
+  runtime or owns the other's lifecycle.
 - Any new sibling dependency requires this parent graph, both child boundaries,
   and an architecture test to change together.
 
@@ -137,12 +138,13 @@ They are not a second Current Coding topology.
 
 ## Current-To-Target Gaps
 
-- `coding.lsp` is a production-mounted live Graph node whenever enabled;
-  `coding.arch` is not yet a production node;
+- `coding.lsp` and `coding.arch` are production-mounted live Graph nodes when
+  their selected composition and mount policy enable them;
 - LSP has an initial evidence matrix, while external-mutation and broader
   passive-delivery behavior remain partial and its architecture remains proposed;
-- Coding Arch now has a proposed canonical nested-scope package; a second
-  concrete language provider and optional LSP semantic port remain absent;
+- Coding Arch has a checked-in Provider Plugin, typed Tool consumer, private
+  source-backed index and optional LSP semantic edge; another language
+  analyzer remains demand-gated;
 - several older Coding documents still require incremental classification as
   superseded or historical;
 - Coding is still the only installed Product validating the shared substrate.

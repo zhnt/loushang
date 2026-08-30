@@ -67,6 +67,26 @@ loushang --tools bash,write -p "Inspect this project."
 loushang --no-tools -p "Explain the repository from context only."
 ```
 
+### 架构分析工具
+
+`coding.arch` 提供有界的 `inspect_import_graph` 工具，默认模式为
+`on_demand`。可在 Coding Session 中显式激活：
+
+```bash
+loushang --capability coding.arch=always \
+  -p "请使用 inspect_import_graph 总结这个仓库的依赖关系。"
+```
+
+如果不需要模型或 Session，可直接运行确定性的模块 CLI：
+
+```bash
+uv run python -m loushang.coding.arch src/loushang \
+  --package-prefix loushang --query summary --pretty
+```
+
+两个入口都会把分析根限制在选定 workspace 内；`--no-tools` 与
+`coding.arch=disabled` 会完全跳过 Arch Plugin。
+
 ### LSP 语义工具
 
 `coding.lsp` 是可选的高频 Coding 能力，提供 `inspect_symbol` 和

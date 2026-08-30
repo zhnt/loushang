@@ -99,7 +99,8 @@ Read in this order:
   slice and remains proposed until reviewed as the canonical Target;
 - non-Python provider demand has not yet demonstrated another concrete
   provider;
-- the optional `coding.arch -> coding.lsp` semantic-fact port is not part of the
-  initial Current graph;
+- PLC7 intentionally has no `coding.arch -> coding.lsp` edge: the current LSP
+  facets are not a neutral semantic-fact port. A future integration must first
+  define that narrow consumer-owned protocol and its adapter;
 - architectural fact persistence remains a rebuildable cache, not a durable
   cross-run knowledge or Ontology store.

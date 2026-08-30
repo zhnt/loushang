@@ -4,17 +4,18 @@
 
 - Authority: canonical target architecture for Loushang Plugin composition,
   authoring, execution, management, and cross-Product use.
-- Design status: independently reviewed and ready for owner acceptance under
-  issue `#502`; architecture, security, and developer-experience reviews passed
-  after their blocking findings were corrected and re-reviewed. This status is
-  not self-acceptance.
+- Design status: accepted by the owner under issue `#502` after independent
+  architecture, security, and developer-experience reviews passed following
+  correction and same-reviewer re-review of their blocking findings.
 - Implementation status: partial. The strict manifest and declaration codecs,
   immutable revision evidence, desired-state and Instance ledgers, execution
   Approval consumption, exact Capability-owner admission, Provider selection,
-  Resource component foundations, and the first `coding.lsp` production path
-  exist. Public SDK, managed Skill scripts, isolated Plugin Workers, Resource
-  Catalog cutover, `coding.base`, `coding.arch`, and complete operations
-  projection remain delivery work.
+  Resource component foundations, the `coding.lsp` production path, the single
+  Resource Catalog cutover, the production `coding.base` lifecycle, and the
+  review-candidate `coding.arch` second-Provider path exist. The public SDK,
+  managed Skill actions, isolated Plugin Workers, and complete operations
+  projection remain PLC8 through PLC9 delivery work; PLC7 still requires its
+  terminal review gate.
 - Current-runtime authority: source, tests, and narrower accepted boundary and
   contract documents remain authoritative for implemented behavior. Target
   clauses in this document do not make an unimplemented execution shape or API

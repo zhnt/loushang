@@ -21,18 +21,12 @@ from loushang.coding.adapters.harnesswork import (
     run_coding_work_channel,
 )
 from loushang.coding.agent_invocation import register_coding_agent_delegate_tool
-from loushang.coding.arch.tool import INSPECT_IMPORT_GRAPH_TOOL_NAME
-from loushang.coding.arch.tool_pack import register_coding_arch_tools
 from loushang.coding.bootstrap import (
     BootstrapServices,
     _create_agent_invocation_session_runtime,
     _create_agent_session_services,
     create_agent_session_runtime,
     create_services,
-)
-from loushang.coding.capabilities import (
-    CODING_ARCH_CAPABILITY,
-    coding_capability_mount_mode,
 )
 from loushang.coding.cli.args import (
     CliArgs,
@@ -211,13 +205,6 @@ def build_builtin_tool_registry(
         resolved_approval_resolver,
         settings_manager,
     )
-    register_coding_arch_tools(
-        registry,
-        mode=coding_capability_mount_mode(
-            settings_manager,
-            CODING_ARCH_CAPABILITY,
-        ),
-    )
     return registry
 
 
@@ -231,17 +218,6 @@ def default_runtime_builder(
     approval_resolver: InteractiveApprovalResolver | None = None,
     tool_policy_evaluator: object | None = None,
 ):
-    if not any(
-        definition.name == INSPECT_IMPORT_GRAPH_TOOL_NAME
-        for definition in tool_registry.list_definitions()
-    ):
-        register_coding_arch_tools(
-            tool_registry,
-            mode=coding_capability_mount_mode(
-                getattr(services, "settings_manager", None),
-                CODING_ARCH_CAPABILITY,
-            ),
-        )
     allowed_tool_names, active_tool_names = agent_tool_selection(args)
     runtime_tool_registry = tool_registry.copy()
     if (
@@ -313,6 +289,19 @@ def default_runtime_builder(
     )
     if invocation_product_profile is not None:
         runtime_options["product_profile"] = invocation_product_profile
+    configured_capabilities = getattr(
+        services.settings_manager.get_settings(),
+        "capabilities",
+        {},
+    )
+    if (
+        invocation_product_profile is None
+        and isinstance(configured_capabilities, Mapping)
+        and "coding.arch" in configured_capabilities
+    ):
+        # An explicit Arch mount is a Product request for the architecture
+        # composition set; the mount value still decides whether it activates.
+        runtime_options["composition_set"] = "coding-architecture"
     runtime = runtime_factory(**runtime_options)
     resource_layout = resolve_machine_resource_layout(cwd=cwd)
     platform_sessions = resource_layout.sessions

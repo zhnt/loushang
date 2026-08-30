@@ -34,6 +34,17 @@ PLC3_CONTRACT_PATH = Path(
 PLC6_CONTRACT_PATH = Path(
     "docs/internals/architecture/harness/plugin/plugin-lifecycle-plc6-contract.md"
 )
+PLC7_CONTRACT_PATH = Path(
+    "docs/internals/architecture/harness/plugin/plugin-lifecycle-plc7-contract.md"
+)
+CODING_CAPABILITY_COMPOSER_PATH = Path(
+    "src/loushang/coding/_capability_plugin_composition.py"
+)
+CODING_CAPABILITY_SPECS_PATH = Path(
+    "src/loushang/coding/_capability_plugin_specs.py"
+)
+CODING_BOOTSTRAP_PATH = Path("src/loushang/coding/bootstrap.py")
+CODING_LSP_COMPATIBILITY_PATH = Path("src/loushang/coding/lsp/_plugin_opt_in.py")
 PAP4_CONTRACT_PATH = Path(
     "docs/internals/architecture/harness/plugin/plugin-capability-admission-pap4-contract.md"
 )
@@ -346,11 +357,6 @@ EXPECTED_EXTENSION_DECLARATION_METHODS = {
     "register_message_renderer",
 }
 EXPECTED_LIVE_BINDING_SINK_INVENTORY = {
-    (
-        Path("src/loushang/coding/arch/tool_pack.py"),
-        "register_coding_arch_tools",
-        "register_tool",
-    ),
     (
         Path("src/loushang/coding/bootstrap.py"),
         "_create_agent_session",
@@ -1563,6 +1569,10 @@ def test_unified_plugin_architecture_document_is_indexed() -> None:
     assert "one strict `plugin.json`" in architecture
     assert "A Plugin is an independently selectable activation identity" in architecture
     assert "Installed is not enabled; enabled is not admitted" in architecture
+    assert "accepted by the owner under issue `#502`" in architecture
+    assert "owner accepted under issue `#502`" in readme
+    assert "ready for owner acceptance" not in architecture
+    assert "ready for owner acceptance" not in readme
 
 
 def test_unified_plugin_architecture_defines_the_owner_preserving_pipeline() -> None:
@@ -1578,6 +1588,53 @@ def test_unified_plugin_architecture_defines_the_owner_preserving_pipeline() -> 
     assert all(phase in architecture for phase in phases)
     assert [architecture.index(phase) for phase in phases] == sorted(
         architecture.index(phase) for phase in phases
+    )
+
+
+def test_plc7_contract_freezes_second_provider_without_a_peer_graph() -> None:
+    contract = PLC7_CONTRACT_PATH.read_text(encoding="utf-8")
+    contract_text = " ".join(contract.split())
+    readme = README_PATH.read_text(encoding="utf-8")
+
+    for invariant in (
+        "one Coding Capability-Plugin composition",
+        "coding.arch -> harness.workspace(read, list, search)",
+        "only the `tool-runtime` facet",
+        "No CLI/bootstrap caller may directly call `register_coding_arch_tools()`",
+        "quota is checked before publication",
+        "three-view re-review pass",
+    ):
+        assert invariant in contract_text
+    assert "[PLC7 Second-Provider Contract](plugin-lifecycle-plc7-contract.md)" in (
+        readme
+    )
+
+
+def test_plc7_uses_one_neutral_composer_and_has_no_direct_arch_publisher() -> None:
+    composer = CODING_CAPABILITY_COMPOSER_PATH.read_text(encoding="utf-8")
+    specs = CODING_CAPABILITY_SPECS_PATH.read_text(encoding="utf-8")
+    bootstrap = CODING_BOOTSTRAP_PATH.read_text(encoding="utf-8")
+    compatibility = CODING_LSP_COMPATIBILITY_PATH.read_text(encoding="utf-8")
+    bootstrap_tree = ast.parse(bootstrap, filename=str(CODING_BOOTSTRAP_PATH))
+
+    assert "CODING_LSP_CAPABILITY_DEFINITION" not in composer
+    assert "CODING_ARCH_CAPABILITY_DEFINITION" not in composer
+    assert "coding_lsp_" not in composer
+    assert "CODING_LSP_CAPABILITY_DEFINITION" in specs
+    assert "CODING_ARCH_CAPABILITY_DEFINITION" in specs
+    assert "ordered_coding_capability_plugin_specs" in composer
+    assert "prepare_coding_capability_plugin_composition" in bootstrap
+    assert "prepare_coding_lsp_plugin_opt_in" not in bootstrap
+    assert "_assembly_request" not in compatibility
+    assert not any(
+        isinstance(node, ast.Call)
+        and (
+            isinstance(node.func, ast.Name)
+            and node.func.id == "register_coding_arch_tools"
+            or isinstance(node.func, ast.Attribute)
+            and node.func.attr == "register_coding_arch_tools"
+        )
+        for node in ast.walk(bootstrap_tree)
     )
 
 

@@ -46,8 +46,10 @@
   selected immutable revisions after mutable source removal. PLC6E now removes
   Coding's Resource authority mode, legacy Resource discovery, and peer CLI
   Tool publisher. PLC6 production validation and its terminal three-view review
-  completed on 2026-08-30. PLC7 through PLC9 and the public Plugin SDK remain
-  unimplemented.
+  completed on 2026-08-30. PLC7's second Provider, shared Capability-Plugin
+  composition, Arch Tool owner, source-backed private index and optional LSP
+  edge are implemented as a review candidate; PLC7's terminal review and PLC8
+  through PLC9 remain open.
 - Scope: one delivery order for the common Plugin lifecycle, ordinary
   Definition / Provider / Consumer authoring primitives, `coding.lsp`,
   `coding.base`, `coding.arch`, management control, pre-LSP internal Resource/

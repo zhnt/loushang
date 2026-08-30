@@ -61,7 +61,11 @@ def _session(
         )
     )
     registry = WorkspaceToolRegistry()
-    register_coding_arch_tools(registry, mode=mode)
+    if mode != "disabled":
+        registry.register_tool(
+            create_inspect_import_graph_tool_definition(),
+            enabled=mode == "always",
+        )
     agent = Agent(
         initial_state={
             "system_prompt": "Coding base prompt",
@@ -100,6 +104,11 @@ def test_arch_tool_pack_is_separate_and_schema_is_bounded() -> None:
         "boundaries",
     ]
     assert definition.parameters["properties"]["limit"]["maximum"] == 200
+
+
+def test_direct_arch_tool_publisher_is_a_non_authoritative_compatibility_stub() -> None:
+    with pytest.raises(RuntimeError, match="coding-architecture composition"):
+        register_coding_arch_tools(WorkspaceToolRegistry(), mode="always")
 
 
 def test_arch_mount_modes_and_live_agent_rebinding(tmp_path: Path) -> None:
@@ -191,7 +200,7 @@ def test_inspect_import_graph_restricts_roots_to_workspace(tmp_path: Path) -> No
     try:
         symlink.symlink_to(outside, target_is_directory=True)
     except OSError:
-        return
+        pytest.skip("directory symbolic links are unavailable")
     with pytest.raises(PermissionError, match="within the coding workspace"):
         runtime.inspect(workspace=workspace, root="escaped")
 
