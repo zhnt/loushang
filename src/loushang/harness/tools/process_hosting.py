@@ -15,8 +15,20 @@ from loushang.harness.authorization import (
     EffectiveExecutionProfile,
     ExecutionAuthorizationError,
 )
-from loushang.harness.effects import ProcessEffect
-from loushang.harness.policy import PolicyEvaluator
+from loushang.harness.effects import (
+    FilesystemEffect,
+    NetworkEffect,
+    ProcessEffect,
+    PublicationEffect,
+    ToolEffect,
+    effect_snapshot,
+)
+from loushang.harness.policy import (
+    PolicyDecision,
+    PolicyEvaluator,
+    PolicySubject,
+    evaluate_policy,
+)
 from loushang.harness.tools.execution import (
     AuthorizedToolAction,
     AuthorizedToolContext,
@@ -47,6 +59,7 @@ class ProcessExecutionScope:
     approval_resolver: ApprovalResolver | None = field(default=None, repr=False)
     audit_sink: ProcessAuditSink | None = field(default=None, repr=False)
     execution_profile_ceiling: EffectiveExecutionProfile | None = None
+    require_approval: bool = False
 
     def __post_init__(self) -> None:
         if self.audit_sink is not None and not callable(self.audit_sink):
@@ -58,6 +71,8 @@ class ProcessExecutionScope:
             raise TypeError(
                 "process execution scope ceiling must be an EffectiveExecutionProfile"
             )
+        if type(self.require_approval) is not bool:
+            raise TypeError("process execution scope require_approval must be a bool")
 
     @property
     def actor_id(self) -> str:
@@ -65,6 +80,9 @@ class ProcessExecutionScope:
 
 
 class HostedProcessContainmentPort(Protocol):
+    @property
+    def requirement(self) -> str: ...
+
     async def plan(
         self,
         request: ProcessLaunchRequest,
@@ -76,6 +94,59 @@ class HostedProcessContainmentPort(Protocol):
 @dataclass(frozen=True, slots=True)
 class _ExecutionProfileCarrier:
     execution_profile: EffectiveExecutionProfile | None
+
+
+@dataclass(frozen=True, slots=True)
+class _ManagedProcessLaunchRequest(ProcessLaunchRequest):
+    declared_effects: tuple[ToolEffect, ...] = ()
+    authorization_metadata: Mapping[str, object] = field(
+        default_factory=lambda: MappingProxyType({}),
+        repr=False,
+    )
+
+    def __post_init__(self) -> None:
+        super(_ManagedProcessLaunchRequest, self).__post_init__()
+        effects = tuple(self.declared_effects)
+        if any(
+            not isinstance(
+                effect,
+                FilesystemEffect
+                | NetworkEffect
+                | ProcessEffect
+                | PublicationEffect,
+            )
+            for effect in effects
+        ):
+            raise TypeError("managed process effects must contain ToolEffect values")
+        if not isinstance(self.authorization_metadata, Mapping) or any(
+            not isinstance(key, str) for key in self.authorization_metadata
+        ):
+            raise TypeError("managed process metadata must be a string-key mapping")
+        object.__setattr__(self, "declared_effects", effects)
+        object.__setattr__(
+            self,
+            "authorization_metadata",
+            MappingProxyType(dict(self.authorization_metadata)),
+        )
+
+
+def _managed_process_launch_request(
+    *,
+    command: tuple[str, ...],
+    cwd: str,
+    effective_environment: tuple[tuple[str, str], ...],
+    declared_effects: tuple[ToolEffect, ...],
+    authorization_metadata: Mapping[str, object],
+) -> ProcessLaunchRequest:
+    """Build the private Approval envelope without widening the public request."""
+
+    return _ManagedProcessLaunchRequest(
+        command=command,
+        cwd=cwd,
+        effective_environment=effective_environment,
+        declared_effects=declared_effects,
+        authorization_metadata=authorization_metadata,
+    )
 
 
 class ScopeBoundProcessLauncher:
@@ -94,9 +165,21 @@ class ScopeBoundProcessLauncher:
         self._host = host
         self._containment = containment
         self._gateway = WorkspaceToolAuthorizationGateway(
-            policy_evaluator=scope.policy_evaluator,
+            policy_evaluator=(
+                _MandatoryProcessApprovalPolicy(scope.policy_evaluator)
+                if scope.require_approval
+                else scope.policy_evaluator
+            ),
             approval_resolver=scope.approval_resolver,
         )
+
+    @property
+    def approval_required(self) -> bool:
+        return self._scope.require_approval
+
+    @property
+    def containment_requirement(self) -> str:
+        return getattr(self._containment, "requirement", "best_effort")
 
     @property
     def scope_actor_id(self) -> str:
@@ -119,6 +202,7 @@ class ScopeBoundProcessLauncher:
             {
                 "command": request.command,
                 "launch_fingerprint": launch_fingerprint,
+                "metadata": _authorization_metadata(request),
             }
         )
         prepared = PreparedToolAction(
@@ -126,7 +210,7 @@ class ScopeBoundProcessLauncher:
             authorization_arguments=authorization_arguments,
             execution_arguments=authorization_arguments,
             cwd=request.cwd,
-            effects=(ProcessEffect(request.command),),
+            effects=(ProcessEffect(request.command), *_declared_effects(request)),
             execution_environment=request.effective_environment,
         )
         context = AuthorizedToolContext(
@@ -176,12 +260,48 @@ def _process_launch_fingerprint(request: ProcessLaunchRequest) -> str:
             "command": request.command,
             "cwd": request.cwd,
             "effective_environment": sorted(request.effective_environment),
+            "declared_effects": [
+                effect_snapshot(effect) for effect in _declared_effects(request)
+            ],
+            "authorization_metadata": dict(_authorization_metadata(request)),
         },
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
     ).encode()
     return hashlib.sha256(payload).hexdigest()
+
+
+def _declared_effects(request: ProcessLaunchRequest) -> tuple[ToolEffect, ...]:
+    if isinstance(request, _ManagedProcessLaunchRequest):
+        return request.declared_effects
+    return ()
+
+
+def _authorization_metadata(request: ProcessLaunchRequest) -> Mapping[str, object]:
+    if isinstance(request, _ManagedProcessLaunchRequest):
+        return request.authorization_metadata
+    return MappingProxyType({})
+
+
+@dataclass(frozen=True, slots=True)
+class _MandatoryProcessApprovalPolicy:
+    delegate: PolicyEvaluator | None
+
+    async def evaluate(self, subject: PolicySubject, /) -> PolicyDecision:
+        decision = (
+            None
+            if self.delegate is None
+            else await evaluate_policy(self.delegate, subject)
+        )
+        if decision is not None and decision.disposition == "deny":
+            return decision
+        if decision is not None and decision.disposition == "ask":
+            return decision
+        return PolicyDecision.ask(
+            "Managed process execution requires explicit approval",
+            code="managed_process_requires_approval",
+        )
 
 
 def _validate_process_cwd(

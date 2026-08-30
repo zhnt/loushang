@@ -206,6 +206,16 @@ def test_typed_skill_consumer_lists_metadata_and_loads_exact_body_lazily(
         assert not hasattr(summary, "content")
         assert not hasattr(summary, "body")
         assert not hasattr(summary, "metadata")
+        action_selection = summary.managed_action_selection()
+        assert action_selection.catalog_generation == summary.catalog_generation
+        assert (
+            action_selection.catalog_snapshot_fingerprint
+            == summary.catalog_snapshot_fingerprint
+        )
+        assert action_selection.candidate_fingerprint == summary.candidate_fingerprint
+        assert action_selection.skill_content_digest == summary.expected_content_digest
+        assert action_selection.source_kind == "native"
+        assert action_selection.source_revision == summary.candidate_fingerprint
 
         handle = consumer.load_handle(summary)
         loaded = await consumer.load(handle)

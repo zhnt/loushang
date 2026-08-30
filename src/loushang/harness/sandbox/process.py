@@ -43,6 +43,10 @@ class HostedProcessContainmentPlanner:
         self._state = "open"
         self._lock = asyncio.Lock()
 
+    @property
+    def requirement(self) -> str:
+        return self._settings.requirement
+
     def status_override(self) -> SandboxStatus | None:
         return self._status_override
 

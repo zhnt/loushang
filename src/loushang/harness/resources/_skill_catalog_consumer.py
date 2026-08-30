@@ -21,6 +21,7 @@ from loushang.harness.resources._skill_catalog_status import (
     SkillCatalogStatusProjection,
     SkillCatalogStatusSummary,
 )
+from loushang.harness.resources.skill_actions import SkillActionCatalogSelection
 from loushang.harness.resources.types import (
     ResourceSourceKind,
     ResourceSourceScope,
@@ -100,6 +101,23 @@ class SkillCatalogSummary:
     @property
     def disable_model_invocation(self) -> bool:
         return not self.model_invocable
+
+    def managed_action_selection(self) -> SkillActionCatalogSelection:
+        """Mint action facts from this exact Resource-owner Catalog selection."""
+
+        revision = self.revision_ref
+        return SkillActionCatalogSelection(
+            catalog_generation=self.catalog_generation,
+            catalog_snapshot_fingerprint=self.catalog_snapshot_fingerprint,
+            candidate_fingerprint=self.candidate_fingerprint,
+            skill_content_digest=self.expected_content_digest,
+            source_kind="package" if revision is not None else "native",
+            source_revision=(
+                revision.content_digest
+                if revision is not None
+                else self.candidate_fingerprint
+            ),
+        )
 
 
 
