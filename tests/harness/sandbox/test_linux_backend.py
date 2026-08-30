@@ -61,10 +61,36 @@ def _successful_probe(
     argv: tuple[str, ...],
     timeout_seconds: float,
 ) -> subprocess.CompletedProcess[str]:
+    if argv[-1] == "--help":
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            "--ro-bind-data FD DEST\n--ro-bind-fd FD DEST\n",
+            "",
+        )
     assert "--unshare-user" in argv
     assert "--unshare-net" in argv
     assert timeout_seconds > 0
     return subprocess.CompletedProcess(argv, 0, "", "")
+
+
+def test_linux_backend_probe_requires_managed_bind_options(tmp_path: Path) -> None:
+    def missing_feature(
+        argv: tuple[str, ...],
+        timeout_seconds: float,
+    ) -> subprocess.CompletedProcess[str]:
+        del timeout_seconds
+        if argv[-1] == "--help":
+            return subprocess.CompletedProcess(argv, 0, "--ro-bind-data", "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    status = LinuxBubblewrapBackend(
+        bwrap_path=_fake_bwrap(tmp_path),
+        probe_runner=missing_feature,
+    ).probe(_linux_environment())
+
+    assert status.state == "unavailable"
+    assert "--ro-bind-fd" in (status.reason or "")
 
 
 def test_linux_backend_is_not_applicable_without_resolving_bwrap(

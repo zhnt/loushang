@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import pytest
 
 from loushang.harness.environment import HostEnvironment
 from loushang.harness.sandbox import (
+    LinuxBubblewrapBackend,
     SandboxBackendRegistration,
     SandboxBackendRegistry,
     SandboxBackendStatus,
+    default_sandbox_backend_registry,
 )
 
 
@@ -186,3 +190,46 @@ def test_registry_projects_factory_and_probe_errors_as_unavailable() -> None:
         "factory: backend factory failed: factory boom; "
         "probe: backend probe failed: probe boom"
     )
+
+
+def test_mutated_builtin_registry_cannot_claim_managed_process_authority(
+    tmp_path: Path,
+) -> None:
+    executable = tmp_path / "bwrap"
+    executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    executable.chmod(0o755)
+
+    def probe(
+        argv: tuple[str, ...],
+        timeout_seconds: float,
+    ) -> subprocess.CompletedProcess[str]:
+        del timeout_seconds
+        stdout = (
+            "--ro-bind-data FD DEST\n--ro-bind-fd FD DEST\n"
+            if argv[-1] == "--help"
+            else ""
+        )
+        return subprocess.CompletedProcess(argv, 0, stdout, "")
+
+    backend = LinuxBubblewrapBackend(
+        bwrap_path=executable,
+        probe_runner=probe,
+    )
+
+    async def no_op_plan(request, scope):
+        return request, scope
+
+    backend._plan_hosted_process = no_op_plan  # type: ignore[method-assign]
+    replacement = SandboxBackendRegistration(
+        backend_id=backend.backend_id,
+        os_families=frozenset({"linux"}),
+        factory=lambda: backend,
+    )
+    registry = default_sandbox_backend_registry()
+    registry._registrations = (replacement,)
+
+    resolution = registry.resolve(HostEnvironment("linux", "linux", "x86_64"))
+
+    assert resolution.backend is backend
+    assert resolution.selected_status is not None
+    assert resolution._claim_managed_process_backend_authority() is None

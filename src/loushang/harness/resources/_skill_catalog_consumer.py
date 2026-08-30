@@ -20,7 +20,7 @@ from loushang.harness.resources._catalog_records import (
     ResourceLoadReceipt,
 )
 from loushang.harness.resources._skill_action_authority import (
-    _mint_catalog_action_owner_credential,
+    _bind_catalog_action_owner,
     _register_catalog_managed_skill_action,
 )
 from loushang.harness.resources._skill_catalog_status import (
@@ -264,7 +264,6 @@ class SkillCatalogConsumer:
             item.candidate_fingerprint: item
             for item in projection.managed_action_sources
         }
-        self._managed_action_owner_identity = object()
         status_projection = getattr(catalog, "skill_status_projection", None)
         if status_projection is None:
             self._skill_statuses: tuple[SkillCatalogStatusSummary, ...] | None = None
@@ -278,6 +277,11 @@ class SkillCatalogConsumer:
                 effective_projection=projection,
                 status_projection=status_projection,
             )
+        self._managed_action_owner_identity = object()
+        self._managed_action_owner_capability = _bind_catalog_action_owner(
+            self,
+            owner_identity=self._managed_action_owner_identity,
+        )
 
     @property
     def catalog_generation(self) -> int:
@@ -465,22 +469,72 @@ class SkillCatalogConsumer:
             object.__setattr__(seal, "_skill_root", resolved_root)
             object.__setattr__(seal, "_skill_root_identity", root_identity)
             object.__setattr__(action, "_owner_seal", seal)
-            owner_credential = _mint_catalog_action_owner_credential(
-                action,
-                owner_identity=owner_identity,
-                catalog_generation=summary.catalog_generation,
-                catalog_snapshot_fingerprint=summary.catalog_snapshot_fingerprint,
-                candidate_fingerprint=summary.candidate_fingerprint,
-                binding_source_fingerprint=binding_fingerprint,
-                skill_root_identity=root_identity,
-            )
             _register_catalog_managed_skill_action(
                 action,
-                owner_credential=owner_credential,
+                owner_capability=self._managed_action_owner_capability,
             )
             action.verify()
             actions.append(action)
         return tuple(actions)
+
+    def _verify_managed_action_owner_candidate(self, action: object) -> None:
+        """Match one action to this consumer's exact captured Catalog source."""
+
+        if type(action) is not CatalogManagedSkillAction:
+            raise TypeError("Catalog action owner requires exact action evidence")
+        selection = action.selection
+        try:
+            summary = self._summary_by_candidate(selection.candidate_fingerprint)
+        except (AttributeError, KeyError) as exc:
+            raise ValueError("Catalog action is outside its Resource owner") from exc
+        source = self._managed_action_sources.get(summary.candidate_fingerprint)
+        if source is None:
+            raise ValueError("Catalog action candidate has no managed source")
+        matching_source = any(
+            item.declaration == action.declaration
+            and item.script_body == action._script_body
+            for item in source.capture.actions
+        )
+        resolved_root = source.skill_root.resolve(strict=True)
+        root_metadata = os.stat(resolved_root, follow_symlinks=False)
+        root_identity = (root_metadata.st_dev, root_metadata.st_ino)
+        expected_selection = (
+            summary.catalog_generation,
+            summary.catalog_snapshot_fingerprint,
+            summary.candidate_fingerprint,
+            summary.expected_content_digest,
+            source.capture.source_kind,
+            source.capture.source_revision,
+            self._managed_action_owner_identity,
+        )
+        actual_selection = (
+            selection.catalog_generation,
+            selection.catalog_snapshot_fingerprint,
+            selection.candidate_fingerprint,
+            selection.skill_content_digest,
+            selection.source_kind,
+            selection.source_revision,
+            selection._owner_identity,
+        )
+        expected_binding = _catalog_action_binding_fingerprint(
+            selection=selection,
+            declaration=action.declaration,
+            action_document_digest=source.capture.action_document_digest,
+        )
+        seal = getattr(action, "_owner_seal", None)
+        if action._skill_root_identity != root_identity:
+            raise ValueError("Catalog action root identity changed")
+        if (
+            not matching_source
+            or actual_selection != expected_selection
+            or action.action_document_digest != source.capture.action_document_digest
+            or action.skill_root != resolved_root
+            or action._owner_identity is not self._managed_action_owner_identity
+            or action.binding_source_fingerprint != expected_binding
+            or type(seal) is not _CatalogActionOwnerSeal
+        ):
+            raise ValueError("Catalog action does not match its Resource owner")
+        seal.verify(action)
 
     def _resolve_owned_summary(
         self,

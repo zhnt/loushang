@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -30,6 +31,7 @@ from loushang.harness.workspace.process._sealed_executable import (
     _capture_bound_process_directory,
     _capture_sealed_process_executable,
     _contained_process_launch_request,
+    _copy_stable_executable,
     _process_inherited_file_descriptors,
     _sealed_process_executable_from_request,
 )
@@ -381,6 +383,38 @@ def test_sealed_executable_owner_evidence_rejects_field_tampering() -> None:
             artifact.authorization_payload()
     finally:
         artifact.close()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="POSIX fd copy")
+def test_sealed_executable_capture_streams_in_bounded_chunks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "runtime"
+    body = b"x" * (2 * 1024 * 1024 + 17)
+    source.write_bytes(body)
+    destination = os.open(
+        tmp_path / "sealed-copy",
+        os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
+        0o600,
+    )
+    requested_sizes: list[int] = []
+    original_read = os.read
+
+    def bounded_read(descriptor: int, size: int) -> bytes:
+        requested_sizes.append(size)
+        return original_read(descriptor, size)
+
+    monkeypatch.setattr(os, "read", bounded_read)
+    try:
+        digest, size = _copy_stable_executable(source, destination)
+    finally:
+        os.close(destination)
+
+    assert digest == hashlib.sha256(body).hexdigest()
+    assert size == len(body)
+    assert requested_sizes
+    assert max(requested_sizes) <= 1024 * 1024
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux memfd seals")

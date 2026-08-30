@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import inspect
+import weakref
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import cast
 
 from loushang.harness.environment import HostEnvironment, OperatingSystemFamily
 
@@ -10,7 +13,6 @@ from .types import SandboxBackendStatus
 
 SandboxBackendFactory = Callable[[], SandboxBackend]
 _OS_FAMILIES: frozenset[str] = frozenset({"linux", "macos", "windows", "other"})
-_BUILTIN_MANAGED_PROCESS_BACKEND_AUTHORITY = object()
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,16 +51,11 @@ class SandboxBackendRegistration:
         )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class SandboxBackendResolution:
     environment: HostEnvironment
     backend: SandboxBackend | None
     statuses: tuple[SandboxBackendStatus, ...]
-    _managed_process_backend_authority: object | None = field(
-        default=None,
-        repr=False,
-        compare=False,
-    )
 
     @property
     def selected_status(self) -> SandboxBackendStatus | None:
@@ -83,14 +80,15 @@ class SandboxBackendResolution:
         return f"no sandbox backend is applicable to {self.environment.platform_name}"
 
     def _claim_managed_process_backend_authority(self) -> object | None:
-        if (
-            self.backend is not None
-            and self.selected_status is not None
-            and self._managed_process_backend_authority
-            is _BUILTIN_MANAGED_PROCESS_BACKEND_AUTHORITY
-        ):
-            return self._managed_process_backend_authority
-        return None
+        record = _verified_managed_resolution(self)
+        return record.authority if record is not None else None
+
+    async def _plan_managed_process(self, request: object, scope: object) -> object:
+        record = _verified_managed_resolution(self)
+        if record is None:
+            raise RuntimeError("managed Sandbox resolution authority changed")
+        result = record.provider(record.backend, request, scope)
+        return await result if inspect.isawaitable(result) else result
 
 
 class SandboxBackendRegistry:
@@ -98,7 +96,6 @@ class SandboxBackendRegistry:
         self,
         registrations: Iterable[SandboxBackendRegistration] = (),
     ) -> None:
-        self._managed_process_backend_authority: object | None = None
         indexed = tuple(enumerate(registrations))
         ids = [registration.backend_id for _, registration in indexed]
         duplicates = sorted(
@@ -118,6 +115,7 @@ class SandboxBackendRegistry:
         )
 
     def resolve(self, environment: HostEnvironment) -> SandboxBackendResolution:
+        managed_registry = _verified_managed_registry(self)
         statuses: list[SandboxBackendStatus] = []
         for registration in self._registrations:
             if not registration.applies_to(environment):
@@ -172,14 +170,21 @@ class SandboxBackendRegistry:
                 )
             statuses.append(status)
             if status.state == "available":
-                return SandboxBackendResolution(
+                resolution = SandboxBackendResolution(
                     environment=environment,
                     backend=backend,
                     statuses=tuple(statuses),
-                    _managed_process_backend_authority=(
-                        self._managed_process_backend_authority
-                    ),
                 )
+                if (
+                    managed_registry is not None
+                    and registration is managed_registry.registration
+                ):
+                    _register_managed_resolution(
+                        resolution,
+                        registry_record=managed_registry,
+                        backend=backend,
+                    )
+                return resolution
 
         return SandboxBackendResolution(
             environment=environment,
@@ -204,21 +209,181 @@ def _builtin_sandbox_backend_registry(
     if not trusted_backend:
         raise TypeError("managed Sandbox registry requires the builtin local backend")
 
-    registry = SandboxBackendRegistry(
-        (
-            SandboxBackendRegistration(
-                backend_id=LinuxBubblewrapBackend.backend_id,
-                os_families=frozenset({"linux"}),
-                factory=lambda: LinuxBubblewrapBackend(
-                    local_backend=local_backend,  # type: ignore[arg-type]
-                ),
-            ),
-        )
+    registration = SandboxBackendRegistration(
+        backend_id=LinuxBubblewrapBackend.backend_id,
+        os_families=frozenset({"linux"}),
+        factory=lambda: LinuxBubblewrapBackend(
+            local_backend=local_backend,  # type: ignore[arg-type]
+        ),
     )
-    registry._managed_process_backend_authority = (
-        _BUILTIN_MANAGED_PROCESS_BACKEND_AUTHORITY
+    registry = SandboxBackendRegistry((registration,))
+    registry_id = id(registry)
+    provider = cast(
+        Callable[..., object],
+        LinuxBubblewrapBackend.__dict__["_plan_hosted_process"],
+    )
+    probe = cast(
+        Callable[..., object],
+        LinuxBubblewrapBackend.__dict__["probe"],
+    )
+
+    def discard(reference: weakref.ReferenceType[SandboxBackendRegistry]) -> None:
+        current = _MANAGED_REGISTRIES.get(registry_id)
+        if current is not None and current.registry_ref is reference:
+            _MANAGED_REGISTRIES.pop(registry_id, None)
+
+    registry_ref = weakref.ref(registry, discard)
+    _MANAGED_REGISTRIES[registry_id] = _ManagedRegistryRecord(
+        registry_ref=registry_ref,
+        registration=registration,
+        factory=registration.factory,
+        authority=object(),
+        backend_type=LinuxBubblewrapBackend,
+        provider=provider,
+        probe=probe,
     )
     return registry
+
+
+@dataclass(frozen=True, slots=True)
+class _ManagedRegistryRecord:
+    registry_ref: weakref.ReferenceType[SandboxBackendRegistry]
+    registration: SandboxBackendRegistration
+    factory: SandboxBackendFactory
+    authority: object
+    backend_type: type[object]
+    provider: Callable[..., object]
+    probe: Callable[..., object]
+
+
+@dataclass(frozen=True, slots=True)
+class _ManagedResolutionRecord:
+    resolution_ref: weakref.ReferenceType[SandboxBackendResolution]
+    registry: SandboxBackendRegistry
+    registration: SandboxBackendRegistration
+    backend: SandboxBackend
+    statuses: tuple[SandboxBackendStatus, ...]
+    authority: object
+    provider: Callable[..., object]
+    backend_state: tuple[object, ...]
+
+
+_MANAGED_REGISTRIES: dict[int, _ManagedRegistryRecord] = {}
+_MANAGED_RESOLUTIONS: dict[int, _ManagedResolutionRecord] = {}
+
+
+def _verified_managed_registry(
+    registry: SandboxBackendRegistry,
+) -> _ManagedRegistryRecord | None:
+    record = _MANAGED_REGISTRIES.get(id(registry))
+    registrations = getattr(registry, "_registrations", None)
+    backend_type = record.backend_type if record is not None else None
+    if (
+        record is None
+        or record.registry_ref() is not registry
+        or type(registrations) is not tuple
+        or len(registrations) != 1
+        or registrations[0] is not record.registration
+        or record.registration.factory is not record.factory
+        or backend_type is None
+        or backend_type.__dict__.get("_plan_hosted_process") is not record.provider
+        or backend_type.__dict__.get("probe") is not record.probe
+    ):
+        return None
+    return record
+
+
+def _register_managed_resolution(
+    resolution: SandboxBackendResolution,
+    *,
+    registry_record: _ManagedRegistryRecord,
+    backend: SandboxBackend,
+) -> None:
+    backend_state = _managed_backend_state(
+        backend,
+        backend_type=registry_record.backend_type,
+    )
+    if (
+        backend_state is None
+        or registry_record.backend_type.__dict__.get("_plan_hosted_process")
+        is not registry_record.provider
+    ):
+        return
+    resolution_id = id(resolution)
+
+    def discard(reference: weakref.ReferenceType[SandboxBackendResolution]) -> None:
+        current = _MANAGED_RESOLUTIONS.get(resolution_id)
+        if current is not None and current.resolution_ref is reference:
+            _MANAGED_RESOLUTIONS.pop(resolution_id, None)
+
+    resolution_ref = weakref.ref(resolution, discard)
+    registry = registry_record.registry_ref()
+    assert registry is not None
+    _MANAGED_RESOLUTIONS[resolution_id] = _ManagedResolutionRecord(
+        resolution_ref=resolution_ref,
+        registry=registry,
+        registration=registry_record.registration,
+        backend=backend,
+        statuses=resolution.statuses,
+        authority=registry_record.authority,
+        provider=registry_record.provider,
+        backend_state=backend_state,
+    )
+
+
+def _verified_managed_resolution(
+    resolution: SandboxBackendResolution,
+) -> _ManagedResolutionRecord | None:
+    record = _MANAGED_RESOLUTIONS.get(id(resolution))
+    registry = record.registry if record is not None else None
+    registry_record = (
+        _verified_managed_registry(registry) if registry is not None else None
+    )
+    if (
+        record is None
+        or record.resolution_ref() is not resolution
+        or registry_record is None
+        or registry_record.registration is not record.registration
+        or registry_record.authority is not record.authority
+        or resolution.backend is not record.backend
+        or resolution.statuses is not record.statuses
+        or resolution.selected_status is None
+        or _managed_backend_state(
+            record.backend,
+            backend_type=registry_record.backend_type,
+        )
+        != record.backend_state
+    ):
+        return None
+    return record
+
+
+def _managed_backend_state(
+    backend: object,
+    *,
+    backend_type: type[object],
+) -> tuple[object, ...] | None:
+    expected_fields = {
+        "_available",
+        "_closed",
+        "_configured_path",
+        "_executable_finder",
+        "_local_backend",
+        "_probe_runner",
+        "_resolved_path",
+    }
+    state = vars(backend)
+    if type(backend) is not backend_type or set(state) != expected_fields:
+        return None
+    return (
+        state["_configured_path"],
+        state["_executable_finder"],
+        state["_probe_runner"],
+        state["_local_backend"],
+        state["_resolved_path"],
+        state["_available"],
+        state["_closed"],
+    )
 
 
 __all__ = [

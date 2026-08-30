@@ -212,30 +212,25 @@ def _capture_sealed_process_executable(
             "managed process execution requires sealed executable support"
         )
     logical_path = Path(path).expanduser().resolve(strict=True)
-    body = _stable_executable_bytes(logical_path)
-    digest = hashlib.sha256(body).hexdigest()
-    if digest != expected_digest:
-        raise SealedProcessExecutableUnavailable(
-            "process executable changed before immutable capture"
-        )
     descriptor = _create_memfd()
     try:
-        view = memoryview(body)
-        written = 0
-        while written < len(view):
-            written += os.write(descriptor, view[written:])
+        digest, size = _copy_stable_executable(logical_path, descriptor)
+        if digest != expected_digest:
+            raise SealedProcessExecutableUnavailable(
+                "process executable changed before immutable capture"
+            )
         os.fchmod(descriptor, 0o500)
         fcntl.fcntl(descriptor, _F_ADD_SEALS, _required_seals())
         metadata = os.fstat(descriptor)
         owner_payload = (
-            f"{descriptor}\0{logical_path}\0{digest}\0{len(body)}"
+            f"{descriptor}\0{logical_path}\0{digest}\0{size}"
             f"\0{metadata.st_dev}\0{metadata.st_ino}"
         ).encode()
         artifact = _SealedProcessExecutable(
             descriptor=descriptor,
             logical_path=logical_path,
             digest=digest,
-            size=len(body),
+            size=size,
             _device=metadata.st_dev,
             _inode=metadata.st_ino,
             _owner_seal=_seal_owner_payload(owner_payload),
@@ -385,30 +380,32 @@ def _contained_request_owner_payload(
     ).encode()
 
 
-def _stable_executable_bytes(path: Path) -> bytes:
+def _copy_stable_executable(path: Path, destination: int) -> tuple[str, int]:
     flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(path, flags)
+    source = os.open(path, flags)
     try:
-        before = os.fstat(descriptor)
+        before = os.fstat(source)
         if not stat.S_ISREG(before.st_mode) or before.st_size > _MAX_EXECUTABLE_BYTES:
             raise SealedProcessExecutableUnavailable(
                 "managed runtime must be a bounded regular executable"
             )
-        chunks: list[bytes] = []
-        remaining = before.st_size + 1
-        while remaining:
-            chunk = os.read(descriptor, min(remaining, 1024 * 1024))
+        digest = hashlib.sha256()
+        copied = 0
+        while copied < before.st_size:
+            chunk = os.read(source, min(before.st_size - copied, 1024 * 1024))
             if not chunk:
                 break
-            chunks.append(chunk)
-            remaining -= len(chunk)
-        body = b"".join(chunks)
-        after = os.fstat(descriptor)
+            digest.update(chunk)
+            _write_all(destination, chunk)
+            copied += len(chunk)
+        extra = os.read(source, 1)
+        after = os.fstat(source)
     finally:
-        os.close(descriptor)
+        os.close(source)
     if (
-        len(body) != before.st_size
+        copied != before.st_size
+        or extra
         or before.st_dev != after.st_dev
         or before.st_ino != after.st_ino
         or before.st_size != after.st_size
@@ -418,7 +415,15 @@ def _stable_executable_bytes(path: Path) -> bytes:
         raise SealedProcessExecutableUnavailable(
             "managed runtime changed during immutable capture"
         )
-    return body
+    os.lseek(destination, 0, os.SEEK_SET)
+    return digest.hexdigest(), copied
+
+
+def _write_all(descriptor: int, body: bytes) -> None:
+    view = memoryview(body)
+    written = 0
+    while written < len(view):
+        written += os.write(descriptor, view[written:])
 
 
 def _descriptor_digest(descriptor: int, *, size: int) -> str:

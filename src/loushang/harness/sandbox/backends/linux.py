@@ -45,6 +45,7 @@ _CAPABILITIES = frozenset(
     }
 )
 _PROBE_TIMEOUT_SECONDS = 3.0
+_MANAGED_BIND_OPTIONS = ("--ro-bind-data", "--ro-bind-fd")
 
 BubblewrapFinder = Callable[[str], str | None]
 BubblewrapProbeRunner = Callable[
@@ -119,6 +120,34 @@ class LinuxBubblewrapBackend:
             detail = _safe_probe_detail(completed.stderr)
             reason = "bubblewrap cannot create the required namespaces"
             if detail:
+                reason = f"{reason}: {detail}"
+            return SandboxBackendStatus(
+                backend_id=self.backend_id,
+                state="unavailable",
+                reason=reason,
+            )
+
+        try:
+            feature_probe = self._probe_runner(
+                (str(path), "--help"),
+                _PROBE_TIMEOUT_SECONDS,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            return SandboxBackendStatus(
+                backend_id=self.backend_id,
+                state="unavailable",
+                reason=f"bubblewrap feature probe failed: {error}",
+            )
+        help_text = feature_probe.stdout or ""
+        missing_options = tuple(
+            option for option in _MANAGED_BIND_OPTIONS if option not in help_text
+        )
+        if feature_probe.returncode != 0 or missing_options:
+            detail = _safe_probe_detail(feature_probe.stderr)
+            reason = "bubblewrap lacks required managed-process bind options"
+            if missing_options:
+                reason = f"{reason}: {', '.join(missing_options)}"
+            elif detail:
                 reason = f"{reason}: {detail}"
             return SandboxBackendStatus(
                 backend_id=self.backend_id,
@@ -264,7 +293,7 @@ def _run_probe(
     return subprocess.run(
         argv,
         stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         timeout=timeout_seconds,

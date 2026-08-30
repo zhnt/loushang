@@ -59,6 +59,49 @@ def test_windows_spawn_uses_hidden_window_without_posix_session(
     assert "start_new_session" not in options
 
 
+def test_posix_spawn_passes_fds_without_mutating_global_inheritability(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_create_subprocess_exec(*command, **options):
+        captured["command"] = command
+        captured["options"] = options
+        return object()
+
+    def unexpected_set_inheritable(descriptor: int, inheritable: bool) -> None:
+        raise AssertionError(
+            f"must not change descriptor {descriptor} inheritable={inheritable}"
+        )
+
+    monkeypatch.setattr(_local_process, "_is_windows", lambda: False)
+    monkeypatch.setattr(
+        _local_process.asyncio,
+        "create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
+    monkeypatch.setattr(
+        _local_process.os,
+        "set_inheritable",
+        unexpected_set_inheritable,
+    )
+
+    asyncio.run(
+        _local_process.spawn_local_process(
+            command=("tool", "--version"),
+            cwd="/workspace",
+            environment={"PATH": "/bin"},
+            pipe_stdin=False,
+            inherited_file_descriptors=(11, 12),
+        )
+    )
+
+    assert captured["command"] == ("tool", "--version")
+    options = captured["options"]
+    assert isinstance(options, dict)
+    assert options["pass_fds"] == (11, 12)
+
+
 def test_windows_tree_kill_uses_absolute_system_taskkill_and_waits(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

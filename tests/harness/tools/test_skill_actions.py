@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pytest
 
+import loushang.harness.resources._skill_action_authority as action_authority
 import loushang.harness.tools.skill_actions as skill_action_runtime
 from loushang.harness.approval import ApprovalDecision
 from loushang.harness.authorization import (
@@ -34,7 +35,7 @@ from loushang.harness.resources._catalog_native_source import (
     mint_native_resource_root_handle,
 )
 from loushang.harness.resources._skill_action_authority import (
-    _CatalogActionOwnerCredential,
+    _CatalogActionOwnerCapability,
     _register_catalog_managed_skill_action,
 )
 from loushang.harness.resources._skill_catalog_consumer import (
@@ -419,6 +420,7 @@ def test_skill_action_document_is_strict_and_canonical() -> None:
 
 
 def test_catalog_action_authority_cannot_be_publicly_forged() -> None:
+    assert not hasattr(action_authority, "_mint_catalog_action_owner_credential")
     with pytest.raises(TypeError, match="Resource-owner-minted"):
         SkillActionCatalogSelection()
     with pytest.raises(TypeError, match="Resource-owner-minted"):
@@ -429,11 +431,19 @@ def test_catalog_action_authority_cannot_be_publicly_forged() -> None:
     with pytest.raises(ValueError, match="owner evidence"):
         forged.verify()
     with pytest.raises(TypeError, match="Resource-owner-minted"):
-        _CatalogActionOwnerCredential()
-    with pytest.raises(TypeError, match="owner credential"):
+        _CatalogActionOwnerCapability()
+    with pytest.raises(ValueError, match="owner capability"):
         _register_catalog_managed_skill_action(
             forged,
-            owner_credential=object(),  # type: ignore[arg-type]
+            owner_capability=object(),  # type: ignore[arg-type]
+        )
+
+
+def test_catalog_action_owner_capability_rejects_non_consumer_binding() -> None:
+    with pytest.raises(TypeError, match="canonical Resource consumer"):
+        action_authority._bind_catalog_action_owner(
+            object(),
+            owner_identity=object(),
         )
 
 
@@ -456,6 +466,19 @@ def test_catalog_action_owner_seal_rejects_object_new_clone(tmp_path: Path) -> N
 
         with pytest.raises(ValueError, match="owner evidence"):
             ManagedSkillActionBinding.bind(clone)
+
+    asyncio.run(scenario())
+
+
+def test_catalog_action_rejects_mutated_owner_projection(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        action = await _catalog_action(b"print('owner')\n", root=tmp_path)
+        registration = action_authority._REGISTRATIONS[id(action)]
+        consumer = registration.consumer
+        consumer._managed_action_sources.clear()
+
+        with pytest.raises(ValueError, match="live Resource-owner evidence"):
+            ManagedSkillActionBinding.bind(action)
 
     asyncio.run(scenario())
 
@@ -707,6 +730,54 @@ def test_managed_action_rejects_fake_launcher_and_weak_containment(
                 await custom_runtime.close()
 
     asyncio.run(weak_scenario())
+
+
+def test_managed_action_rejects_post_resolution_backend_shadow(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        workspace_root = tmp_path / "workspace-shadow"
+        workspace_root.mkdir()
+        action = await _catalog_action(b"print('never')\n", root=tmp_path)
+        sandbox_runtime, launcher = _launcher(
+            resolver=_ApprovalResolver(),
+            root=tmp_path,
+        )
+        resolution = sandbox_runtime.binding.resolution
+        assert resolution is not None
+        backend = resolution.backend
+        assert backend is not None
+
+        called = False
+
+        async def no_op_plan(request, scope):
+            nonlocal called
+            called = True
+            return ProcessContainmentPlan(request)
+
+        backend._plan_hosted_process = no_op_plan  # type: ignore[attr-defined]
+        try:
+            with pytest.raises(
+                SandboxUnavailableError,
+                match="resolution authority changed",
+            ):
+                await execute_managed_skill_action(
+                    ManagedSkillActionBinding.bind(action),
+                    runtime=SkillRuntimeBinding.capture(
+                        runtime="python",
+                        executable=sys.executable,
+                    ),
+                    launcher=launcher,
+                    workspace_root=workspace_root,
+                    correlation_id="shadowed-backend",
+                )
+            assert called is False
+            assert not sandbox_runtime._process_host._reservations
+            assert not sandbox_runtime._process_host._registrations
+        finally:
+            await sandbox_runtime.close()
+
+    asyncio.run(scenario())
 
 
 def test_managed_action_fails_closed_when_runtime_cannot_be_sealed(

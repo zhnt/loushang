@@ -10,7 +10,6 @@ from loushang.harness.workspace.exec import ExecRequest
 from loushang.harness.workspace.process import ProcessLaunchRequest
 from loushang.harness.workspace.process.local import ProcessContainmentPlan
 
-from .backends.linux import LinuxBubblewrapBackend
 from .exec_backend import SandboxScopeRequestFactory
 from .registry import SandboxBackendResolution
 from .service import SandboxDiagnosticSink
@@ -46,7 +45,6 @@ class HostedProcessContainmentPlanner:
         backend_authority = (
             resolution._claim_managed_process_backend_authority()
             if resolution is not None
-            and type(resolution.backend) is LinuxBubblewrapBackend
             else None
         )
         self._managed_process_owner_authority = (
@@ -128,7 +126,11 @@ class HostedProcessContainmentPlanner:
                 raise TypeError(
                     "sandbox scope request factory must return SandboxScopeRequest"
                 )
-            provider = getattr(backend, "_plan_hosted_process", None)
+            provider = (
+                self._resolution._plan_managed_process
+                if self._managed_process_owner_authority is not None
+                else getattr(backend, "_plan_hosted_process", None)
+            )
             if not callable(provider):
                 raise SandboxUnavailableError(
                     f"sandbox backend {backend.backend_id!r} cannot host live processes"
