@@ -600,6 +600,7 @@ def _create_agent_session(
                 include_tool_contribution=session_no_tools_mode is None,
                 include_tool_claim_prompt=session_no_tools_mode is None,
                 state_cleanup=base_state_cleanup,
+                session_owner_id=f"session-manager:{id(session_manager):x}",
             )
         except BaseException as error:
             if isinstance(error, CodingBasePluginAssemblyError):

@@ -382,6 +382,67 @@ def test_same_session_resume_is_process_exclusive_and_retryable(
     resumed.close()
 
 
+def test_same_session_owner_reenters_until_its_last_process_lease_closes(
+    tmp_path: Path,
+) -> None:
+    lifecycle = _lifecycle(tmp_path)
+    key = lifecycle.installation_key("coding.base")
+    lifecycle.bootstrap_first_party_default(key, _package_ref())
+    owner_id = "session-manager:shared"
+    first = lifecycle.acquire_session(
+        key,
+        session_id="shared-conversation",
+        lease_attempt_id="attempt-first",
+        owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
+        session_owner_id=owner_id,
+    )
+    second = _lifecycle(tmp_path).acquire_session(
+        key,
+        session_id="shared-conversation",
+        lease_attempt_id="attempt-second",
+        owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
+        session_owner_id=owner_id,
+    )
+    lease_path = plugin_lifecycle_module._session_owner_lease_path(
+        lifecycle.layout,
+        session_id="shared-conversation",
+    )
+    with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
+        state = plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES[lease_path]
+        assert state.owner_id == owner_id
+        assert state.references == 2
+
+    first.close()
+    with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
+        assert (
+            plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES[
+                lease_path
+            ].references
+            == 1
+        )
+    with pytest.raises(CodingPluginLifecycleError) as caught:
+        _lifecycle(tmp_path).acquire_session(
+            key,
+            session_id="shared-conversation",
+            lease_attempt_id="attempt-contender",
+            owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
+            session_owner_id="session-manager:other",
+        )
+    assert caught.value.code == "coding_plugin_session_already_active"
+
+    second.close()
+    with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
+        assert lease_path not in plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES
+    resumed = _lifecycle(tmp_path).acquire_session(
+        key,
+        session_id="shared-conversation",
+        lease_attempt_id="attempt-after-close",
+        owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
+        session_owner_id="session-manager:other",
+    )
+    resumed.close()
+
+
 def test_concurrent_last_session_close_linearizes_exact_retirement(
     tmp_path: Path,
 ) -> None:
@@ -587,6 +648,46 @@ def _stop_plugin_lifecycle_child(process: subprocess.Popen[str]) -> None:
     if process.poll() is None:
         process.kill()
     process.communicate(timeout=20)
+
+
+def test_same_session_owner_lease_rejects_another_process_until_exit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    process, child_state, _marker = _start_plugin_lifecycle_child(
+        tmp_path,
+        mode="hold",
+    )
+    lifecycle = build_coding_plugin_lifecycle(
+        resolve_coding_plugin_lifecycle_state_layout(workspace)
+    )
+    key = lifecycle.installation_key("coding.base")
+    try:
+        with pytest.raises(CodingPluginLifecycleError) as caught:
+            lifecycle.acquire_session(
+                key,
+                session_id=str(child_state["sessionId"]),
+                lease_attempt_id="attempt-while-child-live",
+                owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
+                session_owner_id="parent-runtime",
+            )
+        assert caught.value.code == "coding_plugin_session_already_active"
+
+        process.kill()
+        assert process.wait(timeout=20) != 0
+        resumed = lifecycle.acquire_session(
+            key,
+            session_id=str(child_state["sessionId"]),
+            lease_attempt_id="attempt-after-child-exit",
+            owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
+            session_owner_id="parent-runtime",
+        )
+        resumed.close()
+    finally:
+        _stop_plugin_lifecycle_child(process)
 
 
 def test_real_process_death_preserves_live_family_then_recovers_exact_owners(

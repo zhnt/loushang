@@ -51,6 +51,30 @@ _DEFAULT_APPROVAL_REFERENCE = "coding-first-party-default"
 _CODING_PLUGIN_RUNTIME_BOOT_ID = secrets.token_hex(16)
 _PROCESS_STARTUP_LEASES_LOCK = threading.Lock()
 _PROCESS_STARTUP_LEASES: dict[Path, AbstractContextManager[None]] = {}
+_PROCESS_SESSION_OWNER_LEASES_LOCK = threading.Lock()
+
+
+@dataclass(slots=True)
+class _ProcessSessionOwnerLeaseState:
+    owner_id: str
+    lease: AbstractContextManager[None]
+    references: int = 1
+
+
+_PROCESS_SESSION_OWNER_LEASES: dict[Path, _ProcessSessionOwnerLeaseState] = {}
+
+
+@dataclass(slots=True)
+class _ProcessSessionOwnerLease(AbstractContextManager[None]):
+    path: Path
+    owner_id: str
+    _closed: bool = field(default=False, init=False, repr=False)
+
+    def __exit__(self, *_args: object) -> None:
+        if self._closed:
+            return
+        _release_session_owner_lease(self.path, owner_id=self.owner_id)
+        self._closed = True
 
 
 class CodingPluginLifecycleError(RuntimeError):
@@ -524,10 +548,12 @@ class CodingPluginLifecycle:
         session_id: str,
         lease_attempt_id: str,
         owner_contributions: tuple[tuple[str, tuple[str, ...]], ...],
+        session_owner_id: str | None = None,
     ) -> CodingPluginSessionLease:
         session_owner_lease = _acquire_session_owner_lease(
             self.layout,
             session_id=session_id,
+            owner_id=session_owner_id or secrets.token_hex(16),
         )
         try:
             self.reconcile_retirements()
@@ -1106,21 +1132,60 @@ def _acquire_session_owner_lease(
     layout: CodingPluginLifecycleStateLayout,
     *,
     session_id: str,
+    owner_id: str,
 ) -> AbstractContextManager[None]:
-    lease = journal_file_lock(
-        _session_owner_lease_path(layout, session_id=session_id),
-        "exclusive",
-        lock_suffix="",
-        blocking=False,
-    )
-    try:
-        lease.__enter__()
-    except JournalLockUnavailable as exc:
-        raise CodingPluginLifecycleError(
-            "Coding Session is already active in another runtime",
-            code="coding_plugin_session_already_active",
-        ) from exc
-    return lease
+    lease_path = _session_owner_lease_path(layout, session_id=session_id)
+    normalized_owner_id = _nonempty(owner_id, name="Session owner id")
+    with _PROCESS_SESSION_OWNER_LEASES_LOCK:
+        existing = _PROCESS_SESSION_OWNER_LEASES.get(lease_path)
+        if existing is not None:
+            if existing.owner_id != normalized_owner_id:
+                raise CodingPluginLifecycleError(
+                    "Coding Session is already active in another runtime",
+                    code="coding_plugin_session_already_active",
+                )
+            existing.references += 1
+            return _ProcessSessionOwnerLease(
+                path=lease_path,
+                owner_id=normalized_owner_id,
+            )
+        lease = journal_file_lock(
+            lease_path,
+            "exclusive",
+            lock_suffix="",
+            blocking=False,
+        )
+        try:
+            lease.__enter__()
+        except JournalLockUnavailable as exc:
+            raise CodingPluginLifecycleError(
+                "Coding Session is already active in another runtime",
+                code="coding_plugin_session_already_active",
+            ) from exc
+        _PROCESS_SESSION_OWNER_LEASES[lease_path] = (
+            _ProcessSessionOwnerLeaseState(
+                owner_id=normalized_owner_id,
+                lease=lease,
+            )
+        )
+        return _ProcessSessionOwnerLease(
+            path=lease_path,
+            owner_id=normalized_owner_id,
+        )
+
+
+def _release_session_owner_lease(path: Path, *, owner_id: str) -> None:
+    lease: AbstractContextManager[None] | None = None
+    with _PROCESS_SESSION_OWNER_LEASES_LOCK:
+        existing = _PROCESS_SESSION_OWNER_LEASES.get(path)
+        if existing is None or existing.owner_id != owner_id:
+            raise RuntimeError("Coding Session owner lease ownership was lost")
+        existing.references -= 1
+        if existing.references == 0:
+            del _PROCESS_SESSION_OWNER_LEASES[path]
+            lease = existing.lease
+    if lease is not None:
+        lease.__exit__(None, None, None)
 
 
 def _hold_process_startup_lease(
