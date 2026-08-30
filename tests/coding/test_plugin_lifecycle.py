@@ -430,7 +430,39 @@ def test_same_session_owner_reenters_until_its_last_process_lease_closes(
         )
     assert caught.value.code == "coding_plugin_session_already_active"
 
-    second.close()
+    release_started = threading.Event()
+    allow_release = threading.Event()
+
+    class BlockingLease:
+        def __init__(self, underlying) -> None:
+            self.underlying = underlying
+
+        def __exit__(self, *args) -> None:
+            release_started.set()
+            assert allow_release.wait(timeout=20)
+            self.underlying.__exit__(*args)
+
+    with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
+        state = plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES[lease_path]
+        state.lease = BlockingLease(state.lease)
+    replacement_lifecycle = _lifecycle(tmp_path)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        close_future = executor.submit(second.close)
+        assert release_started.wait(timeout=20)
+        replacement_future = executor.submit(
+            replacement_lifecycle.acquire_session,
+            key,
+            session_id="shared-conversation",
+            lease_attempt_id="attempt-replacement",
+            owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
+            session_owner_id=owner_id,
+        )
+        assert replacement_future.done() is False
+        allow_release.set()
+        close_future.result(timeout=20)
+        replacement = replacement_future.result(timeout=20)
+
+    replacement.close()
     with plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES_LOCK:
         assert lease_path not in plugin_lifecycle_module._PROCESS_SESSION_OWNER_LEASES
     resumed = _lifecycle(tmp_path).acquire_session(

@@ -1175,17 +1175,19 @@ def _acquire_session_owner_lease(
 
 
 def _release_session_owner_lease(path: Path, *, owner_id: str) -> None:
-    lease: AbstractContextManager[None] | None = None
     with _PROCESS_SESSION_OWNER_LEASES_LOCK:
         existing = _PROCESS_SESSION_OWNER_LEASES.get(path)
         if existing is None or existing.owner_id != owner_id:
             raise RuntimeError("Coding Session owner lease ownership was lost")
-        existing.references -= 1
-        if existing.references == 0:
-            del _PROCESS_SESSION_OWNER_LEASES[path]
-            lease = existing.lease
-    if lease is not None:
-        lease.__exit__(None, None, None)
+        if existing.references > 1:
+            existing.references -= 1
+            return
+        # Keep the process-local authority visible until the OS authority is
+        # actually released. A replacement acquisition then waits on this
+        # mutex instead of observing an empty registry and failing against the
+        # still-held non-blocking file lock.
+        existing.lease.__exit__(None, None, None)
+        del _PROCESS_SESSION_OWNER_LEASES[path]
 
 
 def _hold_process_startup_lease(
