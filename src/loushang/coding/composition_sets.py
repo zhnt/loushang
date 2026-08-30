@@ -206,9 +206,10 @@ def resolve_coding_composition_set(
 
     if not isinstance(set_id, str):
         raise TypeError("Coding composition set id must be a string")
-    normalized = set_id.strip()
+    if set_id != set_id.strip():
+        raise ValueError(f"Unsupported Coding composition set: {set_id!r}")
     try:
-        return _PLANS[cast(CodingCompositionSetId, normalized)]
+        return _PLANS[cast(CodingCompositionSetId, set_id)]
     except KeyError as exc:
         raise ValueError(f"Unsupported Coding composition set: {set_id!r}") from exc
 

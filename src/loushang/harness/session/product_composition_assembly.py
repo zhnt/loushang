@@ -40,6 +40,7 @@ from loushang.harness.plugin_authoring.provider_admission import (
 )
 from loushang.harness.resources.plugins.selection import (
     PluginSelection,
+    PluginSelectionPlanV2,
     PluginSourceTrustSnapshotV1,
 )
 from loushang.harness.resources.plugins.types import (
@@ -154,8 +155,36 @@ class ProductCompositionAssemblyRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class ProductPluginPlanSeed:
+    """Inert Product plan plus exact package and owner evidence.
+
+    This value deliberately carries no :class:`PluginSelection`. Products may
+    merge plan fragments while packages are still being discovered, then run
+    the declaration host exactly once after the complete package set is known.
+    """
+
+    plan: PluginSelectionPlanV2
+    packages: tuple[PublishedPluginPackage, ...]
+    bindings: tuple[PluginSourceBinding, ...]
+    owner_bindings: tuple[ProductContributionOwnerBinding, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.plan, PluginSelectionPlanV2):
+            raise TypeError("Product Plugin seed plan is invalid")
+        packages, bindings, owners = _validate_product_plugin_seed_evidence(
+            plugin_ids=self.plan.selected_plugin_ids,
+            packages=self.packages,
+            bindings=self.bindings,
+            owner_bindings=self.owner_bindings,
+        )
+        object.__setattr__(self, "packages", packages)
+        object.__setattr__(self, "bindings", bindings)
+        object.__setattr__(self, "owner_bindings", owners)
+
+
+@dataclass(frozen=True, slots=True)
 class ProductPluginSelectionSeed:
-    """Exact selected package evidence plus contribution-owner authorities."""
+    """One finalized selection plus its exact package and owner evidence."""
 
     selection: PluginSelection
     packages: tuple[PublishedPluginPackage, ...]
@@ -165,39 +194,60 @@ class ProductPluginSelectionSeed:
     def __post_init__(self) -> None:
         if not isinstance(self.selection, PluginSelection):
             raise TypeError("Product Plugin seed selection is invalid")
-        packages = tuple(self.packages)
-        bindings = tuple(self.bindings)
-        owners = tuple(self.owner_bindings)
-        if not packages or any(
-            not isinstance(item, PublishedPluginPackage) for item in packages
-        ):
-            raise TypeError("Product Plugin seed packages are invalid")
-        if len(packages) != len(bindings) or any(
-            not isinstance(item, PluginSourceBinding) for item in bindings
-        ):
-            raise TypeError("Product Plugin seed bindings are invalid")
-        plugin_ids = self.selection.plan.selected_plugin_ids
-        if tuple(item.manifest.name for item in packages) != plugin_ids:
-            raise ValueError("Product Plugin seed packages do not match selection")
-        if tuple(item.plugin_id for item in bindings) != plugin_ids:
-            raise ValueError("Product Plugin seed bindings do not match selection")
-        for package, binding in zip(packages, bindings, strict=True):
-            if (
-                binding.content_digest != package.content_digest
-                or binding.manifest_digest != package.manifest_digest
-                or binding.dependency_lock != package.dependency_lock
-            ):
-                raise ValueError("Product Plugin seed binding lineage is invalid")
-        if any(
-            not isinstance(item, ProductContributionOwnerBinding) for item in owners
-        ):
-            raise TypeError("Product Plugin seed contribution owners are invalid")
-        owner_keys = tuple(item.owner_key for item in owners)
-        if len(owner_keys) != len(set(owner_keys)):
-            raise ValueError("Product Plugin seed contribution owners repeat")
+        packages, bindings, owners = _validate_product_plugin_seed_evidence(
+            plugin_ids=self.selection.plan.selected_plugin_ids,
+            packages=self.packages,
+            bindings=self.bindings,
+            owner_bindings=self.owner_bindings,
+        )
         object.__setattr__(self, "packages", packages)
         object.__setattr__(self, "bindings", bindings)
         object.__setattr__(self, "owner_bindings", owners)
+
+
+def _validate_product_plugin_seed_evidence(
+    *,
+    plugin_ids: tuple[str, ...],
+    packages: tuple[PublishedPluginPackage, ...],
+    bindings: tuple[PluginSourceBinding, ...],
+    owner_bindings: tuple[ProductContributionOwnerBinding, ...],
+) -> tuple[
+    tuple[PublishedPluginPackage, ...],
+    tuple[PluginSourceBinding, ...],
+    tuple[ProductContributionOwnerBinding, ...],
+]:
+    """Validate lineage shared by inert and finalized Product seeds."""
+
+    packages = tuple(packages)
+    bindings = tuple(bindings)
+    owners = tuple(owner_bindings)
+    if not packages or any(
+        not isinstance(item, PublishedPluginPackage) for item in packages
+    ):
+        raise TypeError("Product Plugin seed packages are invalid")
+    if len(packages) != len(bindings) or any(
+        not isinstance(item, PluginSourceBinding) for item in bindings
+    ):
+        raise TypeError("Product Plugin seed bindings are invalid")
+    if tuple(item.manifest.name for item in packages) != plugin_ids:
+        raise ValueError("Product Plugin seed packages do not match plan")
+    if tuple(item.plugin_id for item in bindings) != plugin_ids:
+        raise ValueError("Product Plugin seed bindings do not match plan")
+    for package, binding in zip(packages, bindings, strict=True):
+        if (
+            binding.content_digest != package.content_digest
+            or binding.manifest_digest != package.manifest_digest
+            or binding.dependency_lock != package.dependency_lock
+        ):
+            raise ValueError("Product Plugin seed binding lineage is invalid")
+    if any(
+        not isinstance(item, ProductContributionOwnerBinding) for item in owners
+    ):
+        raise TypeError("Product Plugin seed contribution owners are invalid")
+    owner_keys = tuple(item.owner_key for item in owners)
+    if len(owner_keys) != len(set(owner_keys)):
+        raise ValueError("Product Plugin seed contribution owners repeat")
+    return packages, bindings, owners
 
 
 @dataclass(frozen=True, slots=True)

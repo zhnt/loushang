@@ -3664,12 +3664,140 @@ def test_plc6abc_freezes_sets_and_proves_exact_owner_cutovers() -> None:
 
 
 def test_plc6c_catalog_session_has_no_peer_base_tool_or_command_publisher() -> None:
-    coding_sources = tuple(Path("src/loushang/coding").rglob("*.py"))
-    direct_tool_registration_sites = sum(
-        path.read_text(encoding="utf-8").count("register_coding_builtin_tools(")
-        for path in coding_sources
+    def is_exact_legacy_authority_comparison(node: ast.AST) -> bool:
+        return (
+            isinstance(node, ast.Compare)
+            and isinstance(node.left, ast.Name)
+            and node.left.id == "resource_authority_mode"
+            and len(node.ops) == 1
+            and isinstance(node.ops[0], ast.Eq)
+            and len(node.comparators) == 1
+            and isinstance(node.comparators[0], ast.Constant)
+            and node.comparators[0].value == "legacy_explicit"
+        )
+
+    def is_positive_legacy_authority_guard(node: ast.AST) -> bool:
+        if is_exact_legacy_authority_comparison(node):
+            return True
+        if not isinstance(node, ast.BoolOp) or not isinstance(node.op, ast.And):
+            return False
+        if any(
+            isinstance(candidate, ast.BoolOp) and isinstance(candidate.op, ast.Or)
+            for candidate in ast.walk(node)
+        ):
+            return False
+        return any(
+            is_positive_legacy_authority_guard(value) for value in node.values
+        )
+
+    def contains_node(branch: list[ast.stmt], target: ast.AST) -> bool:
+        return any(
+            candidate is target
+            for statement in branch
+            for candidate in ast.walk(statement)
+        )
+
+    def has_positive_legacy_guard(
+        call: ast.Call,
+        parents: dict[ast.AST, ast.AST],
+    ) -> bool:
+        parent = parents.get(call)
+        while parent is not None:
+            if (
+                isinstance(parent, ast.If)
+                and is_positive_legacy_authority_guard(parent.test)
+                and contains_node(parent.body, call)
+                and not contains_node(parent.orelse, call)
+            ):
+                return True
+            parent = parents.get(parent)
+        return False
+
+    assert is_positive_legacy_authority_guard(
+        ast.parse(
+            'resource_authority_mode == "legacy_explicit"', mode="eval"
+        ).body
     )
-    cli = Path("src/loushang/coding/cli/__main__.py").read_text(encoding="utf-8")
+    assert is_positive_legacy_authority_guard(
+        ast.parse(
+            'enabled and resource_authority_mode == "legacy_explicit"', mode="eval"
+        ).body
+    )
+    assert not is_positive_legacy_authority_guard(
+        ast.parse(
+            'not resource_authority_mode == "legacy_explicit"', mode="eval"
+        ).body
+    )
+    assert not is_positive_legacy_authority_guard(
+        ast.parse(
+            'resource_authority_mode == "legacy_explicit" or enabled', mode="eval"
+        ).body
+    )
+    assert not is_positive_legacy_authority_guard(
+        ast.parse(
+            'resource_authority_mode == "legacy_explicit" and (enabled or forced)',
+            mode="eval",
+        ).body
+    )
+
+    coding_sources = tuple(Path("src/loushang/coding").rglob("*.py"))
+    tool_calls: list[tuple[Path, bool]] = []
+    command_stage_calls: list[Path] = []
+    standard_command_catalog_calls: list[Path] = []
+    for path in coding_sources:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        parents = {
+            child: parent
+            for parent in ast.walk(tree)
+            for child in ast.iter_child_nodes(parent)
+        }
+        tool_names: set[str] = set()
+        tool_modules: set[str] = set()
+        command_catalog_names: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == (
+                "loushang.coding.tool_pack"
+            ):
+                tool_names.update(
+                    item.asname or item.name
+                    for item in node.names
+                    if item.name == "register_coding_builtin_tools"
+                )
+            elif isinstance(node, ast.Import):
+                tool_modules.update(
+                    item.asname or item.name
+                    for item in node.names
+                    if item.name == "loushang.coding.tool_pack"
+                )
+            elif isinstance(node, ast.ImportFrom) and node.module in {
+                "loushang.harness.session",
+                "loushang.harness.session.commands.catalog",
+            }:
+                command_catalog_names.update(
+                    item.asname or item.name
+                    for item in node.names
+                    if item.name == "list_standard_session_command_descriptors"
+                )
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            is_tool_call = (
+                isinstance(node.func, ast.Name) and node.func.id in tool_names
+            ) or (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr == "register_coding_builtin_tools"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id in tool_modules
+            )
+            if is_tool_call:
+                tool_calls.append((path, has_positive_legacy_guard(node, parents)))
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "stage_pack":
+                command_stage_calls.append(path)
+            if (
+                isinstance(node.func, ast.Name)
+                and node.func.id in command_catalog_names
+            ):
+                standard_command_catalog_calls.append(path)
     agent_session = Path("src/loushang/coding/session/agent_session.py").read_text(
         encoding="utf-8"
     )
@@ -3677,10 +3805,16 @@ def test_plc6c_catalog_session_has_no_peer_base_tool_or_command_publisher() -> N
         encoding="utf-8"
     )
 
-    # The sole remaining occurrence is the compatibility API definition; no
-    # production caller independently publishes the admitted base pack.
-    assert direct_tool_registration_sites == 1
-    assert "register_coding_builtin_tools" not in cli
+    # PLC6E still owns deletion of the explicit legacy compatibility path.  AST
+    # import resolution freezes it as the sole caller and proves that its call
+    # remains beneath the exact legacy authority guard.
+    assert tool_calls == [(Path("src/loushang/coding/cli/__main__.py"), True)]
+    assert set(command_stage_calls) == {
+        Path("src/loushang/coding/_base_plugin_owners.py")
+    }
+    assert set(standard_command_catalog_calls) == {
+        Path("src/loushang/coding/_base_plugin_owners.py")
+    }
     assert "build_coding_base_plugin_owners(" in agent_session
     assert "SessionCommandGenerationRegistry()" in agent_session
     assert "command_generations=self._command_generation_registry" in agent_product

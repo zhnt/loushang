@@ -53,6 +53,7 @@ from loushang.harness.runtime.registration import (
 from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityCompositionInputs,
     SessionCapabilityConsumerCapture,
+    commit_session_capability_owner_generations,
     dispose_session_capability_owner_generations,
     stage_session_capability_owner_generations,
 )
@@ -335,6 +336,9 @@ def test_product_opt_in_tool_owner_stages_complete_generation_and_retires_revers
             bindings=(binding,),
             captures=(capture,),
         )
+        assert registration.visible == []
+        assert registration.staged == ["document_outline", "inspect_symbol"]
+        commit_session_capability_owner_generations(generations)
         assert registration.visible == ["document_outline", "inspect_symbol"]
         assert registration.enabled == [
             ("document_outline", False),

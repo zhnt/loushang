@@ -9,11 +9,19 @@ from collections.abc import Awaitable
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Literal, Protocol, TextIO
+from typing import Any, Literal, Protocol, TextIO
+from uuid import uuid4
 
+from loushang.harness.runtime._owned_tasks import _await_cancellation_atomic
 from loushang.harness.workspace._local_process import (
     kill_local_process_tree,
     spawn_local_process,
+)
+from loushang.harness.workspace.process import (
+    AuthorizedProcessLauncher,
+    ProcessExit,
+    ProcessHandle,
+    ProcessLaunchRequest,
 )
 from loushang.harness.workspace.truncation import truncate_tail
 
@@ -298,6 +306,289 @@ class LocalExecBackend:
             stdio_complete=drain_outcome.is_complete,
             stdio_drain_reason=drain_outcome.reason,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class AuthorizedProcessExecBackend:
+    """Adapt one graph-authorized process launcher to the Exec backend contract.
+
+    The launcher remains the sole process authority. This adapter owns only the
+    Product-neutral Exec lifecycle: cancellation/timeout races, bounded stdout
+    draining, output retention, and result projection.
+    """
+
+    launcher: AuthorizedProcessLauncher
+    post_exit_stdout_timeout_seconds: float = 2.0
+    forced_stdout_timeout_seconds: float = 0.5
+
+    def __post_init__(self) -> None:
+        if not callable(getattr(self.launcher, "start", None)):
+            raise TypeError("Authorized process Exec backend requires a launcher")
+        for name, value in (
+            ("post-exit stdout timeout", self.post_exit_stdout_timeout_seconds),
+            ("forced stdout timeout", self.forced_stdout_timeout_seconds),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int | float):
+                raise TypeError(f"Authorized process {name} must be numeric")
+            if value <= 0:
+                raise ValueError(f"Authorized process {name} must be positive")
+
+    async def __call__(
+        self,
+        request: ExecRequest,
+        *,
+        signal: object | None = None,
+        on_update: ExecUpdateCallback | None = None,
+    ) -> ExecResult:
+        if not isinstance(request, ExecRequest):
+            raise TypeError("Authorized process execution requires an ExecRequest")
+        if request.cwd is None or request.effective_environment is None:
+            raise ValueError("Authorized process execution requires a frozen request")
+        handle = await self.launcher.start(
+            ProcessLaunchRequest(
+                command=request.command,
+                cwd=request.cwd,
+                effective_environment=request.effective_environment,
+                stream_stderr=True,
+            ),
+            correlation_id=f"workspace-exec:{uuid4().hex}",
+            signal=signal,
+        )
+        stdout_capture = _StreamCapture(
+            stream_name="stdout",
+            capture_full_output=request.capture_full_output,
+            retain_output_artifact=request.retain_output_artifacts,
+            rolling_max_bytes=request.rolling_max_bytes,
+            artifact_dir=request.artifact_dir,
+        )
+        stderr_capture = _StreamCapture(
+            stream_name="stderr",
+            capture_full_output=request.capture_full_output,
+            retain_output_artifact=request.retain_output_artifacts,
+            rolling_max_bytes=request.rolling_max_bytes,
+            artifact_dir=request.artifact_dir,
+        )
+        output_capture = _OutputCapture(
+            capture_full_output=request.capture_full_output,
+            rolling_max_bytes=request.rolling_max_bytes,
+        )
+
+        async def publish(
+            chunk: ExecOutputChunk,
+            capture: _StreamCapture,
+        ) -> None:
+            if not chunk.text:
+                return
+            capture.append(chunk.text)
+            output_capture.append(chunk)
+            if on_update is not None:
+                update = on_update(chunk)
+                if inspect.isawaitable(update):
+                    await update
+
+        async def drain_stream(
+            stream_name: Literal["stdout", "stderr"],
+        ) -> None:
+            decoder = _IncrementalTextChunks(max_chunk_chars=64 * 1024)
+            try:
+                while True:
+                    content = (
+                        await handle.read_stdout()
+                        if stream_name == "stdout"
+                        else await handle.read_stderr()
+                    )
+                    if not content:
+                        return
+                    for text in decoder.feed(content):
+                        await publish(
+                            ExecOutputChunk(stream=stream_name, text=text),
+                            stdout_capture
+                            if stream_name == "stdout"
+                            else stderr_capture,
+                        )
+            finally:
+                for text in decoder.finish():
+                    await publish(
+                        ExecOutputChunk(stream=stream_name, text=text),
+                        stdout_capture
+                        if stream_name == "stdout"
+                        else stderr_capture,
+                    )
+
+        drain_tasks = (
+            asyncio.create_task(drain_stream("stdout")),
+            asyncio.create_task(drain_stream("stderr")),
+        )
+        wait_task: asyncio.Task[ProcessExit] | None = None
+        abort_task = (
+            asyncio.create_task(_wait_for_abort(signal)) if signal is not None else None
+        )
+        timed_out = False
+        cancelled = False
+        stdio_complete = True
+        exit_status: ProcessExit | None = None
+        result: ExecResult | None = None
+        operation_error: BaseException | None = None
+        try:
+            if request.stdin is not None:
+                await handle.write_stdin(
+                    request.stdin.encode("utf-8", errors="surrogateescape")
+                )
+            await handle.close_stdin()
+            wait_task = asyncio.create_task(handle.wait())
+            if request.timeout_seconds is None and abort_task is None:
+                exit_status = await wait_task
+            else:
+                waiters: set[asyncio.Task[object]] = {
+                    wait_task,  # type: ignore[arg-type]
+                }
+                if abort_task is not None:
+                    waiters.add(abort_task)  # type: ignore[arg-type]
+                done, _ = await asyncio.wait(
+                    waiters,
+                    timeout=request.timeout_seconds,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if wait_task in done:
+                    exit_status = wait_task.result()
+                elif abort_task is not None and abort_task in done:
+                    cancelled = True
+                    exit_status = await handle.terminate()
+                else:
+                    timed_out = True
+                    exit_status = await handle.terminate()
+            if wait_task is not None and not wait_task.done():
+                wait_task.cancel()
+                await asyncio.gather(wait_task, return_exceptions=True)
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*drain_tasks),
+                    timeout=(
+                        self.forced_stdout_timeout_seconds
+                        if timed_out or cancelled
+                        else self.post_exit_stdout_timeout_seconds
+                    ),
+                )
+            except TimeoutError:
+                stdio_complete = False
+                await asyncio.gather(*drain_tasks, return_exceptions=True)
+            assert exit_status is not None
+            stdout_capture.close()
+            stderr_capture.close()
+            stdout = stdout_capture.content
+            stderr = stderr_capture.content
+            stdout_preview, stdout_artifact_path = _build_preview_from_capture(
+                stdout_capture,
+                max_lines=request.preview_max_lines,
+                max_bytes=request.preview_max_bytes,
+            )
+            stderr_preview, stderr_artifact_path = _build_preview_from_capture(
+                stderr_capture,
+                max_lines=request.preview_max_lines,
+                max_bytes=request.preview_max_bytes,
+            )
+            result = ExecResult(
+                exit_code=exit_status.return_code,
+                stdout=stdout,
+                stderr=stderr,
+                timed_out=timed_out,
+                cancelled=cancelled,
+                stdout_chunks=tuple(stdout_capture.chunks),
+                stderr_chunks=tuple(stderr_capture.chunks),
+                output_chunks=tuple(output_capture.chunks),
+                stdout_preview=stdout_preview.content,
+                stderr_preview=stderr_preview.content,
+                stdout_truncated=stdout_preview.truncated,
+                stdout_truncated_by=stdout_preview.truncated_by,
+                stderr_truncated=stderr_preview.truncated,
+                stderr_truncated_by=stderr_preview.truncated_by,
+                stdout_artifact_path=stdout_artifact_path,
+                stderr_artifact_path=stderr_artifact_path,
+                stdout_total_lines=stdout_capture.total_lines,
+                stdout_total_bytes=stdout_capture.total_bytes,
+                stderr_total_lines=stderr_capture.total_lines,
+                stderr_total_bytes=stderr_capture.total_bytes,
+                stdio_complete=stdio_complete,
+                stdio_drain_reason=None if stdio_complete else "hard_timeout",
+            )
+        except BaseException as error:
+            operation_error = error
+
+        cleanup_task = asyncio.create_task(
+            _cleanup_authorized_process(
+                handle,
+                (wait_task, abort_task, *drain_tasks),
+                terminate=operation_error is not None,
+            ),
+            name="harness-authorized-process-cleanup",
+        )
+        cleanup_error: BaseException | None = None
+        try:
+            await _await_cancellation_atomic(cleanup_task)
+        except BaseException as error:
+            cleanup_error = error
+            if (
+                isinstance(error, asyncio.CancelledError)
+                and operation_error is not None
+                and cleanup_task.done()
+                and not cleanup_task.cancelled()
+            ):
+                try:
+                    cleanup_task.result()
+                except BaseException as task_error:
+                    cleanup_error = task_error
+                else:
+                    # Preserve the first operation cancellation/error after the
+                    # owned cleanup has survived any repeated cancellation.
+                    cleanup_error = None
+        finally:
+            stdout_capture.close()
+            stderr_capture.close()
+            if operation_error is not None or cleanup_error is not None:
+                stdout_capture.discard_artifact()
+                stderr_capture.discard_artifact()
+
+        if operation_error is not None:
+            if cleanup_error is not None:
+                operation_error.add_note(
+                    f"Authorized process cleanup also failed: {cleanup_error!r}"
+                )
+            raise operation_error.with_traceback(operation_error.__traceback__)
+        if cleanup_error is not None:
+            raise cleanup_error.with_traceback(cleanup_error.__traceback__)
+        assert result is not None
+        return result
+
+
+async def _cleanup_authorized_process(
+    handle: ProcessHandle,
+    tasks: tuple[asyncio.Task[Any] | None, ...],
+    *,
+    terminate: bool,
+) -> None:
+    primary_error: BaseException | None = None
+    if terminate:
+        try:
+            await handle.terminate()
+        except BaseException as error:
+            primary_error = error
+    for task in tasks:
+        if task is not None and not task.done():
+            task.cancel()
+    if any(task is not None for task in tasks):
+        await asyncio.gather(
+            *(task for task in tasks if task is not None),
+            return_exceptions=True,
+        )
+    try:
+        await handle.close()
+    except BaseException as error:
+        if primary_error is None:
+            primary_error = error
+        else:
+            primary_error.add_note(f"Authorized process close also failed: {error!r}")
+    if primary_error is not None:
+        raise primary_error
 
 
 @dataclass
@@ -716,4 +1007,9 @@ def _output_bytes(content: str) -> bytes:
     return content.encode("utf-8", errors="surrogateescape")
 
 
-__all__ = ["ExecBackend", "ExecService", "LocalExecBackend"]
+__all__ = [
+    "AuthorizedProcessExecBackend",
+    "ExecBackend",
+    "ExecService",
+    "LocalExecBackend",
+]

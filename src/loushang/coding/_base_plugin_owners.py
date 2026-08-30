@@ -37,7 +37,12 @@ from loushang.harness.session.command_controller import (
 from loushang.harness.session.commands.catalog import (
     list_standard_session_command_descriptors,
 )
+from loushang.harness.tools.workspace.bash import BashOperations
 from loushang.harness.tools.workspace.factory import ToolsOptions
+from loushang.harness.workspace.exec import AuthorizedProcessExecBackend, ExecService
+from loushang.harness.workspace.generation_bindings import (
+    GenerationBoundOperationSet,
+)
 from loushang.harness.workspace.operations import (
     EditOperations,
     FindOperations,
@@ -46,15 +51,26 @@ from loushang.harness.workspace.operations import (
     ReadOperations,
     WriteOperations,
 )
+from loushang.harness.workspace.process import AuthorizedProcessLauncher
 
 _PLUGIN_ID = "coding.base"
-_TOOL_CONTRIBUTION_ID = "coding.builtin"
 _TOOL_OWNER_ID = "tools.workspace"
 _TOOL_CATALOG_ID = "harness.workspace.core"
 _COMMAND_CONTRIBUTION_ID = "coding.standard"
 _COMMAND_OWNER_ID = "commands.session"
 _COMMAND_CATALOG_ID = "harness.session.standard"
-_TOOL_NAMES = ("bash", "edit", "find", "grep", "ls", "read", "write")
+_TOOL_PACK_IDENTITIES = {
+    "coding.builtin": ("bash", "edit", "find", "grep", "ls", "read", "write"),
+    "coding.builtin.windows": (
+        "edit",
+        "find",
+        "grep",
+        "ls",
+        "read",
+        "shell",
+        "write",
+    ),
+}
 _COMMAND_NAMES = (
     "branch",
     "changelog",
@@ -149,8 +165,22 @@ class _CodingBaseSourceInfo:
 class _CodingBaseGeneration:
     scope: RegistrationScope = field(repr=False)
     kind: str
+    operation_set: GenerationBoundOperationSet | None = field(
+        default=None,
+        repr=False,
+    )
+
+    def commit(self) -> None:
+        self.scope.commit()
+
+    def rollback_commit(self) -> None:
+        self.scope.rollback_commit()
 
     async def dispose(self) -> None:
+        if self.operation_set is not None:
+            self.operation_set.invalidate(
+                "Coding base workspace operation generation is stale."
+            )
         report = await self.scope.dispose()
         if report.has_failures:
             raise CodingBaseOwnerError(
@@ -168,13 +198,14 @@ class CodingBaseToolOwner:
     _bound: bool = field(default=False, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        tool_names = _tool_identities(self.admission.contribution_id)
         _validate_admission(
             self.admission,
             owner_id=_TOOL_OWNER_ID,
             contribution_kind="tool_pack",
-            contribution_id=_TOOL_CONTRIBUTION_ID,
+            contribution_id=self.admission.contribution_id,
             catalog_id=_TOOL_CATALOG_ID,
-            identities=_TOOL_NAMES,
+            identities=tool_names,
             requirements=(_WORKSPACE_REQUIREMENT,),
         )
         if not isinstance(self.options, ToolsOptions):
@@ -203,13 +234,8 @@ class CodingBaseToolOwner:
         *,
         registration: CodingBaseToolRegistrationPort,
     ) -> _CodingBaseGeneration:
-        options = self._options_from_capture(captures)
-        by_name = {
-            item.name: item
-            for item in create_coding_builtin_tool_definitions(options=options)
-        }
-        if set(by_name) != set(_TOOL_NAMES):
-            raise RuntimeError("Coding base Tool catalog changed admitted identities")
+        options, operation_set = self._options_from_capture(captures)
+        tool_names = _tool_identities(self.admission.contribution_id)
         owner = _registration_owner(self.admission, self.scope_id)
         scope = RegistrationScope(owner)
         source_info = _CodingBaseSourceInfo(
@@ -218,7 +244,15 @@ class CodingBaseToolOwner:
             admission_fingerprint=self.admission.fingerprint,
         )
         try:
-            for name in _TOOL_NAMES:
+            by_name = {
+                item.name: item
+                for item in create_coding_builtin_tool_definitions(options=options)
+            }
+            if set(by_name) != set(tool_names):
+                raise RuntimeError(
+                    "Coding base Tool catalog changed admitted identities"
+                )
+            for name in tool_names:
                 scope.add(
                     registration.stage_runtime_tool(
                         by_name[name],
@@ -226,16 +260,22 @@ class CodingBaseToolOwner:
                         source_info=source_info,
                     )
                 )
-            scope.commit()
         except BaseException as error:
+            operation_set.invalidate(
+                "Coding base workspace operation generation failed staging."
+            )
             _rollback_scope(scope, error, kind="Tool")
             raise
-        return _CodingBaseGeneration(scope=scope, kind="tool")
+        return _CodingBaseGeneration(
+            scope=scope,
+            kind="tool",
+            operation_set=operation_set,
+        )
 
     def _options_from_capture(
         self,
         captures: tuple[SessionCapabilityConsumerCapture, ...],
-    ) -> ToolsOptions:
+    ) -> tuple[ToolsOptions, GenerationBoundOperationSet]:
         if len(captures) != 1:
             raise ValueError("Coding base Tool owner requires one Consumer capture")
         [capture] = captures
@@ -249,33 +289,52 @@ class CodingBaseToolOwner:
         launcher = facets.require(WORKSPACE_PROCESS_LAUNCH_FACET)
         if not callable(getattr(launcher, "start", None)):
             raise TypeError("Coding base Tool process facet is invalid")
+        process_operations = ExecService(
+            backend=AuthorizedProcessExecBackend(
+                cast(AuthorizedProcessLauncher, launcher)
+            )
+        )
+        operation_set = GenerationBoundOperationSet(
+            {
+                "process": process_operations,
+                "read": facets.require(WORKSPACE_READ_FACET),
+                "list": facets.require(WORKSPACE_LIST_FACET),
+                "search": facets.require(WORKSPACE_SEARCH_FACET),
+                "write": facets.require(WORKSPACE_WRITE_FACET),
+                "edit": facets.require(WORKSPACE_EDIT_FACET),
+            },
+            stale_message="Coding base workspace operation generation is stale.",
+        )
         return replace(
             self.options,
+            exec_service=None,
+            bash_operations=cast(BashOperations, operation_set.capture("process")),
+            shell_operations=cast(BashOperations, operation_set.capture("process")),
             read_operations=cast(
                 ReadOperations,
-                facets.require(WORKSPACE_READ_FACET),
+                operation_set.capture("read"),
             ),
             ls_operations=cast(
                 LsOperations,
-                facets.require(WORKSPACE_LIST_FACET),
+                operation_set.capture("list"),
             ),
             find_operations=cast(
                 FindOperations,
-                facets.require(WORKSPACE_SEARCH_FACET),
+                operation_set.capture("search"),
             ),
             grep_operations=cast(
                 GrepOperations,
-                facets.require(WORKSPACE_SEARCH_FACET),
+                operation_set.capture("search"),
             ),
             write_operations=cast(
                 WriteOperations,
-                facets.require(WORKSPACE_WRITE_FACET),
+                operation_set.capture("write"),
             ),
             edit_operations=cast(
                 EditOperations,
-                facets.require(WORKSPACE_EDIT_FACET),
+                operation_set.capture("edit"),
             ),
-        )
+        ), operation_set
 
     async def _dispose(self, value: object) -> None:
         if not isinstance(value, _CodingBaseGeneration) or value.kind != "tool":
@@ -341,7 +400,6 @@ class CodingBaseCommandOwner:
                     pack_id=_COMMAND_CATALOG_ID,
                 )
             )
-            scope.commit()
         except BaseException as error:
             _rollback_scope(scope, error, kind="Command")
             raise
@@ -369,7 +427,21 @@ def _owner_binding(
         authority_gate=authority_gate,
         stage=stage,
         dispose=dispose,
+        commit=lambda value: _commit_generation(value),
+        rollback_commit=lambda value: _rollback_generation_commit(value),
     )
+
+
+def _commit_generation(value: object) -> None:
+    if not isinstance(value, _CodingBaseGeneration):
+        raise TypeError("Coding base owner received a foreign generation")
+    value.commit()
+
+
+def _rollback_generation_commit(value: object) -> None:
+    if not isinstance(value, _CodingBaseGeneration):
+        raise TypeError("Coding base owner received a foreign generation")
+    value.rollback_commit()
 
 
 def _registration_owner(
@@ -382,6 +454,13 @@ def _registration_owner(
         runtime_id=(f"{scope_id}:{admission.plugin_id}:{admission.contribution_id}"),
         generation=admission.candidate.instance_revision_ref.revision,
     )
+
+
+def _tool_identities(contribution_id: str) -> tuple[str, ...]:
+    identities = _TOOL_PACK_IDENTITIES.get(contribution_id)
+    if identities is None:
+        raise ValueError("Coding base Tool owner admission is not a reserved pack")
+    return identities
 
 
 def _rollback_scope(

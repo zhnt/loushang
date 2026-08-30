@@ -81,15 +81,13 @@ from loushang.harness.extensions.context import (
 from loushang.harness.extensions.provider_config import provider_from_extension_config
 from loushang.harness.extensions.runtime_bindings import ExtensionRuntimeBindingFactory
 from loushang.harness.policy import PolicyEvaluator
-from loushang.harness.resource_catalog.joint_generation import (
-    ExtensionGenerationRetirementPort,
-)
 from loushang.harness.resource_catalog.session_bootstrap import (
+    ExtensionGenerationRetirementPort,
     InitialExtensionGenerationHost,
     InitialSessionResourceCatalogBootstrap,
     InitialSessionResourcePublication,
+    ResourceCatalogProjection,
 )
-from loushang.harness.resources._catalog_projection import ResourceCatalogProjection
 from loushang.harness.resources._skill_catalog_consumer import (
     LoadedSkillBody,
     SkillCatalogConsumer,
@@ -134,6 +132,7 @@ from loushang.harness.session.capability_composition_inputs import (
     SessionCapabilityOwnerGenerationBinding,
     SessionCapabilityOwnerGenerationStagingError,
     StagedSessionCapabilityOwnerGeneration,
+    commit_session_capability_owner_generations,
     dispose_session_capability_owner_generations,
     stage_session_capability_owner_generations,
     validate_session_capability_composition_closure,
@@ -1495,15 +1494,26 @@ class AgentProductSession(AgentSessionAdapterMixin):
                     retirement = catalog_bootstrap.publish(
                         InitialSessionResourcePublication(
                             capture=self._capture_initial_resource_publication,
-                            commit=self._commit_initial_resource_publication,
+                            commit=lambda catalog, projection, bundle: (
+                                self._commit_initial_resource_and_owner_publication(
+                                    catalog,
+                                    projection,
+                                    bundle,
+                                    owner_generations=owner_generations,
+                                )
+                            ),
                             restore=self._restore_initial_resource_publication,
                         )
                     )
+                    self._pending_resource_catalog_retirements.append(retirement)
                     retirement_reports = await retirement.retire()
                     if any(report.has_failures for report in retirement_reports):
-                        raise RuntimeError(
-                            "initial Extension generation retirement remains pending"
+                        raise ResourceCatalogRefreshRetirementError(
+                            "Initial Extension generation retirement remains pending"
                         )
+                    self._pending_resource_catalog_retirements.remove(retirement)
+                else:
+                    commit_session_capability_owner_generations(owner_generations)
             except BaseException as error:
                 owner_cleanup_failed = False
                 if owner_generations:
@@ -1999,6 +2009,22 @@ class AgentProductSession(AgentSessionAdapterMixin):
         self._adopt_resource_loader_catalog_projection(projection)
         self._set_resource_bundle(bundle)
         self._rebuild_prompt_and_tools_view()
+
+    def _commit_initial_resource_and_owner_publication(
+        self,
+        catalog: object,
+        projection: object,
+        bundle: ResourceBundle,
+        *,
+        owner_generations: tuple[
+            StagedSessionCapabilityOwnerGeneration,
+            ...,
+        ],
+    ) -> None:
+        """Publish Resource state and exact owners at one synchronous boundary."""
+
+        self._commit_initial_resource_publication(catalog, projection, bundle)
+        commit_session_capability_owner_generations(owner_generations)
 
     def _restore_initial_resource_publication(self, previous: object) -> None:
         if not isinstance(previous, tuple) or len(previous) != 3:

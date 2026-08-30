@@ -1222,31 +1222,149 @@ def test_default_runtime_builder_declares_global_cwd_and_home_session_sources(
     asyncio.run(seed_and_restore())
 
 
-def test_default_runtime_builder_maps_no_tools_to_empty_allowed_tools(tmp_path) -> None:
+def test_default_runtime_builder_projects_catalog_no_tools_into_final_model_input(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.agent import ModelCallPreparation, synthetic_model_transport
+    from loushang.ai.event_stream.stream import AssistantMessageEventStream
+    from loushang.ai.types import AssistantMessage, TextPart, Usage
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
-    from loushang.coding.tool_pack import (
-        register_coding_builtin_tools as register_builtin_tools,
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.prompt import (
+        CODING_KERNEL_SYSTEM_PROMPT,
+        CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT,
     )
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
 
     registry = ToolRegistry()
-    register_builtin_tools(registry)
-    runtime = default_runtime_builder(
-        args=SimpleNamespace(no_tools=True, tools=(), no_session=True),
-        cwd=tmp_path,
-        session_dir=tmp_path / "sessions",
-        services=create_services(),
-        tool_registry=registry,
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))
+    services = create_services(
+        settings_manager=SettingsManager(
+            ControlConfig(capabilities={"coding.lsp": "always"})
+        )
     )
+    captured_model_inputs: list[ModelCallPreparation] = []
 
-    session = asyncio.run(runtime.create_session(cwd=str(tmp_path)))
+    @synthetic_model_transport
+    async def stream_fn(model, context, options=None):  # type: ignore[no-untyped-def]
+        del context, options
+        message = AssistantMessage(
+            endpoint=model.endpoint_id,
+            role="assistant",
+            content=[TextPart(type="text", text="kernel-only")],
+            api=model.api or model.endpoint_id,
+            provider=model.provider_id,
+            model=model.id,
+            response_id=None,
+            usage=Usage(
+                input=0,
+                output=0,
+                cache_read=0,
+                cache_write=0,
+                total_tokens=0,
+                cost={},
+            ),
+            stop_reason="stop",
+            error_message=None,
+            timestamp=0.0,
+        )
+        stream = AssistantMessageEventStream()
+        stream.push({"type": "done", "reason": "stop", "message": message})
+        return stream
 
-    assert session.get_active_tool_names() == []
-    assert session.get_all_tools() == []
-    assert session.multiagent_runtime is not None
+    async def scenario() -> None:
+        runtime = default_runtime_builder(
+            args=SimpleNamespace(no_tools=True, tools=(), no_session=True),
+            cwd=tmp_path,
+            session_dir=tmp_path / "sessions",
+            services=services,
+            tool_registry=registry,
+        )
+        session = await runtime.create_session(cwd=str(tmp_path))
+        try:
+            await session.prepare_model_call_runtime()
+            prepare_model_call = session.agent.prepare_model_call
+            assert prepare_model_call is not None
+
+            def capture_model_input(preparation):  # type: ignore[no-untyped-def]
+                captured_model_inputs.append(preparation)
+                return prepare_model_call(preparation)
+
+            session.agent.prepare_model_call = capture_model_input
+            session.agent.stream_fn = stream_fn
+            await session.prompt("verify kernel-only input")
+
+            base_assembly = session._coding_base_plugin_assembly
+            assert base_assembly is not None
+            assert base_assembly.tool_contribution_id is None
+            assert base_assembly.tool_names == ()
+            assert session._coding_lsp_plugin_assembly is None
+            inputs = session._capability_composition_inputs
+            assert inputs is not None
+            assert {
+                (admission.contribution_kind, admission.contribution_id)
+                for admission in inputs.product_composition.catalog_admissions
+            } == {("command_pack", "coding.standard")}
+            assert {
+                (admission.contribution_kind, admission.contribution_id)
+                for admission in inputs.product_composition.resource_admissions
+            } == {("resource_item", "skill-standard")}
+            assert len(session._capability_owner_generations) == 1
+            assert (
+                session._capability_owner_generations[0].admission.contribution_kind
+                == "command_pack"
+            )
+            tool_inventory = (
+                session._composition.tool_controller.tool_registry.registration_inventory
+            )
+            assert "tools.workspace" not in {
+                owner.owner_id for owner, _identity, _state in tool_inventory
+            }
+            assert {
+                "bash",
+                "edit",
+                "find",
+                "grep",
+                "ls",
+                "read",
+                "shell",
+                "write",
+            }.isdisjoint(
+                identity.public_key for _owner, identity, _state in tool_inventory
+            )
+            command_registry = session._command_generation_registry
+            assert command_registry is not None
+            assert len(command_registry.registration_inventory) == 1
+            assert session.resource_bundle is not None
+            assert session.resource_bundle.prompts == []
+            assert [skill.name for skill in session.resource_bundle.skills] == [
+                "standard"
+            ]
+            assert session.get_active_tool_names() == []
+            assert session.get_all_tools() == []
+            assert "session" in {command.name for command in session.list_commands()}
+            assert session.get_lsp_status().enabled is False
+            assert session.multiagent_runtime is not None
+
+            [model_input] = captured_model_inputs
+            assert model_input.context.tools == []
+            assert model_input.context.system_prompt is not None
+            assert model_input.context.system_prompt.startswith(
+                CODING_KERNEL_SYSTEM_PROMPT.rstrip()
+            )
+            assert "Available tools:\n(none)" in model_input.context.system_prompt
+            assert (
+                CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT.rstrip()
+                not in model_input.context.system_prompt
+            )
+        finally:
+            await runtime.dispose_session_runtime()
+
+    asyncio.run(scenario())
 
 
 def test_default_runtime_builder_registers_delegate_only_when_explicitly_selected(
@@ -1314,6 +1432,67 @@ def test_default_runtime_builder_does_not_restore_delegate_when_builtins_disable
     assert AGENT_DELEGATE_TOOL_NAME not in {
         definition.name for definition in session.get_all_tools()
     }
+
+
+def test_default_runtime_builder_restores_builtin_registrar_only_for_legacy_mode(
+    tmp_path,
+) -> None:
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.cli.__main__ import default_runtime_builder
+    from loushang.coding.tool_pack import CODING_BUILTIN_TOOL_NAMES
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+
+    runtime = default_runtime_builder(
+        args=SimpleNamespace(
+            no_tools=False,
+            tools=(),
+            no_builtin_tools=False,
+            no_session=True,
+            resource_authority_mode="legacy_explicit",
+        ),
+        cwd=tmp_path,
+        session_dir=tmp_path / "sessions",
+        services=create_services(),
+        tool_registry=WorkspaceToolRegistry(),
+    )
+
+    session = asyncio.run(runtime.create_session(cwd=str(tmp_path)))
+
+    assert set(CODING_BUILTIN_TOOL_NAMES).issubset(
+        definition.name for definition in session.get_all_tools()
+    )
+
+
+@pytest.mark.parametrize("disabled_flag", ["no_tools", "no_builtin_tools"])
+def test_default_runtime_builder_does_not_restore_legacy_builtins_when_disabled(
+    tmp_path,
+    disabled_flag,
+) -> None:
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.cli.__main__ import default_runtime_builder
+    from loushang.coding.tool_pack import CODING_BUILTIN_TOOL_NAMES
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+
+    flags = {"no_tools": False, "no_builtin_tools": False}
+    flags[disabled_flag] = True
+    runtime = default_runtime_builder(
+        args=SimpleNamespace(
+            **flags,
+            tools=(),
+            no_session=True,
+            resource_authority_mode="legacy_explicit",
+        ),
+        cwd=tmp_path,
+        session_dir=tmp_path / "sessions",
+        services=create_services(),
+        tool_registry=WorkspaceToolRegistry(),
+    )
+
+    session = asyncio.run(runtime.create_session(cwd=str(tmp_path)))
+
+    assert not set(CODING_BUILTIN_TOOL_NAMES).intersection(
+        definition.name for definition in session.get_all_tools()
+    )
 
 
 def test_default_runtime_builder_applies_resource_and_prompt_options(tmp_path) -> None:
@@ -6719,6 +6898,36 @@ def test_run_cli_keeps_list_commands_out_of_default_tui(tmp_path) -> None:
     assert "review" in stdout.getvalue()
 
 
+def test_run_cli_real_default_lists_owner_published_commands_on_first_start(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "home"))
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = asyncio.run(
+        run_cli(
+            ["--list-commands", "--no-session"],
+            stdin=StringIO(""),
+            stdout=stdout,
+            stderr=stderr,
+            cwd=project,
+        )
+    )
+
+    assert exit_code == 0
+    command_names = {
+        line.split("\t", 1)[0] for line in stdout.getvalue().splitlines()
+    }
+    assert {"branch", "session", "tools"}.issubset(command_names)
+    assert "failed to prepare" not in stderr.getvalue().lower()
+
+
 def test_run_cli_configures_observability_for_tui_debug_trace(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.foundation.observability import get_log
@@ -7884,7 +8093,12 @@ def test_run_cli_lists_skills_from_real_catalog_session(
 
     asyncio.run(scenario())
 
-    [skill] = json.loads(stdout.getvalue())
+    skills = {
+        item["name"]: item
+        for item in json.loads(stdout.getvalue())
+    }
+    assert "standard" in skills
+    skill = skills["review"]
     assert (skill["name"], skill["status"], skill["effective"]) == (
         "review",
         "effective",

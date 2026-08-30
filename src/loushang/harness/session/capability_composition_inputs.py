@@ -253,6 +253,7 @@ OwnerGenerationStage: TypeAlias = Callable[
     object | Awaitable[object],
 ]
 OwnerGenerationDispose: TypeAlias = Callable[[object], None | Awaitable[None]]
+OwnerGenerationTransition: TypeAlias = Callable[[object], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -377,6 +378,14 @@ class SessionCapabilityOwnerGenerationBinding:
     )
     stage: OwnerGenerationStage = field(repr=False, compare=False)
     dispose: OwnerGenerationDispose = field(repr=False, compare=False)
+    commit: OwnerGenerationTransition = field(
+        repr=False,
+        compare=False,
+    )
+    rollback_commit: OwnerGenerationTransition = field(
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -393,8 +402,16 @@ class SessionCapabilityOwnerGenerationBinding:
         )
         if not isinstance(self.authority_gate, SessionCapabilityOwnerAuthorityGate):
             raise TypeError("Owner generation binding requires an authority gate")
-        if not callable(self.stage) or not callable(self.dispose):
-            raise TypeError("Owner generation stage/dispose must be callable")
+        if not all(
+            callable(item)
+            for item in (
+                self.stage,
+                self.dispose,
+                self.commit,
+                self.rollback_commit,
+            )
+        ):
+            raise TypeError("Owner generation lifecycle callbacks must be callable")
 
     def matches(self, admission: OwnerContributionAdmissionRecord) -> bool:
         return (
@@ -413,7 +430,10 @@ class SessionCapabilityOwnerGenerationBinding:
 @dataclass(slots=True)
 class StagedSessionCapabilityOwnerGeneration:
     binding: SessionCapabilityOwnerGenerationBinding
+    admission: OwnerContributionAdmissionRecord = field(repr=False)
     value: object = field(repr=False)
+    commit_started: bool = False
+    committed: bool = False
     disposed: bool = False
     _dispose_task: asyncio.Task[None] | None = field(
         default=None,
@@ -421,6 +441,37 @@ class StagedSessionCapabilityOwnerGeneration:
         repr=False,
         compare=False,
     )
+
+    def commit_once(self) -> None:
+        """Activate this exact staged generation at a synchronous boundary."""
+
+        if self.disposed:
+            raise RuntimeError("disposed owner generation cannot be committed")
+        if self.committed:
+            return
+        if self.commit_started:
+            raise RuntimeError("owner generation commit cleanup is pending")
+        self.binding.authority_gate.validate(self.admission)
+        self.commit_started = True
+        _run_owner_generation_transition(
+            self.binding.commit,
+            self.value,
+            name="commit",
+        )
+        self.committed = True
+
+    def rollback_commit_once(self) -> None:
+        """Hide an attempted activation before asynchronous disposal."""
+
+        if not self.commit_started:
+            return
+        _run_owner_generation_transition(
+            self.binding.rollback_commit,
+            self.value,
+            name="rollback commit",
+        )
+        self.committed = False
+        self.commit_started = False
 
     async def dispose_once(self) -> None:
         if self.disposed:
@@ -440,6 +491,8 @@ class StagedSessionCapabilityOwnerGeneration:
         result = self.binding.dispose(self.value)
         if inspect.isawaitable(result):
             await result
+        self.committed = False
+        self.commit_started = False
         self.disposed = True
 
 
@@ -509,6 +562,7 @@ async def stage_session_capability_owner_generations(
             staged.append(
                 StagedSessionCapabilityOwnerGeneration(
                     binding=binding,
+                    admission=admission,
                     value=result,
                 )
             )
@@ -534,8 +588,52 @@ async def stage_session_capability_owner_generations(
     return tuple(staged)
 
 
+def commit_session_capability_owner_generations(
+    generations: tuple[StagedSessionCapabilityOwnerGeneration, ...],
+) -> None:
+    """Synchronously activate all owners or hide every attempted activation."""
+
+    attempted: list[StagedSessionCapabilityOwnerGeneration] = []
+    try:
+        for generation in generations:
+            if not isinstance(generation, StagedSessionCapabilityOwnerGeneration):
+                raise TypeError("Owner generation commit received an invalid value")
+            if generation.committed:
+                continue
+            attempted.append(generation)
+            generation.commit_once()
+    except BaseException as error:
+        for generation in reversed(attempted):
+            try:
+                generation.rollback_commit_once()
+            except BaseException as cleanup_error:
+                error.add_note(
+                    "Owner generation commit rollback also failed: "
+                    f"{cleanup_error!r}"
+                )
+        raise
+
+
 async def _await_owner_stage(awaitable: Awaitable[object]) -> object:
     return await awaitable
+
+
+def _run_owner_generation_transition(
+    transition: OwnerGenerationTransition,
+    value: object,
+    *,
+    name: str,
+) -> None:
+    """Enforce the no-await publication boundary at runtime."""
+
+    result = cast(Callable[[object], object], transition)(value)
+    if inspect.isawaitable(result):
+        close = getattr(result, "close", None)
+        if callable(close):
+            close()
+        raise TypeError(f"Owner generation {name} must be synchronous")
+    if result is not None:
+        raise TypeError(f"Owner generation {name} must return None")
 
 
 def validate_session_capability_owner_generation_bindings(
@@ -624,6 +722,7 @@ __all__ = [
     "SessionCapabilityOwnerAuthorityGate",
     "SessionCompositionChange",
     "StagedSessionCapabilityOwnerGeneration",
+    "commit_session_capability_owner_generations",
     "dispose_session_capability_owner_generations",
     "stage_session_capability_owner_generations",
     "validate_session_capability_owner_generation_bindings",

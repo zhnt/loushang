@@ -61,7 +61,10 @@ def test_architecture_set_is_one_flattened_superset_with_exact_provenance() -> N
     assert architecture.fingerprint != standard.fingerprint
 
 
-@pytest.mark.parametrize("value", ["", "standard", "CODING-STANDARD", " unknown "])
+@pytest.mark.parametrize(
+    "value",
+    ["", "standard", "CODING-STANDARD", " unknown ", " coding-standard "],
+)
 def test_composition_set_rejects_aliases_and_unknown_values(value: str) -> None:
     with pytest.raises(ValueError, match="Unsupported Coding composition set"):
         resolve_coding_composition_set(value)

@@ -55,6 +55,7 @@ class ProcessLaunchRequest:
     command: tuple[str, ...]
     cwd: str
     effective_environment: tuple[tuple[str, str], ...] = field(repr=False)
+    stream_stderr: bool = False
 
     def __post_init__(self) -> None:
         command = _string_tuple(self.command, field_name="command")
@@ -68,6 +69,8 @@ class ProcessLaunchRequest:
             "effective_environment",
             _environment_tuple(self.effective_environment),
         )
+        if not isinstance(self.stream_stderr, bool):
+            raise TypeError("stream_stderr must be a boolean")
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +86,8 @@ class ProcessStderrTail:
 
 class ProcessHandle(Protocol):
     async def read_stdout(self, max_bytes: int = 64 * 1024) -> bytes: ...
+
+    async def read_stderr(self, max_bytes: int = 64 * 1024) -> bytes: ...
 
     async def write_stdin(self, data: bytes) -> None: ...
 

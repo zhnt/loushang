@@ -7,10 +7,10 @@ from typing import Protocol
 
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
-from loushang.harness.resources._catalog_input_receipt import (
+from loushang.harness.resources.layout import resolve_user_resource_roots
+from loushang.harness.resources.packages.catalog_inputs import (
     CatalogPluginPackageInput,
 )
-from loushang.harness.resources.layout import resolve_user_resource_roots
 from loushang.harness.resources.packages.manifest import (
     project_plugin_diagnostics,
     resolve_package_manifest,

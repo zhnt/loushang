@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from loushang.coding._base_plugin_owners import (
@@ -13,6 +13,7 @@ from loushang.coding._base_plugin_owners import (
 from loushang.coding.composition_sets import CodingCompositionSetPlan
 from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.coding.resource_runtime import CodingPackageMaterializer
+from loushang.coding.tool_pack import coding_workspace_tool_profile
 from loushang.harness.capabilities import (
     MODEL_INPUT_CAPABILITY_DEFINITION,
     WORKSPACE_CAPABILITY_DEFINITION,
@@ -26,19 +27,17 @@ from loushang.harness.capabilities.contribution_admission import (
 from loushang.harness.capabilities.provider_binding import (
     CapabilityBundleProviderBinding,
 )
-from loushang.harness.plugin_authoring.host import PluginDeclarationHost
+from loushang.harness.environment import HostEnvironment, LocalHostEnvironmentProbe
 from loushang.harness.resources.plugins.authority import (
     PluginResolutionAuthority,
     PluginRuntimeResolution,
 )
 from loushang.harness.resources.plugins.selection import (
-    PendingOnlyPluginExecutionDecisionLookup,
     PluginContributionRef,
     PluginEffectiveConfigurationEntry,
     PluginEffectiveConfigurationSetV1,
     PluginInstanceRevisionRef,
     PluginPreflightContextV1,
-    PluginSelection,
     PluginSelectionPlanV2,
     PluginSourceTrustSnapshotV1,
 )
@@ -57,6 +56,7 @@ from loushang.harness.session.product_composition_assembly import (
     ProductPluginCompositionAssembly,
     ProductPluginCompositionAssemblyRequest,
     ProductPluginCompositionPreparation,
+    ProductPluginPlanSeed,
     ProductPluginSelectionSeed,
     prepare_product_plugin_composition,
 )
@@ -84,25 +84,18 @@ class CodingBasePluginAssemblyError(RuntimeError):
 
 @dataclass(slots=True)
 class CodingBasePluginAssembly:
-    """Finalized inert package selection retained for repeated owner admission."""
+    """Inert base package plan retained until whole-Product finalization."""
 
     runtime: PluginRuntimeResolution = field(repr=False)
     package: PublishedPluginPackage
     binding: PluginSourceBinding
-    selection: PluginSelection
-    composition_request: ProductCompositionAssemblyRequest
+    plan_seed: ProductPluginPlanSeed
     scope_id: str
     composition_set_fingerprint: str
+    host_environment: HostEnvironment
+    tool_contribution_id: str | None
+    tool_names: tuple[str, ...]
     _closed: bool = field(default=False, init=False, repr=False)
-
-    @property
-    def selection_seed(self) -> ProductPluginSelectionSeed:
-        return ProductPluginSelectionSeed(
-            selection=self.selection,
-            packages=(self.package,),
-            bindings=(self.binding,),
-            owner_bindings=self.composition_request.owner_bindings,
-        )
 
     def close(self) -> None:
         if self._closed:
@@ -147,7 +140,7 @@ class CodingBasePluginSessionAssembly:
 
 @dataclass(frozen=True, slots=True)
 class CodingBasePluginOwners:
-    tool: CodingBaseToolOwner = field(repr=False)
+    tool: CodingBaseToolOwner | None = field(repr=False)
     command: CodingBaseCommandOwner = field(repr=False)
 
 
@@ -164,14 +157,26 @@ def prepare_coding_base_plugin_assembly(
     *,
     session_id: str,
     package_materializer: CodingPackageMaterializer,
+    host_environment: HostEnvironment | None = None,
+    include_tool_contribution: bool = True,
+    include_tool_claim_prompt: bool = True,
 ) -> CodingBasePluginAssembly:
-    """Publish and finalize the checked-in data-only package without live owners."""
+    """Publish and plan the checked-in data-only package without live owners."""
 
     if not isinstance(composition_set, CodingCompositionSetPlan):
         raise TypeError("Coding base assembly requires a composition-set plan")
     if not isinstance(package_materializer, CodingPackageMaterializer):
         raise TypeError("Coding base assembly requires CodingPackageMaterializer")
+    if host_environment is not None and not isinstance(
+        host_environment, HostEnvironment
+    ):
+        raise TypeError("Coding base host environment is invalid")
+    if not isinstance(include_tool_contribution, bool):
+        raise TypeError("Coding base Tool selection flag must be a boolean")
+    if not isinstance(include_tool_claim_prompt, bool):
+        raise TypeError("Coding base Tool-claim Prompt flag must be a boolean")
     normalized_session_id = _normalized(session_id, name="Coding Session id")
+    resolved_environment = host_environment or LocalHostEnvironmentProbe().detect()
     requests = {item.plugin_id: item for item in composition_set.plugin_requests}
     base_request = requests.get(_PLUGIN_ID)
     if base_request is None:
@@ -200,29 +205,34 @@ def prepare_coding_base_plugin_assembly(
         [package] = runtime.packages
         [binding] = runtime.bindings
         scope_id = f"session:{normalized_session_id}"
-        selection = _finalize_selection(
+        plan, tool_contribution_id, tool_names = _build_selection_plan(
             package,
             binding=binding,
             scope_id=scope_id,
             composition_set=composition_set,
+            host_environment=resolved_environment,
+            include_tool_contribution=include_tool_contribution,
+            include_tool_claim_prompt=include_tool_claim_prompt,
         )
-        composition_request = ProductCompositionAssemblyRequest(
-            selection=selection,
-            owner_bindings=_owner_bindings(),
-            mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
-            definitions=(
-                MODEL_INPUT_CAPABILITY_DEFINITION,
-                WORKSPACE_CAPABILITY_DEFINITION,
+        plan_seed = ProductPluginPlanSeed(
+            plan=plan,
+            packages=(package,),
+            bindings=(binding,),
+            owner_bindings=_owner_bindings(
+                include_tools=include_tool_contribution,
+                include_prompt=include_tool_claim_prompt,
             ),
         )
         return CodingBasePluginAssembly(
             runtime=runtime,
             package=package,
             binding=binding,
-            selection=selection,
-            composition_request=composition_request,
+            plan_seed=plan_seed,
             scope_id=scope_id,
             composition_set_fingerprint=composition_set.fingerprint,
+            host_environment=resolved_environment,
+            tool_contribution_id=tool_contribution_id,
+            tool_names=tool_names,
         )
     except BaseException:
         runtime.close()
@@ -233,24 +243,24 @@ def prepare_coding_base_plugin_session(
     assembly: CodingBasePluginAssembly,
     *,
     evaluated_at: int,
-    selection_seed: ProductPluginSelectionSeed | None = None,
+    selection_seed: ProductPluginSelectionSeed,
 ) -> CodingBasePluginSessionPreparation:
     """Compile the base selection once before Session host construction."""
 
     if not isinstance(assembly, CodingBasePluginAssembly):
         raise TypeError("Coding base Session preparation requires base assembly")
-    seed = selection_seed or assembly.selection_seed
-    if not isinstance(seed, ProductPluginSelectionSeed):
+    if not isinstance(selection_seed, ProductPluginSelectionSeed):
         raise TypeError("Coding base Session selection seed is invalid")
+    seed = selection_seed
     if _PLUGIN_ID not in seed.selection.plan.selected_plugin_ids:
         raise ValueError("Coding base Session selection omits coding.base")
     contribution_request = ProductCompositionAssemblyRequest(
         selection=seed.selection,
         owner_bindings=seed.owner_bindings,
-        mandatory_roots=assembly.composition_request.mandatory_roots,
-        definitions=assembly.composition_request.definitions,
-        select_optional_requirements=(
-            assembly.composition_request.select_optional_requirements
+        mandatory_roots=(MODEL_INPUT_CAPABILITY_DEFINITION.capability_id,),
+        definitions=(
+            MODEL_INPUT_CAPABILITY_DEFINITION,
+            WORKSPACE_CAPABILITY_DEFINITION,
         ),
     )
     request = ProductPluginCompositionAssemblyRequest(
@@ -268,6 +278,44 @@ def prepare_coding_base_plugin_session(
         product=prepare_product_plugin_composition(
             request,
             evaluated_at=evaluated_at,
+        ),
+    )
+
+
+def prepare_coding_base_resource_plan_seed(
+    assembly: CodingBasePluginAssembly,
+) -> ProductPluginPlanSeed:
+    """Project the pinned base package into a Resource-owner refresh plan."""
+
+    if not isinstance(assembly, CodingBasePluginAssembly):
+        raise TypeError("Coding base Resource plan requires base assembly")
+    seed = assembly.plan_seed
+    resource_ids = {
+        item.contribution_id
+        for item in assembly.package.contribution_index.items
+        if item.kind == "resource_item"
+    }
+    selected_resources = tuple(
+        item
+        for item in seed.plan.selected_contributions
+        if item.plugin_id == _PLUGIN_ID and item.contribution_id in resource_ids
+    )
+    if not selected_resources:
+        raise CodingBasePluginAssemblyError(
+            "The Coding base selection has no Resource contribution",
+            code="coding_base_resource_selection_empty",
+        )
+    return ProductPluginPlanSeed(
+        plan=replace(
+            seed.plan,
+            selected_contributions=selected_resources,
+        ),
+        packages=seed.packages,
+        bindings=seed.bindings,
+        owner_bindings=tuple(
+            item
+            for item in seed.owner_bindings
+            if item.owner_key[1] == "resource_item"
         ),
     )
 
@@ -294,11 +342,25 @@ def build_coding_base_plugin_owners(
         for item in plugin_assembly.product_composition.catalog_admissions
         if item.plugin_id == _PLUGIN_ID
     }
-    tool_admission = admissions.get(("tools.workspace", "tool_pack", "coding.builtin"))
+    tool_admission = (
+        admissions.get(
+            ("tools.workspace", "tool_pack", assembly.tool_contribution_id)
+        )
+        if assembly.tool_contribution_id is not None
+        else None
+    )
     command_admission = admissions.get(
         ("commands.session", "command_pack", "coding.standard")
     )
-    if tool_admission is None or command_admission is None or len(admissions) != 2:
+    expected_admissions = 2 if assembly.tool_contribution_id is not None else 1
+    if (
+        command_admission is None
+        or len(admissions) != expected_admissions
+        or (
+            assembly.tool_contribution_id is not None
+            and tool_admission is None
+        )
+    ):
         raise ValueError("Coding base requires exact Tool and Command admissions")
     authorities = {
         item.owner_key: item.authority
@@ -343,11 +405,15 @@ def build_coding_base_plugin_owners(
         clock=clock,
     )
     return CodingBasePluginOwners(
-        tool=CodingBaseToolOwner(
-            admission=tool_admission,
-            authority_gate=gate,
-            options=tool_options,
-            scope_id=assembly.scope_id,
+        tool=(
+            CodingBaseToolOwner(
+                admission=tool_admission,
+                authority_gate=gate,
+                options=tool_options,
+                scope_id=assembly.scope_id,
+            )
+            if tool_admission is not None
+            else None
         ),
         command=CodingBaseCommandOwner(
             admission=command_admission,
@@ -357,14 +423,44 @@ def build_coding_base_plugin_owners(
     )
 
 
-def _finalize_selection(
+def _build_selection_plan(
     package: PublishedPluginPackage,
     *,
     binding: PluginSourceBinding,
     scope_id: str,
     composition_set: CodingCompositionSetPlan,
-) -> PluginSelection:
+    host_environment: HostEnvironment,
+    include_tool_contribution: bool,
+    include_tool_claim_prompt: bool,
+) -> tuple[PluginSelectionPlanV2, str | None, tuple[str, ...]]:
     contributions = package.contribution_index.items
+    tool_contribution_id = (
+        "coding.builtin.windows"
+        if host_environment.os_family == "windows"
+        else "coding.builtin"
+    )
+    selected_ids = {
+        "coding.standard",
+        "skill-standard",
+    }
+    if include_tool_contribution:
+        selected_ids.add(tool_contribution_id)
+    if include_tool_claim_prompt:
+        selected_ids.add("prompt-standard")
+    selected_contributions = tuple(
+        PluginContributionRef(_PLUGIN_ID, item.contribution_id)
+        for item in contributions
+        if item.contribution_id in selected_ids
+    )
+    selected_tool_names = (
+        tuple(
+            sorted(
+                coding_workspace_tool_profile(host_environment).builtin_tool_names
+            )
+        )
+        if include_tool_contribution
+        else ()
+    )
     policy_revision = (
         f"coding-base-plc6-v1:{composition_set.set_id}:{composition_set.fingerprint}"
     )
@@ -382,10 +478,7 @@ def _finalize_selection(
             ),
         ),
         selected_plugin_ids=(_PLUGIN_ID,),
-        selected_contributions=tuple(
-            PluginContributionRef(_PLUGIN_ID, item.contribution_id)
-            for item in contributions
-        ),
+        selected_contributions=selected_contributions,
         source_trust_snapshots=(
             PluginSourceTrustSnapshotV1(
                 plugin_id=_PLUGIN_ID,
@@ -407,21 +500,24 @@ def _finalize_selection(
         ),
         allowed_authority_ceiling=(),
     )
-    selection = PluginDeclarationHost().resolve(
-        (package,),
-        bindings=(binding,),
-        plan=plan,
-        decision_lookup=PendingOnlyPluginExecutionDecisionLookup(),
+    return (
+        plan,
+        tool_contribution_id if include_tool_contribution else None,
+        selected_tool_names,
     )
-    if not isinstance(selection, PluginSelection):
-        raise CodingBasePluginAssemblyError(
-            "The checked-in coding.base declarations did not finalize",
-            code="coding_base_selection_incomplete",
-        )
-    return selection
 
 
-def _owner_bindings() -> tuple[ProductContributionOwnerBinding, ...]:
+def _owner_bindings(
+    *,
+    include_tools: bool,
+    include_prompt: bool,
+) -> tuple[ProductContributionOwnerBinding, ...]:
+    selected_specs = tuple(
+        spec
+        for spec in _OWNER_SPECS
+        if (include_tools or spec[0] != "tools.workspace")
+        and (include_prompt or spec[0] != "resources.prompt")
+    )
     return tuple(
         ProductContributionOwnerBinding(
             authority=OwnerContributionAuthority(
@@ -440,7 +536,7 @@ def _owner_bindings() -> tuple[ProductContributionOwnerBinding, ...]:
             ),
             admission_ttl_seconds=_ADMISSION_TTL_SECONDS,
         )
-        for owner_id, contribution_kind, collection_id in _OWNER_SPECS
+        for owner_id, contribution_kind, collection_id in selected_specs
     )
 
 
@@ -462,5 +558,6 @@ __all__ = [
     "build_coding_base_plugin_owners",
     "coding_base_plugin_root",
     "prepare_coding_base_plugin_assembly",
+    "prepare_coding_base_resource_plan_seed",
     "prepare_coding_base_plugin_session",
 ]

@@ -51,7 +51,6 @@ from loushang.harness.capabilities.graph_runtime import CapabilityFacetSet
 from loushang.harness.commands import normalize_command_name
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.environment import LocalHostEnvironmentProbe
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
@@ -234,7 +233,6 @@ class AgentSession(AgentProductSession):
         if coding_base_plugin_assembly is not None:
             if plugin_assembly is None or coding_plugin_clock is None:
                 raise ValueError("Coding base Plugin owner inputs are unavailable")
-            base_tool_registration_slot = CodingBaseToolRegistrationSlot()
             command_generations = SessionCommandGenerationRegistry()
             get_external_tool_policy = getattr(
                 settings_manager,
@@ -252,14 +250,13 @@ class AgentSession(AgentProductSession):
                 plugin_assembly,
                 clock=coding_plugin_clock,
                 tool_options=ToolsOptions(
-                    exec_service=exec_service,
                     diagnostics_service=diagnostics_service,
                     external_tool_policy=(
                         get_external_tool_policy()
                         if callable(get_external_tool_policy)
                         else None
                     ),
-                    host_environment=LocalHostEnvironmentProbe().detect(),
+                    host_environment=coding_base_plugin_assembly.host_environment,
                     shell_path=(get_shell_path() if callable(get_shell_path) else None),
                     command_prefix=(
                         get_shell_command_prefix()
@@ -268,8 +265,13 @@ class AgentSession(AgentProductSession):
                     ),
                 ),
             )
+            if base_owners.tool is not None:
+                base_tool_registration_slot = CodingBaseToolRegistrationSlot()
+                owner_bindings = (
+                    base_owners.tool.bind(base_tool_registration_slot),
+                )
             owner_bindings = (
-                base_owners.tool.bind(base_tool_registration_slot),
+                *owner_bindings,
                 base_owners.command.bind(command_generations),
             )
         if coding_lsp_plugin_assembly is not None:
@@ -343,13 +345,17 @@ class AgentSession(AgentProductSession):
                 api_registry=api_registry,
                 exec_service=exec_service,
                 tool_exec_service=(
-                    exec_service
-                    if (
-                        sandbox_runtime is not None
-                        and sandbox_runtime.status().state != "disabled"
+                    None
+                    if coding_base_plugin_session_assembly is not None
+                    else (
+                        exec_service
+                        if (
+                            sandbox_runtime is not None
+                            and sandbox_runtime.status().state != "disabled"
+                        )
+                        or getattr(exec_service, "execution_profile", None) is not None
+                        else None
                     )
-                    or getattr(exec_service, "execution_profile", None) is not None
-                    else None
                 ),
                 approval_resolver=approval_resolver,
                 tool_policy_evaluator=tool_policy_evaluator,
