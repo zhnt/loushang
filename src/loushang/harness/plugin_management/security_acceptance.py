@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import cast
+from typing import Any, ClassVar, Self, cast
 
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
@@ -14,6 +14,7 @@ from loushang.harness.journal import (
     JournalCodecError,
     JournalFileError,
     JournalLoadPolicy,
+    JournalRecordCodec,
     JsonlSnapshot,
     append_jsonl_record,
     journal_file_lock,
@@ -119,6 +120,21 @@ PLUGIN_INSTANCE_SECURITY_RETIREMENT_ACCEPTANCE_CODEC = FunctionalJournalRecordCo
 class PluginInstanceSecurityRetirementJournal:
     """Append-only barrier accepted before an Instance is poisoned."""
 
+    _record_type: ClassVar[type[PluginInstanceSecurityRetirementAcceptanceV1]] = (
+        PluginInstanceSecurityRetirementAcceptanceV1
+    )
+    _record_codec: ClassVar[JournalRecordCodec[Any]] = (
+        PLUGIN_INSTANCE_SECURITY_RETIREMENT_ACCEPTANCE_CODEC
+    )
+    _error_type: ClassVar[type[PluginInstanceSecurityRetirementJournalError]] = (
+        PluginInstanceSecurityRetirementJournalError
+    )
+    _recovery_invalid_code: ClassVar[str] = "plugin_security_recovery_invalid"
+    _journal_corrupt_code: ClassVar[str] = (
+        "plugin_security_acceptance_journal_corrupt"
+    )
+    _conflict_code: ClassVar[str] = "plugin_security_acceptance_conflict"
+
     def __init__(self, path: str | Path) -> None:
         self._path = Path(path).resolve()
         self._unlocked_durability = replace(DURABLE_LOCKED_JOURNAL, locking=False)
@@ -128,7 +144,7 @@ class PluginInstanceSecurityRetirementJournal:
     def for_instance_runtime(
         cls,
         runtime_path: str | Path,
-    ) -> PluginInstanceSecurityRetirementJournal:
+    ) -> Self:
         return cls(plugin_instance_security_acceptance_journal_path(runtime_path))
 
     @property
@@ -160,7 +176,7 @@ class PluginInstanceSecurityRetirementJournal:
                     raise self._conflict(
                         "Plugin Instance revision has another security acceptance"
                     )
-            record = PluginInstanceSecurityRetirementAcceptanceV1(
+            record = self._record_type(
                 journal_revision=len(records) + 1,
                 acceptance_id=acceptance_id,
                 revocations=revocations,
@@ -168,7 +184,7 @@ class PluginInstanceSecurityRetirementJournal:
             append_jsonl_record(
                 self._path,
                 record,
-                record_codec=PLUGIN_INSTANCE_SECURITY_RETIREMENT_ACCEPTANCE_CODEC,
+                record_codec=self._record_codec,
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._unlocked_durability,
             )
@@ -214,9 +230,9 @@ class PluginInstanceSecurityRetirementJournal:
                 or snapshot.state not in {"REVOKING", "RETIRED"}
                 or snapshot.revocation != revocation
             ):
-                raise PluginInstanceSecurityRetirementJournalError(
+                raise self._error_type(
                     "Recovered security revocation evidence is invalid.",
-                    code="plugin_security_recovery_invalid",
+                    code=self._recovery_invalid_code,
                     path=self._path,
                 )
         return snapshots
@@ -232,7 +248,7 @@ class PluginInstanceSecurityRetirementJournal:
                 PluginInstanceSecurityRetirementAcceptanceV1,
             ] = load_jsonl(
                 self._path,
-                record_codec=PLUGIN_INSTANCE_SECURITY_RETIREMENT_ACCEPTANCE_CODEC,
+                record_codec=self._record_codec,
                 format_profile=SORTED_UNICODE_JSONL_FORMAT,
                 durability=self._unlocked_durability,
                 load_policy=self._load_policy,
@@ -245,9 +261,9 @@ class PluginInstanceSecurityRetirementJournal:
                 raise ValueError("Plugin security revisions are not contiguous")
             return records
         except (JournalCodecError, JournalFileError, ValueError) as exc:
-            raise PluginInstanceSecurityRetirementJournalError(
+            raise self._error_type(
                 "Plugin security acceptance journal is corrupt.",
-                code="plugin_security_acceptance_journal_corrupt",
+                code=self._journal_corrupt_code,
                 path=self._path,
             ) from exc
 
@@ -255,9 +271,9 @@ class PluginInstanceSecurityRetirementJournal:
         self,
         message: str,
     ) -> PluginInstanceSecurityRetirementJournalError:
-        return PluginInstanceSecurityRetirementJournalError(
+        return self._error_type(
             message,
-            code="plugin_security_acceptance_conflict",
+            code=self._conflict_code,
             path=self._path,
         )
 

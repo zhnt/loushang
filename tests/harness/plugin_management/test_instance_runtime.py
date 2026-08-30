@@ -14,8 +14,12 @@ import pytest
 from loushang.harness.continuity.plugin_runtime import (
     ContinuityPluginSecurityRetirementEvidence,
 )
+from loushang.harness.journal import JournalCodecError
 from loushang.harness.plugin_management.continuity_adapter import (
+    PLUGIN_CONTINUITY_SECURITY_RETIREMENT_ACCEPTANCE_CODEC,
+    PluginContinuitySecurityRetirementAcceptanceV1,
     PluginContinuitySecurityRetirementJournal,
+    PluginContinuitySecurityRetirementJournalError,
     PluginInstanceLedgerContinuitySecurityRetirementAuthority,
 )
 from loushang.harness.plugin_management.instance_records import (
@@ -167,6 +171,61 @@ def test_continuity_security_acceptance_source_is_sealed_by_durable_identity(
                 tmp_path / "other-security-acceptance.jsonl"
             )
         )
+
+
+def test_continuity_security_alias_preserves_deployed_error_codes(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(JournalCodecError) as invalid_record:
+        PLUGIN_CONTINUITY_SECURITY_RETIREMENT_ACCEPTANCE_CODEC.decode_record({})
+    assert invalid_record.value.code == (
+        "invalid_plugin_continuity_security_acceptance_record"
+    )
+
+    corrupt = PluginContinuitySecurityRetirementJournal(
+        tmp_path / "corrupt-security.jsonl"
+    )
+    corrupt.path.write_text('{"unknown":true}\n', encoding="utf-8")
+    with pytest.raises(
+        PluginContinuitySecurityRetirementJournalError
+    ) as corrupt_error:
+        corrupt.records()
+    assert corrupt_error.value.code == (
+        "plugin_continuity_security_acceptance_journal_corrupt"
+    )
+
+    context = _context(tmp_path / "conflict")
+    key = _key("plugin.a")
+    _install_enable(context, key, start_revision=0, start_operation=1)
+    active = _activate(context, key, "continuity-security-code")
+    first = PluginInstanceRevocationV1.create(
+        installation_key=key,
+        instance_revision_ref=active.instance_revision_ref,
+        operation_id="revoke-code-a",
+        idempotency_key="revoke-code-request-a",
+        authority_reference="security:a",
+        reason_code="source_revoked",
+    )
+    second = PluginInstanceRevocationV1.create(
+        installation_key=key,
+        instance_revision_ref=active.instance_revision_ref,
+        operation_id="revoke-code-b",
+        idempotency_key="revoke-code-request-b",
+        authority_reference="security:b",
+        reason_code="digest_compromised",
+    )
+    context.security_acceptances._accept((first,))
+    [replayed] = PluginContinuitySecurityRetirementJournal(
+        context.security_acceptances.path
+    ).records()
+    assert isinstance(replayed, PluginContinuitySecurityRetirementAcceptanceV1)
+    with pytest.raises(
+        PluginContinuitySecurityRetirementJournalError
+    ) as conflict:
+        context.security_acceptances._accept((second,))
+    assert conflict.value.code == (
+        "plugin_continuity_security_acceptance_conflict"
+    )
 
 
 def test_instance_runtime_restart_cannot_omit_or_replace_security_identity(

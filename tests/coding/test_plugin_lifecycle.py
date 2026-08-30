@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -10,6 +11,7 @@ from pathlib import Path
 import pytest
 
 import loushang.coding._base_plugin as base_plugin_module
+import loushang.coding._plugin_lifecycle as plugin_lifecycle_module
 from loushang.ai.model import Capabilities, Model
 from loushang.coding._base_plugin import (
     CodingBasePluginAssemblyError,
@@ -33,6 +35,9 @@ from loushang.harness.plugin_management import (
 from loushang.harness.resources.plugins import (
     PluginResolutionAuthority,
     PluginSource,
+)
+from loushang.harness.runtime.registration import (
+    OwnerGenerationRetirementReceipt,
 )
 
 
@@ -337,6 +342,135 @@ def test_concurrent_sessions_share_exact_activation_but_not_live_lease(
     finally:
         leases[0].close()
         leases[1].close()
+
+
+def test_concurrent_last_session_close_linearizes_exact_retirement(
+    tmp_path: Path,
+) -> None:
+    lifecycle = _lifecycle(tmp_path)
+    key = lifecycle.installation_key("coding.base")
+    lifecycle.bootstrap_first_party_default(key, _package_ref())
+    leases = tuple(
+        lifecycle.acquire_session(
+            key,
+            session_id=f"session-{sequence}",
+            lease_attempt_id=f"attempt-{sequence}",
+            owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
+        )
+        for sequence in (1, 2)
+    )
+    for sequence, lease in enumerate(leases, start=1):
+        receipt = OwnerGenerationRetirementReceipt(
+            owner_reference=f"owner:session-{sequence}",
+            owner_generation_reference=f"generation:session-{sequence}",
+            retirement_handle=f"retirement:session-{sequence}",
+            contribution_ids=("coding.standard",),
+        )
+        lease.publish_owner_generations((receipt,))
+        lease.retire_owner_generations((receipt,))
+
+    _disable_or_remove(lifecycle, action="disable")
+    lifecycle.reconcile_retirements()
+    barrier = threading.Barrier(2)
+
+    def close(lease) -> None:
+        barrier.wait()
+        lease.close()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        tuple(executor.map(close, leases))
+
+    selected_ref = leases[0].instance_revision_ref
+    retired = lifecycle.instances.snapshot().instance(selected_ref)
+    assert retired is not None
+    assert retired.state == "RETIRED"
+    [intent] = lifecycle.management_retirement_intents()
+    completed = lifecycle.retirement_sets.snapshot().retirement_set(
+        intent.retirement_id
+    )
+    assert completed is not None
+    assert completed.state == "succeeded"
+    assert completed.plan is not None
+    assert len(completed.plan.targets) == 2
+    assert len(completed.latest_outcomes) == 2
+
+
+@pytest.mark.parametrize("publish_owner_evidence", [False, True])
+def test_new_process_recovers_only_lock_proven_orphan_session_family(
+    tmp_path: Path,
+    publish_owner_evidence: bool,
+) -> None:
+    layout = resolve_ephemeral_coding_plugin_lifecycle_state_layout(
+        tmp_path / "state",
+        cwd=tmp_path / "workspace",
+    )
+    old_startup = f"old-startup-{publish_owner_evidence}"
+    old = build_coding_plugin_lifecycle(layout, startup_id=old_startup)
+    old.reconcile_retirements()
+    old.complete_startup_recovery()
+    key = old.installation_key("coding.base")
+    old.bootstrap_first_party_default(key, _package_ref())
+    lease = old.acquire_session(
+        key,
+        session_id="crashed-session",
+        lease_attempt_id="crashed-attempt",
+        owner_contributions=_TEST_OWNER_CONTRIBUTIONS,
+    )
+    receipt = OwnerGenerationRetirementReceipt(
+        owner_reference="owner:crashed-session",
+        owner_generation_reference="generation:crashed-session",
+        retirement_handle="retirement:crashed-session",
+        contribution_ids=("coding.standard",),
+    )
+    if publish_owner_evidence:
+        lease.publish_owner_generations((receipt,))
+
+    recovered = build_coding_plugin_lifecycle(
+        layout,
+        startup_id=f"new-startup-{publish_owner_evidence}",
+    )
+    recovered.reconcile_retirements()
+    assert recovered.instances.snapshot().family(lease.family.family_id) is not None
+
+    # Model abrupt process death: the OS releases the startup lock, while no
+    # Session disposer or family release runs.
+    old_lease_path = plugin_lifecycle_module._startup_lease_path(
+        layout,
+        startup_id=old_startup,
+    )
+    with plugin_lifecycle_module._PROCESS_STARTUP_LEASES_LOCK:
+        old_process_lease = plugin_lifecycle_module._PROCESS_STARTUP_LEASES.pop(
+            old_lease_path
+        )
+    old_process_lease.__exit__(None, None, None)
+
+    recovered.reconcile_retirements()
+
+    assert recovered.instances.snapshot().family(lease.family.family_id) is None
+    family_evidence = recovered.owner_evidence.family(lease.family.family_id)
+    if publish_owner_evidence:
+        assert family_evidence is not None
+        assert family_evidence.retired is True
+        assert family_evidence.retirement_outcome_reference == (
+            "coding-session-process-exit-confirmed:"
+            f"{old_startup}:{lease.family.family_id}"
+        )
+    else:
+        assert family_evidence is None
+
+    _disable_or_remove(recovered, action="disable")
+    recovered.reconcile_retirements()
+    retired = recovered.instances.snapshot().instance(lease.instance_revision_ref)
+    assert retired is not None
+    assert retired.state == "RETIRED"
+    [intent] = recovered.management_retirement_intents()
+    retirement_set = recovered.retirement_sets.snapshot().retirement_set(
+        intent.retirement_id
+    )
+    assert retirement_set is not None
+    assert retirement_set.state == "succeeded"
+    assert retirement_set.plan is not None
+    assert len(retirement_set.plan.targets) == int(publish_owner_evidence)
 
 
 def test_workspace_lifecycle_uses_state_and_data_authorities_independent_of_session_scope(
@@ -911,6 +1045,23 @@ def test_public_update_replays_deleted_source_into_model_input_and_provenance(
 
         assert marker in replacement.agent.system_prompt
         assert len(replacement._capability_owner_generations) == 2
+        replacement_inputs = replacement._capability_composition_inputs
+        assert replacement_inputs is not None
+        replacement_lease = replacement_base.management_lease
+        assert replacement_lease is not None
+        replacement_ref = replacement_lease.instance_revision_ref
+        assert all(
+            admission.candidate.instance_revision_ref == replacement_ref
+            and admission.candidate.package_content_digest
+            == staged.package_content_digest
+            and admission.candidate.dependency_lock_digest
+            == staged.dependency_lock_digest
+            and admission.candidate.package_source_identity
+            == staged.package_source_identity
+            for admission in (
+                replacement_inputs.product_composition.catalog_admissions
+            )
+        )
         owner_registrations = {
             (item.surface, item.public_key, item.owner_id)
             for item in replacement.get_effective_runtime_view().registrations
@@ -1003,7 +1154,19 @@ def test_public_session_dispose_then_resume_reacquires_a_fresh_live_lease(
         await resumed.prepare_model_call_runtime()
         assert resumed.get_tool_definition("bash") is not None
         assert len(resumed._capability_owner_generations) >= 2
-        assert resumed._capability_composition_inputs is not None
+        resumed_inputs = resumed._capability_composition_inputs
+        assert resumed_inputs is not None
+        selected_package = resumed_lease.package_revision
+        assert all(
+            admission.candidate.instance_revision_ref == selected_ref
+            and admission.candidate.package_content_digest
+            == selected_package.package_content_digest
+            and admission.candidate.dependency_lock_digest
+            == selected_package.dependency_lock_digest
+            and admission.candidate.package_source_identity
+            == selected_package.package_source_identity
+            for admission in resumed_inputs.product_composition.catalog_admissions
+        )
         await resumed.dispose()
 
     asyncio.run(scenario())
@@ -1576,6 +1739,90 @@ def test_reconciliation_resumes_after_plan_commit_before_owner_outcomes(
     asyncio.run(scenario())
 
 
+def test_reconciliation_resumes_after_direct_host_handoff_released_family(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.plugin_management import PluginPackageLifecycleLedger
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=True,
+        )
+        active = create_agent_session(
+            session_manager=manager,
+            model=_model(),
+            services=create_services(
+                settings_manager=SettingsManager(
+                    ControlConfig(capabilities={"coding.lsp": "disabled"})
+                )
+            ),
+        )
+        await active.prepare_model_call_runtime()
+        assembly = active._coding_base_plugin_assembly
+        assert assembly is not None
+        management_lease = assembly.management_lease
+        assert management_lease is not None
+        lifecycle = management_lease.lifecycle
+        selected_ref = management_lease.instance_revision_ref
+        observer = build_coding_plugin_lifecycle(
+            resolve_coding_plugin_lifecycle_state_layout(workspace)
+        )
+        _disable_or_remove(observer, action="disable")
+        observer.reconcile_retirements()
+
+        original_handoff = PluginPackageLifecycleLedger.handoff_cleanup_and_release
+        crashed = False
+
+        def crash_after_handoff(candidate, *args, **kwargs):
+            nonlocal crashed
+            task = original_handoff(candidate, *args, **kwargs)
+            if candidate is lifecycle.packages and not crashed:
+                crashed = True
+                raise RuntimeError("crash after direct-host handoff")
+            return task
+
+        monkeypatch.setattr(
+            PluginPackageLifecycleLedger,
+            "handoff_cleanup_and_release",
+            crash_after_handoff,
+        )
+
+        with pytest.raises(RuntimeError, match="crash after direct-host handoff"):
+            await active.dispose()
+
+        interrupted = observer.instances.snapshot().instance(selected_ref)
+        assert interrupted is not None
+        assert interrupted.state == "DRAINING"
+        assert interrupted.open_family_ids == ()
+        [cleanup] = observer.packages.snapshot().cleanup_tasks
+        assert cleanup.state == "pending"
+        assert cleanup.task.source_family.lease_kind == "direct_host"
+
+        recovered = build_coding_plugin_lifecycle(
+            resolve_coding_plugin_lifecycle_state_layout(workspace)
+        )
+        recovered.reconcile_retirements()
+
+        retired = recovered.instances.snapshot().instance(selected_ref)
+        assert retired is not None
+        assert retired.state == "RETIRED"
+        [completed_cleanup] = recovered.packages.snapshot().cleanup_tasks
+        assert completed_cleanup.state == "succeeded"
+        await active.dispose()
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("action", ("disable", "remove"))
 def test_production_bootstrap_preserves_lsp_only_when_base_is_unselected(
     tmp_path: Path,
@@ -1590,10 +1837,20 @@ def test_production_bootstrap_preserves_lsp_only_when_base_is_unselected(
         LspServerDefinition,
     )
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.sandbox import SandboxSettings
 
     monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
     workspace = tmp_path / "workspace"
     workspace.mkdir()
+    (workspace / "pyproject.toml").touch()
+    (workspace / "main.py").write_text(
+        "target = 1\nprint(target)\n",
+        encoding="utf-8",
+    )
+    method_log = workspace / "lsp-methods.log"
+    fake_lsp_server = (
+        Path(__file__).parent / "lsp" / "fixtures" / "fake_lsp_server.py"
+    )
     session_dir = tmp_path / "sessions"
 
     async def scenario() -> None:
@@ -1628,14 +1885,22 @@ def test_production_bootstrap_preserves_lsp_only_when_base_is_unselected(
             model=_model(),
             services=create_services(
                 settings_manager=SettingsManager(
-                    ControlConfig(capabilities={"coding.lsp": "always"})
+                    ControlConfig(
+                        capabilities={"coding.lsp": "always"},
+                        sandbox=SandboxSettings(enabled=False),
+                    )
                 )
             ),
             lsp_definitions=(
                 LspServerDefinition(
                     id="python-test",
-                    command=("python-language-server", "--stdio"),
+                    command=(sys.executable, str(fake_lsp_server)),
                     language_extensions={"python": (".py",)},
+                    root_markers=("pyproject.toml",),
+                    environment={"LOUSHANG_FAKE_LSP_LOG": str(method_log)},
+                    startup_timeout_seconds=3,
+                    request_timeout_seconds=3,
+                    shutdown_timeout_seconds=3,
                 ),
             ),
         )
@@ -1673,7 +1938,23 @@ def test_production_bootstrap_preserves_lsp_only_when_base_is_unselected(
             ("tool", DOCUMENT_OUTLINE_TOOL_NAME),
             ("tool", INSPECT_SYMBOL_TOOL_NAME),
         }
+        materialized = {tool.name: tool for tool in replacement.agent.tools}
+        result = await materialized[INSPECT_SYMBOL_TOOL_NAME].execute(
+            f"lsp-only-{action}",
+            {"path": "main.py", "line": 2, "character": 7},
+        )
+        assert result.details["server_id"] == "python-test"
+        assert result.details["count"] == 1
+        assert result.details["items"][0]["path"] == "main.py"
         await replacement.dispose()
         assert replacement._capability_owner_generations == ()
+        assert method_log.read_text(encoding="utf-8").splitlines() == [
+            "initialize",
+            "initialized",
+            "textDocument/didOpen",
+            "textDocument/definition",
+            "shutdown",
+            "exit",
+        ]
 
     asyncio.run(scenario())

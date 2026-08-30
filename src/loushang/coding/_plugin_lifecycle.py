@@ -7,6 +7,8 @@ import json
 import os
 import secrets
 import stat
+import threading
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -16,6 +18,7 @@ from loushang.coding._plugin_owner_generations import (
 )
 from loushang.coding.product_plan import CODING_PRODUCT_ID
 from loushang.foundation.platform_paths import PlatformPaths, resolve_platform_paths
+from loushang.harness.journal import JournalLockUnavailable, journal_file_lock
 from loushang.harness.plugin_management import (
     PluginCleanupAttemptV1,
     PluginDesiredStateLedger,
@@ -46,6 +49,8 @@ from loushang.harness.runtime.registration import (
 _PRODUCT_POLICY_REVISION = "coding-plugin-lifecycle-v1"
 _DEFAULT_APPROVAL_REFERENCE = "coding-first-party-default"
 _CODING_PLUGIN_RUNTIME_BOOT_ID = secrets.token_hex(16)
+_PROCESS_STARTUP_LEASES_LOCK = threading.Lock()
+_PROCESS_STARTUP_LEASES: dict[Path, AbstractContextManager[None]] = {}
 
 
 class CodingPluginLifecycleError(RuntimeError):
@@ -88,6 +93,10 @@ class CodingPluginLifecycleStateLayout:
     def owner_generation_evidence(self) -> Path:
         return self.root / "owner-generation-evidence.jsonl"
 
+    @property
+    def coordination_lock(self) -> Path:
+        return self.root / "lifecycle-coordination"
+
 
 @dataclass(slots=True)
 class CodingPluginLifecycle:
@@ -106,11 +115,13 @@ class CodingPluginLifecycle:
     def complete_startup_recovery(self) -> None:
         """Seal Package recovery after the composition root reconciles Instances."""
 
-        self.packages.complete_startup_recovery(
-            operation_id=f"coding-package-recovery:{self.startup_id}",
-            idempotency_key=f"coding-package-recovery:{self.startup_id}",
-            recovery_reference=f"coding-runtime:{self.startup_id}",
-        )
+        with journal_file_lock(self.layout.coordination_lock, "exclusive"):
+            self._reconcile_retirements_unlocked()
+            self.packages.complete_startup_recovery(
+                operation_id=f"coding-package-recovery:{self.startup_id}",
+                idempotency_key=f"coding-package-recovery:{self.startup_id}",
+                recovery_reference=f"coding-runtime:{self.startup_id}",
+            )
 
     def installation_key(self, plugin_id: str) -> PluginInstallationKeyV1:
         return PluginInstallationKeyV1(
@@ -210,6 +221,13 @@ class CodingPluginLifecycle:
     def reconcile_retirements(self) -> None:
         """Project committed management cutovers into the Instance runtime."""
 
+        with journal_file_lock(self.layout.coordination_lock, "exclusive"):
+            self._reconcile_retirements_unlocked()
+
+    def _reconcile_retirements_unlocked(self) -> None:
+        """Reconcile while the Product-wide cross-journal lock is held."""
+
+        self._recover_inactive_session_families()
         self.security.reconcile(self.instances)
         runtime = self.instances.snapshot()
         for intent in self.management_retirement_intents():
@@ -222,6 +240,54 @@ class CodingPluginLifecycle:
             self._ensure_owner_retirement_plan(intent, runtime)
             self._complete_ready_retirement(intent)
             runtime = self.instances.snapshot()
+
+    def _recover_inactive_session_families(self) -> None:
+        """Release only Session families whose process death is lock-proven."""
+
+        runtime = self.instances.snapshot()
+        for family in runtime.open_families:
+            if family.lease_kind != "session_membership":
+                continue
+            evidence = _session_holder_evidence(family.holder_reference)
+            if (
+                evidence is None
+                or evidence.startup_id == self.startup_id
+                or not _startup_lease_is_inactive(
+                    self.layout,
+                    startup_id=evidence.startup_id,
+                )
+            ):
+                continue
+            [member] = family.members
+            owner_evidence = self.owner_evidence.family(family.family_id)
+            if owner_evidence is not None and not owner_evidence.retired:
+                self.owner_evidence.retire(
+                    family_id=family.family_id,
+                    instance_revision_ref=member.instance_revision_ref,
+                    receipts=owner_evidence.receipts,
+                    outcome_reference=(
+                        "coding-session-process-exit-confirmed:"
+                        f"{evidence.startup_id}:{family.family_id}"
+                    ),
+                )
+            self.instances.release_family(
+                _orphan_family_release(
+                    family,
+                    inactive_startup_id=evidence.startup_id,
+                )
+            )
+
+    def release_session_family_and_reconcile(
+        self,
+        family: PluginInstanceLeaseFamilyV1,
+    ) -> None:
+        """Linearize the last Session release with cross-journal retirement."""
+
+        if not isinstance(family, PluginInstanceLeaseFamilyV1):
+            raise TypeError("Coding Session release requires a Session family")
+        with journal_file_lock(self.layout.coordination_lock, "exclusive"):
+            self.instances.release_family(_family_release(family))
+            self._reconcile_retirements_unlocked()
 
     def publish_session_owner_generations(
         self,
@@ -361,9 +427,15 @@ class CodingPluginLifecycle:
         if instance is None or instance.state == "RETIRED":
             return
         direct_family = instance.activation.direct_host_family
-        if set(instance.open_family_ids) != {direct_family.family_id}:
+        open_family_ids = set(instance.open_family_ids)
+        if open_family_ids not in ({direct_family.family_id}, set()):
             return
         identity = intent.retirement_id
+        # The cleanup handoff is write-ahead: after it appends the durable task
+        # it releases the direct-host family.  Therefore an empty family set is
+        # a valid interrupted state, and replaying the same operation must
+        # resume the task rather than wait forever for a family already handed
+        # off.
         task = self.packages.handoff_cleanup_and_release(
             direct_family.family_id,
             retirement_target_id=None,
@@ -447,6 +519,7 @@ class CodingPluginLifecycle:
             session_id=session_id,
             lease_attempt_id=lease_attempt_id,
             owner_contributions=owners,
+            startup_id=self.startup_id,
         )
         family = self.instances.acquire_current_family(
             (key,),
@@ -583,8 +656,7 @@ class CodingPluginSessionLease:
                 "Coding Session owner generation cleanup remains pending",
                 code="coding_plugin_owner_generation_cleanup_pending",
             )
-        self.lifecycle.instances.release_family(_family_release(self.family))
-        self.lifecycle.reconcile_retirements()
+        self.lifecycle.release_session_family_and_reconcile(self.family)
         self._closed = True
 
 
@@ -720,6 +792,7 @@ def build_coding_plugin_lifecycle(
         security_acceptances=security,
     )
     resolved_startup_id = startup_id or _CODING_PLUGIN_RUNTIME_BOOT_ID
+    _hold_process_startup_lease(layout, startup_id=resolved_startup_id)
     packages = PluginPackageLifecycleLedger(
         layout.package_lifecycle,
         startup_id=resolved_startup_id,
@@ -768,6 +841,25 @@ def _family_release(
         operation_id=f"coding-plugin-release:{family.family_id}",
         idempotency_key=f"coding-plugin-release:{family.family_id}",
         release_reference=family.holder_reference,
+    )
+
+
+def _orphan_family_release(
+    family: PluginInstanceLeaseFamilyV1,
+    *,
+    inactive_startup_id: str,
+) -> PluginInstanceLeaseFamilyReleaseV1:
+    identity = hashlib.sha256(
+        repr((family.family_id, inactive_startup_id)).encode("utf-8")
+    ).hexdigest()
+    return PluginInstanceLeaseFamilyReleaseV1(
+        family_id=family.family_id,
+        operation_id=f"coding-plugin-orphan-release:{identity}",
+        idempotency_key=f"coding-plugin-orphan-release:{identity}",
+        release_reference=(
+            "coding-session-process-exit-confirmed:"
+            f"{inactive_startup_id}:{family.family_id}"
+        ),
     )
 
 
@@ -823,7 +915,13 @@ def _normalize_owner_contributions(
     return canonical
 
 
-_SESSION_HOLDER_PREFIX = "coding-session-owner-family:v1:"
+_SESSION_HOLDER_PREFIX = "coding-session-owner-family:v2:"
+
+
+@dataclass(frozen=True, slots=True)
+class _CodingSessionHolderEvidence:
+    startup_id: str
+    owner_contributions: tuple[tuple[str, tuple[str, ...]], ...]
 
 
 def _session_holder_reference(
@@ -831,6 +929,7 @@ def _session_holder_reference(
     session_id: str,
     lease_attempt_id: str,
     owner_contributions: tuple[tuple[str, tuple[str, ...]], ...],
+    startup_id: str,
 ) -> str:
     payload = {
         "leaseAttemptId": _nonempty(lease_attempt_id, name="Lease attempt id"),
@@ -842,6 +941,7 @@ def _session_holder_reference(
             for owner_reference, contribution_ids in owner_contributions
         ],
         "sessionId": _nonempty(session_id, name="Session id"),
+        "startupId": _nonempty(startup_id, name="Startup id"),
     }
     return _SESSION_HOLDER_PREFIX + json.dumps(
         payload,
@@ -851,24 +951,25 @@ def _session_holder_reference(
     )
 
 
-def _session_holder_owners(
+def _session_holder_evidence(
     holder_reference: str,
-) -> tuple[tuple[str, tuple[str, ...]], ...]:
+) -> _CodingSessionHolderEvidence | None:
     if not holder_reference.startswith(_SESSION_HOLDER_PREFIX):
-        raise CodingPluginLifecycleError(
-            "Coding Session family lacks owner retirement evidence",
-            code="coding_plugin_session_owner_evidence_invalid",
-        )
+        # V1 and foreign holder references contain no process epoch.  Preserve
+        # them fail-closed because inactivity cannot be proven.
+        return None
     try:
         payload = json.loads(holder_reference[len(_SESSION_HOLDER_PREFIX) :])
         if not isinstance(payload, dict) or set(payload) != {
             "leaseAttemptId",
             "owners",
             "sessionId",
+            "startupId",
         }:
             raise ValueError("invalid Session holder fields")
         _nonempty(payload["leaseAttemptId"], name="Lease attempt id")
         _nonempty(payload["sessionId"], name="Session id")
+        startup_id = _nonempty(payload["startupId"], name="Startup id")
         owners = payload["owners"]
         if not isinstance(owners, list):
             raise ValueError("owners must be an array")
@@ -884,11 +985,90 @@ def _session_holder_owners(
         )
         if len(values) != len(owners):
             raise ValueError("invalid owner entry")
-        return _normalize_owner_contributions(values)
+        return _CodingSessionHolderEvidence(
+            startup_id=startup_id,
+            owner_contributions=_normalize_owner_contributions(values),
+        )
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         raise CodingPluginLifecycleError(
             "Coding Session family owner evidence is invalid",
             code="coding_plugin_session_owner_evidence_invalid",
+        ) from exc
+
+
+def _startup_lease_path(
+    layout: CodingPluginLifecycleStateLayout,
+    *,
+    startup_id: str,
+) -> Path:
+    identity = hashlib.sha256(
+        b"loushang.coding-plugin-startup/v1\0"
+        + _nonempty(startup_id, name="Startup id").encode("utf-8")
+    ).hexdigest()
+    return (layout.root / "process-startups" / f"{identity}.lease").resolve()
+
+
+def _hold_process_startup_lease(
+    layout: CodingPluginLifecycleStateLayout,
+    *,
+    startup_id: str,
+) -> None:
+    lease_path = _startup_lease_path(layout, startup_id=startup_id)
+    with _PROCESS_STARTUP_LEASES_LOCK:
+        if lease_path in _PROCESS_STARTUP_LEASES:
+            return
+        lease = journal_file_lock(
+            lease_path,
+            "exclusive",
+            lock_suffix="",
+            blocking=False,
+        )
+        try:
+            lease.__enter__()
+        except JournalLockUnavailable as exc:
+            raise CodingPluginLifecycleError(
+                "Coding Plugin startup id is active in another process",
+                code="coding_plugin_startup_already_active",
+            ) from exc
+        _PROCESS_STARTUP_LEASES[lease_path] = lease
+
+
+def _startup_lease_is_inactive(
+    layout: CodingPluginLifecycleStateLayout,
+    *,
+    startup_id: str,
+) -> bool:
+    lease_path = _startup_lease_path(layout, startup_id=startup_id)
+    with _PROCESS_STARTUP_LEASES_LOCK:
+        if lease_path in _PROCESS_STARTUP_LEASES:
+            return False
+    try:
+        metadata = lease_path.lstat()
+        getuid = getattr(os, "getuid", None)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or bool(getattr(metadata, "st_reparse_tag", 0))
+            or (
+                os.name == "posix"
+                and callable(getuid)
+                and metadata.st_uid != getuid()
+            )
+        ):
+            raise OSError("startup lease is not a private regular file")
+        with journal_file_lock(
+            lease_path,
+            "exclusive",
+            lock_suffix="",
+            blocking=False,
+        ):
+            return True
+    except JournalLockUnavailable:
+        return False
+    except OSError as exc:
+        raise CodingPluginLifecycleError(
+            "Coding Plugin startup liveness evidence is invalid",
+            code="coding_plugin_startup_evidence_invalid",
         ) from exc
 
 

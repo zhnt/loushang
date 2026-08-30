@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from dataclasses import dataclass, field
+from typing import cast
 
 from loushang.harness.continuity.plugin_runtime import (
     ContinuityPluginInstanceFamilyLease,
@@ -13,6 +14,8 @@ from loushang.harness.continuity.plugin_runtime import (
 )
 from loushang.harness.journal import (
     DURABLE_LOCKED_JOURNAL,
+    FunctionalJournalRecordCodec,
+    JournalCodecError,
     journal_file_lock,
 )
 from loushang.harness.plugin_management.instance_records import (
@@ -28,21 +31,65 @@ from loushang.harness.plugin_management.package_lifecycle import (
     PluginPackageLifecycleLedger,
 )
 from loushang.harness.plugin_management.security_acceptance import (
-    PLUGIN_INSTANCE_SECURITY_RETIREMENT_ACCEPTANCE_CODEC as PLUGIN_CONTINUITY_SECURITY_RETIREMENT_ACCEPTANCE_CODEC,
-)
-from loushang.harness.plugin_management.security_acceptance import (
-    PluginInstanceSecurityRetirementAcceptanceV1 as PluginContinuitySecurityRetirementAcceptanceV1,
-)
-from loushang.harness.plugin_management.security_acceptance import (
-    PluginInstanceSecurityRetirementJournal as PluginContinuitySecurityRetirementJournal,
-)
-from loushang.harness.plugin_management.security_acceptance import (
-    PluginInstanceSecurityRetirementJournalError as PluginContinuitySecurityRetirementJournalError,
+    PluginInstanceSecurityRetirementAcceptanceV1,
+    PluginInstanceSecurityRetirementJournal,
+    PluginInstanceSecurityRetirementJournalError,
 )
 from loushang.harness.resources.plugins._strict_json import StrictPluginJsonCodec
 from loushang.harness.resources.plugins.selection import (
     PluginInstanceRevisionRef,
 )
+
+
+class PluginContinuitySecurityRetirementJournalError(
+    PluginInstanceSecurityRetirementJournalError
+):
+    """Compatibility error retaining Continuity's deployed stable codes."""
+
+
+class PluginContinuitySecurityRetirementAcceptanceV1(
+    PluginInstanceSecurityRetirementAcceptanceV1
+):
+    """Wire-compatible record with the legacy decode diagnostic namespace."""
+
+    @classmethod
+    def from_dict(
+        cls,
+        value: object,
+    ) -> PluginContinuitySecurityRetirementAcceptanceV1:
+        try:
+            return cast(
+                PluginContinuitySecurityRetirementAcceptanceV1,
+                super().from_dict(value),
+            )
+        except JournalCodecError as exc:
+            raise JournalCodecError(
+                str(exc),
+                code="invalid_plugin_continuity_security_acceptance_record",
+            ) from exc
+
+
+PLUGIN_CONTINUITY_SECURITY_RETIREMENT_ACCEPTANCE_CODEC = (
+    FunctionalJournalRecordCodec[PluginContinuitySecurityRetirementAcceptanceV1](
+        encoder=PluginContinuitySecurityRetirementAcceptanceV1.to_dict,
+        decoder=PluginContinuitySecurityRetirementAcceptanceV1.from_dict,
+    )
+)
+
+
+class PluginContinuitySecurityRetirementJournal(
+    PluginInstanceSecurityRetirementJournal
+):
+    """Generic authority projected through Continuity's compatibility surface."""
+
+    _record_type = PluginContinuitySecurityRetirementAcceptanceV1
+    _record_codec = PLUGIN_CONTINUITY_SECURITY_RETIREMENT_ACCEPTANCE_CODEC
+    _error_type = PluginContinuitySecurityRetirementJournalError
+    _recovery_invalid_code = "plugin_continuity_security_recovery_invalid"
+    _journal_corrupt_code = (
+        "plugin_continuity_security_acceptance_journal_corrupt"
+    )
+    _conflict_code = "plugin_continuity_security_acceptance_conflict"
 
 
 @dataclass(slots=True)
@@ -351,7 +398,10 @@ def _accept_under_instance_operation_gate(
         "exclusive",
         lock_suffix=DURABLE_LOCKED_JOURNAL.lock_suffix,
     ):
-        return journal._accept(revocations)
+        return cast(
+            PluginContinuitySecurityRetirementAcceptanceV1,
+            journal._accept(revocations),
+        )
 
 
 def _validate_revocations(

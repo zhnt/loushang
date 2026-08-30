@@ -80,6 +80,7 @@ from loushang.harness.plugin_management import (
     PluginPackageRevisionRefV1,
 )
 from loushang.harness.plugin_management.continuity_adapter import (
+    PluginContinuitySecurityRetirementJournal,
     PluginInstanceLedgerContinuityFamilyAuthority,
 )
 from loushang.harness.resources.packages.materializer import (
@@ -693,8 +694,15 @@ def _build_lifecycle(
     )
     desired = common.desired
     management = common.management
-    security = common.security
     instances = common.instances
+    # The common Coding lifecycle owns the canonical security journal path,
+    # while Continuity retains its deployed diagnostic namespace at that same
+    # wire-compatible authority.  Rebind by canonical path before publishing
+    # the Continuity family port.
+    security = PluginContinuitySecurityRetirementJournal.for_instance_runtime(
+        layout.instance_runtime
+    )
+    instances.bind_security_acceptance_source(security)
     packages = common.packages
     family_authority = PluginInstanceLedgerContinuityFamilyAuthority(
         ledger=instances,
