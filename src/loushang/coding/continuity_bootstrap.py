@@ -85,7 +85,6 @@ from loushang.harness.plugin_management.continuity_adapter import (
 from loushang.harness.resources.packages.materializer import (
     GitPackageMaterializerBackend,
     PackageMaterializer,
-    resolve_session_package_install_root,
 )
 from loushang.harness.resources.plugins import (
     PluginContributionRef,
@@ -170,6 +169,8 @@ class CodingContinuityStateLayout:
 
     root: Path
     private_state_base: Path
+    package_root: Path
+    private_data_base: Path
     scope_id: str
     runtime_root: Path
     temporary_base: Path
@@ -211,6 +212,8 @@ def resolve_coding_continuity_state_layout(
     return CodingContinuityStateLayout(
         root=state_root,
         private_state_base=lifecycle.private_state_base,
+        package_root=lifecycle.package_root,
+        private_data_base=lifecycle.private_data_base,
         scope_id=lifecycle.scope_id,
         runtime_root=paths.runtime,
         temporary_base=paths.temporary,
@@ -352,9 +355,17 @@ async def bind_coding_configured_continuity(
     try:
         layout = state_layout or resolve_coding_continuity_state_layout(cwd)
         resolved_runtime_id = runtime_id or _new_runtime_id()
+        if materializer is not None and not materializer.uses_storage_authority(
+            install_root=layout.package_root / "installed",
+            lockfile_path=layout.package_root / "package-lock.json",
+            plugin_revision_root=layout.package_root / "plugin-revisions",
+        ):
+            raise CodingContinuityBootstrapError(
+                code="coding_continuity_package_authority_mismatch",
+                retryable=False,
+            )
         resolved_materializer = materializer or _coding_continuity_materializer(
-            session_dir=session_dir,
-            cwd=cwd,
+            layout
         )
         _prepare_private_state_layout(layout)
         _prepare_private_runtime_roots(layout)
@@ -649,13 +660,12 @@ def _continuity_inspections(
 
 
 def _coding_continuity_materializer(
-    *, session_dir: str | Path, cwd: str | Path
+    layout: CodingContinuityStateLayout,
 ) -> CodingPackageMaterializer:
     return CodingPackageMaterializer(
-        install_root=resolve_session_package_install_root(
-            session_dir=session_dir,
-            cwd=cwd,
-        ),
+        install_root=layout.package_root / "installed",
+        lockfile_path=layout.package_root / "package-lock.json",
+        plugin_revision_root=layout.package_root / "plugin-revisions",
         backend=GitPackageMaterializerBackend(),
     )
 
@@ -669,8 +679,8 @@ def _build_lifecycle(
         CodingPluginLifecycleStateLayout(
             root=layout.root,
             private_state_base=layout.private_state_base,
-            package_root=layout.root / "plugin-packages",
-            private_data_base=layout.private_state_base,
+            package_root=layout.package_root,
+            private_data_base=layout.private_data_base,
             scope_id=layout.scope_id,
             desired_state=layout.desired_state,
             management_operations=layout.management_operations,

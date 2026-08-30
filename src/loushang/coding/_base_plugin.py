@@ -323,8 +323,10 @@ def prepare_managed_coding_base_plugin_assembly(
                 code="coding_base_management_selection_incomplete",
             )
         if runtime is None:
-            replay_binding = package_materializer.get_plugin_binding_by_identity(
-                selected_revision.package_source_identity
+            replay_binding = package_materializer.get_plugin_binding_by_revision(
+                selected_revision.package_source_identity,
+                content_digest=selected_revision.package_content_digest,
+                dependency_lock_digest=selected_revision.dependency_lock_digest,
             )
             if replay_binding is None:
                 raise CodingBasePluginAssemblyError(

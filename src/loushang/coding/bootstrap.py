@@ -15,6 +15,7 @@ from loushang.ai.model import Model, ModelSelection
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.coding._base_plugin import (
     CodingBasePluginAssembly,
+    CodingBasePluginAssemblyError,
     prepare_coding_base_plugin_session,
     prepare_coding_base_resource_plan_seed,
     prepare_managed_coding_base_plugin_assembly,
@@ -547,6 +548,20 @@ def _create_agent_session(
                     cwd=session_manager.get_cwd(),
                 )
             )
+            if (
+                base_ephemeral_state is None
+                and package_materializer is not None
+                and not package_materializer.uses_storage_authority(
+                    install_root=lifecycle_layout.package_install_root,
+                    lockfile_path=lifecycle_layout.package_lockfile,
+                    plugin_revision_root=lifecycle_layout.plugin_revision_root,
+                )
+            ):
+                raise CodingBasePluginAssemblyError(
+                    "Durable Coding base package storage must use the canonical "
+                    "workspace authority",
+                    code="coding_base_package_authority_mismatch",
+                )
             base_package_materializer = package_materializer or PackageMaterializer(
                 install_root=lifecycle_layout.package_install_root,
                 lockfile_path=lifecycle_layout.package_lockfile,

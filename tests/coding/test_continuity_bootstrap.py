@@ -10,12 +10,16 @@ from types import SimpleNamespace
 
 import pytest
 
+from loushang.coding._plugin_lifecycle import (
+    resolve_coding_plugin_lifecycle_state_layout,
+)
 from loushang.coding.continuity import (
     bind_coding_continuity,
     shutdown_coding_continuity,
 )
 from loushang.coding.continuity_bootstrap import (
     CodingContinuityBootstrapError,
+    CodingContinuityStateLayout,
     bind_coding_configured_continuity,
     get_coding_configured_continuity_composition,
     get_coding_continuity_bootstrap_status,
@@ -121,6 +125,14 @@ def test_continuity_state_layout_is_canonical_and_redacts_workspace(
     assert workspace.name not in str(first.root)
     assert first.scope_id == f"workspace:{first.root.name}"
     assert first.instance_runtime.parent == first.root
+    lifecycle = resolve_coding_plugin_lifecycle_state_layout(
+        workspace,
+        platform_paths=paths,
+    )
+    assert first.package_root == lifecycle.package_root
+    assert first.private_data_base == lifecycle.private_data_base
+    assert first.package_root.is_relative_to(paths.data)
+    assert not first.package_root.is_relative_to(first.root)
 
 
 def test_private_state_root_rejects_symlink_without_chmodding_target(
@@ -283,8 +295,8 @@ def test_foreign_bootstrap_failure_suppresses_sensitive_exception_context(
                 settings_manager=_settings(secret_source),
                 session_dir=runtime.session_dir,
                 cwd=tmp_path / "workspace",
-                materializer=PackageMaterializer(
-                    install_root=tmp_path / "packages"
+                materializer=_materializer_for_layout(
+                    _test_layout(tmp_path / "state", tmp_path / "workspace")
                 ),
                 state_layout=_test_layout(
                     tmp_path / "state",
@@ -530,7 +542,9 @@ def test_continuity_bootstrap_rejects_unsupported_secure_staging_before_import(
                 settings_manager=_settings(plugin_root),
                 session_dir=runtime.session_dir,
                 cwd=tmp_path / "workspace",
-                materializer=PackageMaterializer(install_root=tmp_path / "packages"),
+                materializer=_materializer_for_layout(
+                    _test_layout(tmp_path / "state", tmp_path / "workspace")
+                ),
                 state_layout=_test_layout(tmp_path / "state", tmp_path / "workspace"),
             )
         )
@@ -538,6 +552,32 @@ def test_continuity_bootstrap_rejects_unsupported_secure_staging_before_import(
     assert caught.value.code == "coding_continuity_secure_staging_unsupported"
     assert caught.value.retryable is False
     assert not marker.exists()
+
+
+def test_continuity_bootstrap_rejects_noncanonical_package_authority(
+    tmp_path: Path,
+) -> None:
+    plugin_root = _write_continuity_plugin(tmp_path / "plugin")
+    runtime = _Runtime(tmp_path / "sessions")
+    layout = _test_layout(tmp_path / "state", tmp_path / "workspace")
+
+    with pytest.raises(CodingContinuityBootstrapError) as caught:
+        asyncio.run(
+            bind_coding_configured_continuity(
+                runtime,
+                settings_manager=_settings(plugin_root),
+                session_dir=runtime.session_dir,
+                cwd=tmp_path / "workspace",
+                materializer=PackageMaterializer(
+                    install_root=runtime.session_dir / "packages"
+                ),
+                state_layout=layout,
+            )
+        )
+
+    assert caught.value.code == "coding_continuity_package_authority_mismatch"
+    assert caught.value.retryable is False
+    assert not (runtime.session_dir / "package-lock.json").exists()
 
 
 def test_continuity_bootstrap_selects_only_continuity_contributions(
@@ -557,7 +597,9 @@ def test_continuity_bootstrap_selects_only_continuity_contributions(
             settings_manager=_settings(plugin_root),
             session_dir=runtime.session_dir,
             cwd=tmp_path / "workspace",
-            materializer=PackageMaterializer(install_root=tmp_path / "packages"),
+            materializer=_materializer_for_layout(
+                _test_layout(tmp_path / "state", tmp_path / "workspace")
+            ),
             state_layout=_test_layout(tmp_path / "state", tmp_path / "workspace"),
             runtime_id="coding-process:test-mixed",
             clock=lambda: 125,
@@ -592,8 +634,8 @@ def test_continuity_bootstrap_rejects_required_cross_owner_contribution(
                 settings_manager=_settings(plugin_root),
                 session_dir=runtime.session_dir,
                 cwd=tmp_path / "workspace",
-                materializer=PackageMaterializer(
-                    install_root=tmp_path / "packages"
+                materializer=_materializer_for_layout(
+                    _test_layout(tmp_path / "state", tmp_path / "workspace")
                 ),
                 state_layout=_test_layout(
                     tmp_path / "state",
@@ -622,7 +664,6 @@ async def _real_configured_lifecycle(
     monkeypatch.setenv("LOUSHANG_CONTINUITY_PLUGIN_MARKER", str(marker))
     plugin_root = _write_continuity_plugin(tmp_path / "continuity-plugin")
     layout = _test_layout(tmp_path / "state", tmp_path / "workspace")
-    materializer = PackageMaterializer(install_root=tmp_path / "packages")
     settings = _settings(plugin_root)
     runtime = _Runtime(tmp_path / "sessions")
 
@@ -631,12 +672,14 @@ async def _real_configured_lifecycle(
         settings_manager=settings,
         session_dir=runtime.session_dir,
         cwd=tmp_path / "workspace",
-        materializer=materializer,
         state_layout=layout,
         runtime_id="coding-process:test-first",
         clock=lambda: 150,
     )
     assert composition.plugin_publication is not None
+    assert (layout.package_root / "package-lock.json").is_file()
+    assert (layout.package_root / "plugin-revisions").is_dir()
+    assert not (runtime.session_dir / "package-lock.json").exists()
     assert get_coding_continuity_bootstrap_status(runtime).provider_count == 1
 
     page = await composition.hub.query(
@@ -694,7 +737,6 @@ async def _real_configured_lifecycle(
         settings_manager=settings,
         session_dir=restarted.session_dir,
         cwd=tmp_path / "workspace",
-        materializer=materializer,
         state_layout=layout,
         runtime_id="coding-process:test-second",
         clock=lambda: 151,
@@ -734,8 +776,8 @@ def test_bootstrap_failure_is_redacted_and_explicit_retry_succeeds(
             "settings_manager": settings,
             "session_dir": runtime.session_dir,
             "cwd": tmp_path / "workspace",
-            "materializer": PackageMaterializer(
-                install_root=tmp_path / "retry-packages"
+            "materializer": _materializer_for_layout(
+                _test_layout(tmp_path / "retry-state", tmp_path / "workspace")
             ),
             "state_layout": _test_layout(
                 tmp_path / "retry-state", tmp_path / "workspace"
@@ -773,7 +815,7 @@ def test_changed_revision_reports_unselected_and_accepts_source_rollback(
         manifest_path = plugin_root / "plugin.json"
         original_manifest = manifest_path.read_bytes()
         layout = _test_layout(tmp_path / "state", tmp_path / "workspace")
-        materializer = PackageMaterializer(install_root=tmp_path / "packages")
+        materializer = _materializer_for_layout(layout)
         kwargs = {
             "settings_manager": _settings(plugin_root),
             "session_dir": tmp_path / "sessions",
@@ -837,6 +879,16 @@ def _test_layout(state_root: Path, workspace: Path):
         temporary=state_root.parent / "tmp",
     )
     return resolve_coding_continuity_state_layout(workspace, platform_paths=paths)
+
+
+def _materializer_for_layout(
+    layout: CodingContinuityStateLayout,
+) -> PackageMaterializer:
+    return PackageMaterializer(
+        install_root=layout.package_root / "installed",
+        lockfile_path=layout.package_root / "package-lock.json",
+        plugin_revision_root=layout.package_root / "plugin-revisions",
+    )
 
 
 def _lifecycle_sources(layout):

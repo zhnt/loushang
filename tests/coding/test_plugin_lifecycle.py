@@ -377,6 +377,41 @@ def test_workspace_lifecycle_uses_state_and_data_authorities_independent_of_sess
     assert other_workspace.scope_id != first.scope_id
 
 
+def test_persisted_session_rejects_noncanonical_base_package_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session, create_services
+    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.coding.session_manager import SessionManager
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(workspace),
+            persist=True,
+        )
+        services = create_services(
+            settings_manager=SettingsManager(
+                ControlConfig(capabilities={"coding.lsp": "disabled"})
+            )
+        )
+        with pytest.raises(CodingBasePluginAssemblyError) as caught:
+            create_agent_session(
+                session_manager=manager,
+                model=_model(),
+                services=services,
+                package_materializer=_materializer(tmp_path / "session-authority"),
+            )
+        assert caught.value.code == "coding_base_package_authority_mismatch"
+
+    asyncio.run(scenario())
+
+
 def test_production_package_replay_crosses_session_save_directories(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -748,7 +783,9 @@ def test_public_update_replays_deleted_source_into_model_input_and_provenance(
         ).selection.package_revision
         assert expected is not None
 
-        updated_source = _copy_base(tmp_path, "public-base-v2")
+        # Advance the exact same configured checkout.  The lock must retain v1
+        # even though the mutable source now presents v2.
+        updated_source = original_source
         manifest_path = updated_source / "plugin.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         manifest["version"] = "2.0.0"
@@ -786,6 +823,27 @@ def test_public_update_replays_deleted_source_into_model_input_and_provenance(
             package_source_identity=updated_binding.source_identity,
         )
         updated_runtime.close()
+
+        precutover_manager = await SessionManager.new(
+            session_dir=session_dir,
+            cwd=str(workspace),
+            persist=True,
+        )
+        precutover = create_agent_session(
+            session_manager=precutover_manager,
+            model=_model(),
+            services=services,
+        )
+        precutover_base = precutover._coding_base_plugin_assembly
+        assert precutover_base is not None
+        assert precutover_base.package.content_digest == (
+            expected.package_content_digest
+        )
+        assert precutover_base.binding.source_identity == (
+            expected.package_source_identity
+        )
+        await precutover.dispose()
+
         snapshot = lifecycle.desired.snapshot()
         update = lifecycle.management.submit(
             PluginManagementUpdateCommandV2(
@@ -803,6 +861,24 @@ def test_public_update_replays_deleted_source_into_model_input_and_provenance(
         assert update.result is not None
         assert update.result.disposition == "restart_required"
         shutil.rmtree(updated_source)
+
+        replay_store = CodingPackageMaterializer(
+            install_root=layout.package_install_root,
+            lockfile_path=layout.package_lockfile,
+            plugin_revision_root=layout.plugin_revision_root,
+        )
+        old_binding = replay_store.get_plugin_binding_by_revision(
+            expected.package_source_identity,
+            content_digest=expected.package_content_digest,
+            dependency_lock_digest=expected.dependency_lock_digest,
+        )
+        assert old_binding is not None
+        reopened_old = replay_store.reopen_plugin_package(old_binding)
+        try:
+            assert reopened_old.manifest.version == expected.plugin_version
+            assert reopened_old.content_digest == expected.package_content_digest
+        finally:
+            reopened_old.revision_handle.close()
         monkeypatch.setattr(
             base_plugin_module,
             "coding_base_plugin_root",

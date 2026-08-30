@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import importlib.metadata
 import inspect
 import json
@@ -439,17 +440,41 @@ class PackageMaterializer:
         self.check_concurrency = max(1, int(check_concurrency))
         self.update_check_timeout_seconds = update_check_timeout_seconds
         self._records: dict[str, PackageMaterializationRecord] = {}
+        # ``_plugin_bindings`` is the mutable current pointer for each source.
+        # Immutable revisions live independently in ``_plugin_binding_history``
+        # so advancing one checkout never destroys exact replay evidence that a
+        # durable Product selection still references.
         self._plugin_bindings: dict[str, PluginSourceBinding] = {}
+        self._plugin_binding_history: dict[str, PluginSourceBinding] = {}
         self._plugin_binding_lock_error: str | None = None
         self._lockfile_diagnostics: list[dict[str, object]] = []
         self._persisted_records: dict[str, PackageMaterializationRecord] = {}
         self._persisted_plugin_bindings: dict[str, PluginSourceBinding] = {}
+        self._persisted_plugin_binding_history: dict[
+            str, PluginSourceBinding
+        ] = {}
         self._load_lockfile()
 
     def set_progress_callback(
         self, callback: Callable[[PackageProgressEvent], None] | None
     ) -> None:
         self._progress_callback = callback
+
+    def uses_storage_authority(
+        self,
+        *,
+        install_root: str | Path,
+        lockfile_path: str | Path,
+        plugin_revision_root: str | Path,
+    ) -> bool:
+        """Report whether all durable package writes use one exact authority."""
+
+        return (
+            self.install_root == Path(install_root).expanduser().resolve()
+            and self.lockfile_path == Path(lockfile_path).expanduser().resolve()
+            and self._plugin_revision_store.root
+            == Path(plugin_revision_root).expanduser().resolve()
+        )
 
     def bind_plugin_packages(
         self,
@@ -517,6 +542,38 @@ class PackageMaterializer:
         self._refresh_lockfile()
         return self._plugin_bindings.get(source_identity)
 
+    def get_plugin_binding_by_revision(
+        self,
+        source_identity: str,
+        *,
+        content_digest: str,
+        dependency_lock_digest: str,
+    ) -> PluginSourceBinding | None:
+        """Return one exact immutable binding without following its current head."""
+
+        if not isinstance(source_identity, str) or not source_identity:
+            raise ValueError("Plugin source identity must be non-empty")
+        if not isinstance(content_digest, str) or not content_digest:
+            raise ValueError("Plugin content digest must be non-empty")
+        if not isinstance(dependency_lock_digest, str) or not dependency_lock_digest:
+            raise ValueError("Plugin dependency-lock digest must be non-empty")
+        self._refresh_lockfile()
+        matches = tuple(
+            binding
+            for binding in self._plugin_binding_history.values()
+            if binding.source_identity == source_identity
+            and binding.content_digest == content_digest
+            and binding.dependency_lock is not None
+            and binding.dependency_lock.digest == dependency_lock_digest
+        )
+        if len(matches) > 1:
+            raise PluginManifestError(
+                "Plugin binding history contains ambiguous immutable revisions",
+                code="invalid_plugin_source_binding",
+                path=self.lockfile_path,
+            )
+        return matches[0] if matches else None
+
     def reopen_plugin_package(
         self,
         binding: PluginSourceBinding,
@@ -526,7 +583,8 @@ class PackageMaterializer:
         if not isinstance(binding, PluginSourceBinding):
             raise TypeError("Plugin source binding is required")
         self._assert_plugin_binding_lock_valid()
-        if self._plugin_bindings.get(binding.source_identity) != binding:
+        history_key = _plugin_binding_history_key(binding)
+        if self._plugin_binding_history.get(history_key) != binding:
             raise PluginManifestError(
                 "Plugin source binding is not present in the durable lock",
                 code="invalid_plugin_source_binding",
@@ -574,12 +632,19 @@ class PackageMaterializer:
         if key not in self._plugin_bindings:
             return
         previous = self._plugin_bindings
+        previous_history = self._plugin_binding_history
         self._plugin_bindings = dict(previous)
+        self._plugin_binding_history = {
+            history_key: binding
+            for history_key, binding in previous_history.items()
+            if binding.source_identity != key
+        }
         self._plugin_bindings.pop(key, None)
         try:
             self._save_lockfile()
         except Exception:
             self._plugin_bindings = previous
+            self._plugin_binding_history = previous_history
             raise
 
     def _bind_plugin_packages(
@@ -593,23 +658,31 @@ class PackageMaterializer:
         if not allow_plugin_id_change:
             self._assert_plugin_binding_lock_valid()
         next_bindings = dict(self._plugin_bindings)
+        next_history = dict(self._plugin_binding_history)
         for package, candidate in zip(packages, candidates, strict=True):
             if not allow_plugin_id_change:
                 self._assert_plugin_binding(candidate, package, bindings=next_bindings)
             next_bindings[candidate.source_identity] = candidate
-        if next_bindings == self._plugin_bindings and not (
+            next_history[_plugin_binding_history_key(candidate)] = candidate
+        if (
+            next_bindings == self._plugin_bindings
+            and next_history == self._plugin_binding_history
+        ) and not (
             allow_plugin_id_change and self._plugin_binding_lock_error is not None
         ):
             return candidates
         previous = self._plugin_bindings
+        previous_history = self._plugin_binding_history
         previous_lock_error = self._plugin_binding_lock_error
         self._plugin_bindings = next_bindings
+        self._plugin_binding_history = next_history
         if allow_plugin_id_change:
             self._plugin_binding_lock_error = None
         try:
             self._save_lockfile(allow_invalid_repair=allow_plugin_id_change)
         except Exception:
             self._plugin_bindings = previous
+            self._plugin_binding_history = previous_history
             self._plugin_binding_lock_error = previous_lock_error
             raise
         return candidates
@@ -992,8 +1065,14 @@ class PackageMaterializer:
             return
         previous_records = self._records
         previous_bindings = self._plugin_bindings
+        previous_history = self._plugin_binding_history
         self._records = dict(previous_records)
         self._plugin_bindings = dict(previous_bindings)
+        self._plugin_binding_history = {
+            history_key: binding
+            for history_key, binding in previous_history.items()
+            if binding.source_identity != binding_key
+        }
         self._records.pop(record_key, None)
         self._plugin_bindings.pop(binding_key, None)
         try:
@@ -1001,6 +1080,7 @@ class PackageMaterializer:
         except Exception:
             self._records = previous_records
             self._plugin_bindings = previous_bindings
+            self._plugin_binding_history = previous_history
             raise
 
     async def update_all_remote_sources(self) -> list[PackageMaterializationRecord]:
@@ -1348,6 +1428,9 @@ class PackageMaterializer:
             self._replace_lockfile_state_from_disk_unlocked()
         self._persisted_records = dict(self._records)
         self._persisted_plugin_bindings = dict(self._plugin_bindings)
+        self._persisted_plugin_binding_history = dict(
+            self._plugin_binding_history
+        )
 
     def _refresh_lockfile(self) -> None:
         with journal_file_lock(
@@ -1358,10 +1441,14 @@ class PackageMaterializer:
             self._replace_lockfile_state_from_disk_unlocked()
         self._persisted_records = dict(self._records)
         self._persisted_plugin_bindings = dict(self._plugin_bindings)
+        self._persisted_plugin_binding_history = dict(
+            self._plugin_binding_history
+        )
 
     def _replace_lockfile_state_from_disk_unlocked(self) -> None:
         self._records = {}
         self._plugin_bindings = {}
+        self._plugin_binding_history = {}
         self._plugin_binding_lock_error = None
         self._lockfile_diagnostics = []
         self._load_lockfile_unlocked()
@@ -1390,8 +1477,9 @@ class PackageMaterializer:
             )
             return
         binding_section_present = "pluginBindings" in payload
+        head_section_present = "pluginBindingHeads" in payload
         lockfile_version = payload.get("version", 1)
-        if lockfile_version not in {1, 2, 3}:
+        if lockfile_version not in {1, 2, 3, 4}:
             self._record_plugin_binding_lock_error(
                 code="package_lockfile_invalid_plugin_bindings",
                 message=f"Unsupported package lockfile version: {lockfile_version!r}.",
@@ -1403,11 +1491,22 @@ class PackageMaterializer:
                     f"Package lockfile v{lockfile_version} is missing pluginBindings."
                 ),
             )
-        elif binding_section_present and lockfile_version not in {2, 3}:
+        elif lockfile_version == 4 and (
+            not binding_section_present or not head_section_present
+        ):
             self._record_plugin_binding_lock_error(
                 code="package_lockfile_invalid_plugin_bindings",
                 message=(
-                    "Package lockfile pluginBindings requires lockfile version 2 or 3."
+                    "Package lockfile v4 requires pluginBindings and "
+                    "pluginBindingHeads."
+                ),
+            )
+        elif binding_section_present and lockfile_version not in {2, 3, 4}:
+            self._record_plugin_binding_lock_error(
+                code="package_lockfile_invalid_plugin_bindings",
+                message=(
+                    "Package lockfile pluginBindings requires lockfile version "
+                    "2, 3, or 4."
                 ),
             )
         records = payload.get("packages")
@@ -1502,25 +1601,90 @@ class PackageMaterializer:
                     ),
                 )
                 continue
-            if binding.source_identity in self._plugin_bindings:
+            history_key = _plugin_binding_history_key(binding)
+            if history_key in self._plugin_binding_history:
                 self._record_plugin_binding_lock_error(
                     code="package_lockfile_duplicate_plugin_binding",
                     message=(
-                        "Package lockfile contains duplicate Plugin source bindings."
+                        "Package lockfile contains duplicate Plugin revision bindings."
                     ),
                 )
                 continue
-            self._plugin_bindings[binding.source_identity] = binding
+            self._plugin_binding_history[history_key] = binding
+            if lockfile_version in {2, 3}:
+                if binding.source_identity in self._plugin_bindings:
+                    self._record_plugin_binding_lock_error(
+                        code="package_lockfile_duplicate_plugin_binding",
+                        message=(
+                            "Package lockfile contains duplicate Plugin source "
+                            "bindings."
+                        ),
+                    )
+                    continue
+                self._plugin_bindings[binding.source_identity] = binding
+        if lockfile_version != 4:
+            return
+        raw_heads = payload.get("pluginBindingHeads")
+        if not isinstance(raw_heads, list):
+            self._record_plugin_binding_lock_error(
+                code="package_lockfile_invalid_plugin_bindings",
+                message="Package lockfile pluginBindingHeads must be a list.",
+            )
+            return
+        for item in raw_heads:
+            if not isinstance(item, dict):
+                self._record_plugin_binding_lock_error(
+                    code="package_lockfile_invalid_plugin_binding_head",
+                    message="Package lockfile contains an invalid Plugin binding head.",
+                )
+                continue
+            source_identity = item.get("sourceIdentity")
+            raw_history_key = item.get("historyKey")
+            binding = (
+                self._plugin_binding_history.get(raw_history_key)
+                if isinstance(raw_history_key, str)
+                else None
+            )
+            if (
+                not isinstance(source_identity, str)
+                or not source_identity
+                or binding is None
+                or binding.source_identity != source_identity
+                or _plugin_binding_history_key(binding) != raw_history_key
+                or source_identity in self._plugin_bindings
+            ):
+                self._record_plugin_binding_lock_error(
+                    code="package_lockfile_invalid_plugin_binding_head",
+                    message="Package lockfile contains an invalid Plugin binding head.",
+                )
+                continue
+            self._plugin_bindings[source_identity] = binding
+        history_sources = {
+            binding.source_identity
+            for binding in self._plugin_binding_history.values()
+        }
+        if history_sources != set(self._plugin_bindings):
+            self._record_plugin_binding_lock_error(
+                code="package_lockfile_invalid_plugin_binding_head",
+                message=(
+                    "Package lockfile Plugin binding history lacks one current head "
+                    "per source."
+                ),
+            )
 
     def _save_lockfile(self, *, allow_invalid_repair: bool = False) -> None:
         """Merge this instance's exact delta under one cross-process lock."""
 
         local_records = dict(self._records)
         local_bindings = dict(self._plugin_bindings)
+        local_binding_history = dict(self._plugin_binding_history)
         local_lock_error = self._plugin_binding_lock_error
         local_diagnostics = list(self._lockfile_diagnostics)
         baseline_records = dict(self._persisted_records)
         baseline_bindings = dict(self._persisted_plugin_bindings)
+        baseline_binding_history = dict(
+            self._persisted_plugin_binding_history
+        )
         changed_records = {
             key
             for key in set(local_records) | set(baseline_records)
@@ -1530,6 +1694,11 @@ class PackageMaterializer:
             key
             for key in set(local_bindings) | set(baseline_bindings)
             if local_bindings.get(key) != baseline_bindings.get(key)
+        }
+        changed_binding_history = {
+            key
+            for key in set(local_binding_history) | set(baseline_binding_history)
+            if local_binding_history.get(key) != baseline_binding_history.get(key)
         }
         try:
             with journal_file_lock(
@@ -1549,6 +1718,7 @@ class PackageMaterializer:
                     )
                 disk_records = dict(self._records)
                 disk_bindings = dict(self._plugin_bindings)
+                disk_binding_history = dict(self._plugin_binding_history)
                 _merge_lockfile_delta(
                     disk_records,
                     baseline=baseline_records,
@@ -1556,6 +1726,14 @@ class PackageMaterializer:
                     changed_keys=changed_records,
                     path=self.lockfile_path,
                     subject="package record",
+                )
+                _merge_lockfile_delta(
+                    disk_binding_history,
+                    baseline=baseline_binding_history,
+                    local=local_binding_history,
+                    changed_keys=changed_binding_history,
+                    path=self.lockfile_path,
+                    subject="Plugin binding revision",
                 )
                 _merge_lockfile_delta(
                     disk_bindings,
@@ -1567,33 +1745,30 @@ class PackageMaterializer:
                 )
                 self._records = disk_records
                 self._plugin_bindings = disk_bindings
+                self._plugin_binding_history = disk_binding_history
                 self._plugin_binding_lock_error = None
                 self._lockfile_diagnostics = []
                 self._write_lockfile_unlocked()
         except Exception:
             self._records = local_records
             self._plugin_bindings = local_bindings
+            self._plugin_binding_history = local_binding_history
             self._plugin_binding_lock_error = local_lock_error
             self._lockfile_diagnostics = local_diagnostics
             raise
         self._persisted_records = dict(self._records)
         self._persisted_plugin_bindings = dict(self._plugin_bindings)
+        self._persisted_plugin_binding_history = dict(
+            self._plugin_binding_history
+        )
 
     def _write_lockfile_unlocked(self) -> None:
         self.lockfile_path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = self.lockfile_path.with_name(
             f"{self.lockfile_path.name}.{id(self)}.tmp"
         )
-        lockfile_version = (
-            3
-            if all(
-                binding.dependency_lock is not None
-                for binding in self._plugin_bindings.values()
-            )
-            else 2
-        )
         payload = {
-            "version": lockfile_version,
+            "version": 4,
             "trustedSources": sorted(
                 record.source
                 for record in self._records.values()
@@ -1642,8 +1817,21 @@ class PackageMaterializer:
                     ),
                 }
                 for binding in sorted(
-                    self._plugin_bindings.values(),
-                    key=lambda value: value.source_identity,
+                    self._plugin_binding_history.values(),
+                    key=lambda value: (
+                        value.source_identity,
+                        value.content_digest or "",
+                        value.revision or "",
+                    ),
+                )
+            ],
+            "pluginBindingHeads": [
+                {
+                    "sourceIdentity": source_identity,
+                    "historyKey": _plugin_binding_history_key(binding),
+                }
+                for source_identity, binding in sorted(
+                    self._plugin_bindings.items()
                 )
             ],
         }
@@ -1724,6 +1912,37 @@ def plugin_source_identity(source: str | Path | PluginSource) -> str:
     else:
         path = Path(source)
     return f"local:{path.expanduser().resolve()}"
+
+
+def _plugin_binding_history_key(binding: PluginSourceBinding) -> str:
+    dependency_lock_digest = (
+        binding.dependency_lock.digest
+        if binding.dependency_lock is not None
+        else None
+    )
+    exact_revision = (
+        {
+            "contentDigest": binding.content_digest,
+            "dependencyLockDigest": dependency_lock_digest,
+        }
+        if binding.content_digest is not None and dependency_lock_digest is not None
+        else {
+            "legacyManifestDigest": binding.manifest_digest,
+            "legacyRevision": binding.revision,
+            "legacyRevisionKind": binding.revision_kind,
+        }
+    )
+    payload = json.dumps(
+        {
+            **exact_revision,
+            "sourceIdentity": binding.source_identity,
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(
+        b"loushang.plugin-binding-history/v1\0" + payload
+    ).hexdigest()
 
 
 def _plugin_binding_from_json(

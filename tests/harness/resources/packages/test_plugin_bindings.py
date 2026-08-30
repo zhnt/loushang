@@ -46,7 +46,7 @@ def test_plugin_source_binding_survives_restart_and_rejects_implicit_rename(
     restored = PackageMaterializer(install_root=tmp_path / "installed")
     assert restored.get_plugin_binding(root) == binding
     lockfile = json.loads((tmp_path / "package-lock.json").read_text(encoding="utf-8"))
-    assert lockfile["version"] == 3
+    assert lockfile["version"] == 4
     assert lockfile["pluginBindings"] == [
         {
             "contentDigest": binding.content_digest,
@@ -61,6 +61,13 @@ def test_plugin_source_binding_survives_restart_and_rejects_implicit_rename(
             "sourceKind": "local",
         }
     ]
+    assert lockfile["pluginBindingHeads"] == [
+        {
+            "historyKey": lockfile["pluginBindingHeads"][0]["historyKey"],
+            "sourceIdentity": binding.source_identity,
+        }
+    ]
+    assert len(lockfile["pluginBindingHeads"][0]["historyKey"]) == 64
 
     _write_manifest(root, name="renamed-pack")
     before = (tmp_path / "package-lock.json").read_bytes()
@@ -274,7 +281,7 @@ def test_plugin_binding_revalidates_dependency_closure_from_published_tree(
     assert materializer.get_plugin_binding(root) is None
 
 
-def test_v3_plugin_binding_rejects_missing_dependency_lock_on_restart(
+def test_v4_plugin_binding_rejects_removed_dependency_lock_on_restart(
     tmp_path: Path,
 ) -> None:
     root = _plugin(tmp_path / "plugins" / "review", name="review-pack")
@@ -291,7 +298,7 @@ def test_v3_plugin_binding_rejects_missing_dependency_lock_on_restart(
 
     assert restored.get_plugin_binding(root) is None
     assert restored.get_lockfile_diagnostics()[0]["code"] == (
-        "package_lockfile_invalid_plugin_binding"
+        "package_lockfile_invalid_plugin_binding_head"
     )
     with pytest.raises(PluginManifestError) as caught:
         restored.bind_plugin_packages((_published_descriptor(restored, root),))
@@ -335,12 +342,12 @@ def test_v2_plugin_binding_requires_verified_upgrade_to_v3(tmp_path: Path) -> No
 
     assert upgraded.dependency_lock is not None
     assert upgraded.content_digest is not None
-    assert json.loads(lockfile.read_text(encoding="utf-8"))["version"] == 3
+    assert json.loads(lockfile.read_text(encoding="utf-8"))["version"] == 4
     restored = PackageMaterializer(install_root=tmp_path / "installed")
     assert restored.get_plugin_binding(root) == upgraded
 
 
-def test_v2_plugin_binding_stays_v2_until_all_bindings_are_verified(
+def test_v2_plugin_binding_migrates_with_explicit_head_until_verified(
     tmp_path: Path,
 ) -> None:
     root = _plugin(tmp_path / "plugins" / "review", name="review-pack")
@@ -372,7 +379,10 @@ def test_v2_plugin_binding_stays_v2_until_all_bindings_are_verified(
     materializer.prepare_remote_source("https://github.com/acme/other-pack.git")
 
     payload = json.loads(lockfile.read_text(encoding="utf-8"))
-    assert payload["version"] == 2
+    assert payload["version"] == 4
+    assert payload["pluginBindingHeads"][0]["sourceIdentity"] == (
+        f"local:{root.resolve()}"
+    )
     restored = PackageMaterializer(install_root=tmp_path / "installed")
     assert restored.get_plugin_binding(root) == materializer.get_plugin_binding(root)
 
@@ -553,6 +563,33 @@ def test_same_plugin_identity_can_advance_its_bound_revision(tmp_path: Path) -> 
     assert updated.manifest_digest != initial.manifest_digest
     assert updated.revision == updated.content_digest
     assert materializer.get_plugin_binding(root) == updated
+
+    restored = PackageMaterializer(install_root=tmp_path / "installed")
+    exact_initial = restored.get_plugin_binding_by_revision(
+        initial.source_identity,
+        content_digest=initial.content_digest or "",
+        dependency_lock_digest=initial.dependency_lock.digest
+        if initial.dependency_lock is not None
+        else "",
+    )
+    exact_updated = restored.get_plugin_binding_by_revision(
+        updated.source_identity,
+        content_digest=updated.content_digest or "",
+        dependency_lock_digest=updated.dependency_lock.digest
+        if updated.dependency_lock is not None
+        else "",
+    )
+
+    assert exact_initial == initial
+    assert exact_updated == updated
+    reopened_initial = restored.reopen_plugin_package(initial)
+    reopened_updated = restored.reopen_plugin_package(updated)
+    try:
+        assert reopened_initial.manifest.version == "1"
+        assert reopened_updated.manifest.version == "2"
+    finally:
+        reopened_updated.revision_handle.close()
+        reopened_initial.revision_handle.close()
 
 
 def test_plugin_source_binding_can_be_explicitly_forgotten(tmp_path: Path) -> None:
