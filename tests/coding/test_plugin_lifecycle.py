@@ -1607,6 +1607,9 @@ def test_public_update_replays_deleted_source_into_model_input_and_provenance(
         await active.prepare_model_call_runtime()
         active_base = active._coding_base_plugin_assembly
         assert active_base is not None
+        active_prompt = active.agent.system_prompt
+        active_tools = tuple(active.get_active_tool_names())
+        active_runtime_view = active.get_effective_runtime_view()
         old_ref = active_base.management_lease.instance_revision_ref
         layout = resolve_coding_plugin_lifecycle_state_layout(workspace)
         lifecycle = build_coding_plugin_lifecycle(layout)
@@ -1719,6 +1722,24 @@ def test_public_update_replays_deleted_source_into_model_input_and_provenance(
                 AssertionError("updated source must not be rescanned")
             ),
         )
+        with pytest.raises(
+            CodingBasePluginAssemblyError,
+            match="requires restart",
+        ):
+            await active.refresh_resources()
+        restart_records = [
+            item
+            for item in active.get_session_diagnostics()
+            if item.code == "coding_base_management_restart_required"
+        ]
+        assert len(restart_records) == 1
+        assert restart_records[0].type == "error"
+        assert restart_records[0].source == "session"
+        assert restart_records[0].details["reason"] == "plugin_updated"
+        assert active.agent.system_prompt == active_prompt
+        assert tuple(active.get_active_tool_names()) == active_tools
+        assert active.get_effective_runtime_view() == active_runtime_view
+        assert active_base.package.revision_handle.closed is False
         await active.dispose()
 
         replacement_manager = await SessionManager.new(
@@ -1867,9 +1888,15 @@ def test_public_session_dispose_then_resume_reacquires_a_fresh_live_lease(
     asyncio.run(scenario())
 
 
-def test_production_bootstrap_disable_keeps_active_generation_and_omits_new_base(
+@pytest.mark.parametrize(
+    ("action", "reason"),
+    (("disable", "plugin_disabled"), ("remove", "plugin_removed")),
+)
+def test_production_bootstrap_change_keeps_active_generation_and_omits_new_base(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    action: str,
+    reason: str,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
@@ -1879,6 +1906,12 @@ def test_production_bootstrap_disable_keeps_active_generation_and_omits_new_base
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     session_dir = tmp_path / "sessions"
+    mutable_source = _copy_base(tmp_path, f"public-base-{action}")
+    monkeypatch.setattr(
+        base_plugin_module,
+        "coding_base_plugin_root",
+        lambda: mutable_source,
+    )
 
     async def scenario() -> None:
         first_manager = await SessionManager.new(
@@ -1906,7 +1939,15 @@ def test_production_bootstrap_disable_keeps_active_generation_and_omits_new_base
         lifecycle = build_coding_plugin_lifecycle(
             resolve_coding_plugin_lifecycle_state_layout(workspace)
         )
-        _disable_or_remove(lifecycle, action="disable")
+        _disable_or_remove(lifecycle, action=action)
+        shutil.rmtree(mutable_source)
+        monkeypatch.setattr(
+            base_plugin_module,
+            "coding_base_plugin_root",
+            lambda: (_ for _ in ()).throw(
+                AssertionError("disabled or removed base source must not be rescanned")
+            ),
+        )
         with pytest.raises(
             CodingBasePluginAssemblyError,
             match="requires restart",
@@ -1919,7 +1960,9 @@ def test_production_bootstrap_disable_keeps_active_generation_and_omits_new_base
         ]
         assert len(records) == 1
         assert records[0].details["restartRequired"] is True
-        assert records[0].details["reason"] == "plugin_disabled"
+        assert records[0].type == "error"
+        assert records[0].source == "session"
+        assert records[0].details["reason"] == reason
         assert tuple(active.get_active_tool_names()) == before_tools
         assert active._coding_base_plugin_assembly.package.revision_handle.closed is False
 

@@ -16,6 +16,10 @@ from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, Usage
 from loushang.coding._base_plugin import prepare_coding_base_plugin_assembly
+from loushang.coding._plugin_lifecycle import (
+    build_coding_plugin_lifecycle,
+    resolve_coding_plugin_lifecycle_state_layout,
+)
 from loushang.coding._resource_catalog_shadow import (
     CodingResourceCatalogAdmissionError,
     CodingResourceCatalogShadowAdmissionError,
@@ -65,6 +69,10 @@ from loushang.harness.cli import PackageLifecycleRequest, run_package_lifecycle
 from loushang.harness.host.rpc.commands import RpcPackageCommands
 from loushang.harness.host.rpc.output import RpcOutput
 from loushang.harness.plugin_authoring.host import PluginDeclarationHost
+from loushang.harness.plugin_management import (
+    PluginDesiredStateMutationV1,
+    PluginManagementCommandV1,
+)
 from loushang.harness.resources._catalog_input_receipt import (
     ResourceCatalogInputReceipt,
 )
@@ -2048,6 +2056,128 @@ def test_coding_initial_catalog_compiles_configured_plugin_resource_admissions(
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("action", ("disable", "remove"))
+def test_lsp_and_configured_resources_share_one_compilation_when_base_is_absent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+) -> None:
+    async def scenario() -> None:
+        project_root = tmp_path / "project"
+        plugin_root = tmp_path / "plugin"
+        project_root.mkdir()
+        _copy_resource_only_plugin(plugin_root)
+        project_settings_path = tmp_path / "project-settings.json"
+        project_settings_path.write_text(
+            json.dumps(
+                {
+                    "capabilities": {"coding.lsp": "disabled"},
+                    "plugin_sources": [str(plugin_root)],
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "loushang-home"))
+        session_dir = tmp_path / "sessions"
+
+        initial_services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=project_settings_path,
+            )
+        )
+        initial_manager = await SessionManager.new(
+            session_dir=session_dir,
+            cwd=str(project_root),
+            persist=True,
+        )
+        initial = _create_agent_session(
+            session_manager=initial_manager,
+            services=initial_services,
+            model=_model(),
+        )
+        await initial.dispose()
+        initial_services.resource_loader.close()
+
+        lifecycle = build_coding_plugin_lifecycle(
+            resolve_coding_plugin_lifecycle_state_layout(project_root)
+        )
+        snapshot = lifecycle.desired.snapshot()
+        key = lifecycle.installation_key("coding.base")
+        desired_state = "installed_disabled" if action == "disable" else "absent"
+        event = lifecycle.management.submit(
+            PluginManagementCommandV1(
+                action=action,
+                mutation=PluginDesiredStateMutationV1(
+                    operation_id=f"test-{action}",
+                    idempotency_key=f"test-{action}",
+                    expected_inventory_revision=snapshot.inventory_revision,
+                    installation_key=key,
+                    desired_state=desired_state,
+                    package_revision=None,
+                    actor_id="test:operator",
+                    policy_revision="test-policy-v1",
+                    approval_reference="test",
+                ),
+            )
+        )
+        assert event.result is not None
+        assert event.result.disposition == "succeeded"
+
+        project_settings_path.write_text(
+            json.dumps(
+                {
+                    "capabilities": {"coding.lsp": "always"},
+                    "plugin_sources": [str(plugin_root)],
+                }
+            ),
+            encoding="utf-8",
+        )
+        replacement_services = create_services(
+            settings_manager=SettingsManager(
+                global_settings_path=tmp_path / "global-settings.json",
+                project_settings_path=project_settings_path,
+            )
+        )
+        replacement_manager = await SessionManager.new(
+            session_dir=session_dir,
+            cwd=str(project_root),
+            persist=True,
+        )
+        replacement = _create_agent_session(
+            session_manager=replacement_manager,
+            services=replacement_services,
+            model=_model(),
+        )
+        try:
+            assert replacement._coding_base_plugin_assembly is None
+            lsp = replacement._coding_lsp_plugin_assembly
+            inputs = replacement._capability_composition_inputs
+            assert lsp is not None
+            assert inputs is not None
+            assert inputs.product_composition is lsp.plugin_assembly.product_composition
+            assert lsp.selection.plan.selected_plugin_ids == (
+                "coding.lsp.default",
+                "coding.test.resources",
+            )
+            assert {
+                (item.plugin_id, item.contribution_id)
+                for item in inputs.product_composition.resource_admissions
+            } == {
+                ("coding.test.resources", "prompt-standard"),
+                ("coding.test.resources", "skill-standard"),
+            }
+            assert {
+                (item.plugin_id, item.contribution_id)
+                for item in inputs.product_composition.catalog_admissions
+            } == {("coding.lsp.default", "coding-lsp-tools")}
+        finally:
+            await replacement.dispose()
+            replacement_services.resource_loader.close()
+
+    asyncio.run(scenario())
+
+
 def test_coding_initial_catalog_admits_materialized_remote_plugin_resources(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2378,7 +2508,12 @@ def test_coding_initial_catalog_shadow_adopts_exact_admitted_package_skill(
         )
         project_settings_path = tmp_path / "project-settings.json"
         project_settings_path.write_text(
-            json.dumps({"plugin_sources": [str(plugin_root)]}),
+            json.dumps(
+                {
+                    "capabilities": {"coding.lsp": "disabled"},
+                    "plugin_sources": [str(plugin_root)],
+                }
+            ),
             encoding="utf-8",
         )
         monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "missing-home"))

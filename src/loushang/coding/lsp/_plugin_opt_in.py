@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Protocol
 
 from loushang.coding._base_plugin import CodingBasePluginAssembly
+from loushang.coding._cleanup import run_cleanup_steps
 from loushang.coding._resource_catalog_shadow import (
     complete_coding_package_plugin_selection_seed,
 )
@@ -242,6 +243,8 @@ class CodingLspPluginOptInAssembly:
         repr=False,
         compare=False,
     )
+    _runtime_closed: bool = field(default=False, init=False, repr=False)
+    _state_cleaned: bool = field(default=False, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
 
     def close(self) -> None:
@@ -249,23 +252,24 @@ class CodingLspPluginOptInAssembly:
 
         if self._closed:
             return
-        primary_error: BaseException | None = None
-        try:
-            self.runtime.close()
-        except BaseException as exc:
-            primary_error = exc
-        try:
-            if self.state_cleanup is not None:
-                self.state_cleanup()
-        except BaseException as cleanup_error:
-            if primary_error is None:
-                primary_error = cleanup_error
-            else:
-                primary_error.add_note(
-                    f"Coding LSP state cleanup also failed: {cleanup_error}"
-                )
-        finally:
-            self._closed = True
+        steps = []
+        if not self._runtime_closed:
+
+            def close_runtime() -> None:
+                self.runtime.close()
+                self._runtime_closed = True
+
+            steps.append(("Coding LSP runtime cleanup", close_runtime))
+        if not self._state_cleaned:
+
+            def clean_state() -> None:
+                if self.state_cleanup is not None:
+                    self.state_cleanup()
+                self._state_cleaned = True
+
+            steps.append(("Coding LSP state cleanup", clean_state))
+        primary_error = run_cleanup_steps(None, steps)
+        self._closed = self._runtime_closed and self._state_cleaned
         if primary_error is not None:
             raise primary_error
 
@@ -287,6 +291,8 @@ class CodingLspPluginOptInPreparation:
         repr=False,
         compare=False,
     )
+    _runtime_closed: bool = field(default=False, init=False, repr=False)
+    _state_cleaned: bool = field(default=False, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
     _transferred: bool = field(default=False, init=False, repr=False)
 
@@ -333,12 +339,10 @@ class CodingLspPluginOptInPreparation:
                 clock=clock,
             )
         except BaseException as error:
-            try:
-                self.close()
-            except BaseException as cleanup_error:
-                error.add_note(
-                    f"Coding LSP preparation cleanup also failed: {cleanup_error}"
-                )
+            run_cleanup_steps(
+                error,
+                (("Coding LSP preparation cleanup", self.close),),
+            )
             raise
         self._transferred = True
         return CodingLspPluginOptInAssembly(
@@ -358,23 +362,24 @@ class CodingLspPluginOptInPreparation:
     def close(self) -> None:
         if self._closed or self._transferred:
             return
-        primary_error: BaseException | None = None
-        try:
-            self.runtime.close()
-        except BaseException as exc:
-            primary_error = exc
-        try:
-            if self.state_cleanup is not None:
-                self.state_cleanup()
-        except BaseException as cleanup_error:
-            if primary_error is None:
-                primary_error = cleanup_error
-            else:
-                primary_error.add_note(
-                    f"Coding LSP state cleanup also failed: {cleanup_error}"
-                )
-        finally:
-            self._closed = True
+        steps = []
+        if not self._runtime_closed:
+
+            def close_runtime() -> None:
+                self.runtime.close()
+                self._runtime_closed = True
+
+            steps.append(("Coding LSP runtime cleanup", close_runtime))
+        if not self._state_cleaned:
+
+            def clean_state() -> None:
+                if self.state_cleanup is not None:
+                    self.state_cleanup()
+                self._state_cleaned = True
+
+            steps.append(("Coding LSP state cleanup", clean_state))
+        primary_error = run_cleanup_steps(None, steps)
+        self._closed = self._runtime_closed and self._state_cleaned
         if primary_error is not None:
             raise primary_error
 

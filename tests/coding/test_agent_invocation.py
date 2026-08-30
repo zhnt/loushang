@@ -10,7 +10,7 @@ import pytest
 from loushang.agent import AbortController
 from loushang.ai.types import ToolCall
 from loushang.coding.agent_invocation import CodingCliAgentInvocationAdapter
-from loushang.coding.cli.args import parse_args
+from loushang.coding.cli.args import parse_args, removed_legacy_resource_option
 from loushang.harness.tools.agent_delegate import (
     AgentDelegateToolPack,
     AgentInvocationRequest,
@@ -82,21 +82,22 @@ def test_coding_cli_invocation_compiles_a_hardened_non_widening_command(
     assert _flag_value(request.command, "--cwd") == str(nested)
     assert _flag_value(request.command, "--model") == "openai:responses:gpt-test"
     assert _flag_value(request.command, "--system-prompt")
-    assert {
-        "--no-session",
-        "--no-extensions",
-        "--no-skills",
-        "--no-prompt-templates",
-    }.issubset(request.command)
+    assert {"--no-session", "--no-context-files"}.issubset(request.command)
+    assert _flag_value(request.command, "--agent-invocation-profile") == (
+        "read-only-v1"
+    )
+    assert removed_legacy_resource_option(request.command[1:]) is None
     assert "delegate_agent" not in _flag_value(request.command, "--tools")
     assert "spawn_agent" not in _flag_value(request.command, "--tools")
     assert "bash" not in _flag_value(request.command, "--tools")
     child_args = parse_args(list(request.command[1:]))
     assert child_args.mode == "print"
     assert child_args.no_session is True
-    assert child_args.no_extensions is True
-    assert child_args.no_skills is True
-    assert child_args.no_prompt_templates is True
+    assert child_args.agent_invocation_profile == "read-only-v1"
+    assert child_args.no_context_files is True
+    assert child_args.no_extensions is False
+    assert child_args.no_skills is False
+    assert child_args.no_prompt_templates is False
     assert child_args.tools == ("read", "grep")
 
 

@@ -13,7 +13,7 @@ from loushang.coding._tool_authority import (
     CODING_EXACT_OWNER_TOOL_NAMES,
     coding_peer_tool_names,
 )
-from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
+from loushang.coding.prompt.defaults import CODING_KERNEL_SYSTEM_PROMPT
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.sandbox import coding_workspace_execution_profile
 from loushang.coding.session import AgentSession
@@ -616,7 +616,7 @@ def coding_agent_type_system_prompt(agent_type: str) -> str:
     role_prompt = _ROLE_PROMPTS.get(agent_type)
     if role_prompt is None:
         raise ValueError(f"Coding has no system prompt for agent type {agent_type!r}")
-    return f"{DEFAULT_CODING_SYSTEM_PROMPT}\n\n{role_prompt}"
+    return f"{CODING_KERNEL_SYSTEM_PROMPT}\n\n{role_prompt}"
 
 
 def _coding_role_system_prompt(agent_type: str) -> str:

@@ -15,10 +15,10 @@ Guidelines:
 """
 
 CODING_STANDARD_SYSTEM_PROMPT_FRAGMENT = """\
-The selected standard Coding tool pack can read files, execute commands, edit code, and write new files.
+Use only the Tool definitions exposed for this Session; their names, schemas, and policy determine which operations are available.
 
 Guidelines:
-- Prefer specialized tools over bash for file exploration when available
+- Prefer a specialized Tool over the general command or shell Tool when available
 - Always read files completely before editing
 """
 

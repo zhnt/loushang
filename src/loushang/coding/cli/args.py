@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from argparse import ArgumentParser, RawTextHelpFormatter
+from argparse import SUPPRESS, ArgumentParser, RawTextHelpFormatter
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
@@ -26,8 +26,12 @@ MethodListFormat = Literal["tsv", "json"]
 MethodShowFormat = Literal["text", "json"]
 MethodPlanShowFormat = Literal["text", "json"]
 WorkLogInspectFormat = Literal["text", "json", "plans", "plans-json"]
+AgentInvocationProfile = Literal["read-only-v1"]
 ExtensionFlag: TypeAlias = RegisteredFlag | ResolvedFlag
-_BUILTIN_FLAG_NAMES = CODING_CLI_PROFILE.option_names
+_AGENT_INVOCATION_PROFILE_OPTION = "--agent-invocation-profile"
+_BUILTIN_FLAG_NAMES = CODING_CLI_PROFILE.option_names | frozenset(
+    {_AGENT_INVOCATION_PROFILE_OPTION.lstrip("-")}
+)
 _REMOVED_LEGACY_RESOURCE_OPTIONS = frozenset(
     {
         "--extension",
@@ -52,6 +56,7 @@ class CliArgs(AgentCliArgs):
     """Standard Agent CLI values plus Coding's Method/Work additions."""
 
     capability_modes: tuple[tuple[str, CapabilityMountMode], ...]
+    agent_invocation_profile: AgentInvocationProfile | None
     method: str | None
     no_method: bool
     prompt_steps: str | None
@@ -129,6 +134,7 @@ def parse_args(
             extension_flag_values=extension_flag_values,
         ),
         capability_modes=tuple(namespace.capability),
+        agent_invocation_profile=namespace.agent_invocation_profile,
         method=namespace.method,
         no_method=namespace.no_method,
         prompt_steps=namespace.prompt_steps,
@@ -153,6 +159,12 @@ def _build_parser() -> ArgumentParser:
     )
     parser.add_argument("messages", nargs="*")
     register_profile_arguments(parser, CODING_CLI_PROFILE)
+    parser.add_argument(
+        _AGENT_INVOCATION_PROFILE_OPTION,
+        choices=("read-only-v1",),
+        default=None,
+        help=SUPPRESS,
+    )
     parser.set_defaults(
         extension=[],
         no_extensions=False,

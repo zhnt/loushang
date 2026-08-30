@@ -113,9 +113,9 @@ class CodingCliAgentInvocationAdapter:
             "--mode",
             "print",
             "--no-session",
-            "--no-extensions",
-            "--no-skills",
-            "--no-prompt-templates",
+            "--agent-invocation-profile",
+            "read-only-v1",
+            "--no-context-files",
             "--system-prompt",
             (
                 f"{coding_agent_type_system_prompt(spec.name)}\n\n"

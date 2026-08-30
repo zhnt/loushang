@@ -29,7 +29,6 @@ from loushang.harness.extensions.types import ResolvedCommand
 
 _EXTENSION_ERROR_DIAGNOSTIC_CODES: frozenset[str] = frozenset(
     {
-        "coding_base_management_restart_required",
         "extension_runtime_bind_failed",
         "extension_graph_provider_restart_required",
         "extension_resource_refresh_failed",
@@ -135,6 +134,21 @@ class SessionDiagnosticsRuntime:
         )
 
     def record_extension_runtime_diagnostic(self, diagnostic: DiagnosticDraft) -> None:
+        self.record_runtime_diagnostic(
+            diagnostic,
+            source="extensions",
+            level=_extension_diagnostic_level(diagnostic.code),
+        )
+
+    def record_runtime_diagnostic(
+        self,
+        diagnostic: DiagnosticDraft,
+        *,
+        source: DiagnosticSource,
+        level: DiagnosticLevel,
+    ) -> None:
+        """Record a Product-classified runtime diagnostic in Session scope."""
+
         if self.diagnostics_service is None:
             return
         scope = self.get_scope()
@@ -142,10 +156,10 @@ class SessionDiagnosticsRuntime:
             self.diagnostics_service.normalize_diagnostic(
                 diagnostic,
                 phase="runtime",
-                source="extensions",
+                source=source,
                 session_id=scope.session_id,
                 entry_id=scope.entry_id,
-                level=_extension_diagnostic_level(diagnostic.code),
+                level=level,
             )
         )
 

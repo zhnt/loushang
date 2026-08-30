@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import sys
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, TextIO, cast
 
@@ -252,9 +253,21 @@ def default_runtime_builder(
             runtime_tool_registry,
             parent_allowed_tools=registered_parent_tools,
         )
+    resource_profile_args = (
+        replace(
+            args,
+            no_extensions=True,
+            no_skills=True,
+            no_prompt_templates=True,
+            no_themes=True,
+            no_context_files=True,
+        )
+        if getattr(args, "agent_invocation_profile", None) == "read-only-v1"
+        else args
+    )
     resource_loader_options = configure_agent_resource_loader(
         services.resource_loader,
-        args,
+        resource_profile_args,
     )
     services_factory = cwd_bound_services_factory(
         services,

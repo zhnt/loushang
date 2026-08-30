@@ -21,6 +21,7 @@ from loushang.coding._base_plugin import (
     prepare_coding_base_resource_plan_seed,
     prepare_managed_coding_base_plugin_assembly,
 )
+from loushang.coding._cleanup import run_cleanup_steps
 from loushang.coding._plugin_lifecycle import (
     build_coding_plugin_lifecycle,
     resolve_coding_plugin_lifecycle_state_layout,
@@ -738,43 +739,45 @@ def _create_agent_session(
             raise CodingResourceCatalogAdmissionError(("catalog_receipt_unavailable",))
         evaluated_at = (
             coding_plugin_clock()
-            if coding_base_plugin_assembly is not None
+            if coding_base_plugin_assembly is not None or lsp_enabled_for_session
             else int(time.time())
         )
         product_composition = None
-        if coding_base_plugin_assembly is not None:
-            plan_seed = prepare_coding_package_plugin_plan_seed(
-                receipt,
-                product_scope_id=session_id,
-                evaluated_at=evaluated_at,
-                plan_seed=coding_base_plugin_assembly.plan_seed,
+        plan_seed = prepare_coding_package_plugin_plan_seed(
+            receipt,
+            product_scope_id=session_id,
+            evaluated_at=evaluated_at,
+            plan_seed=(
+                coding_base_plugin_assembly.plan_seed
+                if coding_base_plugin_assembly is not None
+                else None
+            ),
+        )
+        if coding_base_plugin_assembly is not None and plan_seed is None:
+            raise CodingResourceCatalogAdmissionError(
+                ("product_selected_package_missing",)
             )
-            if plan_seed is None:
-                raise CodingResourceCatalogAdmissionError(
-                    ("product_selected_package_missing",)
-                )
+        if catalog_product_composition_assembly is not None:
             if lsp_enabled_for_session:
-                lsp_plugin_preparation = prepare_lsp_plugin(plan_seed)
-                product_composition = lsp_plugin_preparation.product_composition
-            else:
-                selection_seed = finalize_coding_package_plugin_plan_seed(plan_seed)
-                base_plugin_session_preparation = prepare_coding_base_plugin_session(
-                    coding_base_plugin_assembly,
-                    evaluated_at=evaluated_at,
-                    selection_seed=selection_seed,
+                raise CodingResourceCatalogAdmissionError(
+                    ("peer_product_compilation",)
                 )
-                product_composition = (
-                    base_plugin_session_preparation.product_composition
-                )
-        elif catalog_product_composition_assembly is not None:
             product_composition = assemble_product_composition(
                 catalog_product_composition_assembly,
                 evaluated_at=evaluated_at,
             )
-            if lsp_enabled_for_session:
-                lsp_plugin_preparation = prepare_lsp_plugin()
         elif lsp_enabled_for_session:
-            lsp_plugin_preparation = prepare_lsp_plugin()
+            lsp_plugin_preparation = prepare_lsp_plugin(plan_seed)
+            product_composition = lsp_plugin_preparation.product_composition
+        elif coding_base_plugin_assembly is not None:
+            assert plan_seed is not None
+            selection_seed = finalize_coding_package_plugin_plan_seed(plan_seed)
+            base_plugin_session_preparation = prepare_coding_base_plugin_session(
+                coding_base_plugin_assembly,
+                evaluated_at=evaluated_at,
+                selection_seed=selection_seed,
+            )
+            product_composition = base_plugin_session_preparation.product_composition
 
         adapter, projection = _prepare_coding_catalog_projection(
             loader,
@@ -787,7 +790,11 @@ def _create_agent_session(
                 if product_composition is not None
                 else evaluated_at
             ),
-            clock=(coding_plugin_clock if coding_base_plugin_assembly else None),
+            clock=(
+                coding_plugin_clock
+                if coding_base_plugin_assembly is not None or lsp_enabled_for_session
+                else None
+            ),
             receipt=receipt,
         )
         prepared_resource_catalog_adapters.append(adapter)
@@ -1070,9 +1077,16 @@ def _create_agent_session(
                 base_resource_bundle=bundle,
                 construct=construct_child_session,
             )
-        except BaseException:
+        except BaseException as error:
+            cleanup_steps = []
             if lsp_plugin_assembly is not None:
-                lsp_plugin_assembly.close()
+                cleanup_steps.append(
+                    ("Coding LSP assembly cleanup", lsp_plugin_assembly.close)
+                )
+            run_cleanup_steps(
+                error,
+                cleanup_steps,
+            )
             raise
         process_session = child_session
         return child_session
@@ -1126,13 +1140,24 @@ def _create_agent_session(
                 cast(list[dict[str, object]], scoped_models)
             ),
         )
-    except BaseException:
-        if lsp_plugin_preparation is not None:
-            lsp_plugin_preparation.close()
-        elif lsp_ephemeral_state is not None:
-            lsp_ephemeral_state.cleanup()
+    except BaseException as error:
+        lsp_cleanup = (
+            lsp_plugin_preparation.close
+            if lsp_plugin_preparation is not None
+            else (
+                lsp_ephemeral_state.cleanup
+                if lsp_ephemeral_state is not None
+                else None
+            )
+        )
+        cleanup_steps = []
+        if lsp_cleanup is not None:
+            cleanup_steps.append(("Coding LSP preparation cleanup", lsp_cleanup))
         if coding_base_plugin_assembly is not None:
-            coding_base_plugin_assembly.close()
+            cleanup_steps.append(
+                ("Coding base Plugin cleanup", coding_base_plugin_assembly.close)
+            )
+        run_cleanup_steps(error, cleanup_steps)
         raise
     result.session.cwd_bound_services_audit = (
         result.configuration.cwd_bound_services_audit

@@ -1106,6 +1106,43 @@ def test_default_runtime_builder_maps_tools_to_allowed_and_active_tools(
     }.intersection(session.get_active_tool_names())
 
 
+def test_default_runtime_builder_projects_internal_delegate_resource_profile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.coding.bootstrap import create_services
+    from loushang.coding.cli.__main__ import default_runtime_builder
+    from loushang.coding.cli.args import parse_args
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+
+    monkeypatch.setenv("LOUSHANG_HOME", str(tmp_path / "user-home"))
+    services = create_services()
+    args = parse_args(
+        [
+            "--agent-invocation-profile",
+            "read-only-v1",
+            "--no-session",
+            "--tools",
+            "read,grep",
+        ]
+    )
+    runtime = default_runtime_builder(
+        args=args,
+        cwd=tmp_path,
+        session_dir=tmp_path / "sessions",
+        services=services,
+        tool_registry=WorkspaceToolRegistry(),
+    )
+
+    assert services.resource_loader._no_extensions is True
+    assert services.resource_loader._no_skills is True
+    assert services.resource_loader._no_prompt_templates is True
+    assert services.resource_loader._no_themes is True
+    assert services.resource_loader._no_context_files is True
+
+    asyncio.run(runtime.dispose_session_runtime())
+
+
 def test_default_runtime_builder_declares_global_cwd_and_home_session_sources(
     tmp_path,
     monkeypatch,
@@ -1606,6 +1643,62 @@ def test_run_cli_sets_offline_environment_before_building_runtime(
 
     assert captured_args
     assert captured_args[0].offline is True
+
+
+def test_delegate_agent_command_reaches_real_cli_dispatch_without_legacy_flags(
+    tmp_path: Path,
+) -> None:
+    from loushang.coding.agent_invocation import CodingCliAgentInvocationAdapter
+    from loushang.coding.cli.__main__ import run_cli
+    from loushang.harness.tools.agent_delegate import AgentInvocationRequest
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    executable = tmp_path / "loushang"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    executable.chmod(0o755)
+    prepared = CodingCliAgentInvocationAdapter(
+        workspace_root=workspace,
+        parent_allowed_tools=("read", "grep"),
+        executable=executable,
+    ).prepare(
+        AgentInvocationRequest(
+            agent_type="reviewer",
+            task="review the parser",
+        ),
+        default_cwd=str(workspace),
+        model=None,
+    )
+    runtime = FakeRuntime(FakeSession("delegate-child"))
+    runner = FakeRunner()
+    captured_args = []
+
+    def runtime_builder(**kwargs):
+        captured_args.append(kwargs["args"])
+        return runtime
+
+    async def scenario() -> None:
+        stderr = StringIO()
+        exit_code = await run_cli(
+            list(prepared.exec_request.command[1:]),
+            stdin=StringIO(prepared.exec_request.stdin or ""),
+            stdout=StringIO(),
+            stderr=stderr,
+            cwd=workspace,
+            services=_fake_services(),
+            runtime_builder=runtime_builder,
+            print_runner=runner,
+        )
+
+        assert exit_code == 0
+        assert stderr.getvalue() == ""
+
+    asyncio.run(scenario())
+
+    assert len(captured_args) == 1
+    assert captured_args[0].agent_invocation_profile == "read-only-v1"
+    assert captured_args[0].tools == ("read", "grep")
+    assert len(runner.calls) == 1
 
 
 def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(
